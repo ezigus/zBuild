@@ -155,21 +155,25 @@ _sp_takes_v() {
     return 0
 }
 
-# _sp_first_output_path_v <var> <stage> <raw> <state_dir> — the first path
-# _inputs_output_paths gives for an output, in this shell (#2470, ADR-065 §5):
-# a map stage's first element's.
-_sp_first_output_path_v() {
-    local _sfo_safe="${2//-/_}" _sfo_p="$3" _sfo_x=""
-    local _sfo_t="_TPL_STAGE_TYPE_$_sfo_safe" _sfo_as="_TPL_MAP_AS_$_sfo_safe" _sfo_el="_TPL_MAP_ELEMENTS_$_sfo_safe"
-    if [[ "${!_sfo_t:-}" == map && -n "${!_sfo_el:-}" ]]; then
-        local -a _sfo_e=()
-        IFS=',' read -r -a _sfo_e <<< "${!_sfo_el}"
-        for _sfo_x in ${_sfo_e[@]+"${_sfo_e[@]}"}; do [[ -n "$_sfo_x" ]] && break; done
-        [[ -n "$_sfo_x" ]] || { printf -v "$1" '%s' ""; return 0; }
-        local _sfo_a="${!_sfo_as:-}"
-        [[ -n "$_sfo_a" ]] && _sfo_p="${_sfo_p//\$\{$_sfo_a\}/$_sfo_x}"
+# _sp_output_paths_v <array-var> <stage> <raw> <state_dir> — every path an
+# output resolves to, in this shell (#2470, ADR-065 §5): one, or a map stage's
+# one per element (#2480: every member's, not the first only).
+_sp_output_paths_v() {
+    local -n _sop="$1"; _sop=()
+    local _sop_safe="${2//-/_}" _sop_raw="$3" _sop_x _sop_p
+    local _sop_t="_TPL_STAGE_TYPE_$_sop_safe" _sop_as="_TPL_MAP_AS_$_sop_safe" _sop_el="_TPL_MAP_ELEMENTS_$_sop_safe"
+    if [[ "${!_sop_t:-}" == map && -n "${!_sop_el:-}" ]]; then
+        local -a _sop_e=()
+        IFS=',' read -r -a _sop_e <<< "${!_sop_el}"
+        local _sop_a="${!_sop_as:-}"
+        for _sop_x in ${_sop_e[@]+"${_sop_e[@]}"}; do
+            [[ -n "$_sop_x" ]] || continue
+            _sop_p="$_sop_raw"; [[ -n "$_sop_a" ]] && _sop_p="${_sop_p//\$\{$_sop_a\}/$_sop_x}"
+            _verdict_resolve_path_v _sop_p "$_sop_p" "$4"; _sop+=("$_sop_p")
+        done
+        return 0
     fi
-    _verdict_resolve_path_v "$1" "$_sfo_p" "$4"
+    _verdict_resolve_path_v _sop_p "$_sop_raw" "$4"; _sop=("$_sop_p")
 }
 
 # _sp_read <file> <max> — the first <max> bytes of a file, without a fork.
@@ -222,8 +226,13 @@ _stage_block_previous_work() {
             k="${_IR_PRODUCER[$id]:-}"; [[ -n "$k" ]] || continue
             outs[$k]+="$id "
             if [[ "$v" == *$'\x1f'* ]]; then
-                outtext[$id]="- $id:"$'\n'
-                local m; while IFS= read -r m; do [[ -n "$m" ]] && outtext[$id]+="    - $m"$'\n'; done <<< "${v//$'\x1f'/$'\n'}"
+                # #2480: a map group's output, one file a member — each is
+                # read for findings as a single file is (ADR-071 §2).
+                outtext[$id]="- $id:"$'\n'; outpath[$id]=""
+                local m; while IFS= read -r m; do
+                    [[ -n "$m" ]] || continue
+                    outtext[$id]+="    - $m"$'\n'; outpath[$id]+="$m"$'\n'
+                done <<< "${v//$'\x1f'/$'\n'}"
             else
                 outtext[$id]="- $id: $v"$'\n'
                 outpath[$id]="$v"
@@ -234,6 +243,7 @@ _stage_block_previous_work() {
     fi
 
     local s manifest roles summ errp res req notes cutoff verdict own body any=0 raw content
+    local -a summs=() prims=()
     local listed t_topic t_id t_path
     local -A topic_of=() allow_of=()
     for s in "${order[@]}"; do
@@ -249,7 +259,7 @@ _stage_block_previous_work() {
         [[ -n "$cutoff" && -s "$cutoff" ]] || cutoff=""
         [[ -n "${outs[$s]:-}" || -n "$notes" || -n "$cutoff" ]] || continue
         _inputs_stage_manifest_v manifest "$s" "$plugins_root" 2>/dev/null || true
-        summ=""; errp=""; res=""; req=""; roles=""
+        summ=""; errp=""; res=""; req=""; roles=""; summs=(); prims=()
         topic_of=(); allow_of=()
         [[ -n "$manifest" ]] && _sp_manifest_roles_v roles "$manifest" "$state_dir"
         # ADR-071: an output is shown when the stage takes its topic (by id
@@ -266,10 +276,14 @@ _stage_block_previous_work() {
             [[ "$k" == [SEP] ]] || { [[ "$k" == R ]] && req+="${raw##*/}"$'\n'; continue; }
             # #2452: the primary result is read for its findings whatever its
             # topic; each finding goes by its own topic (§2).
-            [[ "$k" == P && -z "$res_any" ]] && { _verdict_resolve_path_v res_any "$raw" "$state_dir"; res_topic="${topic_of["path:$raw"]:-none}"; res_allow="${allow_of["path:$raw"]:-}"; }
+            # #2480: a map group's is one file a member, each read.
+            if [[ "$k" == P && -z "$res_any" ]]; then
+                _sp_output_paths_v prims "$s" "$raw" "$state_dir"; res_any="${prims[0]:-}"
+                res_topic="${topic_of["path:$raw"]:-none}"; res_allow="${allow_of["path:$raw"]:-}"
+            fi
             [[ -z "$takes" || "$takes" == *" ${topic_of["path:$raw"]:-none} "* ]] || continue
             case "$k" in
-                S) [[ -z "$summ" ]] && _sp_first_output_path_v summ "$s" "$raw" "$state_dir" ;;
+                S) [[ -z "$summ" ]] && { _sp_output_paths_v summs "$s" "$raw" "$state_dir"; summ="${summs[0]:-}"; } ;;
                 E) [[ -z "$errp" ]] && _verdict_resolve_path_v errp "$raw" "$state_dir" ;;
                 P) [[ -z "$res" ]] && _verdict_resolve_path_v res "$raw" "$state_dir" ;;
             esac
@@ -277,7 +291,9 @@ _stage_block_previous_work() {
         listed=""; local -a found=() found_topic=() found_allow=()
         for id in ${outs[$s]:-}; do
             # Every JSON output is read for findings; only a taken one is listed.
-            [[ "${outpath[$id]:-}" == *.json ]] && { found+=("${outpath[$id]}"); found_topic+=("${topic_of["id:$id"]:-none}"); found_allow+=("${allow_of["id:$id"]:-}"); }
+            while IFS= read -r raw; do
+                [[ "$raw" == *.json ]] && { found+=("$raw"); found_topic+=("${topic_of["id:$id"]:-none}"); found_allow+=("${allow_of["id:$id"]:-}"); }
+            done <<< "${outpath[$id]:-}"
             [[ -z "$takes" || "$takes" == *" ${topic_of["id:$id"]:-none} "* ]] || continue
             listed+="${outtext[$id]}"
         done
@@ -288,16 +304,21 @@ _stage_block_previous_work() {
         # topic, or — when it names none its output allows (finding_topics,
         # #2454) — its output's.
         body=""
-        if [[ -n "$res_any" && "$(<"$res_any")" == *'"findings"'* ]]; then
-            body="$(_sp_findings_for "$res_any" "$s" "$s" "$res_topic" "$takes" "$res_allow")"
-        fi
+        # A map group's results are each labelled by the member's file.
+        local fp lbl more _fx _pnames=" "
+        for fp in ${prims[@]+"${prims[@]}"}; do
+            _pnames+="${fp##*/} "
+            [[ "$fp" == *.json && -s "$fp" ]] && _sp_has_numbered "$(<"$fp")" || continue
+            lbl="$s"; if (( ${#prims[@]} > 1 )); then lbl="${fp##*/}"; lbl="${lbl%.json}"; lbl="${lbl%-result}"; fi
+            more="$(_sp_findings_for "$fp" "$s" "$lbl" "$res_topic" "$takes" "$res_allow")"
+            [[ -n "$more" ]] && body+="${body:+$'\n'}$more"
+        done
         # #2428 (ADR-071 §2): the findings of every other output, labelled by
         # the output's file — the name open_items_json gives them.
-        local fp lbl more _fx
         for _fx in "${!found[@]}"; do
             fp="${found[$_fx]}"
-            [[ "${fp##*/}" != "${res_any##*/}" && -s "$fp" ]] || continue
-            [[ "$(<"$fp")" == *'"findings"'* ]] || continue
+            [[ "$_pnames" != *" ${fp##*/} "* && -s "$fp" ]] || continue
+            _sp_has_numbered "$(<"$fp")" || continue
             lbl="${fp##*/}"; lbl="${lbl%.json}"; lbl="${lbl%-result}"
             more="$(_sp_findings_for "$fp" "$s" "$lbl" "${found_topic[$_fx]}" "$takes" "${found_allow[$_fx]}")"
             [[ -n "$more" ]] && body+="${body:+$'\n'}$more"
@@ -317,8 +338,11 @@ _stage_block_previous_work() {
         printf '\n### %s (verdict: %s)%s\n' "$s" "${verdict:-unknown}" "$own"
         [[ -n "$listed" ]] && printf 'Outputs:\n%s' "$listed"
         [[ -n "$body" ]] && printf '\nFindings:\n%s\n' "$body"
-        if [[ -n "$summ" && -s "$summ" ]]; then
-            body="$(<"$summ")"
+        # #2480: every member's summary, each as a stage's is.
+        local _sf
+        for _sf in ${summs[@]+"${summs[@]}"}; do
+            [[ -s "$_sf" ]] || continue
+            body="$(<"$_sf")"
             local full=${#body}
             body="${body:0:$_ZB_SP_SUMMARY_MAX_BYTES}"
             # The sanitizer forks twice; run it only on text it would change.
@@ -328,8 +352,8 @@ _stage_block_previous_work() {
             fi
             printf '\nSummary:\n%s\n' "$body"
             (( full > _ZB_SP_SUMMARY_MAX_BYTES )) \
-                && printf '[… cut at %sB — read %s for the rest]\n' "$_ZB_SP_SUMMARY_MAX_BYTES" "$summ"
-        fi
+                && printf '[… cut at %sB — read %s for the rest]\n' "$_ZB_SP_SUMMARY_MAX_BYTES" "$_sf"
+        done
         case "$verdict" in
             fail|failed|error|broken|partial|mismatch)
                 if [[ -n "$errp" && -s "$errp" ]]; then
@@ -369,6 +393,13 @@ _stage_block_previous_work() {
     done
     [[ "$any" -eq 1 ]] || printf '\nNo stage has run before this one.\n'
     return 0
+}
+
+# _sp_has_numbered <json> — rc 0 when it holds a numbered finding, the only kind
+# _sp_findings_for shows: a result with none is not handed to jq (#2480,
+# ADR-065 §5: a lens's own result lists its findings unnumbered).
+_sp_has_numbered() {
+    [[ "$1" == *'"findings"'* && "$1" =~ \"n\"[[:space:]]*:[[:space:]]*[0-9] ]]
 }
 
 # _sp_findings_for <result.json> <stage> <label> <output-topic> <takes> <allowed>

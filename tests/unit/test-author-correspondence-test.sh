@@ -124,7 +124,7 @@ for _id in SPEC-1 SPEC-2 SPEC-3; do
     assert_contains "[#2143] the batch prompt carries $_id as a heading" "$(cat "$_P_FILE")" "### $_id"
 done
 assert_eq "[SPEC-3] a part short of its SPEC is one finding" "1" "${#_TA_CORR_FINDINGS[@]}"
-assert_contains "[SPEC-3] ...naming the SPEC" "${_TA_CORR_FINDINGS[0]:-}" "SPEC-2: 1 part to fix"
+assert_contains "[SPEC-3] ...headed with the SPEC, the part and why (#2480)" "${_TA_CORR_FINDINGS[0]:-}" "SPEC-2 Then: one case of several"$'\x1e'
 assert_contains "[SPEC-3] ...marking the part with why and what to do" "${_TA_CORR_FINDINGS[0]:-}" "[FIX IN TEST: one case of several — assert this"
 
 # ── #2108: a stdin-draining model still leaves every SPEC judged ────────────

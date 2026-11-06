@@ -319,12 +319,17 @@ _summaries_stage_summary_path() {
 _summaries_collect() {
     local state_file="$1" plugins_root="$2"
     local state_dir; zb_dirname_v state_dir "$state_file"
-    local stage path verdict
+    local stage path verdict _sc_all _sc_p
     while IFS= read -r stage; do
         [[ -z "$stage" ]] && continue
-        path="$(_summaries_stage_summary_path "$stage" "$plugins_root" "$state_dir")"
-        path="${path%%$'\n'*}"
-        [[ -n "$path" && -s "$path" ]] || continue
+        # #2480: a map group's summary is one file a member; it counts when
+        # any member wrote one, not only the first.
+        path=""
+        _sc_all="$(_summaries_stage_summary_path "$stage" "$plugins_root" "$state_dir")"
+        while IFS= read -r _sc_p; do
+            [[ -n "$_sc_p" && -s "$_sc_p" ]] && { path="$_sc_p"; break; }
+        done <<< "$_sc_all"
+        [[ -n "$path" ]] || continue
         verdict="$(jq -r --arg s "$stage" '.stage_verdicts[$s] // "unknown"' "$state_file" 2>/dev/null || echo unknown)"
         printf '%s|%s|%s\n' "$stage" "$verdict" "$path"
     done < <(jq -r '(.stage_statuses // {}) | keys_unsorted[]' "$state_file" 2>/dev/null || true)

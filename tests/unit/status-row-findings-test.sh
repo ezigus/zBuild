@@ -10,12 +10,19 @@
 # built from the summary only. The row is for the person reading the issue.
 #
 # W1 [change] a try that did not pass, whose result holds findings: the row's
-#             line is the first finding, "and N more"; the folded part lists
-#             every finding; nothing of the summary is shown
+#             line says how many (#2480: not the first finding, which the folded
+#             list repeated); the folded part lists every finding once; nothing
+#             of the summary is shown
 # W2 [change] a map member (a lens) reads its own result, named on its event,
 #             and a lens's finding is its message and file
 # W3 [guard]  a try that did not pass and has no findings shows its summary
 # W4 [guard]  a try that passed shows its summary, whatever its result holds
+# W5 [change] #2480: findings with a severity are counted by it
+# W6 [change] #2480: one finding of several lines: its first line heads the row,
+#             the rest is folded, and the first line is not said twice
+# W7 [change] #2480: a try run again because its result held findings shows
+#             as failed, not `unusable` (test-author's own label for "my check
+#             found something", #2460); one with no findings stays unusable
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -52,9 +59,9 @@ stage_summary_write "$A/judge-summary.md" judge fail "the design fails 2 check(s
 
 # ── W1 ───────────────────────────────────────────────────────────────────────
 w1="$(rsc_render_row "$S" "$(_row 3.1.1.1.1 judge unusable)")"
-assert_contains "[W1] the row's line is the first finding" "$w1" \
-    "what failed: SKIP-1 Then 1 is not asserted: the test checks the file, not the run (and 1 more)"
+assert_eq "[W1] the row's line says how many failed" "what failed: 2 findings" "$(sed -n 1p <<< "$w1" | sed 's/.* — //')"
 assert_contains "[W1] the folded part lists every finding" "$w1" "BNDY-1 describes what a file contains"
+assert_eq "[W1] …each once" "1" "$(grep -c "SKIP-1 Then 1 is not asserted" <<< "$w1")"
 if grep -qF "working copy" <<< "$w1" || grep -qF "fails 2 check(s)" <<< "$w1"; then
     assert_fail "[W1] nothing of the summary is shown" "$w1"
 else
@@ -83,6 +90,28 @@ w4="$(rsc_render_row "$S" "$(_row 5 fine pass)")"
 assert_contains "[W4] a pass row shows its summary" "$w4" "wrote tests for LOOP-1 and KEEP-1"
 if grep -qF "what failed" <<< "$w4"; then assert_fail "[W4] …and never says what failed" "$w4"
 else assert_pass "[W4] …and never says what failed"; fi
+
+# ── W5 ───────────────────────────────────────────────────────────────────────
+printf '%s\n' '{"lens":"sre","findings":[{"file":"a.sh","severity":"medium","message":"M-ONE"},{"file":"a.sh","severity":"high","message":"H-ONE"},{"file":"a.sh","severity":"medium","message":"M-TWO"}]}' \
+    > "$A/lens-sre.json"
+stage_result_add "$A/lens-sre.json" fail "the sre lens found a high problem"
+w5="$(rsc_render_row "$S" "$(_row 3.2.6 review_lenses.sre fail "{\"member\":true,\"result_path\":\"$A/lens-sre.json\"}")")"
+assert_contains "[W5] findings are counted by severity, highest first" "$w5" "what failed: 3 findings: 1 high, 2 medium"
+assert_eq "[W5] …and each is listed once" "1" "$(grep -c "M-ONE" <<< "$w5")"
+
+# ── W6 ───────────────────────────────────────────────────────────────────────
+stage_result_write "$A/ta-result.json" unusable "its own check found 1 SPEC to fix" \
+    "{\"findings\": $(printf '%s\n' $'ENTR-1 Given: the test never puts the state under runs/x\x1eENTR-1[code]: the paths restore\x1e  Given: a run is interrupted [FIX IN TEST: …]' | stage_findings_json)}"
+w6="$(rsc_render_row "$S" "$(_row 3.2.1.2.2 ta unusable)")"
+assert_contains "[W6] one finding: its first line heads the row" "$w6" "what failed: ENTR-1 Given: the test never puts the state under runs/x"
+assert_contains "[W6] …the rest is folded" "$w6" "ENTR-1[code]: the paths restore"
+assert_eq "[W6] …and the first line is said once" "1" "$(grep -c "the test never puts the state" <<< "$w6")"
+
+# ── W7 ───────────────────────────────────────────────────────────────────────
+assert_contains "[W7] a try run again for its findings shows as failed" "$w6" "· **fail** —"
+stage_result_write "$A/noread-result.json" unusable "the reply could not be read"
+stage_summary_write "$A/noread-summary.md" noread unusable "the judge's reply had no line for LOOP-1"
+assert_contains "[W7] …one with no findings stays unusable" "$(rsc_render_row "$S" "$(_row 6 noread unusable)")" "· **unusable** —"
 
 print_test_results
 exit $((FAIL > 0))

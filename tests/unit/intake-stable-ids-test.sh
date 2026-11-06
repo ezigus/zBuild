@@ -34,6 +34,9 @@
 #            SPECs use, removed ones counted — the rule design already keeps
 #            (on #1805 run 42127743259 intake added DISP-1 beside SPEC DISP-1,
 #            and design had to rename an unchanged SPEC); a kept id stays
+# S13 [change] #2480: intake leaves an event naming the codes it read from the
+#            last design, so a run shows the check happened (run 42229975998
+#            could not show it either way)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -217,7 +220,22 @@ _last '{"schema_version":1,"source":"model","requirements":[{"id":"PRNT-1","text
 REPLY=([1]=$'REQUIREMENT: PRNT-1 a\nREQUIREMENT: DISP-1 b')
 _intake
 assert_eq "[S12] a requirement the last list already had keeps its id: ids never move" "pass" "$OUTCOME"
+
+# ── S13 ──────────────────────────────────────────────────────────────────────
+: > "$ZBUILD_EVENTS_JSONL"
+_last ""
+REPLY=([1]=$'REQUIREMENT: PRNT-1 Print each line once.')
+_intake
+_s13="$(jq -c 'select(.type == "intake.requirements.design_codes") | .data' "$ZBUILD_EVENTS_JSONL" 2>/dev/null)"
+assert_contains "[S13] intake says which codes it read from the last design" "$_s13" '"codes":"DISP GATE"'
+assert_contains "[S13] …and from which file" "$_s13" "design.md"
 rm -f "$ARTIFACT_DIR/design.md"
+: > "$ZBUILD_EVENTS_JSONL"
+_last ""
+REPLY=([1]=$'REQUIREMENT: PRNT-1 Print each line once.')
+_intake
+assert_contains "[S13] …and that it read none when there is no design" \
+    "$(jq -c 'select(.type == "intake.requirements.design_codes") | .data' "$ZBUILD_EVENTS_JSONL" 2>/dev/null)" '"codes":""'
 
 cleanup_test_env
 print_test_results

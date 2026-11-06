@@ -182,7 +182,8 @@ assert_eq "[F6] test-author's check: each SPEC fine on one line" "1|0|" "$(_l "$
 assert_eq "[F2] ...it sees the And as written" "written|" "$(_l "$T" T2a)"
 assert_contains "[F6] ...a SPEC with no line is asked again" "$(_l "$T" T6b)" "2||"
 assert_contains "[F6] ...naming it" "$(_l "$T" T6b)" "no line for WORK-2"
-assert_contains "[F5] a part the test misses: the SPEC whole" "$(_l "$T" T5a)" "1|FRSH-1: 1 part to fix~FRSH-1[code]: a new run starts from the first stage covers: RQST-1~"
+# #2480: headed with the part and why, not how many parts.
+assert_contains "[F5] a part the test misses: the SPEC whole" "$(_l "$T" T5a)" "1|FRSH-1 And: nothing asserts that no stage was skipped~FRSH-1[code]: a new run starts from the first stage covers: RQST-1~"
 assert_contains "[F5] ...the line marked [FIX IN TEST: …]" "$(_l "$T" T5a)" "  And: no stage is skipped [FIX IN TEST: nothing asserts that no stage was skipped"
 assert_contains "[F5] ...other parts unmarked" "$(_l "$T" T5a)" "~  Then: every stage is dispatched~"
 assert_lacks "[F5] ...a SPEC that passed is not shown" "$(_l "$T" T5a)" "WORK-2"
