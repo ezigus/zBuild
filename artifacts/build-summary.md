@@ -1,5 +1,5 @@
 ## build — pass
 
-- changed core/pipeline/runner.sh (+15 / -6)
+- changed core/pipeline/cycle-orchestrator.sh (+18 / -2)
 
 - over 1 pass(es), 1 iteration(s)

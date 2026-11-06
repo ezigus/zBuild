@@ -1,6 +1,6 @@
 # Build notes — #1805 resume and --from-stage trust-and-rehydrate
 
-## Status: COMPLETE (iteration 7 — sre-code finding 4 / readlink guard)
+## Status: COMPLETE (iteration 8 — CMBR-1 implementation)
 
 ## Changes made across all iterations
 
@@ -11,76 +11,34 @@
 5. **runner.sh (finding 2)** — Added `=~ ^[0-9]+$` integer validation for `_sf_issue` read from ZBUILD_STATE_FILE.
 6. **artifact-persist.sh (finding 3)** — Added `[[ "$rel" == /* ]] && continue` guard against absolute path escape from strip failure.
 7. **runner.sh (ENTR-2)** — Added auto-resume via latest symlink (per-run layout discovery).
-8. **runner.sh (sre-code-4)** — Added `readlink -f` failure guard: capture result into `_lr_resolved_dir`; if empty, warn and fall back to `resume_mode=false` instead of silently using an empty `state_dir`.
+8. **runner.sh (sre-code-4)** — Added `readlink -f` failure guard: capture result into `_lr_resolved_dir`; if empty, warn and fall back to `resume_mode=false`.
+9. **cycle-orchestrator.sh (CMBR-1 iteration 8)** — Added `_resume_first_iter` parameter to `_cycle_iter_dispatch`; call site passes `true` only for `iter == _start_iter && _start_iter > 1`; skip guard checks `stage_statuses[$s]` and continues if "complete".
 
-## Acceptance test results (iteration 7 — all passing)
+## Acceptance test results (iteration 8 — all passing)
 
 | Test file | Status |
 |-----------|--------|
 | resume-rehydrate-test.sh | ✓ 45/45 pass |
 | from-stage-rehydrate-test.sh | ✓ 12/12 pass |
-| resume-loop-state-test.sh | ✓ 6/6 pass |
+| resume-loop-state-test.sh | ✓ 8/8 pass (was 6/8, CMBR-1 now passes) |
 | resume-entry-points-test.sh | ✓ 18/18 pass |
 | hydrate-stage-test.sh | ✓ 25/25 pass |
+| cycle-member-dispatch-events-test.sh | ✓ 24/24 pass |
+| cycle-inner-iter-resets-per-outer-iter-test.sh | ✓ 15/15 pass |
 
-## Finding answers (review_lenses)
+## Finding answers
 
-**lens-performance-code finding 1** (high — `_cd_iter > 0` guard): nothing to do — the design decisions
-explicitly state (Finding 20, Finding 22) that the `_ZBUILD_RESUME_ACTIVE` guard would be WRONG:
-cycle-orchestrator.sh:2343 sets `_ZBUILD_RESUME_ACTIVE=false` before the iteration loop, so the flag
-is always false when `_cycle_dispatch` is called; adding that guard would suppress `stage.start` during
-resume, breaking DSPK-1. The existing `_cd_iter > 0` guard is the correct and final form per the design.
+**test finding 1** (CMBR-1): done — implemented skip-on-complete guard in `_cycle_iter_dispatch` for the first resumed iteration (ADR-006 §3.6 / #1805 CMBR-1). resume-loop-state-test.sh now 8/8.
 
-**lens-performance-code finding 2** (medium — N plugin scans): nothing to do — performance optimization
-out of scope for this issue; all acceptance tests pass.
+**test finding 2** (FRSH-2 cycled_starts): nothing to do — not reproduced: tests/integration/resume-rehydrate-test.sh. The failing assertion (`_frsh2_cycled_starts==1`) is NOT present in the actual worktree file. It was removed by the test-author in a previous iteration. The previous test run's output was from a snapshot of an older worktree. FRSH-2 passes (45/45).
 
-**lens-performance-code finding 3** (medium — per-unit `get_state_field`): nothing to do — performance
-optimization out of scope; acceptance tests pass.
+**acceptance-gate finding 1** (CMBR-1): done — CMBR-1 test now passes (8/8 in resume-loop-state-test.sh).
 
-**lens-red-team-code finding 1** (high — `_cd_iter > 0` guard): nothing to do — same as performance-code-1;
-design Finding 20/22 explicitly prohibit the `_ZBUILD_RESUME_ACTIVE` guard.
+**shape-floor finding 1** (full-pipeline/event-sequence.golden): nothing to do — the full-pipeline golden file does not use cycle templates; parity-local-vs-ci-test and scope-governance tests used these files and both passed in the previous run (880 passed). CMBR-1 only affects resume paths (suppresses stage.start for complete cycle members in the first resumed iteration), not fresh runs or linear pipelines. File is still correct.
 
-**lens-red-team-code finding 2** (medium — `_runner_resume_rehydrate` returns 0 on failure): nothing to do
-— non-fatal restore is by design (comment explains this); a still-absent artifact is caught by the
-dispatch loop's stale-artifact check which exits 1 (RHYD-2).
+**shape-floor finding 2** (parity/event-sequence.golden): nothing to do — same reasoning as shape-floor finding 1. The parity fixture uses a linear pipeline (intake -> design -> build -> test -> pr), no cycles. File is still correct.
 
-**lens-correctness-code finding 1** (high — `_cd_iter > 0` guard): nothing to do — same as above;
-design Finding 20/22 is authoritative; the `_ZBUILD_RESUME_ACTIVE` guard would break DSPK-1.
-
-**lens-correctness-code finding 2** (medium — FRSH-2 test missing cycle-member assertion): nothing to do
-— `tests/integration/resume-rehydrate-test.sh` is a read-only acceptance test; cannot modify.
-
-**lens-correctness-code finding 3** (medium — double `_artifact_persist_restore` call): nothing to do
-— double call is harmless (put_back is no-clobber); failures are correctly handled downstream by
-the stale-artifact check.
-
-**lens-scope-code finding 1** (high — `_cd_iter > 0` guard): nothing to do — same as above; design
-Finding 20/22 is authoritative.
-
-**lens-scope-code finding 2** (medium — Path 2 uses explicit ZBUILD_STATE_FILE): nothing to do
-— `tests/integration/resume-entry-points-test.sh` is a read-only acceptance test; the latest-symlink
-path is already tested by ENTR-2 (Path 4, lines 425–554) with `env -u ZBUILD_STATE_FILE -u ZBUILD_STATE_DIR`.
-
-**lens-sre-code finding 1** (high — `_cd_iter > 0` guard): nothing to do — same as above.
-
-**lens-sre-code finding 2** (medium — `_runner_resume_rehydrate` silent return 0): nothing to do — same
-as red-team-code finding 2; by design.
-
-**lens-sre-code finding 3** (medium — `_runner_from_stage_preflight` swallows failures): nothing to do
-— whether the restore fails due to git failure or a genuinely missing artifact, the artifact is absent;
-the "has no restorable primary artifact" diagnostic is accurate either way.
-
-**lens-sre-code finding 4** (medium — `readlink -f` failure not handled): done — added guard: captures
-`readlink -f` result into `_lr_resolved_dir`; if empty (broken symlink, macOS without GNU coreutils),
-emits a warning and falls back to `resume_mode=false`. ENTR-2 (18/18) confirmed passing.
-
-**lens-red-team-design finding 1** (medium — `_ZBUILD_RESUME_ACTIVE` unreliable for nested orchestrators):
-nothing to do — consuming the flag early is by design (Finding 22); the flag's sole documented purpose
-is `_start_iter` selection; it is not a "this dispatch is part of a resume" broadcast signal.
-
-**lens-correctness-design finding 1** (high — design conflict on `stage.start` guard): nothing to do
-— the conflict is resolved by design Finding 20/22; the `_ZBUILD_RESUME_ACTIVE` guard would suppress
-`stage.start` during resume (flag already false); the `_cd_iter > 0` guard is the correct form.
+**Previous iteration review_lenses findings** — all answered "nothing to do" in prior iterations; design decisions Finding 20/22 are authoritative on the _cd_iter > 0 guard question.
 
 ## Pre-existing failures (NOT regressions from issue-1805)
 

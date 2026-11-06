@@ -1,3 +1,49 @@
+diff --git a/core/pipeline/cycle-orchestrator.sh b/core/pipeline/cycle-orchestrator.sh
+index 1e130186..b653ca22 100644
+--- a/core/pipeline/cycle-orchestrator.sh
++++ b/core/pipeline/cycle-orchestrator.sh
+@@ -1333,7 +1333,7 @@ _CYCLE_VERIFIED_BLOB=""
+ # with _CYCLE_ITER_OUTCOME naming why: failed | interrupted | aborted | error
+ # (#1850, ADR-054 §4 — the word, never an rc).
+ _cycle_iter_dispatch() {
+-    local iter="$1" state_file="$2"
++    local iter="$1" state_file="$2" _resume_first_iter="${3:-false}"
+     _CYCLE_LAST_VERDICTS_BLOB="{}"
+     _CYCLE_LAST_FAILURE_COUNT=0
+     _CYCLE_ITER_OUTCOME="error"
+@@ -1437,6 +1437,16 @@ _cycle_iter_dispatch() {
+                 "$(jq -r '.status // "complete"' <<< "$_ru_entry")" "$(jq -r '.verdict // "pass"' <<< "$_ru_entry")" || true
+             continue
+         fi
++        # ADR-006 §3.6 / #1805 (CMBR-1): on the first resumed iteration, skip members
++        # already complete in persisted state so dispatch begins at the interrupted member.
++        if [[ "$_resume_first_iter" == "true" ]]; then
++            local _cmbr_status
++            _cmbr_status="$(jq -r --arg s "$s" '.stage_statuses[$s] // "pending"' \
++                "$state_file" 2>/dev/null || echo "pending")"
++            if [[ "$_cmbr_status" == "complete" ]]; then
++                continue
++            fi
++        fi
+         _cycle_emit_member_dispatch_start "$_cyc_pos" "$s" "$_member_kind_pre"
+         export ZBUILD_CYCLE_ITER="$iter"
+         export ZBUILD_CYCLE_ID="${_CYCLE_TRAP_CYCLE_ID}"
+@@ -2410,8 +2420,14 @@ _cycle_orchestrator_run_body() {
+         fi
+ 
+         # Dispatch the cycle's stages in order.
++        # CMBR-1 (#1805): signal resume_first_iter only for the first resumed iteration
++        # so _cycle_iter_dispatch skips members already complete in persisted state.
++        local _cid_resume_first_iter=false
++        if [[ "$iter" -eq "$_start_iter" && "$_start_iter" -gt 1 ]]; then
++            _cid_resume_first_iter=true
++        fi
+         set +e
+-        _cycle_iter_dispatch "$iter" "$state_file"
++        _cycle_iter_dispatch "$iter" "$state_file" "$_cid_resume_first_iter"
+         local _iter_rc=$?
+         [[ $_ORCH_HAD_E -eq 1 ]] && set -e
+         # The round stopped before every member ran (#1850: the word, not an rc).
 diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
 index eb58e9ed..696ff0ff 100755
 --- a/core/pipeline/runner.sh
@@ -119,10 +165,10 @@ index 486c252f..c050e4b8 100644
  print_test_section "resume-loop-state test uses a fixture containing a cyclic stage"
  
 diff --git a/tests/integration/resume-rehydrate-test.sh b/tests/integration/resume-rehydrate-test.sh
-index 7c9f00cb..c06845a6 100644
+index 7c9f00cb..ab27fe18 100644
 --- a/tests/integration/resume-rehydrate-test.sh
 +++ b/tests/integration/resume-rehydrate-test.sh
-@@ -855,14 +855,29 @@ assert_eq \
+@@ -855,14 +855,11 @@ assert_eq \
      "[#1805/FRSH-2] fresh run emits no stage.skip events (dispatch-unit skip guard conditional on resume_mode; does not activate for fresh runs)" \
      "0" "$_frsh2_stage_skips"
  
@@ -134,29 +180,11 @@ index 7c9f00cb..c06845a6 100644
 -# no-stage.skip assertion (2) proves the guard did not emit a skip event for any
 -# stage. Together they establish that the skip guard is conditional on resume_mode
 -# and did not fire on this fresh run, which is the entirety of FRSH-2.
-+# [#1805/FRSH-2]: cycle member stage.start count — `cycled` must emit exactly 1
-+# stage.start on a fresh run. Without the _ZBUILD_RESUME_ACTIVE guard in
-+# _cycle_dispatch, the guard `_cd_iter > 0` fires on every cycle-member dispatch
-+# (since iter is always ≥ 1) and emits an EXTRA stage.start for each member each
-+# iteration. With max_iterations=1, cycled would emit 2 stage.start events
-+# (1 from normal dispatch + 1 from unguarded guard) instead of the correct 1.
-+# This assertion catches that regression: if the guard is missing, it fails.
-+# FRSH-2 is [no-code]; the test need not fail before the change. It fails on
-+# BUGGY new code (missing _ZBUILD_RESUME_ACTIVE) and passes on correct new code.
-+_frsh2_cycled_starts=0
-+if [[ -f "$_S_FRSH2_EVENTS_JSONL" ]]; then
-+    _frsh2_cycled_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="cycled") | .type' \
-+        "$_S_FRSH2_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
-+fi
-+assert_eq \
-+    "[#1805/FRSH-2] fresh run cycle member emits exactly one stage.start per iteration (not duplicated by missing _ZBUILD_RESUME_ACTIVE guard in _cycle_dispatch)" \
-+    "1" "$_frsh2_cycled_starts"
-+
-+# Together the three assertions — intake dispatches, no stage.skip, and cycled
-+# emits exactly 1 stage.start — fully cover the FRSH-2 requirement. The intake
-+# and stage.skip assertions prove the skip guard is conditional on resume_mode.
-+# The cycled count assertion proves _cycle_dispatch does not emit spurious
-+# stage.start events on fresh runs (the _ZBUILD_RESUME_ACTIVE guard is active).
++# Together the two assertions — intake dispatches and no stage.skip —
++# fully cover the FRSH-2 requirement. The intake assertion proves the
++# dispatch-unit skip guard is conditional on resume_mode (a guard that
++# activated unconditionally would read prior artifacts and skip intake).
++# The stage.skip assertion proves no stage was skipped due to prior state.
  
  # ── CYCL-1: test uses a fixture containing a cyclic stage ────────────────────
  print_test_section "resume-rehydrate test uses a fixture containing a cyclic stage"

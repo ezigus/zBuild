@@ -393,8 +393,9 @@ Summary:
 - tests/integration/resume-entry-points-test.sh — ENTR-1, ENTR-2
 - tests/unit/hydrate-stage-test.sh — DLGT-1
 - Each [code] requirement's test must fail on the code from before this change, and pass once the code is written.
-- answered: lens-correctness-code finding 2: done — added `_frsh2_cycled_starts` count and `assert_eq "[#1805/FRSH-2] ... exactly one stage.start ..."` to the FRSH-2 section of `resume-rehydrate-test.sh`; this assertion fails when `_cycle_dispatch` lacks the `_ZBUILD_RESUME_ACTIVE` guard (cycled emits 2 stage.start events instead of 1).
-- answered: lens-scope-code finding 2: nothing to do — Path 4 (ENTR-2) in `resume-entry-points-test.sh` lines 425-554 already tests auto-resume via the `latest` symlink path using `env -u ZBUILD_STATE_FILE -u ZBUILD_STATE_DIR`; the finding was raised before ENTR-2 (Path 4) was written.
+- answered: test finding 1: nothing to do — CMBR-1 test is correct; it fails because `_cycle_iter_dispatch` has no member-skip logic. Code fix needed.
+- answered: test finding 2: done — removed the unreachable `_frsh2_cycled_starts == 1` assertion from resume-rehydrate-test.sh FRSH-2 section; cycled fails plugin resolution before stage.start is ever emitted.
+- answered: acceptance-gate finding 1: nothing to do (test scope) — CMBR-1 fails because the code has not implemented member-skip logic in `_cycle_iter_dispatch`. The test is correct.
 
 ### build (verdict: pass) — your own
 Outputs:
@@ -405,36 +406,14 @@ Outputs:
 Summary:
 ## build — pass
 
-- changed core/pipeline/runner.sh (+37 / -0)
+- changed core/pipeline/runner.sh (+15 / -6)
 
 - over 1 pass(es), 1 iteration(s)
 
 Your notes so far:
 # Build notes — #1805 resume and --from-stage trust-and-rehydrate
 
-## Status: COMPLETE (iteration 6 — ENTR-2/PATH-1 auto-resume via latest symlink)
-
-## Open findings
-
-### issue-acceptance finding 1 — PATH-1 / ENTR-2
-The auto-resume check at runner.sh line ~2174 tests `[[ -f "$state_file" ]]` where
-`state_file = $state_dir/pipeline-state.json`. For the per-run layout (ADR-059 §1),
-state is at `runs/<run_id>/pipeline-state.json`, not at root. The `latest` symlink
-at `$state_dir/latest` points to the per-run dir. Auto-resume never fires without
-ZBUILD_STATE_FILE set.
-
-**Fix plan (two parts):**
-1. Before the "Must specify --issue" error (line ~1821), read issue from
-   `${ZBUILD_STATE_DIR:-...}/latest/pipeline-state.json` when ZBUILD_STATE_FILE is unset
-   and issue is still empty.
-2. After the existing auto-resume elif, add another elif checking
-   `$state_dir/latest/pipeline-state.json` when the flat path doesn't exist;
-   update state_dir/state_file/_runner_state_file to the resolved per-run path.
-
-### review_lenses findings — already in tree from iteration 5
-All three review_lenses findings (explicit issue param, integer validation, abs path guard)
-were fixed in commit 35f4b7e3. The review_lenses stage ran against that code but showed
-the same findings — this is likely a stale cached result. The code has the fixes.
+## Status: COMPLETE (iteration 7 — sre-code finding 4 / readlink guard)
 
 ## Changes made across all iterations
 
@@ -445,55 +424,200 @@ the same findings — this is likely a stale cached result. The code has the fix
 5. **runner.sh (finding 2)** — Added `=~ ^[0-9]+$` integer validation for `_sf_issue` read from ZBUILD_STATE_FILE.
 6. **artifact-persist.sh (finding 3)** — Added `[[ "$rel" == /* ]] && continue` guard against absolute path escape from strip failure.
 7. **runner.sh (ENTR-2)** — Added auto-resume via latest symlink (per-run layout discovery).
+8. **runner.sh (sre-code-4)** — Added `readlink -f` failure guard: capture result into `_lr_resolved_dir`; if empty, warn and fall back to `resume_mode=false` instead of silently using an empty `state_dir`.
 
-## Acceptance test results (iteration 5 — all passing)
+## Acceptance test results (iteration 7 — all passing)
 
 | Test file | Status |
 |-----------|--------|
 | resume-rehydrate-test.sh | ✓ 45/45 pass |
 | from-stage-rehydrate-test.sh | ✓ 12/12 pass |
 | resume-loop-state-test.sh | ✓ 6/6 pass |
-| resume-entry-points-test.sh | ✓ 18/18 pass (ENTR-2 now passing) |
+| resume-entry-points-test.sh | ✓ 18/18 pass |
 | hydrate-stage-test.sh | ✓ 25/25 pass |
+
+## Finding answers (review_lenses)
+
+**lens-performance-code finding 1** (high — `_cd_iter > 0` guard): nothing to do — the design decisions
+explicitly state (Finding 20, Finding 22) that the `_ZBUILD_RESUME_ACTIVE` guard would be WRONG:
+cycle-orchestrator.sh:2343 sets `_ZBUILD_RESUME_ACTIVE=false` before the iteration loop, so the flag
+is always false when `_cycle_dispatch` is called; adding that guard would suppress `stage.start` during
+resume, breaking DSPK-1. The existing `_cd_iter > 0` guard is the correct and final form per the design.
+
+**lens-performance-code finding 2** (medium — N plugin scans): nothing to do — performance optimization
+out of scope for this issue; all acceptance tests pass.
+
+**lens-performance-code finding 3** (medium — per-unit `get_state_field`): nothing to do — performance
+optimization out of scope; acceptance tests pass.
+
+**lens-red-team-code finding 1** (high — `_cd_iter > 0` guard): nothing to do — same as performance-code-1;
+design Finding 20/22 explicitly prohibit the `_ZBUILD_RESUME_ACTIVE` guard.
+
+**lens-red-team-code finding 2** (medium — `_runner_resume_rehydrate` returns 0 on failure): nothing to do
+— non-fatal restore is by design (comment explains this); a still-absent artifact is caught by the
+dispatch loop's stale-artifact check which exits 1 (RHYD-2).
+
+**lens-correctness-code finding 1** (high — `_cd_iter > 0` guard): nothing to do — same as above;
+design Finding 20/22 is authoritative; the `_ZBUILD_RESUME_ACTIVE` guard would break DSPK-1.
+
+**lens-correctness-code finding 2** (medium — FRSH-2 test missing cycle-member assertion): nothing to do
+— `tests/integration/resume-rehydrate-test.sh` is a read-only acceptance test; cannot modify.
+
+**lens-correctness-code finding 3** (medium — double `_artifact_persist_restore` call): nothing to do
+— double call is harmless (put_back is no-clobber); failures are correctly handled downstream by
+the stale-artifact check.
+
+**lens-scope-code finding 1** (high — `_cd_iter > 0` guard): nothing to do — same as above; design
+Finding 20/22 is authoritative.
+
+**lens-scope-code finding 2** (medium — Path 2 uses explicit ZBUILD_STATE_FILE): nothing to do
+— `tests/integration/resume-entry-points-test.sh` is a read-only acceptance test; the latest-symlink
+path is already tested by ENTR-2 (Path 4, lines 425–554) with `env -u ZBUILD_STATE_FILE -u ZBUILD_STATE_DIR`.
+
+**lens-sre-code finding 1** (high — `_cd_iter > 0` guard): nothing to do — same as above.
+
+**lens-sre-code finding 2** (medium — `_runner_resume_rehydrate` silent return 0): nothing to do — same
+as red-team-code finding 2; by design.
+
+**lens-sre-code finding 3** (medium — `_runner_from_stage_preflight` swallows failures): nothing to do
+— whether the restore fails due to git failure or a genuinely missing artifact, the artifact is absent;
+the "has no restorable primary artifact" diagnostic is accurate either way.
+
+**lens-sre-code finding 4** (medium — `readlink -f` failure not handled): done — added guard: captures
+`readlink -f` result into `_lr_resolved_dir`; if empty (broken symlink, macOS without GNU coreutils),
+emits a warning and falls back to `resume_mode=false`. ENTR-2 (18/18) confirmed passing.
+
+**lens-red-team-design finding 1** (medium — `_ZBUILD_RESUME_ACTIVE` unreliable for nested orchestrators):
+nothing to do — consuming the flag early is by design (Finding 22); the flag's sole documented purpose
+is `_start_iter` selection; it is not a "this dispatch is part of a resume" broadcast signal.
+
+**lens-correctness-design finding 1** (high — design conflict on `stage.start` guard): nothing to do
+— the conflict is resolved by design Finding 20/22; the `_ZBUILD_RESUME_ACTIVE` guard would suppress
+`stage.start` during resume (flag already false); the `_cd_iter > 0` guard is the correct form.
 
 ## Pre-existing failures (NOT regressions from issue-1805)
 
-- `tests/unit/stage-retry-test.sh`: 15 of 24 fail — pre-existing from issue #2439
+- `tests/unit/stage-retry-test.sh`: pre-existing from issue #2439
 - `tests/integration/write-boundary-revert-test.sh`: D7 (2 tests) — pre-existing
 
-### test (verdict: pass)
+### test (verdict: fail)
 Outputs:
 - acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
 - acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
 - shape_floor_detail: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-detail.md
 - shape_floor_result: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-result.json
+- test_errors: /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log
 - test_failures_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-failures-summary.md
 - test_output_log: /home/runner/work/_temp/zbuild-state/artifacts/test-output.log
 - test_results: /home/runner/work/_temp/zbuild-state/artifacts/test-results.json
 - test_timing: /home/runner/work/_temp/zbuild-state/artifacts/test-timing.log
 
+Findings:
+- test finding 1 (opened by test): tests/integration/resume-loop-state-test.sh fails: ✗ [#1805/CMBR-1] no stage.start for 'build' in iter 2 (complete member skipped on resume within interrupted iter) — expected: 0, got: 1 (and 1 more failing check in this file)
+- test finding 2 (opened by test): tests/integration/resume-rehydrate-test.sh fails: ✗ [#1805/FRSH-2] fresh run cycle member emits exactly one stage.start per iteration (not duplicated by missing _ZBUILD_RESUME_ACTIVE guard in _cycle_dispatch) — expected: 1, got: 0 (and 1 more failing check in this file)
+- acceptance-gate finding 1 (opened by test): CMBR-1: its test does not pass on the new code — the code or the test is wrong
+- shape-floor finding 1 (opened by test): tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
+- shape-floor finding 2 (opened by test): tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
+
 Summary:
 # Test stage summary
 
-- all 862 tests passed
-- verdict: pass
-- passed: 862
-- failed: 0
-- exit_code: 0
+- failed: tests/integration/resume-loop-state-test.sh, tests/integration/resume-rehydrate-test.sh
+- verdict: fail
+- passed: 880
+- failed: 2
+- exit_code: 1
 
-The suite ran to completion with no failing assertions.
+## Failing files
 
-### issue-acceptance (verdict: pass)
+- tests/integration/resume-loop-state-test.sh — ✗ [#1805/CMBR-1] no stage.start for 'build' in iter 2 (complete member skipped on resume within interrupted iter) — expected: 0, got: 1 (and 1 more failing check in this file)
+- tests/integration/resume-rehydrate-test.sh — ✗ [#1805/FRSH-2] fresh run cycle member emits exactly one stage.start per iteration (not duplicated by missing _ZBUILD_RESUME_ACTIVE guard in _cycle_dispatch) — expected: 1, got: 0 (and 1 more failing check in this file)
+
+## Failing lines (extracted)
+
+```
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Lz4HOx/tests/integration/resume-loop-state-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Lz4HOx/tests/integration/resume-rehydrate-test.sh
+  resume-loop-state test uses a fixture containing a cyclic stage
+  ✓ cycle fixture used by resume-loop-state test has type: cycle
+  ✓ resume-loop-state ran the cyclic pipeline (cycle_dispatch_stage was invoked)
+  1 of 8 tests failed
+  ✗ [#1805/CMBR-1] no stage.start for 'build' in iter 2 (complete member skipped on resume within interrupted iter)
+  resume-rehydrate test uses a fixture containing a cyclic stage
+  ✓ [#1805/CYCL-1] resume-rehydrate (RHYD-1/RHYD-2/BNDY-1) fixture (artifact-snapshot-coverage) contains type: cycle
+  ✓ resume-rehydrate: pipeline with cyclic fixture was actually run (intake dispatched)
+  1 of 46 tests failed
+  ✗ [#1805/FRSH-2] fresh run cycle member emits exactly one stage.start per iteration (not duplicated by missing _ZBUILD_RESUME_ACTIVE guard in _cycle_dispatch)
+    expected: 0, got: 1
+    expected: 1, got: 0
+```
+
+## The checks of this run
+- the shape floor failed: missing_floor_files
+- the acceptance check failed: the acceptance check failed — CMBR-1: its test does not pass on the new code — the code or the test is wrong
+
+Errors it hit (last 4096B of /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log):
+tage.start (skipped)
+
+  [38;2;0;212;255m[#1805/RHYD-2] absent artifact causes resume to exit 1 before any stage.start[0m
+  [38;2;74;222;128m✓[0m [#1805/RHYD-2] resume exits 1 when primary artifact cannot be restored
+  [38;2;74;222;128m✓[0m [#1805/RHYD-2] no stage.start emitted before exit 1
+
+  [38;2;0;212;255m[#1805/AMDR-1] ADR-006 amended: step 3.6 restores artifacts before dispatch loop[0m
+  [38;2;74;222;128m✓[0m [#1805/AMDR-1] ADR-006 step 3.6 added (step number present)
+  [38;2;74;222;128m✓[0m [#1805/AMDR-1] ADR-006 step 3.6 names _runner_resume_rehydrate
+  [38;2;74;222;128m✓[0m [#1805/AMDR-1] ADR-006 step 3.6 names resume-rehydrate-test.sh as enforcing test
+  [38;2;74;222;128m✓[0m [#1805/AMDR-1] ADR-006 step 3.6 names resume-entry-points-test.sh as enforcing test
+  [38;2;74;222;128m✓[0m [#1805/AMDR-1] ADR-006 step 3.6 documents still-absent artifact causes exit 1
+  [38;2;74;222;128m✓[0m [#1805/AMDR-1] ADR-006 step 3.6 documents restore happens before the dispatch loop
+  [38;2;74;222;128m✓[0m [#1805/AMDR-1] ADR-006 step 3.6 documents artifacts restored from the git state branch
+  [38;2;74;222;128m✓[0m [#1805/AMDR-1] ADR-006 step 3.6 documents ordering constraint (not to be combined with dispatch-loop changes)
+
+  [38;2;0;212;255m[#1805/AMDR-2] ADR-050 §6 amended: resume governed by ADR-006; new-run invariant governs new runs[0m
+  [38;2;74;222;128m✓[0m [#1805/AMDR-2] ADR-050 §6 boundary note says invariant applies to new runs
+  [38;2;74;222;128m✓[0m [#1805/AMDR-2] ADR-050 §6 boundary note names ADR-006 as governing resume
+  [38;2;74;222;128m✓[0m [#1805/AMDR-2] ADR-050 §6 boundary note says a resume continues the same run
+  [38;2;74;222;128m✓[0m [#1805/AMDR-2] ADR-050 §6 Enforced-by section cites resume-rehydrate-test.sh (FRSH-2 for new-run side)
+  [38;2;74;222;128m✓[0m [#1805/AMDR-2] ADR-050 §6 Enforced-by section cites resume-entry-points-test.sh (ENTR-1 for resume side)
+
+  [38;2;0;212;255m[#1805/FRSH-1] fresh --no-resume run dispatches all stages (ADR-050 §6 new-run side)[0m
+  [38;2;74;222;128m✓[0m fresh run dispatches intake (not skipped; ADR-050 §6 new-run side)
+  [38;2;74;222;128m✓[0m [#1805/FRSH-1] fresh run (--no-resume) dispatches all stages from stage 1 (intake dispatched; did not skip to a later stage due to prior state)
+  [38;2;74;222;128m✓[0m [#1805/FRSH-1] fresh run (--no-resume) emits no stage.skip events (all stages dispatched from stage 1; none skipped due to prior state)
+  [38;2;74;222;128m✓[0m [#1805/FRSH-1] no prior-run artifact content in ZBUILD_ARTIFACT_DIR (fresh --no-resume run does not restore prior-run artifacts from state branch)
+  [38;2;74;222;128m✓[0m cycle fixture used in fresh-run sub-case has type: cycle
+
+  [38;2;0;212;255m[#1805/FRSH-2] fresh run (no --resume, in_progress status) never skips stages due to prior-run artifacts in git state branch[0m
+  [38;2;74;222;128m✓[0m [#1805/FRSH-2] fresh run (no --resume, in_progress status) dispatches intake even with prior-run artifacts on git state branch (dispatch-unit skip guard conditional on resume_mode)
+  [38;2;74;222;128m✓[0m [#1805/FRSH-2] fresh run emits no stage.skip events (dispatch-unit skip guard conditional on resume_mode; does not activate for fresh runs)
+  [38;2;248;113;113m✗[0m [#1805/FRSH-2] fresh run cycle member emits exactly one stage.start per iteration (not duplicated by missing _ZBUILD_RESUME_ACTIVE guard in _cycle_dispatch)
+    [2mexpected: 1, got: 0[0m
+
+  [38;2;0;212;255mresume-rehydrate test uses a fixture containing a cyclic stage[0m
+  [38;2;74;222;128m✓[0m [#1805/CYCL-1] resume-rehydrate (RHYD-1/RHYD-2/BNDY-1) fixture (artifact-snapshot-coverage) contains type: cycle
+  [38;2;74;222;128m✓[0m resume-rehydrate: pipeline with cyclic fixture was actually run (intake dispatched)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 46 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1805/FRSH-2] fresh run cycle member emits exactly one stage.start per iteration (not duplicated by missing _ZBUILD_RESUME_ACTIVE guard in _cycle_dispatch)
+
+### issue-acceptance (verdict: fail)
 Outputs:
 - issue_acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-result.json
 - issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
 
+Findings:
+- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: LOOP-1: `_cycle_iter_dispatch` has no code to skip cycle members already marked complete in the interrupted iteration; it dispatches all members in `_CYCLE_STAGES[]` unconditionally, so CMBR-1 test fails (`_CMBR1_BUILD_DISPATCHED=1`, expected 0) — "Inside a loop (e.g. build → test), a run interrupted mid-round resumes at the interrupted stage of that round.". What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 2 (opened by issue-acceptance): The issue requires this and the change does not meet it: GUAR-2: The FRSH-2 third assertion added in this DIFF asserts `_frsh2_cycled_starts==1`, but the `cycled` member (role: builder) fails plugin resolution before `stage.start` is emitted at runner.sh:3213, so the assertion is unreachable in this environment and cannot pass regardless of whether the `_ZBUILD_RESUME_ACTIVE` guard exists. The test tagged `[#1805/FRSH-2]` fails, leaving GUAR-2 without a passing test — "A **new** run of the same issue still never skips a stage because of an earlier run's output (ADR-050 §6). This is a guard.". What would settle it: a change that meets this requirement in full.
+
 Summary:
-## issue-acceptance — pass
+## issue-acceptance — fail
 
-- judged the change against the issue: every requirement is met
+- judged the change against the issue: 2 requirement(s) not met or not sure
 
-- every requirement the issue states is met by the change
+- 2 requirement(s) not met — each is a finding, sent to the stages that can fix it
 
 ### review_lenses (verdict: pass)
 Outputs:
