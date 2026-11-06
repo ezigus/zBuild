@@ -189,7 +189,8 @@ _ireq_call_parsed() {
 # _ireq_input_fp_v <var> <issue> — the fingerprint of what the list is written
 # from (#2477, ADR-070 §1): the engine, the issue as the calls are shown it, and
 # intake's own instructions as written. Comments are not in it: the list never
-# reads them.
+# reads them. `declare -f` prints a body as the running bash formats it, so a
+# new bash makes the calls once more: an extra call, never a missed one.
 _ireq_input_fp_v() {
     local -n _iif="$1"; local _iif_e _iif_t
     judge_engine_v _iif_e
