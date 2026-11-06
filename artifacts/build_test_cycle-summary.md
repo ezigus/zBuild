@@ -1,7 +1,7 @@
-## build_test_cycle — round 2
+## build_test_cycle — round 3
 
-- design: pass — design_produced
-- test-author: pass — changed 1 test file(s); acceptance assertions for 16 SPEC(s) from the design contract
-- build: pass — build_complete
-- test: pass — 882 of 882 tests passed
-- issue-acceptance: fail — judged the change against the issue: 1 requirement(s) not met or not sure
+- design: fail — the design fails 1 of its checks
+- test-author: missing
+- build: missing
+- test: missing
+- issue-acceptance: missing
