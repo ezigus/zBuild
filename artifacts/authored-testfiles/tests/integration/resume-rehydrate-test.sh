@@ -199,6 +199,17 @@ fi
 assert_eq "[#1805/RHYD-1] intake emits no stage.start (complete stage skipped)" \
     "0" "$_s1_intake_starts"
 
+# [#1805/SKIP-1]: dispatch-unit loop skips a stage marked complete whose primary artifact
+# is present after rehydration, emitting no stage.start for that stage.
+# intake is marked complete in state AND its artifact was rehydrated above (file exists,
+# content byte-identical). The dispatch-unit loop is exercised because the fixture is
+# artifact-snapshot-coverage (a cyclic pipeline) run with ZBUILD_CYCLES_ENABLED=1.
+# Before the change: dispatch-unit loop has no skip guard conditioned on resume_mode
+# and artifact presence → dispatches intake → stage.start emitted → FAILS.
+# After the change: skip guard checks resume_mode + artifact present → skips → PASSES.
+assert_eq "[#1805/SKIP-1] dispatch-unit loop emits no stage.start for complete stage whose artifact is present after rehydration (intake skipped)" \
+    "0" "$_s1_intake_starts"
+
 # [#1805/DSPK-1]: stage k (the interrupted stage) must emit stage.start when the
 # dispatch loop reaches it on resume. The fixture has intake=complete (stage k-1)
 # and cyc=pending (stage k). Cycles dispatch their inner members: cycled emits
@@ -592,6 +603,19 @@ assert_contains "[#1805/AMDR-2] ADR-050 §6 boundary note names ADR-006 as gover
 assert_contains "[#1805/AMDR-2] ADR-050 §6 boundary note says a resume continues the same run" \
     "$_adr050_s6" "continues the same run"
 
+# [#1805/AMDR-2]: §6's Enforced-by section must cite resume-rehydrate-test.sh and
+# resume-entry-points-test.sh by name. The requirement says "§6's Enforced by section
+# updated to cite resume-rehydrate-test.sh (FRSH-2 for the new-run side) and
+# resume-entry-points-test.sh (ENTR-1 for the resume side)". A §6 that only adds the
+# boundary prose but omits the Enforced-by update would still pass the three assertions
+# above but fail these two, ensuring the Enforced-by section was actually updated.
+# This requirement need not fail before this change (no-code property); it must pass after.
+assert_contains "[#1805/AMDR-2] ADR-050 §6 Enforced-by section cites resume-rehydrate-test.sh (FRSH-2 for new-run side)" \
+    "$_adr050_s6" "resume-rehydrate-test.sh"
+
+assert_contains "[#1805/AMDR-2] ADR-050 §6 Enforced-by section cites resume-entry-points-test.sh (ENTR-1 for resume side)" \
+    "$_adr050_s6" "resume-entry-points-test.sh"
+
 # ── SPEC-12: fresh (non-resume) run dispatches all stages ─────────────────────
 print_test_section "[#1805/FRSH-1] fresh --no-resume run dispatches all stages (ADR-050 §6 new-run side)"
 
@@ -733,6 +757,113 @@ assert_eq "[#1805/FRSH-1] no prior-run artifact content in ZBUILD_ARTIFACT_DIR (
 _s12_fixt_content="$(cat "$REPO_ROOT/tests/fixtures/templates/artifact-snapshot-coverage.yaml")"
 assert_contains "cycle fixture used in fresh-run sub-case has type: cycle" \
     "$_s12_fixt_content" "type: cycle"
+
+# ── FRSH-2: fresh run with prior state branch artifacts never skips via dispatch-unit guard ─
+print_test_section "[#1805/FRSH-2] fresh run (no --resume, in_progress status) never skips stages due to prior-run artifacts in git state branch"
+
+# Given — an issue has prior completed runs with artifacts present in the git state branch;
+#   a new run is started with no --resume flag and no status=interrupted state file.
+_S_FRSH2_ID="$(zb_test_issue)"
+_S_FRSH2_STATE_DIR="$TEST_TEMP_DIR/frsh2-state"
+_S_FRSH2_EVENTS_DIR="$TEST_TEMP_DIR/frsh2-events"
+_S_FRSH2_EVENTS_JSONL="$_S_FRSH2_EVENTS_DIR/events.jsonl"
+_S_FRSH2_STATE_FILE="$_S_FRSH2_STATE_DIR/pipeline-state.json"
+mkdir -p "$_S_FRSH2_STATE_DIR/artifacts" "$_S_FRSH2_EVENTS_DIR"
+
+_S_FRSH2_WORK_REPO="$(setup_git_temp_repo frsh2-work)"
+install_template_overlay "$_S_FRSH2_WORK_REPO" artifact-snapshot-coverage
+
+# Put prior-run artifact on the state branch to simulate a completed prior run.
+# The disk copy is then removed so the artifact lives only on the state branch.
+printf '{"result_contract":3,"outcome":"pass","reason":"prior-run intake"}' \
+    > "$_S_FRSH2_STATE_DIR/artifacts/intake-result.json"
+
+_frsh2_snap_rc=0
+( export ZBUILD_STATE_DIR="$_S_FRSH2_STATE_DIR"
+  cd "$_S_FRSH2_WORK_REPO" && _artifact_persist_snapshot "$_S_FRSH2_STATE_DIR" "$_S_FRSH2_ID" ) \
+    >"$TEST_TEMP_DIR/frsh2-snap.log" 2>&1 || _frsh2_snap_rc=$?
+if [[ "$_frsh2_snap_rc" -ne 0 ]]; then
+    assert_fail "[#1805/FRSH-2] setup: snapshot to state branch failed" \
+        "rc=$_frsh2_snap_rc; $(cat "$TEST_TEMP_DIR/frsh2-snap.log" 2>/dev/null | tail -5)"
+fi
+rm -f "$_S_FRSH2_STATE_DIR/artifacts/intake-result.json"
+
+# Fresh state file: status=in_progress (not interrupted), no stage marked complete.
+# The runner that sees status != interrupted will NOT auto-resume; without --resume it
+# runs fresh. If the dispatch-unit skip guard activates unconditionally (not conditional
+# on resume_mode), it would see prior artifacts on the state branch and skip intake.
+jq -n \
+    --arg run_id "frsh2-fresh-1805" \
+    --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --argjson issue "$_S_FRSH2_ID" \
+    '{
+        schema_version: 1, run_id: $run_id, issue: $issue,
+        stage_statuses: {}, current_iteration: 0, self_heal_count: {},
+        scope_manifest_hash: "", cost_ledger_pointer: 0, claim_lease_id: "",
+        plugin_state: {}, status: "in_progress", updated_at: $now
+    }' > "$_S_FRSH2_STATE_FILE"
+
+# When — the dispatch loop runs with no --resume flag and status=in_progress
+#   (not interrupted), so no auto-resume triggers.
+set +e
+( cd "$_S_FRSH2_WORK_REPO" && env \
+    ZBUILD_CYCLES_ENABLED=1 \
+    ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
+    ZBUILD_STATE_DIR="$_S_FRSH2_STATE_DIR" \
+    ZBUILD_STATE_FILE="$_S_FRSH2_STATE_FILE" \
+    ZBUILD_EVENTS_DIR="$_S_FRSH2_EVENTS_DIR" \
+    ZBUILD_EVENTS_JSONL="$_S_FRSH2_EVENTS_JSONL" \
+    ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
+    ZBUILD_CONTRACT_VALIDATOR=warn \
+    ZBUILD_VISION_GATE=off \
+    PATH="$PATH" HOME="$HOME" \
+    bash "$RUNNER" --template artifact-snapshot-coverage --issue "$_S_FRSH2_ID" ) \
+    >"$TEST_TEMP_DIR/frsh2-stdout.txt" 2>"$TEST_TEMP_DIR/frsh2-stderr.txt"
+set -e
+
+# Then — every stage emits a stage.start event; no stage.skip event is emitted for any stage.
+# [#1805/FRSH-2]: intake must emit stage.start (not skipped by dispatch-unit guard).
+# This requirement need not fail before this change (no-code property); it must pass after.
+# If the skip guard were unconditional (not keyed on resume_mode), it would read the prior
+# artifacts from the state branch and skip intake → intake_starts=0 → FAILS.
+# After the change: guard is conditional on resume_mode → not active on fresh run →
+#   intake dispatches → intake_starts=1 → PASSES.
+_frsh2_intake_starts=0
+if [[ -f "$_S_FRSH2_EVENTS_JSONL" ]]; then
+    _frsh2_intake_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="intake") | .type' \
+        "$_S_FRSH2_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_eq \
+    "[#1805/FRSH-2] fresh run (no --resume, in_progress status) dispatches intake even with prior-run artifacts on git state branch (dispatch-unit skip guard conditional on resume_mode)" \
+    "1" "$_frsh2_intake_starts"
+
+# [#1805/FRSH-2]: no stage.skip events must be emitted for any stage.
+# stage.skip is only emitted by the resume rehydration path; a fresh run must not
+# consult prior state to skip any stage, even if prior artifacts exist in the git state branch.
+_frsh2_stage_skips=0
+if [[ -f "$_S_FRSH2_EVENTS_JSONL" ]]; then
+    _frsh2_stage_skips="$(jq -r 'select(.type=="stage.skip") | .type' \
+        "$_S_FRSH2_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_eq \
+    "[#1805/FRSH-2] fresh run emits no stage.skip events (dispatch-unit skip guard conditional on resume_mode; does not activate for fresh runs)" \
+    "0" "$_frsh2_stage_skips"
+
+# [#1805/FRSH-2]: every stage must emit stage.start, not just intake. The cycle stage
+# cyc dispatches its inner member cycled; cycled must also emit stage.start. This proves
+# the full pipeline ran and no stage beyond intake was silently skipped on the fresh-run path.
+# A scenario where only intake dispatched but cycled was somehow skipped would still pass
+# the intake-only assertion above but would fail this one — fulfilling the requirement that
+# "every stage emits a stage.start event", not merely that one stage does.
+# This requirement need not fail before this change (no-code property); it must pass after.
+_frsh2_cycled_starts=0
+if [[ -f "$_S_FRSH2_EVENTS_JSONL" ]]; then
+    _frsh2_cycled_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="cycled") | .type' \
+        "$_S_FRSH2_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_gt \
+    "[#1805/FRSH-2] fresh run dispatches cycled (inner member of cyc; every stage emits stage.start, not just intake)" \
+    "$_frsh2_cycled_starts" "0"
 
 # ── CYCL-1: test uses a fixture containing a cyclic stage ────────────────────
 print_test_section "resume-rehydrate test uses a fixture containing a cyclic stage"
