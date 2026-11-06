@@ -117,6 +117,8 @@ The engine validates:
      A complete stage whose primary artifact is still absent after this
      restoration causes the runner to exit 1 before any stage.start event is
      emitted (fail closed — not warn-and-continue).
+     Ordering constraint: not to be combined with dispatch-loop changes; this
+     step ships in its own PR so each concern can be verified independently.
      Enforced by: tests/integration/resume-rehydrate-test.sh,
                   tests/integration/resume-entry-points-test.sh
 4. Engine emits "pipeline.resume" event
