@@ -85,10 +85,13 @@ fi
 s4="$( source "$REPO_ROOT/plugins/agent/build/plugin.sh"
   _build_summary_head_v h pass done_sentinel 11 4 '["core/a.sh","plugins/b.sh"]'; printf '%s\n' "$h"
   _build_summary_head_v h pass done_sentinel 0 0 '[]'; printf '%s\n' "$h"
-  _build_summary_head_v h incomplete router_timeout 3 0 '["core/a.sh"]'; printf '%s\n' "$h" 2>/dev/null )"
+  _build_summary_head_v h incomplete router_timeout 3 0 '["core/a.sh"]'; printf '%s\n' "$h"
+  _build_summary_head_v h pass done_sentinel 1 0 '["docs/a b.md","x,y.sh","q\"z.sh"]'; printf '%s\n' "$h" 2>/dev/null )"
 assert_eq "[S4] build names the files it changed" "changed core/a.sh, plugins/b.sh (+11 / -4)" "$(sed -n 1p <<< "$s4")"
 assert_eq "[S4] …or that it changed none" "changed no file" "$(sed -n 2p <<< "$s4")"
 assert_eq "[S4] …and a try cut off says so" "ran out of time; changed core/a.sh (+3 / -0) so far" "$(sed -n 3p <<< "$s4")"
+assert_eq "[S4] …each file named whole, whatever it holds (review on #2479)" \
+    'changed docs/a b.md, x,y.sh, q"z.sh (+1 / -0)' "$(sed -n 4p <<< "$s4")"
 
 # ── S5 test ──────────────────────────────────────────────────────────────────
 ( source "$REPO_ROOT/plugins/tool/test/plugin.sh"

@@ -88,9 +88,13 @@ source "$_BUILD_DIR/lib/secrets.sh"
 # #2476: what the try changed, by file — or that it changed none; a try cut off
 # at its time limit says so. The list is the diff's own ["path",…], read by the shell.
 _build_summary_head_v() {
-    local -n _bsh="$1"; local _v="$2" _t="$3" _a="${4:-0}" _r="${5:-0}" _j="${6:-[]}" _fl=""
-    _j="${_j#[}"; _j="${_j%]}"; _j="${_j//\"/}"
-    [[ -n "$_j" ]] && _fl="${_j//,/, }"
+    local -n _bsh="$1"; local _v="$2" _t="$3" _a="${4:-0}" _r="${5:-0}" _j="${6:-[]}" _fl="" _f
+    # Each "…" string whole, so a name holding a comma, space or \" stays one name.
+    local _re='^[^"]*"(([^"\\]|\\.)*)"'
+    while [[ "$_j" =~ $_re ]]; do
+        _f="${BASH_REMATCH[1]}"; _f="${_f//\\\"/\"}"; _f="${_f//\\\\/\\}"
+        _fl+="${_fl:+, }$_f"; _j="${_j:${#BASH_REMATCH[0]}}"
+    done
     if [[ -n "$_fl" ]]; then _bsh="changed ${_fl} (+${_a} / -${_r})"; else _bsh="changed no file"; fi
     if [[ "$_v" != pass && ( "$_t" == router_timeout || "$_t" == timeout ) ]]; then
         if [[ -n "$_fl" ]]; then _bsh="ran out of time; ${_bsh} so far"; else _bsh="ran out of time with no file changed"; fi

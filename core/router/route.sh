@@ -90,7 +90,7 @@ source "$_ZBUILD_ROOT/scripts/lib/tier-resolve.sh" || _zbuild_route_broken "$_ZB
 # would make every declaration silently inert instead of failing. Idempotent —
 # the file's own load guard makes a repeat source a no-op.
 if ! declare -F manifest_router_knob >/dev/null 2>&1; then
-        source "$_ZBUILD_ROOT/core/plugin-registry/manifest-validation.sh" || _zbuild_route_broken "$_ZBUILD_ROOT/core/plugin-registry/manifest-validation.sh"
+    source "$_ZBUILD_ROOT/core/plugin-registry/manifest-validation.sh" || _zbuild_route_broken "$_ZBUILD_ROOT/core/plugin-registry/manifest-validation.sh"
 fi
 # shellcheck source=../../scripts/lib/stage-limits.sh
 source "$_ZBUILD_ROOT/scripts/lib/stage-limits.sh" || _zbuild_route_broken "$_ZBUILD_ROOT/scripts/lib/stage-limits.sh"
