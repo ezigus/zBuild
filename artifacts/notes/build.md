@@ -1,16 +1,17 @@
 # Build notes — #1805 resume and --from-stage trust-and-rehydrate
 
-## Status: COMPLETE (iteration 4 — no changes needed)
+## Status: COMPLETE (iteration 5 — fixed review_lenses findings)
 
-All acceptance tests pass. Shape-floor and issue-acceptance findings are pre-existing or already answered.
-
-## Changes made in previous iterations (intact)
+## Changes made across all iterations
 
 1. **ADR-006 step 3.6** — Added ordering constraint phrase on a single line.
 2. **cycle-orchestrator.sh** — Fixed `_start_iter` calculation for resume vs. fresh runs.
 3. **runner.sh, artifact-persist.sh, hydrate/plugin.sh, ADR-050** — Full resume rehydration implementation.
+4. **runner.sh (finding 1)** — Added explicit `issue` parameter to `_runner_from_stage_preflight`; updated call site to pass `$_runner_issue` explicitly.
+5. **runner.sh (finding 2)** — Added `=~ ^[0-9]+$` integer validation for `_sf_issue` read from ZBUILD_STATE_FILE.
+6. **artifact-persist.sh (finding 3)** — Added `[[ "$rel" == /* ]] && continue` guard against absolute path escape from strip failure.
 
-## Acceptance test results (verified iteration 4)
+## Acceptance test results (verified iteration 5 — post-fix)
 
 | Test file | Status |
 |-----------|--------|
@@ -20,27 +21,16 @@ All acceptance tests pass. Shape-floor and issue-acceptance findings are pre-exi
 | resume-entry-points-test.sh | ✓ 14/14 pass |
 | hydrate-stage-test.sh | ✓ 25/25 pass |
 
-## Shape-floor findings 1-9 — answered
+## review_lenses findings — resolved
 
-The shape-floor failed with `missing_floor_files` because:
-- `runner.sh` and `cycle-orchestrator.sh` match `config/shape-change-paths.txt`
-- This triggers a shape-change, requiring floor files (golden + _TPL_STAGES tests) to be in diff OR verified by the test run
-- The test run has pre-existing failures (stage-retry-test.sh #2439, write-boundary-revert-test.sh) → `_SF_FAILED_COUNT > 0`
-- Golden files cannot be verified when `_SF_FAILED_COUNT > 0` (by design in _sf_floor_verified)
+### Finding 1 (medium) — runner.sh
+`_runner_from_stage_preflight` now takes `issue` as explicit `$1`; call site passes `$_runner_issue`.
 
-The floor files ARE correct:
-- Golden files: my changes only add behavior on RESUME paths; fresh-run event sequences are unchanged
-- Unit test files: all pass individually (7/7, 7/7, 15/15, 74/74, 84/84, 15/15, 5/5)
+### Finding 2 (medium) — runner.sh
+`_sf_issue` validated with `=~ ^[0-9]+$` before assignment; non-integer values (including "null") silently rejected.
 
-The shape-floor failure is caused by pre-existing failures in stage-retry-test.sh (issue #2439)
-and write-boundary-revert-test.sh, which are out of scope and do not source any file in
-issue-1805's scope.
-
-## Issue-acceptance finding 1 — answered
-
-ORDE-1 was removed from requirements by the intake stage as a process/scheduling
-constraint ("do not run this in parallel with #1714"). It does not appear in the
-REQUIREMENTS YOUR CODE MUST MEET section and cannot be verified by any code or test.
+### Finding 3 (low) — artifact-persist.sh
+`_artifact_persist_put_back` now skips any file where `rel` is an absolute path (strip failed due to trailing slash on `$from`).
 
 ## Pre-existing failures (NOT regressions from issue-1805)
 
