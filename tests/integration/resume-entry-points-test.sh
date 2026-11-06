@@ -42,15 +42,19 @@ mock_plugin_factory "cycled" "agent" 0 "" "builder" >/dev/null
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 
 # ── Shared helper: set up a work repo with a state branch for one path ──────────
-# Usage: _setup_path_state <label> <issue_id> → sets:
+# Usage: _setup_path_state <label> <issue_id> <run_id> → sets:
 #   P_WORK_REPO, P_STATE_DIR, P_STATE_FILE, P_EVENTS_DIR, P_EVENTS_JSONL
+#   State is at <TEST_TEMP_DIR>/<label>-state-root/runs/<run_id>/ (per ENTR-1 Given).
 _setup_path_state() {
-    local label="$1" issue_id="$2"
+    local label="$1" issue_id="$2" run_id="$3"
 
     P_WORK_REPO="$(setup_git_temp_repo "ep-${label}")"
     install_template_overlay "$P_WORK_REPO" artifact-snapshot-coverage
 
-    P_STATE_DIR="$TEST_TEMP_DIR/${label}-state"
+    # State layout: per-run path <state-root>/runs/<run_id>/ (ENTR-1 Given:
+    # "state is persisted in runs/<run_id>/").
+    local _P_STATE_ROOT="$TEST_TEMP_DIR/${label}-state-root"
+    P_STATE_DIR="$_P_STATE_ROOT/runs/$run_id"
     P_EVENTS_DIR="$TEST_TEMP_DIR/${label}-events"
     P_STATE_FILE="$P_STATE_DIR/pipeline-state.json"
     P_EVENTS_JSONL="$P_EVENTS_DIR/events.jsonl"
@@ -78,9 +82,10 @@ _setup_path_state() {
 print_test_section "[#1805/ENTR-1] path 1: bash runner.sh --resume restores artifacts"
 
 # Given — a run has been interrupted; stage intake is marked complete with its artifact
-#   present in the git state branch; run state is persisted in the state dir.
+#   present in the git state branch; run state is persisted in runs/<run_id>/ per ENTR-1.
 P1_ID="$(zb_test_issue)"
-_setup_path_state "p1" "$P1_ID"
+P1_RUN_ID="s9-p1-resume-1805"
+_setup_path_state "p1" "$P1_ID" "$P1_RUN_ID"
 P1_WORK_REPO="$P_WORK_REPO"
 P1_STATE_DIR="$P_STATE_DIR"
 P1_STATE_FILE="$P_STATE_FILE"
@@ -88,7 +93,7 @@ P1_EVENTS_DIR="$P_EVENTS_DIR"
 P1_EVENTS_JSONL="$P_EVENTS_JSONL"
 
 jq -n \
-    --arg run_id "s9-p1-resume-1805" \
+    --arg run_id "$P1_RUN_ID" \
     --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --argjson issue "$P1_ID" \
     '{
@@ -173,9 +178,11 @@ assert_eq "[#1805/ENTR-1] path 1 (--resume flag): no stage.start for intake (com
 print_test_section "[#1805/ENTR-1] path 2: auto-resume on status=interrupted restores artifacts"
 
 # Given — a run has been interrupted (status=interrupted); stage intake is marked
-#   complete with its artifact present in the git state branch.
+#   complete with its artifact present in the git state branch; run state is persisted
+#   in runs/<run_id>/ per ENTR-1.
 P2_ID="$(zb_test_issue)"
-_setup_path_state "p2" "$P2_ID"
+P2_RUN_ID="s9-p2-resume-1805"
+_setup_path_state "p2" "$P2_ID" "$P2_RUN_ID"
 P2_WORK_REPO="$P_WORK_REPO"
 P2_STATE_DIR="$P_STATE_DIR"
 P2_STATE_FILE="$P_STATE_FILE"
@@ -184,7 +191,7 @@ P2_EVENTS_JSONL="$P_EVENTS_JSONL"
 
 # status=interrupted → get_resume_recommendation → auto_resume → resume_mode=true.
 jq -n \
-    --arg run_id "s9-p2-resume-1805" \
+    --arg run_id "$P2_RUN_ID" \
     --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --argjson issue "$P2_ID" \
     '{
@@ -265,15 +272,15 @@ print_test_section "[#1805/ENTR-1] path 3: zbuild pipeline resume --run-id resto
 
 # Given — a run has been interrupted (status=interrupted); stage intake is marked
 #   complete with its artifact present in the git state branch; run state persisted
-#   with a known run_id.
+#   with a known run_id in runs/<run_id>/ per ENTR-1.
 P3_ID="$(zb_test_issue)"
-_setup_path_state "p3" "$P3_ID"
+P3_RUN_ID="s9-p3-resume-1805"
+_setup_path_state "p3" "$P3_ID" "$P3_RUN_ID"
 P3_WORK_REPO="$P_WORK_REPO"
 P3_STATE_DIR="$P_STATE_DIR"
 P3_STATE_FILE="$P_STATE_FILE"
 P3_EVENTS_DIR="$P_EVENTS_DIR"
 P3_EVENTS_JSONL="$P_EVENTS_JSONL"
-P3_RUN_ID="s9-p3-resume-1805"
 
 # status=interrupted so zbuild doesn't refuse (aborted requires --force;
 # interrupted is accepted). zbuild changes it to in_progress, then runner sees --resume.
