@@ -1281,7 +1281,7 @@ _CYCLE_VERIFIED_BLOB=""
 # with _CYCLE_ITER_OUTCOME naming why: failed | interrupted | aborted | error
 # (#1850, ADR-054 §4 — the word, never an rc).
 _cycle_iter_dispatch() {
-    local iter="$1" state_file="$2"
+    local iter="$1" state_file="$2" _resume_first_iter="${3:-false}"
     _CYCLE_LAST_VERDICTS_BLOB="{}"
     _CYCLE_LAST_FAILURE_COUNT=0
     _CYCLE_ITER_OUTCOME="error"
@@ -1384,6 +1384,16 @@ _cycle_iter_dispatch() {
             _cycle_state_write_member_atomic "$state_file" "$s" \
                 "$(jq -r '.status // "complete"' <<< "$_ru_entry")" "$(jq -r '.verdict // "pass"' <<< "$_ru_entry")" || true
             continue
+        fi
+        # ADR-006 §3.6 / #1805 (CMBR-1): on the first resumed iteration, skip members
+        # already complete in persisted state so dispatch begins at the interrupted member.
+        if [[ "$_resume_first_iter" == "true" ]]; then
+            local _cmbr_status
+            _cmbr_status="$(jq -r --arg s "$s" '.stage_statuses[$s] // "pending"' \
+                "$state_file" 2>/dev/null || echo "pending")"
+            if [[ "$_cmbr_status" == "complete" ]]; then
+                continue
+            fi
         fi
         _cycle_emit_member_dispatch_start "$_cyc_pos" "$s" "$_member_kind_pre"
         export ZBUILD_CYCLE_ITER="$iter"
@@ -2358,8 +2368,14 @@ _cycle_orchestrator_run_body() {
         fi
 
         # Dispatch the cycle's stages in order.
+        # CMBR-1 (#1805): signal resume_first_iter only for the first resumed iteration
+        # so _cycle_iter_dispatch skips members already complete in persisted state.
+        local _cid_resume_first_iter=false
+        if [[ "$iter" -eq "$_start_iter" && "$_start_iter" -gt 1 ]]; then
+            _cid_resume_first_iter=true
+        fi
         set +e
-        _cycle_iter_dispatch "$iter" "$state_file"
+        _cycle_iter_dispatch "$iter" "$state_file" "$_cid_resume_first_iter"
         local _iter_rc=$?
         [[ $_ORCH_HAD_E -eq 1 ]] && set -e
         # The round stopped before every member ran (#1850: the word, not an rc).
