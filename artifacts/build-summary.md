@@ -1,5 +1,5 @@
 ## build — pass
 
-- changed core/pipeline/runner.sh, core/state/artifact-persist.sh (+9 / -6)
+- changed core/pipeline/runner.sh (+37 / -0)
 
-- over 2 pass(es), 2 iteration(s)
+- over 1 pass(es), 1 iteration(s)
