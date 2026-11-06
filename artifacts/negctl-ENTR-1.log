@@ -6,7 +6,7 @@
 
   [38;2;0;212;255m[#1805/ENTR-1] path 1: bash runner.sh --resume restores artifacts[0m
   [38;2;248;113;113m✗[0m [#1805/ENTR-1] path 1 (--resume flag): intake-result.json restored from state branch
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/resume-entry-points-1805.Uda7YI/p1-state/artifacts/intake-result.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/resume-entry-points-1805.Pnzqeg/p1-state-root/runs/s9-p1-resume-1805/artifacts/intake-result.json[0m
   [38;2;74;222;128m✓[0m [#1805/ENTR-1] path 1 (--resume flag): pipeline.resume event emitted (rehydration ran before dispatch)
   [38;2;74;222;128m✓[0m [#1805/ENTR-1] path 1 (--resume flag): pipeline.resume precedes first stage.start (rehydration before dispatch loop)
   [38;2;248;113;113m✗[0m [#1805/ENTR-1] path 1 (--resume flag): no stage.start for intake (complete stage skipped before dispatch loop)
@@ -14,7 +14,7 @@
 
   [38;2;0;212;255m[#1805/ENTR-1] path 2: auto-resume on status=interrupted restores artifacts[0m
   [38;2;248;113;113m✗[0m [#1805/ENTR-1] path 2 (auto-resume/interrupted): intake-result.json restored from state branch
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/resume-entry-points-1805.Uda7YI/p2-state/artifacts/intake-result.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/resume-entry-points-1805.Pnzqeg/p2-state-root/runs/s9-p2-resume-1805/artifacts/intake-result.json[0m
   [38;2;248;113;113m✗[0m [#1805/ENTR-1] path 2 (auto-resume): pipeline.resume event emitted (rehydration ran before dispatch)
     [2mexpected >0, got: 0[0m
   [38;2;248;113;113m✗[0m [#1805/ENTR-1] path 2 (auto-resume): pipeline.resume precedes first stage.start (rehydration before dispatch loop)
@@ -23,7 +23,7 @@
 
   [38;2;0;212;255m[#1805/ENTR-1] path 3: zbuild pipeline resume --run-id restores artifacts[0m
   [38;2;248;113;113m✗[0m [#1805/ENTR-1] path 3 (zbuild pipeline resume): intake-result.json restored from state branch
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/resume-entry-points-1805.Uda7YI/p3-state/artifacts/intake-result.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/resume-entry-points-1805.Pnzqeg/p3-state-root/runs/s9-p3-resume-1805/artifacts/intake-result.json[0m
   [38;2;74;222;128m✓[0m [#1805/ENTR-1] path 3 (zbuild pipeline resume): pipeline.resume event emitted (rehydration ran before dispatch)
   [38;2;74;222;128m✓[0m [#1805/ENTR-1] path 3 (zbuild pipeline resume): pipeline.resume precedes first stage.start (rehydration before dispatch loop)
   [38;2;248;113;113m✗[0m [#1805/ENTR-1] path 3 (zbuild pipeline resume): no stage.start for intake (complete stage skipped before dispatch loop)
@@ -33,9 +33,18 @@
   [38;2;74;222;128m✓[0m resume-entry-points test uses a cyclic fixture (type: cycle)
   [38;2;74;222;128m✓[0m cyclic fixture pipeline ran in resume-entry-points test (intake dispatched)
 
+  [38;2;0;212;255m[#1805/ENTR-2] auto-resume via latest symlink (no ZBUILD_STATE_FILE set)[0m
+  [38;2;248;113;113m✗[0m [#1805/ENTR-2] auto-resume via latest symlink: pipeline.resume event emitted (resume_mode=true)
+    [2mexpected >0, got: 0[0m
+  [38;2;248;113;113m✗[0m [#1805/ENTR-2] auto-resume via latest symlink: pipeline.resume precedes first stage.start (artifact restored before dispatch loop)
+    [2mexpected >0, got: 0[0m
+  [38;2;248;113;113m✗[0m [#1805/ENTR-2] auto-resume via latest symlink: intake-result.json restored from per-run state dir
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/resume-entry-points-1805.Pnzqeg/p4-state-root/runs/e2-p4-resume-1805/artifacts/intake-result.json[0m
+  [38;2;74;222;128m✓[0m [#1805/ENTR-2] auto-resume via latest symlink: no stage.start for intake (complete stage skipped)
+
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m7 of 14 tests failed[0m
+  [38;2;248;113;113m[1m10 of 18 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1805/ENTR-1] path 1 (--resume flag): intake-result.json restored from state branch
   [38;2;248;113;113m✗[0m [#1805/ENTR-1] path 1 (--resume flag): no stage.start for intake (complete stage skipped before dispatch loop)
@@ -44,6 +53,9 @@
   [38;2;248;113;113m✗[0m [#1805/ENTR-1] path 2 (auto-resume): pipeline.resume precedes first stage.start (rehydration before dispatch loop)
   [38;2;248;113;113m✗[0m [#1805/ENTR-1] path 3 (zbuild pipeline resume): intake-result.json restored from state branch
   [38;2;248;113;113m✗[0m [#1805/ENTR-1] path 3 (zbuild pipeline resume): no stage.start for intake (complete stage skipped before dispatch loop)
+  [38;2;248;113;113m✗[0m [#1805/ENTR-2] auto-resume via latest symlink: pipeline.resume event emitted (resume_mode=true)
+  [38;2;248;113;113m✗[0m [#1805/ENTR-2] auto-resume via latest symlink: pipeline.resume precedes first stage.start (artifact restored before dispatch loop)
+  [38;2;248;113;113m✗[0m [#1805/ENTR-2] auto-resume via latest symlink: intake-result.json restored from per-run state dir
 
 ### ENTR-1 head tests/integration/resume-entry-points-test.sh
 
@@ -73,7 +85,13 @@
   [38;2;74;222;128m✓[0m resume-entry-points test uses a cyclic fixture (type: cycle)
   [38;2;74;222;128m✓[0m cyclic fixture pipeline ran in resume-entry-points test (intake dispatched)
 
+  [38;2;0;212;255m[#1805/ENTR-2] auto-resume via latest symlink (no ZBUILD_STATE_FILE set)[0m
+  [38;2;74;222;128m✓[0m [#1805/ENTR-2] auto-resume via latest symlink: pipeline.resume event emitted (resume_mode=true)
+  [38;2;74;222;128m✓[0m [#1805/ENTR-2] auto-resume via latest symlink: pipeline.resume precedes first stage.start (artifact restored before dispatch loop)
+  [38;2;74;222;128m✓[0m [#1805/ENTR-2] auto-resume via latest symlink: intake-result.json restored from per-run state dir
+  [38;2;74;222;128m✓[0m [#1805/ENTR-2] auto-resume via latest symlink: no stage.start for intake (complete stage skipped)
+
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 14 tests passed[0m
+  [38;2;74;222;128m[1mAll 18 tests passed[0m
 
