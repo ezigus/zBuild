@@ -9,6 +9,6 @@
 - tests/integration/resume-entry-points-test.sh — ENTR-1
 - tests/unit/hydrate-stage-test.sh — DLGT-1
 - Each [code] requirement's test must fail on the code from before this change, and pass once the code is written.
-- answered: test-author finding 1: done — added # Given / # When / # Then headings to the SKIP-1 section in resume-rehydrate-test.sh.
-- answered: test-author finding 2: nothing to do — the cycled assertion is not required by FRSH-2 (the skip guard operates on dispatch units, not cycle-inner members); the two remaining assertions (intake dispatches, no stage.skip) fully cover FRSH-2.
-- answered: issue-acceptance finding 1: nothing to do — ORDE-1 is an operational scheduling constraint, not mechanically testable; the intake stage already removed it from requirements.
+- answered: review_lenses finding 1: nothing to do — the `_runner_from_stage_preflight` global-variable issue is in `core/pipeline/runner.sh`, which is implementation code outside the test-author stage's ownership.
+- answered: review_lenses finding 2: nothing to do — the `issue` value validation finding is in `core/pipeline/runner.sh`, outside the test-author stage's ownership.
+- answered: review_lenses finding 3: nothing to do — the `_artifact_persist_put_back` path-traversal finding is in `core/state/artifact-persist.sh`, outside the test-author stage's ownership.
