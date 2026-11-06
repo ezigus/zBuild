@@ -12,56 +12,56 @@
     "run_mode": "full",
     "timing": {
       "tiers": {
-        "lint": 172421,
-        "e2e": 49096,
-        "golden": 6604,
-        "unit": 361308,
-        "integration": 318452
+        "lint": 171778,
+        "e2e": 49256,
+        "golden": 6592,
+        "unit": 351301,
+        "integration": 310073
       },
       "slowest_files": [
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.z6uMoy/tests/integration/core-pipeline-runner-test.sh",
-          "ms": 63464
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.hzc3TR/tests/integration/core-pipeline-runner-test.sh",
+          "ms": 61179
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.z6uMoy/tests/integration/cycle-acceptance-terminal-failure-test.sh",
-          "ms": 49517
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.hzc3TR/tests/unit/lint-test-engine-state-test.sh",
+          "ms": 47998
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.z6uMoy/tests/unit/lint-test-engine-state-test.sh",
-          "ms": 47385
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.hzc3TR/tests/integration/cycle-acceptance-terminal-failure-test.sh",
+          "ms": 46858
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.z6uMoy/tests/integration/leaf-verdict-halts-test.sh",
-          "ms": 44845
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.hzc3TR/tests/integration/leaf-verdict-halts-test.sh",
+          "ms": 42582
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.z6uMoy/tests/e2e/fork-budget-test.sh",
-          "ms": 41865
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.hzc3TR/tests/e2e/fork-budget-test.sh",
+          "ms": 41685
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.z6uMoy/tests/integration/cycle-on-max-pipeline-continues-test.sh",
-          "ms": 39405
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.hzc3TR/tests/e2e/parity-local-vs-ci-test.sh",
+          "ms": 38246
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.z6uMoy/tests/e2e/parity-local-vs-ci-test.sh",
-          "ms": 38571
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.hzc3TR/tests/integration/cycle-on-max-pipeline-continues-test.sh",
+          "ms": 38240
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.z6uMoy/tests/integration/runner-release-exit-paths-test.sh",
-          "ms": 37838
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.hzc3TR/tests/integration/runner-release-exit-paths-test.sh",
+          "ms": 37507
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.z6uMoy/tests/unit/run-status-comment-pages-test.sh",
-          "ms": 37191
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.hzc3TR/tests/unit/run-status-comment-pages-test.sh",
+          "ms": 35888
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.z6uMoy/tests/integration/pipeline-preflight-missing-stage-test.sh",
-          "ms": 33747
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.hzc3TR/tests/integration/pipeline-preflight-missing-stage-test.sh",
+          "ms": 34419
         }
       ]
     },
-    "tree_sha": "d9133464050dc26d364d0cb956ed20d5cc443660",
+    "tree_sha": "f6712df44e1030e78e7c12ded996b744066876be",
     "findings": []
   },
   "result_contract": 3,

@@ -207,11 +207,11 @@
 
 
   [38;2;0;212;255m[#1805/ITER-1] cycle orchestrator resumes from current_iter (not 1)[0m
-══ build-test [cycle] seq=1 input ══════════════════════════════ 14:33:59 UTC ══
+══ build-test [cycle] seq=1 input ══════════════════════════════ 15:20:55 UTC ══
 (no feedback — first iteration)
 
 
-══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 14:33:59 UTC ══
+══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 15:20:55 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
@@ -221,22 +221,22 @@ health: progress=0 (no progress) - defects=0 → score=0
     [2mexpected: 0, got: 1[0m
 
   [38;2;0;212;255m[#1805/ITER-1] nested-loop re-entry after outer resume starts at iter=1 (outer consumed flag)[0m
-══ build-test [cycle] seq=1 input ══════════════════════════════ 14:33:59 UTC ══
+══ build-test [cycle] seq=1 input ══════════════════════════════ 15:20:55 UTC ══
 (no feedback — first iteration)
 
 
-══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 14:34:00 UTC ══
+══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 15:20:56 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
   [38;2;74;222;128m✓[0m [#1805/ITER-1] nested-loop re-entry starts at iter=1 (outer resume consumed/cleared _ZBUILD_RESUME_ACTIVE)
 
   [38;2;0;212;255m[#1805/ITER-1] without _ZBUILD_RESUME_ACTIVE, fresh run always starts at iter=1[0m
-══ build-test [cycle] seq=1 input ══════════════════════════════ 14:34:00 UTC ══
+══ build-test [cycle] seq=1 input ══════════════════════════════ 15:20:56 UTC ══
 (no feedback — first iteration)
 
 
-══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 14:34:00 UTC ══
+══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 15:20:56 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
@@ -261,11 +261,11 @@ health: progress=0 (no progress) - defects=0 → score=0
 
   [38;2;0;212;255m[#1805/ITER-1] cycle orchestrator resumes from current_iter (not 1)[0m
 
-══ build-test [cycle] seq=2 input ══════════════════════════════ 14:34:01 UTC ══
+══ build-test [cycle] seq=2 input ══════════════════════════════ 15:20:57 UTC ══
 (no stage summaries)
 
 
-══ build-test [cycle] seq=2 output OK 0.3s ═════════════════════ 14:34:01 UTC ══
+══ build-test [cycle] seq=2 output OK 0.3s ═════════════════════ 15:20:57 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
@@ -273,22 +273,22 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#1805/ITER-1] iter-1 stages not dispatched on resume into iter-2 (no stage.start for complete iter)
 
   [38;2;0;212;255m[#1805/ITER-1] nested-loop re-entry after outer resume starts at iter=1 (outer consumed flag)[0m
-══ build-test [cycle] seq=1 input ══════════════════════════════ 14:34:02 UTC ══
+══ build-test [cycle] seq=1 input ══════════════════════════════ 15:20:58 UTC ══
 (no feedback — first iteration)
 
 
-══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 14:34:02 UTC ══
+══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 15:20:58 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
   [38;2;74;222;128m✓[0m [#1805/ITER-1] nested-loop re-entry starts at iter=1 (outer resume consumed/cleared _ZBUILD_RESUME_ACTIVE)
 
   [38;2;0;212;255m[#1805/ITER-1] without _ZBUILD_RESUME_ACTIVE, fresh run always starts at iter=1[0m
-══ build-test [cycle] seq=1 input ══════════════════════════════ 14:34:02 UTC ══
+══ build-test [cycle] seq=1 input ══════════════════════════════ 15:20:58 UTC ══
 (no feedback — first iteration)
 
 
-══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 14:34:02 UTC ══
+══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 15:20:58 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
