@@ -291,6 +291,7 @@ On #1805 run 42293991602, design's first try failed with one finding. Since #248
 
 - **A blank line ends every row**, whatever the row holds (`rsc_render_pages`, `scripts/lib/run-status-pages.sh`). Markdown joins two adjacent lines into one paragraph; a row ending in `</details>` only looked separate because the closing tag ends the block.
 - A part's size counts that blank line, so where a part ends is unchanged in kind.
+- **A failed row with several findings names what they are about.** The same run's test and issue-acceptance rows read only "what failed: 2 findings". When none carries a severity and each names a requirement or SPEC on its first line, the line names them, once each, as code: "what failed: `LOOP-1`, `GUAR-2`". Lens findings, which carry a severity, are still counted by it; findings that name no id are counted.
 
 ## Enforced by
 
@@ -316,4 +317,4 @@ On #1805 run 42293991602, design's first try failed with one finding. Since #248
 - Amendment 2026-10-31 (the run stops before GitHub does) → `tests/unit/ci-stop-before-github-test.sh` C1–C4
 - Amendment 2026-10-31 (#2439: one row per try) → `tests/unit/run-status-retry-row-test.sh` T4–T7
 - Amendment 2026-10-29 (a map member has its own row) → `tests/integration/map-members-reported-test.sh` MR1–MR4, MR6
-- Amendment 2026-11-06 (every row is its own paragraph) → `tests/unit/run-status-comment-pages-test.sh` P8
+- Amendment 2026-11-06 (every row is its own paragraph) → `tests/unit/run-status-comment-pages-test.sh` P8; `tests/unit/status-row-findings-test.sh` W1, W8 (a failed row names what it is about)

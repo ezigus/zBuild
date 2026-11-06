@@ -9,7 +9,9 @@ _ZBUILD_RUN_STATUS_TEXT_LOADED=1
 
 # rsc_row_findings_v <var> <state_dir> <stage> [result_path] — what a try that
 # did not pass found (ADR-064 §4, #2476, #2480): "what failed: <the finding>",
-# or "what failed: <n> findings", and what more there is folded under it; empty
+# or the requirements and SPECs several are about ("what failed: `LOOP-1`,
+# `GUAR-2`"), else "what failed: <n> findings", and what more there is folded
+# under it; empty
 # when its result holds none. The
 # result is the stage's primary output (a map member's is named on its event),
 # else `artifacts/<stage>-result.json`. A finding is its text, as
@@ -26,7 +28,8 @@ rsc_row_findings_v() {
     [[ -n "$_rfv_p" && -s "$_rfv_p" ]] || _rfv_p="$2/artifacts/${3}-result.json"
     [[ -s "$_rfv_p" && "$(<"$_rfv_p")" == *'"findings"'* ]] || return 0
     # #2480: one finding heads the row, the rest of its lines folded; several
-    # are counted (by severity when they carry one) and each is listed once.
+    # are named by the id each is about, or counted (by severity when they
+    # carry one), and each is listed once.
     _rfv_l="$(jq -r "$_RSC_JQ_ESC"'[ ((.data.findings // .findings // [])[]? | select(type == "object")
             | {sev: (if (.severity | type) == "string" then (.severity | ascii_downcase) else null end),
                t: (if (.text | type) == "string" then .text
@@ -46,7 +49,14 @@ rsc_row_findings_v() {
             ([$f[] | .sev | select(. != null)]) as $sv
             | (["critical", "high", "medium", "low"]
                | map(. as $k | ([$sv[] | select(. == $k)] | length) as $c | select($c > 0) | "\($c) \($k)")) as $cnt
-            | "what failed: \($f | length) findings" + (if ($cnt | length) > 0 then ": " + ($cnt | join(", ")) else "" end)
+            # The requirement or SPEC each is about: the first id on its first
+            # line. Named when every finding has one and none has a severity.
+            | [$f[] | .t | split("\n")[0]
+               | [match("(?<![A-Za-z0-9-])[A-Z][A-Z0-9]{2,3}-[0-9]+(?![0-9])"; "g").string][0]] as $ids
+            | (if ($sv | length) == 0 and all($ids[]; . != null)
+               then "what failed: " + ($ids | reduce .[] as $i ([]; if index([$i]) then . else . + [$i] end)
+                                           | map("`" + . + "`") | join(", "))
+               else "what failed: \($f | length) findings" + (if ($cnt | length) > 0 then ": " + ($cnt | join(", ")) else "" end) end)
               + "\n<details><summary>what failed</summary>\n\n"
               + ([$f[] | "- " + (.t | gsub("\n"; "\n  "))] | join("\n")) + "\n\n</details>"
           end' "$_rfv_p" 2>/dev/null || true)"
