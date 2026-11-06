@@ -285,6 +285,13 @@ On #1805 run 42229975998 design's SPECs said `--from-stage <s>`: GitHub took `<s
 - **test-author's finding says what is wrong first:** `ENTR-1 Given: <the judge's reason>` — each part and why — then the SPEC whole with its lines marked; not "ENTR-1: 1 part to fix" (`_sc_judge`).
 - **A running map member shows its own name** (`review_lenses.correctness`), from the unit its start names.
 
+## Amendment 2026-11-06 — §4: every row is its own paragraph
+
+On #1805 run 42293991602, design's first try failed with one finding. Since #2480 such a row has no fold, and intake's row began on the very next line, so GitHub joined the two into one line. A running row has no fold either, and ran into the row below it the same way.
+
+- **A blank line ends every row**, whatever the row holds (`rsc_render_pages`, `scripts/lib/run-status-pages.sh`). Markdown joins two adjacent lines into one paragraph; a row ending in `</details>` only looked separate because the closing tag ends the block.
+- A part's size counts that blank line, so where a part ends is unchanged in kind.
+
 ## Enforced by
 
 - §4 amendment 2026-11-06 (#2480: a stage's words are text; every loop's round; each finding once; fail, not unusable; a running member's name) → `tests/unit/status-row-text-test.sh` X1–X3, R1, R2, L1; `tests/unit/status-row-findings-test.sh` W1, W5–W7; `tests/unit/gwt-judges-test.sh` T3, T4; `tests/unit/test-author-correspondence-test.sh` SPEC-3; `tests/unit/judge-feedback-test.sh` F5; `tests/unit/run-status-comment-render-test.sh` SPEC-3, SPEC-9
@@ -309,3 +316,4 @@ On #1805 run 42229975998 design's SPECs said `--from-stage <s>`: GitHub took `<s
 - Amendment 2026-10-31 (the run stops before GitHub does) → `tests/unit/ci-stop-before-github-test.sh` C1–C4
 - Amendment 2026-10-31 (#2439: one row per try) → `tests/unit/run-status-retry-row-test.sh` T4–T7
 - Amendment 2026-10-29 (a map member has its own row) → `tests/integration/map-members-reported-test.sh` MR1–MR4, MR6
+- Amendment 2026-11-06 (every row is its own paragraph) → `tests/unit/run-status-comment-pages-test.sh` P8

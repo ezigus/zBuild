@@ -23,6 +23,8 @@
 # P7 [change] each part is its own comment: the first flush POSTs one per
 #             part in order, ids kept per part; a later flush PATCHes only a
 #             part whose text changed; the finalizer edits the newest part
+# P8 [change] a blank line ends every row, so a row with no fold never runs
+#             into the next
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -155,6 +157,20 @@ jq -n --arg a "$(cat "$OUT2/part-1.md")" --arg b "$(cat "$OUT2/part-$n2.md")" \
 : > "$GH_LOG"
 rsc_finalize_issue "$TEST_TEMP_DIR/fin" testuser/testrepo 90000042 failure
 assert_contains "[P7] the finalizer edits the newest part" "$(grep -F -- '-X PATCH' "$GH_LOG")" "issues/comments/777"
+
+# ─── P8: every row is its own paragraph ─────────────────────────────────────
+# #1805 run 42293991602: a failed row with one finding has no fold, and the row
+# under it began on the very next line, so GitHub joined the two into one line.
+# A running row has no fold either.
+print_test_section "P8: a row never runs into the next"
+PE="$TEST_TEMP_DIR/p8.jsonl"; PS="$TEST_TEMP_DIR/p8"; mkdir -p "$PS/artifacts"; : > "$PE"
+stage_row "$PE" 1
+stage_row "$PE" 2
+ev "$PE" 10:00:03 plugin.run.start 3 s3 plugin=s3 kind=tool
+p8="$(rsc_render_body "$PE" "$PS")"
+_p8_joined="$(awk 'prev != "" && /^\*\*[0-9]/ { print } { prev = $0 }' <<< "$p8")"
+assert_eq "[P8] every row starts after a blank line, whatever the row above holds" "" "$_p8_joined"
+assert_contains "[P8] …and every row is still there" "$p8" '**1 s1**'
 
 print_test_results
 exit $((FAIL > 0))
