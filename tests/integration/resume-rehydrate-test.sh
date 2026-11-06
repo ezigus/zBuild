@@ -855,14 +855,29 @@ assert_eq \
     "[#1805/FRSH-2] fresh run emits no stage.skip events (dispatch-unit skip guard conditional on resume_mode; does not activate for fresh runs)" \
     "0" "$_frsh2_stage_skips"
 
-# [#1805/FRSH-2]: The two assertions above — intake dispatches and no stage.skip —
-# fully cover the FRSH-2 requirement. The requirement is that the dispatch-unit
-# skip guard does not activate for fresh runs. The skip guard would suppress a
-# stage.start for a dispatch-unit stage (intake or cyc) if it were unconditionally
-# active. The intake assertion (1) proves the guard did not suppress intake; the
-# no-stage.skip assertion (2) proves the guard did not emit a skip event for any
-# stage. Together they establish that the skip guard is conditional on resume_mode
-# and did not fire on this fresh run, which is the entirety of FRSH-2.
+# [#1805/FRSH-2]: cycle member stage.start count — `cycled` must emit exactly 1
+# stage.start on a fresh run. Without the _ZBUILD_RESUME_ACTIVE guard in
+# _cycle_dispatch, the guard `_cd_iter > 0` fires on every cycle-member dispatch
+# (since iter is always ≥ 1) and emits an EXTRA stage.start for each member each
+# iteration. With max_iterations=1, cycled would emit 2 stage.start events
+# (1 from normal dispatch + 1 from unguarded guard) instead of the correct 1.
+# This assertion catches that regression: if the guard is missing, it fails.
+# FRSH-2 is [no-code]; the test need not fail before the change. It fails on
+# BUGGY new code (missing _ZBUILD_RESUME_ACTIVE) and passes on correct new code.
+_frsh2_cycled_starts=0
+if [[ -f "$_S_FRSH2_EVENTS_JSONL" ]]; then
+    _frsh2_cycled_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="cycled") | .type' \
+        "$_S_FRSH2_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_eq \
+    "[#1805/FRSH-2] fresh run cycle member emits exactly one stage.start per iteration (not duplicated by missing _ZBUILD_RESUME_ACTIVE guard in _cycle_dispatch)" \
+    "1" "$_frsh2_cycled_starts"
+
+# Together the three assertions — intake dispatches, no stage.skip, and cycled
+# emits exactly 1 stage.start — fully cover the FRSH-2 requirement. The intake
+# and stage.skip assertions prove the skip guard is conditional on resume_mode.
+# The cycled count assertion proves _cycle_dispatch does not emit spurious
+# stage.start events on fresh runs (the _ZBUILD_RESUME_ACTIVE guard is active).
 
 # ── CYCL-1: test uses a fixture containing a cyclic stage ────────────────────
 print_test_section "resume-rehydrate test uses a fixture containing a cyclic stage"

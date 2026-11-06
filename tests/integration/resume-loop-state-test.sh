@@ -192,6 +192,83 @@ assert_eq \
     "[#1805/ITER-1] without _ZBUILD_RESUME_ACTIVE, fresh run starts at iter=1 (guard prevents iter-skip)" \
     "1" "$_SPEC7_FRESH_FIRST_ITER"
 
+# ── [#1805/CMBR-1] cycle member stages already complete in iter k are skipped ─
+# On resume, within the interrupted iteration, cycle member stages already marked
+# complete in persisted state are skipped; the first dispatched cycle member is
+# the interrupted stage.
+print_test_section "[#1805/CMBR-1] complete cycle members in interrupted iter skipped; interrupted member dispatched"
+
+# Given — a run is being resumed; in the interrupted iteration (iter 2), member
+#   stage "build" completed and member stage "test" was interrupted before
+#   completing; persisted state records build as complete within iter 2.
+#   _ZBUILD_RESUME_ACTIVE=true is exported.
+: > "$ZBUILD_EVENTS_JSONL"
+jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$STATE_FILE"
+
+# Use zb_engine_loop_state to write cycle state: 2 rounds (iter 1 finished,
+# iter 2 in_progress = current interrupted iter). After this call,
+# cycle_iterations["build-test"].current_iter = 2.
+zb_engine_loop_state "$STATE_FILE" "build-test" 2 5 "in_progress"
+
+# Record that "build" completed in iter 2 before the interruption.
+# stage_statuses.build = "complete" is the standard field the cycle orchestrator
+# checks to decide whether to skip a member on resume (ADR-006 §3.6 / CMBR-1).
+# Use jq to merge this into the existing state; the cycle_iterations block
+# written by zb_engine_loop_state is preserved (`.` merge keeps all other fields).
+jq '.stage_statuses.build = "complete"' "$STATE_FILE" \
+    > "${STATE_FILE}.cmbr1.tmp" && mv "${STATE_FILE}.cmbr1.tmp" "$STATE_FILE"
+
+# Load the template: cycle-converges-iter2.yaml has build + test as cycle members,
+# matching the state above.
+load_template "$FIXT/cycle-converges-iter2.yaml"
+
+# Track which cycle members are dispatched. cycle_dispatch_stage is what causes
+# stage.start events in a unit-test context; not being called for "build" is
+# functionally equivalent to no stage.start for build.
+_CMBR1_BUILD_DISPATCHED=0
+_CMBR1_TEST_DISPATCHED=0
+cycle_dispatch_stage() {
+    local stage="$1" iter="$2"
+    if [[ "$stage" == "build" ]]; then
+        _CMBR1_BUILD_DISPATCHED=1
+    elif [[ "$stage" == "test" ]]; then
+        _CMBR1_TEST_DISPATCHED=1
+    fi
+    _CYCLE_DISPATCH_VERDICT="pass"
+    _CYCLE_DISPATCH_STATUS="complete"
+    return 0
+}
+
+zb_stub_reports_tests test
+
+# When — _ZBUILD_RESUME_ACTIVE=true is exported and the cycle orchestrator
+#   dispatches members of iter k (iter 2). "build" is complete; "test" is pending.
+set +e
+export _ZBUILD_RESUME_ACTIVE=true
+cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"
+_cmbr1_rc=$?
+set -e
+
+# Then — no stage.start event for "build" (already complete in iter k):
+# cycle_dispatch_stage must NOT be called for "build" in iter 2.
+# Before the change: orchestrator does not check member state on resume →
+#   dispatches build regardless → _CMBR1_BUILD_DISPATCHED=1 → assert 0==1 → FAILS.
+# After the change: orchestrator sees stage_statuses.build=complete in iter 2 →
+#   skips build → _CMBR1_BUILD_DISPATCHED=0 → PASSES.
+assert_eq \
+    "[#1805/CMBR-1] no stage.start for 'build' in iter 2 (complete member skipped on resume within interrupted iter)" \
+    "0" "$_CMBR1_BUILD_DISPATCHED"
+
+# Then — stage.start is emitted for "test" (the interrupted member of iter k):
+# cycle_dispatch_stage must be called for "test" in iter 2.
+# Before the change: if orchestrator skips ALL members or aborts, test never
+#   dispatches → _CMBR1_TEST_DISPATCHED=0 → assert 1==0 → FAILS.
+# After the change: orchestrator skips build, dispatches test →
+#   _CMBR1_TEST_DISPATCHED=1 → PASSES.
+assert_eq \
+    "[#1805/CMBR-1] stage.start emitted for 'test' in iter 2 (interrupted cycle member dispatched on resume)" \
+    "1" "$_CMBR1_TEST_DISPATCHED"
+
 # ── CYCL-1: test uses a fixture containing a cyclic stage ────────────────────
 print_test_section "resume-loop-state test uses a fixture containing a cyclic stage"
 
