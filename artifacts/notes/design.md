@@ -1,5 +1,28 @@
 # Design notes: #1805 — resume and --from-stage trust-and-rehydrate
 
+## Status: Thirty-second pass — scope lens finding 1 addressed (cycle member stage.start guard)
+
+### Change this pass
+
+**Scope lens finding 1:** The diff at runner.sh:3166 adds `stage.start` emission for ALL cycle
+member dispatches (iter > 0), not just during resume. This is broader than DSPK-1 requires and
+changes the event contract for fresh cycle-based runs.
+
+**Verified via git diff main..HEAD -- core/pipeline/runner.sh**: The code at 3166 IS new (added
+by this branch). The fix: guard with `${_ZBUILD_RESUME_ACTIVE:-false} == true` so cycle members
+only emit stage.start in resume mode. `resume_mode` is a local variable inaccessible inside
+`_cycle_dispatch`; `_ZBUILD_RESUME_ACTIVE` is exported and correctly scoped.
+
+Changes made to design-draft.md:
+- Added Gap 7 in architectural decision context
+- Updated Decision section to include the stage.start guard fix
+- Added step 7a in steps block to guard runner.sh:3166
+- Added Finding 20 explaining the scope lens finding and fix
+
+The DSPK-1 SPEC itself is unchanged — it correctly scopes to "On resume, stage k emits
+stage.start." The test in resume-rehydrate-test.sh checks for stage.start of "cycled" with
+`_ZBUILD_RESUME_ACTIVE=true` exported, so it still passes after the guard.
+
 ## Status: Thirty-first pass — ORDE-1 removed from requirements, design cleaned up
 
 ### Change this pass
