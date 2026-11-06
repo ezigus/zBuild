@@ -2221,12 +2221,21 @@ main() {
             auto_resume)
                 info "Auto-resuming previous run via latest symlink (use --no-resume to force fresh start)"
                 # Resolve the per-run dir so artifact operations use the concrete path.
-                state_dir="$(readlink -f "$state_dir/latest")"
-                state_file="$state_dir/pipeline-state.json"
-                _runner_state_file="$state_file"
-                resume_mode=true
-                _runner_run_id="$(get_state_field "$state_file" '.run_id' "$(date +%Y%m%d%H%M%S)-$$")"
-                _runner_issue="$(get_state_field "$state_file" '.issue' '0')"
+                # Guard against broken symlink or missing readlink -f (macOS without GNU coreutils):
+                # an empty result would route all artifact operations to paths under an empty prefix.
+                local _lr_resolved_dir
+                _lr_resolved_dir="$(readlink -f "$state_dir/latest")" || true
+                if [[ -z "$_lr_resolved_dir" ]]; then
+                    warn "auto-resume: could not resolve latest symlink — falling back to fresh start"
+                    resume_mode=false
+                else
+                    state_dir="$_lr_resolved_dir"
+                    state_file="$state_dir/pipeline-state.json"
+                    _runner_state_file="$state_file"
+                    resume_mode=true
+                    _runner_run_id="$(get_state_field "$state_file" '.run_id' "$(date +%Y%m%d%H%M%S)-$$")"
+                    _runner_issue="$(get_state_field "$state_file" '.issue' '0')"
+                fi
                 ;;
             manual_resume_only)
                 info "Previous run requires explicit --resume (or --force for aborted)"
