@@ -111,7 +111,8 @@ unset -f route_to_model
 print_test_section "B4: build"
 (
     source "$REPO_ROOT/plugins/agent/build/plugin.sh" >/dev/null 2>&1
-    route_to_model() { printf '%s\n' 'ANSWER lens-red-team-code finding 2: wrong — the plugin dir is always found'; return 0; }
+    route_to_model() { printf '%s' "$1" > "$TEST_TEMP_DIR/b4-tier"; printf '%s\n' 'ANSWER lens-red-team-code finding 2: wrong — the plugin dir is always found'; return 0; }
+    tier=T3  # build's own tier, a local of the stage run in scope here
     B4="$TEST_TEMP_DIR/b4"; mkdir -p "$B4"; artifact_dir="$B4"
     printf '%s\n' "$_P_SHOWN" | sed 's/lens-sre-code finding 1/lens-red-team-code finding 1/; s/lens-sre-code finding 2/lens-red-team-code finding 2/; /issue-acceptance/d' > "$B4/build-prompt.txt"
     output_summary_json="$B4/build-summary.json"; terminated_reason=done_sentinel files_changed_count=1 files_changed_json='["a.sh"]' iterations=1 repo_root="$TEST_TEMP_DIR"
@@ -124,6 +125,7 @@ assert_eq "[B4] build's answers, the one asked for included, are in its result" 
     "lens-red-team-code finding 1: done — the link is read once ;; lens-red-team-code finding 2: wrong — the plugin dir is always found" \
     "$(grep '^B4|' "$TEST_TEMP_DIR/b4.out" | cut -d'|' -f2)"
 assert_eq "[B4] ...with how many findings it was shown" "2" "$(grep '^B4|' "$TEST_TEMP_DIR/b4.out" | cut -d'|' -f3)"
+assert_eq "[B4] ...and the follow-up call runs at build's own tier (review on #2486)" "T3" "$(cat "$TEST_TEMP_DIR/b4-tier" 2>/dev/null)"
 
 print_test_section "B5: issue-acceptance"
 (
