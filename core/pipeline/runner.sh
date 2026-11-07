@@ -1989,7 +1989,12 @@ main() {
     # ADR-051 §warn-first (#1318): startup preflight — persona bindings + requires.plugins.
     # Routed through _runner_startup_preflight_gate (defined above) so the dry-run/resume
     # exemption logic is testable independently of the full pipeline startup sequence.
-    if ! _runner_startup_preflight_gate "$dry_run" "$resume_mode"; then
+    # --from-stage is only valid with --resume (or auto-resume): skip the persona
+    # preflight so the targeted "only valid with --resume" rejection fires instead
+    # of a spurious persona-missing failure (#1805).
+    local _spg_resume_mode="$resume_mode"
+    [[ -n "$from_stage" ]] && _spg_resume_mode=true
+    if ! _runner_startup_preflight_gate "$dry_run" "$_spg_resume_mode"; then
         error "Startup preflight validation failed (ZBUILD_CONTRACT_VALIDATOR=${ZBUILD_CONTRACT_VALIDATOR:-warn}). See above."
         _runner_run_id="${_runner_run_id:-${ZBUILD_RUN_ID:-preflight}}"
         _runner_issue="${_runner_issue:-${issue:-0}}"
