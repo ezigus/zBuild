@@ -16,6 +16,6 @@
 - RQADR-1: Amend ADR-006 (resume contract) with the decision above, with the amendment naming its enforcing tests inline.
 - RQADR-2: Amend ADR-050 §6 to draw the line explicitly, stating that the rule "never skip a stage on the basis of prior output" governs a **new** run reusing an **earlier run's** work and stays, while resume continues **the same run** and is governed by ADR-006, with a test pinning each side.
 - RQHYDR-1: Rehydration follows the same path the hydrate stage already uses (ADR-050, `plugins/tool/hydrate`), so "exactly as before" means the same files at the same paths.
-- RQTEST-1: Tests for RQRESU-4, RQLOOP-1, RQFROM-2, RQFROM-3 and RQPATH-1 must use a cycle.
+- RQTEST-1: Tests for RQRESU-4, RQLOOP-1, RQFROM-2, RQFROM-3, and RQPATH-1 must use a cycle.
 - RQDISP-1: No requirement may be marked done, and no change made, on the strength of the legacy loop.
-- the issue is unchanged since the last run: its requirements were kept, with no model call
+- the requirements are the same as the last run's
