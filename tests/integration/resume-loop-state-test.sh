@@ -2,7 +2,7 @@
 # Tests: cycle orchestrator reads persisted current_iter and starts the
 # iteration loop from that value (not 1) on resume. (issue #1805, ADR-006 §3.5)
 #
-# ITER-1 [code]: Cycle orchestrator reads cycle_iterations[CYCLE_ID].current_iter
+# DSITER-1 [code]: Cycle orchestrator reads cycle_iterations[CYCLE_ID].current_iter
 #   from persisted state at resume and starts the iteration loop from that value
 #   (not 1); iter-1 complete stages emit no stage.start on resume into iter-2;
 #   the guard uses _ZBUILD_RESUME_ACTIVE so fresh runs and nested-loop re-entries
@@ -36,8 +36,8 @@ source "$REPO_ROOT/tests/lib/cycle-report-stub.sh"
 
 STATE_FILE="$ZBUILD_STATE_DIR/pipeline-state.json"
 
-# ── [#1805/ITER-1] cycle starts from persisted current_iter on resume ─────────
-print_test_section "[#1805/ITER-1] cycle orchestrator resumes from current_iter (not 1)"
+# ── [#1805/DSITER-1] cycle starts from persisted current_iter on resume ─────────
+print_test_section "[#1805/DSITER-1] cycle orchestrator resumes from current_iter (not 1)"
 
 # Given — a resume; persisted state records cycle_iterations[build-test].current_iter=2
 #   (iter 1 completed before interruption); _ZBUILD_RESUME_ACTIVE=true is exported.
@@ -92,7 +92,7 @@ set -e
 # After the change: reads current_iter=2, starts at iter=2 →
 #   _SPEC7_FIRST_ITER=2 → assert 2==2 → PASSES.
 assert_eq \
-    "[#1805/ITER-1] first dispatched iter is 2 (resumed from current_iter=2, not restarted from 1)" \
+    "[#1805/DSITER-1] first dispatched iter is 2 (resumed from current_iter=2, not restarted from 1)" \
     "2" "$_SPEC7_FIRST_ITER"
 
 # Then — iter-1 stages must not be dispatched on resume into iter-2.
@@ -103,17 +103,17 @@ assert_eq \
 # After the change: starts at iter=2 → iter-1 never dispatched →
 #   _SPEC7_ITER1_DISPATCHED=0 → PASSES.
 assert_eq \
-    "[#1805/ITER-1] iter-1 stages not dispatched on resume into iter-2 (no stage.start for complete iter)" \
+    "[#1805/DSITER-1] iter-1 stages not dispatched on resume into iter-2 (no stage.start for complete iter)" \
     "0" "$_SPEC7_ITER1_DISPATCHED"
 
-# ── [#1805/ITER-1] clause 2b: nested-loop re-entry starts at iter=1 ──────────
+# ── [#1805/DSITER-1] clause 2b: nested-loop re-entry starts at iter=1 ──────────
 # A nested-loop re-entry (inner cycle called from within an outer cycle iteration)
 # must start at iter=1, not from current_iter in state.
 # Mechanism: the outer resume path consumes/clears _ZBUILD_RESUME_ACTIVE after using it,
 # so any nested (inner) cycle call that follows sees the flag as cleared and starts at iter=1.
 # This sub-test does NOT manually clear _ZBUILD_RESUME_ACTIVE — it relies on the outer
 # cycle_orchestrator_run call above having consumed/cleared the flag.
-print_test_section "[#1805/ITER-1] nested-loop re-entry after outer resume starts at iter=1 (outer consumed flag)"
+print_test_section "[#1805/DSITER-1] nested-loop re-entry after outer resume starts at iter=1 (outer consumed flag)"
 
 # Given — outer resume consumed _ZBUILD_RESUME_ACTIVE; persisted state records
 #   cycle_iterations[build-test].current_iter=2 (same setup as above).
@@ -147,14 +147,14 @@ set -e
 # Incorrect implementation (keeps flag active): starts at iter=2 → FAILS (regression detector).
 # Before this change (no resume logic): always starts at 1 → passes trivially.
 assert_eq \
-    "[#1805/ITER-1] nested-loop re-entry starts at iter=1 (outer resume consumed/cleared _ZBUILD_RESUME_ACTIVE)" \
+    "[#1805/DSITER-1] nested-loop re-entry starts at iter=1 (outer resume consumed/cleared _ZBUILD_RESUME_ACTIVE)" \
     "1" "$_SPEC7_NESTED_FIRST_ITER"
 
-# ── [#1805/ITER-1] clause 3: _ZBUILD_RESUME_ACTIVE guard — fresh runs start at iter=1 ─
+# ── [#1805/DSITER-1] clause 3: _ZBUILD_RESUME_ACTIVE guard — fresh runs start at iter=1 ─
 # Without _ZBUILD_RESUME_ACTIVE=true, the orchestrator must start at iter=1 even
 # when current_iter=2 is in state. This verifies the guard prevents the resume-path
 # from affecting fresh runs and nested re-entries.
-print_test_section "[#1805/ITER-1] without _ZBUILD_RESUME_ACTIVE, fresh run always starts at iter=1"
+print_test_section "[#1805/DSITER-1] without _ZBUILD_RESUME_ACTIVE, fresh run always starts at iter=1"
 
 # Given — _ZBUILD_RESUME_ACTIVE is unset (fresh run); persisted state records
 #   cycle_iterations[build-test].current_iter=2. If the guard is absent, new code
@@ -189,14 +189,14 @@ set -e
 # New code with guard: unset → bypasses current_iter lookup → starts at 1 → PASSES.
 # New code WITHOUT guard: would start at 2 → FAILS (regression detector).
 assert_eq \
-    "[#1805/ITER-1] without _ZBUILD_RESUME_ACTIVE, fresh run starts at iter=1 (guard prevents iter-skip)" \
+    "[#1805/DSITER-1] without _ZBUILD_RESUME_ACTIVE, fresh run starts at iter=1 (guard prevents iter-skip)" \
     "1" "$_SPEC7_FRESH_FIRST_ITER"
 
-# ── [#1805/CMBR-1] cycle member stages already complete in iter k are skipped ─
+# ── [#1805/DSCMBR-1] cycle member stages already complete in iter k are skipped ─
 # On resume, within the interrupted iteration, cycle member stages already marked
 # complete in persisted state are skipped; the first dispatched cycle member is
 # the interrupted stage.
-print_test_section "[#1805/CMBR-1] complete cycle members in interrupted iter skipped; interrupted member dispatched"
+print_test_section "[#1805/DSCMBR-1] complete cycle members in interrupted iter skipped; interrupted member dispatched"
 
 # Given — a run is being resumed; in the interrupted iteration (iter 2), member
 #   stage "build" completed and member stage "test" was interrupted before
@@ -212,7 +212,7 @@ zb_engine_loop_state "$STATE_FILE" "build-test" 2 5 "in_progress"
 
 # Record that "build" completed in iter 2 before the interruption.
 # stage_statuses.build = "complete" is the standard field the cycle orchestrator
-# checks to decide whether to skip a member on resume (ADR-006 §3.6 / CMBR-1).
+# checks to decide whether to skip a member on resume (ADR-006 §3.6 / DSCMBR-1).
 # Use jq to merge this into the existing state; the cycle_iterations block
 # written by zb_engine_loop_state is preserved (`.` merge keeps all other fields).
 jq '.stage_statuses.build = "complete"' "$STATE_FILE" \
@@ -256,7 +256,7 @@ set -e
 # After the change: orchestrator sees stage_statuses.build=complete in iter 2 →
 #   skips build → _CMBR1_BUILD_DISPATCHED=0 → PASSES.
 assert_eq \
-    "[#1805/CMBR-1] no stage.start for 'build' in iter 2 (complete member skipped on resume within interrupted iter)" \
+    "[#1805/DSCMBR-1] no stage.start for 'build' in iter 2 (complete member skipped on resume within interrupted iter)" \
     "0" "$_CMBR1_BUILD_DISPATCHED"
 
 # Then — stage.start is emitted for "test" (the interrupted member of iter k):
@@ -266,14 +266,14 @@ assert_eq \
 # After the change: orchestrator skips build, dispatches test →
 #   _CMBR1_TEST_DISPATCHED=1 → PASSES.
 assert_eq \
-    "[#1805/CMBR-1] stage.start emitted for 'test' in iter 2 (interrupted cycle member dispatched on resume)" \
+    "[#1805/DSCMBR-1] stage.start emitted for 'test' in iter 2 (interrupted cycle member dispatched on resume)" \
     "1" "$_CMBR1_TEST_DISPATCHED"
 
-# ── [#1805/CMBR-1] iter=1 scenario: most common interruption point ────────────
-# Red-team finding: CMBR-1 skip guard must work for any interrupted iteration,
+# ── [#1805/DSCMBR-1] iter=1 scenario: most common interruption point ────────────
+# Red-team finding: DSCMBR-1 skip guard must work for any interrupted iteration,
 # including iter=1 (the most common first-failure point). The guard must NOT
 # require _start_iter > 1; if it does, complete iter-1 members are re-dispatched.
-print_test_section "[#1805/CMBR-1] iter=1 interrupted: build complete in iter=1 is skipped, test dispatched"
+print_test_section "[#1805/DSCMBR-1] iter=1 interrupted: build complete in iter=1 is skipped, test dispatched"
 
 # Given — a run is being resumed; in the interrupted iteration (iter 1), member
 #   stage "build" completed and member stage "test" was interrupted before
@@ -289,7 +289,7 @@ zb_engine_loop_state "$STATE_FILE" "build-test" 1 5 "in_progress"
 
 # Record that "build" completed in iter 1 before the interruption.
 # stage_statuses.build = "complete" is what the cycle orchestrator checks to
-# decide whether to skip a member on resume (ADR-006 §3.6 / CMBR-1).
+# decide whether to skip a member on resume (ADR-006 §3.6 / DSCMBR-1).
 jq '.stage_statuses.build = "complete"' "$STATE_FILE" \
     > "${STATE_FILE}.cmbr1i1.tmp" && mv "${STATE_FILE}.cmbr1i1.tmp" "$STATE_FILE"
 
@@ -325,13 +325,13 @@ set -e
 
 # Then — no stage.start event for "build" (already complete in iter 1).
 # cycle_dispatch_stage must NOT be called for "build" in iter 1.
-# Before the fix: CMBR-1 guard requires _start_iter > 1; for _start_iter=1 the
+# Before the fix: DSCMBR-1 guard requires _start_iter > 1; for _start_iter=1 the
 #   condition is false, _cid_resume_first_iter stays false → build IS dispatched →
 #   _CMBR1I1_BUILD_DISPATCHED=1 → assert 0==1 → FAILS (exposes the code bug).
 # After the fix: guard works for _start_iter=1 too → build is skipped →
 #   _CMBR1I1_BUILD_DISPATCHED=0 → PASSES.
 assert_eq \
-    "[#1805/CMBR-1] no stage.start for 'build' in iter 1 (complete member skipped on resume within interrupted iter=1; CMBR-1 guard must work for _start_iter=1 not only _start_iter>1)" \
+    "[#1805/DSCMBR-1] no stage.start for 'build' in iter 1 (complete member skipped on resume within interrupted iter=1; DSCMBR-1 guard must work for _start_iter=1 not only _start_iter>1)" \
     "0" "$_CMBR1I1_BUILD_DISPATCHED"
 
 # Then — stage.start is emitted for "test" (the interrupted member of iter 1).
@@ -341,15 +341,15 @@ assert_eq \
 # After the fix: build is skipped, test is dispatched →
 #   _CMBR1I1_TEST_DISPATCHED=1 → PASSES.
 assert_eq \
-    "[#1805/CMBR-1] stage.start emitted for 'test' in iter 1 (interrupted cycle member dispatched; CMBR-1 applies to iter=1 not only iter>1)" \
+    "[#1805/DSCMBR-1] stage.start emitted for 'test' in iter 1 (interrupted cycle member dispatched; DSCMBR-1 applies to iter=1 not only iter>1)" \
     "1" "$_CMBR1I1_TEST_DISPATCHED"
 
-# ── CYCL-1: test uses a fixture containing a cyclic stage ────────────────────
+# ── DSCYCL-1: test uses a fixture containing a cyclic stage ────────────────────
 print_test_section "resume-loop-state test uses a fixture containing a cyclic stage"
 
 # cycle-converges-iter2.yaml is loaded above via load_template and driven through
 # cycle_orchestrator_run. Assert it contains type: cycle to formally pin the fixture
-# contains a cyclic stage (as CYCL-1 requires).
+# contains a cyclic stage (as DSCYCL-1 requires).
 _s13_loop_fixt_content="$(cat "$FIXT/cycle-converges-iter2.yaml")"
 assert_contains "cycle fixture used by resume-loop-state test has type: cycle" \
     "$_s13_loop_fixt_content" "type: cycle"
