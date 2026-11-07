@@ -336,7 +336,8 @@ _design_checks() {
             else _dck_block_ids_v _pa _pr "$(extract_acceptance_block "$last" 2>/dev/null)"; fi
         fi
         # #2482: a REMOVED line may name a SPEC that a try of this run wrote and
-        # that did not pass — its draft is in the try archive.
+        # that did not pass — its draft is in the try archive, under this
+        # stage's own name, so no other stage's drafts are read.
         local _tried="" _tf _ta _tr _ast="${ZBUILD_CURRENT_STAGE:-design}"
         for _tf in "${design_md%/*}/attempts/${_ast//[^A-Za-z0-9_-]/_}"/*/design-draft.md; do
             [[ -s "$_tf" ]] || continue

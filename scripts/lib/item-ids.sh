@@ -68,7 +68,8 @@ zb_ids_check_v() {
     for id in $na; do
         if [[ "$id" =~ ^SPEC-[0-9]+$ ]]; then _zic+=("ID_OLD_FORM $id $px"); continue; fi
         if ! zb_id_new_form "$id" "$px"; then
-            if [[ "$id" =~ $_ZB_ID_ANY_RE ]]; then _zic+=("ID_NO_PREFIX $id $px"); else _zic+=("ID_BAD $id $px"); fi
+            # One that has the prefix is a bad id, not one without it (review on #2483).
+            if [[ "$id" =~ $_ZB_ID_ANY_RE && "$id" != "$px"* ]]; then _zic+=("ID_NO_PREFIX $id $px"); else _zic+=("ID_BAD $id $px"); fi
             continue
         fi
         code="${BASH_REMATCH[1]}"; num="${BASH_REMATCH[2]}"

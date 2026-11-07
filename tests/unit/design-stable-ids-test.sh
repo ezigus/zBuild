@@ -145,6 +145,11 @@ _check 'LOOP-1[code]: a covers: RQRSUM-1' '  When: it runs' '  Then: it is done'
 _has "[D6] an id with no prefix is refused" "ID_NO_PREFIX LOOP-1"
 assert_contains "[D6] ...in plain words that name design's prefix" "$P" "does not start with DS"
 assert_contains "[D6] ...and show an id in the right form" "$P" "DSLOOP-1"
+# Review on #2483: an id with the prefix and a number from 0 is not an id —
+# it does have the prefix, so the sentence must not say it lacks it.
+BIND=("DSLOOP-0: tests/unit/run-test.sh")
+_check 'DSLOOP-0[code]: a covers: RQRSUM-1' '  When: it runs' '  Then: it is done'
+_has "[D6] an id with the prefix and number 0 is a bad id" "ID_BAD DSLOOP-0"
 BIND=("DSLBL-1: tests/unit/run-test.sh")
 _check 'DSLBL-1[code]: a covers: RQRSUM-1' '  When: it runs' '  Then: it is done'
 _has "[D7] a SPEC id the issue's text writes is refused" "ID_IN_ISSUE DSLBL-1"
