@@ -3217,12 +3217,10 @@ main() {
             _CYCLE_DISPATCH_STATUS="failed"
             return 1
         fi
-        # Emit stage.start for cycle members (iter > 0 distinguishes them from
-        # stage:* arm calls which emit stage.start before calling this function).
-        if [[ "$_cd_iter" -gt 0 ]]; then
-            eb_emit_event "stage.start" "stage=$_cd_stage" \
-                || { local _r=$?; warn "eb_emit_event stage.start failed (rc=$_r, continuing — disk/perm/lock?)"; true; }
-        fi
+        # stage.start for cycle members is emitted by _cycle_iter_dispatch in
+        # cycle-orchestrator.sh (before this hook is called), keeping the
+        # emission in one place and making it visible to test harnesses that
+        # mock cycle_dispatch_stage.
         set +e; plugin_hook_call "$_cd_plugin_dir" run "$_cd_stage" "$_cd_state"; _cd_rc=$?
         [[ $_cd_had_e -eq 1 ]] && set -e
         _cd_manifest="$_cd_plugin_dir/manifest.yaml"

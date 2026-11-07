@@ -1858,6 +1858,16 @@ _cycle_iter_dispatch() {
                 "base=$_g3_base" "bumped=$_g3_bumped" "cap=$_g3_cap" 2>/dev/null || true
         fi
 
+        # ADR-006 / #1805 (DSPK-1, FRSH-1): emit stage.start for leaf cycle members
+        # when iter > 0. iter > 0 distinguishes cycle-member dispatches from the
+        # stage:* arm path (which passes iter=0 and emits stage.start before calling
+        # cycle_dispatch_stage). The CMBR-1 skip guard above fires before this point,
+        # so members skipped on resume never emit stage.start.
+        if [[ "$iter" -gt 0 ]]; then
+            eb_emit_event "stage.start" "stage=$s" \
+                || { local _r=$?; warn "eb_emit_event stage.start failed (rc=$_r, continuing — disk/perm/lock?)"; true; }
+        fi
+
         set +e
         cycle_dispatch_stage "$s" "$iter" "$state_file"
         rc=$?
