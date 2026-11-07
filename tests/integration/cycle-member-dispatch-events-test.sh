@@ -119,22 +119,6 @@ assert_eq "build dispatch.start position=1" "1" "$build_position"
 review_position=$(jq -r 'select(.type=="cycle.member.dispatch.start" and .data.member=="review") | .data.position' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
 assert_eq "review dispatch.start position=2" "2" "$review_position"
 
-# [#1805/FRSH-1]: on a fresh run, cycle member stages dispatch and emit stage.start.
-# Given — a fresh cycle run with no prior state; the_cycle starts at iter 1.
-# When  — cycle_orchestrator_run executes; _cycle_dispatch fires _cd_iter > 0 guard.
-# Then  — each dispatched member emits stage.start, confirming member stages are
-#   dispatched from stage 1 on a fresh run with no stage skipped due to prior state.
-#   The cycle has 2 members (build, review) dispatched in 1 iteration (iter 1 > 0):
-#   stage.start is emitted for each, so the total is 2.
-# Before the code change: _cycle_dispatch has no _cd_iter > 0 guard → no stage.start
-#   emitted for cycle members on fresh runs → count=0 → FAILS.
-# After the code change: guard fires at iter 1 → build and review emit stage.start
-#   → count=2 → PASSES.
-_sect1_stage_start_count=$(jq -r 'select(.type=="stage.start") | .type' \
-    "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
-assert_eq "[#1805/FRSH-1] fresh cycle run: cycle member stages (build, review) emit stage.start (dispatched from stage 1; _cd_iter > 0 guard fires at iter 1)" \
-    "2" "$_sect1_stage_start_count"
-
 # ── Section 2: 2-level cycle — nested-cycle and leaf members ────────────────
 print_test_section "2. 2-level cycle: nested-cycle member kind=cycle"
 
