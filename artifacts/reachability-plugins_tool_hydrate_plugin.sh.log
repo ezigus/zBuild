@@ -14,6 +14,7 @@
   [38;2;74;222;128m✓[0m [#1805/RHYD-1] intake emits no stage.start (complete stage skipped)
   [38;2;74;222;128m✓[0m [#1805/SKIP-1] dispatch-unit loop emits no stage.start for complete stage whose artifact is present after rehydration (intake skipped)
   [38;2;74;222;128m✓[0m [#1805/DSPK-1] stage k (cyc → member cycled) dispatched and emits stage.start on resume (interrupted stage was dispatched)
+  [38;2;74;222;128m✓[0m [#1805/DSPK-1] cycle.start emitted for stage k (cyc) on resume (cycle.start half of Then: cycle stage k was dispatched)
 
   [38;2;0;212;255m[#1805/RHYD-1] path 2: auto-resume (status=interrupted) restores artifacts[0m
   [38;2;74;222;128m✓[0m [#1805/RHYD-1] path 2 (auto-resume/interrupted): intake-result.json restored
@@ -62,6 +63,8 @@
   [38;2;0;212;255m[#1805/FRSH-2] fresh run (no --resume, in_progress status) never skips stages due to prior-run artifacts in git state branch[0m
   [38;2;74;222;128m✓[0m [#1805/FRSH-2] fresh run (no --resume, in_progress status) dispatches intake even with prior-run artifacts on git state branch (dispatch-unit skip guard conditional on resume_mode)
   [38;2;74;222;128m✓[0m [#1805/FRSH-2] fresh run emits no stage.skip events (dispatch-unit skip guard conditional on resume_mode; does not activate for fresh runs)
+  [38;2;248;113;113m✗[0m [#1805/FRSH-2] cycle stage cyc dispatched on fresh run (cycle.start emitted; dispatch-unit skip guard conditional on resume_mode — does not silently skip cyc)
+    [2mexpected >0, got: 0[0m
 
   [38;2;0;212;255mresume-rehydrate test uses a fixture containing a cyclic stage[0m
   [38;2;74;222;128m✓[0m [#1805/CYCL-1] resume-rehydrate (RHYD-1/RHYD-2/BNDY-1) fixture (artifact-snapshot-coverage) contains type: cycle
@@ -69,7 +72,9 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 45 tests passed[0m
+  [38;2;248;113;113m[1m1 of 47 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1805/FRSH-2] cycle stage cyc dispatched on fresh run (cycle.start emitted; dispatch-unit skip guard conditional on resume_mode — does not silently skip cyc)
 
 ### plugins/tool/hydrate/plugin.sh head tests/integration/resume-rehydrate-test.sh
 
@@ -87,6 +92,7 @@
   [38;2;74;222;128m✓[0m [#1805/RHYD-1] intake emits no stage.start (complete stage skipped)
   [38;2;74;222;128m✓[0m [#1805/SKIP-1] dispatch-unit loop emits no stage.start for complete stage whose artifact is present after rehydration (intake skipped)
   [38;2;74;222;128m✓[0m [#1805/DSPK-1] stage k (cyc → member cycled) dispatched and emits stage.start on resume (interrupted stage was dispatched)
+  [38;2;74;222;128m✓[0m [#1805/DSPK-1] cycle.start emitted for stage k (cyc) on resume (cycle.start half of Then: cycle stage k was dispatched)
 
   [38;2;0;212;255m[#1805/RHYD-1] path 2: auto-resume (status=interrupted) restores artifacts[0m
   [38;2;74;222;128m✓[0m [#1805/RHYD-1] path 2 (auto-resume/interrupted): intake-result.json restored
@@ -135,6 +141,8 @@
   [38;2;0;212;255m[#1805/FRSH-2] fresh run (no --resume, in_progress status) never skips stages due to prior-run artifacts in git state branch[0m
   [38;2;74;222;128m✓[0m [#1805/FRSH-2] fresh run (no --resume, in_progress status) dispatches intake even with prior-run artifacts on git state branch (dispatch-unit skip guard conditional on resume_mode)
   [38;2;74;222;128m✓[0m [#1805/FRSH-2] fresh run emits no stage.skip events (dispatch-unit skip guard conditional on resume_mode; does not activate for fresh runs)
+  [38;2;248;113;113m✗[0m [#1805/FRSH-2] cycle stage cyc dispatched on fresh run (cycle.start emitted; dispatch-unit skip guard conditional on resume_mode — does not silently skip cyc)
+    [2mexpected >0, got: 0[0m
 
   [38;2;0;212;255mresume-rehydrate test uses a fixture containing a cyclic stage[0m
   [38;2;74;222;128m✓[0m [#1805/CYCL-1] resume-rehydrate (RHYD-1/RHYD-2/BNDY-1) fixture (artifact-snapshot-coverage) contains type: cycle
@@ -142,7 +150,9 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 45 tests passed[0m
+  [38;2;248;113;113m[1m1 of 47 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1805/FRSH-2] cycle stage cyc dispatched on fresh run (cycle.start emitted; dispatch-unit skip guard conditional on resume_mode — does not silently skip cyc)
 
 ### plugins/tool/hydrate/plugin.sh reverted tests/integration/from-stage-rehydrate-test.sh
 
@@ -208,11 +218,11 @@
 
   [38;2;0;212;255m[#1805/ITER-1] cycle orchestrator resumes from current_iter (not 1)[0m
 
-══ build-test [cycle] seq=2 input ══════════════════════════════ 23:01:12 UTC ══
+══ build-test [cycle] seq=2 input ══════════════════════════════ 01:59:46 UTC ══
 (no stage summaries)
 
 
-══ build-test [cycle] seq=2 output OK 0.4s ═════════════════════ 23:01:12 UTC ══
+══ build-test [cycle] seq=2 output OK 0.4s ═════════════════════ 01:59:46 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
@@ -220,22 +230,22 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#1805/ITER-1] iter-1 stages not dispatched on resume into iter-2 (no stage.start for complete iter)
 
   [38;2;0;212;255m[#1805/ITER-1] nested-loop re-entry after outer resume starts at iter=1 (outer consumed flag)[0m
-══ build-test [cycle] seq=1 input ══════════════════════════════ 23:01:12 UTC ══
+══ build-test [cycle] seq=1 input ══════════════════════════════ 01:59:46 UTC ══
 (no feedback — first iteration)
 
 
-══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 23:01:13 UTC ══
+══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 01:59:47 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
   [38;2;74;222;128m✓[0m [#1805/ITER-1] nested-loop re-entry starts at iter=1 (outer resume consumed/cleared _ZBUILD_RESUME_ACTIVE)
 
   [38;2;0;212;255m[#1805/ITER-1] without _ZBUILD_RESUME_ACTIVE, fresh run always starts at iter=1[0m
-══ build-test [cycle] seq=1 input ══════════════════════════════ 23:01:13 UTC ══
+══ build-test [cycle] seq=1 input ══════════════════════════════ 01:59:47 UTC ══
 (no feedback — first iteration)
 
 
-══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 23:01:13 UTC ══
+══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 01:59:47 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
@@ -243,10 +253,10 @@ health: progress=0 (no progress) - defects=0 → score=0
 
   [38;2;0;212;255m[#1805/CMBR-1] complete cycle members in interrupted iter skipped; interrupted member dispatched[0m
 
-══ build-test [cycle] seq=2 input ══════════════════════════════ 23:01:14 UTC ══
+══ build-test [cycle] seq=2 input ══════════════════════════════ 01:59:48 UTC ══
 (no stage summaries)
 
-══ build-test [cycle] seq=2 output OK 0.2s ═════════════════════ 23:01:14 UTC ══
+══ build-test [cycle] seq=2 output OK 0.2s ═════════════════════ 01:59:48 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
@@ -269,11 +279,11 @@ health: progress=0 (no progress) - defects=0 → score=0
 
   [38;2;0;212;255m[#1805/ITER-1] cycle orchestrator resumes from current_iter (not 1)[0m
 
-══ build-test [cycle] seq=2 input ══════════════════════════════ 23:00:52 UTC ══
+══ build-test [cycle] seq=2 input ══════════════════════════════ 01:59:26 UTC ══
 (no stage summaries)
 
 
-══ build-test [cycle] seq=2 output OK 0.3s ═════════════════════ 23:00:52 UTC ══
+══ build-test [cycle] seq=2 output OK 0.3s ═════════════════════ 01:59:26 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
@@ -281,22 +291,22 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#1805/ITER-1] iter-1 stages not dispatched on resume into iter-2 (no stage.start for complete iter)
 
   [38;2;0;212;255m[#1805/ITER-1] nested-loop re-entry after outer resume starts at iter=1 (outer consumed flag)[0m
-══ build-test [cycle] seq=1 input ══════════════════════════════ 23:00:53 UTC ══
+══ build-test [cycle] seq=1 input ══════════════════════════════ 01:59:26 UTC ══
 (no feedback — first iteration)
 
 
-══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 23:00:53 UTC ══
+══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 01:59:27 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
   [38;2;74;222;128m✓[0m [#1805/ITER-1] nested-loop re-entry starts at iter=1 (outer resume consumed/cleared _ZBUILD_RESUME_ACTIVE)
 
   [38;2;0;212;255m[#1805/ITER-1] without _ZBUILD_RESUME_ACTIVE, fresh run always starts at iter=1[0m
-══ build-test [cycle] seq=1 input ══════════════════════════════ 23:00:53 UTC ══
+══ build-test [cycle] seq=1 input ══════════════════════════════ 01:59:27 UTC ══
 (no feedback — first iteration)
 
 
-══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 23:00:53 UTC ══
+══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 01:59:27 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
@@ -304,10 +314,10 @@ health: progress=0 (no progress) - defects=0 → score=0
 
   [38;2;0;212;255m[#1805/CMBR-1] complete cycle members in interrupted iter skipped; interrupted member dispatched[0m
 
-══ build-test [cycle] seq=2 input ══════════════════════════════ 23:00:54 UTC ══
+══ build-test [cycle] seq=2 input ══════════════════════════════ 01:59:28 UTC ══
 (no stage summaries)
 
-══ build-test [cycle] seq=2 output OK 0.2s ═════════════════════ 23:00:54 UTC ══
+══ build-test [cycle] seq=2 output OK 0.2s ═════════════════════ 01:59:28 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
@@ -398,6 +408,270 @@ health: progress=0 (no progress) - defects=0 → score=0
 
   [38;2;74;222;128m[1mAll 18 tests passed[0m
 
+### plugins/tool/hydrate/plugin.sh reverted tests/integration/cycle-member-dispatch-events-test.sh
+
+[38;2;0;212;255m[1m  cycle.member.dispatch.{start,complete} instrumentation (Wave 19-D-1 #731)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m1. leaf-only cycle: 2 members, 2 start + 2 complete events[0m
+══ the_cycle [cycle] seq=1 input ═══════════════════════════════ 02:00:09 UTC ══
+(no feedback — first iteration)
+
+
+══ the_cycle [cycle] seq=1 output OK 0.3s ══════════════════════ 02:00:09 UTC ══
+exit_when stage=review field=verdict op=eq value=approve → MATCHED (got=approve)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: the_cycle ✓ ──
+  [38;2;74;222;128m✓[0m cycle converges rc=0 on iter 1
+  [38;2;74;222;128m✓[0m cycle.member.dispatch.start emitted 2 times (one per leaf member)
+  [38;2;74;222;128m✓[0m cycle.member.dispatch.complete emitted 2 times
+  [38;2;74;222;128m✓[0m first dispatched member = build
+  [38;2;74;222;128m✓[0m second dispatched member = review
+  [38;2;74;222;128m✓[0m build member kind=leaf
+  [38;2;74;222;128m✓[0m review dispatch.complete verdict=approve (RAW)
+  [38;2;74;222;128m✓[0m review dispatch.complete rc=0
+  [38;2;74;222;128m✓[0m build dispatch.start position=1
+  [38;2;74;222;128m✓[0m review dispatch.start position=2
+  [38;2;248;113;113m✗[0m [#1805/FRSH-1] fresh cycle run: cycle member stages (build, review) emit stage.start (dispatched from stage 1; _cd_iter > 0 guard fires at iter 1)
+    [2mexpected: 2, got: 0[0m
+
+  [38;2;0;212;255m2. 2-level cycle: nested-cycle member kind=cycle[0m
+══ outer_cycle [cycle] seq=1 input ═════════════════════════════ 02:00:09 UTC ══
+(no feedback — first iteration)
+
+══ inner_cycle [cycle] seq=1 input ═════════════════════════════ 02:00:09 UTC ══
+(no feedback — first iteration)
+
+
+══ inner_cycle [cycle] seq=1 output OK 0.3s ════════════════════ 02:00:10 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: inner_cycle ✓ ──
+
+══ outer_cycle [cycle] seq=1 output OK 0.8s ════════════════════ 02:00:10 UTC ══
+exit_when stage=review field=verdict op=eq value=approve → MATCHED (got=approve)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: outer_cycle ✓ ──
+  [38;2;74;222;128m✓[0m outer cycle converges rc=0
+  [38;2;74;222;128m✓[0m outer cycle dispatched 2 members
+  [38;2;74;222;128m✓[0m inner_cycle member kind=cycle
+  [38;2;74;222;128m✓[0m review (outer's 2nd member) kind=leaf
+  [38;2;74;222;128m✓[0m inner cycle dispatched 2 members (build, test)
+  [38;2;74;222;128m✓[0m inner_cycle dispatch.complete rc=0 (converged)
+  [38;2;74;222;128m✓[0m inner_cycle dispatch.complete verdict=pass
+
+  [38;2;0;212;255m3. inner exhausts with failing tests → outer goes round, then halts (never advisory-rescued, #1208, #2271)[0m
+══ outer_cycle [cycle] seq=1 input ═════════════════════════════ 02:00:10 UTC ══
+(no feedback — first iteration)
+
+══ inner_cycle [cycle] seq=1 input ═════════════════════════════ 02:00:10 UTC ══
+(no feedback — first iteration)
+
+
+══ inner_cycle [cycle] seq=1 output OK 0.3s ════════════════════ 02:00:11 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: inner_cycle ✓ ──
+
+══ inner_cycle [cycle] seq=2 input ═════════════════════════════ 02:00:11 UTC ══
+(no stage summaries)
+
+
+══ inner_cycle [cycle] seq=2 output OK 0.3s ════════════════════ 02:00:11 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: inner_cycle ✓ ──
+
+══ inner_cycle [cycle] seq=3 input ═════════════════════════════ 02:00:12 UTC ══
+(no stage summaries)
+
+
+══ inner_cycle [cycle] seq=3 output OK 0.3s ════════════════════ 02:00:12 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: inner_cycle ✓ ──
+  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage=review field=verdict
+══ outer_cycle [cycle] seq=1 output OK 2.1s ════════════════════ 02:00:12 UTC ══
+exit_when stage=review field=verdict op=eq value=approve → NOT MATCHED (got=)
+health: progress=0 (no progress) - defects=1 → score=-1
+── end stage-io: outer_cycle ✓ ──
+
+══ outer_cycle [cycle] seq=2 input ═════════════════════════════ 02:00:13 UTC ══
+(no stage summaries)
+
+══ inner_cycle [cycle] seq=1 input ═════════════════════════════ 02:00:13 UTC ══
+(no feedback — first iteration)
+
+
+══ inner_cycle [cycle] seq=1 output OK 0.3s ════════════════════ 02:00:13 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: inner_cycle ✓ ──
+
+══ inner_cycle [cycle] seq=2 input ═════════════════════════════ 02:00:14 UTC ══
+(no stage summaries)
+
+
+══ inner_cycle [cycle] seq=2 output OK 0.3s ════════════════════ 02:00:14 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: inner_cycle ✓ ──
+
+══ inner_cycle [cycle] seq=3 input ═════════════════════════════ 02:00:14 UTC ══
+(no stage summaries)
+
+
+══ inner_cycle [cycle] seq=3 output OK 0.3s ════════════════════ 02:00:15 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: inner_cycle ✓ ──
+  [38;2;74;222;128m✓[0m inner_cycle dispatch.start emitted once per outer round (instrumentation intact)
+  [38;2;74;222;128m✓[0m inner_cycle's last dispatch.complete rc=1 (#1208: exhausted with failing tests)
+  [38;2;74;222;128m✓[0m inner_cycle dispatch.complete verdict=blocking_member_failure (propagated)
+  [38;2;74;222;128m✓[0m inner_cycle dispatch.complete disposition is EMPTY (no inner-member leak)
+  [38;2;74;222;128m✓[0m an inner LEAF member still reports its own disposition
+  [38;2;74;222;128m✓[0m review NOT dispatched after a failing inner cycle (#1208 halt, no rescue)
+  [38;2;74;222;128m✓[0m outer cycle halts rc=1, outcome failed, reason blocking_member_failure (propagated)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 25 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1805/FRSH-1] fresh cycle run: cycle member stages (build, review) emit stage.start (dispatched from stage 1; _cd_iter > 0 guard fires at iter 1)
+
+### plugins/tool/hydrate/plugin.sh head tests/integration/cycle-member-dispatch-events-test.sh
+
+[38;2;0;212;255m[1m  cycle.member.dispatch.{start,complete} instrumentation (Wave 19-D-1 #731)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m1. leaf-only cycle: 2 members, 2 start + 2 complete events[0m
+══ the_cycle [cycle] seq=1 input ═══════════════════════════════ 02:00:16 UTC ══
+(no feedback — first iteration)
+
+
+══ the_cycle [cycle] seq=1 output OK 0.3s ══════════════════════ 02:00:16 UTC ══
+exit_when stage=review field=verdict op=eq value=approve → MATCHED (got=approve)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: the_cycle ✓ ──
+  [38;2;74;222;128m✓[0m cycle converges rc=0 on iter 1
+  [38;2;74;222;128m✓[0m cycle.member.dispatch.start emitted 2 times (one per leaf member)
+  [38;2;74;222;128m✓[0m cycle.member.dispatch.complete emitted 2 times
+  [38;2;74;222;128m✓[0m first dispatched member = build
+  [38;2;74;222;128m✓[0m second dispatched member = review
+  [38;2;74;222;128m✓[0m build member kind=leaf
+  [38;2;74;222;128m✓[0m review dispatch.complete verdict=approve (RAW)
+  [38;2;74;222;128m✓[0m review dispatch.complete rc=0
+  [38;2;74;222;128m✓[0m build dispatch.start position=1
+  [38;2;74;222;128m✓[0m review dispatch.start position=2
+  [38;2;248;113;113m✗[0m [#1805/FRSH-1] fresh cycle run: cycle member stages (build, review) emit stage.start (dispatched from stage 1; _cd_iter > 0 guard fires at iter 1)
+    [2mexpected: 2, got: 0[0m
+
+  [38;2;0;212;255m2. 2-level cycle: nested-cycle member kind=cycle[0m
+══ outer_cycle [cycle] seq=1 input ═════════════════════════════ 02:00:16 UTC ══
+(no feedback — first iteration)
+
+══ inner_cycle [cycle] seq=1 input ═════════════════════════════ 02:00:16 UTC ══
+(no feedback — first iteration)
+
+
+══ inner_cycle [cycle] seq=1 output OK 0.3s ════════════════════ 02:00:17 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: inner_cycle ✓ ──
+
+══ outer_cycle [cycle] seq=1 output OK 0.8s ════════════════════ 02:00:17 UTC ══
+exit_when stage=review field=verdict op=eq value=approve → MATCHED (got=approve)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: outer_cycle ✓ ──
+  [38;2;74;222;128m✓[0m outer cycle converges rc=0
+  [38;2;74;222;128m✓[0m outer cycle dispatched 2 members
+  [38;2;74;222;128m✓[0m inner_cycle member kind=cycle
+  [38;2;74;222;128m✓[0m review (outer's 2nd member) kind=leaf
+  [38;2;74;222;128m✓[0m inner cycle dispatched 2 members (build, test)
+  [38;2;74;222;128m✓[0m inner_cycle dispatch.complete rc=0 (converged)
+  [38;2;74;222;128m✓[0m inner_cycle dispatch.complete verdict=pass
+
+  [38;2;0;212;255m3. inner exhausts with failing tests → outer goes round, then halts (never advisory-rescued, #1208, #2271)[0m
+══ outer_cycle [cycle] seq=1 input ═════════════════════════════ 02:00:17 UTC ══
+(no feedback — first iteration)
+
+══ inner_cycle [cycle] seq=1 input ═════════════════════════════ 02:00:17 UTC ══
+(no feedback — first iteration)
+
+
+══ inner_cycle [cycle] seq=1 output OK 0.3s ════════════════════ 02:00:18 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: inner_cycle ✓ ──
+
+══ inner_cycle [cycle] seq=2 input ═════════════════════════════ 02:00:18 UTC ══
+(no stage summaries)
+
+
+══ inner_cycle [cycle] seq=2 output OK 0.3s ════════════════════ 02:00:18 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: inner_cycle ✓ ──
+
+══ inner_cycle [cycle] seq=3 input ═════════════════════════════ 02:00:19 UTC ══
+(no stage summaries)
+
+
+══ inner_cycle [cycle] seq=3 output OK 0.3s ════════════════════ 02:00:19 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: inner_cycle ✓ ──
+  [38;2;250;204;21m[1m⚠[0m cycle.iteration.verdict_missing — iter=1 stage=review field=verdict
+══ outer_cycle [cycle] seq=1 output OK 2.1s ════════════════════ 02:00:20 UTC ══
+exit_when stage=review field=verdict op=eq value=approve → NOT MATCHED (got=)
+health: progress=0 (no progress) - defects=1 → score=-1
+── end stage-io: outer_cycle ✓ ──
+
+══ outer_cycle [cycle] seq=2 input ═════════════════════════════ 02:00:20 UTC ══
+(no stage summaries)
+
+══ inner_cycle [cycle] seq=1 input ═════════════════════════════ 02:00:20 UTC ══
+(no feedback — first iteration)
+
+
+══ inner_cycle [cycle] seq=1 output OK 0.3s ════════════════════ 02:00:20 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: inner_cycle ✓ ──
+
+══ inner_cycle [cycle] seq=2 input ═════════════════════════════ 02:00:21 UTC ══
+(no stage summaries)
+
+
+══ inner_cycle [cycle] seq=2 output OK 0.3s ════════════════════ 02:00:21 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: inner_cycle ✓ ──
+
+══ inner_cycle [cycle] seq=3 input ═════════════════════════════ 02:00:22 UTC ══
+(no stage summaries)
+
+
+══ inner_cycle [cycle] seq=3 output OK 0.3s ════════════════════ 02:00:22 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: inner_cycle ✓ ──
+  [38;2;74;222;128m✓[0m inner_cycle dispatch.start emitted once per outer round (instrumentation intact)
+  [38;2;74;222;128m✓[0m inner_cycle's last dispatch.complete rc=1 (#1208: exhausted with failing tests)
+  [38;2;74;222;128m✓[0m inner_cycle dispatch.complete verdict=blocking_member_failure (propagated)
+  [38;2;74;222;128m✓[0m inner_cycle dispatch.complete disposition is EMPTY (no inner-member leak)
+  [38;2;74;222;128m✓[0m an inner LEAF member still reports its own disposition
+  [38;2;74;222;128m✓[0m review NOT dispatched after a failing inner cycle (#1208 halt, no rescue)
+  [38;2;74;222;128m✓[0m outer cycle halts rc=1, outcome failed, reason blocking_member_failure (propagated)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 25 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1805/FRSH-1] fresh cycle run: cycle member stages (build, review) emit stage.start (dispatched from stage 1; _cd_iter > 0 guard fires at iter 1)
+
 ### plugins/tool/hydrate/plugin.sh reverted tests/unit/hydrate-stage-test.sh
 
 [38;2;0;212;255m[1m  hydrate stage (#1074)[0m
@@ -436,7 +710,7 @@ health: progress=0 (no progress) - defects=0 → score=0
 
   [38;2;0;212;255m[#1805/DLGT-1] hydrate_run calls _artifact_persist_put_back (not inline _hydrate_put_back)[0m
   [38;2;248;113;113m✗[0m [#1805/DLGT-1] hydrate_run invoked _artifact_persist_put_back (sentinel written)
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/zb-hydrate.H0BiS6/spec13-put-back-called[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/zb-hydrate.ZCm6GW/spec13-put-back-called[0m
 
   [38;2;0;212;255m[SPEC-3][guard] a failed restore leaves the area absent, not partial[0m
   [38;2;74;222;128m✓[0m [SPEC-3] hydrate still returns 0 on a failed restore (exit 0)
