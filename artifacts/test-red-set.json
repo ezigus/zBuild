@@ -1,4 +1,0 @@
-[
-  "tests/integration/run-timed-out-test.sh",
-  "tests/integration/sigterm-aborts-pipeline-test.sh"
-]
