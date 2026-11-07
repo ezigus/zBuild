@@ -1,0 +1,61 @@
+- (… 28 earlier steps not shown)
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh
+- Bash: grep -n "stage\.start\|stage.start" tests/golden/full-pipeline/event-sequence.golden | head -20
+- Bash: grep -n "stage\.start\|stage.start" tests/golden/parity/event-sequence.golden | head -20
+- Bash: grep -n "cycle\|build\|review" tests/golden/parity/event-sequence.golden | head -30
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- said: Now I understand the issue. The `[#1805/FRSH-1]` test expects `stage.start` events from cycle members, but the emission is in runner.sh's `cycle_dispatch_stage` mock, which the test replaces. The fix is to move the `stage.start` emission INTO the orchestrator itself (before the `cycle_dispatch_stage…
+- Read: /home/runner/work/_temp/zbuild-state/artifacts/notes/build.md
+- Write: /home/runner/work/_temp/zbuild-state/artifacts/notes/build.md
+- said: Now let me make the changes. First, add stage.start emission to cycle-orchestrator.sh:
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/cycle-orchestrator.sh
+- Edit: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/cycle-orchestrator.sh
+- said: Now remove the duplicate stage.start emission from runner.sh's `cycle_dispatch_stage`:
+- Edit: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- said: Now run the failing test:
+- Bash: bash tests/integration/cycle-member-dispatch-events-test.sh 2>&1 | tail -20
+- said: All 25 tests pass now. Let me run the other acceptance tests to make sure nothing broke:
+- Bash: bash tests/integration/resume-loop-state-test.sh 2>&1 | tail -10
+- Bash: bash tests/unit/hydrate-stage-test.sh 2>&1 | tail -5
+- Bash: bash tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh 2>&1 | tail -5
+- Bash: bash tests/integration/nested-loop-rounds-test.sh 2>&1 | tail -5
+- Bash: bash tests/integration/resume-rehydrate-test.sh 2>&1 | tail -10
+- Bash: bash tests/integration/from-stage-rehydrate-test.sh 2>&1 | tail -10
+- Bash: bash tests/integration/resume-rehydrate-test.sh 2>&1 | grep -E "FRSH-2|cycle\.start|cyc" | head -20
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh
+- Bash: grep -n "_S_FRSH2_EVENTS_JSONL\|ZBUILD_CYCLES_ENABLED\|artifact-snapshot-coverage" tests/integration/resume-rehydrate-test.sh | head -20
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh
+- Bash: cat tests/fixtures/templates/artifact-snapshot-coverage.yaml
+- Bash: grep -n "cycle\.start\|cycle.start" core/pipeline/runner.sh | head -20
+- Bash: grep -n "cycle\.start\|cycle.start" core/pipeline/cycle-orchestrator.sh | head -20
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/cycle-orchestrator.sh
+- Bash: grep -n "cycle:\*\|cycle\*\|cycle:\|ZBUILD_CYCLES_ENABLED\|_has_cycle\|_tpl_has_cycle" core/pipeline/runner.sh | head -20
+- Bash: grep -n "skip_complete\|resume_mode.*cycle\|cycle.*resume_mode" core/pipeline/runner.sh | head -20
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Bash: git show 3bf04122 -- tests/integration/resume-rehydrate-test.sh | grep "cycle.start\|cycle\.start" | head -20
+- Bash: bash tests/integration/resume-rehydrate-test.sh 2>&1 | grep -E "frsh2|FRSH-2" | head -20
+- Bash: grep -n "mock_plugin_factory\|zb_make_passthrough\|PLUGINS_ROOT" tests/integration/resume-rehydrate-test.sh | head -20
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh
+- Bash: grep -n "mock_plugin_factory" scripts/lib/test-helpers.sh | head -10
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/scripts/lib/test-helpers.sh
+- Bash: bash tests/integration/resume-rehydrate-test.sh 2>&1 | grep -E "frsh2-stderr|frsh2-stdout|failed|error|cycle\.start|intake|cyc" | head -30
+- Bash: bash tests/integration/resume-rehydrate-test.sh 2>/dev/null; ls /tmp/zb-test-*/frsh2-stdout.txt 2>/dev/null | head -3
+- Bash: set -euo pipefail source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh # create a quick FRSH-2 reproduction setup_test_env "frsh2-debug" export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" mkdir -p "$TEST_TEMP_DIR/plugins" mock_plugin_factory "intake" "agent" 0 >/dev/null mo…
+- Bash: source scripts/lib/helpers.sh && source scripts/lib/test-helpers.sh && setup_test_env "frsh2-debug" && PLUGINS_ROOT="$TEST_TEMP_DIR/plugins" && mock_plugin_factory "intake" "agent" 0 >/dev/null && mock_plugin_factory "cycled" "agent" 0 "" "builder" >/dev/null && FRSH2_WORK_REPO="$(setup_git_temp_rep…
+- Bash: source scripts/lib/helpers.sh && source scripts/lib/test-helpers.sh && setup_test_env "frsh2-debug" && echo "TEST_TEMP_DIR=$TEST_TEMP_DIR"
+- Bash: source scripts/lib/helpers.sh && source scripts/lib/test-helpers.sh && setup_test_env "frsh2-debug2" && mkdir -p "$TEST_TEMP_DIR/plugins" && mock_plugin_factory "intake" "agent" 0 >/dev/null && mock_plugin_factory "cycled" "agent" 0 "" "builder" >/dev/null && PLUGINS_ROOT="$TEST_TEMP_DIR/plugins" &&…
+- Bash: grep -n "latest\|ENTR-2\|_lr_resolved_dir" core/pipeline/runner.sh | head -20
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Bash: grep -n "pipeline\.resume\|pipeline.resume" core/pipeline/runner.sh | head -20
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh
+- Bash: bash tests/integration/resume-rehydrate-test.sh 2>&1 | grep -A3 "FRSH-2.*cyc.*dispatched" | head -10
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh
+- Bash: grep -n "install_template_overlay" scripts/lib/test-helpers.sh | head -10
+- Bash: grep -n "_find_plugin_for_stage\|resolve_stage_plugin\|role.*resolve\|fallback" core/pipeline/dispatch.sh | head -20
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/dispatch.sh
+- Bash: git stash && bash tests/integration/resume-rehydrate-test.sh 2>&1 | grep "FRSH-2.*cyc" | head -5
