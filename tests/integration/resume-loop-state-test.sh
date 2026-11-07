@@ -264,12 +264,16 @@ jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$STATE_FILE"
 zb_engine_loop_state "$STATE_FILE" "build-test" 2 5 "in_progress"
 
 # Record that "build" completed in iter 2 before the interruption, and that
-# "test" was interrupted (in_progress). stage_statuses is what the cycle
-# orchestrator checks to decide whether to skip a member on resume
-# (ADR-006 §3.6 / DSCMBR-1).
+# "test" was interrupted (and therefore "aborted" — the value
+# _cycle_state_write_member_atomic writes for an interrupted/aborted stage).
+# Using "aborted" here (not "in_progress", which is never written by the real code)
+# ensures the skip-guard check (`stage_statuses[$s] == "complete"`) is exercised on
+# the production data shape: build=complete → skipped; test=aborted → dispatched.
+# stage_statuses is what the cycle orchestrator checks to decide whether to skip a
+# member on resume (ADR-006 §3.6 / DSCMBR-1).
 # Use jq to merge this into the existing state; the cycle_iterations block
 # written by zb_engine_loop_state is preserved (`.` merge keeps all other fields).
-jq '.stage_statuses.build = "complete" | .stage_statuses.test = "in_progress"' "$STATE_FILE" \
+jq '.stage_statuses.build = "complete" | .stage_statuses.test = "aborted"' "$STATE_FILE" \
     > "${STATE_FILE}.cmbr1.tmp" && mv "${STATE_FILE}.cmbr1.tmp" "$STATE_FILE"
 
 # Load the template: cycle-converges-iter2.yaml has build + test as cycle members,
