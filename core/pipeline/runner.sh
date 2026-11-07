@@ -1724,25 +1724,32 @@ _runner_resume_rehydrate() {
     return 0
 }
 
-# ─── _runner_from_stage_preflight <issue> <stages_arr> <from_stage> <state_dir> <plugins_root> ─
+# ─── _runner_from_stage_preflight <issue> <stages_arr> <from_stage> <state_dir> <plugins_root> [skip_restore] ─
 # For --from-stage <s>: restore + put_back artifacts from the git state branch,
 # then verify every stage before <s> has its primary artifact in ZBUILD_ARTIFACT_DIR.
 # Exits 1 naming the missing stage in stderr. (SPEC-3, SPEC-4, ADR-006 §3.6)
+# When skip_restore=true (passed when called after _runner_resume_rehydrate has
+# already restored artifacts), skip the git restore step to avoid redundant git-archive
+# operations (correctness-1 fix, #1805).
 _runner_from_stage_preflight() {
     local _fsp_issue="$1"
     local -n _fsp_stages="$2"
     local _fsp_from_stage="$3" _fsp_state_dir="$4" _fsp_plugins_root="$5"
+    local _fsp_skip_restore="${6:-false}"
     local _fsp_artifacts_dir="$_fsp_state_dir/artifacts"
-    local _fsp_staging="$_fsp_state_dir/from-stage-preflight.staging"
-    rm -rf "$_fsp_staging" 2>/dev/null || true
-    # Restore + put_back (same sequence as _runner_resume_rehydrate)
-    _artifact_persist_restore "$_fsp_issue" "$_fsp_staging" \
-        || warn "from-stage-preflight: git state restore failed for issue=$_fsp_issue — artifact verification may fail"
-    if [[ -d "$_fsp_staging/artifacts" ]]; then
-        _artifact_persist_put_back "$_fsp_staging/artifacts" "$_fsp_artifacts_dir" \
-            || warn "from-stage-preflight: put_back failed for $_fsp_artifacts_dir — partial restoration"
+    if ! $_fsp_skip_restore; then
+        # Restore + put_back (same sequence as _runner_resume_rehydrate). Skipped
+        # when already restored by _runner_resume_rehydrate (resume + from-stage).
+        local _fsp_staging="$_fsp_state_dir/from-stage-preflight.staging"
+        rm -rf "$_fsp_staging" 2>/dev/null || true
+        _artifact_persist_restore "$_fsp_issue" "$_fsp_staging" \
+            || warn "from-stage-preflight: git state restore failed for issue=$_fsp_issue — artifact verification may fail"
+        if [[ -d "$_fsp_staging/artifacts" ]]; then
+            _artifact_persist_put_back "$_fsp_staging/artifacts" "$_fsp_artifacts_dir" \
+                || warn "from-stage-preflight: put_back failed for $_fsp_artifacts_dir — partial restoration"
+        fi
+        rm -rf "${_fsp_staging:?}" 2>/dev/null || true
     fi
-    rm -rf "${_fsp_staging:?}" 2>/dev/null || true
     # When from_stage is a cycle ID, stop checking before the cycle's first
     # member (the first element of _TPL_CYCLE_STAGES_<id>). Cycle IDs are not
     # in active_stages[], so a literal match would never fire and all stages
@@ -2261,7 +2268,11 @@ main() {
                     _lr_raw_run_id="$(get_state_field "$state_file" '.run_id' "$(date +%Y%m%d%H%M%S)-$$")"
                     _runner_run_id="${_lr_raw_run_id//[^a-zA-Z0-9_.-]/}"
                     [[ -z "$_runner_run_id" ]] && _runner_run_id="$(date +%Y%m%d%H%M%S)-$$"
-                    _runner_issue="$(get_state_field "$state_file" '.issue' '0')"
+                    local _lr_raw_issue
+                    _lr_raw_issue="$(get_state_field "$state_file" '.issue' '0')"
+                    # Validate: issue number must be numeric to prevent injection into
+                    # event-log key=value pairs and git branch-name construction.
+                    [[ "$_lr_raw_issue" =~ ^[0-9]+$ ]] && _runner_issue="$_lr_raw_issue" || _runner_issue="0"
                 fi
                 ;;
             manual_resume_only)
@@ -3033,7 +3044,9 @@ main() {
     # ADR-006 §3.6 (#1805): when --from-stage is active, verify every stage
     # before the target has a restorable artifact before the dispatch loop runs.
     if [[ -n "$from_stage" ]]; then
-        if ! _runner_from_stage_preflight "$_runner_issue" "active_stages" "$from_stage" "$state_dir" "$plugins_root"; then
+        # Pass resume_mode as skip_restore: when resuming, _runner_resume_rehydrate
+        # already restored artifacts; skip the redundant git-archive restore in preflight.
+        if ! _runner_from_stage_preflight "$_runner_issue" "active_stages" "$from_stage" "$state_dir" "$plugins_root" "$resume_mode"; then
             return 1
         fi
     fi
@@ -3526,8 +3539,10 @@ main() {
                     # target is reached.
                     if $resume_mode && [[ -z "$skip_until_stage" ]]; then
                         local _du_cyc_status
+                        # Sanitize cycle id to prevent jq injection via template-sourced values.
+                        local _safe_cyc_id="${_cyc_id//[^a-zA-Z0-9_-]/}"
                         _du_cyc_status="$(get_state_field "$state_file" \
-                            ".stage_statuses[\"$_cyc_id\"]" '' 2>/dev/null || true)"
+                            ".stage_statuses[\"$_safe_cyc_id\"]" '' 2>/dev/null || true)"
                         if [[ "$_du_cyc_status" == "complete" ]]; then
                             # DSRHYD-2 / fail-closed (#1805): verify each cycle member's
                             # primary artifact is present after rehydration. Absent →
@@ -3535,6 +3550,12 @@ main() {
                             local _dc_safe="${_cyc_id//-/_}"
                             local _dc_stages_var="_TPL_CYCLE_STAGES_${_dc_safe}"
                             local _dc_csv="${!_dc_stages_var:-}"
+                            # Red-team-3: empty stage list means misconfigured cycle; fail
+                            # closed since we cannot verify any member artifact.
+                            if [[ -z "$_dc_csv" ]]; then
+                                echo "error: resume: cycle '$_cyc_id' is marked complete but its stage list is empty — cannot verify artifacts; aborting" >&2
+                                return 1
+                            fi
                             local _dc_m _dc_plugin_dir _dc_manifest \
                                   _dc_prim _dc_resolved
                             IFS=',' read -ra _dc_members <<< "$_dc_csv"
@@ -3843,8 +3864,10 @@ main() {
                     # templates honour resume semantics for their leaf stages.
                     if $resume_mode && [[ -z "$skip_until_stage" ]]; then
                         local _du_stage_status
+                        # Sanitize stage id to prevent jq injection via template-sourced values.
+                        local _safe_ust="${_ust//[^a-zA-Z0-9_-]/}"
                         _du_stage_status="$(get_state_field "$state_file" \
-                            ".stage_statuses[\"$_ust\"]" '' 2>/dev/null || true)"
+                            ".stage_statuses[\"$_safe_ust\"]" '' 2>/dev/null || true)"
                         if [[ "$_du_stage_status" == "complete" ]]; then
                             # SPEC-2 / fail-closed: verify the primary artifact
                             # is present after rehydration. Absent → exit 1.
