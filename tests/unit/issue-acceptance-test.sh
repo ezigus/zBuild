@@ -254,6 +254,24 @@ _p13="$(cat "$_IA_PROMPT")"
 assert_contains "[SPEC-13] a line an earlier round added is in the judged change" "$_p13" "+emit_from_round_one"
 assert_contains "[SPEC-13] ...and this round's line too" "$_p13" "+round_three_line"
 
+print_test_section "SPEC-14: the findings it is given are answered (ADR-068 §6)"
+# The engine's answer check (zb_answers_finish, finding-answers-test.sh B1-B3)
+# is handed the judge's prompt and reply; what it returns is kept.
+eval "_s14_real_$(declare -f zb_answers_finish)"
+zb_answers_finish() {
+    local -n _s14a="$1"; printf '%s' "$3" > "$TEST_TEMP_DIR/s14-reply"
+    _s14a+=("lens-sre-code finding 1: not mine — a code fix, not the issue's"); _ZB_ANS_SHOWN=1; _ZB_ANS_MISSING=""
+}
+_setup s14
+_IA_ANSWER=$'MET: no artifact paths in code\nMET: an interrupted push reports unavailable\nANSWER lens-sre-code finding 1: not mine — a code fix, not the issue\'s'
+_run
+assert_eq "[SPEC-14] an ANSWER line does not spoil the verdict" "pass" "$(_res .outcome)"
+assert_contains "[SPEC-14] the check is handed the judge's reply" "$(cat "$TEST_TEMP_DIR/s14-reply" 2>/dev/null)" "MET: no artifact paths in code"
+assert_eq "[SPEC-14] what it returns is kept in the result" "lens-sre-code finding 1: not mine — a code fix, not the issue's" "$(_res '.data.answers[0]')"
+assert_eq "[SPEC-14] ...with how many findings it was shown" "1" "$(_res '.data.findings_shown')"
+assert_contains "[SPEC-14] ...and its summary says so" "$(cat "$_A/issue-acceptance-summary.md" 2>/dev/null)" "answered: lens-sre-code finding 1: not mine"
+eval "$(declare -f _s14_real_zb_answers_finish | sed '1s/_s14_real_//')"
+
 print_test_section "#2366: contract 3 and no verdict words"
 _M="$REPO_ROOT/plugins/agent/issue-acceptance/manifest.yaml"
 assert_eq "[#2366] provides.result_contract: 3" "1" "$(grep -cE '^[[:space:]]+result_contract:[[:space:]]*3' "$_M" || true)"

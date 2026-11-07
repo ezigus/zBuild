@@ -144,7 +144,17 @@ whole call working out whether the change had caused it. A timed-out call keeps 
   requirement it bears on UNSURE, naming the test and that it could not tell whether the change broke it, and
   not to work out why a test fails: that is the build's job.
 
+## Amendment 2026-11-07 — §5: a stage that reports findings is shown last time's, with every answer, and keeps their grade
+
+A stage that reports findings and runs again is shown its findings from last time, each with every answer a stage
+gave it (`judge_last_findings_block_v`), before they are cleared. It is told that a finding it reports again keeps
+the grade it gave it, unless it quotes what changed since that makes it worse; that one answered done is checked
+against what was done; and that one answered wrong is judged again with the answer. Only `wrong` answers are the
+disputes of §5 (ADR-068 §6).
+
 ## Enforced by
+
+- §5 amendment 2026-11-07 (last time's findings and their answers are shown; a grade holds) → `tests/unit/finding-answers-test.sh` C3; `tests/unit/finding-answers-test.sh` A2
 
 - §4 amendment 2026-11-06 (#2477: a kept answer depends on the code its test exercises) → `tests/unit/judge-kept-code-test.sh` C1, C3, C4, C5
 - §3 amendment 2026-11-06 (#2476: a failing test it cannot trace is UNSURE) → `tests/unit/issue-acceptance-test.sh` SPEC-12

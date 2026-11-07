@@ -368,6 +368,10 @@ After ADR-070's amendment of 2026-11-07 (intake reads the issue's labels in its 
 issue only when it judges the requirements), measured on macOS: execs 1,885 (`FORK_BUDGET` 1892 → 1888),
 processes 2,534 (`PROCESS_BUDGET` 2541 → 2537), one more dispatch 481 processes (`DISPATCH_PROCS_BUDGET` 482 → 481).
 
+After ADR-068's amendment of 2026-11-07 (a review lens writes each routed output with one jq, not two), measured
+on macOS: execs 1,883 (`FORK_BUDGET` 1888 → 1886), processes 2,532 (`PROCESS_BUDGET` 2537 → 2535), one more
+dispatch 479 processes and 273 execs (`DISPATCH_PROCS_BUDGET` 481 → 480, `DISPATCH_EXECS_BUDGET` 275 → 274).
+
 ## Enforced by
 
 - §5 amendment 2026-11-06 (#2476: an include checked only when it fails to load) → `tests/unit/route-missing-include-test.sh` SPEC-1–SPEC-6; `tests/e2e/fork-budget-test.sh` (the budgets above)

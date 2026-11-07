@@ -86,7 +86,7 @@ print_test_section "K1-K3: design's coverage check"
     echo "K2b|$(_cov)"
     _RUNNER_ENGINE_SHA=engine-b
     echo "K2c|$(_cov)"
-    _ans='design finding 1: nothing to do — WORK-1 covers it: the flag is the whole of RQST-1'
+    _ans='design finding 1: wrong — WORK-1 covers it: the flag is the whole of RQST-1'
     echo "K3a|$(_cov "$_ans")|$([[ "$(cat "$_P.1" 2>/dev/null)" == *"WORK-1 covers it"* ]] && echo shown)"
     echo "K3b|$(_cov "$_ans")"
 ) > "$TEST_TEMP_DIR/k1.out" 2>/dev/null
@@ -163,7 +163,7 @@ print_test_section "K4-K5: test-author's check, per SPEC"
     # The finding test-author answers is its result's finding 1, written by its own writer.
     _ta_write_result "$A" unusable "1 finding" 2 \
         "$(printf '%s\n' "LOOP-1 Then 1 is not asserted: only a fresh run" | stage_findings_json)"
-    _TA_ANSWERS=("test-author finding 1: nothing to do — the helper re-enters a nested loop before the assertion")
+    _TA_ANSWERS=("test-author finding 1: wrong — the helper re-enters a nested loop before the assertion")
     _R=$'LOOP-1 Then 1: ok\nLOOP-1 sections: ok\n'
     echo "K5a|$(_j)|$(grep -c 'KEEP-1' "$_P.1" 2>/dev/null)|$([[ "$(cat "$_P.1" 2>/dev/null)" == *"re-enters a nested loop"* ]] && echo shown)"
     echo "K5b|$(_j)"
@@ -182,11 +182,11 @@ print_test_section "K6: build keeps its answers"
     output_summary_json="$TEST_TEMP_DIR/k6/build-summary.json"; mkdir -p "${output_summary_json%/*}"
     terminated_reason=done_sentinel files_changed_count=1 files_changed_json='["scripts/cfg.sh"]' iterations=1 repo_root="$XR"
         scope_violations=(); scope_violations_created=()  # build sets them before it writes
-    _ROUTE_LOOP_LAST_RESPONSE=$'Changed the flag.\nANSWER issue-acceptance finding 1: nothing to do — the flag already exists in cfg.sh\nLOOP_COMPLETE'
+    _ROUTE_LOOP_LAST_RESPONSE=$'Changed the flag.\nANSWER issue-acceptance finding 1: wrong — the flag already exists in cfg.sh\nLOOP_COMPLETE'
     _build_write_build_summary >/dev/null 2>&1
     echo "K6|$(jq -r '.data.answers[0] // ""' "$output_summary_json" 2>/dev/null)"
 ) > "$TEST_TEMP_DIR/k6.out" 2>/dev/null
-assert_eq "[K6] build's answer is in its result" "issue-acceptance finding 1: nothing to do — the flag already exists in cfg.sh" \
+assert_eq "[K6] build's answer is in its result" "issue-acceptance finding 1: wrong — the flag already exists in cfg.sh" \
     "$(grep '^K6|' "$TEST_TEMP_DIR/k6.out" | cut -d'|' -f2-)"
 
 print_test_section "K7: issue-acceptance"
@@ -213,7 +213,7 @@ print_test_section "K7: issue-acceptance"
         source "$REPO_ROOT/plugins/agent/build/plugin.sh" >/dev/null 2>&1
         output_summary_json="$A/build-summary.json"; terminated_reason=done_sentinel files_changed_count=1 files_changed_json='["p.sh"]' iterations=1 repo_root="$XR"
         scope_violations=(); scope_violations_created=()  # build sets them before it writes
-        _ROUTE_LOOP_LAST_RESPONSE=$'ANSWER issue-acceptance finding 1: nothing to do — main() reads dry_run\nLOOP_COMPLETE'
+        _ROUTE_LOOP_LAST_RESPONSE=$'ANSWER issue-acceptance finding 1: wrong — main() reads dry_run\nLOOP_COMPLETE'
         _build_write_build_summary >/dev/null 2>&1
     )
     _R=$'MET: the flag'
@@ -249,7 +249,7 @@ print_test_section "K8: a review lens"
         source "$REPO_ROOT/plugins/agent/build/plugin.sh" >/dev/null 2>&1
         output_summary_json="$ART/build-summary.json"; terminated_reason=done_sentinel files_changed_count=1 files_changed_json='["scripts/cfg.sh"]' iterations=1 repo_root="$XR"
         scope_violations=(); scope_violations_created=()  # build sets them before it writes
-        _ROUTE_LOOP_LAST_RESPONSE=$'ANSWER lens-red-team-code finding 1: nothing to do — exit code 2 is in the README\nLOOP_COMPLETE'
+        _ROUTE_LOOP_LAST_RESPONSE=$'ANSWER lens-red-team-code finding 1: wrong — exit code 2 is in the README\nLOOP_COMPLETE'
         _build_write_build_summary >/dev/null 2>&1
     )
     _R='{"score":9,"findings":[]}'

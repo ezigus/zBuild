@@ -125,7 +125,7 @@ print_test_section "F3-F6: design's check"
     _p1="$(cat "$_P.1" 2>/dev/null)"
     echo "F6d|$(cat "$_N")|$_DESIGN_COV_OUTCOME|$([[ "$_p1" == *"  And: no stage is skipped, not even the last"* ]] && echo changed-inline)|$([[ "$_p1" == *"  Then: the run uses it"* ]] && echo unchanged-inline)|$([[ "$_p1" == *"<requirement id>: covered"* ]] && echo reqs-asked)"
     # A dispute on one unchanged SPEC: that SPEC alone, and requirements are not asked again.
-    _ta="design finding 1: nothing to do — DSWORK-2 reads the flag in main()"
+    _ta="design finding 1: wrong — DSWORK-2 reads the flag in main()"
     printf '%s\n' '{"result_contract":3,"outcome":"unusable","reason":"r","data":{"findings":[{"n":1,"text":"DSWORK-2: 1 part to fix"}]}}' > "$artifact_dir/design-verdict.json"
     _R1=$'DSWORK-2: ok\n'; _cov "$_ta"
     _p1="$(cat "$_P.1" 2>/dev/null)"

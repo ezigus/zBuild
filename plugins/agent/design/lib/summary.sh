@@ -27,6 +27,8 @@ _design_pass_summary_write() {
     done
     local scope; scope="$(_extract_scope_from_design "$design" 2>/dev/null || true)"
     [[ -n "$scope" ]] && body+="- the files it may change: ${scope//,/, }"$'\n'
+    # ADR-068 §6: what it did about each finding it was given.
+    local _dpa=""; zb_answers_summary_v _dpa _DESIGN_ANSWERS; body+="$_dpa"$'\n'
     stage_summary_write "$dir/design-summary.md" "design" "pass" \
         "${#order[@]} SPEC(s)${ids:+: $ids}" "${body%$'\n'}"
 }

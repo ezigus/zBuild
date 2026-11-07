@@ -415,7 +415,8 @@ _sp_findings_for() {
          | select($tk == "" or ($tk | contains(" " + $eff + " ")))
          # #2470: a finding that shows a SPEC whole keeps its lines, each
          # indented under the first.
-         | "- \($l) finding \(.n) (opened by \($s)): \(.text|tostring|gsub("\r"; "")|gsub("\n+$"; "")|gsub("\n"; "\n    "))"' "$1" 2>/dev/null || true
+         # ADR-071 §5: one that does not block is still shown, and marked.
+         | "- \($l) finding \(.n) (opened by \($s)\(if .blocking == false then ", does not block" else "" end)): \(.text|tostring|gsub("\r"; "")|gsub("\n+$"; "")|gsub("\n"; "\n    "))"' "$1" 2>/dev/null || true
 }
 
 # _sp_list_words " a b c " — "a, b and c".

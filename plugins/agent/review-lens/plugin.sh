@@ -143,11 +143,17 @@ _rl_quote_problem_v() {
 
 # _rl_write_routed <path> <lines-json> <what> — one routed result (#2433): fail
 # with a numbered finding per line, or pass with none.
+# Each finding is {text, blocking}: one that does not block is still sent on,
+# marked, and the output fails only on one that does (ADR-071 §5).
 _rl_write_routed() {
-    local o=pass r="$3: none"
-    [[ "$(jq 'length' <<< "$2" 2>/dev/null)" =~ ^[1-9] ]] && { o=fail; r="$3"; }
-    stage_result_write "$1" "$o" "$r" \
-        "$(jq -c 'if length > 0 then {findings: [to_entries[] | {n: (.key + 1), text: .value}]} else {} end' <<< "$2" 2>/dev/null)"
+    # One jq: how many block, and the findings (ADR-065 §5).
+    local o=pass r="$3: none" _rw _rw_n=0 _rw_b=0 _rw_j='{}' _rw_re=$'^([0-9]+) ([0-9]+)\t(.*)$'
+    _rw="$(jq -r '"\(length) \([.[] | select(.blocking)] | length)\t" + (if length > 0 then {findings: [to_entries[]
+        | {n: (.key + 1), text: .value.text, blocking: .value.blocking}]} else {} end | tojson)' <<< "$2" 2>/dev/null)" || _rw=""
+    [[ "$_rw" =~ $_rw_re ]] && { _rw_n="${BASH_REMATCH[1]}"; _rw_b="${BASH_REMATCH[2]}"; _rw_j="${BASH_REMATCH[3]}"; }
+    (( _rw_n > 0 )) && r="$3"
+    (( _rw_b > 0 )) && o=fail
+    stage_result_write "$1" "$o" "$r" "$_rw_j"
 }
 
 # ─── _review_lens_write_result <out> <verdict> <disposition> <reason> ────────
@@ -329,6 +335,11 @@ _review_lens_run_inner() {
         return 2
     fi
     mkdir -p "$artifact_dir"
+    # ADR-068 §6: last time's findings, with what was answered, are read
+    # before they are cleared, to show the lens.
+    local _rl_last=""
+    judge_last_findings_block_v _rl_last "$artifact_dir" "lens-${lens}-code" "${out%.json}-code-result.json" \
+        "lens-${lens}-design" "${out%.json}-design-result.json"
     # A round's routed findings are this round's only (#2433).
     rm -f "${out%.json}-code-result.json" "${out%.json}-design-result.json" 2>/dev/null || true
 
@@ -383,8 +394,8 @@ _review_lens_run_inner() {
     local _rl_replies="${out%.json}-reply.txt"
     : > "$_rl_replies" 2>/dev/null || true
     # #2464 (ADR-072 §4 §5): the lens's report is kept while what it judged is
-    # unchanged; a stage's "nothing to do" answer to one of its findings is
-    # judged again, shown to the lens.
+    # unchanged; a stage's `wrong` answer to one of its findings is judged
+    # again, shown to the lens.
     local _rl_repo="${ZBUILD_REPO_ROOT:-$PWD}" _rl_kf="${out%.json}-judged.json" _rl_eng _rl_fp _rl_kept="" _rl_ans
     judge_answers_to_v _rl_ans "$artifact_dir" "lens-${lens}-code" "lens-${lens}-design"
     judge_engine_v _rl_eng
@@ -397,6 +408,7 @@ _review_lens_run_inner() {
         _rl_problem=""
     fi
     [[ -n "$_rl_ans" ]] && { prompt+=$'\n'"$(judge_disputes_block "$_rl_ans")"; _rl_ask="$prompt"; }
+    [[ -n "$_rl_last" ]] && { prompt+="$_rl_last"; _rl_ask="$prompt"; }
     # The files the call opens, listed by the router (no mktemp: ADR-065 §5).
     local _rl_opened="${ZBUILD_STAGE_SCRATCH:-$artifact_dir}/lens-${lens}-opened.txt"
     : > "$_rl_opened" 2>/dev/null || _rl_opened=""
@@ -546,17 +558,21 @@ _review_lens_run_inner() {
     _rl_fail_on="${!_rl_fail_var:-}"
     # #2433: a finding at a fail_on severity that the change introduced sends
     # the run back; one saying the issue itself is wrong stops it (no stage can
-    # fix an issue's text: `misconfigured`, the operator's to fix).
+    # fix an issue's text: `misconfigured`, the operator's to fix). Every other
+    # finding the change introduced is sent on too, marked as not blocking: on
+    # #1805 run 42374066107 one graded low reached no stage, and the next round
+    # graded it medium and failed (ADR-071 §5).
     local _rl_route
     _rl_route="$(printf '%s' "$normalized" | jq -c --arg on " $_rl_fail_on " --arg n "$lens" '
         def at_fail_on: .severity as $s | ($on | contains(" \($s) "));
         def line: "\($n) lens, \(.severity): \(.message) (\(.file)\(if .line then ":\(.line)" else "" end); fix: \(.fix))";
+        def routed: {text: line, blocking: at_fail_on};
         [.findings[] | select(.fix == "issue" and at_fail_on)] as $issue
-        | [.findings[] | select(.fix != "issue" and .introduced and at_fail_on)] as $back
-        | { outcome: (if ($issue | length) > 0 then "misconfigured" elif ($back | length) > 0 then "fail" else "pass" end),
+        | [.findings[] | select(.fix != "issue" and .introduced)] as $sent
+        | { outcome: (if ($issue | length) > 0 then "misconfigured" elif ([$sent[] | select(at_fail_on)] | length) > 0 then "fail" else "pass" end),
             issue: ($issue[0].message // ""),
-            code: [$back[] | select(.fix == "code" or .fix == "test") | line],
-            design: ([$back[] | select(.fix == "design") | line] + [$issue[] | line]) }' 2>/dev/null \
+            code: [$sent[] | select(.fix == "code" or .fix == "test") | routed],
+            design: ([$sent[] | select(.fix == "design") | routed] + [$issue[] | routed]) }' 2>/dev/null \
         || printf '{"outcome":"pass","issue":"","code":[],"design":[]}')"
     _rl_outcome="$(jq -r '.outcome' <<< "$_rl_route")"
     _rl_reason="the ${lens} lens found no ${_rl_fail_on:+${_rl_fail_on// / or } }problem the change introduced that fails it"
