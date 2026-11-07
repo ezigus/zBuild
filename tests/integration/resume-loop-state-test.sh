@@ -350,6 +350,7 @@ print_test_section "resume-loop-state test uses a fixture containing a cyclic st
 # cycle-converges-iter2.yaml is loaded above via load_template and driven through
 # cycle_orchestrator_run. Assert it contains type: cycle to formally pin the fixture
 # contains a cyclic stage (as DSCYCL-1 requires).
+# Then — the fixture used by this test file contains a stage of type: cycle
 _s13_loop_fixt_content="$(cat "$FIXT/cycle-converges-iter2.yaml")"
 assert_contains "[#1805/DSCYCL-1] cycle fixture used by resume-loop-state test has type: cycle" \
     "$_s13_loop_fixt_content" "type: cycle"
