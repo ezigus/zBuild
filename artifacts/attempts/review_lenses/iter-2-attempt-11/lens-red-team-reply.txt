@@ -1,0 +1,66 @@
+--- reply 1 ---
+{
+  "score": 5,
+  "findings": [
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "injection",
+      "severity": "medium",
+      "line": 2924,
+      "message": "The variable `_ZBUILD_RESUME_ACTIVE` is exported but never unset or explicitly reset on the fresh-start path, so any parent process that has `_ZBUILD_RESUME_ACTIVE=true` in its environment causes the cycle orchestrator to enter resume-mode behavior (`_is_resume=true`, `_cid_resume_first_iter=true`) on a brand-new run, violating GUAR-1.",
+      "quote": "export _ZBUILD_RESUME_ACTIVE=true",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/cycle-orchestrator.sh",
+      "category": "logic",
+      "severity": "medium",
+      "line": 1459,
+      "message": "The CMBR-1 `stage.start` emission fires for EVERY non-complete cycle member in the first resumed iteration, not only the interrupted one; members K+1…N (which never ran in this iteration and are dispatched normally) each receive a spurious `stage.start` event that is absent from a fresh run, contradicting the comment at lines 1460-1463 which claims 'Fresh runs and later resumed iterations receive no stage.start for cycle members via this path'.",
+      "quote": "# Non-complete (interrupted) member: emit stage.start before dispatch.\n            # DSPK-1 / FSTG-1 (#1805): stage.start for the interrupted cycle member\n            # is emitted here, not unconditionally. Fresh runs and later resumed\n            # iterations receive no stage.start for cycle members via this path\n            # (preserving pre-branch behavior and golden file event sequences).\n            eb_emit_event \"stage.start\" \"stage=$s\" \\",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "logic",
+      "severity": "medium",
+      "line": 3502,
+      "message": "The `cycle:*` arm of the dispatch-unit loop skips a complete cycle with no stale-artifact check, while the `stage:*` arm at line 3792 explicitly verifies the primary artifact is present and exits 1 if absent; a complete cycle whose rehydrated member artifacts are missing silently passes the skip guard rather than failing closed as RHYD-2 requires.",
+      "quote": "if $resume_mode && [[ -z \"$skip_until_stage\" ]]; then\n                        local _du_cyc_status\n                        _du_cyc_status=\"$(get_state_field \"$state_file\" \\\n                            \".stage_statuses[\\\"$_cyc_id\\\"]\" '' 2>/dev/null || true)\"\n                        if [[ \"$_du_cyc_status\" == \"complete\" ]]; then\n                            info \"Skipping already-complete cycle: $_cyc_id\"\n                            continue\n                        fi",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "logic",
+      "severity": "medium",
+      "line": 2921,
+      "message": "`_runner_resume_rehydrate` returns 0 (not 1) when `_artifact_persist_restore` fails, delegating the RHYD-2 fail-closed check to the dispatch loop; for `--resume --from-stage`, `_runner_from_stage_preflight` is then called at line 3011 and ALSO calls `_artifact_persist_restore`+`_artifact_persist_put_back`, causing two git state-branch checkouts for the same issue on every `--resume --from-stage` invocation — the second restore silently no-ops due to the no-clobber guard but the git operations both fire.",
+      "quote": "_runner_resume_rehydrate \"$_runner_issue\" \"$state_dir\"\n        # ADR-006 §3.6 (#1805): signal to cycle orchestrators that this is a\n        # resume so they restore iteration count from state (SPEC-7).",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "logic",
+      "severity": "medium",
+      "line": 1827,
+      "message": "The latest-symlink auto-issue-discovery block (lines 1827-1836) reads the issue number from `$state_dir/latest/pipeline-state.json` and sets `issue` from it when no `--issue`/`--goal` was supplied; this happens BEFORE the ZBUILD_STATE_FILE vs. --issue cross-check at line 1878, but the cross-check only fires when `ZBUILD_STATE_FILE` is set — a crafted or stale `latest` symlink pointing at a different issue's state silently routes the run under the wrong issue identity with no mismatch error.",
+      "quote": "if [[ -z \"$issue\" && -z \"$goal\" && -z \"${ZBUILD_STATE_FILE:-}\" ]]; then\n        local _ls_sd=\"${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}/latest\"\n        if [[ -L \"$_ls_sd\" && -f \"$_ls_sd/pipeline-state.json\" ]]; then\n            local _ls_issue\n            _ls_issue=\"$(jq -r '.issue // \"\"' \"$_ls_sd/pipeline-state.json\" 2>/dev/null || true)\"\n            if [[ \"$_ls_issue\" =~ ^[0-9]+$ && \"$_ls_issue\" != \"0\" ]]; then\n                issue=\"$_ls_issue\"\n            fi\n        fi\n    fi",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "logic",
+      "severity": "low",
+      "line": 2927,
+      "message": "When `--resume --from-stage s` is active, the resume block at line 2921 calls `_runner_resume_rehydrate` (which emits `pipeline.resume`), then immediately after emits `pipeline.skip_to_stage` for the from-stage target — but the issue (R3) requires `--from-stage` never emits `pipeline.skip_to_stage`; that event is emitted unconditionally here for every --from-stage invocation, regardless of whether the run is in resume or from-stage-only mode.",
+      "quote": "if [[ -n \"$from_stage\" ]]; then\n            warn \"Skipping ahead to stage '$from_stage' as requested (--from-stage)\"\n            eb_emit_event \"pipeline.skip_to_stage\" \"stage=$from_stage\" \"run_id=$_runner_run_id\"\n        fi",
+      "introduced": true,
+      "fix": "code"
+    }
+  ]
+}

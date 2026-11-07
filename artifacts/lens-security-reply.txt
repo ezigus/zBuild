@@ -1,35 +1,25 @@
 --- reply 1 ---
 {
-  "score": 6,
+  "score": 8,
   "findings": [
-    {
-      "file": "core/pipeline/runner.sh",
-      "category": "path traversal",
-      "severity": "high",
-      "line": 2227,
-      "message": "`_runner_run_id` read from the new latest-symlink auto-resume state file is not sanitized, while the fresh-run path explicitly strips unsafe characters to prevent path traversal via `ZBUILD_RUN_ID` in filenames; two plugins use `ZBUILD_RUN_ID` directly in path constructions.",
-      "quote": "_runner_run_id=\"$(get_state_field \"$state_file\" '.run_id' \"$(date +%Y%m%d%H%M%S)-$$\")\"",
-      "introduced": true,
-      "fix": "code"
-    },
-    {
-      "file": "core/pipeline/runner.sh",
-      "category": "path traversal",
-      "severity": "medium",
-      "line": 2223,
-      "message": "The path returned by `readlink -f \"$state_dir/latest\"` is assigned as `state_dir` with no check that it remains within the expected state root; an adversary who controls the `latest` symlink redirects all artifact operations, `ZBUILD_STATE_DIR` exports, and `mkdir` calls to an arbitrary filesystem location.",
-      "quote": "state_dir=\"$_lr_resolved_dir\"\n                    state_file=\"$state_dir/pipeline-state.json\"\n                    _runner_state_file=\"$state_file\"",
-      "introduced": true,
-      "fix": "code"
-    },
     {
       "file": "core/state/artifact-persist.sh",
       "category": "path traversal",
-      "severity": "low",
+      "severity": "medium",
       "line": 644,
-      "message": "`_artifact_persist_put_back` guards only against an absolute `rel` (the prefix-strip failure case) but not against `..` components; a hostile git state branch that places a file at a path whose stripped relative form begins with `../` could write outside the artifact directory, and the new resume rehydration call site adds a second consumer of this gap.",
-      "quote": "# Guard: skip if strip failed (trailing slash on $from) — rel would be absolute\n        [[ \"$rel\" == /* ]] && continue",
-      "introduced": false,
+      "message": "The new `_artifact_persist_put_back` function guards against absolute-path injection (`/* `) but not against relative dotdot traversal (`../`), so a `rel` value of `../../outside/the/target` would pass the check and write outside `$to`.",
+      "quote": "[[ \"$rel\" == /* ]] && continue",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "missing input validation",
+      "severity": "low",
+      "line": 1800,
+      "message": "`--from-stage` accepts any string without validating it against a stage-name character set before the value is embedded in a variable name used for indirect expansion (`${!_fsp_cycle_stages_var:-}`) and in a `warn`/`echo` message to stderr.",
+      "quote": "from_stage=\"$2\"; shift 2 ;;",
+      "introduced": true,
       "fix": "code"
     }
   ]

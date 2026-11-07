@@ -1,0 +1,9 @@
+## review-lens-sre — fail
+
+- found: medium: _ZBUILD_RESUME_ACTIVE is exported as `true` in the resume path but is never explicitly cleared (set to false or unset) in the fresh-run path; a subprocess runner that inherits the variable from a parent in resume mode will have every cycle member in the first cycle emit a spurious stage.start event, violating GUAR-1. (core/pipeline/runner.sh:2256) (and 3 more)
+
+- medium: _ZBUILD_RESUME_ACTIVE is exported as `true` in the resume path but is never explicitly cleared (set to false or unset) in the fresh-run path; a subprocess runner that inherits the variable from a parent in resume mode will have every cycle member in the first cycle emit a spurious stage.start event, violating GUAR-1. (core/pipeline/runner.sh:2256)
+- medium: Complete cycle:* dispatch units are silently skipped on resume without a stale-artifact check; the stage:* arm emits stage.verdict.stale_artifact and exits 1 when the primary artifact is absent after rehydration, but the cycle:* arm just logs info + continue — RHYD-2/SPEC-2 fail-closed behaviour is not enforced for complete cycles. (core/pipeline/runner.sh:3502)
+- low: When _artifact_persist_restore fails inside _runner_resume_rehydrate, only a warn message is written to stderr; no machine-readable event fires, so the event stream has a silent gap between 'restore failed' and the later stage.verdict.stale_artifact event emitted by the dispatch loop. (core/pipeline/runner.sh:1712)
+- low: When --resume --from-stage <s> is used together, _runner_resume_rehydrate (line 2921) performs a full git-state restore and put_back, then _runner_from_stage_preflight (line 3011) performs a second full git-state restore and put_back; two git archive | tar operations against the same ref with the same destination, doubling I/O and git-work on large state branches. (core/pipeline/runner.sh:3010)
+- score: 6

@@ -1,0 +1,66 @@
+--- reply 1 ---
+{
+  "score": 4,
+  "findings": [
+    {
+      "file": "core/pipeline/cycle-orchestrator.sh",
+      "category": "logic",
+      "severity": "high",
+      "line": 2378,
+      "message": "`current_iter` is written only after an iteration *completes* (line 2803), so for a run interrupted mid-iter 2 after iter 1 completed, the real on-disk value is 1, not 2; the resume formula `_start_iter = current_iter = 1` re-runs iter 1 instead of resuming iter 2, breaking ITER-1 and CMBR-1 for every N>1 interruption.",
+      "quote": "_start_iter=$(( _persisted_iter > 0 ? _persisted_iter : 1 ))",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/cycle-orchestrator.sh",
+      "category": "logic",
+      "severity": "high",
+      "line": 2803,
+      "message": "`_cycle_state_write_iter_atomic` is called after `_cycle_iter_dispatch` returns; when the dispatch returns non-zero (interrupted), the for-loop exits at the `return 1` on line 2481 before this write, so the interrupted iteration's index is never persisted — leaving `current_iter` at the last-*completed* iteration number, not the interrupted one.",
+      "quote": "_cycle_state_write_iter_atomic \"$state_file\" \"$cycle_id\" \"$iter\" \\\n            \"$h_verdict\" \"$h_status\" \"$failure_count\" \"$overall_status\" || true",
+      "introduced": false,
+      "fix": "code"
+    },
+    {
+      "file": "tests/integration/resume-loop-state-test.sh",
+      "category": "logic",
+      "severity": "medium",
+      "line": 51,
+      "message": "The fixture calls `zb_engine_loop_state rounds=2` to produce `current_iter=2`, but a real engine interrupted during iter 2 produces `current_iter=1` (the write for iter 2 never fires on a mid-iter abort); the test validates the resume formula against an impossible state and will pass whatever the code does, so it cannot detect the off-by-one described above.",
+      "quote": "zb_engine_loop_state \"$STATE_FILE\" \"build-test\" 2 5 \"in_progress\"",
+      "introduced": true,
+      "fix": "test"
+    },
+    {
+      "file": "tests/integration/resume-loop-state-test.sh",
+      "category": "logic",
+      "severity": "medium",
+      "line": 211,
+      "message": "Same artificial fixture is used for the CMBR-1 scenario ('iter 2 interrupted'): `zb_engine_loop_state rounds=2` writes `current_iter=2`, but the real engine leaves `current_iter=1` after a mid-iter-2 interruption, so the test for member-skip in the interrupted iteration exercises a state the engine never actually produces.",
+      "quote": "zb_engine_loop_state \"$STATE_FILE\" \"build-test\" 2 5 \"in_progress\"",
+      "introduced": true,
+      "fix": "test"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "logic",
+      "severity": "medium",
+      "line": null,
+      "message": "The `parallel:*` and `map:*` arms of the dispatch-unit loop have no resume-mode skip guard and no `skip_until_stage` guard; a complete parallel or map group is re-dispatched on resume, and groups preceding the `--from-stage` target are not skipped.",
+      "quote": "eb_emit_event \"stage.start\" \"stage=$_pg_id\" \\\n                        || { _r=$?; warn \"eb_emit_event stage.start failed (rc=$_r, continuing — disk/perm/lock?)\"; true; }",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/cycle-orchestrator.sh",
+      "category": "logic",
+      "severity": "low",
+      "line": 2450,
+      "message": "`_cid_resume_first_iter=true` is set when `iter == _start_iter`; because `_start_iter` is wrong for N>1 interruptions (it is 1 instead of 2), the CMBR-1 member-skip guard fires on iter 1, reads `stage_statuses` left by the interrupted iter 2 (build=complete), and skips build in iter 1 — running iter 1 without its first member.",
+      "quote": "if [[ \"$_is_resume\" == \"true\" && \"$iter\" -eq \"$_start_iter\" ]]; then\n            _cid_resume_first_iter=true\n        fi",
+      "introduced": true,
+      "fix": "code"
+    }
+  ]
+}
