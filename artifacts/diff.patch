@@ -1,450 +1,363 @@
 diff --git a/core/pipeline/cycle-orchestrator.sh b/core/pipeline/cycle-orchestrator.sh
-index c6f0ee01..614ff8cb 100644
+index 614ff8cb..e08c392c 100644
 --- a/core/pipeline/cycle-orchestrator.sh
 +++ b/core/pipeline/cycle-orchestrator.sh
-@@ -1213,6 +1213,28 @@ _cycle_state_write_iter_atomic() {
-           _ZB_CYCLE_FC _ZB_CYCLE_OVERALL
- }
- 
-+# ─── _cycle_state_write_iter_start ───────────────────────────────────────────
-+# Writes current_iter = N at the START of iteration N, before dispatch runs.
-+# This ensures that if the run is interrupted mid-iter, the state records the
-+# interrupted iteration number (not the last COMPLETED iteration number).
-+# A resume reading current_iter then starts from the correct iteration (#1805).
-+_cycle_state_jq_write_iter_start() {
-+    local _now; TZ=UTC0 printf -v _now '%(%Y-%m-%dT%H:%M:%SZ)T' -1
-+    jq --arg id "$_ZB_CYCLE_ID" \
-+       --argjson n "$_ZB_CYCLE_N" \
-+       --arg now "$_now" \
-+       '(.cycle_iterations //= {})
-+        | .cycle_iterations[$id].current_iter = $n
-+        | .updated_at = $now'
-+}
-+
-+_cycle_state_write_iter_start() {
-+    local state_file="$1" cycle_id="$2" n="$3"
-+    export _ZB_CYCLE_ID="$cycle_id" _ZB_CYCLE_N="$n"
-+    locked_state_update "$state_file" "_cycle_state_jq_write_iter_start" || return 1
-+    unset _ZB_CYCLE_ID _ZB_CYCLE_N
-+}
-+
- # ─── _cycle_state_write_member_atomic ────────────────────────────────────────
- # Persists a cycle member's terminal status and classified verdict into the
- # top-level stage_statuses / stage_verdicts maps of pipeline-state.json.
-@@ -1458,11 +1480,17 @@ _cycle_iter_dispatch() {
+@@ -1475,7 +1475,9 @@ _cycle_iter_dispatch() {
+                 _cmbr_blob_entry="$(jq -cn --arg v "$_cmbr_verdict" --arg st "$_cmbr_status" \
+                     '{verdict: $v, status: $st}')"
+                 _cmbr_new_blob="$(jq -c --arg s "$s" --argjson e "$_cmbr_blob_entry" \
+-                    '. + {($s): $e}' <<< "$blob" 2>/dev/null)" && blob="$_cmbr_new_blob"
++                    '. + {($s): $e}' <<< "$blob" 2>/dev/null)" \
++                    && blob="$_cmbr_new_blob" \
++                    || warn "cycle-orchestrator: failed to update verdict blob for skipped member '$s'; cycle predicates (exit_when/abort_when/until) may evaluate incorrectly"
+                 continue
              fi
              # Non-complete (interrupted) member: emit stage.start before dispatch.
-             # DSDSPK-1 / DSFSTG-1 (#1805): stage.start for the interrupted cycle member
--            # is emitted here, not unconditionally. Fresh runs and later resumed
--            # iterations receive no stage.start for cycle members via this path
--            # (preserving pre-branch behavior and golden file event sequences).
-+            # is emitted here, not unconditionally. Only the FIRST non-complete member
-+            # gets stage.start; subsequent non-complete members (never ran this iter)
-+            # are dispatched normally without stage.start, preserving fresh-run behavior.
-+            # Fresh runs and later resumed iterations receive no stage.start for cycle
-+            # members via this path (preserving pre-branch behavior and golden file
-+            # event sequences).
-             eb_emit_event "stage.start" "stage=$s" \
-                 || { local _cmbr_r=$?; warn "eb_emit_event stage.start failed (rc=$_cmbr_r, continuing — disk/perm/lock?)"; true; }
-+            # Turn off the resume-first-iter flag: subsequent members in this iteration
-+            # are dispatched without stage.start (they never ran; treat like fresh run).
-+            _resume_first_iter=false
-         fi
-         _cycle_emit_member_dispatch_start "$_cyc_pos" "$s" "$_member_kind_pre"
-         export ZBUILD_CYCLE_ITER="$iter"
-@@ -2368,8 +2396,10 @@ _cycle_orchestrator_run_body() {
-     if [[ "${_ZBUILD_RESUME_ACTIVE:-false}" == "true" ]]; then
-         _is_resume=true
-         local _persisted_iter
-+        # Sanitize cycle_id to prevent jq injection via template-sourced cycle IDs.
-+        local _safe_cycle_id="${cycle_id//[^a-zA-Z0-9_-]/}"
-         _persisted_iter="$(get_state_field "$state_file" \
--            ".cycle_iterations[\"$cycle_id\"].current_iter" 0 2>/dev/null || echo 0)"
-+            ".cycle_iterations[\"$_safe_cycle_id\"].current_iter" 0 2>/dev/null || echo 0)"
-         [[ "$_persisted_iter" =~ ^[0-9]+$ ]] || _persisted_iter=0
-         # Consume the flag: nested cycles and subsequent re-entries start at 1.
-         _ZBUILD_RESUME_ACTIVE=false
-@@ -2441,6 +2471,14 @@ _cycle_orchestrator_run_body() {
-             { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 1; }
-         fi
+@@ -2409,6 +2411,15 @@ _cycle_orchestrator_run_body() {
+     else
+         _start_iter=1
+     fi
++    # DSFSTG-1 (#1805): when --from-stage targets this cycle, emit stage.start for
++    # its first member even though _ZBUILD_RESUME_ACTIVE was cleared (iter always 1
++    # for from-stage so persisted iter must not be used). Override _is_resume so the
++    # DSCMBR-1 guard runs and emits stage.start for the first (non-complete) member.
++    # Consume the flag immediately so nested cycles and later iterations are not affected.
++    if [[ "${_ZBUILD_FROM_STAGE_EMIT_START:-false}" == "true" ]]; then
++        _is_resume=true
++        export _ZBUILD_FROM_STAGE_EMIT_START=false
++    fi
  
-+        # Persist current_iter=N before dispatch so an interruption mid-iter leaves
-+        # the state recording the interrupted iteration number, not the last completed
-+        # one. The end-of-iter write (_cycle_state_write_iter_atomic) also updates
-+        # current_iter; this start write is what makes the resume formula correct for
-+        # a run interrupted before the first iter completes (#1805, correctness).
-+        _cycle_state_write_iter_start "$state_file" "$cycle_id" "$iter" \
-+            || warn "cycle-orchestrator: failed to write iter-start state for cycle=$cycle_id iter=$iter (a resume may start at the wrong iteration)"
-+
+     _cycle_install_traps
+ 
+@@ -2477,7 +2488,8 @@ _cycle_orchestrator_run_body() {
+         # current_iter; this start write is what makes the resume formula correct for
+         # a run interrupted before the first iter completes (#1805, correctness).
+         _cycle_state_write_iter_start "$state_file" "$cycle_id" "$iter" \
+-            || warn "cycle-orchestrator: failed to write iter-start state for cycle=$cycle_id iter=$iter (a resume may start at the wrong iteration)"
++            || { warn "cycle-orchestrator: failed to write iter-start state for cycle=$cycle_id iter=$iter (a resume may start at the wrong iteration)"; \
++                 eb_emit_event "cycle.state.write.failed" "cycle_id=$cycle_id" "iter=$iter" "op=iter_start" 2>/dev/null || true; }
+ 
          # Dispatch the cycle's stages in order.
          # DSCMBR-1 (#1805): signal resume_first_iter for the first resumed iteration
-         # so _cycle_iter_dispatch skips members already complete in persisted state.
 diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
-index a294845e..57535d1e 100755
+index 57535d1e..52f07f67 100755
 --- a/core/pipeline/runner.sh
 +++ b/core/pipeline/runner.sh
-@@ -1724,25 +1724,32 @@ _runner_resume_rehydrate() {
-     return 0
- }
+@@ -1861,13 +1861,6 @@ main() {
+         return 1
+     fi
  
--# ─── _runner_from_stage_preflight <issue> <stages_arr> <from_stage> <state_dir> <plugins_root> ─
-+# ─── _runner_from_stage_preflight <issue> <stages_arr> <from_stage> <state_dir> <plugins_root> [skip_restore] ─
- # For --from-stage <s>: restore + put_back artifacts from the git state branch,
- # then verify every stage before <s> has its primary artifact in ZBUILD_ARTIFACT_DIR.
- # Exits 1 naming the missing stage in stderr. (SPEC-3, SPEC-4, ADR-006 §3.6)
-+# When skip_restore=true (passed when called after _runner_resume_rehydrate has
-+# already restored artifacts), skip the git restore step to avoid redundant git-archive
-+# operations (correctness-1 fix, #1805).
- _runner_from_stage_preflight() {
-     local _fsp_issue="$1"
-     local -n _fsp_stages="$2"
-     local _fsp_from_stage="$3" _fsp_state_dir="$4" _fsp_plugins_root="$5"
-+    local _fsp_skip_restore="${6:-false}"
-     local _fsp_artifacts_dir="$_fsp_state_dir/artifacts"
--    local _fsp_staging="$_fsp_state_dir/from-stage-preflight.staging"
--    rm -rf "$_fsp_staging" 2>/dev/null || true
--    # Restore + put_back (same sequence as _runner_resume_rehydrate)
--    _artifact_persist_restore "$_fsp_issue" "$_fsp_staging" \
--        || warn "from-stage-preflight: git state restore failed for issue=$_fsp_issue — artifact verification may fail"
--    if [[ -d "$_fsp_staging/artifacts" ]]; then
--        _artifact_persist_put_back "$_fsp_staging/artifacts" "$_fsp_artifacts_dir" \
--            || warn "from-stage-preflight: put_back failed for $_fsp_artifacts_dir — partial restoration"
-+    if ! $_fsp_skip_restore; then
-+        # Restore + put_back (same sequence as _runner_resume_rehydrate). Skipped
-+        # when already restored by _runner_resume_rehydrate (resume + from-stage).
-+        local _fsp_staging="$_fsp_state_dir/from-stage-preflight.staging"
-+        rm -rf "$_fsp_staging" 2>/dev/null || true
-+        _artifact_persist_restore "$_fsp_issue" "$_fsp_staging" \
-+            || warn "from-stage-preflight: git state restore failed for issue=$_fsp_issue — artifact verification may fail"
-+        if [[ -d "$_fsp_staging/artifacts" ]]; then
-+            _artifact_persist_put_back "$_fsp_staging/artifacts" "$_fsp_artifacts_dir" \
-+                || warn "from-stage-preflight: put_back failed for $_fsp_artifacts_dir — partial restoration"
-+        fi
-+        rm -rf "${_fsp_staging:?}" 2>/dev/null || true
-     fi
--    rm -rf "${_fsp_staging:?}" 2>/dev/null || true
-     # When from_stage is a cycle ID, stop checking before the cycle's first
-     # member (the first element of _TPL_CYCLE_STAGES_<id>). Cycle IDs are not
-     # in active_stages[], so a literal match would never fire and all stages
-@@ -1763,9 +1770,9 @@ _runner_from_stage_preflight() {
-         _fsp_plugin_dir="$(_find_plugin_for_stage "$_fsp_s" "$_fsp_plugins_root" 2>/dev/null || true)"
-         [[ -z "$_fsp_plugin_dir" ]] && continue
-         _fsp_manifest="$_fsp_plugin_dir/manifest.yaml"
--        _fsp_prim_path="$(_verdict_primary_output_path "$_fsp_manifest" 2>/dev/null || true)"
-+        _verdict_primary_output_path_v _fsp_prim_path "$_fsp_manifest" 2>/dev/null || true
-         [[ -z "$_fsp_prim_path" ]] && continue
--        _fsp_resolved="$(_verdict_resolve_path "$_fsp_prim_path" "$_fsp_state_dir")"
-+        _verdict_resolve_path_v _fsp_resolved "$_fsp_prim_path" "$_fsp_state_dir"
-         if [[ ! -s "$_fsp_resolved" ]]; then
-             echo "error: --from-stage '$_fsp_from_stage': stage '$_fsp_s' has no restorable primary artifact" >&2
-             return 1
-@@ -1829,10 +1836,22 @@ main() {
-     if [[ -z "$issue" && -z "$goal" && -z "${ZBUILD_STATE_FILE:-}" ]]; then
-         local _ls_sd="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}/latest"
-         if [[ -L "$_ls_sd" && -f "$_ls_sd/pipeline-state.json" ]]; then
--            local _ls_issue
--            _ls_issue="$(jq -r '.issue // ""' "$_ls_sd/pipeline-state.json" 2>/dev/null || true)"
--            if [[ "$_ls_issue" =~ ^[0-9]+$ && "$_ls_issue" != "0" ]]; then
--                issue="$_ls_issue"
-+            # Safety: verify the symlink target is within the state root before
-+            # trusting its contents. A crafted or stale symlink escaping the root
-+            # could route the run under a different issue's identity (#1805).
-+            local _ls_issue_resolved
-+            _ls_issue_resolved="$(readlink -f "$_ls_sd" 2>/dev/null || true)"
-+            local _ls_issue_root="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}"
-+            if [[ -n "$_ls_issue_resolved" && \
-+                  ( "$_ls_issue_resolved" == "${_ls_issue_root%%/}/"* || \
-+                    "$_ls_issue_resolved" == "${_ls_issue_root%%/}" ) ]]; then
-+                local _ls_issue
-+                _ls_issue="$(jq -r '.issue // ""' "$_ls_sd/pipeline-state.json" 2>/dev/null || true)"
-+                if [[ "$_ls_issue" =~ ^[0-9]+$ && "$_ls_issue" != "0" ]]; then
-+                    issue="$_ls_issue"
-+                fi
-+            else
-+                warn "auto-resume: latest symlink escapes state root — ignoring for issue discovery"
-             fi
-         fi
-     fi
-@@ -2249,7 +2268,11 @@ main() {
-                     _lr_raw_run_id="$(get_state_field "$state_file" '.run_id' "$(date +%Y%m%d%H%M%S)-$$")"
-                     _runner_run_id="${_lr_raw_run_id//[^a-zA-Z0-9_.-]/}"
-                     [[ -z "$_runner_run_id" ]] && _runner_run_id="$(date +%Y%m%d%H%M%S)-$$"
--                    _runner_issue="$(get_state_field "$state_file" '.issue' '0')"
-+                    local _lr_raw_issue
-+                    _lr_raw_issue="$(get_state_field "$state_file" '.issue' '0')"
-+                    # Validate: issue number must be numeric to prevent injection into
-+                    # event-log key=value pairs and git branch-name construction.
-+                    [[ "$_lr_raw_issue" =~ ^[0-9]+$ ]] && _runner_issue="$_lr_raw_issue" || _runner_issue="0"
-                 fi
+-    # --from-stage is only valid in resume mode
+-    if [[ -n "$from_stage" ]] && ! $resume_mode; then
+-        error "--from-stage is only valid with --resume"
+-        _usage
+-        return 1
+-    fi
+-
+     local plugins_root="${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}"
+     # #1614: fill the manifest cache HERE, in main()'s own shell. yaml_get was
+     # 6,338 awk spawns per run (~13s of 27s); most call sites read it inside $( ),
+@@ -2011,7 +2004,12 @@ main() {
+     # ADR-051 §warn-first (#1318): startup preflight — persona bindings + requires.plugins.
+     # Routed through _runner_startup_preflight_gate (defined above) so the dry-run/resume
+     # exemption logic is testable independently of the full pipeline startup sequence.
+-    if ! _runner_startup_preflight_gate "$dry_run" "$resume_mode"; then
++    # --from-stage is only valid with --resume (or auto-resume): skip the persona
++    # preflight so the targeted "only valid with --resume" rejection fires instead
++    # of a spurious persona-missing failure (#1805).
++    local _spg_resume_mode="$resume_mode"
++    [[ -n "$from_stage" ]] && _spg_resume_mode=true
++    if ! _runner_startup_preflight_gate "$dry_run" "$_spg_resume_mode"; then
+         error "Startup preflight validation failed (ZBUILD_CONTRACT_VALIDATOR=${ZBUILD_CONTRACT_VALIDATOR:-warn}). See above."
+         _runner_run_id="${_runner_run_id:-${ZBUILD_RUN_ID:-preflight}}"
+         _runner_issue="${_runner_issue:-${issue:-0}}"
+@@ -2234,30 +2232,35 @@ main() {
+                 resume_mode=false
                  ;;
-             manual_resume_only)
-@@ -2263,6 +2286,10 @@ main() {
+         esac
+-    elif ! $no_resume && [[ -z "${ZBUILD_STATE_FILE:-}" && -L "$state_dir/latest" ]] \
+-         && [[ -f "$state_dir/latest/pipeline-state.json" ]]; then
++    elif ! $no_resume && [[ -z "${ZBUILD_STATE_FILE:-}" && -L "$state_dir/latest" ]]; then
+         # Auto-resume via latest symlink (per-run layout, ADR-059 §1 / #1805 DSENTR-2):
+         # flat state file absent; follow latest to find the interrupted per-run state.
+-        local _lr_recommendation
+-        _lr_recommendation="$(get_resume_recommendation "$state_dir/latest/pipeline-state.json")"
+-        case "$_lr_recommendation" in
+-            auto_resume)
+-                info "Auto-resuming previous run via latest symlink (use --no-resume to force fresh start)"
+-                # Resolve the per-run dir so artifact operations use the concrete path.
+-                # Guard against broken symlink or missing readlink -f (macOS without GNU coreutils):
+-                # an empty result would route all artifact operations to paths under an empty prefix.
+-                # Also guard against the symlink escaping the state root (prevent path traversal).
+-                local _lr_original_state_dir="$state_dir"
+-                local _lr_resolved_dir
+-                _lr_resolved_dir="$(readlink -f "$state_dir/latest")" || true
+-                if [[ -z "$_lr_resolved_dir" ]]; then
+-                    warn "auto-resume: could not resolve latest symlink — falling back to fresh start"
+-                    resume_mode=false
+-                elif [[ "$_lr_resolved_dir" != "${_lr_original_state_dir%%/}/"* && \
+-                        "$_lr_resolved_dir" != "${_lr_original_state_dir%%/}" ]]; then
+-                    warn "auto-resume: resolved path escapes state root — falling back to fresh start"
+-                    resume_mode=false
+-                else
++        # Resolve symlink BEFORE reading to prevent TOCTOU — the escape check runs
++        # on the resolved path before any file access (#1805 red-team finding).
++        local _lr_original_state_dir="$state_dir"
++        local _lr_resolved_dir
++        _lr_resolved_dir="$(readlink -f "$state_dir/latest")" || true
++        # Strip ALL trailing slashes from the original dir for the prefix containment
++        # check (%%/ only strips a single slash — use a loop for multi-slash paths).
++        local _lr_prefix="${_lr_original_state_dir}"
++        while [[ "$_lr_prefix" == */ && "${#_lr_prefix}" -gt 1 ]]; do
++            _lr_prefix="${_lr_prefix%/}"
++        done
++        if [[ -z "$_lr_resolved_dir" ]]; then
++            : # symlink resolution failed; fall through to fresh start
++        elif [[ "$_lr_resolved_dir" != "${_lr_prefix}/"* && \
++                "$_lr_resolved_dir" != "${_lr_prefix}" ]]; then
++            warn "auto-resume: resolved path escapes state root — falling back to fresh start"
++            resume_mode=false
++        elif [[ ! -f "$_lr_resolved_dir/pipeline-state.json" ]]; then
++            : # state file not present in resolved dir; fall through to fresh start
++        else
++            # Resolved path validated; read recommendation from resolved path (not symlink).
++            local _lr_recommendation
++            _lr_recommendation="$(get_resume_recommendation "$_lr_resolved_dir/pipeline-state.json")"
++            case "$_lr_recommendation" in
++                auto_resume)
++                    info "Auto-resuming previous run via latest symlink (use --no-resume to force fresh start)"
+                     state_dir="$_lr_resolved_dir"
+                     state_file="$state_dir/pipeline-state.json"
+                     _runner_state_file="$state_file"
+@@ -2273,16 +2276,26 @@ main() {
+                     # Validate: issue number must be numeric to prevent injection into
+                     # event-log key=value pairs and git branch-name construction.
+                     [[ "$_lr_raw_issue" =~ ^[0-9]+$ ]] && _runner_issue="$_lr_raw_issue" || _runner_issue="0"
+-                fi
+-                ;;
+-            manual_resume_only)
+-                info "Previous run requires explicit --resume (or --force for aborted)"
+-                resume_mode=false
+-                ;;
+-            fresh_start|*)
+-                resume_mode=false
+-                ;;
+-        esac
++                    ;;
++                manual_resume_only)
++                    info "Previous run requires explicit --resume (or --force for aborted)"
++                    resume_mode=false
++                    ;;
++                fresh_start|*)
++                    resume_mode=false
++                    ;;
++            esac
++        fi
++    fi
++
++    # --from-stage is only valid in resume mode — checked AFTER auto-resume so
++    # a run that qualifies for auto-resume (status=in_progress, fresh timestamp)
++    # does not need an explicit --resume flag when --from-stage is also given
++    # (DSFSTG-1 / lens-scope-code finding 1, #1805).
++    if [[ -n "$from_stage" ]] && ! $resume_mode; then
++        error "--from-stage is only valid with --resume"
++        _usage
++        return 1
      fi
  
      if ! $resume_mode; then
-+        # Guard: clear _ZBUILD_RESUME_ACTIVE so a subprocess runner that inherits a
-+        # stale `true` value from a parent resume run does not enter cycle-resume mode
-+        # on a fresh start, violating RQGUAR-1 (#1805).
-+        export _ZBUILD_RESUME_ACTIVE=false
-         # Sanitize ZBUILD_RUN_ID: strip characters unsafe in filenames (/, .., spaces, etc.)
-         # to prevent path traversal when run_id is used in report-${run_id}.md filenames
-         # AND in the per-run state dir below (#887). Generated BEFORE the re-root.
-@@ -3017,7 +3044,9 @@ main() {
-     # ADR-006 §3.6 (#1805): when --from-stage is active, verify every stage
-     # before the target has a restorable artifact before the dispatch loop runs.
-     if [[ -n "$from_stage" ]]; then
--        if ! _runner_from_stage_preflight "$_runner_issue" "active_stages" "$from_stage" "$state_dir" "$plugins_root"; then
-+        # Pass resume_mode as skip_restore: when resuming, _runner_resume_rehydrate
-+        # already restored artifacts; skip the redundant git-archive restore in preflight.
-+        if ! _runner_from_stage_preflight "$_runner_issue" "active_stages" "$from_stage" "$state_dir" "$plugins_root" "$resume_mode"; then
-             return 1
+@@ -2963,6 +2976,23 @@ main() {
+         if [[ -n "$from_stage" ]]; then
+             warn "Skipping ahead to stage '$from_stage' as requested (--from-stage)"
+             eb_emit_event "pipeline.skip_to_stage" "stage=$from_stage" "run_id=$_runner_run_id"
++            # DSFSTG-1 (#1805): --from-stage restarts the target cycle from iter=1.
++            # Clear the resume flag so the cycle orchestrator does not restore the
++            # persisted iteration count — from-stage always starts the cycle fresh.
++            export _ZBUILD_RESUME_ACTIVE=false
++            # DSFSTG-1 (#1805): when the from-stage target is a cycle, signal the cycle
++            # orchestrator to emit stage.start for the first cycle member (iter=1 always).
++            # Only set for cycle targets; leaf targets emit stage.start via the dispatch loop.
++            # _ZBUILD_FROM_STAGE_EMIT_START is consumed by the first cycle orchestrator entry.
++            if declare -p _TPL_CYCLES >/dev/null 2>&1; then
++                local _fs_tgt_cyc
++                for _fs_tgt_cyc in "${_TPL_CYCLES[@]}"; do
++                    if [[ "$_fs_tgt_cyc" == "$from_stage" ]]; then
++                        export _ZBUILD_FROM_STAGE_EMIT_START=true
++                        break
++                    fi
++                done
++            fi
          fi
-     fi
-@@ -3510,9 +3539,48 @@ main() {
-                     # target is reached.
-                     if $resume_mode && [[ -z "$skip_until_stage" ]]; then
-                         local _du_cyc_status
-+                        # Sanitize cycle id to prevent jq injection via template-sourced values.
-+                        local _safe_cyc_id="${_cyc_id//[^a-zA-Z0-9_-]/}"
-                         _du_cyc_status="$(get_state_field "$state_file" \
--                            ".stage_statuses[\"$_cyc_id\"]" '' 2>/dev/null || true)"
-+                            ".stage_statuses[\"$_safe_cyc_id\"]" '' 2>/dev/null || true)"
-                         if [[ "$_du_cyc_status" == "complete" ]]; then
-+                            # DSRHYD-2 / fail-closed (#1805): verify each cycle member's
-+                            # primary artifact is present after rehydration. Absent →
-+                            # exit 1, mirroring the stage:* arm's stale-artifact check.
-+                            local _dc_safe="${_cyc_id//-/_}"
-+                            local _dc_stages_var="_TPL_CYCLE_STAGES_${_dc_safe}"
-+                            local _dc_csv="${!_dc_stages_var:-}"
-+                            # Red-team-3: empty stage list means misconfigured cycle; fail
-+                            # closed since we cannot verify any member artifact.
-+                            if [[ -z "$_dc_csv" ]]; then
-+                                echo "error: resume: cycle '$_cyc_id' is marked complete but its stage list is empty — cannot verify artifacts; aborting" >&2
-+                                return 1
-+                            fi
-+                            local _dc_m _dc_plugin_dir _dc_manifest \
-+                                  _dc_prim _dc_resolved
-+                            IFS=',' read -ra _dc_members <<< "$_dc_csv"
-+                            for _dc_m in "${_dc_members[@]}"; do
-+                                [[ -z "$_dc_m" ]] && continue
-+                                _dc_plugin_dir=""; _dc_manifest=""; _dc_prim=""; _dc_resolved=""
-+                                _dc_plugin_dir="$(_find_plugin_for_stage \
-+                                    "$_dc_m" "$plugins_root" 2>/dev/null || true)"
-+                                [[ -z "$_dc_plugin_dir" ]] && continue
-+                                _dc_manifest="$_dc_plugin_dir/manifest.yaml"
-+                                _verdict_primary_output_path_v _dc_prim \
-+                                    "$_dc_manifest" 2>/dev/null || true
-+                                [[ -z "$_dc_prim" ]] && continue
-+                                _verdict_resolve_path_v _dc_resolved \
-+                                    "$_dc_prim" "$state_dir"
-+                                if [[ ! -s "$_dc_resolved" ]]; then
-+                                    eb_emit_event \
-+                                        "stage.verdict.stale_artifact" \
-+                                        "stage=$_dc_m" "cycle=$_cyc_id" \
-+                                        "path=$_dc_resolved" \
-+                                        "run_id=$_runner_run_id"
-+                                    echo "error: resume: cycle '$_cyc_id' member '$_dc_m' is marked complete but its primary artifact is absent after rehydration (expected: $_dc_resolved)" >&2
-+                                    return 1
-+                                fi
-+                            done
-                             info "Skipping already-complete cycle: $_cyc_id"
-                             continue
-                         fi
-@@ -3796,8 +3864,10 @@ main() {
-                     # templates honour resume semantics for their leaf stages.
-                     if $resume_mode && [[ -z "$skip_until_stage" ]]; then
-                         local _du_stage_status
-+                        # Sanitize stage id to prevent jq injection via template-sourced values.
-+                        local _safe_ust="${_ust//[^a-zA-Z0-9_-]/}"
-                         _du_stage_status="$(get_state_field "$state_file" \
--                            ".stage_statuses[\"$_ust\"]" '' 2>/dev/null || true)"
-+                            ".stage_statuses[\"$_safe_ust\"]" '' 2>/dev/null || true)"
-                         if [[ "$_du_stage_status" == "complete" ]]; then
-                             # SPEC-2 / fail-closed: verify the primary artifact
-                             # is present after rehydration. Absent → exit 1.
-@@ -3807,11 +3877,11 @@ main() {
-                                 "$_ust" "$plugins_root" 2>/dev/null || true)"
-                             if [[ -n "$_du_plugin_dir" ]]; then
-                                 _du_manifest="$_du_plugin_dir/manifest.yaml"
--                                _du_prim_path="$(_verdict_primary_output_path \
--                                    "$_du_manifest" 2>/dev/null || true)"
-+                                _verdict_primary_output_path_v _du_prim_path \
-+                                    "$_du_manifest" 2>/dev/null || true
-                                 if [[ -n "$_du_prim_path" ]]; then
--                                    _du_resolved="$(_verdict_resolve_path \
--                                        "$_du_prim_path" "$state_dir")"
-+                                    _verdict_resolve_path_v _du_resolved \
-+                                        "$_du_prim_path" "$state_dir"
-                                     if [[ ! -s "$_du_resolved" ]]; then
-                                         eb_emit_event \
-                                             "stage.verdict.stale_artifact" \
-diff --git a/core/state/artifact-persist.sh b/core/state/artifact-persist.sh
-index 6b4781cd..4cc18ac9 100644
---- a/core/state/artifact-persist.sh
-+++ b/core/state/artifact-persist.sh
-@@ -640,8 +640,10 @@ _artifact_persist_put_back() {
-     mkdir -p "$to" || return 1
-     while IFS= read -r -d '' f; do
-         rel="${f#"$from"/}"
--        # Guard: skip if strip failed (trailing slash on $from) — rel would be absolute
--        [[ "$rel" == /* ]] && continue
-+        # Guard: skip if strip failed (trailing slash on $from) — rel would be absolute.
-+        # Also skip dotdot traversal components (../../etc/passwd style, foo/..) which
-+        # the absolute-path check does not catch.
-+        [[ "$rel" == /* || "$rel" == *../* || "$rel" == ..* || "$rel" == *.. ]] && continue
-         [[ "$rel" == stage-io/* || -e "$to/$rel" ]] && continue
-         mkdir -p "$(dirname "$to/$rel")" && cp -p "$f" "$to/$rel" || return 1
-     done < <(find "$from" -type f -print0 2>/dev/null)
-diff --git a/plugins/tool/hydrate/plugin.sh b/plugins/tool/hydrate/plugin.sh
-index 10a775f5..93eb7dc7 100644
---- a/plugins/tool/hydrate/plugin.sh
-+++ b/plugins/tool/hydrate/plugin.sh
-@@ -57,19 +57,11 @@ _hydrate_fetch() {
- }
+     else
+         # #1791: the engine sha rides on pipeline.start and the banner so an
+diff --git a/tests/integration/from-stage-rehydrate-test.sh b/tests/integration/from-stage-rehydrate-test.sh
+index cbfa37f9..168d860b 100644
+--- a/tests/integration/from-stage-rehydrate-test.sh
++++ b/tests/integration/from-stage-rehydrate-test.sh
+@@ -185,6 +185,116 @@ fi
+ assert_gt "[#1805/DSFSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage target cyc was dispatched as first stage)" \
+     "$_s3_cycled_started" "0"
  
- # ─── _hydrate_put_back <from> <to> ───────────────────────────────────────────
--# Copy every file under <from> to the same place under <to>, skipping any file
--# <to> already has. One file at a time rather than `cp -n`, whose exit status on
--# a skipped file differs between BSD and newer GNU coreutils. stage-io/ is left
--# out: it records one run's model calls and is no stage's output.
-+# Delegate to _artifact_persist_put_back (canonical hardened implementation in
-+# core/state/artifact-persist.sh) so the hydrate plugin and the runner's resume
-+# rehydration path share one implementation with the same traversal guards.
- _hydrate_put_back() {
--    local from="$1" to="$2" f rel
--    mkdir -p "$to" || return 1
--    while IFS= read -r -d '' f; do
--        rel="${f#"$from"/}"
--        [[ "$rel" == stage-io/* || -e "$to/$rel" ]] && continue
--        mkdir -p "$(dirname "$to/$rel")" && cp -p "$f" "$to/$rel" || return 1
--    done < <(find "$from" -type f -print0 2>/dev/null)
--    return 0
-+    _artifact_persist_put_back "$1" "$2"
- }
- 
- # ─── hydrate_run <stage_id> <state_file> ─────────────────────────────────────
-diff --git a/tests/integration/resume-entry-points-test.sh b/tests/integration/resume-entry-points-test.sh
-index 240c7050..8ec932f6 100644
---- a/tests/integration/resume-entry-points-test.sh
-+++ b/tests/integration/resume-entry-points-test.sh
-@@ -407,9 +407,9 @@ set +e
-     >"$TEST_TEMP_DIR/s13ep-stdout.txt" 2>"$TEST_TEMP_DIR/s13ep-stderr.txt"
- set -e
- 
--# : the fixture is cyclic (type: cycle present).
-+# Then — the fixture used by this test file contains a stage of type: cycle
- _s13_ep_content="$(cat "$REPO_ROOT/tests/fixtures/templates/artifact-snapshot-coverage.yaml")"
--assert_contains "resume-entry-points test uses a cyclic fixture (type: cycle)" \
-+assert_contains "[#1805/DSCYCL-1] resume-entry-points test uses a cyclic fixture (type: cycle)" \
-     "$_s13_ep_content" "type: cycle"
- 
- # : confirm the cyclic pipeline ran (intake dispatched in the fresh run).
-diff --git a/tests/integration/resume-loop-state-test.sh b/tests/integration/resume-loop-state-test.sh
-index 4996f4a5..cb8f2b5f 100644
---- a/tests/integration/resume-loop-state-test.sh
-+++ b/tests/integration/resume-loop-state-test.sh
-@@ -77,11 +77,13 @@ cycle_dispatch_stage() {
- # The report stub makes the test member report zero test failures (pass).
- zb_stub_reports_tests test
- 
--# When — _ZBUILD_RESUME_ACTIVE=true is exported and the cycle orchestrator's run
--#   body executes. Before this change: loop starts at iter=1. After: reads
--#   current_iter=2 and starts at iter 2.
--set +e
-+# Given — _ZBUILD_RESUME_ACTIVE=true is exported (the resume flag set by the runner
-+#   before invoking the cycle orchestrator on a resume path).
- export _ZBUILD_RESUME_ACTIVE=true
++# ── SPEC-3b: --from-stage WITHOUT --resume exercises skip_restore=false branch ──
++# This sub-case covers the plain `--from-stage <s>` path (no --resume flag),
++# which routes through _runner_from_stage_preflight with skip_restore=false —
++# the branch that performs the git archive restore itself rather than relying on
++# a prior resume rehydration step. The existing S3 sub-case always uses
++# `--resume --from-stage` (skip_restore=true); without this sub-case that
++# substantively different restore path is never exercised.
++# (Addresses lens-scope-code finding 1.)
++print_test_section "[#1805/DSFSTG-1] --from-stage WITHOUT --resume rehydrates stages before <s> (skip_restore=false branch)"
 +
-+# When — the cycle orchestrator's run body executes. Before this change: loop
-+#   starts at iter=1. After: reads current_iter=2 and starts at iter 2.
++# Given — a previous run completed intake; its artifact is present in the git
++#   state branch; a new invocation uses --from-stage cyc WITHOUT --resume.
++S5_ID="$(zb_test_issue)"
++S5_STATE_DIR="$TEST_TEMP_DIR/s5-state"
++S5_EVENTS_DIR="$TEST_TEMP_DIR/s5-events"
++S5_EVENTS_JSONL="$S5_EVENTS_DIR/events.jsonl"
++S5_STATE_FILE="$S5_STATE_DIR/pipeline-state.json"
++mkdir -p "$S5_STATE_DIR/artifacts" "$S5_EVENTS_DIR"
++
++# Fresh git repo; _artifact_persist_snapshot writes the state branch here.
++S5_WORK_REPO="$(setup_git_temp_repo fs-rehydrate-s5)"
++install_template_overlay "$S5_WORK_REPO" artifact-snapshot-coverage
++
++# Create intake primary artifact so the snapshot picks it up.
++printf '{"result_contract":3,"outcome":"pass","reason":"prior-run-noresume-intake"}' \
++    > "$S5_STATE_DIR/artifacts/intake-result.json"
++
++# Snapshot onto the state branch in S5_WORK_REPO.
++_s5_snap_rc=0
++( export ZBUILD_STATE_DIR="$S5_STATE_DIR"
++  cd "$S5_WORK_REPO" && _artifact_persist_snapshot "$S5_STATE_DIR" "$S5_ID" ) \
++    >"$TEST_TEMP_DIR/s5-snap.log" 2>&1 || _s5_snap_rc=$?
++if [[ "$_s5_snap_rc" -ne 0 ]]; then
++    assert_fail "[#1805/DSFSTG-1] setup s5: snapshot failed" \
++        "rc=$_s5_snap_rc; $(cat "$TEST_TEMP_DIR/s5-snap.log" 2>/dev/null | tail -5)"
++else
++    assert_pass "[#1805/DSFSTG-1] setup s5: state branch populated (no-resume path)"
++fi
++
++# Remove the artifact from disk — it now lives only on the state branch.
++rm -f "$S5_STATE_DIR/artifacts/intake-result.json"
++
++# State file: intake=complete, cyc=pending — the runner needs to know intake
++# was done in the prior run so it rehydrates rather than dispatches it.
++jq -n \
++    --arg run_id "s5-fs-noresume-1805" \
++    --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
++    --argjson issue "$S5_ID" \
++    '{
++        schema_version: 1,
++        run_id: $run_id,
++        issue: $issue,
++        stage_statuses: {intake: "complete", cyc: "pending"},
++        current_iteration: 0,
++        self_heal_count: {},
++        scope_manifest_hash: "",
++        cost_ledger_pointer: 0,
++        claim_lease_id: "",
++        plugin_state: {},
++        status: "in_progress",
++        updated_at: $now
++    }' > "$S5_STATE_FILE"
++
++# When — the runner starts with --from-stage cyc and NO --resume flag.
++# This exercises the skip_restore=false branch of _runner_from_stage_preflight,
++# where the function performs the git archive restore itself.
 +set +e
- cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"
- _s7_rc=$?
- set -e
-@@ -192,6 +194,57 @@ assert_eq \
-     "[#1805/DSITER-1] without _ZBUILD_RESUME_ACTIVE, fresh run starts at iter=1 (guard prevents iter-skip)" \
-     "1" "$_SPEC7_FRESH_FIRST_ITER"
- 
-+# ── [#1805/DSITER-1] write side: current_iter persisted before first dispatch ─────
-+# The read-side tests above pre-seed current_iter=2 and verify the orchestrator
-+# READS it. This sub-case verifies the WRITE side: at the moment
-+# cycle_dispatch_stage is first called for iter=1 on a fresh run, current_iter=1
-+# must already be in the state file (written by _cycle_state_write_iter_start).
-+# Without _cycle_state_write_iter_start the value would remain at its init value
-+# (0 / absent) at dispatch time and this assertion would FAIL.
-+print_test_section "[#1805/DSITER-1] write side: current_iter=1 persisted in state before first cycle_dispatch_stage call"
-+
-+# Given — a fresh run (no resume); state file has no prior cycle iterations;
-+#   _ZBUILD_RESUME_ACTIVE is unset so this exercises the fresh-run write path.
-+: > "$ZBUILD_EVENTS_JSONL"
-+jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$STATE_FILE"
-+load_template "$FIXT/cycle-converges-iter2.yaml"
-+unset _ZBUILD_RESUME_ACTIVE
-+
-+# When the orchestrator runs, capture current_iter from the state file at the
-+# moment cycle_dispatch_stage is first called. This pins write-before-dispatch.
-+_SPEC7W_CURRENT_ITER_AT_FIRST_DISPATCH=-99
-+_SPEC7W_FIRST_DISPATCH_SEEN=0
-+cycle_dispatch_stage() {
-+    local stage="$1" iter="$2"
-+    if [[ "$_SPEC7W_FIRST_DISPATCH_SEEN" -eq 0 ]]; then
-+        _SPEC7W_FIRST_DISPATCH_SEEN=1
-+        _SPEC7W_CURRENT_ITER_AT_FIRST_DISPATCH="$(jq -r \
-+            '.cycle_iterations["build-test"].current_iter // -99' \
-+            "$STATE_FILE" 2>/dev/null || echo "-99")"
-+    fi
-+    _CYCLE_DISPATCH_VERDICT="pass"
-+    _CYCLE_DISPATCH_STATUS="complete"
-+    return 0
-+}
-+
-+zb_stub_reports_tests test
-+
-+# When — cycle orchestrator runs a fresh iteration 1 (no resume).
-+set +e
-+cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"
-+_s7w_rc=$?
++( cd "$S5_WORK_REPO" && env \
++    ZBUILD_CYCLES_ENABLED=1 \
++    ZBUILD_PLUGINS_ROOT="$S3_PLUGINS_ROOT" \
++    ZBUILD_STATE_DIR="$S5_STATE_DIR" \
++    ZBUILD_STATE_FILE="$S5_STATE_FILE" \
++    ZBUILD_EVENTS_DIR="$S5_EVENTS_DIR" \
++    ZBUILD_EVENTS_JSONL="$S5_EVENTS_JSONL" \
++    ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
++    ZBUILD_CONTRACT_VALIDATOR=warn \
++    ZBUILD_VISION_GATE=off \
++    PATH="$PATH" HOME="$HOME" \
++    bash "$RUNNER" --template artifact-snapshot-coverage \
++        --from-stage cyc --issue "$S5_ID" ) \
++    >"$TEST_TEMP_DIR/s5-stdout.txt" 2>"$TEST_TEMP_DIR/s5-stderr.txt"
++_s5_rc=$?
 +set -e
 +
-+# Then — at the moment cycle_dispatch_stage was first called for iter=1,
-+# current_iter in the state file was already 1.
-+# If _cycle_state_write_iter_start is removed: current_iter stays at init value
-+# (0 → or absent → -99 fallback) → assert "1" == "0" or "1" == "-99" → FAILS.
-+# After the change: _cycle_state_write_iter_start writes current_iter=1 before
-+# cycle_dispatch_stage is called → assert "1" == "1" → PASSES.
-+assert_eq \
-+    "[#1805/DSITER-1] current_iter=1 written to state before first cycle_dispatch_stage call (write-before-dispatch; removing _cycle_state_write_iter_start leaves current_iter at init value)" \
-+    "1" "$_SPEC7W_CURRENT_ITER_AT_FIRST_DISPATCH"
++# Then — intake artifact must appear in ZBUILD_ARTIFACT_DIR before cyc dispatches.
++# Before the change: skip_restore=false path does not exist / no rehydration →
++#   file absent → FAILS.
++# After the change: _runner_from_stage_preflight with skip_restore=false restores
++#   the artifact from the git state branch → PASSES.
++assert_file_exists \
++    "[#1805/DSFSTG-1] intake-result.json rehydrated via --from-stage without --resume (skip_restore=false branch)" \
++    "$S5_STATE_DIR/artifacts/intake-result.json"
 +
- # ── [#1805/DSCMBR-1] cycle member stages already complete in iter k are skipped ─
- # On resume, within the interrupted iteration, cycle member stages already marked
- # complete in persisted state are skipped; the first dispatched cycle member is
-@@ -210,12 +263,13 @@ jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$STATE_FILE"
- # cycle_iterations["build-test"].current_iter = 2.
++# Then — restored artifact must contain the original payload.
++_s5_restored_content="$(cat "$S5_STATE_DIR/artifacts/intake-result.json" 2>/dev/null || true)"
++assert_contains \
++    "[#1805/DSFSTG-1] restored artifact contains prior-run payload (--from-stage without --resume; skip_restore=false used git state branch)" \
++    "$_s5_restored_content" "prior-run-noresume-intake"
++
++# Then — intake emits no stage.start (it was rehydrated, not dispatched).
++# Before the change: intake would be re-dispatched normally → stage.start for intake → FAILS.
++# After the change: intake is skipped via preflight rehydration → no stage.start → PASSES.
++_s5_intake_starts=0
++if [[ -f "$S5_EVENTS_JSONL" ]]; then
++    _s5_intake_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="intake") | .type' \
++        "$S5_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
++fi
++assert_eq "[#1805/DSFSTG-1] intake emits no stage.start when skipped via --from-stage without --resume" \
++    "0" "$_s5_intake_starts"
++
+ # ── SPEC-4: missing artifact with --from-stage exits 1 and names missing stage ─
+ print_test_section "[#1805/DSFSTG-2] --from-stage with no restorable artifact emits diagnostic and exits 1"
+ 
+diff --git a/tests/integration/pipeline-resume-test.sh b/tests/integration/pipeline-resume-test.sh
+index b71be449..bfc89b72 100755
+--- a/tests/integration/pipeline-resume-test.sh
++++ b/tests/integration/pipeline-resume-test.sh
+@@ -309,12 +309,17 @@ assert_contains "--from-stage unknown stage says it is not a known stage" \
+ # ─── Integration: --from-stage without --resume exits 1 ───────────────────────
+ print_test_section "integration: --from-stage without --resume exits 1"
+ 
+-# Reset state for a fresh start scenario
++# Reset state: use status "complete" and issue=$_ZB_ID (matching --issue) so
++# auto-resume returns fresh_start (not auto_resume) and the --from-stage check
++# fires correctly. Using in_progress would auto-resume instead, changing the
++# expected error (DSFSTG-1 / lens-scope-code finding 1, #1805 moved the check
++# after auto-resume so in_progress state auto-resumes and bypasses the check).
+ jq -n \
+     --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+-    '{schema_version:1,run_id:"fresh-run",issue:225,stage_statuses:{},current_iteration:0,
++    --argjson _ZB_ID "$_ZB_ID" \
++    '{schema_version:1,run_id:"fresh-run",issue:$_ZB_ID,stage_statuses:{},current_iteration:0,
+       self_heal_count:{},scope_manifest_hash:"",cost_ledger_pointer:0,claim_lease_id:"",
+-      plugin_state:{},status:"in_progress",updated_at:$now}' > "$INT_STATE_FILE"
++      plugin_state:{},status:"complete",updated_at:$now}' > "$INT_STATE_FILE"
+ 
+ set +e
+ ( cd "$INT_OVERLAY_REPO" && env \
+diff --git a/tests/integration/resume-loop-state-test.sh b/tests/integration/resume-loop-state-test.sh
+index cb8f2b5f..2ebaf465 100644
+--- a/tests/integration/resume-loop-state-test.sh
++++ b/tests/integration/resume-loop-state-test.sh
+@@ -264,12 +264,16 @@ jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$STATE_FILE"
  zb_engine_loop_state "$STATE_FILE" "build-test" 2 5 "in_progress"
  
--# Record that "build" completed in iter 2 before the interruption.
--# stage_statuses.build = "complete" is the standard field the cycle orchestrator
--# checks to decide whether to skip a member on resume (ADR-006 §3.6 / DSCMBR-1).
-+# Record that "build" completed in iter 2 before the interruption, and that
-+# "test" was interrupted (in_progress). stage_statuses is what the cycle
-+# orchestrator checks to decide whether to skip a member on resume
-+# (ADR-006 §3.6 / DSCMBR-1).
+ # Record that "build" completed in iter 2 before the interruption, and that
+-# "test" was interrupted (in_progress). stage_statuses is what the cycle
+-# orchestrator checks to decide whether to skip a member on resume
+-# (ADR-006 §3.6 / DSCMBR-1).
++# "test" was interrupted (and therefore "aborted" — the value
++# _cycle_state_write_member_atomic writes for an interrupted/aborted stage).
++# Using "aborted" here (not "in_progress", which is never written by the real code)
++# ensures the skip-guard check (`stage_statuses[$s] == "complete"`) is exercised on
++# the production data shape: build=complete → skipped; test=aborted → dispatched.
++# stage_statuses is what the cycle orchestrator checks to decide whether to skip a
++# member on resume (ADR-006 §3.6 / DSCMBR-1).
  # Use jq to merge this into the existing state; the cycle_iterations block
  # written by zb_engine_loop_state is preserved (`.` merge keeps all other fields).
--jq '.stage_statuses.build = "complete"' "$STATE_FILE" \
-+jq '.stage_statuses.build = "complete" | .stage_statuses.test = "in_progress"' "$STATE_FILE" \
+-jq '.stage_statuses.build = "complete" | .stage_statuses.test = "in_progress"' "$STATE_FILE" \
++jq '.stage_statuses.build = "complete" | .stage_statuses.test = "aborted"' "$STATE_FILE" \
      > "${STATE_FILE}.cmbr1.tmp" && mv "${STATE_FILE}.cmbr1.tmp" "$STATE_FILE"
  
  # Load the template: cycle-converges-iter2.yaml has build + test as cycle members,
-@@ -350,8 +404,9 @@ print_test_section "resume-loop-state test uses a fixture containing a cyclic st
- # cycle-converges-iter2.yaml is loaded above via load_template and driven through
- # cycle_orchestrator_run. Assert it contains type: cycle to formally pin the fixture
- # contains a cyclic stage (as DSCYCL-1 requires).
-+# Then — the fixture used by this test file contains a stage of type: cycle
- _s13_loop_fixt_content="$(cat "$FIXT/cycle-converges-iter2.yaml")"
--assert_contains "cycle fixture used by resume-loop-state test has type: cycle" \
-+assert_contains "[#1805/DSCYCL-1] cycle fixture used by resume-loop-state test has type: cycle" \
-     "$_s13_loop_fixt_content" "type: cycle"
- 
- # Also assert the pipeline was actually run: cycle_dispatch_stage was invoked
