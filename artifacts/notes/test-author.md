@@ -1,14 +1,29 @@
-# test-author notes — issue #1805 (round 38: verification pass)
+# test-author notes — issue #1805 (round 41: fix open findings from test-author stage)
 
-## Status: COMPLETE (confirmed)
+## Status: COMPLETE
 
-## Round 38 summary
+## Round 41 summary
 
-Read all five test files and verified all prior work is on disk and correct.
-No new "fix: test" findings from review_lenses require action.
-All 16 SPECs confirmed present and tagged correctly.
+Fixed 2 open findings from the previous test-author run (verdict: unusable):
 
-## All SPECs coverage (all confirmed on disk)
+### test-author finding 1
+`_ZBUILD_RESUME_ACTIVE=true` was placed under the `# When` heading in the DSITER-1
+first sub-case, but the SPEC lists it as a Given precondition.
+
+Fix: moved `export _ZBUILD_RESUME_ACTIVE=true` out of the `# When` block and placed it
+under a new `# Given` comment immediately before the `# When` block.
+File: tests/integration/resume-loop-state-test.sh
+
+### test-author finding 2
+DSCMBR-1 iter-2 sub-case set only `stage_statuses.build = "complete"` but did not
+set `stage_statuses.test = "in_progress"`. The Given says "persisted state records
+build as complete and test as in-progress within iter k".
+
+Fix: changed the jq call in the DSCMBR-1 iter-2 sub-case to also set
+`.stage_statuses.test = "in_progress"` alongside `.stage_statuses.build = "complete"`.
+File: tests/integration/resume-loop-state-test.sh
+
+## All SPECs coverage (all confirmed on disk with correct tags)
 
 ### tests/unit/hydrate-stage-test.sh
 - DSDLGT-1 ✓ (lines 235–266: sentinel test for _artifact_persist_put_back delegation)
@@ -30,35 +45,46 @@ All 16 SPECs confirmed present and tagged correctly.
 - DSCYCL-1 ✓ (fixture contains type: cycle, tagged [#1805/DSCYCL-1])
 
 ### tests/integration/resume-loop-state-test.sh
-- DSITER-1 ✓ (starts at iter=2 on resume; fresh/nested start at iter=1)
-- DSCMBR-1 ✓ (iter=2 and iter=1 sub-cases: build skipped, test dispatched)
+- DSITER-1 ✓ (starts at iter=2 on resume; fresh/nested start at iter=1; _ZBUILD_RESUME_ACTIVE=true in Given)
+- DSCMBR-1 ✓ (iter=2 sub-case: build skipped, test dispatched; stage_statuses.test=in_progress; iter=1 sub-case too)
+- DSCYCL-1 ✓ (fixture contains type: cycle, tagged [#1805/DSCYCL-1]; # Then heading present)
 
 ### tests/integration/resume-entry-points-test.sh
 - DSENTR-1 ✓ (paths 1, 2, 3: artifact restored + pipeline.resume before stage.start)
-- DSENTR-2 ✓ (path 4: auto-resume via latest symlink, ZBUILD_STATE_FILE/DIR unset)
+- DSENTR-2 ✓ (path 4: auto-resume via latest symlink, ZBUILD_STATE_FILE/DIR unset via env -u)
+- DSCYCL-1 ✓ (fixture contains type: cycle, tagged [#1805/DSCYCL-1]; # Then heading present)
 
-## Answers to review_lenses findings (same as round 37)
+## Answers to findings
 
-ANSWER lens-red-team finding 3: done — added DSCMBR-1 iter=1 sub-case in resume-loop-state-test.sh;
-  tests that build (complete in iter=1) is NOT dispatched and test IS dispatched on resume with
-  _start_iter=1; will fail on current code (DSCMBR-1 _start_iter > 1 bug) and pass after fix.
+ANSWER test-author finding 1: done — moved `export _ZBUILD_RESUME_ACTIVE=true` from
+  the `# When` block to a new `# Given` comment block immediately before the When
+  section in the DSITER-1 first sub-case in resume-loop-state-test.sh.
 
-ANSWER lens-correctness finding 4: nothing to do — the finding is incorrect about how
-  `current_iter` is semantically written; `zb_engine_loop_state rounds=2` gives `current_iter=2`
-  which correctly represents "interrupted during iter=2" (the test comment confirms this);
-  changing to rounds=1 would assert _start_iter=2 from current_iter=1, but current code uses
-  _start_iter=current_iter (not +1), so the test would fail on correct new code.
+ANSWER test-author finding 2: done — updated the DSCMBR-1 iter-2 jq call to also set
+  `.stage_statuses.test = "in_progress"` alongside `.stage_statuses.build = "complete"`,
+  matching the SPEC Given ("persisted state records build as complete and test as
+  in-progress within iter k").
 
-ANSWER lens-red-team finding 4: done — added `assert_eq "0" "$_s12_cycled_starts"` assertion
-  to DSFRSH-1 sub-case in resume-rehydrate-test.sh; verifies cycle members do NOT emit stage.start
-  on fresh runs; fails on current code (iter>0 bug causes unconditional stage.start for cycle
-  members); passes after removing/guarding the iter>0 guard.
+ANSWER lens-correctness-code finding 2: nothing to do — the SPEC (DSITER-1 Given)
+  explicitly states "persisted state records cycle_iterations[CYCLE_ID].current_iter=2
+  (iter 1 completed before interruption)"; the test fixture follows the SPEC using
+  `zb_engine_loop_state rounds=2` to produce `current_iter=2`; this correctly fails on
+  old code (ignores current_iter, starts at 1 → assert_eq 2 1 → FAIL) and passes on
+  new code (reads current_iter=2, starts at 2 → PASS); if the code writer uses a
+  different formula (finding 1, fix: code), that is a code issue.
 
-ANSWER lens-scope finding 3: nothing to do — the DSFSTG-1 assertion correctly tests the
-  requirement that stage.start is emitted for <s>'s first cycle member; weakening to
-  cycle.member.dispatch.start would allow the test to pass on incompletely-fixed code (where
-  DSCMBR-1 _start_iter>1 bug persists); keeping stage.start correctly fails when code is
-  incompletely fixed.
+ANSWER lens-correctness-code finding 3: nothing to do — same reasoning as finding 2;
+  the DSCMBR-1 scenario uses `current_iter=2` per the SPEC ("iter 1 completed, iter 2
+  in-progress"); the test correctly validates member-skip in the interrupted iteration.
 
-ANSWER lens-scope finding 4: nothing to do from test-author — cycle-member-dispatch-events-test.sh
-  is not in my testfile list; cannot change it.
+ANSWER lens-scope-code finding 1: nothing to do — the DSENTR-2 sub-case (path 4) in
+  resume-entry-points-test.sh already uses `env -u ZBUILD_STATE_FILE -u ZBUILD_STATE_DIR`;
+  the latest-symlink auto-resume branch IS exercised by path 4; paths 1-3 test other
+  entry paths and correctly set ZBUILD_STATE_FILE.
+
+## Changes made this round
+
+1. tests/integration/resume-loop-state-test.sh:
+   - Moved `export _ZBUILD_RESUME_ACTIVE=true` from `# When` block to new `# Given` block
+     in DSITER-1 first sub-case
+   - Added `.stage_statuses.test = "in_progress"` to the DSCMBR-1 iter-2 jq call
