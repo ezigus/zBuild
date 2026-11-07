@@ -185,6 +185,116 @@ fi
 assert_gt "[#1805/DSFSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage target cyc was dispatched as first stage)" \
     "$_s3_cycled_started" "0"
 
+# ── SPEC-3b: --from-stage WITHOUT --resume exercises skip_restore=false branch ──
+# This sub-case covers the plain `--from-stage <s>` path (no --resume flag),
+# which routes through _runner_from_stage_preflight with skip_restore=false —
+# the branch that performs the git archive restore itself rather than relying on
+# a prior resume rehydration step. The existing S3 sub-case always uses
+# `--resume --from-stage` (skip_restore=true); without this sub-case that
+# substantively different restore path is never exercised.
+# (Addresses lens-scope-code finding 1.)
+print_test_section "[#1805/DSFSTG-1] --from-stage WITHOUT --resume rehydrates stages before <s> (skip_restore=false branch)"
+
+# Given — a previous run completed intake; its artifact is present in the git
+#   state branch; a new invocation uses --from-stage cyc WITHOUT --resume.
+S5_ID="$(zb_test_issue)"
+S5_STATE_DIR="$TEST_TEMP_DIR/s5-state"
+S5_EVENTS_DIR="$TEST_TEMP_DIR/s5-events"
+S5_EVENTS_JSONL="$S5_EVENTS_DIR/events.jsonl"
+S5_STATE_FILE="$S5_STATE_DIR/pipeline-state.json"
+mkdir -p "$S5_STATE_DIR/artifacts" "$S5_EVENTS_DIR"
+
+# Fresh git repo; _artifact_persist_snapshot writes the state branch here.
+S5_WORK_REPO="$(setup_git_temp_repo fs-rehydrate-s5)"
+install_template_overlay "$S5_WORK_REPO" artifact-snapshot-coverage
+
+# Create intake primary artifact so the snapshot picks it up.
+printf '{"result_contract":3,"outcome":"pass","reason":"prior-run-noresume-intake"}' \
+    > "$S5_STATE_DIR/artifacts/intake-result.json"
+
+# Snapshot onto the state branch in S5_WORK_REPO.
+_s5_snap_rc=0
+( export ZBUILD_STATE_DIR="$S5_STATE_DIR"
+  cd "$S5_WORK_REPO" && _artifact_persist_snapshot "$S5_STATE_DIR" "$S5_ID" ) \
+    >"$TEST_TEMP_DIR/s5-snap.log" 2>&1 || _s5_snap_rc=$?
+if [[ "$_s5_snap_rc" -ne 0 ]]; then
+    assert_fail "[#1805/DSFSTG-1] setup s5: snapshot failed" \
+        "rc=$_s5_snap_rc; $(cat "$TEST_TEMP_DIR/s5-snap.log" 2>/dev/null | tail -5)"
+else
+    assert_pass "[#1805/DSFSTG-1] setup s5: state branch populated (no-resume path)"
+fi
+
+# Remove the artifact from disk — it now lives only on the state branch.
+rm -f "$S5_STATE_DIR/artifacts/intake-result.json"
+
+# State file: intake=complete, cyc=pending — the runner needs to know intake
+# was done in the prior run so it rehydrates rather than dispatches it.
+jq -n \
+    --arg run_id "s5-fs-noresume-1805" \
+    --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --argjson issue "$S5_ID" \
+    '{
+        schema_version: 1,
+        run_id: $run_id,
+        issue: $issue,
+        stage_statuses: {intake: "complete", cyc: "pending"},
+        current_iteration: 0,
+        self_heal_count: {},
+        scope_manifest_hash: "",
+        cost_ledger_pointer: 0,
+        claim_lease_id: "",
+        plugin_state: {},
+        status: "in_progress",
+        updated_at: $now
+    }' > "$S5_STATE_FILE"
+
+# When — the runner starts with --from-stage cyc and NO --resume flag.
+# This exercises the skip_restore=false branch of _runner_from_stage_preflight,
+# where the function performs the git archive restore itself.
+set +e
+( cd "$S5_WORK_REPO" && env \
+    ZBUILD_CYCLES_ENABLED=1 \
+    ZBUILD_PLUGINS_ROOT="$S3_PLUGINS_ROOT" \
+    ZBUILD_STATE_DIR="$S5_STATE_DIR" \
+    ZBUILD_STATE_FILE="$S5_STATE_FILE" \
+    ZBUILD_EVENTS_DIR="$S5_EVENTS_DIR" \
+    ZBUILD_EVENTS_JSONL="$S5_EVENTS_JSONL" \
+    ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
+    ZBUILD_CONTRACT_VALIDATOR=warn \
+    ZBUILD_VISION_GATE=off \
+    PATH="$PATH" HOME="$HOME" \
+    bash "$RUNNER" --template artifact-snapshot-coverage \
+        --from-stage cyc --issue "$S5_ID" ) \
+    >"$TEST_TEMP_DIR/s5-stdout.txt" 2>"$TEST_TEMP_DIR/s5-stderr.txt"
+_s5_rc=$?
+set -e
+
+# Then — intake artifact must appear in ZBUILD_ARTIFACT_DIR before cyc dispatches.
+# Before the change: skip_restore=false path does not exist / no rehydration →
+#   file absent → FAILS.
+# After the change: _runner_from_stage_preflight with skip_restore=false restores
+#   the artifact from the git state branch → PASSES.
+assert_file_exists \
+    "[#1805/DSFSTG-1] intake-result.json rehydrated via --from-stage without --resume (skip_restore=false branch)" \
+    "$S5_STATE_DIR/artifacts/intake-result.json"
+
+# Then — restored artifact must contain the original payload.
+_s5_restored_content="$(cat "$S5_STATE_DIR/artifacts/intake-result.json" 2>/dev/null || true)"
+assert_contains \
+    "[#1805/DSFSTG-1] restored artifact contains prior-run payload (--from-stage without --resume; skip_restore=false used git state branch)" \
+    "$_s5_restored_content" "prior-run-noresume-intake"
+
+# Then — intake emits no stage.start (it was rehydrated, not dispatched).
+# Before the change: intake would be re-dispatched normally → stage.start for intake → FAILS.
+# After the change: intake is skipped via preflight rehydration → no stage.start → PASSES.
+_s5_intake_starts=0
+if [[ -f "$S5_EVENTS_JSONL" ]]; then
+    _s5_intake_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="intake") | .type' \
+        "$S5_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_eq "[#1805/DSFSTG-1] intake emits no stage.start when skipped via --from-stage without --resume" \
+    "0" "$_s5_intake_starts"
+
 # ── SPEC-4: missing artifact with --from-stage exits 1 and names missing stage ─
 print_test_section "[#1805/DSFSTG-2] --from-stage with no restorable artifact emits diagnostic and exits 1"
 
