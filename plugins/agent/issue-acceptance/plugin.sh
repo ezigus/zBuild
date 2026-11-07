@@ -82,6 +82,9 @@ REQUIREMENTS or the ISSUE — or the code that shows it — <file>:"<its exact
 text>". Copy it exactly: it is checked, and one that is not there makes the
 answer unusable.
 
+Findings other stages raised may be shown under Previous work. After your
+verdict lines, answer each of them:
+${_ZB_ANSWER_FORMS:-}
 ## What you judge against
 Five things, shown at the end of this part:
 
@@ -160,9 +163,15 @@ _ia_write() {
             + ". What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.")' \
         <<< "$u" 2>/dev/null | stage_findings_json)"
     u="$(jq -c 'map(tostring | sub("^\\[fix-(code|design)\\][[:space:]]*"; ""))' <<< "$u" 2>/dev/null || printf '%s' "$u")"
-    local _data
-    _data="$(jq -nc --argjson u "$u" --argjson s "$s" --argjson fnd "${_fnd:-[]}" --arg j "$j" \
-        '{unmet: $u, unsure: $s, findings: $fnd} + (if $j == "" then {} else {judgement: $j} end)' 2>/dev/null)"
+    # ADR-068 §6: what it did about each finding it was given (_IA_ANSWERS),
+    # and how many it was shown when it was asked this time.
+    local _data _ia_a="[]"
+    [[ ${#_IA_ANSWERS[@]} -gt 0 ]] && _ia_a="$(_ia_json_list "${_IA_ANSWERS[@]}")"
+    _data="$(jq -nc --argjson u "$u" --argjson s "$s" --argjson fnd "${_fnd:-[]}" --arg j "$j" --argjson a "$_ia_a" \
+        --arg known "${_IA_ANS_KNOWN:-0}" --argjson fs "${_ZB_ANS_SHOWN:-0}" --arg un "${_ZB_ANS_MISSING:-}" \
+        '{unmet: $u, unsure: $s, findings: $fnd} + (if $j == "" then {} else {judgement: $j} end)
+         + (if ($a | length) > 0 then {answers: $a} else {} end)
+         + (if $known == "1" then {findings_shown: $fs} + (if $un != "" then {unanswered: ($un | split("\n"))} else {} end) else {} end)' 2>/dev/null)"
     [[ -n "$_data" ]] || _data='{}'
     if ! stage_result_write "$dir/issue-acceptance-result.json" "$o" "$r" "$_data"; then
         _ia_emit "issue_acceptance.result.write_failed" "dir=$dir"
@@ -174,13 +183,18 @@ _ia_write() {
     if [[ "$j" == unreadable ]] || [[ "$o" != pass && "$o" != fail ]]; then
         _body="- the change was not judged against the issue"
     fi
+    if [[ "${_IA_ANS_KNOWN:-0}" == 1 ]]; then
+        local _ia_sa=""; zb_answers_summary_v _ia_sa _IA_ANSWERS; _body+=$'\n'"$_ia_sa"
+    fi
     stage_summary_write "$dir/issue-acceptance-summary.md" "issue-acceptance" "$o" "$r" "$_body"
 }
 
 # ─── issue_acceptance_run <stage_id> <state_file> ────────────────────────────
 # ADR-054 §4: rc is binary; the verdict lives in the result.
+_IA_ANSWERS=() _IA_ANS_KNOWN=0
 issue_acceptance_run() {
     local stage_id="${1:-issue-acceptance}"; : "$stage_id"
+    _IA_ANSWERS=(); _IA_ANS_KNOWN=0
     local state_file="${2:-}"
     local art="${ZBUILD_ARTIFACT_DIR:-}"
     [[ -n "$art" ]] || { [[ -n "$state_file" ]] && art="$(dirname "$state_file")/artifacts"; }
@@ -227,8 +241,8 @@ issue_acceptance_run() {
     local _reqs=""; declare -F acceptance_requirements_list >/dev/null 2>&1 \
         && _reqs="$(acceptance_requirements_list "$(earlier_requirements "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)")"
     # #2464 (ADR-072 §4 §5): the answer is kept while what it judged is
-    # unchanged; a stage's "nothing to do" answer to one of its findings is
-    # judged again, shown to the judge.
+    # unchanged; a stage's `wrong` answer to one of its findings is judged
+    # again, shown to the judge.
     local _ans=""; judge_answers_to_v _ans "$art" issue-acceptance
     local kf="${art%/}/issue-acceptance-judged.json" eng fp kept="" _root_q="$_root"
     judge_engine_v eng
@@ -236,6 +250,8 @@ issue_acceptance_run() {
     judge_kept_get_v kept "$kf" issue "$fp" "${_ans:+1}"
     if [[ -n "$kept" ]]; then
         _ia_parse "$kept" "$_reqs" "$issue" "$_root_q"
+        # A kept answer was not asked this time: its answers stand as given.
+        zb_answers_collect_v _IA_ANSWERS "$kept"
         if [[ -z "$_IA_PROBLEM" ]]; then
             _ia_finish "$art"
             return 0
@@ -292,6 +308,8 @@ issue_acceptance_run() {
             "the answer could not be used, even when asked again: $_IA_PROBLEM — the change was not judged"
         return 0
     fi
+    # ADR-068 §6: a finding it was shown and did not answer is asked for.
+    _IA_ANSWERS=(); zb_answers_finish _IA_ANSWERS "$_framed" "$_raw" "$tier"; _IA_ANS_KNOWN=1
     local _q
     for _q in ${_IA_QUOTED[@]+"${_IA_QUOTED[@]}"}; do _deps+=("$_root_q/$_q"); done
     judge_kept_put_one "$kf" issue "$fp" "$_raw" ${_deps[@]+"${_deps[@]}"}

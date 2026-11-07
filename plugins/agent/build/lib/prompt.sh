@@ -54,15 +54,16 @@ it was already done before you started. If the branch already contains
 the required changes (check \`git log\` for commits + \`git diff\` for any
 remaining gap) AND no stage under Previous work has failed findings left to
 answer, emit \`LOOP_COMPLETE\` immediately. Do NOT keep iterating when there is
-nothing left to do. While a failed stage's findings are open, finishing with
-no change needs each of them answered: \`done\` (you changed something for
-it), or \`nothing to do\` with the reason.
+nothing left to do. Every finding you are given is answered, each on its own
+line before the sentinel: \`done\` (you changed something for it), \`wrong\`
+(it does not hold, and why) or \`not mine\` (your job cannot fix it, and why).
+A finding with no answer is asked for again.
 
 ### When a finding does not reproduce
 If a failing stage names a test and that test PASSES when you run it on this
 tree, say so and stop. Answer that finding, on its own line before the sentinel:
 
-    ANSWER <stage> finding <n>: nothing to do — not reproduced: <the path you ran>
+    ANSWER <stage> finding <n>: wrong — not reproduced: <the path you ran>
 
 one line per finding. This is a REPORT, not a verdict: the pipeline re-runs the
 stage that raised the finding to check. Do not keep searching for the cause of
@@ -74,7 +75,7 @@ itself cannot pass — do not change the code to chase it; you may not change th
 test. Answer that finding as soon as you are sure, on its own line before the
 sentinel, and stop working on that test:
 
-    ANSWER <stage> finding <n>: nothing to do — the test is wrong: <test file>: <why>
+    ANSWER <stage> finding <n>: wrong — the test is wrong: <test file>: <why>
 
 Say exactly why it cannot pass. The stage that owns the tests is given this
 answer, and fixes the test.
@@ -88,7 +89,7 @@ is decides what you do:
 2. The code is meant to leave it, and the test does not clean it up: you may
    not change the test. Answer, on its own line before the sentinel:
 
-    ANSWER <stage> finding <n>: nothing to do — the test is wrong: <test file>: needs cleanup of <what>
+    ANSWER <stage> finding <n>: wrong — the test is wrong: <test file>: needs cleanup of <what>
 
 3. Every test needs the same guard: put it in the shared test helpers, which
    are code like any other in your scope.

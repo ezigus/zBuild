@@ -4,8 +4,8 @@
 # A judge reads the code itself, read-only, and the code from before the change
 # is a copy it can open (§1 §2). Each complaint quotes the text it is about, and
 # the quote is checked (§3). Its answers are kept while nothing it judged has
-# changed, and judged again when a stage answers one of its findings with
-# "nothing to do" (§4 §5).
+# changed, and judged again when a stage answers one of its findings `wrong`
+# (§4 §5).
 #
 # Sourced library: no set -euo pipefail.
 
@@ -165,9 +165,85 @@ zb_answers_collect_v() {
     return 0
 }
 
-# judge_answers_to <artifact_dir> <label>... — every "nothing to do" answer a
-# stage keeps in its result (data.answers) to a finding labelled <label>, one
-# per line. A "done" answer changed something, so what is judged changed too.
+# zb_answer_kind_v <var> <answer> — what an answer says (ADR-068 §6): done (the
+# stage changed something for it), wrong (it does not hold), not mine (the
+# stage's job cannot fix it); empty when it is none of them, which is no answer.
+zb_answer_kind_v() {
+    local -n _zakv="$1"; local _zakv_re='^[^:]*finding[[:space:]]+[0-9]+[[:space:]]*:[[:space:]*_`]*(done|wrong|not[[:space:]]+mine)([^A-Za-z]|$)'
+    _zakv=""
+    [[ "${2,,}" =~ $_zakv_re ]] || return 0
+    _zakv="${BASH_REMATCH[1]}"; [[ "$_zakv" == not* ]] && _zakv="not mine"
+    return 0
+}
+
+# zb_answers_finish <arr> <prompt> <reply> — a stage's answers to the findings
+# its prompt showed it (ADR-068 §6): read from <reply> into <arr>, and those not
+# answered asked for once, in a call that shows the stage the findings and its
+# reply and may only read files. Sets _ZB_ANS_SHOWN (how many it was shown) and
+# _ZB_ANS_MISSING (each still not answered, one per line). A finding is shown as
+# `- <label> finding <n> (opened by …): …` (stage-previous-work.sh).
+_ZB_ANS_SHOWN=0 _ZB_ANS_MISSING=""
+zb_answers_finish() {
+    local -n _zaf="$1"
+    local _zaf_l _zaf_k _zaf_a _zaf_kind _zaf_miss="" _zaf_lines="" _zaf_reply _zaf_ask
+    local _zaf_re='^-[[:space:]]+([^[:space:]]+[[:space:]]+finding[[:space:]]+[0-9]+)[[:space:]]+\(opened[[:space:]]by'
+    local -A _zaf_seen=() _zaf_ok=()
+    _ZB_ANS_SHOWN=0 _ZB_ANS_MISSING=""
+    zb_answers_collect_v _zaf "${3:-}"
+    for _zaf_a in ${_zaf[@]+"${_zaf[@]}"}; do
+        zb_answer_kind_v _zaf_kind "$_zaf_a"; [[ -n "$_zaf_kind" ]] && _zaf_ok["${_zaf_a%%:*}"]=1
+    done
+    while IFS= read -r _zaf_l; do
+        [[ "$_zaf_l" =~ $_zaf_re ]] || continue
+        _zaf_k="${BASH_REMATCH[1]}"
+        [[ -n "${_zaf_seen[$_zaf_k]+x}" ]] && continue
+        _zaf_seen["$_zaf_k"]=1; _ZB_ANS_SHOWN=$((_ZB_ANS_SHOWN + 1))
+        [[ -n "${_zaf_ok[$_zaf_k]+x}" ]] && continue
+        _zaf_miss+="$_zaf_k"$'\n'; _zaf_lines+="$_zaf_l"$'\n'
+    done <<< "${2:-}"
+    if [[ -n "$_zaf_miss" ]] && declare -F route_to_model >/dev/null 2>&1; then
+        _zaf_reply="${3:-}"
+        (( ${#_zaf_reply} > 20000 )) && _zaf_reply="${_zaf_reply: -20000}"
+        _zaf_ask="Your job: you were given the findings below and your answer says nothing about them. Say what you did about each, from what you did — shown below as your answer. Do not do anything else.
+
+${_ZB_ANSWER_FORMS:-}
+
+THE FINDINGS YOU DID NOT ANSWER:
+${_zaf_lines}
+YOUR ANSWER:
+<<<
+${_zaf_reply}
+>>>
+
+- Answer only, one line per finding, in the form above."
+        local -x ZBUILD_ROUTE_TOOLS=read
+        zb_answers_collect_v _zaf "$(route_to_model "${4:-T1}" "$_zaf_ask" </dev/null 2>/dev/null)"
+        for _zaf_a in ${_zaf[@]+"${_zaf[@]}"}; do
+            zb_answer_kind_v _zaf_kind "$_zaf_a"; [[ -n "$_zaf_kind" ]] && _zaf_ok["${_zaf_a%%:*}"]=1
+        done
+    fi
+    while IFS= read -r _zaf_k; do
+        [[ -n "$_zaf_k" && -z "${_zaf_ok[$_zaf_k]+x}" ]] && _ZB_ANS_MISSING+="${_ZB_ANS_MISSING:+$'\n'}$_zaf_k"
+    done <<< "$_zaf_miss"
+    return 0
+}
+
+# zb_answers_summary_v <var> <arr> — the lines a stage's summary shows about the
+# findings it was given (after zb_answers_finish): each answer, each finding
+# left unanswered, or that no finding was open.
+zb_answers_summary_v() {
+    local -n _zas="$1" _zas_a="$2"; local _zas_x
+    _zas=""
+    for _zas_x in ${_zas_a[@]+"${_zas_a[@]}"}; do _zas+="${_zas:+$'\n'}- answered: $_zas_x"; done
+    while IFS= read -r _zas_x; do [[ -n "$_zas_x" ]] && _zas+="${_zas:+$'\n'}- not answered: $_zas_x"; done <<< "${_ZB_ANS_MISSING:-}"
+    [[ -z "$_zas" && "${_ZB_ANS_SHOWN:-0}" -eq 0 ]] && _zas="- no finding was open for it"
+    return 0
+}
+
+# judge_answers_to <artifact_dir> <label>... — every `wrong` answer a stage
+# keeps in its result (data.answers) to a finding labelled <label>, one per
+# line: the finding goes back to its judge. A `done` answer changed something,
+# so what is judged changed too; a `not mine` says nothing about the finding.
 judge_answers_to() { local _jat=""; judge_answers_to_v _jat "$@"; [[ -n "$_jat" ]] && printf '%s\n' "$_jat"; return 0; }
 # judge_answers_to_v <var> <artifact_dir> <label>... — the same into <var>.
 judge_answers_to_v() {
@@ -186,8 +262,8 @@ judge_answers_to_v() {
         [[ "$_jat_body" == *'"answers"'* ]] && files+=("$f")
     done
     [[ ${#files[@]} -gt 0 ]] || return 0
-    _jatv="$(jq -r --arg re "^($re) finding [0-9]+[[:space:]]*:[[:space:]]*nothing to do" \
-        '(.data.answers // [])[]? | strings | select(test($re))' "${files[@]}" 2>/dev/null)" || true
+    _jatv="$(jq -r --arg re "^($re) finding [0-9]+[[:space:]]*:[[:space:]*_\`]*wrong([^A-Za-z]|$)" \
+        '(.data.answers // [])[]? | strings | select(test($re; "i"))' "${files[@]}" 2>/dev/null)" || true
 }
 
 # ─── Kept answers (§4) ───────────────────────────────────────────────────────
@@ -454,8 +530,44 @@ judge_opened_v() {
     done < "$_judge__f"
 }
 
+# judge_last_findings_block_v <var> <artifact_dir> <label> <result_json>... —
+# what a stage that reports findings is shown of its own findings from last
+# time: each one, with every answer a stage gave it (ADR-068 §6, ADR-072 §5).
+# Its grade holds unless it can quote what changed: on #1805 run 42374066107 the
+# same finding was low one round and medium the next. Pairs of <label> and its
+# result; empty when there were none. No process when no result exists.
+judge_last_findings_block_v() {
+    local -n _jlf="$1"; shift
+    local dir="${1%/}"; shift
+    local _jlf_l _jlf_f _jlf_body="" _jlf_ans="" _jlf_s f
+    local -a _jlf_with=()
+    _jlf=""
+    for f in "$dir"/*.json; do
+        [[ -f "$f" ]] || continue
+        _jlf_s=""; IFS= read -r -d '' _jlf_s < "$f" || true
+        [[ "$_jlf_s" == *'"answers"'* ]] && _jlf_with+=("$f")
+    done
+    while [[ $# -ge 2 ]]; do
+        _jlf_l="$1" _jlf_f="$2"; shift 2
+        [[ -s "$_jlf_f" ]] || continue
+        _jlf_s=""; IFS= read -r -d '' _jlf_s < "$_jlf_f" || true
+        [[ "$_jlf_s" == *'"findings"'* ]] || continue
+        _jlf_ans=""
+        [[ ${#_jlf_with[@]} -gt 0 ]] && _jlf_ans="$(jq -r --arg re "^${_jlf_l//[^A-Za-z0-9_-]/.} finding [0-9]+[[:space:]]*:" \
+            '(.data.answers // [])[]? | strings | select(test($re))' "${_jlf_with[@]}" 2>/dev/null)"
+        _jlf_body+="$(jq -r --arg l "$_jlf_l" --arg a "$_jlf_ans" '
+            ($a | split("\n") | map(select(length > 0))) as $ans
+            | (.data.findings // [])[]? | select((.n | type) == "number")
+            | "\($l) finding \(.n)" as $k
+            | "- \($k): \(.text | tostring | split("\n")[0])"
+              + ([$ans[] | select(startswith($k + ":")) | "\n  answered: " + ltrimstr($k + ": ")] | join(""))' "$_jlf_f" 2>/dev/null)"$'\n'
+    done
+    [[ -n "${_jlf_body//[[:space:]]/}" ]] || return 0
+    _jlf=$'\n'"YOUR FINDINGS LAST TIME — each with what the stages given it answered. A finding you report again keeps the grade you gave it, unless you quote what changed since that makes it worse. One answered done: check that what was done fixes it. One answered wrong: judge it again with the answer in mind."$'\n'"${_jlf_body%$'\n'}"
+}
+
 # judge_disputes_block <answers> — what a judge is shown when a stage answers
-# one of its findings with "nothing to do".
+# one of its findings `wrong`.
 judge_disputes_block() {
     [[ -n "${1//[[:space:]]/}" ]] || return 0
     printf '\nANSWERS TO YOUR EARLIER FINDINGS — a stage that had to act on these says each is wrong, and why. Judge each again with its answer in mind: keep a finding only when you can quote what shows it still holds.\n'

@@ -32,6 +32,8 @@
 #             ADR-067 §8)
 # P11 [code]  so does an answer form that calls a finding "not yours to"
 #             change, and a "keep every other entry" re-prompt
+# P12 [code]  an answer form offering "nothing to do" fails: an answer is done,
+#             wrong or not mine (ADR-068 §6)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -108,6 +110,17 @@ assert_eq "[P11] a re-prompt to keep every other entry fails" "1" "$rc"
 printf '%s\n' 'cat <<EOF' 'Judge the behaviour the issue requires; the later check judges how it is tested.' 'EOF' > "$R/plugins/x/l.sh"
 _src plugins/x/l.sh; _lint
 assert_eq "[P11] saying what the stage owns is allowed" "0" "$rc"
+
+# P12 (ADR-068 §6): an answer is done, wrong or not mine; "nothing to do" read
+# as a dispute whatever it meant, and a stage that meant "not mine" sent the
+# finding back to its judge as wrong (#1805 run 42374066107).
+printf '%s\n' 'cat <<EOF' '    ANSWER <stage> finding <n>: nothing to do — <why>' 'EOF' > "$R/plugins/x/m.sh"
+_src plugins/x/m.sh; _lint
+assert_eq "[P12] an answer form offering 'nothing to do' fails" "1" "$rc"
+assert_contains "[P12] it names the file and line" "$out" "plugins/x/m.sh:2"
+printf '%s\n' 'cat <<EOF' 'Do not keep going when there is nothing left to do.' 'EOF' > "$R/plugins/x/n.sh"
+_src plugins/x/n.sh; _lint
+assert_eq "[P12] 'nothing left to do' in a sentence is allowed" "0" "$rc"
 
 bash "$LINT" "$REPO_ROOT" > "$TEST_TEMP_DIR/real.out" 2>&1; rc=$?
 assert_eq "[P6] the real tree passes" "0" "$rc"

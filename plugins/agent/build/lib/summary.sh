@@ -169,7 +169,7 @@ _build_scope_needs_line() {
 
 # _build_not_reproduced <response_text> — the paths the model reported as not
 # reproducing, one per line (#2183). Its own fact: it ran them and they passed.
-# Read from build's answer `ANSWER … : nothing to do — not reproduced: <path>`
+# Read from build's answer `ANSWER … : wrong — not reproduced: <path>`
 # (#2322), markdown and case allowed, and from the older `NOT_REPRODUCED: <path>`.
 _build_not_reproduced() {
     local line seen="" restore re _joined
@@ -189,7 +189,7 @@ _build_not_reproduced() {
 
 # _build_test_wrong <response_text> — build's answers that a test is wrong, one
 # per line, each `<stage> finding <n>: <test file>: <why>` (#2441). Read from
-# `ANSWER <stage> finding <n>: nothing to do — the test is wrong: <file>: <why>`.
+# `ANSWER <stage> finding <n>: wrong — the test is wrong: <file>: <why>`.
 # Read by the shell: it runs on every try (ADR-065).
 _build_test_wrong() {
     local line re had=0 _joined
@@ -222,14 +222,18 @@ _build_write_test_findings() {
         "{\"findings\":$(printf '%s\n' "$lines" | stage_findings_json)}" 2>/dev/null || true
 }
 
-# _build_answers_json_v <var> — build's ANSWER lines as JSON, as test-author
-# keeps its own (#2464); no process when there are none (ADR-065 §5).
+# _build_answers_json_v <var> — build's answers to the findings its prompt
+# showed it, as JSON, as test-author keeps its own (#2464): one it did not give
+# is asked for (zb_answers_finish, ADR-068 §6). Kept in _BUILD_ANSWERS for its
+# summary; no process when there are none (ADR-065 §5).
+_BUILD_ANSWERS=()
 _build_answers_json_v() {
-    local -n _baj="$1"; local -a _ba=()
-    _baj="[]"
-    declare -F zb_answers_collect_v >/dev/null 2>&1 && zb_answers_collect_v _ba "${_ROUTE_LOOP_LAST_RESPONSE:-}"
-    [[ ${#_ba[@]} -gt 0 ]] || return 0
-    _baj="$(printf '%s\n' "${_ba[@]}" | jq -Rnc '[inputs | select(length > 0)]' 2>/dev/null)" || _baj="[]"
+    local -n _baj="$1"; local _bap="" _bapf="${prompt_input_file:-${artifact_dir:+$artifact_dir/build-prompt.txt}}"
+    _baj="[]"; _BUILD_ANSWERS=()
+    [[ -n "$_bapf" && -f "$_bapf" ]] && { IFS= read -r -d '' _bap < "$_bapf" || true; }
+    declare -F zb_answers_finish >/dev/null 2>&1 && zb_answers_finish _BUILD_ANSWERS "$_bap" "${_ROUTE_LOOP_LAST_RESPONSE:-}"
+    [[ ${#_BUILD_ANSWERS[@]} -gt 0 ]] || return 0
+    _baj="$(printf '%s\n' "${_BUILD_ANSWERS[@]}" | jq -Rnc '[inputs | select(length > 0)]' 2>/dev/null)" || _baj="[]"
     [[ -n "$_baj" ]] || _baj="[]"
 }
 
@@ -369,6 +373,8 @@ _build_write_build_summary() {
         --argjson loop_output_tokens "${loop_output_tokens:-0}" \
         --argjson not_reproduced "$(_build_not_reproduced "${_ROUTE_LOOP_LAST_RESPONSE:-}" | jq -R . | jq -sc . 2>/dev/null || echo '[]')" \
         --argjson answers "$_sum_answers_json" \
+        --argjson findings_shown "${_ZB_ANS_SHOWN:-0}" \
+        --arg unanswered "${_ZB_ANS_MISSING:-}" \
         --arg reason "$_sum_build_reason" \
         --argjson out_of_scope_files "$_sum_out_of_scope_files_json" \
         --argjson scope_expansion_request "${_sum_scope_expansion_request_json:-null}" \
@@ -405,8 +411,10 @@ _build_write_build_summary() {
         + ( ( (if $build_data_kind != "" then {build_kind: $build_data_kind} else {} end)
             + (if ($not_reproduced | length) > 0 then {not_reproduced: $not_reproduced} else {} end)
             # #2464 (ADR-068 §6, ADR-072 §5): what build did about each finding it
-            # received — a "nothing to do" sends that finding back to its judge.
+            # received — a `wrong` sends that finding back to its judge.
             + (if ($answers | length) > 0 then {answers: $answers} else {} end)
+            + {findings_shown: $findings_shown}
+            + (if $unanswered != "" then {unanswered: ($unanswered | split("\n"))} else {} end)
             # #2460: what the next try is told — its test still fails.
             + (if $failing_acceptance_testfile != "" then {findings: [{n: 1,
                 text: "you said the work was done but changed no file, and \($failing_acceptance_testfile) still fails — make it pass by changing the code"}]} else {} end)

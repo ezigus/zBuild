@@ -210,22 +210,23 @@ _dcov_ev_items_v() {
     if [[ -n "$3" ]]; then _dei="${2//"$3/"/}"; else _dei="$2"; fi
 }
 
-# _dcov_disputes_v <assoc_var> <answers> <verdict_json> — each "nothing to do"
-# answer by the item its finding is about: a SPEC id, or `requirements` for a
+# _dcov_disputes_v <assoc_var> <answers> <verdict_json> — each `wrong` answer
+# (zb_answer_kind_v) by the item its finding is about: a SPEC id, or `requirements` for a
 # requirement's or a scope entry's. A finding's first word names it, as
 # _design_coverage_findings writes it; one that names nothing known disputes
 # every item (#2470, ADR-072 §5).
 _dcov_disputes_v() {
     local -n _ddv="$1"; local _ddv_a _ddv_n _ddv_t _ddv_id _ddv_k
     local -A _ddv_txt=()
-    [[ "$2" == *"nothing to do"* ]] || return 0
+    [[ "$2" == *wrong* ]] || return 0
     if [[ -s "$3" ]]; then
         while IFS=$'\t' read -r _ddv_n _ddv_t; do _ddv_txt["$_ddv_n"]="$_ddv_t"; done \
             < <(jq -r '(.data.findings // [])[]? | "\(.n)\t\(.text | tostring | split("\n")[0])"' "$3" 2>/dev/null)
     fi
     while IFS= read -r _ddv_a; do
-        [[ "$_ddv_a" =~ ^design\ finding\ ([0-9]+)[[:space:]]*:[[:space:]]*nothing\ to\ do ]] || continue
-        _ddv_t="${_ddv_txt[${BASH_REMATCH[1]}]:-}"; _ddv_id="${_ddv_t%%[: ]*}"
+        [[ "$_ddv_a" =~ ^design\ finding\ ([0-9]+)[[:space:]]*: ]] || continue
+        _ddv_n="${BASH_REMATCH[1]}"; zb_answer_kind_v _ddv_k "$_ddv_a"; [[ "$_ddv_k" == wrong ]] || continue
+        _ddv_t="${_ddv_txt[$_ddv_n]:-}"; _ddv_id="${_ddv_t%%[: ]*}"
         if [[ -n "${first[$_ddv_id]+x}" ]]; then _ddv["$_ddv_id"]+="$_ddv_a"$'\n'
         elif [[ -n "${req_text[$_ddv_id]+x}" || "$_ddv_id" == SCOPE ]]; then _ddv["requirements"]+="$_ddv_a"$'\n'
         else

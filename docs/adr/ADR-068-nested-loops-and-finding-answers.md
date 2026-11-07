@@ -123,7 +123,34 @@ them and ends.
 
 §8 says every stage's latest output reaches every later stage. A map group's output is one file a member, and only the first member's summary and none of their findings were passed on (#1805 run 42229975998: build never saw the correctness lens's critical finding). Each member's output now reaches every later stage that takes its topic, exactly as a single stage's does (ADR-071 §2, amended 2026-11-06).
 
+## Amendment 2026-11-07 — §6: every finding a stage is given gets one of three answers, and the engine asks for a missing one
+
+On #1805 run 42374066107 the lenses' code findings went to test-author and to build, which both take
+`code-findings`. test-author answered each "nothing to do — fix: code, not in test scope", meaning they were not
+its to fix. The engine read every "nothing to do" as a dispute, and told each lens that a stage that had to act on
+its findings said they were wrong. Build answered all thirteen in prose ("Security-1 …"), so the engine kept none of
+them, and its two disputes never reached red-team.
+
+- **An answer is one of three.** `ANSWER <stage> finding <n>: done — <what changed>`, `wrong — <why it does not
+  hold>` or `not mine — <why the stage's job cannot fix it>`. The engine reads the word (`zb_answer_kind_v`); "nothing
+  to do", or any other, is no answer. Only a `wrong` answer goes back to the stage that raised the finding
+  (`judge_answers_to_v`); `done` changed what is judged, and `not mine` says nothing about the finding. Build's
+  "not reproduced" and "the test is wrong" are `wrong` answers. The lint refuses a prompt that still offers
+  "nothing to do".
+- **Every finding is answered.** Every call that does a stage's work is told the three forms; a judging call is
+  not. Design, test-author, build and issue-acceptance hand their prompt and reply to `zb_answers_finish`: each
+  finding the prompt showed (`- <label> finding <n> (opened by …)`) that the reply does not answer is asked for
+  once, in a call shown the findings and the reply, which may only read files. The result keeps every answer,
+  `findings_shown`, and `unanswered` for any still missing; the summary lists each answer, each one not answered,
+  or that no finding was open (`zb_answers_summary_v`).
+- **§8 still holds.** #2355 removed a rule telling every stage to fill in answer lines: the engine then kept its own
+  record of the answers beside the stage outputs, and counted them across rounds. Here the answers are the stage's
+  own result, the latest replaces the last, and the engine keeps nothing beside them; it asks only for an answer
+  missing from the reply it was given.
+
 ## Enforced by
+
+- §6 amendment 2026-11-07 (three answers; every finding answered) → `tests/unit/finding-answers-test.sh` A1–A3, B1–B5; `tests/unit/design-stage-ids-test.sh` E5, E6; `tests/unit/test-author-checks-own-output-test.sh` A12, A13; `tests/unit/issue-acceptance-test.sh` SPEC-14; `tests/unit/judge-kept-test.sh` K3, K5–K8; `tests/unit/build-prompt-summary-marker-test.sh` M3, M7; `tests/unit/lint-plain-prompts-test.sh` P12; `tests/unit/engine-keeps-only-stage-outputs-test.sh` K5
 
 - §8 amendment 2026-11-06 (#2480: every member's output of a map group reaches every later stage) → `tests/unit/map-findings-reach-stages-test.sh` M1–M6
 

@@ -280,20 +280,21 @@ _sc_judge() {
     return 0
 }
 
-# _sc_disputes <artifact_dir> <assoc_var> — test-author's "nothing to do"
-# answers to its own check's findings (ADR-072 §5), by the SPEC each finding
+# _sc_disputes <artifact_dir> <assoc_var> — test-author's `wrong` answers
+# (zb_answer_kind_v) to its own check's findings (ADR-072 §5), by the SPEC each finding
 # names: <assoc>[SID] = the answers. The finding is its last result's, by number.
 _sc_disputes() {
     local art="$1"; local -n _scd="$2"
-    local a n t
+    local a n t k
     [[ -n "$art" && -s "$art/test-author-result.json" && ${#_TA_ANSWERS[@]} -gt 0 ]] || return 0
     local -A _scd_text=()
     while IFS=$'\t' read -r n t; do
         [[ -n "$n" ]] && _scd_text["$n"]="$t"
     done < <(jq -r '(.data.findings // [])[]? | "\(.n)\t\(.text)"' "$art/test-author-result.json" 2>/dev/null)
     for a in "${_TA_ANSWERS[@]}"; do
-        [[ "$a" =~ ^test-author[[:space:]]+finding[[:space:]]+([0-9]+)[[:space:]]*:[[:space:]]*nothing[[:space:]]to[[:space:]]do ]] || continue
-        t="${_scd_text[${BASH_REMATCH[1]}]:-}"
+        [[ "$a" =~ ^test-author[[:space:]]+finding[[:space:]]+([0-9]+)[[:space:]]*: ]] || continue
+        n="${BASH_REMATCH[1]}"; zb_answer_kind_v k "$a"; [[ "$k" == wrong ]] || continue
+        t="${_scd_text[$n]:-}"
         [[ "$t" =~ ^(${_ACCEPTANCE_ID_ERE})(\'s|:|[[:space:]]) ]] || continue
         _scd["${BASH_REMATCH[1]}"]+="${_scd[${BASH_REMATCH[1]}]:+; }$a"
     done
