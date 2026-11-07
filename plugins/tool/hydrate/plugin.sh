@@ -57,19 +57,11 @@ _hydrate_fetch() {
 }
 
 # ─── _hydrate_put_back <from> <to> ───────────────────────────────────────────
-# Copy every file under <from> to the same place under <to>, skipping any file
-# <to> already has. One file at a time rather than `cp -n`, whose exit status on
-# a skipped file differs between BSD and newer GNU coreutils. stage-io/ is left
-# out: it records one run's model calls and is no stage's output.
+# Delegate to _artifact_persist_put_back (canonical hardened implementation in
+# core/state/artifact-persist.sh) so the hydrate plugin and the runner's resume
+# rehydration path share one implementation with the same traversal guards.
 _hydrate_put_back() {
-    local from="$1" to="$2" f rel
-    mkdir -p "$to" || return 1
-    while IFS= read -r -d '' f; do
-        rel="${f#"$from"/}"
-        [[ "$rel" == stage-io/* || -e "$to/$rel" ]] && continue
-        mkdir -p "$(dirname "$to/$rel")" && cp -p "$f" "$to/$rel" || return 1
-    done < <(find "$from" -type f -print0 2>/dev/null)
-    return 0
+    _artifact_persist_put_back "$1" "$2"
 }
 
 # ─── hydrate_run <stage_id> <state_file> ─────────────────────────────────────

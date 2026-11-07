@@ -1172,7 +1172,6 @@ _cycle_state_jq_write_iter_start() {
        --argjson n "$_ZB_CYCLE_N" \
        --arg now "$_now" \
        '(.cycle_iterations //= {})
-        | (.cycle_iterations[$id] //= {iter:[]})
         | .cycle_iterations[$id].current_iter = $n
         | .updated_at = $now'
 }
@@ -2345,8 +2344,10 @@ _cycle_orchestrator_run_body() {
     if [[ "${_ZBUILD_RESUME_ACTIVE:-false}" == "true" ]]; then
         _is_resume=true
         local _persisted_iter
+        # Sanitize cycle_id to prevent jq injection via template-sourced cycle IDs.
+        local _safe_cycle_id="${cycle_id//[^a-zA-Z0-9_-]/}"
         _persisted_iter="$(get_state_field "$state_file" \
-            ".cycle_iterations[\"$cycle_id\"].current_iter" 0 2>/dev/null || echo 0)"
+            ".cycle_iterations[\"$_safe_cycle_id\"].current_iter" 0 2>/dev/null || echo 0)"
         [[ "$_persisted_iter" =~ ^[0-9]+$ ]] || _persisted_iter=0
         # Consume the flag: nested cycles and subsequent re-entries start at 1.
         _ZBUILD_RESUME_ACTIVE=false
@@ -2423,7 +2424,8 @@ _cycle_orchestrator_run_body() {
         # one. The end-of-iter write (_cycle_state_write_iter_atomic) also updates
         # current_iter; this start write is what makes the resume formula correct for
         # a run interrupted before the first iter completes (#1805, correctness).
-        _cycle_state_write_iter_start "$state_file" "$cycle_id" "$iter" || true
+        _cycle_state_write_iter_start "$state_file" "$cycle_id" "$iter" \
+            || warn "cycle-orchestrator: failed to write iter-start state for cycle=$cycle_id iter=$iter (a resume may start at the wrong iteration)"
 
         # Dispatch the cycle's stages in order.
         # DSCMBR-1 (#1805): signal resume_first_iter for the first resumed iteration

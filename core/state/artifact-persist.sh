@@ -641,9 +641,9 @@ _artifact_persist_put_back() {
     while IFS= read -r -d '' f; do
         rel="${f#"$from"/}"
         # Guard: skip if strip failed (trailing slash on $from) — rel would be absolute.
-        # Also skip dotdot traversal components (../../etc/passwd style) which the
-        # absolute-path check does not catch.
-        [[ "$rel" == /* || "$rel" == *../* || "$rel" == ..* ]] && continue
+        # Also skip dotdot traversal components (../../etc/passwd style, foo/..) which
+        # the absolute-path check does not catch.
+        [[ "$rel" == /* || "$rel" == *../* || "$rel" == ..* || "$rel" == *.. ]] && continue
         [[ "$rel" == stage-io/* || -e "$to/$rel" ]] && continue
         mkdir -p "$(dirname "$to/$rel")" && cp -p "$f" "$to/$rel" || return 1
     done < <(find "$from" -type f -print0 2>/dev/null)
