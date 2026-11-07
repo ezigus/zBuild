@@ -47,6 +47,7 @@ _make_spy_orch_plugin() {
     mkdir -p "$dir"
     cat > "$dir/manifest.yaml" <<EOF
 id: orch-bash-parallel
+id_prefix: ZA
 name: Spy Parallel Orchestrator
 kind: tool
 version: 0.0.1
@@ -147,6 +148,7 @@ _make_role_plugin() {
     mkdir -p "$dir"
     cat > "$dir/manifest.yaml" <<EOF
 id: $id
+id_prefix: $(zb_test_id_prefix "${dir%/*/*}")
 name: Test $id
 kind: agent
 version: 0.0.1
@@ -294,6 +296,7 @@ SEQ_FAIL_DIR="$SEQ_PLUGINS_ROOT/agent/intake-fail"
 mkdir -p "$SEQ_FAIL_DIR"
 cat > "$SEQ_FAIL_DIR/manifest.yaml" <<EOF
 id: intake-fail
+id_prefix: YA
 name: Failing intake
 kind: agent
 version: 0.0.1

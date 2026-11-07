@@ -267,17 +267,17 @@ path/to/file2
 
 4. A \`\`\`acceptance block listing what this change must deliver. Each line is
    one requirement: an id, a status, and ONE behaviour someone could observe and test.
-   The id describes the SPEC: a code of 3 or 4 capital letters or digits,
-   starting with a letter, that says what it is about, a dash, and a number —
-   LOOP-1 for a SPEC about loop state. SPECs about the same thing share the code
-   and count up: LOOP-1, LOOP-2. A SPEC's code is never one of the issue's
-   requirement codes, and never an id the issue itself writes.
+   The id describes the SPEC. Every SPEC id starts with ${_DCK_ID_PREFIX}, then a code of 3 or 4
+   capital letters or digits, starting with a letter, that says what it is about,
+   a dash, and a number — ${_DCK_ID_PREFIX}LOOP-1 for a SPEC about loop state. SPECs about the
+   same thing share the code and count up: ${_DCK_ID_PREFIX}LOOP-1, ${_DCK_ID_PREFIX}LOOP-2. An id is never one
+   the issue itself writes.
    An id never changes: a SPEC you keep keeps its id. A new SPEC takes the
    number one more than the highest its code has ever had, removed ones counted.
    A SPEC you drop gets its own line in the block, \`REMOVED: <id> — <why>\`, and
    that line stays in every later design, so the id is never used again.
-   A design written with the old ids (SPEC-1, SPEC-2, …) gives each SPEC a new
-   id once; the old ids need no REMOVED line.
+   A design written with the old ids (SPEC-1, or ids that do not start with
+   ${_DCK_ID_PREFIX}) gives each SPEC a new id once; the old ids need no REMOVED line.
    A requirement that asks for several things gets one SPEC per thing, each
    naming the same requirement id in covers: — never one SPEC that joins them with "and" or ";".
    Each SPEC is checked against one assertion, so a SPEC that promises two
@@ -298,22 +298,22 @@ path/to/file2
      after every test.
 
    The status says what work the requirement needs. Look at the code before you choose:
-   - \`LOOP-1[code]:\` — it needs code. Its test must fail on the code as it is before your change, and pass after it.
+   - \`${_DCK_ID_PREFIX}LOOP-1[code]:\` — it needs code. Its test must fail on the code as it is before your change, and pass after it.
      If the code already does it, it is not [code]: its test would already pass, and the build stalls on it.
      Every requirement, whatever its status, describes what someone could see happen, not what a file contains: not "x.sh contains foo", "file y exists" or "the test file has both cases" — no test can prove those.
-   - \`LOOP-2[no-code]:\` — it needs work that changes no behaviour: docs, a
+   - \`${_DCK_ID_PREFIX}LOOP-2[no-code]:\` — it needs work that changes no behaviour: docs, a
      test, config, or a refactor. Its test must pass after the change; it need not fail before.
-   - \`GARD-1[done]:\` — the code from before your change already does it. Name the evidence at the end of the line, after \` evidence: \` —
+   - \`${_DCK_ID_PREFIX}GARD-1[done]:\` — the code from before your change already does it. Name the evidence at the end of the line, after \` evidence: \` —
      a file by its path from the repository root with an exact piece of its text in double quotes
      (scripts/x.sh:"run_guard()"), or an existing test file named alone; several separated by spaces.
-     The text must be in the file on the default branch, outside anything this branch changed: code this
-     work added is not done yet, so it is [code], with a test. No test is written for a [done] SPEC.
+     The text must be in the file on the commit this branch started from, outside anything this branch
+     changed: code this work added is not done yet, so it is [code], with a test. No test is written for a [done] SPEC.
    Every requirement carries one of the three. A change that edits code needs at least one [code] requirement.
 
    Test labels: each test file under TESTFILES holds at least one assertion
    whose label carries the requirement's tag, which includes this issue's
-   number — for LOOP-1 of this issue:
-   $(acceptance_spec_tag LOOP-1 2>/dev/null || printf '[LOOP-1]'). A shared test
+   number — for ${_DCK_ID_PREFIX}LOOP-1 of this issue:
+   $(acceptance_spec_tag ${_DCK_ID_PREFIX}LOOP-1 2>/dev/null || printf '[%sLOOP-1]' "$_DCK_ID_PREFIX"). A shared test
    may already hold other issues' tags; leave them alone. Each [code]
    assertion is also run against the code from before your change and must
    fail there, so write ONE requirement per assertion — then each behaviour is
@@ -321,26 +321,26 @@ path/to/file2
 
 The \`\`\`acceptance block format:
 \`\`\`acceptance
-LOOP-1[code]: <one new behaviour this change introduces>
+${_DCK_ID_PREFIX}LOOP-1[code]: <one new behaviour this change introduces>
   Given: <the setup it starts from>
   When: <the one action>
   Then: <what a test can observe after it>
   And: <another thing a test can observe>
   Cleanup: <what must be true again after, when the setup or a Then outlives the test>
-LOOP-2[no-code]: <docs, a test, config or a refactor that changes no behaviour>
-GARD-1[done]: <something the code already does> evidence: scripts/x.sh:"run_guard()"
+${_DCK_ID_PREFIX}LOOP-2[no-code]: <docs, a test, config or a refactor that changes no behaviour>
+${_DCK_ID_PREFIX}GARD-1[done]: <something the code already does> evidence: scripts/x.sh:"run_guard()"
   When: <the action>
   Then: <what the code from before this change already does>
-REMOVED: LOOP-3 — <why this SPEC was dropped>
+REMOVED: ${_DCK_ID_PREFIX}LOOP-3 — <why this SPEC was dropped>
 WIRING: <the existing file that calls the new code>
 TESTFILES:
-LOOP-1: tests/unit/some-test.sh
-LOOP-2: tests/integration/other-test.sh
+${_DCK_ID_PREFIX}LOOP-1: tests/unit/some-test.sh
+${_DCK_ID_PREFIX}LOOP-2: tests/integration/other-test.sh
 \`\`\`
 
 Bind each test file to its requirement:
-- Prefix the path with the SPEC's id, e.g. \`LOOP-1: tests/unit/foo-test.sh\`.
-- Several paths for one requirement: \`LOOP-1: tests/unit/a-test.sh tests/unit/b-test.sh\`
+- Prefix the path with the SPEC's id, e.g. \`${_DCK_ID_PREFIX}LOOP-1: tests/unit/foo-test.sh\`.
+- Several paths for one requirement: \`${_DCK_ID_PREFIX}LOOP-1: tests/unit/a-test.sh tests/unit/b-test.sh\`
 - Write one \`<id>: path\` line per [code] requirement, so each requirement
   is proven by its own test file. A [done] requirement needs none. A path with
   no id prefix applies to every requirement.
@@ -395,7 +395,16 @@ DESIGN_PROMPT
     # #2364: found by what it contains.
     local _req_f _reqs; _req_f="$(earlier_requirements "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
     _reqs="$(acceptance_requirements_list "$_req_f")"
-    [[ -n "$_reqs" ]] && printf '\n### Requirements from the issue (each with its id)\n%s\n\nEvery requirement above must be covered by at least one SPEC. End each SPEC line with ` covers: ` and the ids of the requirements it covers, before any ` evidence: ` — for example `LOOP-1[code]: <behaviour> covers: <requirement ids>`. A requirement the code already meets is covered by a [done] SPEC with evidence.\n' "$_reqs" >> "$prompt_input_file"
+    # #2482 (ADR-069 §2): the code a [done] claim is checked on, as the judges
+    # are shown it (ADR-072 §2). On #1805 run 42293991602 design had only the
+    # working copy and took code this branch added for the code from before.
+    # Read once a run of this stage: the coverage check reads the same copy
+    # (_DESIGN_BASE_DIR, set when this has run).
+    local _base_dir=""
+    judge_base_dir_v _base_dir "${ZBUILD_REPO_ROOT:-$PWD}" 2>/dev/null || _base_dir=""
+    local _DESIGN_BASE_DIR="$_base_dir"
+    [[ -n "$_base_dir" ]] && printf '\n### The code from before this change\nThe commit this branch started from is a copy at %s. A [done] SPEC is checked\nthere: to see whether the code from before your change already does something,\nopen the file there, not in the working copy — the working copy holds every\nchange this branch made, in this round and in earlier ones.\n' "$_base_dir" >> "$prompt_input_file"
+    [[ -n "$_reqs" ]] && printf '\n### Requirements from the issue (each with its id)\n%s\n\nEvery requirement above must be covered by at least one SPEC. End each SPEC line with ` covers: ` and the ids of the requirements it covers, before any ` evidence: ` — for example `'"${_DCK_ID_PREFIX}"'LOOP-1[code]: <behaviour> covers: <requirement ids>`. A requirement the code already meets is covered by a [done] SPEC with evidence.\n' "$_reqs" >> "$prompt_input_file"
 
     # On a later round design REFINES its prior design.md rather than
     # re-creating it. #1825 established that this content is spliced exactly ONCE. #1979 keeps

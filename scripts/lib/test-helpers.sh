@@ -914,6 +914,26 @@ fixture_link_personas() {
     [[ -e "$root/persona" ]] || ln -s "$src" "$root/persona"
 }
 
+# zb_test_id_prefix [plugins_root] — a two-letter id prefix no stage under
+# <plugins_root> declares yet (#2482, ADR-001: every stage declares its own, and
+# the engine refuses a root where one has none or two share one). Fixture
+# prefixes start with X, Y or Z, which no shipped stage uses.
+zb_test_id_prefix() {
+    local root="${1:-$TEST_TEMP_DIR/plugins}" m l a b used=" "
+    for m in "$root"/*/*/manifest.yaml; do
+        [[ -f "$m" ]] || continue
+        while IFS= read -r l; do
+            [[ "$l" =~ ^id_prefix:[[:space:]]*([A-Z][A-Z]) ]] && { used+="${BASH_REMATCH[1]} "; break; }
+        done < "$m"
+    done
+    for a in Z Y X; do
+        for b in A B C D E F G H I J K L M N O P Q R S T U V W X Y Z; do
+            [[ "$used" == *" $a$b "* ]] || { printf '%s' "$a$b"; return 0; }
+        done
+    done
+    return 1
+}
+
 # ── mock_plugin_factory ───────────────────────────────────────────────────────
 # Creates a minimal valid stage plugin directory under $TEST_TEMP_DIR/plugins/.
 # Prints the directory path to stdout.
@@ -930,10 +950,12 @@ mock_plugin_factory() {
     mkdir -p "$dir"
     fixture_link_personas "$TEST_TEMP_DIR/plugins"
     local fn; fn="${id//-/_}_run"
+    local _px; _px="$(zb_test_id_prefix "$TEST_TEMP_DIR/plugins")"
     cat > "$dir/manifest.yaml" <<EOF
 id: $id
 name: Test $id
 kind: $kind
+id_prefix: $_px
 version: $version
 hooks:
   run: $fn
@@ -1338,10 +1360,12 @@ install_cycle_mock_stages() {
     local dir="$plugins_root/agent/$stage_id"
     mkdir -p "$dir"
     local fn="${stage_id//-/_}_run"
+    local _px; _px="$(zb_test_id_prefix "$plugins_root")"
     cat > "$dir/manifest.yaml" <<EOF
 id: $stage_id
 name: Cycle Mock $stage_id
 kind: agent
+id_prefix: $_px
 version: 0.0.1
 hooks:
   run: $fn
@@ -1482,7 +1506,7 @@ zb_test_coverage_ok() {
         esac
         if [[ "$sec" == r && "$l" =~ ^-[[:space:]]+([A-Za-z0-9]+-[0-9]+): ]]; then
             printf '%s: covered\n' "${BASH_REMATCH[1]}"
-        elif [[ "$sec" == a && "$l" =~ ^([A-Z][A-Z0-9][A-Z0-9][A-Z0-9]?-[0-9]+)(\[[a-z-]+\])?: ]]; then
+        elif [[ "$sec" == a && "$l" =~ ^([A-Z][A-Z0-9][A-Z0-9][A-Z0-9]?[A-Z0-9]?[A-Z0-9]?-[0-9]+)(\[[a-z-]+\])?: ]]; then
             printf '%s: ok\n' "${BASH_REMATCH[1]}"
         fi
     done <<< "$1"

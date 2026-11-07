@@ -86,7 +86,7 @@ source "$REPO_ROOT/plugins/agent/intake/plugin.sh"
 # them with a second; this test is about the gh call's capture, so the model
 # answers at once.
 route_to_model() {
-    if [[ "$2" == *"check a list of requirements"* ]]; then printf 'MISSING: none\n'; else printf 'REQUIREMENT: GOAL-1 the goal\n'; fi
+    if [[ "$2" == *"check a list of requirements"* ]]; then printf 'MISSING: none\n'; else printf 'REQUIREMENT: RQGOAL-1 the goal\n'; fi
 }
 
 STATE_DIR="$TEST_TEMP_DIR/intake-state"

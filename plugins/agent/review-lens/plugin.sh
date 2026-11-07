@@ -305,7 +305,7 @@ review_lens_run() {
     # #896/#952: every lens judges the full-branch merge-base change bundle
     # (the incremental diff.patch when no base resolves) — the same evidence
     # for every lens, as for any stage.
-    local evidence; evidence="$(zbuild_change_bundle "$artifact_dir")"
+    local evidence; zbuild_change_bundle_v evidence "$artifact_dir"
     _review_lens_run_inner \
         "$lens" \
         "$(earlier_scope_manifest "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)" \

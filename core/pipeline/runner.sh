@@ -125,6 +125,8 @@ source "$_ZBUILD_ROOT/scripts/lib/run-branch-setup.sh"
 # alongside all other limit-resolution functions.
 # shellcheck source=../../scripts/lib/stage-limits.sh
 source "$_ZBUILD_ROOT/scripts/lib/stage-limits.sh"
+# shellcheck source=../../scripts/lib/item-ids.sh
+source "$_ZBUILD_ROOT/scripts/lib/item-ids.sh"   # zb_id_prefixes_check (#2482)
 
 _usage() {
     # Usage shown on error or --help. Unix convention: stderr (#619).
@@ -1846,6 +1848,13 @@ main() {
         if ! $dry_run && ! $resume_mode \
             && ! _runner_validate_leaf_resolvability active_stages "$plugins_root"; then
             error "Failed to load template '$template' — a stage resolves to no plugin (see above); aborting"
+            return 1
+        fi
+        # #2482 (ADR-001): every stage declares its own id prefix, checked before
+        # any stage runs — a resumed run too (its stages write ids), not --dry-run.
+        if [[ "${ZBUILD_CONTRACT_VALIDATOR:-enforce}" == enforce ]] && ! $dry_run \
+            && ! zb_id_prefixes_check "$plugins_root"; then
+            error "Failed to load template '$template' — a stage's id prefix is missing or shared (see above); aborting"
             return 1
         fi
     else

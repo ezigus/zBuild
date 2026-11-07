@@ -264,7 +264,11 @@ _design_coverage() {
     done <<< "$reqs"
 
     local repo="${ZBUILD_REPO_ROOT:-$PWD}" base="" base_sha="" scope
-    judge_base_dir_v base "$repo" || base=""
+    # #2482: the copy design's prompt named, when it has run — the local
+    # _DESIGN_BASE_DIR of _design_stage_run_inner (plugin.sh), read through
+    # bash's dynamic scope; else, called on its own, made here.
+    if [[ -n "${_DESIGN_BASE_DIR+x}" ]]; then base="$_DESIGN_BASE_DIR"
+    else judge_base_dir_v base "$repo" || base=""; fi
     [[ -n "$base" && -f "$base.sha" ]] && base_sha="$(<"$base.sha")"
     scope="$(acceptance_list_scope "$design_md" 2>/dev/null || true)"
     local -A ev=()

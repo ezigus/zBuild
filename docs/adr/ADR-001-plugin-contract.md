@@ -310,6 +310,15 @@ the declaration direction for `router` alone; this amendment generalises that to
 and moves it into the engine. `requires.plugins` resolution is a different field with a different
 resolver and remains unlanded under #1321.
 
+## Amendment 2026-11-06 (#2482) — every stage declares its own id prefix
+
+On #1805 run 42293991602 a SPEC and a requirement could take the same code, and the rule that kept them apart told design "use GUAR-1" and "GUAR is the requirements' code" in one go. Design lost a try to it.
+
+- **Every stage declares `id_prefix:`**, two capital letters, in its manifest. A stage here is every plugin of kind `agent` or `tool`, whether or not it writes ids. intake declares `RQ` and design declares `DS`.
+- **The ids a stage writes start with its prefix** (ADR-069 §1, ADR-070 §1): `RQLOOP-1` is a requirement, `DSLOOP-1` a SPEC. Two stages' ids are never the same.
+- **The engine refuses to start** when an installed stage declares no prefix, one that is not two capital letters, or one another stage declares (`zb_id_prefixes_check`, `scripts/lib/item-ids.sh`). It checks this before any stage runs, on a fresh run and a resumed one, but not on `--dry-run`, under the same `ZBUILD_CONTRACT_VALIDATOR=enforce` as the leaf check. Each problem is one line naming the manifest.
+- The prefix is read from the manifest index, so the check starts no process.
+
 ## Consequences
 
 **Good:**
@@ -342,6 +351,8 @@ resolver and remains unlanded under #1321.
 - **Test coverage:** `tests/unit/core-plugin-registry-test.sh` and `tests/integration/core-plugin-registry-test.sh` cover the current 4-field validator. Coverage for the deferred items lives in the tracking issues above.
 
 ## Enforced by
+
+- Amendment 2026-11-06 (#2482: every stage declares its own id prefix) — `tests/unit/template-resolvability-preflight-test.sh` [SPEC-9] (no prefix, a bad form and a shared one are refused, naming the manifest; every shipped stage declares its own; intake's is RQ and design's DS; the runner checks before a run starts).
 
 - §"Declared events" — engine config carries only engine namespaces; plugin manifests carry plugin namespaces; no overlap — `tests/unit/event-schema-emitted-coverage-test.sh` [#1951/SPEC-1], [#1951/SPEC-2].
 - §"Declared events" — a plugin emitting an event without declaring it in its own manifest fails the build — `tests/unit/event-schema-emitted-coverage-test.sh` [SPEC-1717-1].

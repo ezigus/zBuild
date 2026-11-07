@@ -45,7 +45,7 @@ done
 if grep -q "whether a finished CHANGE does what an ISSUE asked" <<< "$prompt"; then
     # issue-acceptance (#1849): the fixture's one-file change meets its issue.
     # #2464 (ADR-072 §3): one line per requirement.
-    jq -n --arg r $'MET: PRTY-1' \
+    jq -n --arg r $'MET: RQPRTY-1' \
        '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
 elif grep -q 'A report for the ' <<< "$prompt"; then
     # a review lens (#1842): no concerns — a real lens result for the engine to
@@ -57,14 +57,14 @@ elif grep -q "whether a DESIGN covers what an ISSUE asked for" <<< "$prompt"; th
     # gone — it is where build's scope comes from).
     # #2464 (ADR-072 §3): one line for each requirement and each SPEC.
     # #2467 (ADR-073 §5): and one line for each part of each SPEC.
-    jq -n --arg r $'PRTY-1: covered\nFIXT-1: ok\nFIXT-1 When: ok\nFIXT-1 Then 1: ok' \
+    jq -n --arg r $'RQPRTY-1: covered\nDSFIXT-1: ok\nDSFIXT-1 When: ok\nDSFIXT-1 Then 1: ok' \
        '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
 elif grep -q "EXACT absolute path:" <<< "$prompt"; then
     # design: the model writes its working copy at the path its prompt names.
     design_out="$(awk '/EXACT absolute path:/ { getline; sub(/^[[:space:]]+/, ""); gsub(/<\/?out-of-scope-context>/, ""); print; exit }' <<< "$prompt")"
     if [[ -n "$design_out" ]]; then
         mkdir -p "$(dirname "$design_out")"
-        printf '# Parity fixture design\n\n## Decision\nAdd the fixture file.\n\n```scope\ntests/fixtures/parity-fixture.txt\n```\n\n```steps\n- add the parity fixture file | areas: tests/fixtures/parity-fixture.txt\n```\n\n```acceptance\nFIXT-1[no-code]: the build adds the parity fixture covers: PRTY-1\n  When: the build runs\n  Then: the parity fixture file is in tests/fixtures\nWIRING: none\nTESTFILES:\n```\n' > "$design_out"
+        printf '# Parity fixture design\n\n## Decision\nAdd the fixture file.\n\n```scope\ntests/fixtures/parity-fixture.txt\n```\n\n```steps\n- add the parity fixture file | areas: tests/fixtures/parity-fixture.txt\n```\n\n```acceptance\nDSFIXT-1[no-code]: the build adds the parity fixture covers: RQPRTY-1\n  When: the build runs\n  Then: the parity fixture file is in tests/fixtures\nWIRING: none\nTESTFILES:\n```\n' > "$design_out"
     fi
     jq -n --arg r 'wrote the design' \
        '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
@@ -74,7 +74,7 @@ elif grep -q "check a list of requirements" <<< "$prompt"; then
        '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
 elif grep -q "list every requirement this issue states" <<< "$prompt"; then
     # intake writes the issue's requirement list (#2445).
-    jq -n --arg r 'REQUIREMENT: PRTY-1 Add the parity fixture file.' \
+    jq -n --arg r 'REQUIREMENT: RQPRTY-1 Add the parity fixture file.' \
        '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
 elif grep -q "LOOP_COMPLETE" <<< "$prompt"; then
     # build stage (#467 Pattern 2) — edit the fixture file directly in $PWD

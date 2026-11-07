@@ -48,25 +48,25 @@ _prompt() { tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/prompt-$1" 2>/dev/null; }
 _set_gh_mock "Rehydrate on resume" $'1. Rehydrate every stage.\n\nOrder: do not run this in parallel with #1714.' 0
 
 # ── P1 / P2 / P3 ─────────────────────────────────────────────────────────────
-REPLY=([1]=$'REQUIREMENT: RHYD-1 Rehydrate every stage.\nREQUIREMENT: ORDE-1 Do not run this in parallel with #1714.'
-       [2]=$'MISSING: none\nNOT-A-REQUIREMENT: ORDE-1 — it says when to run the work; no change can show it')
+REPLY=([1]=$'REQUIREMENT: RQRHYD-1 Rehydrate every stage.\nREQUIREMENT: RQORDE-1 Do not run this in parallel with #1714.'
+       [2]=$'MISSING: none\nNOT-A-REQUIREMENT: RQORDE-1 — it says when to run the work; no change can show it')
 _intake
 assert_contains "[P1] the writing call is told a note about when to run the work is not a requirement" \
     "$(_prompt 1)" "how or when to do the work"
 assert_contains "[P2] the check call may answer NOT-A-REQUIREMENT" "$(_prompt 2)" "NOT-A-REQUIREMENT: <id> — <why>"
-assert_eq "[P3] the note leaves the list" "RHYD-1" "$(_ids)"
+assert_eq "[P3] the note leaves the list" "RQRHYD-1" "$(_ids)"
 assert_eq "[P3] ...kept as removed, with the check's reason" \
-    "ORDE-1|Do not run this in parallel with #1714.|it says when to run the work; no change can show it" \
-    "$(jq -r '.removed[]? | select(.id == "ORDE-1") | "\(.id)|\(.text)|\(.reason)"' "$_REQ" 2>/dev/null)"
+    "RQORDE-1|Do not run this in parallel with #1714.|it says when to run the work; no change can show it" \
+    "$(jq -r '.removed[]? | select(.id == "RQORDE-1") | "\(.id)|\(.text)|\(.reason)"' "$_REQ" 2>/dev/null)"
 assert_eq "[P3] intake passes" "pass" "$OUTCOME"
 
 # ── P4 ───────────────────────────────────────────────────────────────────────
-REPLY=([1]=$'REQUIREMENT: RHYD-1 Rehydrate every stage.'
-       [2]=$'NOT-A-REQUIREMENT: NOPE-1 — never listed'
+REPLY=([1]=$'REQUIREMENT: RQRHYD-1 Rehydrate every stage.'
+       [2]=$'NOT-A-REQUIREMENT: RQNOPE-1 — never listed'
        [3]=$'MISSING: none')
 _intake
-assert_contains "[P4] NOT-A-REQUIREMENT for an id the list lacks is asked again" "$(_prompt 3)" "NOPE-1"
-assert_eq "[P4] ...and answered right, intake passes with its list" "RHYD-1" "$(_ids)"
+assert_contains "[P4] NOT-A-REQUIREMENT for an id the list lacks is asked again" "$(_prompt 3)" "RQNOPE-1"
+assert_eq "[P4] ...and answered right, intake passes with its list" "RQRHYD-1" "$(_ids)"
 
 cleanup_test_env
 print_test_results

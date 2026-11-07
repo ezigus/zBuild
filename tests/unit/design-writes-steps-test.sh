@@ -37,7 +37,7 @@ route_to_model() {
     if [[ -n "$_t" ]]; then
         cp "$2" "$TEST_TEMP_DIR/design-prompt.txt" 2>/dev/null || printf '%s' "$2" > "$TEST_TEMP_DIR/design-prompt.txt"
         mkdir -p "$(dirname "$_t")"
-        printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\nfoo.sh\nbar.sh\n%s\n\n%ssteps\n- add the flag to foo.sh | areas: foo.sh\n- refuse a missing config | areas: foo.sh, bar.sh\n%s\n\n%sacceptance\nWORK-1[no-code]: works\nWIRING: none\nTESTFILES:\n%s\n' \
+        printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\nfoo.sh\nbar.sh\n%s\n\n%ssteps\n- add the flag to foo.sh | areas: foo.sh\n- refuse a missing config | areas: foo.sh, bar.sh\n%s\n\n%sacceptance\nDSWORK-1[no-code]: works\nWIRING: none\nTESTFILES:\n%s\n' \
             "$_bt" "$_bt" "$_bt" "$_bt" "$_bt" "$_bt" > "$_t"
     fi
     return 0

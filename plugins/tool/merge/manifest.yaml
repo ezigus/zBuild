@@ -1,6 +1,8 @@
 id: merge
 name: Auto-Merge Stage
 kind: tool
+# #2482 (ADR-001): the ids this stage writes start with it.
+id_prefix: ME
 version: 0.1.0
 description: |
   Auto-merge tool plugin (ADR-037 §4, I9-B / #1050, I9-C / #1051). When

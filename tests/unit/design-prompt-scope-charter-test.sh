@@ -106,6 +106,39 @@ fi
 tmo="$(awk '/^design:/{f=1;next} /^[a-z]/{f=0} f && /^    timeout_s:/{print $2; exit}' "$REPO_ROOT/config/templates/simple.yaml")"
 assert_eq "T6: design timeout_s raised to 1200" "1200" "${tmo:-unset}"
 
+# T9 (#2482, ADR-001): design is told its id prefix, from its manifest, and
+# every example id in its prompt has it — an example without it is one the
+# check refuses.
+_px9="$(awk '/^id_prefix:/{print $2}' "$REPO_ROOT/plugins/agent/design/manifest.yaml")"
+assert_contains "[T9] the prompt says every SPEC id starts with design's prefix" "$(tr -s '[:space:]' ' ' < "$PROMPT")" "starts with ${_px9:-<none>}"
+assert_contains "[T9] ...and its examples have it" "$(cat "$PROMPT")" "${_px9:-<none>}LOOP-1[code]:"
+_t9_bare="$(grep -oE '(^|[^A-Z0-9])(LOOP|GARD)-[0-9]+' "$PROMPT" | head -3 || true)"
+assert_eq "[T9] ...no example id without it" "" "$_t9_bare"
+
+# T8 (#2482, ADR-069 §2): design is shown the code from before the change —
+# the copy of the commit the branch started from, the one its check reads a
+# [done] claim in. On #1805 run 42293991602 design had only the working copy,
+# took code this branch added for old code ("Since I can't pull the git history
+# here"), and lost all three tries to [done] claims the check refused.
+FX8="$TEST_TEMP_DIR/fix8"; mkdir -p "$FX8/scripts"
+git -C "$FX8" init -q -b main && git -C "$FX8" config user.email t@t && git -C "$FX8" config user.name t
+printf 'old_guard\n' > "$FX8/scripts/run.sh"; git -C "$FX8" add -A; git -C "$FX8" commit -qm base
+git -C "$FX8" checkout -qb work; printf 'old_guard\nnew_guard\n' > "$FX8/scripts/run.sh"; git -C "$FX8" commit -qam work
+A8="$FX8-state/artifacts"; mkdir -p "$A8"; printf 'scope: all\n' > "$FX8-state/scope-manifest.md"
+cp "$PLAN_JSON" "$A8/plan.json"
+ZBUILD_REPO_ROOT="$FX8" ZBUILD_STATE_DIR="$FX8-state" MOCK_DESIGN_WRITE_PATH="$A8/design.md" \
+    _design_stage_run_inner "$FX8-state/scope-manifest.md" "$A8/design.md" "$A8" >/dev/null 2>&1 || true
+P8="$(cat "$A8/design-prompt.txt" 2>/dev/null)"
+assert_contains "[T8] the prompt names the copy of the code from before the change" "$P8" "$FX8-state/base-code"
+assert_contains "[T8] ...and says a [done] claim is read there, not in the working copy" "$P8" \
+    "open the file there, not in the working copy"
+if [[ "$(cat "$FX8-state/base-code/scripts/run.sh" 2>/dev/null)" == old_guard ]]; then
+    assert_pass "[T8] the copy holds the code from where the branch started"
+else
+    assert_fail "[T8] the copy holds the code from where the branch started" "$(cat "$FX8-state/base-code/scripts/run.sh" 2>&1)"
+fi
+judge_base_release "$FX8-state" "$FX8" >/dev/null 2>&1
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

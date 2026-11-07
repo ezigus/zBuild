@@ -41,7 +41,7 @@ foo.sh
 ${BT}
 
 ${BT}acceptance
-DOCS-1[no-code]: the docs say so covers: WANT-1
+DSDOCS-1[no-code]: the docs say so covers: RQWANT-1
 WIRING: none
 TESTFILES:
 ${BT}
@@ -53,7 +53,7 @@ foo.sh
 ${BT}
 
 ${BT}acceptance
-DOCS-1[no-code]: the docs say so covers: WANT-1
+DSDOCS-1[no-code]: the docs say so covers: RQWANT-1
 TESTFILES:
 ${BT}
 "
@@ -89,7 +89,7 @@ _run() {
     _F_ART="$d/state/artifacts"; _F_DESIGN="$_F_ART/design.md"
     printf 'scope: all\n' > "$d/state/scope-manifest.md"
     printf '{"title":"t","goal":"g","steps":[{"id":"s1","description":"d","files":["foo.sh"]}]}\n' > "$_F_ART/plan.json"
-    printf '{"requirements":[{"id":"WANT-1","text":"the docs say so"}]}\n' > "$_F_ART/requirements.json"
+    printf '{"requirements":[{"id":"RQWANT-1","text":"the docs say so"}]}\n' > "$_F_ART/requirements.json"
     _design_stage_run_inner "$d/state/scope-manifest.md" "$_F_DESIGN" "$_F_ART" >/dev/null 2>&1
     RC=$?
     OUTCOME="$(jq -r '.outcome // "MISSING"' "$_F_ART/design-verdict.json" 2>/dev/null || echo MISSING)"
@@ -99,7 +99,7 @@ _run() {
 }
 
 # ── C1 ───────────────────────────────────────────────────────────────────────
-DESIGNS=("$NO_WIRING" "$GOOD"); JUDGE=($'WANT-1: covered\nDOCS-1: ok'); JUDGE_RC=0
+DESIGNS=("$NO_WIRING" "$GOOD"); JUDGE=($'RQWANT-1: covered\nDSDOCS-1: ok'); JUDGE_RC=0
 _run
 assert_eq "[C1] one design call: a failed check is not sent back to the model" "1" "$CALLS"
 assert_eq "[C1] a design that fails a check is unusable" "unusable" "$OUTCOME"
@@ -107,12 +107,12 @@ assert_contains "[C1] the result carries the finding" "$FINDINGS" "WIRING"
 
 # ── C2 ───────────────────────────────────────────────────────────────────────
 DESIGNS=("$GOOD"); # #2464 (ADR-072 §3): one line per item, the complaint quoted.
-JUDGE=($'WANT-1: uncovered | WHY: WANT-1 is only half covered | QUOTE: "the docs say so"\nDOCS-1: ok' $'WANT-1: covered\nDOCS-1: ok'); JUDGE_RC=0
+JUDGE=($'RQWANT-1: uncovered | WHY: RQWANT-1 is only half covered | QUOTE: "the docs say so"\nDSDOCS-1: ok' $'RQWANT-1: covered\nDSDOCS-1: ok'); JUDGE_RC=0
 _run
 assert_eq "[C2] an uncovered requirement: unusable" "unusable" "$OUTCOME"
-assert_contains "[C2] the finding names the uncovered requirement and its words" "$FINDINGS" 'WANT-1 is not covered: WANT-1 is only half covered — "the docs say so"'
+assert_contains "[C2] the finding names the uncovered requirement and its words" "$FINDINGS" 'RQWANT-1 is not covered: RQWANT-1 is only half covered — "the docs say so"'
 assert_contains "[C2] the coverage call is shown the SPECs" \
-    "$(cat "$TEST_TEMP_DIR/judge-prompt-1" 2>/dev/null)" "DOCS-1[no-code]: the docs say so"
+    "$(cat "$TEST_TEMP_DIR/judge-prompt-1" 2>/dev/null)" "DSDOCS-1[no-code]: the docs say so"
 assert_eq "[C2] still one design call" "1" "$CALLS"
 
 # ── C3 ───────────────────────────────────────────────────────────────────────
@@ -123,7 +123,7 @@ assert_eq "[C3] a rate-limited coverage call is design's outcome" "rate_limited"
 unset -f _router_rc_classify
 
 # ── C4 ───────────────────────────────────────────────────────────────────────
-DESIGNS=("$GOOD"); JUDGE=($'WANT-1: covered\nDOCS-1: ok'); JUDGE_RC=0
+DESIGNS=("$GOOD"); JUDGE=($'RQWANT-1: covered\nDSDOCS-1: ok'); JUDGE_RC=0
 _run
 assert_eq "[C4] a design that passes both checks: pass" "pass" "$OUTCOME"
 assert_eq "[C4] one design call" "1" "$CALLS"

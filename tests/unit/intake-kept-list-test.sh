@@ -34,7 +34,7 @@ route_to_model() {
     local n; n=$(( $(cat "$TEST_TEMP_DIR/calls" 2>/dev/null || echo 0) + 1 ))
     printf '%s' "$n" > "$TEST_TEMP_DIR/calls"
     if [[ "$2" == *"check a list of requirements"* ]]; then printf 'MISSING: none\n'
-    else printf 'REQUIREMENT: LINE-1 Print each line once.\nREQUIREMENT: CODE-1 Keep the exit code.\n'; fi
+    else printf 'REQUIREMENT: RQLINE-1 Print each line once.\nREQUIREMENT: RQCODE-1 Keep the exit code.\n'; fi
     return 0
 }
 _calls() { cat "$TEST_TEMP_DIR/calls" 2>/dev/null || echo 0; }

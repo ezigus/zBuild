@@ -297,6 +297,49 @@ eval "$_tsr_saved_s8"
 assert_eq "[SPEC-8] fail-closed: ghost_role declared, id-match plugin exists → rc=1" "1" "$_spec8_rc"
 assert_contains "[SPEC-8] fail-closed error output names the unresolved role" "$_spec8_out" "ghost_role"
 
+# ─── SPEC-9 (#2482, ADR-001): every stage declares its own two-letter id prefix.
+# On #1805 run 42293991602 a SPEC and a requirement could take the same code,
+# and design's checks told it two things that could not both hold. Each stage's
+# ids now start with its own prefix, so no two stages' ids can be the same — and
+# the engine refuses a stage without one, or two stages with the same one,
+# whether or not the stage makes ids.
+PXROOT="$TEST_TEMP_DIR/px"
+_px_plugin() {   # <kind> <id> [id_prefix line]
+    mkdir -p "$PXROOT/$1/$2"
+    printf 'id: %s\nname: %s\nkind: %s\nversion: 0.0.1\n%s\nhooks:\n  run: %s_run\ninputs: []\noutputs: []\n' \
+        "$2" "$2" "$1" "${3:-}" "$2" > "$PXROOT/$1/$2/manifest.yaml"
+    printf '%s_run() { return 0; }\n' "$2" > "$PXROOT/$1/$2/plugin.sh"
+}
+_px_check() { discovery_cache_flush 2>/dev/null; yaml_cache_flush 2>/dev/null; set +e; _px_out="$(zb_id_prefixes_check "$PXROOT" 2>&1)"; _px_rc=$?; set -e; }
+_px_plugin tool alpha 'id_prefix: AL'
+_px_plugin tool beta
+_px_check
+assert_eq "[SPEC-9] a stage with no id_prefix: the engine refuses (rc 1)" "1" "$_px_rc"
+assert_contains "[SPEC-9] ...naming the stage and its manifest" "$_px_out" "$PXROOT/tool/beta/manifest.yaml"
+_px_plugin tool beta 'id_prefix: be'
+_px_check
+assert_eq "[SPEC-9] a prefix that is not two capital letters is refused" "1" "$_px_rc"
+_px_plugin tool beta 'id_prefix: AL'
+_px_check
+assert_eq "[SPEC-9] two stages with the same prefix are refused" "1" "$_px_rc"
+assert_contains "[SPEC-9] ...naming both" "$_px_out" "alpha"
+assert_contains "[SPEC-9] ...naming both (2)" "$_px_out" "beta"
+_px_plugin tool beta 'id_prefix: BE'
+_px_plugin persona gamma
+_px_check
+assert_eq "[SPEC-9] every stage has its own: passes (a persona is not a stage)" "0" "$_px_rc"
+discovery_cache_flush 2>/dev/null; yaml_cache_flush 2>/dev/null
+set +e; _px_real="$(zb_id_prefixes_check "$REAL_PLUGINS" 2>&1)"; _px_real_rc=$?; set -e
+assert_eq "[SPEC-9] every shipped stage declares its own prefix" "0" "$_px_real_rc"
+[[ $_px_real_rc -eq 0 ]] || printf '%s\n' "$_px_real" >&2
+assert_eq "[SPEC-9] intake's requirements start with RQ" "RQ" "$(awk '/^id_prefix:/{print $2}' "$REAL_PLUGINS/agent/intake/manifest.yaml")"
+assert_eq "[SPEC-9] design's SPECs start with DS" "DS" "$(awk '/^id_prefix:/{print $2}' "$REAL_PLUGINS/agent/design/manifest.yaml")"
+if grep -q 'zb_id_prefixes_check' "$REPO_ROOT/core/pipeline/runner.sh"; then
+    assert_pass "[SPEC-9] the runner checks the prefixes before a run starts"
+else
+    assert_fail "[SPEC-9] the runner checks the prefixes before a run starts"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

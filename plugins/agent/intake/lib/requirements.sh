@@ -24,29 +24,9 @@ source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/item-ids.sh"
 # #2477: the engine and fingerprint a kept list is checked against.
 # shellcheck source=../../../../scripts/lib/judge.sh
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/judge.sh"
-# #2476: the last design is found by what it holds, never by its name.
-declare -F earlier_output_with_text >/dev/null 2>&1 \
-    || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/earlier-output.sh" 2>/dev/null || true
-
-# _ireq_design_codes_v <var> — the codes the last design's SPECs use, removed
-# ones counted (ADR-070 §1, #2476): a new requirement never takes one, the rule
-# design's own check keeps the other way round. Read by the shell. Sets
-# _IREQ_DESIGN_PATH to the design it read, or "" (#2480).
-_ireq_design_codes_v() {
-    local -n _idc="$1"; _idc=""
-    local _d _l _in=0 _re='^([A-Z][A-Z0-9][A-Z0-9][A-Z0-9]?-[0-9]+)\[' _rm='^REMOVED:[[:space:]]*([A-Z][A-Z0-9][A-Z0-9][A-Z0-9]?-[0-9]+)'
-    local -a _ids=()
-    _IREQ_DESIGN_PATH=""
-    _d="$(earlier_output_with_text '^```acceptance' 2>/dev/null || true)"
-    [[ -n "$_d" && -s "$_d" ]] || return 0
-    _IREQ_DESIGN_PATH="$_d"
-    while IFS= read -r _l || [[ -n "$_l" ]]; do
-        if (( ! _in )); then [[ "$_l" == '```acceptance'* ]] && _in=1; continue; fi
-        [[ "$_l" == '```'* || "$_l" == "TESTFILES:"* ]] && break
-        if [[ "$_l" =~ $_re || "$_l" =~ $_rm ]]; then _ids+=("${BASH_REMATCH[1]}"); fi
-    done < "$_d"
-    zb_id_codes_v _idc ${_ids[@]+"${_ids[@]}"}
-}
+# #2482 (ADR-001): intake's id prefix, from its manifest — every requirement
+# id starts with it, so no SPEC's id is ever the same.
+zb_id_prefix_v _IREQ_PX "${BASH_SOURCE[0]%/*}/../manifest.yaml"
 
 # _ireq_issue_text <issue_json> — the issue as the calls are shown it.
 _ireq_issue_text() {
@@ -54,7 +34,7 @@ _ireq_issue_text() {
 }
 
 _ireq_write_own() {
-    cat <<'EOF'
+    cat <<EOF
 Your job: list every requirement this issue states — each thing the change must
 do or deliver, in the issue's own words. A requirement may be written as a
 checkbox, a numbered or bulleted item, or a sentence. Context, background,
@@ -66,11 +46,11 @@ Answer with one line per requirement, in the order the issue gives them:
 
 REQUIREMENT: <id> <the requirement, in the issue's words>
 
-The id names the requirement: a code of 3 or 4 capital letters or digits,
-starting with a letter, that says what the requirement is about, a dash, and a
-number — LOOP-1 for a requirement about loop state. Requirements about the same
-thing share the code and count up: LOOP-1, LOOP-2. Never use an id the issue
-itself writes.
+The id names the requirement: ${_IREQ_PX}, then a code of 3 or 4 capital letters
+or digits, starting with a letter, that says what the requirement is about, a
+dash, and a number — ${_IREQ_PX}LOOP-1 for a requirement about loop state.
+Requirements about the same thing share the code and count up: ${_IREQ_PX}LOOP-1,
+${_IREQ_PX}LOOP-2. Never use an id the issue itself writes.
 EOF
     # #2460, #2462: a list from the last run is where the work starts, and its
     # ids never move.
@@ -89,7 +69,7 @@ EOF
 }
 
 _ireq_check_own() {
-    cat <<'EOF'
+    cat <<EOF
 Your job: check a list of requirements against the issue it was taken from.
 Name every requirement the issue states that the list misses, in the issue's
 words. A requirement may be written as a checkbox, a numbered or bulleted item,
@@ -100,9 +80,9 @@ Answer with one line for each requirement the list misses, in this form:
 
 MISSING: <id> <a requirement the list misses, in the issue's words>
 
-or the one line "MISSING: none" when it misses nothing. The id is a code of 3
-or 4 capital letters or digits, starting with a letter, that says what the
-requirement is about, a dash, and a number: LOOP-1. A requirement about the same
+or the one line "MISSING: none" when it misses nothing. The id is ${_IREQ_PX}, then
+a code of 3 or 4 capital letters or digits, starting with a letter, that says
+what the requirement is about, a dash, and a number: ${_IREQ_PX}LOOP-1. A requirement about the same
 thing as a listed one shares its code, with the number one more than the
 highest that code has had, the removed ids counted. Never use an id the list or
 the issue already writes, or a removed one.
@@ -145,7 +125,8 @@ _ireq_call_v() {
 # _IREQ_PREV_IDS (every id), _IREQ_PREV_REMOVED (ids removed in any run),
 # _IREQ_PREV_TEXT[id], _IREQ_PREV_REMOVED_JSON (to carry on), and
 # _IREQ_PREV_SHOWN, the list as the calls are shown it. #2462: an old position
-# id (R-1) is shown without it, so the requirement gets an id that describes it.
+# id (R-1), or one from before the prefix (#2482), is shown without it, so the
+# requirement gets an id of the new form.
 _ireq_prev_load() {
     _IREQ_PREV_IDS="" _IREQ_PREV_REMOVED="" _IREQ_PREV_SHOWN="" _IREQ_PREV_REMOVED_JSON="[]"
     declare -gA _IREQ_PREV_TEXT=()
@@ -154,7 +135,7 @@ _ireq_prev_load() {
     while IFS=$'\x1f' read -r kind id text why; do
         case "$kind" in
             A)  _IREQ_PREV_IDS+="$id "; _IREQ_PREV_TEXT[$id]="$text"
-                if zb_id_new_form "$id"; then _IREQ_PREV_SHOWN+="REQUIREMENT: $id $text"$'\n'
+                if zb_id_new_form "$id" "$_IREQ_PX"; then _IREQ_PREV_SHOWN+="REQUIREMENT: $id $text"$'\n'
                 else _IREQ_PREV_SHOWN+="REQUIREMENT: $text"$'\n'; fi ;;
             R)  _IREQ_PREV_REMOVED+="$id "; removed+="- $id — $text (removed: $why)"$'\n' ;;
             J)  _IREQ_PREV_REMOVED_JSON="$id" ;;
@@ -213,7 +194,7 @@ _ireq_call_parsed() {
         _ireq_call_v reply "$ask" || return 1
         zb_reply_join_v reply "$reply"
         _ireq_parse "$label" "$reply"
-        zb_ids_check_v _iv "$3" "$4" "$6 ${_IREQ_IDS[*]+${_IREQ_IDS[*]}}" "${_IREQ_RM_IDS[*]+${_IREQ_RM_IDS[*]}}" "$5" "${_IREQ_SPEC_CODES:-}" 0
+        zb_ids_check_v _iv "$3" "$4" "$6 ${_IREQ_IDS[*]+${_IREQ_IDS[*]}}" "${_IREQ_RM_IDS[*]+${_IREQ_RM_IDS[*]}}" "$5" "$_IREQ_PX" 0
         plain=""
         for v in "${_IREQ_NR_IDS[@]+"${_IREQ_NR_IDS[@]}"}"; do
             [[ " $6 " == *" $v "* ]] || _IREQ_FORM+=("NOT-A-REQUIREMENT: names $v, which the list does not have — name only a listed id")
@@ -262,10 +243,6 @@ _intake_requirements_json_v() {
         return 0
     fi
     _ireq_prev_load "${_INTAKE_PREV_REQ_JSON:-}"
-    _ireq_design_codes_v _IREQ_SPEC_CODES
-    # #2480 (ADR-070 §1): what the one-pool check was given, so a run shows it.
-    declare -F emit_event >/dev/null 2>&1 && emit_event "intake.requirements.design_codes" "plugin=intake" \
-        "codes=${_IREQ_SPEC_CODES:-}" "design=${_IREQ_DESIGN_PATH:-}" 2>/dev/null
     # #2458: intake has no tools and its reply is its output, so both its calls
     # compose fresh — no notes, and no rule to confirm earlier work.
     local _judged="ISSUE:"$'\n'"$issue"
@@ -302,7 +279,7 @@ _intake_requirements_json_v() {
     # #2462: the ids the issue's own words write — labels of the issue's, never
     # ours. Kept with the list, so design refuses them as SPEC ids without
     # reading the issue again.
-    local _new="" _rm="" _iss="" _s="$issue" _re='[A-Z][A-Z0-9][A-Z0-9][A-Z0-9]?-[0-9]+'
+    local _new="" _rm="" _iss="" _s="$issue" _re='[A-Z][A-Z0-9]{2,5}-[0-9]+'
     while [[ "$_s" =~ $_re ]]; do
         [[ "$_iss" == *$'\n'"${BASH_REMATCH[0]}"$'\n'* ]] || _iss+=$'\n'"${BASH_REMATCH[0]}"$'\n'
         _s="${_s#*"${BASH_REMATCH[0]}"}"

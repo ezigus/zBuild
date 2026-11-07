@@ -29,6 +29,7 @@ _ZBUILD_MIDX_KEYS=(
     provides.role provides.result_contract provides.alias
     capabilities.empty_diff_legitimate config.tier_default
     capabilities.writes_repository capabilities.iteration_aware
+    id_prefix
 )
 # -g: this file can be sourced from inside a function (see manifest-validation.sh).
 declare -gA _ZBUILD_MIDX=()        # "<path>\034<key>" → value + "\n" (present keys only)

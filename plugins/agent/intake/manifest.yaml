@@ -1,6 +1,8 @@
 id: intake
 name: Intake Stage
 kind: agent
+# #2482 (ADR-001): the ids this stage writes start with it.
+id_prefix: RQ
 version: 0.1.0
 description: |
   First stage of every pipeline run. Captures the goal, strips synthesized
@@ -90,8 +92,6 @@ provides:
     - intake.refused.issue_closed
     # #2477: the list was kept, with no model call — nothing it reads changed.
     - intake.requirements.kept
-    # #2480: the codes the last design's SPECs use, read for the one-pool check.
-    - intake.requirements.design_codes
 
 # ADR-047 §6: after this stage completes, the runner merges the operator's
 # --scope override (scope-override.md) into this stage's scope-manifest.md. The

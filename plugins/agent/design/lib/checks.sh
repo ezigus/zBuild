@@ -15,6 +15,8 @@ source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/../../../../script
 # shellcheck source=../../../../scripts/lib/item-ids.sh
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/item-ids.sh"
 _DCK_LIB_DIR="${BASH_SOURCE[0]%/*}/../../../../scripts/lib"
+# #2482 (ADR-001): design's id prefix, from its manifest — every SPEC id starts with it.
+zb_id_prefix_v _DCK_ID_PREFIX "${BASH_SOURCE[0]%/*}/../manifest.yaml"
 
 # _dck_scope_nonempty <design_md>
 # C1: returns 0 iff design.md carries a ```scope fence with ≥1 non-blank entry.
@@ -222,10 +224,10 @@ _design_checks() {
     local design_md="$1" repo_root="$2" req_json="${3:-}" last="${4:-}" _txt="${5:-}"
     _DESIGN_VIOLATIONS=()
     local -a violations=()
-    local _covered=" " _base="" _base_done="" _evw="" _req_rows="" _req_codes="" _rr_k _rr_id _rr_t
+    local _covered=" " _base="" _base_done="" _evw="" _req_rows="" _rr_k _rr_id _rr_t
     # The requirements, read once: "A<US>id<US>text" for each, "R<US>id" for
     # each removed one, "I<US>id" for each id the issue's words write — C7 reads
-    # the first, C9 the codes of both and the issue's ids.
+    # the first, C9 the issue's ids.
     if [[ -s "$req_json" ]]; then
         # Unit separator, not @tsv: @tsv would double every backslash in the
         # text (review #2320). Intake strips control characters, so it never occurs.
@@ -235,8 +237,7 @@ _design_checks() {
         while IFS=$'\x1f' read -r _rr_k _rr_id _rr_t; do
             [[ -n "$_rr_id" ]] || continue
             # #2462: the ids the issue's own words write, as intake recorded them.
-            [[ "$_rr_k" == I ]] && { _txt+=" $_rr_id"; continue; }
-            [[ "$_req_codes " != *" ${_rr_id%%-*} "* ]] && _req_codes+=" ${_rr_id%%-*}"
+            [[ "$_rr_k" == I ]] && _txt+=" $_rr_id"
         done <<< "$_req_rows"
     fi
 
@@ -325,7 +326,7 @@ _design_checks() {
 
     # ── C9 IDS (#2462, ADR-069 §1): each SPEC id describes it and never moves.
     # The last design that passed holds the ids to keep; REMOVED lines say why
-    # one goes, and stay. A requirement's code is never a SPEC's.
+    # one goes, and stay. Every id starts with design's prefix (#2482).
     if [[ $_accept_ok -eq 1 ]]; then
         local _pa="" _pr="" _bad _w
         local -a _iv=()
@@ -334,11 +335,21 @@ _design_checks() {
             if [[ "$(<"$last")" == "$(<"$design_md")" ]]; then _pa="$_na" _pr="$_nr"
             else _dck_block_ids_v _pa _pr "$(extract_acceptance_block "$last" 2>/dev/null)"; fi
         fi
-        zb_ids_check_v _iv "$_pa" "$_pr" "$_na" "$_nr" "$_txt" "$_req_codes" 1
+        # #2482: a REMOVED line may name a SPEC that a try of this run wrote and
+        # that did not pass — its draft is in the try archive, under this
+        # stage's own name, so no other stage's drafts are read.
+        local _tried="" _tf _ta _tr _ast="${ZBUILD_CURRENT_STAGE:-design}"
+        for _tf in "${design_md%/*}/attempts/${_ast//[^A-Za-z0-9_-]/_}"/*/design-draft.md; do
+            [[ -s "$_tf" ]] || continue
+            [[ -n "${ZBUILD_RUN_START_MARKER:-}" && -e "$ZBUILD_RUN_START_MARKER" && "$ZBUILD_RUN_START_MARKER" -nt "$_tf" ]] && continue
+            _dck_block_ids_v _ta _tr "$(extract_acceptance_block "$_tf" 2>/dev/null)"
+            _tried+="$_ta"
+        done
+        zb_ids_check_v _iv "$_pa" "$_pr" "$_na" "$_nr" "$_txt" "$_DCK_ID_PREFIX" 1 "$_tried"
         for _w in "${_iv[@]+"${_iv[@]}"}"; do violations+=("$_w"); done
         local -a _bads=()
         _dck_bad_id_lines_v _bads "$design_md"
-        for _bad in "${_bads[@]+"${_bads[@]}"}"; do violations+=("ID_BAD $_bad"); done
+        for _bad in "${_bads[@]+"${_bads[@]}"}"; do violations+=("ID_BAD $_bad $_DCK_ID_PREFIX"); done
     fi
 
     # ── C8 TEST FOLDERS (ADR-069 §10): every test file is in a test folder ──

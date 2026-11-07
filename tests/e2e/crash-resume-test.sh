@@ -41,6 +41,7 @@ cat > "$PLUGINS_ROOT/agent/intake/manifest.yaml" <<'YAML'
 id: intake
 name: Slow Intake
 kind: agent
+id_prefix: ZA
 version: 0.0.1
 provides:
   role: intake
@@ -58,6 +59,7 @@ cat > "$PLUGINS_ROOT/agent/security-lens/manifest.yaml" <<'YAML'
 id: security-lens
 name: Fast SL
 kind: agent
+id_prefix: ZB
 version: 0.0.1
 provides:
   role: security-auditor
@@ -75,6 +77,7 @@ cat > "$PLUGINS_ROOT/tool/output/manifest.yaml" <<'YAML'
 id: output
 name: Fast Output
 kind: tool
+id_prefix: ZC
 version: 0.0.1
 provides:
   role: output

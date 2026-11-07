@@ -45,12 +45,13 @@ rsc_render_pages() {
     local p=1 used=0 i n r
     for i in "${!rows[@]}"; do
         r="${rows[$i]}"
-        n=$(( $(rsc_byte_len "$r") + 1 ))
+        # +2: the row's newline and the blank line that ends it.
+        n=$(( $(rsc_byte_len "$r") + 2 ))
         if (( n > budget )) && [[ "$r" == *$'\n<details>'* ]]; then
             # One row larger than a whole part: its first line stays, the
             # folded rest is pointed at instead.
             r="${r%%$'\n<details>'*} _(the rest of what it reported is too long for a comment — see the run log)_"
-            rows[$i]="$r"; n=$(( $(rsc_byte_len "$r") + 1 ))
+            rows[$i]="$r"; n=$(( $(rsc_byte_len "$r") + 2 ))
         fi
         if (( used > 0 && used + n > budget )); then p=$(( p + 1 )); used=0; fi
         part_of[$i]=$p; used=$(( used + n ))
@@ -72,9 +73,11 @@ rsc_render_pages() {
                     "$run_id" "$issue" "$k"
             fi
             printf '\n'
-            # Newest first within a part.
+            # Newest first within a part. A blank line ends each row: a row with
+            # no fold (a running one, a fail with one finding) otherwise runs
+            # into the next, as Markdown joins adjacent lines (#1805 run 42293991602).
             for (( i = ${#rows[@]} - 1; i >= 0; i-- )); do
-                [[ "${part_of[$i]}" == "$k" ]] && printf '%s\n' "${rows[$i]}"
+                [[ "${part_of[$i]}" == "$k" ]] && printf '%s\n\n' "${rows[$i]}"
             done
         } > "$out/part-${k}.md"
     done

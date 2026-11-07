@@ -41,7 +41,7 @@ route_to_model() {
     local _bt='```' _t; _t="$(zb_test_prompt_write_path "$2")"
     if [[ -n "$_t" ]]; then
         mkdir -p "$(dirname "$_t")"
-        printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\ncore/a.sh\ncore/b.sh\ntests/acc-test.sh\ntests/golden/g.golden\n%s\n\n%ssteps\n- guard the read in a.sh | areas: core/a.sh\n- set the flag in the test | areas: tests/acc-test.sh\n- export the flag and check it | areas: core/b.sh, tests/acc-test.sh\n- update the golden | areas: tests/golden/g.golden\n%s\n\n%sacceptance\nWORK-1[no-code]: works\nWIRING: none\nTESTFILES:\nWORK-1: tests/acc-test.sh\n%s\n' \
+        printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\ncore/a.sh\ncore/b.sh\ntests/acc-test.sh\ntests/golden/g.golden\n%s\n\n%ssteps\n- guard the read in a.sh | areas: core/a.sh\n- set the flag in the test | areas: tests/acc-test.sh\n- export the flag and check it | areas: core/b.sh, tests/acc-test.sh\n- update the golden | areas: tests/golden/g.golden\n%s\n\n%sacceptance\nDSWORK-1[no-code]: works\nWIRING: none\nTESTFILES:\nDSWORK-1: tests/acc-test.sh\n%s\n' \
             "$_bt" "$_bt" "$_bt" "$_bt" "$_bt" "$_bt" > "$_t"
     fi
     return 0

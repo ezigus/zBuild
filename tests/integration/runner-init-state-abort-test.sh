@@ -53,6 +53,7 @@ _make_plugin() {
 id: $id
 name: Test $id
 kind: $kind
+id_prefix: $(zb_test_id_prefix "$PLUGINS_ROOT")
 version: 0.0.1
 provides:
   role: $role

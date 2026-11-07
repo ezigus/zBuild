@@ -20,6 +20,9 @@
 # W5 [change] #2480: findings with a severity are counted by it
 # W6 [change] #2480: one finding of several lines: its first line heads the row,
 #             the rest is folded, and the first line is not said twice
+# W8 [change] several findings without a severity: the row's line names the
+#             requirement or SPEC each is about, as the run's rows did not
+#             ("what failed: 2 findings", #1805 run 42293991602)
 # W7 [change] #2480: a try run again because its result held findings shows
 #             as failed, not `unusable` (test-author's own label for "my check
 #             found something", #2460); one with no findings stays unusable
@@ -59,7 +62,7 @@ stage_summary_write "$A/judge-summary.md" judge fail "the design fails 2 check(s
 
 # ── W1 ───────────────────────────────────────────────────────────────────────
 w1="$(rsc_render_row "$S" "$(_row 3.1.1.1.1 judge unusable)")"
-assert_eq "[W1] the row's line says how many failed" "what failed: 2 findings" "$(sed -n 1p <<< "$w1" | sed 's/.* — //')"
+assert_eq "[W1] the row's line names what failed" "what failed: \`SKIP-1\`, \`BNDY-1\`" "$(sed -n 1p <<< "$w1" | sed 's/.* — //')"
 assert_contains "[W1] the folded part lists every finding" "$w1" "BNDY-1 describes what a file contains"
 assert_eq "[W1] …each once" "1" "$(grep -c "SKIP-1 Then 1 is not asserted" <<< "$w1")"
 if grep -qF "working copy" <<< "$w1" || grep -qF "fails 2 check(s)" <<< "$w1"; then
@@ -90,6 +93,29 @@ w4="$(rsc_render_row "$S" "$(_row 5 fine pass)")"
 assert_contains "[W4] a pass row shows its summary" "$w4" "wrote tests for LOOP-1 and KEEP-1"
 if grep -qF "what failed" <<< "$w4"; then assert_fail "[W4] …and never says what failed" "$w4"
 else assert_pass "[W4] …and never says what failed"; fi
+
+# ── W8 ───────────────────────────────────────────────────────────────────────
+# The words of #1805 run 42293991602's issue-acceptance and test findings.
+stage_result_write "$A/issue-acceptance-result.json" fail "2 requirements not met" "{\"findings\":$(printf '%s\n' \
+        'The issue requires this and the change does not meet it: LOOP-1: `_cycle_iter_dispatch` has no code to skip cycle members already marked complete' \
+        'The issue requires this and the change does not meet it: GUAR-2: The FRSH-2 third assertion added in this DIFF asserts `_frsh2_cycled_starts==1`' | stage_findings_json)}"
+w8="$(rsc_render_row "$S" "$(_row 3.1.1.1.5 issue-acceptance fail)")"
+assert_eq "[W8] the line names each requirement not met" "what failed: \`LOOP-1\`, \`GUAR-2\`" "$(sed -n 1p <<< "$w8" | sed 's/.* — //')"
+stage_result_write "$A/test-result.json" fail "2 files fail" "{\"findings\":$(printf '%s\n' \
+        'tests/integration/resume-loop-state-test.sh fails: ✗ `[#1805/CMBR-1]` no stage.start for build in iter 2 — expected: 0, got: 1' \
+        'tests/integration/resume-rehydrate-test.sh fails: ✗ `[#1805/FRSH-2]` fresh run cycle member emits exactly one stage.start — expected: 1, got: 0' | stage_findings_json)}"
+w8t="$(rsc_render_row "$S" "$(_row 3.1.1.1.4 test fail)")"
+assert_eq "[W8] …and the SPEC each failing test is for" "what failed: \`CMBR-1\`, \`FRSH-2\`" "$(sed -n 1p <<< "$w8t" | sed 's/.* — //')"
+stage_result_write "$A/note-result.json" fail "2 problems" "{\"findings\":$(printf '%s\n' 'the build left a temp file' 'the build log is empty' | stage_findings_json)}"
+w8n="$(rsc_render_row "$S" "$(_row 3.1.1.1.3 note fail)")"
+assert_eq "[W8] findings naming no id are counted" "what failed: 2 findings" "$(sed -n 1p <<< "$w8n" | sed 's/.* — //')"
+
+# #2482: ids carry their stage's prefix; the row names them whole.
+stage_result_write "$A/issue-acceptance-result.json" fail "2 requirements not met" "{\"findings\":$(printf '%s\n' \
+        'The issue requires this and the change does not meet it: RQLOOP-1: no skip' \
+        'The issue requires this and the change does not meet it: RQGUAR-2: a second start' | stage_findings_json)}"
+w8p="$(rsc_render_row "$S" "$(_row 3.1.1.1.5 issue-acceptance fail)")"
+assert_eq "[W8] …a prefixed id is named whole" "what failed: \`RQLOOP-1\`, \`RQGUAR-2\`" "$(sed -n 1p <<< "$w8p" | sed 's/.* — //')"
 
 # ── W5 ───────────────────────────────────────────────────────────────────────
 printf '%s\n' '{"lens":"sre","findings":[{"file":"a.sh","severity":"medium","message":"M-ONE"},{"file":"a.sh","severity":"high","message":"H-ONE"},{"file":"a.sh","severity":"medium","message":"M-TWO"}]}' \

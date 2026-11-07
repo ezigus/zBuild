@@ -158,9 +158,12 @@ _requires_core_code() {
 # SPEC-9 asserts every provider path matches ^[A-Za-z0-9_/.-]+$ instead. If a
 # future provider needs a metacharacter, that assertion fails loudly and the
 # escaping gets written then.
+# The whole text at once, by the shell (#2482, ADR-065: it was a grep a
+# provider a plugin): a line is a newline and what follows, up to the next.
 _requires_core_sources() {
-    local code="$1"
-    grep -qE "^[[:space:]]*(source|\.)[[:space:]]+.*${2//./\\.}([\"'[:space:]]|$)" <<<"$code"
+    local nl=$'\n' re
+    re="${nl}[[:blank:]]*(source|\.)[[:blank:]]+[^${nl}]*${2//./\\.}([\"'[:blank:]]|${nl}|\$)"
+    [[ "${nl}$1${nl}" =~ $re ]]
 }
 
 # _requires_core_reaches_model <code> — rc 0 when route_to_model survives

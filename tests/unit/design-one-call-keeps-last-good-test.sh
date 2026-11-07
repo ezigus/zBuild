@@ -50,7 +50,7 @@ foo.sh
 ${BT}
 
 ${BT}acceptance
-WORK-1[no-code]: the docs say so
+DSWORK-1[no-code]: the docs say so
 WIRING: none
 TESTFILES:
 ${BT}"
@@ -63,7 +63,7 @@ foo.sh
 ${BT}
 
 ${BT}acceptance
-WORK-1[no-code]: the docs say so
+DSWORK-1[no-code]: the docs say so
 TESTFILES:
 ${BT}"
 
