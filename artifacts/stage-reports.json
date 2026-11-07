@@ -6,6 +6,8 @@
     "docs/adr/ADR-006-resume-contract.md",
     "docs/adr/ADR-050-prior-work-reuse-contract.md",
     "plugins/tool/hydrate/plugin.sh",
+    "tests/golden/full-pipeline/event-sequence.golden",
+    "tests/golden/parity/event-sequence.golden",
     "tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh",
     "tests/integration/cycle-member-dispatch-events-test.sh",
     "tests/integration/from-stage-rehydrate-test.sh",

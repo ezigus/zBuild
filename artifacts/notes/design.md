@@ -1,22 +1,29 @@
 # Design notes: #1805 — resume and --from-stage trust-and-rehydrate
 
-## Status: Fortieth pass — FSTG-1 And and DSPK-1 Then corrected for cycle-stage dispatch semantics
+## Status: Forty-first pass — Remove erroneous `_cd_iter > 0` guard; CMBR-1 emits stage.start for interrupted cycle member; ENTR-2 ZBUILD_STATE_FILE constraint tightened
 
-### Changes this pass (fortieth)
+### Changes this pass (forty-first)
 
-**design finding 1** (from previous pass): FSTG-1 And says "a stage.start event is emitted for `<s>`" but `<s>=cyc` is a cycle stage — cycle stages emit `cycle.start` for the cycle ID and `stage.start` only for inner members. Test checks `cycle.start` for ordering (pipeline.resume before cycle.start) and `stage.start` for `cycled` (not `cyc`). The And was never satisfiable when `<s>` is a cycle stage.
+**issue-acceptance finding 1** (PATH-1 / ENTR-2):
+- The ENTR-2 test sets `ZBUILD_STATE_FILE="$P2_STATE_FILE"` at line 219 of resume-entry-points-test.sh
+- This makes the symlink branch guard `[[ -z "${ZBUILD_STATE_FILE:-}" && -L "$state_dir/latest" ]]` false
+- The new code at runner.sh:2205 is dead in the test
+- Design spec is correct (ENTR-2 Given says "ZBUILD_STATE_FILE and ZBUILD_STATE_DIR are unset")
+- Fix: Added CRITICAL note to the ENTR-2 step in the design explicitly prohibiting ZBUILD_STATE_FILE from being set
+- Also updated ENTR-2 Given to say "unset in the test environment" (more precise)
 
-**Resolution:** Changed FSTG-1 And to: "Stage <s> is dispatched as the first unit — when <s> is a cycle stage, a cycle.start event is emitted for <s> and stage.start is emitted for <s>'s first cycle member; when <s> is a leaf stage, a stage.start event is emitted for <s>; no corresponding dispatch event fires for any stage before <s>"
-
-**design finding 2** (from previous pass): DSPK-1 Then says "Stage k emits a stage.start event" but k=cyc is a cycle stage — only cycle.start for the cycle ID, then stage.start for the inner member. Test checks stage.start for "cycled" (k's inner member), not for "cyc".
-
-**Resolution:** Changed DSPK-1 Then to: "Stage k is dispatched — when k is a cycle stage, a cycle.start event is emitted for k and stage.start is emitted for k's first cycle member; when k is a leaf stage, a stage.start event is emitted for k"
-
-**issue-acceptance finding 1** (GUAR-1 / `_cd_iter > 0` guard):
-- Confirmed by git: `_cd_iter > 0` stage.start emission is absent from pre-branch commit d1da69bc — added by this branch
-- Intentional: required for DSPK-1 (cycle members must emit stage.start so k's dispatch can be verified)
-- Added cycle-member-dispatch-events-test.sh to FRSH-1's TESTFILES; that test (updated in supersedes) explicitly pins the new cycle member stage.start contract and would fail if the behavior were removed
-- Updated Finding 24 to record this
+**issue-acceptance finding 2** (GUAR-1):
+- The `_cd_iter > 0` guard fires for EVERY dispatch in EVERY run (`_cd_iter` starts at 1, so always ≥ 1)
+- This changes fresh-run event sequences and breaks golden files:
+  - `tests/golden/full-pipeline/event-sequence.golden`
+  - `tests/golden/parity/event-sequence.golden`
+- Previous design defense (findings 20/24) was WRONG: the guard does not preserve GUAR-1
+- Fix: The `_cd_iter > 0` guard must be REMOVED
+- DSPK-1's stage.start for cycle stage k's interrupted member comes from CMBR-1's `resume_first_iter=true` path explicitly emitting stage.start for the non-complete member
+- For fresh runs and later resumed iterations (`resume_first_iter=false`): no stage.start for cycle members (pre-branch behavior, golden files preserved)
+- FRSH-1 TESTFILES loses cycle-member-dispatch-events-test.sh (the assertion expected stage.start count which was wrong because: (a) cycle_dispatch_stage was stubbed so actual dispatch never happened, (b) the guard is now removed)
+- Golden files added to scope
+- Supersedes entry for cycle-member-dispatch-events-test.sh revised to remove the wrong stage.start expectations
 
 ### SPEC summary (16 SPECs: 11 [code], 5 [no-code], 3 REMOVED)
 
@@ -60,46 +67,52 @@ All 16 requirements covered:
 - TEST-1: CYCL-1
 - DISP-1: SKIP-1
 
-### Key structural facts
+### Key structural facts (updated this pass)
 
-1. **FSTG-1 dispatch semantics (this pass):**
-   - Test fixture uses <s>=cyc (cycle stage)
-   - cycle.start is emitted for cyc (not stage.start)
-   - stage.start is emitted for cycled (the inner member of cyc)
-   - FSTG-1 And now: "cycle.start for <s> when cycle stage, stage.start for first member; nothing for prior stages"
+1. **`_cd_iter > 0` guard is WRONG (this pass correction):**
+   - `_cd_iter` starts at 1 → guard fires for every dispatch in every run
+   - Breaks golden files for fresh-run event sequences
+   - Issue-acceptance finding 2 confirms GUAR-1 violation
+   - Guard must be removed from `_cycle_dispatch`
 
-2. **DSPK-1 dispatch semantics (this pass):**
-   - Test fixture uses k=cyc (cycle stage)
-   - cycled inner member emits stage.start, not cyc itself
-   - DSPK-1 Then now: "cycle.start for k when cycle stage, stage.start for k's first member"
+2. **DSPK-1 for cycle stages (corrected this pass):**
+   - stage.start for the interrupted cycle member comes from CMBR-1's `resume_first_iter=true` path
+   - `_cycle_dispatch` with `resume_first_iter=true`: (a) skip complete members (no stage.start); (b) emit stage.start for non-complete member, then dispatch normally
+   - For fresh runs (`resume_first_iter=false`): no stage.start for cycle members (golden file behavior preserved)
 
-3. **`_ZBUILD_RESUME_ACTIVE` lifecycle:**
+3. **ENTR-2 test constraint (this pass):**
+   - Test must NOT set ZBUILD_STATE_FILE or ZBUILD_STATE_DIR
+   - Symlink guard: `[[ -z "${ZBUILD_STATE_FILE:-}" && -L "$state_dir/latest" ]]`
+   - If ZBUILD_STATE_FILE is set, guard is false → code path dead
+   - CRITICAL note added to ENTR-2 step
+
+4. **FRSH-1 TESTFILES (this pass):**
+   - Removed cycle-member-dispatch-events-test.sh
+   - cycle_dispatch_stage is stubbed in that test → stage.start count always 0 regardless
+   - FRSH-1 is now only pinned by resume-rehydrate-test.sh (fresh-run sub-case)
+
+5. **`_ZBUILD_RESUME_ACTIVE` lifecycle (unchanged):**
    - Set `true` at runner.sh:2862 (resume entry, after `_runner_resume_rehydrate`)
    - Consumed (set `false`) at cycle-orchestrator.sh:2343 on first cycle orchestrator entry
-   - Sole purpose: select `_start_iter` (read persisted iter vs. start at 1)
-   - Any code called after orchestrator entry sees flag as false — this is by design
+   - Sole purpose: select `_start_iter`; not a general resume broadcast
 
-4. **`_cycle_dispatch` stage.start guard:**
-   - `if [[ "$_cd_iter" -gt 0 ]]; then eb_emit_event "stage.start"`
-   - Fires for all cycle member dispatches at iter > 0 (fresh and resume)
-   - Absent from pre-branch d1da69bc — added by this branch intentionally
-   - GUAR-1 satisfied by FRSH-1[no-code] + cycle-member-dispatch-events-test.sh
-
-5. **CMBR-1 implementation (Gap 9, NOT YET FIXED in branch):**
-   - Cycle orchestrator passes `resume_first_iter=true` to `_cycle_dispatch` for first
-     iteration dispatched during a resume (when `_start_iter > 1`, current_iter == `_start_iter`)
-   - `_cycle_dispatch` skips members already marked complete when flag is set
+6. **CMBR-1 implementation (Gap 9, still NOT YET FIXED in branch):**
+   - Cycle orchestrator passes `resume_first_iter=true` to `_cycle_dispatch` for first resumed iteration
+   - `_cycle_dispatch` skips complete members (no stage.start) and explicitly emits stage.start for interrupted member
    - Passed as local argument, no interaction with `_ZBUILD_RESUME_ACTIVE`
 
-6. **Gap 8 (auto-resume state discovery) FIXED in branch:**
-   - runner.sh auto-resume elif extended to check `$state_dir/latest/pipeline-state.json`
-   - ENTR-2[code] tests this without ZBUILD_STATE_FILE set
+7. **FSTG-1 and DSPK-1 dispatch semantics (from fortieth pass, unchanged):**
+   - For cycle stage k: cycle.start emitted for k by cycle:* arm; stage.start emitted for first non-complete member by CMBR-1 path
+   - For leaf stage k: stage.start emitted normally by dispatch-unit loop
 
 ### Outstanding (requires build stage)
 
-- CMBR-1 implementation: `_cycle_dispatch` skip-on-complete guard for first resumed iteration
+- Remove `_cd_iter > 0` unconditional stage.start guard from `_cycle_dispatch` if present
+- Revert golden files if they were changed by the erroneous guard
+- Fix ENTR-2 test: unset ZBUILD_STATE_FILE before the ENTR-2 sub-case
+- CMBR-1 implementation: `_cycle_dispatch` skip-on-complete + explicit stage.start for interrupted member
 - ADR-006 step 3.6 amendment (AMDR-1)
 - ADR-050 §6 boundary note + Enforced by citations (AMDR-2)
 - resume-loop-state-test.sh: needs CMBR-1 sub-case + `export _ZBUILD_RESUME_ACTIVE=true` for ITER-1
-- cycle-member-dispatch-events-test.sh: needs update for stage.start at iter > 0
+- cycle-member-dispatch-events-test.sh: update iter count assertions; remove wrong stage.start assertions
 - Other test updates (resume-rehydrate-test.sh, from-stage-rehydrate-test.sh, hydrate-stage-test.sh)
