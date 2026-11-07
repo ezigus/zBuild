@@ -1810,7 +1810,7 @@ main() {
         fi
     fi
     # Also try latest symlink for per-run default layout when ZBUILD_STATE_FILE is
-    # unset (ADR-059 §1 / #1805 ENTR-2): state lives at runs/<run_id>/ not at root.
+    # unset (ADR-059 §1 / #1805 DSENTR-2): state lives at runs/<run_id>/ not at root.
     if [[ -z "$issue" && -z "$goal" && -z "${ZBUILD_STATE_FILE:-}" ]]; then
         local _ls_sd="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}/latest"
         if [[ -L "$_ls_sd" && -f "$_ls_sd/pipeline-state.json" ]]; then
@@ -2202,7 +2202,7 @@ main() {
         esac
     elif ! $no_resume && [[ -z "${ZBUILD_STATE_FILE:-}" && -L "$state_dir/latest" ]] \
          && [[ -f "$state_dir/latest/pipeline-state.json" ]]; then
-        # Auto-resume via latest symlink (per-run layout, ADR-059 §1 / #1805 ENTR-2):
+        # Auto-resume via latest symlink (per-run layout, ADR-059 §1 / #1805 DSENTR-2):
         # flat state file absent; follow latest to find the interrupted per-run state.
         local _lr_recommendation
         _lr_recommendation="$(get_resume_recommendation "$state_dir/latest/pipeline-state.json")"

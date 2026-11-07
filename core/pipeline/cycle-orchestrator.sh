@@ -1385,7 +1385,7 @@ _cycle_iter_dispatch() {
                 "$(jq -r '.status // "complete"' <<< "$_ru_entry")" "$(jq -r '.verdict // "pass"' <<< "$_ru_entry")" || true
             continue
         fi
-        # ADR-006 §3.6 / #1805 (CMBR-1): on the first resumed iteration, skip members
+        # ADR-006 §3.6 / #1805 (DSCMBR-1): on the first resumed iteration, skip members
         # already complete in persisted state so dispatch begins at the interrupted member.
         if [[ "$_resume_first_iter" == "true" ]]; then
             local _cmbr_status
@@ -1405,7 +1405,7 @@ _cycle_iter_dispatch() {
                 continue
             fi
             # Non-complete (interrupted) member: emit stage.start before dispatch.
-            # DSPK-1 / FSTG-1 (#1805): stage.start for the interrupted cycle member
+            # DSDSPK-1 / DSFSTG-1 (#1805): stage.start for the interrupted cycle member
             # is emitted here, not unconditionally. Fresh runs and later resumed
             # iterations receive no stage.start for cycle members via this path
             # (preserving pre-branch behavior and golden file event sequences).
@@ -2308,7 +2308,7 @@ _cycle_orchestrator_run_body() {
     # iteration. Consume the flag immediately so nested cycles and subsequent
     # re-entries always start at 1. On a fresh run or nested-loop re-entry,
     # always start at 1 so inner cycles reset correctly on each outer iteration.
-    # _is_resume tracks whether THIS cycle entry is a resume (for CMBR-1 guard
+    # _is_resume tracks whether THIS cycle entry is a resume (for DSCMBR-1 guard
     # below); it is NOT cleared by the flag consumption so the first-iter guard
     # can use it even after _ZBUILD_RESUME_ACTIVE=false is consumed.
     local _start_iter
@@ -2390,7 +2390,7 @@ _cycle_orchestrator_run_body() {
         fi
 
         # Dispatch the cycle's stages in order.
-        # CMBR-1 (#1805): signal resume_first_iter for the first resumed iteration
+        # DSCMBR-1 (#1805): signal resume_first_iter for the first resumed iteration
         # so _cycle_iter_dispatch skips members already complete in persisted state.
         # Use _is_resume (not _start_iter > 1) so iter=1 interruptions are also
         # covered — _start_iter can be 1 when interrupted before any iter completed.
