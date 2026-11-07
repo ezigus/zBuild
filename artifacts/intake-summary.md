@@ -18,4 +18,4 @@
 - HYDR-1: Rehydration follows the same path the hydrate stage already uses (ADR-050, `plugins/tool/hydrate`), so "exactly as before" means the same files at the same paths.
 - TEST-1: Tests for R1–R5 must use a cycle.
 - DISP-1: No requirement may be marked done, and no change made, on the strength of the legacy loop.
-- the requirements are the same as the last run's
+- the issue is unchanged since the last run: its requirements were kept, with no model call
