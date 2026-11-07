@@ -781,6 +781,25 @@ _s12_fixt_content="$(cat "$REPO_ROOT/tests/fixtures/templates/artifact-snapshot-
 assert_contains "cycle fixture used in fresh-run sub-case has type: cycle" \
     "$_s12_fixt_content" "type: cycle"
 
+# [#1805/FRSH-1]: a fresh run must NOT emit stage.start for cycle members (cycled).
+# Design (Gap 7): stage.start for cycle members is only emitted via the CMBR-1
+# resume_first_iter=true path; it must NOT fire unconditionally on fresh runs.
+# Before this change (pre-#1805): cycle members never emitted stage.start (they emit
+#   cycle.member.dispatch.{start,complete} instead); _s12_cycled_starts=0 → PASSES (no-code ✓).
+# After this change with the iter>0 guard bug: stage.start fires for every cycle member
+#   dispatch unconditionally (iter starts at 1, so iter>0 is always true) → cycled emits
+#   stage.start on fresh runs → _s12_cycled_starts=1 → assert 0==1 → FAILS (exposes bug).
+# After fix (iter>0 guard removed or guarded by _ZBUILD_RESUME_ACTIVE):
+#   cycle members emit stage.start only via CMBR-1 resume path → 0 on fresh run → PASSES.
+# This covers GUAR-1 on the cycle-member side (the gap red-team finding 4 names).
+_s12_cycled_starts=0
+if [[ -f "$S12_EVENTS_JSONL" ]]; then
+    _s12_cycled_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="cycled") | .type' \
+        "$S12_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_eq "[#1805/FRSH-1] no stage.start for cycle member (cycled) on fresh run (cycle members only emit stage.start via CMBR-1 resume path; iter>0 guard must not fire unconditionally on fresh runs)" \
+    "0" "$_s12_cycled_starts"
+
 # ── FRSH-2: fresh run with prior state branch artifacts never skips via dispatch-unit guard ─
 print_test_section "[#1805/FRSH-2] fresh run (no --resume, in_progress status) never skips stages due to prior-run artifacts in git state branch"
 
