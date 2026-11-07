@@ -1,62 +1,59 @@
-# test-author notes — issue #1805 (round 33: FRSH-2 assertion fix)
+# test-author notes — issue #1805 (round 35: fix DSPK-1 and FRSH-2 findings)
 
 ## Status: COMPLETE
 
-## What was fixed this round
+## What was done this round
 
-### tests/integration/resume-rehydrate-test.sh — removed unreachable FRSH-2 third assertion
+Fixed two open findings from previous test-author run, both in
+`tests/integration/resume-rehydrate-test.sh`.
 
-The third FRSH-2 assertion `assert_eq "1" "$_frsh2_cycled_starts"` was removed.
+### Finding 1 (DSPK-1): Added cycle.start assertion for stage k
 
-**Why unreachable:** `cycled` (role: builder) fails plugin resolution in
-`cycle_dispatch_stage` at runner.sh:3177-3188. When `resolve_stage_plugin`
-returns empty, the function sets `_CYCLE_DISPATCH_VERDICT="error"` and returns
-1 — BEFORE line 3213 where `stage.start` is emitted. So `_frsh2_cycled_starts`
-is always 0, never 1 regardless of the _ZBUILD_RESUME_ACTIVE guard.
+The previous test asserted `stage.start` for `cycled` (member of cyc) but never
+asserted `cycle.start` for `cyc` itself. The DSPK-1 requirement says "when k is a
+cycle stage, a cycle.start event is emitted for k AND stage.start is emitted for k's
+first cycle member". The cycle.start half was unproven.
 
-**FRSH-2 coverage:** The first two assertions fully cover FRSH-2:
-1. `_frsh2_intake_starts == 1` — intake dispatches even with prior artifacts on
-   the state branch (proves dispatch-unit skip guard is conditional on resume_mode)
-2. `_frsh2_stage_skips == 0` — no stage.skip events on a fresh run
+Added after the existing `_s1_cycled_starts` assertion:
+```bash
+_s1_cyc_cycle_starts=0
+if [[ -f "$S1_EVENTS_JSONL" ]]; then
+    _s1_cyc_cycle_starts="$(jq -r 'select(.type=="cycle.start") | .type' \
+        "$S1_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_gt "[#1805/DSPK-1] cycle.start emitted for stage k (cyc) on resume ..." \
+    "$_s1_cyc_cycle_starts" "0"
+```
 
-FRSH-2 is [no-code]; the test must pass after the change, need not fail before.
-Both remaining assertions pass.
+Fail direction: before code change, runner aborts before dispatching cyc → no
+cycle.start → count=0 → FAILS.
+Pass direction: after change, dispatch loop reaches cyc → cycle.start emitted → PASSES.
 
-### tests/integration/resume-loop-state-test.sh — no change
+### Finding 2 (FRSH-2): Added cycle.start assertion proving cyc not silently skipped
 
-The CMBR-1 test is correct. It fails because the code stage has not yet
-implemented member-skip logic in `_cycle_iter_dispatch`. The test correctly:
-- FAILs on old/current code (`_cycle_iter_dispatch` dispatches all members
-  unconditionally; `_CMBR1_BUILD_DISPATCHED=1`, expected 0)
-- Will PASS once code stage adds: check `stage_statuses[member]=="complete"` and
-  skip that member when `_ZBUILD_RESUME_ACTIVE=true` during iter dispatch
+The previous test asserted intake dispatches (count=1) and no stage.skip events,
+but a skip guard that silently skips cyc WITHOUT emitting stage.skip would pass
+undetected. Added `cycle.start` count > 0 assertion after the existing FRSH-2 assertions:
 
-The state setup (`jq '.stage_statuses.build = "complete"'`) is correct. The
-engine writes `stage_statuses[member]` via `_cycle_state_write_member_atomic`
-(cycle-orchestrator.sh:1227). The test uses that same key.
+```bash
+_frsh2_cyc_cycle_starts=0
+if [[ -f "$_S_FRSH2_EVENTS_JSONL" ]]; then
+    _frsh2_cyc_cycle_starts="$(jq -r 'select(.type=="cycle.start") | .type' \
+        "$_S_FRSH2_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_gt "[#1805/FRSH-2] cycle stage cyc dispatched on fresh run (cycle.start emitted; ..." \
+    "$_frsh2_cyc_cycle_starts" "0"
+```
 
-## Findings answered this round
+FRSH-2 is [no-code]: need not fail before, must pass after.
+Catches a hypothetical skip guard that silently suppresses cyc → no cycle.start → FAILS.
 
-ANSWER test finding 1: nothing to do — CMBR-1 test is correct; it fails because
-  `_cycle_iter_dispatch` has no member-skip logic. This is a code-stage finding.
-  The test will FAIL on old code and PASS once the code stage adds the skip guard.
+## Notes on ZBUILD_CYCLES_ENABLED
+The FRSH-2 runner call already has `ZBUILD_CYCLES_ENABLED=1` set (line ~816),
+so the cycle stage `cyc` will be processed and `cycle.start` will be emitted
+on a fresh run when the code is correct.
 
-ANSWER test finding 2: done — removed the unreachable third FRSH-2 assertion
-  (`_frsh2_cycled_starts == 1`). The `cycled` member fails plugin resolution before
-  `stage.start` is emitted (runner.sh:3177-3188 returns before line 3213), so the
-  count is always 0. The first two FRSH-2 assertions fully cover the requirement.
-
-ANSWER acceptance-gate finding 1: nothing to do (test scope) — CMBR-1 fails because
-  the code has not implemented the member-skip logic. The test is correct. Code fix
-  needed in `_cycle_iter_dispatch` (core/pipeline/cycle-orchestrator.sh).
-
-ANSWER issue-acceptance finding 1: nothing to do — same as acceptance-gate finding 1.
-
-ANSWER issue-acceptance finding 2: done — removed the unreachable third FRSH-2
-  assertion. `cycled` fails plugin resolution before `stage.start`. The remaining
-  two FRSH-2 assertions cover the requirement fully.
-
-## All SPECs coverage (unchanged from round 32, except FRSH-2 third assertion removed)
+## All SPECs coverage
 
 ### tests/unit/hydrate-stage-test.sh
 - DLGT-1 ✓
@@ -66,10 +63,10 @@ ANSWER issue-acceptance finding 2: done — removed the unreachable third FRSH-2
 - RHYD-2 ✓ (exit 1 when artifact absent; no stage.start before exit)
 - AMDR-1 ✓ (ADR-006 step 3.6 present with all required text)
 - AMDR-2 ✓ (ADR-050 §6 boundary note + test citations)
-- DSPK-1 ✓ (stage k emits stage.start on resume)
+- DSPK-1 ✓ (fixed: stage k emits stage.start for cycled member + cycle.start for cyc)
 - FRSH-1 ✓ (intake dispatched; no stage.skip; no prior-run artifact)
 - SKIP-1 ✓ (no stage.start for complete stage with artifact present)
-- FRSH-2 ✓ (intake dispatches + no stage.skip — two assertions, sufficient coverage)
+- FRSH-2 ✓ (fixed: intake dispatches + no stage.skip + cycle.start for cyc)
 - CYCL-1 ✓ (fixture has type:cycle)
 
 ### tests/integration/from-stage-rehydrate-test.sh
@@ -78,9 +75,22 @@ ANSWER issue-acceptance finding 2: done — removed the unreachable third FRSH-2
 - CYCL-1 ✓
 
 ### tests/integration/resume-loop-state-test.sh
-- ITER-1 ✓ (first iter=2, no iter-1 dispatch, nested re-entry at 1, guard with _ZBUILD_RESUME_ACTIVE)
-- CMBR-1 ✓ (test correct; fails on old code; passes after code stage adds member-skip)
+- ITER-1 ✓
+- CMBR-1 ✓
 
 ### tests/integration/resume-entry-points-test.sh
 - ENTR-1 ✓ (all 3 paths)
-- ENTR-2 ✓ (auto-resume via latest symlink)
+- ENTR-2 ✓ (auto-resume via latest symlink, PATH 4)
+
+### tests/integration/cycle-member-dispatch-events-test.sh
+- FRSH-1 ✓
+
+## Findings answered this round
+
+ANSWER test-author finding 1: done — added assert_gt "[#1805/DSPK-1] cycle.start emitted
+  for stage k (cyc) on resume" assertion after the existing DSPK-1 cycled-member assertion
+  in resume-rehydrate-test.sh. The cycle.start half of the DSPK-1 Then clause is now proven.
+
+ANSWER test-author finding 2: done — added assert_gt "[#1805/FRSH-2] cycle stage cyc
+  dispatched on fresh run (cycle.start emitted...)" assertion after the existing FRSH-2
+  assertions. This catches a silent skip of cyc that emits no stage.skip event.
