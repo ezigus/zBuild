@@ -18,12 +18,13 @@
 [[ -n "${_ACCEPTANCE_BLOCK_LOADED:-}" ]] && return 0
 _ACCEPTANCE_BLOCK_LOADED=1
 
-# A SPEC's id (#2462, ADR-069 §1): a code of 3 or 4 capital letters or digits
-# that describes it, starting with a letter, a dash, and a number — FSTG-1. The
-# old `SPEC-<n>` is an id of this shape, so earlier issues' ids and tags still
-# read. Every reader matches ids with this one pattern. No {2,3} interval:
+# A SPEC's id (#2462, ADR-069 §1): its stage's two-letter prefix and a code of
+# 3 or 4 capital letters or digits that describes it, starting with a letter, a
+# dash, and a number — DSFSTG-1 (#2482). The old `SPEC-<n>` and the ids from
+# before the prefix (FSTG-1) are ids of this shape, so earlier issues' ids and
+# tags still read. Every reader matches ids with this one pattern. No interval:
 # awk reads it too, and mawk does not read every interval.
-_ACCEPTANCE_ID_ERE='[A-Z][A-Z0-9][A-Z0-9][A-Z0-9]?-[0-9]+'
+_ACCEPTANCE_ID_ERE='[A-Z][A-Z0-9][A-Z0-9][A-Z0-9]?[A-Z0-9]?[A-Z0-9]?-[0-9]+'
 # One requirement line: `<id>[<tag>]:`. The tag may hold hyphens, so
 # `[no-code]` is a tag (#2304, ADR-069 §1) — it used to be `[a-z]+`, and a
 # `SPEC-2[no-code]:` line was silently dropped from every list. Groups:
