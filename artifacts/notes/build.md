@@ -1,47 +1,66 @@
 # Build notes — #1805 resume and --from-stage trust-and-rehydrate
 
-## Status: ITERATION 12 — COMPLETE (all acceptance tests pass)
+## Status: ITERATION 13 — COMPLETE
 
-## Summary of work done across all iterations
+## Changes made in iteration 13
 
-### Core implementation (complete)
-1. **ADR-006 step 3.6** — Added ordering constraint phrase on a single line.
-2. **ADR-050 §6** — Added boundary note (new run vs resume distinction) and updated Enforced by section.
-3. **artifact-persist.sh** — Added `_artifact_persist_put_back` function (extracted from hydrate).
-4. **hydrate/plugin.sh** — Redirect `hydrate_run` call site to `_artifact_persist_put_back`.
-5. **runner.sh** — Added `_runner_resume_rehydrate`, `_runner_from_stage_preflight`, auto-resume via latest symlink (DSENTR-2), security sanitization of run_id, readlink containment check, SRE warnings.
-6. **cycle-orchestrator.sh** — `_start_iter` from persisted state on resume (DSITER-1), DSCMBR-1 skip guard (uses `_is_resume` not `_start_iter>1` to cover iter=1 interruptions), removed erroneous `iter>0` unconditional stage.start guard (Gap 7 fix).
+### core/state/artifact-persist.sh
+- Added dotdot traversal check: `[[ "$rel" == *../* || "$rel" == ..* ]] && continue`
+  Addresses lens-security-code finding 1.
 
-### Key bugs fixed in iteration 11-12
-- **Bug 1 (Gap 7)**: `iter > 0` guard always true → unconditional stage.start for every cycle member in every run. REMOVED entirely. stage.start for cycle members only via DSCMBR-1 `resume_first_iter=true` path.
-- **Bug 2 (DSCMBR-1 iter=1)**: `_start_iter > 1` condition failed for iter=1 interruptions. Fixed by using `_is_resume=true` condition instead.
-- **Bug 3 (blob entry)**: DSCMBR-1 skip added persisted verdict/status to blob before `continue`.
+### core/pipeline/cycle-orchestrator.sh
+- Added `_cycle_state_jq_write_iter_start` + `_cycle_state_write_iter_start` functions
+  to write `current_iter=N` BEFORE dispatch (correctness-1 fix)
+- Added `_cycle_state_write_iter_start "$state_file" "$cycle_id" "$iter" || true`
+  call before `_cycle_iter_dispatch` in the main iteration loop
+- Fixed DSCMBR-1: added `_resume_first_iter=false` after emitting stage.start for
+  the first non-complete member, so subsequent non-complete members are dispatched
+  normally without spurious stage.start (red-team-2 fix)
 
-### Test results (iteration 12)
-All 5 acceptance tests PASS:
+### core/pipeline/runner.sh
+- Added `export _ZBUILD_RESUME_ACTIVE=false` in the `if ! $resume_mode` block
+  to clear any inherited value from a parent resume run (red-team-1/sre-1 fix)
+- Added stale-artifact check in `cycle:*` resume skip arm: iterate cycle members,
+  check each member's primary artifact, exit 1 if absent (red-team-3/sre-2 fix)
+- Replaced `$(_verdict_primary_output_path ...)` with `_verdict_primary_output_path_v`
+  and `$(_verdict_resolve_path ...)` with `_verdict_resolve_path_v` in both the
+  dispatch loop stage:* arm and `_runner_from_stage_preflight` (performance-1,2 fix)
+- Added containment check to latest-symlink issue-discovery block using readlink -f
+  to verify symlink target is within state root (red-team-5 fix)
+
+## Findings answered (not code changes)
+
+### scope-1: DSENTR-2 latest-symlink branch unreachable
+FALSE. PATH 4 of resume-entry-points-test.sh uses `env -u ZBUILD_STATE_FILE -u ZBUILD_STATE_DIR`,
+which routes through the new latest-symlink elif. Test passes.
+
+### correctness-2 and correctness-3: Test fixture uses `rounds=2` wrong
+After the correctness-1 fix, `current_iter=2` IS what the engine produces for mid-iter-2
+interruption (written at iter-2 start via `_cycle_state_write_iter_start`). Test is now correct.
+
+### correctness-4: parallel:*/map:* arms lack skip guard
+Out of scope for #1805.
+
+### red-team-4: Double git ops on --resume --from-stage
+I/O efficiency issue; correctness is handled by no-clobber guard. Out of scope.
+
+### red-team-6 (low): pipeline.skip_to_stage on --from-stage --resume
+No acceptance test asserts absence of this event. Low finding. Out of scope.
+
+### performance-3,4 (low): jq subshells in state file reads
+Lower priority optimization. Out of scope.
+
+### sre-3,4 (low): no machine-readable event on restore fail; double git ops
+Lower priority. Out of scope.
+
+## Test results after iteration 13
 - resume-rehydrate-test.sh: 47/47 ✓
 - from-stage-rehydrate-test.sh: 12/12 ✓
 - resume-loop-state-test.sh: 10/10 ✓
 - resume-entry-points-test.sh: 18/18 ✓
 - hydrate-stage-test.sh: 25/25 ✓
 - cycle-member-dispatch-events-test.sh: 24/24 ✓
-
-Previous iteration's test failures (non-#1805):
-- `run-timed-out-test.sh` (#1944): CI timing fluke — passes locally (elapsed 12s, well within 17s bound)
-- `sigterm-aborts-pipeline-test.sh`: CI timeout flakiness — SIGTERM handling unchanged by this branch
-
-Shape-floor golden files: CORRECT as-is (unchanged). The `iter>0` unconditional guard that would have changed cycle-member events was removed in commit 3a1c3b47.
-
-## DSFSTG-1 analysis (critical for understanding)
-from-stage-rehydrate-test.sh line 111 uses `--resume --from-stage cyc`.
-With `--resume`, `_ZBUILD_RESUME_ACTIVE=true` is exported before dispatch loop.
-When cycle orchestrator runs for `cyc`:
-- `_ZBUILD_RESUME_ACTIVE=true` → `_is_resume=true`
-- `_persisted_iter=0` (cycle hasn't run yet) → `_start_iter=1`
-- `_ZBUILD_RESUME_ACTIVE=false` consumed
-- In loop iter=1: `_is_resume=true` and `iter==_start_iter=1` → `_cid_resume_first_iter=true`
-- In _cycle_iter_dispatch: `cycled` has status="pending" → NOT skipped → stage.start emitted → dispatch ✓
-
-For fresh run (DSFRSH-1):
-- No --resume → `_ZBUILD_RESUME_ACTIVE` never set → `_is_resume=false`
-- `_cid_resume_first_iter=false` → no stage.start for cycle members ✓
+- cycle-inner-iter-resets-per-outer-iter-test.sh: 15/15 ✓
+- nested-loop-rounds-test.sh: 11/11 ✓
+- pipeline-resume-test.sh: 23/23 ✓
+- sigpipe-antipattern-guard-test.sh: 9/9 ✓
