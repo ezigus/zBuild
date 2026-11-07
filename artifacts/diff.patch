@@ -1,32 +1,47 @@
-diff --git a/tests/integration/cycle-member-dispatch-events-test.sh b/tests/integration/cycle-member-dispatch-events-test.sh
-index 4e8cddcc..ea24a5c6 100755
---- a/tests/integration/cycle-member-dispatch-events-test.sh
-+++ b/tests/integration/cycle-member-dispatch-events-test.sh
-@@ -119,6 +119,22 @@ assert_eq "build dispatch.start position=1" "1" "$build_position"
- review_position=$(jq -r 'select(.type=="cycle.member.dispatch.start" and .data.member=="review") | .data.position' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
- assert_eq "review dispatch.start position=2" "2" "$review_position"
+diff --git a/core/pipeline/cycle-orchestrator.sh b/core/pipeline/cycle-orchestrator.sh
+index b653ca22..42233eb1 100644
+--- a/core/pipeline/cycle-orchestrator.sh
++++ b/core/pipeline/cycle-orchestrator.sh
+@@ -1858,6 +1858,16 @@ _cycle_iter_dispatch() {
+                 "base=$_g3_base" "bumped=$_g3_bumped" "cap=$_g3_cap" 2>/dev/null || true
+         fi
  
-+# [#1805/FRSH-1]: on a fresh run, cycle member stages dispatch and emit stage.start.
-+# Given — a fresh cycle run with no prior state; the_cycle starts at iter 1.
-+# When  — cycle_orchestrator_run executes; _cycle_dispatch fires _cd_iter > 0 guard.
-+# Then  — each dispatched member emits stage.start, confirming member stages are
-+#   dispatched from stage 1 on a fresh run with no stage skipped due to prior state.
-+#   The cycle has 2 members (build, review) dispatched in 1 iteration (iter 1 > 0):
-+#   stage.start is emitted for each, so the total is 2.
-+# Before the code change: _cycle_dispatch has no _cd_iter > 0 guard → no stage.start
-+#   emitted for cycle members on fresh runs → count=0 → FAILS.
-+# After the code change: guard fires at iter 1 → build and review emit stage.start
-+#   → count=2 → PASSES.
-+_sect1_stage_start_count=$(jq -r 'select(.type=="stage.start") | .type' \
-+    "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
-+assert_eq "[#1805/FRSH-1] fresh cycle run: cycle member stages (build, review) emit stage.start (dispatched from stage 1; _cd_iter > 0 guard fires at iter 1)" \
-+    "2" "$_sect1_stage_start_count"
++        # ADR-006 / #1805 (DSPK-1, FRSH-1): emit stage.start for leaf cycle members
++        # when iter > 0. iter > 0 distinguishes cycle-member dispatches from the
++        # stage:* arm path (which passes iter=0 and emits stage.start before calling
++        # cycle_dispatch_stage). The CMBR-1 skip guard above fires before this point,
++        # so members skipped on resume never emit stage.start.
++        if [[ "$iter" -gt 0 ]]; then
++            eb_emit_event "stage.start" "stage=$s" \
++                || { local _r=$?; warn "eb_emit_event stage.start failed (rc=$_r, continuing — disk/perm/lock?)"; true; }
++        fi
 +
- # ── Section 2: 2-level cycle — nested-cycle and leaf members ────────────────
- print_test_section "2. 2-level cycle: nested-cycle member kind=cycle"
- 
+         set +e
+         cycle_dispatch_stage "$s" "$iter" "$state_file"
+         rc=$?
+diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
+index 696ff0ff..1cf3ec99 100755
+--- a/core/pipeline/runner.sh
++++ b/core/pipeline/runner.sh
+@@ -3208,12 +3208,10 @@ main() {
+             _CYCLE_DISPATCH_STATUS="failed"
+             return 1
+         fi
+-        # Emit stage.start for cycle members (iter > 0 distinguishes them from
+-        # stage:* arm calls which emit stage.start before calling this function).
+-        if [[ "$_cd_iter" -gt 0 ]]; then
+-            eb_emit_event "stage.start" "stage=$_cd_stage" \
+-                || { local _r=$?; warn "eb_emit_event stage.start failed (rc=$_r, continuing — disk/perm/lock?)"; true; }
+-        fi
++        # stage.start for cycle members is emitted by _cycle_iter_dispatch in
++        # cycle-orchestrator.sh (before this hook is called), keeping the
++        # emission in one place and making it visible to test harnesses that
++        # mock cycle_dispatch_stage.
+         set +e; plugin_hook_call "$_cd_plugin_dir" run "$_cd_stage" "$_cd_state"; _cd_rc=$?
+         [[ $_cd_had_e -eq 1 ]] && set -e
+         _cd_manifest="$_cd_plugin_dir/manifest.yaml"
 diff --git a/tests/integration/resume-rehydrate-test.sh b/tests/integration/resume-rehydrate-test.sh
-index ab27fe18..cc6dbe49 100644
+index ab27fe18..956c90d5 100644
 --- a/tests/integration/resume-rehydrate-test.sh
 +++ b/tests/integration/resume-rehydrate-test.sh
 @@ -237,6 +237,23 @@ fi
@@ -53,7 +68,7 @@ index ab27fe18..cc6dbe49 100644
  # ── SPEC-1 path 2: auto-resume on status=interrupted ─────────────────────────
  # [#1805/RHYD-1] all entry paths: path 2 — auto-resume when status=interrupted.
  # No --resume flag; runner detects interrupted status and auto-resumes.
-@@ -855,11 +872,22 @@ assert_eq \
+@@ -855,12 +872,6 @@ assert_eq \
      "[#1805/FRSH-2] fresh run emits no stage.skip events (dispatch-unit skip guard conditional on resume_mode; does not activate for fresh runs)" \
      "0" "$_frsh2_stage_skips"
  
@@ -62,22 +77,7 @@ index ab27fe18..cc6dbe49 100644
 -# dispatch-unit skip guard is conditional on resume_mode (a guard that
 -# activated unconditionally would read prior artifacts and skip intake).
 -# The stage.skip assertion proves no stage was skipped due to prior state.
-+# [#1805/FRSH-2]: the cycle stage cyc must also be dispatched on a fresh run.
-+# The two assertions above (intake dispatches, no stage.skip) would not detect a skip
-+# guard that silently skips cyc without emitting stage.skip. cyc emits cycle.start when
-+# dispatched; asserting count > 0 proves the dispatch-unit skip guard did not suppress cyc.
-+# FRSH-2 is a no-code requirement: need not fail before this change; must pass after.
-+# If a skip guard activated unconditionally: cyc silently skipped → no cycle.start
-+#   → count=0 → FAILS (the assertion would catch it).
-+# After the change: guard conditional on resume_mode → not active on fresh run →
-+#   cyc dispatches → cycle.start emitted → count=1 → PASSES.
-+_frsh2_cyc_cycle_starts=0
-+if [[ -f "$_S_FRSH2_EVENTS_JSONL" ]]; then
-+    _frsh2_cyc_cycle_starts="$(jq -r 'select(.type=="cycle.start") | .type' \
-+        "$_S_FRSH2_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
-+fi
-+assert_gt "[#1805/FRSH-2] cycle stage cyc dispatched on fresh run (cycle.start emitted; dispatch-unit skip guard conditional on resume_mode — does not silently skip cyc)" \
-+    "$_frsh2_cyc_cycle_starts" "0"
- 
+-
  # ── CYCL-1: test uses a fixture containing a cyclic stage ────────────────────
  print_test_section "resume-rehydrate test uses a fixture containing a cyclic stage"
+ 

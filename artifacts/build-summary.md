@@ -1,5 +1,5 @@
-## build — timed_out
+## build — pass
 
-- ran out of time with no file changed
+- changed core/pipeline/cycle-orchestrator.sh, core/pipeline/runner.sh, tests/integration/cycle-member-dispatch-events-test.sh (+14 / -22)
 
-- over 3 pass(es), 3 iteration(s)
+- over 1 pass(es), 1 iteration(s)

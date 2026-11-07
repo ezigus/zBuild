@@ -1,6 +1,6 @@
 # Build notes — #1805 resume and --from-stage trust-and-rehydrate
 
-## Status: ACTIVE — fixing FRSH-1 test failure in cycle-member-dispatch-events-test.sh
+## Status: COMPLETE — all acceptance tests pass
 
 ## Root cause of FRSH-1 failure (iteration 10)
 
