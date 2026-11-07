@@ -1,0 +1,9 @@
+## review-lens-red-team — fail
+
+- found: high: CMBR-1 skip guard requires `_start_iter -gt 1`, so when a run is interrupted during iter 1 (`_persisted_iter=1` → `_start_iter=1`) the condition is false, `_cid_resume_first_iter` stays false, and already-complete cycle members in that iteration are re-dispatched instead of being skipped — the most common interruption point is unprotected. (core/pipeline/cycle-orchestrator.sh:2436) (and 3 more)
+
+- high: CMBR-1 skip guard requires `_start_iter -gt 1`, so when a run is interrupted during iter 1 (`_persisted_iter=1` → `_start_iter=1`) the condition is false, `_cid_resume_first_iter` stays false, and already-complete cycle members in that iteration are re-dispatched instead of being skipped — the most common interruption point is unprotected. (core/pipeline/cycle-orchestrator.sh:2436)
+- high: The `iter > 0` guard fires unconditionally on every cycle member dispatch in every run (fresh and resume alike), because `iter` is sourced from `for (( iter=_start_iter; … ))` where `_start_iter >= 1` and `_cycle_iter_dispatch` is never called with `iter=0`; the design notes (Gap 7) explicitly flag this exact guard as WRONG, state it violates GUAR-1 by changing fresh-run event sequences, and require its removal — but it was not removed. (core/pipeline/cycle-orchestrator.sh:1866)
+- medium: Every CMBR-1 assertion sets up `current_iter=2` (interrupted on iter 2); the case where a run is interrupted on iter 1 (`current_iter=1`, `_start_iter=1`) is never exercised, so the logic error in Finding 1 produces no test failure. (tests/integration/resume-loop-state-test.sh:211)
+- medium: No test asserts that `stage.start` is NOT emitted for cycle members on a fresh run, so the unconditional `stage.start` emission in Finding 2 is invisible to the test suite; GUAR-1 has no enforcing test on the cycle-member side. (core/pipeline/cycle-orchestrator.sh:1866)
+- score: 3

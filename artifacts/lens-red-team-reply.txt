@@ -1,46 +1,102 @@
 --- reply 1 ---
 {
-  "score": 5,
+  "score": 3,
   "findings": [
     {
-      "file": "core/pipeline/runner.sh",
+      "file": "core/pipeline/cycle-orchestrator.sh",
       "category": "logic",
       "severity": "high",
-      "line": 3204,
-      "message": "`stage.start` is now emitted for every cycle-member dispatch on every run (fresh and resume alike), because `_cd_iter` is always ≥ 1 and the guard has no `_ZBUILD_RESUME_ACTIVE` check; the design decision explicitly flagged this as Gap 7 / NOT YET FIXED and required the guard `if [[ ${_ZBUILD_RESUME_ACTIVE:-false} == true ]] && [[ \"$_cd_iter\" -gt 0 ]]`.",
-      "quote": "if [[ \"$_cd_iter\" -gt 0 ]]; then\n            eb_emit_event \"stage.start\" \"stage=$_cd_stage\" \\",
-      "introduced": true,
-      "fix": "code"
-    },
-    {
-      "file": "core/pipeline/runner.sh",
-      "category": "logic",
-      "severity": "medium",
-      "line": 1712,
-      "message": "`_runner_resume_rehydrate` returns 0 (success) when `_artifact_persist_restore` fails, so stale on-disk artifacts from a prior run that pre-exist in `$_rr_artifacts_dir` are silently accepted as the restored artifacts; `_artifact_persist_put_back` is no-clobber, so pre-existing files are never overwritten, violating RHYD-1's byte-identical guarantee without any error or event.",
-      "quote": "_artifact_persist_restore \"$_rr_issue\" \"$_rr_staging\" || {\n        rm -rf \"${_rr_staging:?}\" 2>/dev/null || true\n        return 0\n    }",
+      "line": 2436,
+      "message": "CMBR-1 skip guard is gated on `_start_iter -gt 1`, so a resume interrupted during iter 1 (current_iter=1 → _start_iter=1) never sets _cid_resume_first_iter=true, and all completed cycle members in that iteration are re-dispatched instead of being skipped.",
+      "quote": "if [[ \"$iter\" -eq \"$_start_iter\" && \"$_start_iter\" -gt 1 ]]; then\n            _cid_resume_first_iter=true\n        fi",
       "introduced": true,
       "fix": "code"
     },
     {
       "file": "core/pipeline/cycle-orchestrator.sh",
       "category": "logic",
-      "severity": "medium",
-      "line": 2333,
-      "message": "`_ZBUILD_RESUME_ACTIVE` is set to `false` inside `_cycle_orchestrator_run_body` before the iteration loop begins; because `cycle_dispatch_stage` is called from inside that same loop (not in a subshell), all stage dispatches in the resumed cycle run with `_ZBUILD_RESUME_ACTIVE=false` exported to child processes — any plugin or nested orchestrator that inspects the flag during the actual resumed iteration will see `false`, making the flag unreliable as a 'this dispatch is part of a resume' signal for anything other than selecting `_start_iter`.",
-      "quote": "        # Consume the flag: nested cycles and subsequent re-entries start at 1.\n        _ZBUILD_RESUME_ACTIVE=false",
-      "introduced": true,
-      "fix": "design"
-    },
-    {
-      "file": "core/state/artifact-persist.sh",
-      "category": "injection",
-      "severity": "low",
-      "line": 644,
-      "message": "`_artifact_persist_put_back` guards against absolute `rel` paths (those starting with `/`) but not against `../` traversal components; a git state branch entry whose path contains `../` would not be caught by `[[ \"$rel\" == /* ]]` and `cp -p \"$f\" \"$to/$rel\"` would write outside `$to`.",
-      "quote": "        # Guard: skip if strip failed (trailing slash on $from) — rel would be absolute\n        [[ \"$rel\" == /* ]] && continue",
+      "severity": "high",
+      "line": 1866,
+      "message": "The `iter > 0` guard fires for every iteration in every run (fresh and resume alike, since iter starts at 1 and only increases), emitting stage.start for all cycle member dispatches unconditionally; the design notes (Gap 7) explicitly identify this exact guard as WRONG, state it violates GUAR-1 by changing fresh-run event sequences, and require its removal — but it was not removed.",
+      "quote": "if [[ \"$iter\" -gt 0 ]]; then\n            eb_emit_event \"stage.start\" \"stage=$s\" \\\n                || { local _r=$?; warn \"eb_emit_event stage.start failed (rc=$_r, continuing — disk/perm/lock?)\"; true; }\n        fi",
       "introduced": true,
       "fix": "code"
+    },
+    {
+      "file": "tests/integration/resume-loop-state-test.sh",
+      "category": "coverage",
+      "severity": "medium",
+      "line": 211,
+      "message": "The only CMBR-1 test sets up current_iter=2; the case where a run is interrupted on iter 1 with one member already complete (current_iter=1, _start_iter=1) is never exercised, so the logic error in Finding 1 produces no test failure.",
+      "quote": "zb_engine_loop_state \"$STATE_FILE\" \"build-test\" 2 5 \"in_progress\"",
+      "introduced": true,
+      "fix": "test"
+    },
+    {
+      "file": "core/pipeline/cycle-orchestrator.sh",
+      "category": "coverage",
+      "severity": "medium",
+      "line": 1866,
+      "message": "No test asserts that stage.start is NOT emitted for cycle members on a fresh run, so the unconditional stage.start emission (Finding 2) is invisible to the test suite; GUAR-1 has no enforcing test on the cycle-member side.",
+      "quote": "if [[ \"$iter\" -gt 0 ]]; then\n            eb_emit_event \"stage.start\" \"stage=$s\"",
+      "introduced": true,
+      "fix": "test"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "coverage",
+      "severity": "low",
+      "line": null,
+      "message": "Gap 8 (auto-resume reads pipeline-state.json at the flat state_dir root rather than via the `latest` symlink at `$state_dir/latest/pipeline-state.json`) is acknowledged as NOT YET FIXED in the design notes, leaving the auto-resume PATH-1 entry point undelivered; all auto-resume tests mask this by setting ZBUILD_STATE_FILE explicitly.",
+      "quote": "Gap 8 — runner.sh auto-resume check (line 2174) tests `[[ -f \"$state_file\" ]]` where `state_file = $state_dir/pipeline-state.json` ... **NOT YET FIXED**",
+      "introduced": false,
+      "fix": "code"
+    }
+  ]
+}
+--- reply 2 ---
+{
+  "score": 3,
+  "findings": [
+    {
+      "file": "core/pipeline/cycle-orchestrator.sh",
+      "category": "logic",
+      "severity": "high",
+      "line": 2436,
+      "message": "CMBR-1 skip guard requires `_start_iter -gt 1`, so when a run is interrupted during iter 1 (`_persisted_iter=1` → `_start_iter=1`) the condition is false, `_cid_resume_first_iter` stays false, and already-complete cycle members in that iteration are re-dispatched instead of being skipped — the most common interruption point is unprotected.",
+      "quote": "if [[ \"$iter\" -eq \"$_start_iter\" && \"$_start_iter\" -gt 1 ]]; then\n            _cid_resume_first_iter=true\n        fi",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/cycle-orchestrator.sh",
+      "category": "logic",
+      "severity": "high",
+      "line": 1866,
+      "message": "The `iter > 0` guard fires unconditionally on every cycle member dispatch in every run (fresh and resume alike), because `iter` is sourced from `for (( iter=_start_iter; … ))` where `_start_iter >= 1` and `_cycle_iter_dispatch` is never called with `iter=0`; the design notes (Gap 7) explicitly flag this exact guard as WRONG, state it violates GUAR-1 by changing fresh-run event sequences, and require its removal — but it was not removed.",
+      "quote": "if [[ \"$iter\" -gt 0 ]]; then\n            eb_emit_event \"stage.start\" \"stage=$s\" \\\n                || { local _r=$?; warn \"eb_emit_event stage.start failed (rc=$_r, continuing — disk/perm/lock?)\"; true; }\n        fi",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "tests/integration/resume-loop-state-test.sh",
+      "category": "coverage",
+      "severity": "medium",
+      "line": 211,
+      "message": "Every CMBR-1 assertion sets up `current_iter=2` (interrupted on iter 2); the case where a run is interrupted on iter 1 (`current_iter=1`, `_start_iter=1`) is never exercised, so the logic error in Finding 1 produces no test failure.",
+      "quote": "zb_engine_loop_state \"$STATE_FILE\" \"build-test\" 2 5 \"in_progress\"",
+      "introduced": true,
+      "fix": "test"
+    },
+    {
+      "file": "core/pipeline/cycle-orchestrator.sh",
+      "category": "coverage",
+      "severity": "medium",
+      "line": 1866,
+      "message": "No test asserts that `stage.start` is NOT emitted for cycle members on a fresh run, so the unconditional `stage.start` emission in Finding 2 is invisible to the test suite; GUAR-1 has no enforcing test on the cycle-member side.",
+      "quote": "if [[ \"$iter\" -gt 0 ]]; then\n            eb_emit_event \"stage.start\" \"stage=$s\"",
+      "introduced": true,
+      "fix": "test"
     }
   ]
 }

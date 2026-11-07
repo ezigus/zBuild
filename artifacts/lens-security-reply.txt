@@ -1,48 +1,36 @@
 --- reply 1 ---
 {
-  "score": 8,
+  "score": 6,
   "findings": [
     {
       "file": "core/pipeline/runner.sh",
-      "category": "injection",
-      "severity": "low",
-      "line": null,
-      "message": "`_runner_run_id` read from the persisted state file via `get_state_field` is never sanitised in any of the three resume entry paths before being interpolated into event-bus fields (`run_id=$_runner_run_id`); a crafted state file whose `.run_id` contains spaces or `=` chars would split the event record into extra phantom fields.",
+      "category": "path traversal",
+      "severity": "high",
+      "line": 2227,
+      "message": "`_runner_run_id` read from the new latest-symlink auto-resume state file is not sanitized, while the fresh-run path explicitly strips unsafe characters to prevent path traversal via `ZBUILD_RUN_ID` in filenames; two plugins use `ZBUILD_RUN_ID` directly in path constructions.",
       "quote": "_runner_run_id=\"$(get_state_field \"$state_file\" '.run_id' \"$(date +%Y%m%d%H%M%S)-$$\")\"",
-      "introduced": false,
-      "fix": "code"
-    },
-    {
-      "file": "core/pipeline/runner.sh",
-      "category": "injection",
-      "severity": "low",
-      "line": null,
-      "message": "In `_runner_from_stage_preflight` the indirect variable expansion `${!_fsp_cycle_stages_var:-}` builds the variable name with only `-`→`_` substitution, leaving characters such as `]`, `[`, and `.` intact; bash interprets `arrayname[n]` syntax inside `${!…}`, so a cycle name containing `]` could resolve to a different array element than intended, though the `_TPL_CYCLE_STAGES_` prefix tightly bounds the reachable namespace.",
-      "quote": "local _fsp_cycle_csv=\"${!_fsp_cycle_stages_var:-}\"",
       "introduced": true,
       "fix": "code"
     },
     {
       "file": "core/pipeline/runner.sh",
-      "category": "injection",
-      "severity": "low",
-      "line": null,
-      "message": "`export _ZBUILD_RESUME_ACTIVE=true` makes the engine's internal resume flag visible to every child process, including plugin `run` hooks; a plugin that inspects this variable can silently alter its behaviour on resume (e.g. skip validation, emit different output), creating an undocumented side-channel between the engine and plugin code.",
-      "quote": "export _ZBUILD_RESUME_ACTIVE=true",
+      "category": "path traversal",
+      "severity": "medium",
+      "line": 2223,
+      "message": "The path returned by `readlink -f \"$state_dir/latest\"` is assigned as `state_dir` with no check that it remains within the expected state root; an adversary who controls the `latest` symlink redirects all artifact operations, `ZBUILD_STATE_DIR` exports, and `mkdir` calls to an arbitrary filesystem location.",
+      "quote": "state_dir=\"$_lr_resolved_dir\"\n                    state_file=\"$state_dir/pipeline-state.json\"\n                    _runner_state_file=\"$state_file\"",
       "introduced": true,
-      "fix": "design"
+      "fix": "code"
     },
     {
       "file": "core/state/artifact-persist.sh",
       "category": "path traversal",
       "severity": "low",
       "line": 644,
-      "message": "The `/* ` guard in `_artifact_persist_put_back` rejects absolute `rel` values but does not reject `rel` paths that begin with `../`; although `find "$from" -type f` on a plain directory tree never produces `../` components, a directory containing a dangling relative symlink whose `find` output starts below `$from` could bypass the guard if the prefix-strip produces a `rel` starting with `..`.",
-      "quote": "[[  \"$rel\" == /* ]] && continue",
-      "introduced": true,
+      "message": "`_artifact_persist_put_back` guards only against an absolute `rel` (the prefix-strip failure case) but not against `..` components; a hostile git state branch that places a file at a path whose stripped relative form begins with `../` could write outside the artifact directory, and the new resume rehydration call site adds a second consumer of this gap.",
+      "quote": "# Guard: skip if strip failed (trailing slash on $from) — rel would be absolute\n        [[ \"$rel\" == /* ]] && continue",
+      "introduced": false,
       "fix": "code"
     }
   ]
 }
---- reply 2 ---
-{"score": 8, "findings": [{"file": "core/pipeline/runner.sh", "category": "injection", "severity": "low", "line": null, "message": "_runner_run_id read from the persisted state file via get_state_field is never sanitised before being interpolated into event-bus fields; a crafted state file whose .run_id contains spaces or equals signs would split the event record into extra phantom fields.", "quote": "_runner_run_id=\"$(get_state_field \"$state_file\" '.run_id' \"$(date +%Y%m%d%H%M%S)-$$\")\"", "introduced": false, "fix": "code"}, {"file": "core/pipeline/runner.sh", "category": "injection", "severity": "low", "line": null, "message": "In _runner_from_stage_preflight the variable name built for indirect expansion uses only dash-to-underscore substitution, leaving characters such as ], [, and . intact; bash interprets arrayname[n] syntax inside indirect expansion, so a cycle name containing ] could resolve to a different array element than intended.", "quote": "local _fsp_cycle_csv=\"${!_fsp_cycle_stages_var:-}\"", "introduced": true, "fix": "code"}, {"file": "core/pipeline/runner.sh", "category": "injection", "severity": "low", "line": null, "message": "export _ZBUILD_RESUME_ACTIVE=true makes the engine internal resume flag visible to every child process including plugin run hooks; a plugin that reads this variable can silently alter its behaviour on resume, creating an undocumented side-channel between the engine and plugin code.", "quote": "export _ZBUILD_RESUME_ACTIVE=true", "introduced": true, "fix": "design"}, {"file": "core/state/artifact-persist.sh", "category": "path traversal", "severity": "low", "line": 644, "message": "The guard in _artifact_persist_put_back rejects absolute rel values but does not reject rel paths beginning with ../; a directory containing a symlink whose find output after prefix-stripping starts with .. could bypass the check and write outside the destination tree.", "quote": "[[ \"$rel\" == /* ]] && continue", "introduced": true, "fix": "code"}]}
