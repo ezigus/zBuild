@@ -7,7 +7,7 @@
       "category": "failure mode / guard",
       "severity": "medium",
       "line": 2256,
-      "message": "_ZBUILD_RESUME_ACTIVE is exported as `true` in the resume path but is never explicitly cleared (set to false or unset) in the fresh-run path; a subprocess runner that inherits the variable from a parent in resume mode will have every cycle member in the first cycle emit a spurious stage.start event, violating GUAR-1.",
+      "message": "_ZBUILD_RESUME_ACTIVE is exported as `true` in the resume path but is never explicitly cleared (set to false or unset) in the fresh-run path; a subprocess runner that inherits the variable from a parent in resume mode will have every cycle member in the first cycle emit a spurious stage.start event, violating RQGUAR-1.",
       "quote": "    if ! $resume_mode; then\n        # Sanitize ZBUILD_RUN_ID: strip characters unsafe in filenames",
       "introduced": true,
       "fix": "code"
@@ -17,7 +17,7 @@
       "category": "failure mode / observability",
       "severity": "medium",
       "line": 3502,
-      "message": "Complete cycle:* dispatch units are silently skipped on resume without a stale-artifact check; the stage:* arm emits stage.verdict.stale_artifact and exits 1 when the primary artifact is absent after rehydration, but the cycle:* arm just logs info + continue — RHYD-2/SPEC-2 fail-closed behaviour is not enforced for complete cycles.",
+      "message": "Complete cycle:* dispatch units are silently skipped on resume without a stale-artifact check; the stage:* arm emits stage.verdict.stale_artifact and exits 1 when the primary artifact is absent after rehydration, but the cycle:* arm just logs info + continue — DSRHYD-2/SPEC-2 fail-closed behaviour is not enforced for complete cycles.",
       "quote": "                        if [[ \"$_du_cyc_status\" == \"complete\" ]]; then\n                            info \"Skipping already-complete cycle: $_cyc_id\"\n                            continue\n                        fi",
       "introduced": true,
       "fix": "code"
