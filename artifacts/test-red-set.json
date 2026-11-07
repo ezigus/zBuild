@@ -1,4 +1,0 @@
-[
-  "tests/integration/cycle-member-dispatch-events-test.sh",
-  "tests/integration/resume-rehydrate-test.sh"
-]
