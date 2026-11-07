@@ -1,5 +1,5 @@
-## issue-acceptance — fail
+## issue-acceptance — pass
 
-- judged the change against the issue: 2 requirement(s) not met or not sure
+- judged the change against the issue: every requirement is met
 
-- 2 requirement(s) not met — each is a finding, sent to the stages that can fix it
+- every requirement the issue states is met by the change
