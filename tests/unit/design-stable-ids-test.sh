@@ -27,6 +27,7 @@
 # D13 [code] a test file named alone passes; a source file named alone is
 #            refused (name a piece of its text)
 # D14 [code] with no base commit, the text in the file is enough
+# D15 [code] a REMOVED line may name a SPEC a failed try of this run wrote (#2482)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -110,6 +111,19 @@ _check 'LOOP-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' '
 _ok "[D5] two new ones that follow on, in any order, pass"
 _check 'LOOP-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' 'LOOP-3[no-code]: c' 'REMOVED: NEVR-1 — never there'
 _has "[D3] a REMOVED line for an id the last design never had is refused (review #2463)" "ID_REMOVED_UNKNOWN NEVR-1"
+# #2482: on #1805 run 42293991602 try 2 removed a SPEC only try 1 (failed) had,
+# and the check refused the line — the try was lost to that alone. A try this
+# run wrote that did not pass is in the try archive, its draft beside it.
+_TRY="$TEST_TEMP_DIR/attempts/design/iter-3-attempt-2"; mkdir -p "$_TRY"
+_md 'LOOP-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' 'LOOP-3[no-code]: c' 'TRYD-1[done]: d evidence: tests/unit/run-test.sh' > "$_TRY/design-draft.md"
+_check 'LOOP-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' 'LOOP-3[no-code]: c' 'REMOVED: TRYD-1 — only a failed try had it'
+_ok "[D15] a REMOVED line for a SPEC a failed try of this run wrote passes (#2482)"
+_check 'LOOP-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' 'LOOP-3[no-code]: c' 'TRYD-1[no-code]: d'
+_ok "[D15] ...and a SPEC the failed try had may simply be kept"
+_RUN_MARK="$TEST_TEMP_DIR/run-start"; : > "$_RUN_MARK"; touch -t 200001010000 "$_TRY/design-draft.md"
+ZBUILD_RUN_START_MARKER="$_RUN_MARK" _check 'LOOP-1[code]: a covers: RSUM-1' '  When: it runs' '  Then: it is done' 'LOOP-3[no-code]: c' 'REMOVED: TRYD-1 — only a failed try had it'
+_has "[D15] a draft from before this run does not count" "ID_REMOVED_UNKNOWN TRYD-1"
+rm -rf "$TEST_TEMP_DIR/attempts"
 : > "$PREV"
 
 # ── D6 / D7 / D8 ─────────────────────────────────────────────────────────────

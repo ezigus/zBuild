@@ -334,7 +334,16 @@ _design_checks() {
             if [[ "$(<"$last")" == "$(<"$design_md")" ]]; then _pa="$_na" _pr="$_nr"
             else _dck_block_ids_v _pa _pr "$(extract_acceptance_block "$last" 2>/dev/null)"; fi
         fi
-        zb_ids_check_v _iv "$_pa" "$_pr" "$_na" "$_nr" "$_txt" "$_req_codes" 1
+        # #2482: a REMOVED line may name a SPEC that a try of this run wrote and
+        # that did not pass — its draft is in the try archive.
+        local _tried="" _tf _ta _tr _ast="${ZBUILD_CURRENT_STAGE:-design}"
+        for _tf in "${design_md%/*}/attempts/${_ast//[^A-Za-z0-9_-]/_}"/*/design-draft.md; do
+            [[ -s "$_tf" ]] || continue
+            [[ -n "${ZBUILD_RUN_START_MARKER:-}" && -e "$ZBUILD_RUN_START_MARKER" && "$ZBUILD_RUN_START_MARKER" -nt "$_tf" ]] && continue
+            _dck_block_ids_v _ta _tr "$(extract_acceptance_block "$_tf" 2>/dev/null)"
+            _tried+="$_ta"
+        done
+        zb_ids_check_v _iv "$_pa" "$_pr" "$_na" "$_nr" "$_txt" "$_req_codes" 1 "$_tried"
         for _w in "${_iv[@]+"${_iv[@]}"}"; do violations+=("$_w"); done
         local -a _bads=()
         _dck_bad_id_lines_v _bads "$design_md"

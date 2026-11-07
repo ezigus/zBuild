@@ -25,7 +25,7 @@ zb_id_new_form() {
 }
 
 # zb_ids_check_v <out> <prev_active> <prev_removed> <new_active> <new_removed>
-#                <text> <other_codes> [carry]
+#                <text> <other_codes> [carry] [tried]
 # Every rule an id list breaks, one entry each in array <out> ("<CODE> <id>
 # [<detail>]"); empty when it keeps them all. The lists are space separated:
 #   prev_active/prev_removed  the ids the last list had, and had removed
@@ -38,11 +38,13 @@ zb_id_new_form() {
 #   carry                     1 when the list itself must keep listing what was
 #                             removed before (a design does; intake's engine
 #                             keeps them for it)
+#   tried                     ids a try of this run wrote that did not pass: a
+#                             removal may name one (#2482)
 # An earlier id not of the new form (R-1, SPEC-1) is the old numbering: it is
 # given a new id, and needs no REMOVED line.
 zb_ids_check_v() {
     local -n _zic="$1"
-    local pa=" $2 " pr=" $3 " na="$4" nr=" $5 " text="$6" oc=" $7 " carry="${8:-0}"
+    local pa=" $2 " pr=" $3 " na="$4" nr=" $5 " text="$6" oc=" $7 " carry="${8:-0}" tr=" ${9:-} "
     local id code num seen=" " hi
     local -A _hi=() _k=()
     _zic=()
@@ -78,9 +80,9 @@ zb_ids_check_v() {
         [[ "$seen" == *" $id "* || "$nr" == *" $id "* ]] || _zic+=("ID_DROPPED $id")
     done
     # A removal names an id that was there: an invented one would hold its
-    # number forever (review #2463).
+    # number forever (review #2463). One a failed try wrote was there (#2482).
     for id in $5; do
-        [[ "$pa" == *" $id "* || "$pr" == *" $id "* ]] || _zic+=("ID_REMOVED_UNKNOWN $id")
+        [[ "$pa" == *" $id "* || "$pr" == *" $id "* || "$tr" == *" $id "* ]] || _zic+=("ID_REMOVED_UNKNOWN $id")
     done
     if [[ "$carry" == 1 ]]; then
         for id in $3; do
