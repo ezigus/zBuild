@@ -2,16 +2,16 @@
 # Tests: --from-stage <s> rehydrates completed-stage artifacts before dispatching <s>.
 # (issue #1805, ADR-006 §3.5 / _runner_from_stage_preflight)
 #
-# FSTG-1 [code]: --from-stage <s> rehydrates all stages before <s> via
+# DSFSTG-1 [code]: --from-stage <s> rehydrates all stages before <s> via
 #   _artifact_persist_restore and _artifact_persist_put_back, places their
 #   artifacts in ZBUILD_ARTIFACT_DIR, dispatches <s> as the first stage, and
 #   emits no stage.start for any earlier stage.
 #
-# FSTG-2 [code]: --from-stage <s> when a stage before <s> has no restorable
+# DSFSTG-2 [code]: --from-stage <s> when a stage before <s> has no restorable
 #   artifact emits the diagnostic phrase "has no restorable primary artifact"
 #   to stderr and exits 1 before any stage.start event is emitted.
 #
-# CYCL-1 [no-code]: the test fixture contains a pipeline stage of type: cycle.
+# DSCYCL-1 [no-code]: the test fixture contains a pipeline stage of type: cycle.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -30,7 +30,7 @@ setup_test_env "from-stage-rehydrate-1805"
 export ZBUILD_CONTRACT_VALIDATOR=warn
 
 # ── SPEC-3: --from-stage rehydrates stages before <s> from git state branch ──
-print_test_section "[#1805/FSTG-1] --from-stage rehydrates stages before <s> and dispatches <s> first"
+print_test_section "[#1805/DSFSTG-1] --from-stage rehydrates stages before <s> and dispatches <s> first"
 
 # Given — a previous run completed stages before <s> (intake is complete); their artifacts
 #   are present in the git state branch; a new invocation uses --from-stage cyc.
@@ -63,10 +63,10 @@ _s3_snap_rc=0
   cd "$S3_WORK_REPO" && _artifact_persist_snapshot "$S3_STATE_DIR" "$S3_ID" ) \
     >"$TEST_TEMP_DIR/s3-snap.log" 2>&1 || _s3_snap_rc=$?
 if [[ "$_s3_snap_rc" -ne 0 ]]; then
-    assert_fail "[#1805/FSTG-1] setup: snapshot to state branch failed" \
+    assert_fail "[#1805/DSFSTG-1] setup: snapshot to state branch failed" \
         "rc=$_s3_snap_rc; $(cat "$TEST_TEMP_DIR/s3-snap.log" 2>/dev/null | tail -5)"
 else
-    assert_pass "[#1805/FSTG-1] setup: state branch populated"
+    assert_pass "[#1805/DSFSTG-1] setup: state branch populated"
 fi
 
 # Remove the artifact from disk; it now lives only on the state branch.
@@ -117,14 +117,14 @@ set -e
 # the dispatch loop starts; stage cyc is dispatched as the first stage; no stage.start
 # for any stage before cyc.
 
-# [#1805/FSTG-1]: intake artifact must be in ZBUILD_ARTIFACT_DIR after --from-stage.
+# [#1805/DSFSTG-1]: intake artifact must be in ZBUILD_ARTIFACT_DIR after --from-stage.
 # Before the change: no rehydration → file absent → FAILS.
 # After the change: _runner_from_stage_preflight restores it → PASSES.
 assert_file_exists \
-    "[#1805/FSTG-1] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR via --from-stage" \
+    "[#1805/DSFSTG-1] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR via --from-stage" \
     "$S3_STATE_DIR/artifacts/intake-result.json"
 
-# [#1805/FSTG-1]: the restored artifact must carry the payload originally snapshotted to
+# [#1805/DSFSTG-1]: the restored artifact must carry the payload originally snapshotted to
 # the git state branch — this proves _artifact_persist_restore read from git and
 # _artifact_persist_put_back placed it in ZBUILD_ARTIFACT_DIR (not re-created fresh by
 # the runner through any other mechanism).
@@ -132,10 +132,10 @@ assert_file_exists \
 # After the change: git state restore → original content present → PASSES.
 _s3_restored_content="$(cat "$S3_STATE_DIR/artifacts/intake-result.json" 2>/dev/null || true)"
 assert_contains \
-    "[#1805/FSTG-1] restored artifact contains original payload (proves _artifact_persist_restore + _artifact_persist_put_back used git state branch)" \
+    "[#1805/DSFSTG-1] restored artifact contains original payload (proves _artifact_persist_restore + _artifact_persist_put_back used git state branch)" \
     "$_s3_restored_content" "prior-run intake"
 
-# [#1805/FSTG-1]: pipeline.resume must appear in the events log BEFORE the first
+# [#1805/DSFSTG-1]: pipeline.resume must appear in the events log BEFORE the first
 # cycle.start event, proving _runner_from_stage_preflight (which calls
 # _artifact_persist_restore and _artifact_persist_put_back) completed before the
 # dispatch loop reached stage cyc. pipeline.resume is emitted at the end of the
@@ -153,12 +153,12 @@ if [[ -f "$S3_EVENTS_JSONL" ]]; then
     _s3_first_dispatch_lineno="$(awk '/"cycle.start"/{print NR; exit}' "$S3_EVENTS_JSONL" 2>/dev/null)"
     _s3_first_dispatch_lineno="${_s3_first_dispatch_lineno:-0}"
 fi
-assert_gt "[#1805/FSTG-1] pipeline.resume event emitted (from-stage preflight ran before dispatch loop)" \
+assert_gt "[#1805/DSFSTG-1] pipeline.resume event emitted (from-stage preflight ran before dispatch loop)" \
     "$_s3_resume_lineno" "0"
-assert_gt "[#1805/FSTG-1] pipeline.resume precedes first dispatch event (artifact restored before dispatch loop started)" \
+assert_gt "[#1805/DSFSTG-1] pipeline.resume precedes first dispatch event (artifact restored before dispatch loop started)" \
     "$_s3_first_dispatch_lineno" "$_s3_resume_lineno"
 
-# [#1805/FSTG-1]: intake must emit no stage.start event (it was skipped).
+# [#1805/DSFSTG-1]: intake must emit no stage.start event (it was skipped).
 # Before the change: no rehydration means intake might be re-dispatched → stage.start emitted → FAILS.
 # After the change: intake is complete and skipped entirely → no stage.start → PASSES.
 _s3_intake_starts=0
@@ -166,10 +166,10 @@ if [[ -f "$S3_EVENTS_JSONL" ]]; then
     _s3_intake_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="intake") | .type' \
         "$S3_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
-assert_eq "[#1805/FSTG-1] intake emits no stage.start when skipped via --from-stage" \
+assert_eq "[#1805/DSFSTG-1] intake emits no stage.start when skipped via --from-stage" \
     "0" "$_s3_intake_starts"
 
-# [#1805/FSTG-1]: stage <s>=cyc must be dispatched as the first stage and a stage.start
+# [#1805/DSFSTG-1]: stage <s>=cyc must be dispatched as the first stage and a stage.start
 # event must be emitted. artifact-snapshot-coverage has intake (leaf) then cyc (cycle).
 # --from-stage cyc means intake is skipped and cyc is the first thing dispatched.
 # A cycle stage's inner member (cycled) emits stage.start with stage=cycled when cyc
@@ -182,11 +182,11 @@ if [[ -f "$S3_EVENTS_JSONL" ]]; then
     _s3_cycled_started="$(jq -r 'select(.type=="stage.start" and .data.stage=="cycled") | .type' \
         "$S3_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
-assert_gt "[#1805/FSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage target cyc was dispatched as first stage)" \
+assert_gt "[#1805/DSFSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage target cyc was dispatched as first stage)" \
     "$_s3_cycled_started" "0"
 
 # ── SPEC-4: missing artifact with --from-stage exits 1 and names missing stage ─
-print_test_section "[#1805/FSTG-2] --from-stage with no restorable artifact emits diagnostic and exits 1"
+print_test_section "[#1805/DSFSTG-2] --from-stage with no restorable artifact emits diagnostic and exits 1"
 
 # Given — --from-stage cyc is active; at least one stage before cyc (intake) has no
 #   restorable primary artifact in the git state branch (no state branch for this issue).
@@ -241,36 +241,36 @@ _s4_rc=$?
 set -e
 
 # Then — diagnostic appears on stderr; runner exits 1 before any stage.start event.
-# [#1805/FSTG-2]: runner must exit 1 when prior stage has no restorable artifact.
+# [#1805/DSFSTG-2]: runner must exit 1 when prior stage has no restorable artifact.
 # Before the change: runner has no preflight check → continues → exits 0 → FAILS.
 # After the change: _runner_from_stage_preflight exits 1 → PASSES.
-assert_eq "[#1805/FSTG-2] --from-stage exits 1 when prior stage has no restorable artifact" \
+assert_eq "[#1805/DSFSTG-2] --from-stage exits 1 when prior stage has no restorable artifact" \
     "1" "$_s4_rc"
 
-# [#1805/FSTG-2]: stderr must contain the diagnostic phrase emitted by
+# [#1805/DSFSTG-2]: stderr must contain the diagnostic phrase emitted by
 # _runner_from_stage_preflight — "has no restorable primary artifact".
 # This phrase is absent from the old code (which had no preflight check),
 # so this assertion FAILS on old code and PASSES only after the new
 # _runner_from_stage_preflight is present at runner.sh:1751.
 _s4_stderr="$(cat "$TEST_TEMP_DIR/s4-stderr.txt" 2>/dev/null || true)"
 assert_contains \
-    "[#1805/FSTG-2] stderr contains preflight diagnostic phrase (has no restorable primary artifact)" \
+    "[#1805/DSFSTG-2] stderr contains preflight diagnostic phrase (has no restorable primary artifact)" \
     "$_s4_stderr" "has no restorable primary artifact"
 
-# [#1805/FSTG-2]: no stage.start must be emitted before the exit.
+# [#1805/DSFSTG-2]: no stage.start must be emitted before the exit.
 _s4_any_starts=0
 if [[ -f "$S4_EVENTS_JSONL" ]]; then
     _s4_any_starts="$(jq -r 'select(.type=="stage.start") | .type' \
         "$S4_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
-assert_eq "[#1805/FSTG-2] no stage.start emitted before exit 1" \
+assert_eq "[#1805/DSFSTG-2] no stage.start emitted before exit 1" \
     "0" "$_s4_any_starts"
 
 # ── SPEC-13: test uses a fixture containing a cyclic stage ────────────────────
 print_test_section "from-stage-rehydrate test uses a fixture containing a cyclic stage"
 
 # Then — the test fixtures used by from-stage-rehydrate-test.sh contain a pipeline stage
-#   of type: cycle, verified by an assert_contains tagged [#1805/CYCL-1].
+#   of type: cycle, verified by an assert_contains tagged [#1805/DSCYCL-1].
 # Run a fresh pipeline against the cyclic fixture (artifact-snapshot-coverage) to
 # demonstrate that this test file exercises a pipeline containing a cyclic stage.
 _S13_FS_ID="$(zb_test_issue)"
@@ -311,7 +311,7 @@ set -e
 
 # : the fixture is cyclic (type: cycle present).
 _s13_fs_content="$(cat "$REPO_ROOT/tests/fixtures/templates/artifact-snapshot-coverage.yaml")"
-assert_contains "[#1805/CYCL-1] from-stage-rehydrate test uses a cyclic fixture (type: cycle)" \
+assert_contains "[#1805/DSCYCL-1] from-stage-rehydrate test uses a cyclic fixture (type: cycle)" \
     "$_s13_fs_content" "type: cycle"
 
 # : confirm the cyclic pipeline ran (intake dispatched in the fresh run).

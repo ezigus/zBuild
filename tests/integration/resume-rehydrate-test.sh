@@ -2,29 +2,29 @@
 # Tests: resume rehydrates completed-stage artifacts from the git state branch
 # before the dispatch loop. (issue #1805, ADR-006 §3.5)
 #
-# RHYD-1 [code]: on resume (all entry paths), before the dispatch loop, the
+# DSRHYD-1 [code]: on resume (all entry paths), before the dispatch loop, the
 #   runner calls _artifact_persist_restore and _artifact_persist_put_back and
 #   places completed-stage artifacts from the git state branch into
 #   ZBUILD_ARTIFACT_DIR; a complete stage emits no stage.start event.
 #
-# RHYD-2 [code]: a complete stage whose primary artifact is absent from both
+# DSRHYD-2 [code]: a complete stage whose primary artifact is absent from both
 #   disk and the git state branch causes the resume to exit 1 before any
 #   stage.start event is emitted.
 #
-# AMDR-1 [no-code]: ADR-006-resume-contract.md amended with step 3.6:
+# DSAMDR-1 [no-code]: ADR-006-resume-contract.md amended with step 3.6:
 #   before the dispatch loop the runner restores completed-stage artifacts from
 #   the git state branch; a still-absent artifact causes exit 1; enforcing
 #   test names added inline.
 #
-# AMDR-2 [no-code]: ADR-050-prior-work-reuse-contract.md §6 amended with
+# DSAMDR-2 [no-code]: ADR-050-prior-work-reuse-contract.md §6 amended with
 #   boundary note: the invariant applies to new runs; a resume continues the
 #   same run and is governed by ADR-006.
 #
-# BNDY-1 [no-code]: this file contains both a resume-side assertion (RHYD-1/
-#   RHYD-2) and a fresh-run sub-case with --no-resume, pinning both sides of
+# DSBNDY-1 [no-code]: this file contains both a resume-side assertion (DSRHYD-1/
+#   DSRHYD-2) and a fresh-run sub-case with --no-resume, pinning both sides of
 #   the ADR-006/ADR-050 §6 boundary in one test file.
 #
-# CYCL-1 [no-code]: the test fixture contains a pipeline stage of type: cycle.
+# DSCYCL-1 [no-code]: the test fixture contains a pipeline stage of type: cycle.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -64,7 +64,7 @@ mock_plugin_factory "cycled" "agent" 0 "" "builder" >/dev/null
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 
 # ── SPEC-1: resume rehydrates artifacts from git state branch ─────────────────
-print_test_section "[#1805/RHYD-1] on resume, artifacts restored from git state branch into ZBUILD_ARTIFACT_DIR"
+print_test_section "[#1805/DSRHYD-1] on resume, artifacts restored from git state branch into ZBUILD_ARTIFACT_DIR"
 
 # Given — a run has been interrupted; stage intake is marked complete with its artifact
 #   present in the git state branch; stage cyc was the interrupted stage.
@@ -84,10 +84,10 @@ _s1_snap_rc=0
   cd "$WORK_REPO" && _artifact_persist_snapshot "$S1_STATE_DIR" "$_ZB_ID" ) \
     >"$TEST_TEMP_DIR/s1-snap.log" 2>&1 || _s1_snap_rc=$?
 if [[ "$_s1_snap_rc" -ne 0 ]]; then
-    assert_fail "[#1805/RHYD-1] setup: snapshot to state branch failed" \
+    assert_fail "[#1805/DSRHYD-1] setup: snapshot to state branch failed" \
         "rc=$_s1_snap_rc; $(cat "$TEST_TEMP_DIR/s1-snap.log" 2>/dev/null | tail -5)"
 else
-    assert_pass "[#1805/RHYD-1] setup: state branch populated with intake-result.json"
+    assert_pass "[#1805/DSRHYD-1] setup: state branch populated with intake-result.json"
 fi
 
 # Remove the artifact from disk to simulate the "artifacts not on disk" scenario.
@@ -132,13 +132,13 @@ _s1_rc=$?
 set -e
 
 # Then — artifacts appear byte-identical, no stage.start for intake.
-# [#1805/RHYD-1]: artifact must be present in ZBUILD_ARTIFACT_DIR after resume.
+# [#1805/DSRHYD-1]: artifact must be present in ZBUILD_ARTIFACT_DIR after resume.
 # Before the change: no rehydration → file absent → FAILS.
 # After the change: rehydration copies artifact from state branch → PASSES.
-assert_file_exists "[#1805/RHYD-1] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR" \
+assert_file_exists "[#1805/DSRHYD-1] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR" \
     "$S1_STATE_DIR/artifacts/intake-result.json"
 
-# [#1805/RHYD-1]: artifact content must be byte-identical to what was snapshotted to the
+# [#1805/DSRHYD-1]: artifact content must be byte-identical to what was snapshotted to the
 # git state branch, proving _artifact_persist_restore read the artifact FROM the git state
 # branch (not disk — the disk copy was deleted before the runner ran), and
 # _artifact_persist_put_back placed it into ZBUILD_ARTIFACT_DIR byte-for-byte. These are
@@ -149,10 +149,10 @@ assert_file_exists "[#1805/RHYD-1] intake-result.json rehydrated into ZBUILD_ART
 # writes to ZBUILD_ARTIFACT_DIR → content exactly matches the snapshotted payload → PASSES.
 _s1_artifact_content="$(cat "$S1_STATE_DIR/artifacts/intake-result.json" 2>/dev/null || true)"
 assert_eq \
-    "[#1805/RHYD-1] artifact content is byte-identical to its state at interruption (via _artifact_persist_restore + _artifact_persist_put_back from git state branch)" \
+    "[#1805/DSRHYD-1] artifact content is byte-identical to its state at interruption (via _artifact_persist_restore + _artifact_persist_put_back from git state branch)" \
     '{"result_contract":3,"outcome":"pass","reason":"prior-run intake"}' "$_s1_artifact_content"
 
-# [#1805/RHYD-1]: at least one stage must have dispatched, proving the dispatch loop ran.
+# [#1805/DSRHYD-1]: at least one stage must have dispatched, proving the dispatch loop ran.
 # Combined with artifact-present (from git) and no-intake-stage.start, this establishes
 # that the artifact was placed BEFORE the dispatch loop: the loop's first dispatchable
 # stage (the cycle member cycled) ran and the artifact was already there.
@@ -163,10 +163,10 @@ if [[ -f "$S1_EVENTS_JSONL" ]]; then
     _s1_any_starts="$(jq -r 'select(.type=="stage.start") | .type' \
         "$S1_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
-assert_gt "[#1805/RHYD-1] at least one stage dispatched after resume (dispatch loop ran; artifact was present before loop)" \
+assert_gt "[#1805/DSRHYD-1] at least one stage dispatched after resume (dispatch loop ran; artifact was present before loop)" \
     "$_s1_any_starts" "0"
 
-# [#1805/RHYD-1]: pipeline.resume event must appear in the events log BEFORE the first
+# [#1805/DSRHYD-1]: pipeline.resume event must appear in the events log BEFORE the first
 # stage.start, proving _runner_resume_rehydrate (which calls _artifact_persist_restore
 # then _artifact_persist_put_back) completed before the dispatch loop dispatched anything.
 # The runner emits pipeline.resume immediately after _runner_resume_rehydrate returns,
@@ -183,12 +183,12 @@ if [[ -f "$S1_EVENTS_JSONL" ]]; then
     _s1_first_start_lineno="$(awk '/"stage.start"/{print NR; exit}' "$S1_EVENTS_JSONL" 2>/dev/null)"
     _s1_first_start_lineno="${_s1_first_start_lineno:-0}"
 fi
-assert_gt "[#1805/RHYD-1] pipeline.resume event emitted (runner reached resume path)" \
+assert_gt "[#1805/DSRHYD-1] pipeline.resume event emitted (runner reached resume path)" \
     "$_s1_resume_lineno" "0"
-assert_gt "[#1805/RHYD-1] pipeline.resume precedes first stage.start (restore before dispatch loop)" \
+assert_gt "[#1805/DSRHYD-1] pipeline.resume precedes first stage.start (restore before dispatch loop)" \
     "$_s1_first_start_lineno" "$_s1_resume_lineno"
 
-# [#1805/RHYD-1]: intake must NOT have a stage.start event (it was complete and skipped).
+# [#1805/DSRHYD-1]: intake must NOT have a stage.start event (it was complete and skipped).
 _s1_intake_starts=0
 if [[ -f "$S1_EVENTS_JSONL" ]]; then
     # Use wc -l (not grep -c ... || echo 0): grep -c exits 1 on 0 matches, causing
@@ -196,35 +196,35 @@ if [[ -f "$S1_EVENTS_JSONL" ]]; then
     _s1_intake_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="intake") | .type' \
         "$S1_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
-assert_eq "[#1805/RHYD-1] intake emits no stage.start (complete stage skipped)" \
+assert_eq "[#1805/DSRHYD-1] intake emits no stage.start (complete stage skipped)" \
     "0" "$_s1_intake_starts"
 
-# [#1805/SKIP-1]: dispatch-unit loop skips a stage marked complete whose primary
+# [#1805/DSSKIP-1]: dispatch-unit loop skips a stage marked complete whose primary
 # artifact is present after rehydration, emitting no stage.start for that stage.
 # Given — a run is being resumed; intake is marked complete in persisted state
 #   (s1 state file above: stage_statuses.intake="complete"); its primary artifact
-#   is present in ZBUILD_ARTIFACT_DIR after rehydration (the RHYD-1 path 1 runner
+#   is present in ZBUILD_ARTIFACT_DIR after rehydration (the DSRHYD-1 path 1 runner
 #   call above placed it there via _artifact_persist_restore + _artifact_persist_put_back).
 #   The dispatch-unit loop is exercised by the cyclic fixture run with ZBUILD_CYCLES_ENABLED=1.
-# When — the dispatch-unit loop reaches stage intake (same RHYD-1 path 1 runner call;
+# When — the dispatch-unit loop reaches stage intake (same DSRHYD-1 path 1 runner call;
 #   the loop executes after _runner_resume_rehydrate places the artifact).
 # Then — no stage.start event is emitted for that stage (the loop sees resume_mode=1
 #   and the artifact is present → it skips without dispatching).
 # Before the change: dispatch-unit loop has no skip guard conditioned on resume_mode
 #   and artifact presence → dispatches intake → stage.start emitted → FAILS.
 # After the change: skip guard checks resume_mode + artifact present → skips → PASSES.
-assert_eq "[#1805/SKIP-1] dispatch-unit loop emits no stage.start for complete stage whose artifact is present after rehydration (intake skipped)" \
+assert_eq "[#1805/DSSKIP-1] dispatch-unit loop emits no stage.start for complete stage whose artifact is present after rehydration (intake skipped)" \
     "0" "$_s1_intake_starts"
 
-# [#1805/DSPK-1]: stage k (the interrupted stage) must emit stage.start when the
+# [#1805/DSDSPK-1]: stage k (the interrupted stage) must emit stage.start when the
 # dispatch loop reaches it on resume. The fixture has intake=complete (stage k-1)
 # and cyc=pending (stage k). Cycles dispatch their inner members: cycled emits
 # stage.start with stage=cycled. This proves the dispatch loop reached and dispatched
 # stage k (cyc), not just that any stage ran.
 # Given — a run with stages intake (k-1) and cyc (k) was interrupted during stage k;
 #   intake is marked complete with its artifact present in ZBUILD_ARTIFACT_DIR after
-#   rehydration (the RHYD-1 path 1 runner call above placed it there).
-# When — the dispatch loop reaches stage cyc (k) during resume (same runner call as RHYD-1 path 1).
+#   rehydration (the DSRHYD-1 path 1 runner call above placed it there).
+# When — the dispatch loop reaches stage cyc (k) during resume (same runner call as DSRHYD-1 path 1).
 # Then — stage cyc dispatches its inner member cycled, which emits stage.start,
 #   confirming stage k was dispatched and was not skipped.
 # Before the change: runner may abort before dispatching cyc → 0 cycled starts → FAILS.
@@ -234,14 +234,14 @@ if [[ -f "$S1_EVENTS_JSONL" ]]; then
     _s1_cycled_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="cycled") | .type' \
         "$S1_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
-assert_gt "[#1805/DSPK-1] stage k (cyc → member cycled) dispatched and emits stage.start on resume (interrupted stage was dispatched)" \
+assert_gt "[#1805/DSDSPK-1] stage k (cyc → member cycled) dispatched and emits stage.start on resume (interrupted stage was dispatched)" \
     "$_s1_cycled_starts" "0"
 
-# [#1805/DSPK-1]: when k is a cycle stage, cycle.start must be emitted for k (cyc) itself.
+# [#1805/DSDSPK-1]: when k is a cycle stage, cycle.start must be emitted for k (cyc) itself.
 # The requirement says: "when k is a cycle stage, a cycle.start event is emitted for k AND
 # stage.start is emitted for k's first cycle member". The cycled member's stage.start
 # (above) proves the member was dispatched. This assertion proves the cycle stage itself
-# (cyc) emitted cycle.start — the cycle.start half of the DSPK-1 Then clause.
+# (cyc) emitted cycle.start — the cycle.start half of the DSDSPK-1 Then clause.
 # Before the change: runner may abort before dispatching cyc → no cycle.start emitted
 #   → count=0 → FAILS.
 # After the change: rehydrate → dispatch loop reaches cyc → cycle.start emitted for cyc
@@ -251,13 +251,13 @@ if [[ -f "$S1_EVENTS_JSONL" ]]; then
     _s1_cyc_cycle_starts="$(jq -r 'select(.type=="cycle.start") | .type' \
         "$S1_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
-assert_gt "[#1805/DSPK-1] cycle.start emitted for stage k (cyc) on resume (cycle.start half of Then: cycle stage k was dispatched)" \
+assert_gt "[#1805/DSDSPK-1] cycle.start emitted for stage k (cyc) on resume (cycle.start half of Then: cycle stage k was dispatched)" \
     "$_s1_cyc_cycle_starts" "0"
 
 # ── SPEC-1 path 2: auto-resume on status=interrupted ─────────────────────────
-# [#1805/RHYD-1] all entry paths: path 2 — auto-resume when status=interrupted.
+# [#1805/DSRHYD-1] all entry paths: path 2 — auto-resume when status=interrupted.
 # No --resume flag; runner detects interrupted status and auto-resumes.
-print_test_section "[#1805/RHYD-1] path 2: auto-resume (status=interrupted) restores artifacts"
+print_test_section "[#1805/DSRHYD-1] path 2: auto-resume (status=interrupted) restores artifacts"
 
 # Given — a run has been interrupted (status=interrupted); stage intake is marked
 #   complete with its artifact present in the git state branch; stage cyc was the
@@ -318,13 +318,13 @@ set -e
 
 # Then — the completed stage's artifacts appear in ZBUILD_ARTIFACT_DIR byte-identical
 #   to their state at the time of interruption; no stage.start event emitted for intake.
-# [#1805/RHYD-1] path 2 artifact restored.
+# [#1805/DSRHYD-1] path 2 artifact restored.
 # Before change: no rehydration → absent → FAILS. After change: PASSES.
 assert_file_exists \
-    "[#1805/RHYD-1] path 2 (auto-resume/interrupted): intake-result.json restored" \
+    "[#1805/DSRHYD-1] path 2 (auto-resume/interrupted): intake-result.json restored" \
     "$S1P2_STATE_DIR/artifacts/intake-result.json"
 
-# [#1805/RHYD-1] path 2: content must be byte-identical to what was snapshotted to the git
+# [#1805/DSRHYD-1] path 2: content must be byte-identical to what was snapshotted to the git
 # state branch. Proves the artifact was placed into ZBUILD_ARTIFACT_DIR FROM the git state
 # branch via _artifact_persist_restore (reads from git state branch) +
 # _artifact_persist_put_back (copies to ZBUILD_ARTIFACT_DIR). These are the only functions
@@ -332,10 +332,10 @@ assert_file_exists \
 # Before fix: file absent → content="" → not equal → FAILS. After fix: PASSES.
 _s1p2_artifact_content="$(cat "$S1P2_STATE_DIR/artifacts/intake-result.json" 2>/dev/null || true)"
 assert_eq \
-    "[#1805/RHYD-1] path 2 (auto-resume): artifact content is byte-identical to its state at interruption (via _artifact_persist_restore + _artifact_persist_put_back from git state branch)" \
+    "[#1805/DSRHYD-1] path 2 (auto-resume): artifact content is byte-identical to its state at interruption (via _artifact_persist_restore + _artifact_persist_put_back from git state branch)" \
     '{"result_contract":3,"outcome":"pass","reason":"prior-run intake"}' "$_s1p2_artifact_content"
 
-# [#1805/RHYD-1] path 2: at least one stage must have dispatched (proving pipeline ran and events written).
+# [#1805/DSRHYD-1] path 2: at least one stage must have dispatched (proving pipeline ran and events written).
 # Before fix: path-2 auto-resume doesn't exist → runner exits without events → 0 stage.start → FAILS.
 # After fix: runner auto-resumes, rehydrates, skips intake, dispatches cyc cycle → cycled dispatches.
 _s1p2_any_starts=0
@@ -343,10 +343,10 @@ if [[ -f "$S1P2_EVENTS_JSONL" ]]; then
     _s1p2_any_starts="$(jq -r 'select(.type=="stage.start") | .type' \
         "$S1P2_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
-assert_gt "[#1805/RHYD-1] path 2 (auto-resume): at least one stage dispatched (pipeline ran via path-2 resume)" \
+assert_gt "[#1805/DSRHYD-1] path 2 (auto-resume): at least one stage dispatched (pipeline ran via path-2 resume)" \
     "$_s1p2_any_starts" "0"
 
-# [#1805/RHYD-1] path 2: pipeline.resume event must appear before the first stage.start,
+# [#1805/DSRHYD-1] path 2: pipeline.resume event must appear before the first stage.start,
 # proving _runner_resume_rehydrate (which calls _artifact_persist_restore + _artifact_persist_put_back)
 # completed before the dispatch loop. pipeline.resume is emitted immediately after
 # _runner_resume_rehydrate returns, before the dispatch loop begins.
@@ -358,20 +358,20 @@ if [[ -f "$S1P2_EVENTS_JSONL" ]]; then
     _s1p2_first_start_lineno="$(awk '/"stage.start"/{print NR; exit}' "$S1P2_EVENTS_JSONL" 2>/dev/null)"
     _s1p2_first_start_lineno="${_s1p2_first_start_lineno:-0}"
 fi
-assert_gt "[#1805/RHYD-1] path 2 (auto-resume): pipeline.resume event emitted" \
+assert_gt "[#1805/DSRHYD-1] path 2 (auto-resume): pipeline.resume event emitted" \
     "$_s1p2_resume_lineno" "0"
-assert_gt "[#1805/RHYD-1] path 2 (auto-resume): pipeline.resume precedes first stage.start (restore before dispatch loop)" \
+assert_gt "[#1805/DSRHYD-1] path 2 (auto-resume): pipeline.resume precedes first stage.start (restore before dispatch loop)" \
     "$_s1p2_first_start_lineno" "$_s1p2_resume_lineno"
 
-# [#1805/RHYD-1] path 2: intake must NOT have a stage.start event.
+# [#1805/DSRHYD-1] path 2: intake must NOT have a stage.start event.
 _s1p2_intake_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="intake") | .type' \
     "$S1P2_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
-assert_eq "[#1805/RHYD-1] path 2 (auto-resume): intake emits no stage.start (skipped)" \
+assert_eq "[#1805/DSRHYD-1] path 2 (auto-resume): intake emits no stage.start (skipped)" \
     "0" "$_s1p2_intake_starts"
 
 # ── SPEC-1 path 3: zbuild pipeline resume --run-id ───────────────────────────
-# [#1805/RHYD-1] all entry paths: path 3 — zbuild pipeline resume --run-id.
-print_test_section "[#1805/RHYD-1] path 3: zbuild pipeline resume --run-id restores artifacts"
+# [#1805/DSRHYD-1] all entry paths: path 3 — zbuild pipeline resume --run-id.
+print_test_section "[#1805/DSRHYD-1] path 3: zbuild pipeline resume --run-id restores artifacts"
 
 # Given — a run has been interrupted (status=interrupted); stage intake is marked
 #   complete with its artifact present in the git state branch; run state persisted
@@ -433,13 +433,13 @@ set -e
 
 # Then — the completed stage's artifacts appear in ZBUILD_ARTIFACT_DIR byte-identical
 #   to their state at the time of interruption; no stage.start event emitted for intake.
-# [#1805/RHYD-1] path 3 artifact restored.
+# [#1805/DSRHYD-1] path 3 artifact restored.
 # Before change: zbuild resume path has no rehydration → absent → FAILS. After change: PASSES.
 assert_file_exists \
-    "[#1805/RHYD-1] path 3 (zbuild pipeline resume): intake-result.json restored" \
+    "[#1805/DSRHYD-1] path 3 (zbuild pipeline resume): intake-result.json restored" \
     "$S1P3_STATE_DIR/artifacts/intake-result.json"
 
-# [#1805/RHYD-1] path 3: content must be byte-identical to what was snapshotted to the git
+# [#1805/DSRHYD-1] path 3: content must be byte-identical to what was snapshotted to the git
 # state branch. Proves the artifact was placed into ZBUILD_ARTIFACT_DIR FROM the git state
 # branch via _artifact_persist_restore (reads from git state branch) +
 # _artifact_persist_put_back (copies to ZBUILD_ARTIFACT_DIR). These are the only functions
@@ -447,10 +447,10 @@ assert_file_exists \
 # Before fix: file absent → content="" → not equal → FAILS. After fix: PASSES.
 _s1p3_artifact_content="$(cat "$S1P3_STATE_DIR/artifacts/intake-result.json" 2>/dev/null || true)"
 assert_eq \
-    "[#1805/RHYD-1] path 3 (zbuild pipeline resume): artifact content is byte-identical to its state at interruption (via _artifact_persist_restore + _artifact_persist_put_back from git state branch)" \
+    "[#1805/DSRHYD-1] path 3 (zbuild pipeline resume): artifact content is byte-identical to its state at interruption (via _artifact_persist_restore + _artifact_persist_put_back from git state branch)" \
     '{"result_contract":3,"outcome":"pass","reason":"prior-run intake"}' "$_s1p3_artifact_content"
 
-# [#1805/RHYD-1] path 3: at least one stage must have dispatched (proving pipeline ran via zbuild pipeline resume).
+# [#1805/DSRHYD-1] path 3: at least one stage must have dispatched (proving pipeline ran via zbuild pipeline resume).
 # Before fix: zbuild pipeline resume path has no rehydration / may not exist → no events → FAILS.
 # After fix: zbuild calls runner --resume → rehydrates → dispatches cyc cycle → cycled dispatches.
 _s1p3_any_starts=0
@@ -458,10 +458,10 @@ if [[ -f "$S1P3_EVENTS_JSONL" ]]; then
     _s1p3_any_starts="$(jq -r 'select(.type=="stage.start") | .type' \
         "$S1P3_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
-assert_gt "[#1805/RHYD-1] path 3 (zbuild pipeline resume): at least one stage dispatched (pipeline ran via path-3)" \
+assert_gt "[#1805/DSRHYD-1] path 3 (zbuild pipeline resume): at least one stage dispatched (pipeline ran via path-3)" \
     "$_s1p3_any_starts" "0"
 
-# [#1805/RHYD-1] path 3: pipeline.resume event must appear before the first stage.start,
+# [#1805/DSRHYD-1] path 3: pipeline.resume event must appear before the first stage.start,
 # proving _runner_resume_rehydrate (which calls _artifact_persist_restore + _artifact_persist_put_back)
 # completed before the dispatch loop. pipeline.resume is emitted immediately after
 # _runner_resume_rehydrate returns, before the dispatch loop begins.
@@ -473,19 +473,19 @@ if [[ -f "$S1P3_EVENTS_JSONL" ]]; then
     _s1p3_first_start_lineno="$(awk '/"stage.start"/{print NR; exit}' "$S1P3_EVENTS_JSONL" 2>/dev/null)"
     _s1p3_first_start_lineno="${_s1p3_first_start_lineno:-0}"
 fi
-assert_gt "[#1805/RHYD-1] path 3 (zbuild pipeline resume): pipeline.resume event emitted" \
+assert_gt "[#1805/DSRHYD-1] path 3 (zbuild pipeline resume): pipeline.resume event emitted" \
     "$_s1p3_resume_lineno" "0"
-assert_gt "[#1805/RHYD-1] path 3 (zbuild pipeline resume): pipeline.resume precedes first stage.start (restore before dispatch loop)" \
+assert_gt "[#1805/DSRHYD-1] path 3 (zbuild pipeline resume): pipeline.resume precedes first stage.start (restore before dispatch loop)" \
     "$_s1p3_first_start_lineno" "$_s1p3_resume_lineno"
 
-# [#1805/RHYD-1] path 3: intake must NOT have a stage.start event.
+# [#1805/DSRHYD-1] path 3: intake must NOT have a stage.start event.
 _s1p3_intake_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="intake") | .type' \
     "$S1P3_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
-assert_eq "[#1805/RHYD-1] path 3 (zbuild pipeline resume): intake emits no stage.start (skipped)" \
+assert_eq "[#1805/DSRHYD-1] path 3 (zbuild pipeline resume): intake emits no stage.start (skipped)" \
     "0" "$_s1p3_intake_starts"
 
 # ── SPEC-2: missing artifact causes resume to exit 1 ─────────────────────────
-print_test_section "[#1805/RHYD-2] absent artifact causes resume to exit 1 before any stage.start"
+print_test_section "[#1805/DSRHYD-2] absent artifact causes resume to exit 1 before any stage.start"
 
 # Given — a run is being resumed; stage intake is marked complete in persisted state;
 #   its primary artifact is absent from both disk and the git state branch.
@@ -542,69 +542,69 @@ _s2_rc=$?
 set -e
 
 # Then — runner exits 1; no stage.start event emitted.
-# [#1805/RHYD-2]: runner must exit 1 when artifact absent from disk AND state branch.
+# [#1805/DSRHYD-2]: runner must exit 1 when artifact absent from disk AND state branch.
 # Before the change: runner warns about stale artifact and continues → exits 0 → FAILS.
 # After the change: runner exits 1 after failing to restore the artifact → PASSES.
-assert_eq "[#1805/RHYD-2] resume exits 1 when primary artifact cannot be restored" \
+assert_eq "[#1805/DSRHYD-2] resume exits 1 when primary artifact cannot be restored" \
     "1" "$_s2_rc"
 
-# [#1805/RHYD-2]: no stage.start event must be emitted before the exit.
+# [#1805/DSRHYD-2]: no stage.start event must be emitted before the exit.
 # (exit 1 happens before the dispatch loop reaches any stage)
 _s2_any_starts=0
 if [[ -f "$S2_EVENTS_JSONL" ]]; then
     _s2_any_starts="$(jq -r 'select(.type=="stage.start") | .type' \
         "$S2_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
-assert_eq "[#1805/RHYD-2] no stage.start emitted before exit 1" \
+assert_eq "[#1805/DSRHYD-2] no stage.start emitted before exit 1" \
     "0" "$_s2_any_starts"
 
 # ── SPEC-5: ADR-006 amended with artifact-restore step 3.5 ───────────────────
-print_test_section "[#1805/AMDR-1] ADR-006 amended: step 3.6 restores artifacts before dispatch loop"
+print_test_section "[#1805/DSAMDR-1] ADR-006 amended: step 3.6 restores artifacts before dispatch loop"
 
 # Then — ADR-006-resume-contract.md contains step 3.6 describing artifact
 # restoration before the dispatch loop; enforcing test names and exit 1 clause present.
-# [#1805/AMDR-1]: ADR-006 must contain the amendment text describing artifact
+# [#1805/DSAMDR-1]: ADR-006 must contain the amendment text describing artifact
 # restoration in the resume sequence and exit 1 for an absent artifact.
 # This passes after the doc change; it need not fail before.
 _adr006="$(cat "$ADR_006" 2>/dev/null || true)"
 
-assert_contains "[#1805/AMDR-1] ADR-006 step 3.6 added (step number present)" \
+assert_contains "[#1805/DSAMDR-1] ADR-006 step 3.6 added (step number present)" \
     "$_adr006" "3.6"
 
-assert_contains "[#1805/AMDR-1] ADR-006 step 3.6 names _runner_resume_rehydrate" \
+assert_contains "[#1805/DSAMDR-1] ADR-006 step 3.6 names _runner_resume_rehydrate" \
     "$_adr006" "_runner_resume_rehydrate"
 
-assert_contains "[#1805/AMDR-1] ADR-006 step 3.6 names resume-rehydrate-test.sh as enforcing test" \
+assert_contains "[#1805/DSAMDR-1] ADR-006 step 3.6 names resume-rehydrate-test.sh as enforcing test" \
     "$_adr006" "resume-rehydrate-test.sh"
 
-assert_contains "[#1805/AMDR-1] ADR-006 step 3.6 names resume-entry-points-test.sh as enforcing test" \
+assert_contains "[#1805/DSAMDR-1] ADR-006 step 3.6 names resume-entry-points-test.sh as enforcing test" \
     "$_adr006" "resume-entry-points-test.sh"
 
-# [#1805/AMDR-1]: ADR-006 must document that a still-absent artifact causes exit 1.
+# [#1805/DSAMDR-1]: ADR-006 must document that a still-absent artifact causes exit 1.
 # Before the doc change: the clause is absent → FAILS. After change: PASSES.
-assert_contains "[#1805/AMDR-1] ADR-006 step 3.6 documents still-absent artifact causes exit 1" \
+assert_contains "[#1805/DSAMDR-1] ADR-006 step 3.6 documents still-absent artifact causes exit 1" \
     "$_adr006" "exit 1"
 
-# [#1805/AMDR-1]: ADR-006 step 3.6 must say restoration happens "before the dispatch loop".
+# [#1805/DSAMDR-1]: ADR-006 step 3.6 must say restoration happens "before the dispatch loop".
 # Before the doc change: phrase absent → FAILS. After change: PASSES.
-assert_contains "[#1805/AMDR-1] ADR-006 step 3.6 documents restore happens before the dispatch loop" \
+assert_contains "[#1805/DSAMDR-1] ADR-006 step 3.6 documents restore happens before the dispatch loop" \
     "$_adr006" "before the dispatch loop"
 
-# [#1805/AMDR-1]: ADR-006 step 3.6 must say artifacts are restored "from the git state branch".
+# [#1805/DSAMDR-1]: ADR-006 step 3.6 must say artifacts are restored "from the git state branch".
 # Before the doc change: phrase absent → FAILS. After change: PASSES.
-assert_contains "[#1805/AMDR-1] ADR-006 step 3.6 documents artifacts restored from the git state branch" \
+assert_contains "[#1805/DSAMDR-1] ADR-006 step 3.6 documents artifacts restored from the git state branch" \
     "$_adr006" "git state branch"
 
-# [#1805/AMDR-1]: ADR-006 step 3.6 must document the ordering constraint:
-# "not to be combined with dispatch-loop changes". The AMDR-1 requirement names
+# [#1805/DSAMDR-1]: ADR-006 step 3.6 must document the ordering constraint:
+# "not to be combined with dispatch-loop changes". The DSAMDR-1 requirement names
 # this clause explicitly; without it the spec omits the reason this step must
 # ship in a dedicated PR and reviewers have no guidance.
 # Before the doc change: phrase absent → FAILS. After change: PASSES.
-assert_contains "[#1805/AMDR-1] ADR-006 step 3.6 documents ordering constraint (not to be combined with dispatch-loop changes)" \
+assert_contains "[#1805/DSAMDR-1] ADR-006 step 3.6 documents ordering constraint (not to be combined with dispatch-loop changes)" \
     "$_adr006" "not to be combined with dispatch-loop changes"
 
 # ── SPEC-6: ADR-050 §6 amended with resume boundary note ─────────────────────
-print_test_section "[#1805/AMDR-2] ADR-050 §6 amended: resume governed by ADR-006; new-run invariant governs new runs"
+print_test_section "[#1805/DSAMDR-2] ADR-050 §6 amended: resume governed by ADR-006; new-run invariant governs new runs"
 
 # Then — ADR-050 §6 contains the boundary note distinguishing new runs from resumes;
 # the note names ADR-006 as governing resumes and says a resume continues the same run.
@@ -613,34 +613,34 @@ _adr050_s6="$(awk \
     '/^### 6\./{p=1} p && /^### [0-9]+\./ && !/^### 6\./{exit} p{print}' \
     "$ADR_050" 2>/dev/null || true)"
 
-# [#1805/AMDR-2]: §6 boundary note must say the invariant applies to new runs
+# [#1805/DSAMDR-2]: §6 boundary note must say the invariant applies to new runs
 # and that a resume is governed by ADR-006.
-assert_contains "[#1805/AMDR-2] ADR-050 §6 boundary note says invariant applies to new runs" \
+assert_contains "[#1805/DSAMDR-2] ADR-050 §6 boundary note says invariant applies to new runs" \
     "$_adr050_s6" "new run"
 
-assert_contains "[#1805/AMDR-2] ADR-050 §6 boundary note names ADR-006 as governing resume" \
+assert_contains "[#1805/DSAMDR-2] ADR-050 §6 boundary note names ADR-006 as governing resume" \
     "$_adr050_s6" "ADR-006"
 
-# [#1805/AMDR-2]: §6 must say "a resume continues the same run" (not just reference ADR-006).
+# [#1805/DSAMDR-2]: §6 must say "a resume continues the same run" (not just reference ADR-006).
 # Before the doc change: clause absent → FAILS. After change: PASSES.
-assert_contains "[#1805/AMDR-2] ADR-050 §6 boundary note says a resume continues the same run" \
+assert_contains "[#1805/DSAMDR-2] ADR-050 §6 boundary note says a resume continues the same run" \
     "$_adr050_s6" "continues the same run"
 
-# [#1805/AMDR-2]: §6's Enforced-by section must cite resume-rehydrate-test.sh and
+# [#1805/DSAMDR-2]: §6's Enforced-by section must cite resume-rehydrate-test.sh and
 # resume-entry-points-test.sh by name. The requirement says "§6's Enforced by section
-# updated to cite resume-rehydrate-test.sh (FRSH-2 for the new-run side) and
-# resume-entry-points-test.sh (ENTR-1 for the resume side)". A §6 that only adds the
+# updated to cite resume-rehydrate-test.sh (DSFRSH-2 for the new-run side) and
+# resume-entry-points-test.sh (DSENTR-1 for the resume side)". A §6 that only adds the
 # boundary prose but omits the Enforced-by update would still pass the three assertions
 # above but fail these two, ensuring the Enforced-by section was actually updated.
 # This requirement need not fail before this change (no-code property); it must pass after.
-assert_contains "[#1805/AMDR-2] ADR-050 §6 Enforced-by section cites resume-rehydrate-test.sh (FRSH-2 for new-run side)" \
+assert_contains "[#1805/DSAMDR-2] ADR-050 §6 Enforced-by section cites resume-rehydrate-test.sh (DSFRSH-2 for new-run side)" \
     "$_adr050_s6" "resume-rehydrate-test.sh"
 
-assert_contains "[#1805/AMDR-2] ADR-050 §6 Enforced-by section cites resume-entry-points-test.sh (ENTR-1 for resume side)" \
+assert_contains "[#1805/DSAMDR-2] ADR-050 §6 Enforced-by section cites resume-entry-points-test.sh (DSENTR-1 for resume side)" \
     "$_adr050_s6" "resume-entry-points-test.sh"
 
 # ── SPEC-12: fresh (non-resume) run dispatches all stages ─────────────────────
-print_test_section "[#1805/FRSH-1] fresh --no-resume run dispatches all stages (ADR-050 §6 new-run side)"
+print_test_section "[#1805/DSFRSH-1] fresh --no-resume run dispatches all stages (ADR-050 §6 new-run side)"
 
 # Given — a state dir with status=interrupted and intake=complete exists (simulating a prior
 #   interrupted run), and a prior-run artifact is present ONLY on the state branch (disk copy
@@ -670,7 +670,7 @@ _s12_snap_rc=0
   cd "$S12_WORK_REPO" && _artifact_persist_snapshot "$S12_STATE_DIR" "$_S12_ID" ) \
     >"$TEST_TEMP_DIR/s12-snap.log" 2>&1 || _s12_snap_rc=$?
 if [[ "$_s12_snap_rc" -ne 0 ]]; then
-    assert_fail "[#1805/FRSH-1] setup: snapshot to state branch failed" \
+    assert_fail "[#1805/DSFRSH-1] setup: snapshot to state branch failed" \
         "rc=$_s12_snap_rc; $(cat "$TEST_TEMP_DIR/s12-snap.log" 2>/dev/null | tail -5)"
 fi
 # Remove the artifact from disk — only the state branch has it now, matching a
@@ -735,17 +735,17 @@ fi
 assert_eq "fresh run dispatches intake (not skipped; ADR-050 §6 new-run side)" \
     "1" "$_s12_intake_starts"
 
-# [#1805/FRSH-1]: dispatch started from stage 1; intake must have dispatched exactly once.
+# [#1805/DSFRSH-1]: dispatch started from stage 1; intake must have dispatched exactly once.
 # The state file has status=interrupted and intake=complete, which would trigger auto-resume
 # (skipping intake, starting from a later stage) if --no-resume were absent. With --no-resume,
 # the runner starts fresh from stage 1: intake dispatches, proving dispatch was not jumped to
 # a later stage due to prior state. This establishes the "dispatches all stages from stage 1"
-# clause of FRSH-1 directly (tagged FRSH-1, not only BNDY-1).
-# FRSH-1 is a no-code requirement: need not fail before this change; must pass after.
-assert_eq "[#1805/FRSH-1] fresh run (--no-resume) dispatches all stages from stage 1 (intake dispatched; did not skip to a later stage due to prior state)" \
+# clause of DSFRSH-1 directly (tagged DSFRSH-1, not only DSBNDY-1).
+# DSFRSH-1 is a no-code requirement: need not fail before this change; must pass after.
+assert_eq "[#1805/DSFRSH-1] fresh run (--no-resume) dispatches all stages from stage 1 (intake dispatched; did not skip to a later stage due to prior state)" \
     "1" "$_s12_intake_starts"
 
-# [#1805/FRSH-1]: a fresh run (--no-resume) emits no stage.skip events, proving all stages
+# [#1805/DSFRSH-1]: a fresh run (--no-resume) emits no stage.skip events, proving all stages
 # are dispatched from stage 1 and none are skipped due to prior state. stage.skip events
 # are only emitted by the resume rehydration path (which is suppressed by --no-resume).
 # A fresh run must not consult or skip any stage based on prior state.
@@ -755,10 +755,10 @@ if [[ -f "$S12_EVENTS_JSONL" ]]; then
     _s12_stage_skips="$(jq -r 'select(.type=="stage.skip") | .type' \
         "$S12_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
-assert_eq "[#1805/FRSH-1] fresh run (--no-resume) emits no stage.skip events (all stages dispatched from stage 1; none skipped due to prior state)" \
+assert_eq "[#1805/DSFRSH-1] fresh run (--no-resume) emits no stage.skip events (all stages dispatched from stage 1; none skipped due to prior state)" \
     "0" "$_s12_stage_skips"
 
-# [#1805/FRSH-1]: no artifact from a prior run must appear in ZBUILD_ARTIFACT_DIR.
+# [#1805/DSFRSH-1]: no artifact from a prior run must appear in ZBUILD_ARTIFACT_DIR.
 # The setup placed prior-run intake-result.json content on the state branch only
 # (the disk copy was removed before the runner was invoked). A fresh run must NOT
 # call _artifact_persist_restore, so the content "prior-run intake" (which is in
@@ -770,19 +770,19 @@ _s12_prior_in_dir=0
 if grep -q "prior-run intake" <<< "$_s12_prior_artifact_content"; then
     _s12_prior_in_dir=1
 fi
-assert_eq "[#1805/FRSH-1] no prior-run artifact content in ZBUILD_ARTIFACT_DIR (fresh --no-resume run does not restore prior-run artifacts from state branch)" \
+assert_eq "[#1805/DSFRSH-1] no prior-run artifact content in ZBUILD_ARTIFACT_DIR (fresh --no-resume run does not restore prior-run artifacts from state branch)" \
     "0" "$_s12_prior_in_dir"
 
 # : the cycle fixture used for this fresh-run sub-case contains type: cycle,
 # establishing that the fixture IS a cyclic pipeline (satisfying the "same cycle fixture" clause).
-# BNDY-1 requires "verifies intake dispatches AND the fixture contains type:cycle" —
-# the cycled sub-stage dispatch is not required by BNDY-1.
+# DSBNDY-1 requires "verifies intake dispatches AND the fixture contains type:cycle" —
+# the cycled sub-stage dispatch is not required by DSBNDY-1.
 _s12_fixt_content="$(cat "$REPO_ROOT/tests/fixtures/templates/artifact-snapshot-coverage.yaml")"
 assert_contains "cycle fixture used in fresh-run sub-case has type: cycle" \
     "$_s12_fixt_content" "type: cycle"
 
-# [#1805/FRSH-1]: a fresh run must NOT emit stage.start for cycle members (cycled).
-# Design (Gap 7): stage.start for cycle members is only emitted via the CMBR-1
+# [#1805/DSFRSH-1]: a fresh run must NOT emit stage.start for cycle members (cycled).
+# Design (Gap 7): stage.start for cycle members is only emitted via the DSCMBR-1
 # resume_first_iter=true path; it must NOT fire unconditionally on fresh runs.
 # Before this change (pre-#1805): cycle members never emitted stage.start (they emit
 #   cycle.member.dispatch.{start,complete} instead); _s12_cycled_starts=0 → PASSES (no-code ✓).
@@ -790,18 +790,18 @@ assert_contains "cycle fixture used in fresh-run sub-case has type: cycle" \
 #   dispatch unconditionally (iter starts at 1, so iter>0 is always true) → cycled emits
 #   stage.start on fresh runs → _s12_cycled_starts=1 → assert 0==1 → FAILS (exposes bug).
 # After fix (iter>0 guard removed or guarded by _ZBUILD_RESUME_ACTIVE):
-#   cycle members emit stage.start only via CMBR-1 resume path → 0 on fresh run → PASSES.
-# This covers GUAR-1 on the cycle-member side (the gap red-team finding 4 names).
+#   cycle members emit stage.start only via DSCMBR-1 resume path → 0 on fresh run → PASSES.
+# This covers RQGUAR-1 on the cycle-member side (the gap red-team finding 4 names).
 _s12_cycled_starts=0
 if [[ -f "$S12_EVENTS_JSONL" ]]; then
     _s12_cycled_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="cycled") | .type' \
         "$S12_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
-assert_eq "[#1805/FRSH-1] no stage.start for cycle member (cycled) on fresh run (cycle members only emit stage.start via CMBR-1 resume path; iter>0 guard must not fire unconditionally on fresh runs)" \
+assert_eq "[#1805/DSFRSH-1] no stage.start for cycle member (cycled) on fresh run (cycle members only emit stage.start via DSCMBR-1 resume path; iter>0 guard must not fire unconditionally on fresh runs)" \
     "0" "$_s12_cycled_starts"
 
-# ── FRSH-2: fresh run with prior state branch artifacts never skips via dispatch-unit guard ─
-print_test_section "[#1805/FRSH-2] fresh run (no --resume, in_progress status) never skips stages due to prior-run artifacts in git state branch"
+# ── DSFRSH-2: fresh run with prior state branch artifacts never skips via dispatch-unit guard ─
+print_test_section "[#1805/DSFRSH-2] fresh run (no --resume, in_progress status) never skips stages due to prior-run artifacts in git state branch"
 
 # Given — an issue has prior completed runs with artifacts present in the git state branch;
 #   a new run is started with no --resume flag and no status=interrupted state file.
@@ -825,7 +825,7 @@ _frsh2_snap_rc=0
   cd "$_S_FRSH2_WORK_REPO" && _artifact_persist_snapshot "$_S_FRSH2_STATE_DIR" "$_S_FRSH2_ID" ) \
     >"$TEST_TEMP_DIR/frsh2-snap.log" 2>&1 || _frsh2_snap_rc=$?
 if [[ "$_frsh2_snap_rc" -ne 0 ]]; then
-    assert_fail "[#1805/FRSH-2] setup: snapshot to state branch failed" \
+    assert_fail "[#1805/DSFRSH-2] setup: snapshot to state branch failed" \
         "rc=$_frsh2_snap_rc; $(cat "$TEST_TEMP_DIR/frsh2-snap.log" 2>/dev/null | tail -5)"
 fi
 rm -f "$_S_FRSH2_STATE_DIR/artifacts/intake-result.json"
@@ -864,7 +864,7 @@ set +e
 set -e
 
 # Then — every stage emits a stage.start event; no stage.skip event is emitted for any stage.
-# [#1805/FRSH-2]: intake must emit stage.start (not skipped by dispatch-unit guard).
+# [#1805/DSFRSH-2]: intake must emit stage.start (not skipped by dispatch-unit guard).
 # This requirement need not fail before this change (no-code property); it must pass after.
 # If the skip guard were unconditional (not keyed on resume_mode), it would read the prior
 # artifacts from the state branch and skip intake → intake_starts=0 → FAILS.
@@ -876,10 +876,10 @@ if [[ -f "$_S_FRSH2_EVENTS_JSONL" ]]; then
         "$_S_FRSH2_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
 assert_eq \
-    "[#1805/FRSH-2] fresh run (no --resume, in_progress status) dispatches intake even with prior-run artifacts on git state branch (dispatch-unit skip guard conditional on resume_mode)" \
+    "[#1805/DSFRSH-2] fresh run (no --resume, in_progress status) dispatches intake even with prior-run artifacts on git state branch (dispatch-unit skip guard conditional on resume_mode)" \
     "1" "$_frsh2_intake_starts"
 
-# [#1805/FRSH-2]: no stage.skip events must be emitted for any stage.
+# [#1805/DSFRSH-2]: no stage.skip events must be emitted for any stage.
 # stage.skip is only emitted by the resume rehydration path; a fresh run must not
 # consult prior state to skip any stage, even if prior artifacts exist in the git state branch.
 _frsh2_stage_skips=0
@@ -888,20 +888,20 @@ if [[ -f "$_S_FRSH2_EVENTS_JSONL" ]]; then
         "$_S_FRSH2_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
 assert_eq \
-    "[#1805/FRSH-2] fresh run emits no stage.skip events (dispatch-unit skip guard conditional on resume_mode; does not activate for fresh runs)" \
+    "[#1805/DSFRSH-2] fresh run emits no stage.skip events (dispatch-unit skip guard conditional on resume_mode; does not activate for fresh runs)" \
     "0" "$_frsh2_stage_skips"
 
-# ── CYCL-1: test uses a fixture containing a cyclic stage ────────────────────
+# ── DSCYCL-1: test uses a fixture containing a cyclic stage ────────────────────
 print_test_section "resume-rehydrate test uses a fixture containing a cyclic stage"
 
 # Then — the test fixtures used by resume-rehydrate-test.sh contain a pipeline stage of
-#   type: cycle, verified by an assert_contains tagged [#1805/CYCL-1].
-# [#1805/CYCL-1]: the fixture must contain type: cycle.
-assert_contains "[#1805/CYCL-1] resume-rehydrate (RHYD-1/RHYD-2/BNDY-1) fixture (artifact-snapshot-coverage) contains type: cycle" \
+#   type: cycle, verified by an assert_contains tagged [#1805/DSCYCL-1].
+# [#1805/DSCYCL-1]: the fixture must contain type: cycle.
+assert_contains "[#1805/DSCYCL-1] resume-rehydrate (DSRHYD-1/RHYD-2/BNDY-1) fixture (artifact-snapshot-coverage) contains type: cycle" \
     "$_s12_fixt_content" "type: cycle"
 
 # : the pipeline using the cyclic fixture was actually run; intake dispatched
-# in the fresh run above (_s12_intake_starts asserted = 1 in the BNDY-1 section).
+# in the fresh run above (_s12_intake_starts asserted = 1 in the DSBNDY-1 section).
 assert_eq "resume-rehydrate: pipeline with cyclic fixture was actually run (intake dispatched)" \
     "1" "$_s12_intake_starts"
 
