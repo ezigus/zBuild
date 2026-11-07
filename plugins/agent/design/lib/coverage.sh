@@ -4,8 +4,9 @@
 # spec-coverage stage, #1683.)
 #
 # Its standard is the issue, which design cannot re-author, so the only way to
-# pass is to cover it. The issue reaches the call the way it reaches every
-# stage: under Previous work. This file never reads another stage's output.
+# pass is to cover it. The call is given the list beside the issue's own words
+# (ADR-070 §4), found among the stage's inputs by what they are: on #1805 run
+# 42340358110 it was told the issue was under Previous work, where it was not.
 #
 # #2464 (ADR-072): the check judges — it reads the code itself, read-only, and
 # a [done] claim on the code from before the change; it answers one line for
@@ -97,7 +98,7 @@ there makes the answer unusable.
 EOF2
 }
 
-# _dcov_prompt_judge <draft> <shown> [requirements] [others] [scope] [done_evidence] [base]
+# _dcov_prompt_judge <draft> <shown> [requirements] [others] [scope] [done_evidence] [base] [issue]
 # — <shown> the SPECs to judge, in full; [others] the rest, by their first line,
 # given only with [requirements], for what they cover (#2470, ADR-072 §4).
 _dcov_prompt_judge() {
@@ -106,10 +107,10 @@ The design you judge is the file at $1 — read it there for anything you need
 that is not shown here. Do not open design.md: it is an earlier design, not the
 one you judge.
 EOF2
+    [[ -n "${3:-}" && -n "${8:-}" ]] && printf '\nISSUE — the issue itself, in the requester'"'"'s own words:\n%s\n' "$8"
     [[ -n "${3:-}" ]] && cat <<EOF2
 
 REQUIREMENTS — the issue's requirements, each with its id.
-The issue itself, in the requester's own words, is under Previous work.
 
 Judge every requirement in REQUIREMENTS by its words. Read the issue for what a
 requirement means. A SPEC may say which requirements it covers; check its
@@ -310,10 +311,11 @@ _design_coverage() {
         return 0
     fi
 
-    local framed _disp_shown=""
+    local framed _disp_shown="" issue=""
+    [[ -n "$reqs_asked" ]] && issue="$(earlier_issue_text "${artifact_dir:-${ZBUILD_ARTIFACT_DIR:-}}" "${state_dir:-}" 2>/dev/null || true)"
     for k in "${!disp[@]}"; do [[ $'\n'"$want" == *$'\n'"$k"$'\n'* ]] && _disp_shown+="${disp[$k]}"; done
     # #2458: it judges, so it composes fresh — no notes, and no rule to confirm earlier work.
-    if ! framed="$(stage_prompt_compose_text --fresh "$(_dcov_prompt_own "$reqs_asked")" "$(_dcov_prompt_judge "$design_md" "${shown%$'\n'}" "$reqs_asked" "${others%$'\n'}" "$scope" "$done_ev" "$base")$(judge_disputes_block "$_disp_shown")" "$(_dcov_prompt_limits)")"; then
+    if ! framed="$(stage_prompt_compose_text --fresh "$(_dcov_prompt_own "$reqs_asked")" "$(_dcov_prompt_judge "$design_md" "${shown%$'\n'}" "$reqs_asked" "${others%$'\n'}" "$scope" "$done_ev" "$base" "$issue")$(judge_disputes_block "$_disp_shown")" "$(_dcov_prompt_limits)")"; then
         _DESIGN_COV_OUTCOME=misconfigured
         return 0
     fi

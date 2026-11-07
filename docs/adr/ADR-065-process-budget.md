@@ -364,6 +364,10 @@ Measured on macOS against main after #2480 (1,903 execs, 2,538 processes, 483 / 
 and 275 execs (`DISPATCH_PROCS_BUDGET` 484 → 482, `DISPATCH_EXECS_BUDGET` 276 → 275), start-up 11 processes and
 6 execs a plugin (`STARTUP_PROCS_PER_PLUGIN_BUDGET` 12 → 11, `STARTUP_EXECS_PER_PLUGIN_BUDGET` 7 → 6).
 
+After ADR-070's amendment of 2026-11-07 (intake reads the issue's labels in its shell; design's check reads the
+issue only when it judges the requirements), measured on macOS: execs 1,885 (`FORK_BUDGET` 1892 → 1888),
+processes 2,534 (`PROCESS_BUDGET` 2541 → 2537), one more dispatch 481 processes (`DISPATCH_PROCS_BUDGET` 482 → 481).
+
 ## Enforced by
 
 - §5 amendment 2026-11-06 (#2476: an include checked only when it fails to load) → `tests/unit/route-missing-include-test.sh` SPEC-1–SPEC-6; `tests/e2e/fork-budget-test.sh` (the budgets above)

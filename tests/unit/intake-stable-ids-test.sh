@@ -33,6 +33,9 @@
 # S12 [code] #2482: every requirement id starts with intake's prefix, RQ; one
 #            without it is asked again; a requirement may share a SPEC's code;
 #            a last-list id from before the prefix is the old numbering
+# S13 [code] a requirement that names another of the issue's items by the
+#            issue's own label (R1, R1–R5) is asked again, naming the label; the
+#            list is written with the ids those labels mean
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -223,6 +226,25 @@ REPLY=([1]=$'REQUIREMENT: RQPRNT-1 Print each line once.\nREQUIREMENT: RQEXIT-1 
 _intake
 assert_contains "[S12] a last-list id from before the prefix is shown without it" "$(_prompt 1)" "REQUIREMENT: Keep the exit code."
 assert_eq "[S12] ...and its new id needs no REMOVED line" "pass" "$OUTCOME"
+
+# ── S13 ──────────────────────────────────────────────────────────────────────
+# An issue's own label for one of its items is a name no later stage can read:
+# they see only this list. On #1805 run 42340358110 "Tests for R1–R5 must use a
+# cycle" reached design's check without the issue, which took R1–R5 for
+# RQRES-1..5 and refused a SPEC that covered R3 and R4.
+_set_gh_mock "Make the gate quieter" $'## Required behavior\n- **R1.** Print each line once.\n- **R2:** Keep the exit code.\n- Tests for R1–R2 run twice.\n- Keep the S3 upload as it is.' 0
+_last ""
+REPLY=([1]=$'REQUIREMENT: RQPRNT-1 Print each line once.\nREQUIREMENT: RQEXIT-1 Keep the exit code.\nREQUIREMENT: RQTEST-1 Tests for R1–R2 run twice.\nREQUIREMENT: RQUPLD-1 Keep the S3 upload as it is.'
+       [2]=$'REQUIREMENT: RQPRNT-1 Print each line once.\nREQUIREMENT: RQEXIT-1 Keep the exit code.\nREQUIREMENT: RQTEST-1 Tests for RQPRNT-1 and RQEXIT-1 run twice.\nREQUIREMENT: RQUPLD-1 Keep the S3 upload as it is.')
+_intake
+assert_contains "[S13] the writing call is told to write ids, not the issue's labels" "$(_prompt 1)" "write the ids of the requirements it means"
+assert_contains "[S13] a requirement naming the issue's label R1 is asked again, naming it" "$(_prompt 2)" "RQTEST-1 writes R1, the issue's own name for one of its items"
+assert_contains "[S13] ...and R2, the other end of the range" "$(_prompt 2)" "RQTEST-1 writes R2, the issue's own name for one of its items"
+_s13_s3=1; [[ "$(_prompt 2)" == *"writes S3"* ]] && _s13_s3=0
+assert_eq "[S13] a word the issue does not use as a label (S3) is not refused" "1" "$_s13_s3"
+assert_eq "[S13] ...and the list is written with the ids" "Tests for RQPRNT-1 and RQEXIT-1 run twice." \
+    "$(jq -r '.requirements[] | select(.id == "RQTEST-1") | .text' "$_REQ" 2>/dev/null)"
+assert_eq "[S13] ...and passes" "pass" "$OUTCOME"
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

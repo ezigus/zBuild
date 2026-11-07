@@ -11,8 +11,10 @@
 #
 #   SPEC-1 an uncovered requirement is named, one entry per requirement
 #   SPEC-2 a covering design has nothing uncovered
-#   SPEC-4 the prompt carries the requirements and the SPECs, says the issue is
-#          under Previous work, and does not read the issue from a file
+#   SPEC-4 the prompt carries the requirements and the SPECs, and does not read
+#          the issue from a file by name
+#   I1     the prompt carries the issue's own words, found among the stage's
+#          inputs by what they are (ADR-070 §4); with no issue it claims none
 #   SPEC-7 how-the-change-is-verified requirements are not gaps (#2176)
 #   SPEC-8 a SPEC that demands less than its requirement does not cover it (#1849)
 #   SPEC-9 an already-done SPEC covers its requirement (#2304, ADR-069 §7)
@@ -82,9 +84,23 @@ assert_eq "[SPEC-2] ...and the call judged it" "" "$_DESIGN_COV_OUTCOME"
 _P="$(cat "$_P_FILE")"
 assert_contains "[SPEC-4] the prompt carries the requirements" "$_P" "RQST-2: refuse a missing config"
 assert_contains "[SPEC-4] ...and the SPECs" "$_P" "a --dry-run flag is accepted"
-assert_contains "[SPEC-4] ...and says where the issue is" "$_P" "The issue itself, in the requester's own words, is under Previous work."
+_i1_none=1; [[ "$_P" == *"The issue itself"* ]] && _i1_none=0
+assert_eq "[I1] with no issue among the inputs, the prompt claims none" "1" "$_i1_none"
 assert_eq "[SPEC-4] the coverage call reads no other stage's output by name" "0" \
     "$(grep -c 'intake' "$REPO_ROOT/plugins/agent/design/lib/coverage.sh" || true)"
+
+# ── I1 ───────────────────────────────────────────────────────────────────────
+# ADR-070 §4: the check judges the list beside the issue's own words. On #1805
+# run 42340358110 its prompt said the issue was "under Previous work", where it
+# was not; the judge read "Tests for R1–R5" without the issue, took R1–R5 for
+# the ids that looked like it, and refused a SPEC that covered R3 and R4.
+_I1="$TEST_TEMP_DIR/i1"; mkdir -p "$_I1"
+zb_test_issue_output "$_I1" $'## Required behavior\n- **R3.** `--from-stage <s>` dispatches `<s>` first.' >/dev/null
+jq -n --arg i "$_I1/intake-result.json" '{inputs: {a: $i}}' > "$_I1/stage-inputs.json"
+ZBUILD_STAGE_INPUTS="$_I1/stage-inputs.json" _cov
+_P="$(cat "$_P_FILE")"
+assert_contains "[I1] the prompt carries the issue's own words" "$_P" "- **R3.** \`--from-stage <s>\` dispatches \`<s>\` first."
+assert_contains "[I1] ...and says that is the issue" "$_P" "ISSUE — the issue itself, in the requester's own words:"
 
 # ── SPEC-1 / E3 ──────────────────────────────────────────────────────────────
 REQS3="$REQS"'
