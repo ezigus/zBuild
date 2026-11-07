@@ -110,6 +110,13 @@ stage_result_write "$A/note-result.json" fail "2 problems" "{\"findings\":$(prin
 w8n="$(rsc_render_row "$S" "$(_row 3.1.1.1.3 note fail)")"
 assert_eq "[W8] findings naming no id are counted" "what failed: 2 findings" "$(sed -n 1p <<< "$w8n" | sed 's/.* — //')"
 
+# #2482: ids carry their stage's prefix; the row names them whole.
+stage_result_write "$A/issue-acceptance-result.json" fail "2 requirements not met" "{\"findings\":$(printf '%s\n' \
+        'The issue requires this and the change does not meet it: RQLOOP-1: no skip' \
+        'The issue requires this and the change does not meet it: RQGUAR-2: a second start' | stage_findings_json)}"
+w8p="$(rsc_render_row "$S" "$(_row 3.1.1.1.5 issue-acceptance fail)")"
+assert_eq "[W8] …a prefixed id is named whole" "what failed: \`RQLOOP-1\`, \`RQGUAR-2\`" "$(sed -n 1p <<< "$w8p" | sed 's/.* — //')"
+
 # ── W5 ───────────────────────────────────────────────────────────────────────
 printf '%s\n' '{"lens":"sre","findings":[{"file":"a.sh","severity":"medium","message":"M-ONE"},{"file":"a.sh","severity":"high","message":"H-ONE"},{"file":"a.sh","severity":"medium","message":"M-TWO"}]}' \
     > "$A/lens-sre.json"

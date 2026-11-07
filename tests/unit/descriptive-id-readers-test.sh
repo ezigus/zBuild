@@ -24,6 +24,8 @@
 # R10 [code] the coverage check and issue-acceptance name the evidence by its
 #            file and text, not a line number (#2464: and no window of lines)
 # R11 [code] old SPEC-n ids still read everywhere above
+#            (#2482: the ids above carry their stage's prefix, DSFSTG-1: every
+#            reader reads the longer form)
 # R12 [code] issue-acceptance is not told the requirements are numbered R-1, R-2
 set -uo pipefail
 
@@ -50,68 +52,68 @@ cat > "$D" <<'EOF'
 ```acceptance
 WIRING:
 core/run.sh
-FSTG-1[code]: --from-stage runs the stage first
-  and puts earlier outputs back covers: RSUM-1
-REMOVED: FSTG-2 — folded into FSTG-1
+DSFSTG-1[code]: --from-stage runs the stage first
+  and puts earlier outputs back covers: RQRSUM-1
+REMOVED: DSFSTG-2 — folded into DSFSTG-1
 SPEC-3[no-code]: an old-form requirement
-GARD-1[done]: a new run never skips evidence: core/run.sh:"if $resume_mode && x" tests/unit/a-test.sh
+DSGARD-1[done]: a new run never skips evidence: core/run.sh:"if $resume_mode && x" tests/unit/a-test.sh
 TESTFILES:
-FSTG-1: tests/unit/from-stage-test.sh
+DSFSTG-1: tests/unit/from-stage-test.sh
   tests/unit/from-stage-more-test.sh
 SPEC-3: tests/unit/old-test.sh
 ```
 EOF
 
 # ── R1 / R11 ─────────────────────────────────────────────────────────────────
-assert_eq "[R1] descriptive and old ids are listed" "FSTG-1 SPEC-3 GARD-1" \
+assert_eq "[R1] descriptive and old ids are listed" "DSFSTG-1 SPEC-3 DSGARD-1" \
     "$(acceptance_list_spec_ids "$D" | tr '\n' ' ' | sed 's/ $//')"
-assert_eq "[R1] a REMOVED line is read with its reason" "FSTG-2	folded into FSTG-1" \
+assert_eq "[R1] a REMOVED line is read with its reason" "DSFSTG-2	folded into DSFSTG-1" \
     "$(acceptance_list_removed_ids "$D")"
 assert_eq "[R1] ...and is not part of the SPEC before it" \
-    "--from-stage runs the stage first and puts earlier outputs back" "$(acceptance_spec_text "$D" FSTG-1)"
-assert_eq "[R1] covers reads after a wrapped line" "RSUM-1" "$(acceptance_spec_covers "$D" FSTG-1)"
+    "--from-stage runs the stage first and puts earlier outputs back" "$(acceptance_spec_text "$D" DSFSTG-1)"
+assert_eq "[R1] covers reads after a wrapped line" "RQRSUM-1" "$(acceptance_spec_covers "$D" DSFSTG-1)"
 
 # ── R2 ───────────────────────────────────────────────────────────────────────
 assert_eq "[R2] a descriptive binding's files, wrapped line included" \
     "tests/unit/from-stage-test.sh tests/unit/from-stage-more-test.sh" \
-    "$(acceptance_list_testfiles_for_spec "$D" FSTG-1 | tr '\n' ' ' | sed 's/ $//')"
+    "$(acceptance_list_testfiles_for_spec "$D" DSFSTG-1 | tr '\n' ' ' | sed 's/ $//')"
 assert_eq "[R11] an old binding's file" "tests/unit/old-test.sh" "$(acceptance_list_testfiles_for_spec "$D" SPEC-3)"
 assert_eq "[R2] the union of test files strips descriptive prefixes" \
     "tests/unit/from-stage-test.sh tests/unit/from-stage-more-test.sh tests/unit/old-test.sh" \
     "$(acceptance_list_testfiles "$D" | tr '\n' ' ' | sed 's/ $//')"
 acceptance_has_per_spec_binding "$D"; assert_eq "[R2] per-requirement binding is seen" "0" "$?"
-acceptance_spec_has_binding "$D" FSTG-1; assert_eq "[R2] FSTG-1 has a binding" "0" "$?"
+acceptance_spec_has_binding "$D" DSFSTG-1; assert_eq "[R2] DSFSTG-1 has a binding" "0" "$?"
 
 # ── R3 ───────────────────────────────────────────────────────────────────────
 assert_eq "[R3] WIRING stops at a descriptive SPEC line" "core/run.sh" "$(acceptance_list_wiring "$D")"
 
 # ── R4 ───────────────────────────────────────────────────────────────────────
 assert_eq "[R4] quoted evidence text with spaces is one item" \
-    "core/run.sh:\"if \$resume_mode && x\""$'\n'"tests/unit/a-test.sh" "$(acceptance_spec_evidence "$D" GARD-1)"
+    "core/run.sh:\"if \$resume_mode && x\""$'\n'"tests/unit/a-test.sh" "$(acceptance_spec_evidence "$D" DSGARD-1)"
 
 # ── R5 ───────────────────────────────────────────────────────────────────────
 LOG="$TEST_TEMP_DIR/negctl.log"
 export ZBUILD_ISSUE="$_ID"
-printf '✓ [#%s/FSTG-1] runs first\n✗ [#%s/GARD-1] never skips\n' "$_ID" "$_ID" > "$LOG"
-assert_eq "[R5] the last other verdict, by a descriptive tag" "GARD-1" "$(_negctl_last_other_verdict "$LOG" LOOP-9)"
+printf '✓ [#%s/DSFSTG-1] runs first\n✗ [#%s/DSGARD-1] never skips\n' "$_ID" "$_ID" > "$LOG"
+assert_eq "[R5] the last other verdict, by a descriptive tag" "DSGARD-1" "$(_negctl_last_other_verdict "$LOG" DSLOOP-9)"
 printf '✓ [#%s/SPEC-2] old\n' "$_ID" > "$LOG"
-assert_eq "[R11] ...and by an old one" "SPEC-2" "$(_negctl_last_other_verdict "$LOG" LOOP-9)"
+assert_eq "[R11] ...and by an old one" "SPEC-2" "$(_negctl_last_other_verdict "$LOG" DSLOOP-9)"
 unset ZBUILD_ISSUE
 
 # ── R6 ───────────────────────────────────────────────────────────────────────
 # shellcheck source=../../plugins/tool/test/plugin.sh
 source "$REPO_ROOT/plugins/tool/test/plugin.sh" 2>/dev/null
-_id=""; _ag_negctl_line_id_v _id "NEGCTL PASS FSTG-1 control_valid"
-assert_eq "[R6] the id on a NEGCTL PASS line" "FSTG-1" "$_id"
-_id=""; _ag_negctl_line_id_v _id "NEGCTL ERROR timeout:GARD-1"
-assert_eq "[R6] ...and on a NEGCTL ERROR line" "GARD-1" "$_id"
+_id=""; _ag_negctl_line_id_v _id "NEGCTL PASS DSFSTG-1 control_valid"
+assert_eq "[R6] the id on a NEGCTL PASS line" "DSFSTG-1" "$_id"
+_id=""; _ag_negctl_line_id_v _id "NEGCTL ERROR timeout:DSGARD-1"
+assert_eq "[R6] ...and on a NEGCTL ERROR line" "DSGARD-1" "$_id"
 _id=""; _ag_negctl_line_id_v _id "NEGCTL FAIL SPEC-4 tautology"
 assert_eq "[R11] ...and an old one" "SPEC-4" "$_id"
 
 # ── R7 ───────────────────────────────────────────────────────────────────────
 # shellcheck source=../../plugins/agent/build/lib/prompt.sh
 source "$REPO_ROOT/plugins/agent/build/lib/prompt.sh" 2>/dev/null
-_lim="$(_build_compose_limits "core/run.sh,tests/unit/from-stage-test.sh" "FSTG-1: tests/unit/from-stage-test.sh" 2>/dev/null)"
+_lim="$(_build_compose_limits "core/run.sh,tests/unit/from-stage-test.sh" "DSFSTG-1: tests/unit/from-stage-test.sh" 2>/dev/null)"
 if [[ "$_lim" == *"tests/unit/from-stage-test.sh"* ]]; then
     assert_fail "[R7] build's limits leave out a test file bound with a descriptive id" "$_lim"
 else
@@ -124,22 +126,22 @@ assert_eq "[R7] the false-completion probe no longer reads SPEC-<n> alone" "0" "
 # ── R8 ───────────────────────────────────────────────────────────────────────
 # shellcheck source=../../scripts/lib/run-status-render.sh
 source "$REPO_ROOT/scripts/lib/run-status-render.sh" 2>/dev/null
-_o=""; _rsc_code_labels_v _o "failed [#1805/FSTG-1] and [#1805/SPEC-2]"
-assert_eq "[R8] descriptive and old labels are shown as code" 'failed `[#1805/FSTG-1]` and `[#1805/SPEC-2]`' "$_o"
+_o=""; _rsc_code_labels_v _o "failed [#1805/DSFSTG-1] and [#1805/SPEC-2]"
+assert_eq "[R8] descriptive and old labels are shown as code" 'failed `[#1805/DSFSTG-1]` and `[#1805/SPEC-2]`' "$_o"
 
 # ── R9 ───────────────────────────────────────────────────────────────────────
 REPO="$TEST_TEMP_DIR/repo"; mkdir -p "$REPO/tests/unit"
-printf 'assert "[#%s/FSTG-1] keep" 1\nassert "[#%s/SPEC-3] old form, still in contract" 1\nassert "[#%s/SPEC-7] stale" 1\nassert "[#%s/LOOP-2] stale" 1\nassert "[#99/LOOP-2] other issue" 1\nassert "[UTF-8] not a tag" 1\n' "$_ID" "$_ID" "$_ID" "$_ID" \
+printf 'assert "[#%s/DSFSTG-1] keep" 1\nassert "[#%s/SPEC-3] old form, still in contract" 1\nassert "[#%s/SPEC-7] stale" 1\nassert "[#%s/DSLOOP-2] stale" 1\nassert "[#99/DSLOOP-2] other issue" 1\nassert "[UTF-8] not a tag" 1\n' "$_ID" "$_ID" "$_ID" "$_ID" \
     > "$REPO/tests/unit/from-stage-test.sh"
 # shellcheck source=../../plugins/agent/test-author/plugin.sh
 source "$REPO_ROOT/plugins/agent/test-author/plugin.sh" 2>/dev/null
 ZBUILD_ISSUE="$_ID" _ta_drop_stale_tags "$D" "$REPO"
 _tf="$(cat "$REPO/tests/unit/from-stage-test.sh")"
-assert_contains "[R9] a tag still in the contract stays" "$_tf" "[#$_ID/FSTG-1] keep"
+assert_contains "[R9] a tag still in the contract stays" "$_tf" "[#$_ID/DSFSTG-1] keep"
 assert_contains "[R11] ...an old-form one too" "$_tf" "[#$_ID/SPEC-3]"
 assert_not_contains "[R9] this issue's old-form tag no longer in the contract goes" "$_tf" "[#$_ID/SPEC-7]"
-assert_not_contains "[R9] ...and a descriptive one" "$_tf" "[#$_ID/LOOP-2]"
-assert_contains "[R9] another issue's tag stays" "$_tf" "[#99/LOOP-2]"
+assert_not_contains "[R9] ...and a descriptive one" "$_tf" "[#$_ID/DSLOOP-2]"
+assert_contains "[R9] another issue's tag stays" "$_tf" "[#99/DSLOOP-2]"
 assert_contains "[R9] a bracket that is no tag stays" "$_tf" "[UTF-8]"
 
 # ── R10 ──────────────────────────────────────────────────────────────────────

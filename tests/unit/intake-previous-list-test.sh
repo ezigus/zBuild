@@ -42,7 +42,7 @@ route_to_model() {
 _prev() {   # the list a last run left: one requirement per argument
     if [[ $# -eq 0 ]]; then rm -f "$_REQ"; return; fi
     printf '%s\n' "$@" | jq -Rsc 'split("\n") | map(select(length > 0))
-        | {schema_version: 1, source: "model", requirements: [to_entries[] | {id: "ITEM-\(.key + 1)", text: .value}]}' > "$_REQ"
+        | {schema_version: 1, source: "model", requirements: [to_entries[] | {id: "RQITEM-\(.key + 1)", text: .value}]}' > "$_REQ"
 }
 _intake() {
     rm -f "$TEST_TEMP_DIR"/calls "$TEST_TEMP_DIR"/prompt-*
@@ -56,8 +56,8 @@ _set_gh_mock "Make the gate quieter" $'1. Print each line once.\n2. Keep the exi
 
 # ── P1 / P2 ──────────────────────────────────────────────────────────────────
 _prev "Print each line once." "Keep the exit code." "Exit 2 on a bad flag."
-WRITE_REPLY=$'REQUIREMENT: ITEM-1 Print each line once.\nREQUIREMENT: ITEM-2 Keep the exit code.\nREMOVED: ITEM-3 — the issue dropped it'
-CHECK_REPLY='MISSING: CNT-1 Say how many lines it printed.'
+WRITE_REPLY=$'REQUIREMENT: RQITEM-1 Print each line once.\nREQUIREMENT: RQITEM-2 Keep the exit code.\nREMOVED: RQITEM-3 — the issue dropped it'
+CHECK_REPLY='MISSING: RQCNT-1 Say how many lines it printed.'
 _intake
 _p1="$(tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/prompt-1" 2>/dev/null)"
 assert_contains "[P1] the writing call is shown the last run's list" "$_p1" "Exit 2 on a bad flag."
@@ -67,12 +67,12 @@ assert_eq "[P2] the result names what was added" "Say how many lines it printed.
 assert_eq "[P2] ...and what was removed" "Exit 2 on a bad flag." \
     "$(jq -r '.data.requirements_changed.removed[]?.text' "$RES" 2>/dev/null)"
 assert_contains "[P2] the summary says the list changed" "$SUM" "changed since the last run"
-assert_contains "[P2] ...naming the addition" "$SUM" "added: CNT-1 Say how many lines it printed."
-assert_contains "[P2] ...and the removal" "$SUM" "removed: ITEM-3 Exit 2 on a bad flag. — the issue dropped it"
+assert_contains "[P2] ...naming the addition" "$SUM" "added: RQCNT-1 Say how many lines it printed."
+assert_contains "[P2] ...and the removal" "$SUM" "removed: RQITEM-3 Exit 2 on a bad flag. — the issue dropped it"
 
 # ── P3 ───────────────────────────────────────────────────────────────────────
 _prev "Print each line once." "Keep the exit code." "Say how many lines it printed."
-WRITE_REPLY=$'REQUIREMENT: ITEM-1 Print each line once.\nREQUIREMENT: ITEM-2 Keep the exit code.\nREQUIREMENT: ITEM-3 Say how many lines it printed.'
+WRITE_REPLY=$'REQUIREMENT: RQITEM-1 Print each line once.\nREQUIREMENT: RQITEM-2 Keep the exit code.\nREQUIREMENT: RQITEM-3 Say how many lines it printed.'
 CHECK_REPLY='MISSING: none'
 _intake
 assert_contains "[P3] a list the same as the last says so" "$SUM" "the same as the last run's"

@@ -52,7 +52,7 @@ rsc_row_findings_v() {
             # The requirement or SPEC each is about: the first id on its first
             # line. Named when every finding has one and none has a severity.
             | [$f[] | .t | split("\n")[0]
-               | [match("(?<![A-Za-z0-9-])[A-Z][A-Z0-9]{2,3}-[0-9]+(?![0-9])"; "g").string][0]] as $ids
+               | [match("(?<![A-Za-z0-9-])[A-Z][A-Z0-9]{2,5}-[0-9]+(?![0-9])"; "g").string][0]] as $ids
             | (if ($sv | length) == 0 and all($ids[]; . != null)
                then "what failed: " + ($ids | reduce .[] as $i ([]; if index([$i]) then . else . + [$i] end)
                                            | map("`" + . + "`") | join(", "))
@@ -125,12 +125,12 @@ _rsc_text_plain() {
 }
 
 # _rsc_code_labels_v <var> <text> — each requirement label, `[#1805/FSTG-1]`
-# (#2462: any SPEC id, descriptive or the old SPEC-3),
+# (#2462: any SPEC id, descriptive or the old SPEC-3; #2482: with its prefix),
 # shown as code (#2460): GitHub links `#1805` and shows the issue's title in its
 # place. One already between backticks is left as it is. Read by the shell.
 _rsc_code_labels_v() {
     local -n _rcl="$1"; local _in="$2" _out="" _pre _lbl
-    local _re='\[#[0-9]+/[A-Z][A-Z0-9][A-Z0-9][A-Z0-9]?-[0-9]+\]'
+    local _re='\[#[0-9]+/[A-Z][A-Z0-9]{2,5}-[0-9]+\]'
     while [[ "$_in" =~ $_re ]]; do
         _lbl="${BASH_REMATCH[0]}"; _pre="${_in%%"$_lbl"*}"
         if [[ "$_pre" == *'`' ]]; then _out+="$_pre$_lbl"; else _out+="$_pre\`$_lbl\`"; fi

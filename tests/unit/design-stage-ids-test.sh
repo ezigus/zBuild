@@ -59,7 +59,7 @@ _run() {   # <last design or ""> <issue text>
     export ZBUILD_EVENTS_JSONL="$d/state/events.jsonl"; : > "$ZBUILD_EVENTS_JSONL"
     _F_ART="$d/state/artifacts"
     printf 'scope: all\n' > "$d/state/scope-manifest.md"
-    jq -nc --argjson i "${ISSUE_IDS:-[]}" '{requirements: [{id: "DOCS-1", text: "the docs say so"}], issue_ids: $i}' > "$_F_ART/requirements.json"
+    jq -nc --argjson i "${ISSUE_IDS:-[]}" '{requirements: [{id: "RQDOCS-1", text: "the docs say so"}], issue_ids: $i}' > "$_F_ART/requirements.json"
     jq -nc --arg t "$2" '{result_contract: 3, outcome: "pass", reason: "r", data: {issue_text: $t}}' > "$_F_ART/intake-result.json"
     [[ -n "$1" ]] && printf '%s' "$1" > "$_F_ART/design.md"
     _design_stage_run_inner "$d/state/scope-manifest.md" "$_F_ART/design.md" "$_F_ART" >/dev/null 2>&1
@@ -68,19 +68,19 @@ _run() {   # <last design or ""> <issue text>
 }
 
 # ── E1 ───────────────────────────────────────────────────────────────────────
-DRAFT="$(_design 'DOCW-1[no-code]: the docs say so covers: DOCS-1')"
-_run "$(_design 'DOCW-1[no-code]: the docs say so covers: DOCS-1' 'DOCW-2[no-code]: the readme says so covers: DOCS-1')" "Write the docs."
+DRAFT="$(_design 'DSDOCW-1[no-code]: the docs say so covers: RQDOCS-1')"
+_run "$(_design 'DSDOCW-1[no-code]: the docs say so covers: RQDOCS-1' 'DSDOCW-2[no-code]: the readme says so covers: RQDOCS-1')" "Write the docs."
 assert_eq "[E1] dropping an id of the last passing design: unusable" "unusable" "$OUTCOME"
-assert_contains "[E1] ...the finding names it" "$FINDINGS" "DOCW-2 was in the last list"
-DRAFT="$(_design 'DOCW-1[no-code]: the docs say so covers: DOCS-1' 'REMOVED: DOCW-2 — the readme is out of scope')"
-_run "$(_design 'DOCW-1[no-code]: the docs say so covers: DOCS-1' 'DOCW-2[no-code]: the readme says so covers: DOCS-1')" "Write the docs."
+assert_contains "[E1] ...the finding names it" "$FINDINGS" "DSDOCW-2 was in the last list"
+DRAFT="$(_design 'DSDOCW-1[no-code]: the docs say so covers: RQDOCS-1' 'REMOVED: DSDOCW-2 — the readme is out of scope')"
+_run "$(_design 'DSDOCW-1[no-code]: the docs say so covers: RQDOCS-1' 'DSDOCW-2[no-code]: the readme says so covers: RQDOCS-1')" "Write the docs."
 assert_eq "[E1] dropped with a REMOVED line, it passes" "pass" "$OUTCOME"
 
 # ── E2 ───────────────────────────────────────────────────────────────────────
-DRAFT="$(_design 'NOTE-1[no-code]: the docs say so covers: DOCS-1')"
-ISSUE_IDS='["NOTE-1"]' _run "" "Write the docs. NOTE-1 in the tracker says how."
+DRAFT="$(_design 'DSNOTE-1[no-code]: the docs say so covers: RQDOCS-1')"
+ISSUE_IDS='["DSNOTE-1"]' _run "" "Write the docs. DSNOTE-1 in the tracker says how."
 assert_eq "[E2] a SPEC id the issue writes: unusable" "unusable" "$OUTCOME"
-assert_contains "[E2] ...the finding says so" "$FINDINGS" "NOTE-1 is written in the issue itself"
+assert_contains "[E2] ...the finding says so" "$FINDINGS" "DSNOTE-1 is written in the issue itself"
 
 # ── E3 / E4 ──────────────────────────────────────────────────────────────────
 _p="$(tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/design-prompt" 2>/dev/null)"
@@ -91,22 +91,22 @@ assert_contains "[E3] ...that a new id takes the number after its code's highest
 assert_contains "[E3] ...that [done] evidence quotes the file's text" "$_p" 'scripts/x.sh:"'
 _line=0; [[ "$_p" == *"a file and line"* || "$_p" == *"scripts/x.sh:42"* ]] && _line=1
 assert_eq "[E3] ...and never offers a line number" "0" "$_line"
-DRAFT="$(_design 'DOCW-1[no-code]: the docs say so covers: DOCS-1')"
+DRAFT="$(_design 'DSDOCW-1[no-code]: the docs say so covers: RQDOCS-1')"
 _run "" "Write the docs."
 _j="$(tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/judge-prompt" 2>/dev/null)"
-assert_contains "[E4] the coverage call ran" "$_j" "DOCS-1"
+assert_contains "[E4] the coverage call ran" "$_j" "RQDOCS-1"
 _num=0; [[ "$_j" == *"numbered R-1"* || "$_j" == *"(R-2:"* ]] && _num=1
 assert_eq "[E4] ...and is not told the ids are R-1, R-2" "0" "$_num"
 
 # ── E5 ───────────────────────────────────────────────────────────────────────
 assert_contains "[E5] design is told it may answer its own check's finding" "$_p" \
     "ANSWER design finding <n>: nothing to do — <why>"
-REPLY=$'Wrote the design.\nANSWER design finding 1: nothing to do — DOCW-1 is the whole of DOCS-1'
+REPLY=$'Wrote the design.\nANSWER design finding 1: nothing to do — DSDOCW-1 is the whole of RQDOCS-1'
 _run "" "Write the docs."
 assert_eq "[E5] the answer is kept in design's result" \
-    "design finding 1: nothing to do — DOCW-1 is the whole of DOCS-1" \
+    "design finding 1: nothing to do — DSDOCW-1 is the whole of RQDOCS-1" \
     "$(jq -r '.data.answers[0] // ""' "$_F_ART/design-verdict.json" 2>/dev/null)"
-assert_contains "[E5] ...and shown to the check" "$(cat "$TEST_TEMP_DIR/judge-prompt" 2>/dev/null)" "DOCW-1 is the whole of DOCS-1"
+assert_contains "[E5] ...and shown to the check" "$(cat "$TEST_TEMP_DIR/judge-prompt" 2>/dev/null)" "DSDOCW-1 is the whole of RQDOCS-1"
 REPLY=""
 
 cleanup_test_env

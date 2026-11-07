@@ -70,7 +70,7 @@ _make_design_body_with_acceptance() {
     local tf1="${1:-tests/unit/stub-a-test.sh}"
     local tf2="${2:-tests/unit/stub-b-test.sh}"
     local _bt='```'
-    printf '# Design\n\n## Decision\nImplement per plan.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nWORK-1[no-code]: foo works correctly\nWORK-2[no-code]: bar does its thing\nWIRING: none\nTESTFILES:\n%s\n%s\n%s\n' \
+    printf '# Design\n\n## Decision\nImplement per plan.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nDSWORK-1[no-code]: foo works correctly\nDSWORK-2[no-code]: bar does its thing\nWIRING: none\nTESTFILES:\n%s\n%s\n%s\n' \
         "$_bt" "$_bt" "$_bt" "$tf1" "$tf2" "$_bt"
 }
 
@@ -143,7 +143,7 @@ unset MOCK_DESIGN_WRITE_PATH MOCK_DESIGN_BODY
 # ─── T4: extract_acceptance_block returns 0 on a well-formed design.md ───────
 work_file="$TEST_TEMP_DIR/tc4_design.md"
 _bt='```'
-printf '# Design\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nWORK-1[no-code]: it works\nWIRING: none\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' \
+printf '# Design\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nDSWORK-1[no-code]: it works\nWIRING: none\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' \
     "$_bt" "$_bt" "$_bt" "$_bt" > "$work_file"
 set +e
 extract_acceptance_block "$work_file" >/dev/null 2>&1
@@ -155,17 +155,17 @@ assert_eq "T4: extract_acceptance_block returns 0 on well-formed design.md" "0" 
 # Design is told, in plain words, what each status means and how to name the
 # evidence for an already-done requirement. The old tags are not offered.
 _t6_prompt="$(cat "$TEST_TEMP_DIR/t1/state/artifacts/design-prompt.txt" 2>/dev/null)"
-assert_contains "T6: the prompt offers <id>[code]: for work that needs code" "$_t6_prompt" 'LOOP-1[code]:` — it needs code'
+assert_contains "T6: the prompt offers <id>[code]: for work that needs code" "$_t6_prompt" 'DSLOOP-1[code]:` — it needs code'
 assert_contains "T6: [code] keeps the fail-before, pass-after rule" "$_t6_prompt" \
     "Its test must fail on the code as it is before your change, and pass after it"
 assert_contains "T6: the prompt offers <id>[no-code]: for work that changes no behaviour" "$_t6_prompt" \
-    'LOOP-2[no-code]:` — it needs work that changes no behaviour'
+    'DSLOOP-2[no-code]:` — it needs work that changes no behaviour'
 assert_contains "T6: [no-code] need not fail before" "$_t6_prompt" "it need not fail before"
 assert_contains "T6: the prompt offers <id>[done]: for what the code from before the change already does" "$_t6_prompt" \
-    'GARD-1[done]:` — the code from before your change already does it'
+    'DSGARD-1[done]:` — the code from before your change already does it'
 assert_contains "T6: the evidence syntax is shown" "$_t6_prompt" "after \` evidence: \`"
 assert_contains "T6: the example block carries a [done] line with evidence" "$_t6_prompt" \
-    'GARD-1[done]: <something the code already does> evidence: scripts/x.sh:"run_guard()"'
+    'DSGARD-1[done]: <something the code already does> evidence: scripts/x.sh:"run_guard()"'
 # #2305 (ADR-069 §9): design-gate rejects a [code] requirement that describes
 # file contents, so the prompt says so before design writes one.
 assert_contains "T6: a [code] requirement must describe behaviour, not file contents (#2305)" "$_t6_prompt" \

@@ -48,7 +48,7 @@ _REQ="$ARTIFACT_DIR/requirements.json"
 # covers how); here, its two requirements are numbered by the engine.
 route_to_model() {
     if [[ "$2" == *"check a list of requirements"* ]]; then printf 'MISSING: none\n'
-    else printf 'REQUIREMENT: LIST-1 Test: intake writes the list. Fails on main.\nREQUIREMENT: LBL-1 the SPEC-2 label in tests/x-test.sh still passes\n'; fi
+    else printf 'REQUIREMENT: RQLIST-1 Test: intake writes the list. Fails on main.\nREQUIREMENT: RQLBL-1 the SPEC-2 label in tests/x-test.sh still passes\n'; fi
 }
 _set_gh_mock "One list of requirements" "1. Test: intake writes the list. Fails on main.
 2. the SPEC-2 label in tests/x-test.sh still passes" 0
@@ -59,7 +59,7 @@ intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
 assert_eq "[Q1] intake passes on an issue" "pass" \
     "$(jq -r '.outcome' "$ARTIFACT_DIR/intake-result.json" 2>/dev/null || echo MISSING)"
 assert_eq "[Q1] requirements.json carries schema_version 1" "1" "$(jq -r '.schema_version' "$_REQ" 2>/dev/null || echo MISSING)"
-assert_eq "[Q1] ids are the ones each line gives (#2462), in order" "LIST-1 LBL-1" \
+assert_eq "[Q1] ids are the ones each line gives (#2462), in order" "RQLIST-1 RQLBL-1" \
     "$(jq -r '[.requirements[].id] | join(" ")' "$_REQ" 2>/dev/null || echo MISSING)"
 assert_eq "[Q1] an identifier in a requirement's words is text, never an id" \
     "the SPEC-2 label in tests/x-test.sh still passes" \
@@ -98,19 +98,19 @@ print_test_section "Q2: covers is split from the requirement's words"
 source "$REPO_ROOT/scripts/lib/acceptance-block.sh"
 _DM="$TEST_TEMP_DIR/q2-design.md"
 printf '%s\n' '# Design' '```acceptance' \
-    'WORK-1[code]: the gate fails an uncovered requirement covers: R-1 R-3' '  When: it runs' '  Then: it is done' \
-    'WORK-2[done]: the loader reads the file covers: R-2 evidence: scripts/x.sh:3' '  When: it runs' '  Then: it is done' \
-    'WORK-3[done]: the loader reads it evidence: scripts/x.sh:4 covers: R-4' '  When: it runs' '  Then: it is done' \
-    'WORK-4[no-code]: the docs say so' \
-    'TESTFILES:' 'WORK-1: tests/t.sh' 'WIRING: none' '```' > "$_DM"
-assert_eq "[Q2] the text stops before covers" "the gate fails an uncovered requirement" "$(acceptance_spec_text "$_DM" WORK-1)"
-assert_eq "[Q2] acceptance_spec_covers lists the ids" $'R-1\nR-3' "$(acceptance_spec_covers "$_DM" WORK-1)"
-assert_eq "[Q2] covers before evidence: text" "the loader reads the file" "$(acceptance_spec_text "$_DM" WORK-2)"
-assert_eq "[Q2] covers before evidence: ids" "R-2" "$(acceptance_spec_covers "$_DM" WORK-2)"
-assert_eq "[Q2] covers before evidence: the evidence is still read" "scripts/x.sh:3" "$(acceptance_spec_evidence "$_DM" WORK-2)"
-assert_eq "[Q2] covers after evidence: the evidence stops before covers" "scripts/x.sh:4" "$(acceptance_spec_evidence "$_DM" WORK-3)"
-assert_eq "[Q2] covers after evidence: ids" "R-4" "$(acceptance_spec_covers "$_DM" WORK-3)"
-assert_eq "[Q2] no covers part: no ids" "" "$(acceptance_spec_covers "$_DM" WORK-4)"
+    'DSWORK-1[code]: the gate fails an uncovered requirement covers: R-1 R-3' '  When: it runs' '  Then: it is done' \
+    'DSWORK-2[done]: the loader reads the file covers: R-2 evidence: scripts/x.sh:3' '  When: it runs' '  Then: it is done' \
+    'DSWORK-3[done]: the loader reads it evidence: scripts/x.sh:4 covers: R-4' '  When: it runs' '  Then: it is done' \
+    'DSWORK-4[no-code]: the docs say so' \
+    'TESTFILES:' 'DSWORK-1: tests/t.sh' 'WIRING: none' '```' > "$_DM"
+assert_eq "[Q2] the text stops before covers" "the gate fails an uncovered requirement" "$(acceptance_spec_text "$_DM" DSWORK-1)"
+assert_eq "[Q2] acceptance_spec_covers lists the ids" $'R-1\nR-3' "$(acceptance_spec_covers "$_DM" DSWORK-1)"
+assert_eq "[Q2] covers before evidence: text" "the loader reads the file" "$(acceptance_spec_text "$_DM" DSWORK-2)"
+assert_eq "[Q2] covers before evidence: ids" "R-2" "$(acceptance_spec_covers "$_DM" DSWORK-2)"
+assert_eq "[Q2] covers before evidence: the evidence is still read" "scripts/x.sh:3" "$(acceptance_spec_evidence "$_DM" DSWORK-2)"
+assert_eq "[Q2] covers after evidence: the evidence stops before covers" "scripts/x.sh:4" "$(acceptance_spec_evidence "$_DM" DSWORK-3)"
+assert_eq "[Q2] covers after evidence: ids" "R-4" "$(acceptance_spec_covers "$_DM" DSWORK-3)"
+assert_eq "[Q2] no covers part: no ids" "" "$(acceptance_spec_covers "$_DM" DSWORK-4)"
 
 # ─── Q3: design's checks (#2369; were the design-gate stage) ─────────────────
 print_test_section "Q3: design's checks fail a requirement no SPEC covers"
@@ -122,9 +122,9 @@ export ZBUILD_REPO_ROOT="$_ROOT"
 _q3() {   # _q3 <name> <covers-for-WORK-1> <covers-for-WORK-2> [no-req] [R-3 text as JSON]
     _S="$TEST_TEMP_DIR/q3-$1"; _A="$_S/artifacts"; mkdir -p "$_A"
     printf '%s\n' '# Design' '```scope' 'scripts/x.sh' '```' '```acceptance' \
-        "WORK-1[code]: the gate fails on a missing file$2" "  When: it runs" "  Then: it is done" \
-        "WORK-2[done]: the loader reads the file$3 evidence: scripts/x.sh:\"two\"" "  When: it runs" "  Then: it is done" \
-        'TESTFILES:' 'WORK-1: tests/t.sh' 'WIRING: none' '```' > "$_A/design.md"
+        "DSWORK-1[code]: the gate fails on a missing file$2" "  When: it runs" "  Then: it is done" \
+        "DSWORK-2[done]: the loader reads the file$3 evidence: scripts/x.sh:\"two\"" "  When: it runs" "  Then: it is done" \
+        'TESTFILES:' 'DSWORK-1: tests/t.sh' 'WIRING: none' '```' > "$_A/design.md"
     [[ "${4:-}" == "no-req" ]] || printf '%s\n' '{"schema_version":1,"source":"checkboxes","requirements":[' \
         '{"id":"R-1","text":"fail on a missing file"},{"id":"R-2","text":"read the file"},' \
         "{\"id\":\"R-3\",\"text\":\"${5:-say which file is missing}\"}]}" > "$_A/requirements.json"
@@ -164,7 +164,7 @@ source "$REPO_ROOT/plugins/agent/design/plugin.sh"
 route_to_model() {
     local _bt='```' _t; _t="$(zb_test_prompt_write_path "$2")"
     if [[ -n "$_t" ]]; then
-        printf '# Design\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nWORK-1[code]: x covers: R-1 R-2\n  When: it runs\n  Then: it is done\nTESTFILES:\nWORK-1: tests/t.sh\nWIRING: none\n%s\n' \
+        printf '# Design\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nDSWORK-1[code]: x covers: R-1 R-2\n  When: it runs\n  Then: it is done\nTESTFILES:\nDSWORK-1: tests/t.sh\nWIRING: none\n%s\n' \
             "$_bt" "$_bt" "$_bt" "$_bt" > "$_t"
         return 0
     fi
@@ -190,7 +190,7 @@ print_test_section "Q5: design's coverage call judges the list"
 _PROMPT="$TEST_TEMP_DIR/prompt.txt"
 route_to_model() { printf '%s' "$2" > "$_PROMPT"; printf 'VERDICT: covered\nREASON: ok\n'; return 0; }
 _S5="$TEST_TEMP_DIR/q5"; mkdir -p "$_S5/artifacts"
-printf '%s\n' '# Design' '```acceptance' 'WORK-1[code]: the gate fails covers: R-1' '  When: it runs' '  Then: it is done' 'TESTFILES:' 'WORK-1: tests/t.sh' 'WIRING: none' '```' > "$_S5/artifacts/design.md"
+printf '%s\n' '# Design' '```acceptance' 'DSWORK-1[code]: the gate fails covers: R-1' '  When: it runs' '  Then: it is done' 'TESTFILES:' 'DSWORK-1: tests/t.sh' 'WIRING: none' '```' > "$_S5/artifacts/design.md"
 printf '%s\n' '{"schema_version":1,"source":"checkboxes","requirements":[{"id":"R-1","text":"the gate fails on a missing file"},{"id":"R-2","text":"the SPEC-2 label still passes"}]}' > "$_S5/artifacts/requirements.json"
 : > "$_PROMPT"
 _design_coverage "$_S5/artifacts/design.md" "$(acceptance_requirements_list "$_S5/artifacts/requirements.json")" T2 >/dev/null 2>&1

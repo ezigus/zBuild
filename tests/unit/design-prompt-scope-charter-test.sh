@@ -106,6 +106,15 @@ fi
 tmo="$(awk '/^design:/{f=1;next} /^[a-z]/{f=0} f && /^    timeout_s:/{print $2; exit}' "$REPO_ROOT/config/templates/simple.yaml")"
 assert_eq "T6: design timeout_s raised to 1200" "1200" "${tmo:-unset}"
 
+# T9 (#2482, ADR-001): design is told its id prefix, from its manifest, and
+# every example id in its prompt has it — an example without it is one the
+# check refuses.
+_px9="$(awk '/^id_prefix:/{print $2}' "$REPO_ROOT/plugins/agent/design/manifest.yaml")"
+assert_contains "[T9] the prompt says every SPEC id starts with design's prefix" "$(tr -s '[:space:]' ' ' < "$PROMPT")" "starts with ${_px9:-<none>}"
+assert_contains "[T9] ...and its examples have it" "$(cat "$PROMPT")" "${_px9:-<none>}LOOP-1[code]:"
+_t9_bare="$(grep -oE '(^|[^A-Z0-9])(LOOP|GARD)-[0-9]+' "$PROMPT" | head -3 || true)"
+assert_eq "[T9] ...no example id without it" "" "$_t9_bare"
+
 # T8 (#2482, ADR-069 §2): design is shown the code from before the change —
 # the copy of the commit the branch started from, the one its check reads a
 # [done] claim in. On #1805 run 42293991602 design had only the working copy,

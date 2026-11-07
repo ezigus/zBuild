@@ -1482,7 +1482,7 @@ zb_test_coverage_ok() {
         esac
         if [[ "$sec" == r && "$l" =~ ^-[[:space:]]+([A-Za-z0-9]+-[0-9]+): ]]; then
             printf '%s: covered\n' "${BASH_REMATCH[1]}"
-        elif [[ "$sec" == a && "$l" =~ ^([A-Z][A-Z0-9][A-Z0-9][A-Z0-9]?-[0-9]+)(\[[a-z-]+\])?: ]]; then
+        elif [[ "$sec" == a && "$l" =~ ^([A-Z][A-Z0-9][A-Z0-9][A-Z0-9]?[A-Z0-9]?[A-Z0-9]?-[0-9]+)(\[[a-z-]+\])?: ]]; then
             printf '%s: ok\n' "${BASH_REMATCH[1]}"
         fi
     done <<< "$1"
