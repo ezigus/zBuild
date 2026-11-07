@@ -1,8 +1,17 @@
 # Design notes: #1805 — resume and --from-stage trust-and-rehydrate
 
-## Status: Forty-second pass — DSDSPK-1 Then clause: removed internal code path reference
+## Status: Forty-third pass — DSCYCL-1 widened to cover all 4 RQTEST-1 test files
 
-### Changes this pass (forty-first)
+### Changes this pass (forty-third)
+
+**Design finding 1** (RQTEST-1 not fully covered by DSCYCL-1):
+- DSCYCL-1 previously only covered resume-rehydrate-test.sh and from-stage-rehydrate-test.sh
+- RQTEST-1 says "Tests for RQRESU-4, RQLOOP-1, RQFROM-2, RQFROM-3, and RQPATH-1 must use a cycle"
+- RQLOOP-1 is tested by resume-loop-state-test.sh; RQPATH-1 by resume-entry-points-test.sh — both were missing
+- Fix: DSCYCL-1 text updated to name all 4 test files; TESTFILES for DSCYCL-1 extended to include resume-loop-state-test.sh and resume-entry-points-test.sh
+- Update steps for resume-loop-state-test.sh and resume-entry-points-test.sh each gain an [#1805/DSCYCL-1] assertion item
+
+### Changes this pass (forty-second)
 
 **issue-acceptance finding 1** (RQPATH-1 / DSENTR-2):
 - The DSENTR-2 test sets `ZBUILD_STATE_FILE="$P2_STATE_FILE"` at line 219 of resume-entry-points-test.sh
