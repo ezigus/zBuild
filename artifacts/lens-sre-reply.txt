@@ -1,44 +1,24 @@
 --- reply 1 ---
 {
-  "score": 6,
+  "score": 8,
   "findings": [
     {
-      "file": "core/pipeline/runner.sh",
-      "category": "failure mode / guard",
-      "severity": "medium",
-      "line": 2256,
-      "message": "_ZBUILD_RESUME_ACTIVE is exported as `true` in the resume path but is never explicitly cleared (set to false or unset) in the fresh-run path; a subprocess runner that inherits the variable from a parent in resume mode will have every cycle member in the first cycle emit a spurious stage.start event, violating RQGUAR-1.",
-      "quote": "    if ! $resume_mode; then\n        # Sanitize ZBUILD_RUN_ID: strip characters unsafe in filenames",
-      "introduced": true,
-      "fix": "code"
-    },
-    {
-      "file": "core/pipeline/runner.sh",
-      "category": "failure mode / observability",
-      "severity": "medium",
-      "line": 3502,
-      "message": "Complete cycle:* dispatch units are silently skipped on resume without a stale-artifact check; the stage:* arm emits stage.verdict.stale_artifact and exits 1 when the primary artifact is absent after rehydration, but the cycle:* arm just logs info + continue — DSRHYD-2/SPEC-2 fail-closed behaviour is not enforced for complete cycles.",
-      "quote": "                        if [[ \"$_du_cyc_status\" == \"complete\" ]]; then\n                            info \"Skipping already-complete cycle: $_cyc_id\"\n                            continue\n                        fi",
-      "introduced": true,
-      "fix": "code"
-    },
-    {
-      "file": "core/pipeline/runner.sh",
+      "file": "core/pipeline/cycle-orchestrator.sh",
       "category": "observability",
-      "severity": "low",
-      "line": 1712,
-      "message": "When _artifact_persist_restore fails inside _runner_resume_rehydrate, only a warn message is written to stderr; no machine-readable event fires, so the event stream has a silent gap between 'restore failed' and the later stage.verdict.stale_artifact event emitted by the dispatch loop.",
-      "quote": "    _artifact_persist_restore \"$_rr_issue\" \"$_rr_staging\" || {\n        warn \"resume-rehydrate: git state restore failed for issue=$_rr_issue — artifacts not restored; dispatch loop will exit 1 for any missing primary artifact\"\n        rm -rf \"${_rr_staging:?}\" 2>/dev/null || true\n        return 0\n    }",
+      "severity": "medium",
+      "line": 2478,
+      "message": "Silent failure in _cycle_state_write_iter_start: if the locked state write fails (disk full, lock timeout), the state file keeps the stale current_iter from the previous completed iteration, a subsequent resume starts at the wrong iteration, and no warn/log message surfaces why.",
+      "quote": "_cycle_state_write_iter_start \"$state_file\" \"$cycle_id\" \"$iter\" || true",
       "introduced": true,
       "fix": "code"
     },
     {
       "file": "core/pipeline/runner.sh",
-      "category": "efficiency / blast radius",
+      "category": "performance",
       "severity": "low",
-      "line": 3010,
-      "message": "When --resume --from-stage <s> is used together, _runner_resume_rehydrate (line 2921) performs a full git-state restore and put_back, then _runner_from_stage_preflight (line 3011) performs a second full git-state restore and put_back; two git archive | tar operations against the same ref with the same destination, doubling I/O and git-work on large state branches.",
-      "quote": "    if [[ -n \"$from_stage\" ]]; then\n        if ! _runner_from_stage_preflight \"$_runner_issue\" \"active_stages\" \"$from_stage\" \"$state_dir\" \"$plugins_root\"; then\n            return 1\n        fi\n    fi",
+      "line": 2946,
+      "message": "When both --resume and --from-stage are active, _runner_resume_rehydrate (line 2946) and _runner_from_stage_preflight (line 3036) each call _artifact_persist_restore independently, performing two redundant git checkout operations against the state branch; no-clobber prevents corruption but the double I/O is unnecessary.",
+      "quote": "_runner_resume_rehydrate \"$_runner_issue\" \"$state_dir\"",
       "introduced": true,
       "fix": "code"
     }

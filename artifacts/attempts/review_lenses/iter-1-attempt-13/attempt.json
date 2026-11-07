@@ -1,0 +1,18 @@
+{
+  "stage": "review_lenses",
+  "cycle_iter": 1,
+  "attempt": 13,
+  "rc": "0",
+  "generated_at": "2026-11-07T13:57:19Z",
+  "files": 5,
+  "outputs": {
+    "lens-performance.json": "changed",
+    "lens-performance-summary.md": "changed",
+    "lens-performance-code-result.json": "changed",
+    "lens-performance-design-result.json": "unchanged",
+    "lens-performance-reply.txt": "changed",
+    "__notes__": "absent",
+    "__cutoff__": "absent"
+  },
+  "progress": true
+}
