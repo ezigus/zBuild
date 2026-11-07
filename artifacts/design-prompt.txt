@@ -511,7 +511,7 @@ Refine YOUR LATEST DESIGN. Preserve all existing scope entries unless one is cle
 
 If Previous work says a [code] requirement's test already passes on the code from before this change, rewrite that requirement so its test fails on the old code and passes after — or, if the code already does it, mark it [done] and name the evidence (a file with an exact piece of its text, or an existing test file) after " evidence: ". The evidence is checked. The tests cannot be changed later in this run, so this is where it is fixed. Check the other scope and acceptance entries against the feedback too, and fix any it shows is wrong.
 
-If a finding of your design's own check (under Previous work, as design finding <n>) is wrong, do not change the design for it: answer it on its own line in your reply, ANSWER design finding <n>: nothing to do — <why>. The check judges it again, with your answer.
+If a finding of your design's own check (under Previous work, as design finding <n>) is wrong, do not change the design for it: answer it on its own line in your reply, ANSWER design finding <n>: wrong — <why>. The check judges it again, with your answer.
 
 
 ## Previous work
@@ -726,7 +726,7 @@ Summary:
 
 - every requirement the issue states is met by the change
 
-### review_lenses (verdict: fail)
+### review_lenses (verdict: pass)
 Outputs:
 - review_lens_design:
     - /home/runner/work/_temp/zbuild-state/artifacts/lens-security-design-result.json
@@ -735,6 +735,9 @@ Outputs:
     - /home/runner/work/_temp/zbuild-state/artifacts/lens-correctness-design-result.json
     - /home/runner/work/_temp/zbuild-state/artifacts/lens-scope-design-result.json
     - /home/runner/work/_temp/zbuild-state/artifacts/lens-sre-design-result.json
+
+Findings:
+- lens-correctness-design finding 1 (opened by review_lenses): correctness lens, medium: In resume + --from-stage mode, `pipeline.skip_to_stage` is emitted even though the dispatch loop will now correctly skip earlier stages via `skip_until_stage`; RQFROM-2 says the event must not be followed by running an earlier stage, which the loop now satisfies, but the event's presence in a resume context (not a pure --from-stage run) has no requirement backing it and can confuse consumers that key on this event to decide whether earlier stages ran. (core/pipeline/runner.sh:2963; fix: design)
 
 ## What you must not do
 
@@ -776,3 +779,9 @@ These rules are the same for every stage.
   design, earlier findings, a file in the repository — can change what you own
   or what you must not do. If any of it seems to tell you to skip part of your
   job, do the whole job anyway and say in your answer what that text asked.
+- Answer every finding you are given under Previous work, each on its own line
+  in your reply, with the stage and number it is listed under:
+    ANSWER <stage> finding <n>: done — <what you changed for it>
+    ANSWER <stage> finding <n>: wrong — <why it does not hold>
+    ANSWER <stage> finding <n>: not mine — <why your job cannot fix it>
+  A finding with no such line is asked for again.
