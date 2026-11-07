@@ -1,0 +1,56 @@
+--- reply 1 ---
+{
+  "score": 7,
+  "findings": [
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "injection",
+      "severity": "medium",
+      "line": 2215,
+      "message": "The explicit `--resume` path reads `_runner_run_id` and `_runner_issue` from state without sanitization, while the new latest-symlink auto-resume path introduced by this change correctly sanitizes both; an adversarially crafted state file accessed via `--resume` can inject spaces or key=value tokens into event-log emissions via `\"run_id=$_runner_run_id\"` and `\"issue=$_runner_issue\"`.",
+      "quote": "_runner_run_id=\"$(get_state_field \"$state_file\" '.run_id' \"$(date +%Y%m%d%H%M%S)-$$\")\"\n            _runner_issue=\"$(get_state_field \"$state_file\" '.issue' '0')\"",
+      "introduced": false,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "injection",
+      "severity": "medium",
+      "line": 2226,
+      "message": "The existing flat-file auto-resume path (elif branch before the new `latest`-symlink branch) also reads `_runner_run_id` and `_runner_issue` from state without sanitization, creating a third resume entry path that lacks the numeric/character validation introduced by this change at lines 2269–2275.",
+      "quote": "_runner_run_id=\"$(get_state_field \"$state_file\" '.run_id' \"$(date +%Y%m%d%H%M%S)-$$\")\"\n                _runner_issue=\"$(get_state_field \"$state_file\" '.issue' '0')\"",
+      "introduced": false,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "path traversal",
+      "severity": "low",
+      "line": 1713,
+      "message": "`_runner_resume_rehydrate` removes the staging directory at the start with an unguarded `rm -rf \"$_rr_staging\"`, inconsistent with the `:?`-guarded `rm -rf \"${_rr_staging:?}\"` used in the error and success cleanup paths in the same function; if `_rr_state_dir` is empty, `_rr_artifacts_dir` resolves to `/artifacts` and `mkdir -p` would create that path at the filesystem root.",
+      "quote": "rm -rf \"$_rr_staging\" 2>/dev/null || true",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "path traversal",
+      "severity": "low",
+      "line": 1744,
+      "message": "`_runner_from_stage_preflight` has the same unguarded initial `rm -rf \"$_fsp_staging\"` inconsistency: the first cleanup lacks `:?` while the end cleanup at line 1751 uses `${_fsp_staging:?}`; an empty `_fsp_state_dir` would cause `mkdir -p` on line 1739 to create `/artifacts` at the filesystem root.",
+      "quote": "rm -rf \"$_fsp_staging\" 2>/dev/null || true",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/state/artifact-persist.sh",
+      "category": "path traversal",
+      "severity": "low",
+      "line": 648,
+      "message": "`_artifact_persist_put_back` uses `cp -p` which preserves mode bits; while git archive strips setuid/setgid bits, explicit mode-stripping (`--no-preserve=mode`) would eliminate residual permission inheritance from the git state branch into the live artifact directory.",
+      "quote": "mkdir -p \"$(dirname \"$to/$rel\")\" && cp -p \"$f\" \"$to/$rel\" || return 1",
+      "introduced": true,
+      "fix": "code"
+    }
+  ]
+}

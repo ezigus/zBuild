@@ -3,42 +3,42 @@
   "score": 7,
   "findings": [
     {
-      "file": "core/pipeline/cycle-orchestrator.sh",
+      "file": "core/pipeline/runner.sh",
       "category": "injection",
       "severity": "medium",
-      "line": 2401,
-      "message": "cycle_id is interpolated directly into the jq filter string passed to get_state_field, which uses `jq -r \"$jq_path // \\\"$default\\\"\"` — if a template cycle ID contains a double-quote or jq metacharacter, the filter string is broken and arbitrary jq code executes.",
-      "quote": "_persisted_iter=\"$(get_state_field \"$state_file\" \\\n            \".cycle_iterations[\\\"$cycle_id\\\"].current_iter\" 0 2>/dev/null || echo 0)\"",
-      "introduced": true,
+      "line": 2215,
+      "message": "The explicit `--resume` path reads `_runner_run_id` and `_runner_issue` from state without sanitization, while the new latest-symlink auto-resume path introduced by this change correctly sanitizes both; an adversarially crafted state file accessed via `--resume` can inject spaces or key=value tokens into event-log emissions via `\"run_id=$_runner_run_id\"` and `\"issue=$_runner_issue\"`.",
+      "quote": "_runner_run_id=\"$(get_state_field \"$state_file\" '.run_id' \"$(date +%Y%m%d%H%M%S)-$$\")\"\n            _runner_issue=\"$(get_state_field \"$state_file\" '.issue' '0')\"",
+      "introduced": false,
       "fix": "code"
     },
     {
       "file": "core/pipeline/runner.sh",
       "category": "injection",
       "severity": "medium",
-      "line": 3529,
-      "message": "_cyc_id (from _TPL_DISPATCH_UNITS, template-sourced) is interpolated into the jq path string passed to get_state_field without escaping; a crafted cycle ID containing `\"` breaks the jq filter and can inject additional jq code read against pipeline-state.json.",
-      "quote": "_du_cyc_status=\"$(get_state_field \"$state_file\" \\\n                            \".stage_statuses[\\\"$_cyc_id\\\"]\" '' 2>/dev/null || true)\"",
+      "line": 2226,
+      "message": "The existing flat-file auto-resume path (elif branch before the new `latest`-symlink branch) also reads `_runner_run_id` and `_runner_issue` from state without sanitization, creating a third resume entry path that lacks the numeric/character validation introduced by this change at lines 2269–2275.",
+      "quote": "_runner_run_id=\"$(get_state_field \"$state_file\" '.run_id' \"$(date +%Y%m%d%H%M%S)-$$\")\"\n                _runner_issue=\"$(get_state_field \"$state_file\" '.issue' '0')\"",
+      "introduced": false,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "path traversal",
+      "severity": "low",
+      "line": 1713,
+      "message": "`_runner_resume_rehydrate` removes the staging directory at the start with an unguarded `rm -rf \"$_rr_staging\"`, inconsistent with the `:?`-guarded `rm -rf \"${_rr_staging:?}\"` used in the error and success cleanup paths in the same function; if `_rr_state_dir` is empty, `_rr_artifacts_dir` resolves to `/artifacts` and `mkdir -p` would create that path at the filesystem root.",
+      "quote": "rm -rf \"$_rr_staging\" 2>/dev/null || true",
       "introduced": true,
       "fix": "code"
     },
     {
       "file": "core/pipeline/runner.sh",
-      "category": "injection",
-      "severity": "medium",
-      "line": 3846,
-      "message": "_ust (the stage name from _TPL_DISPATCH_UNITS, template-sourced) is interpolated into the jq filter string passed to get_state_field for the new stage:* skip guard; same jq-injection vector as the cycle:* arm above.",
-      "quote": "_du_stage_status=\"$(get_state_field \"$state_file\" \\\n                            \".stage_statuses[\\\"$_ust\\\"]\" '' 2>/dev/null || true)\"",
-      "introduced": true,
-      "fix": "code"
-    },
-    {
-      "file": "core/pipeline/runner.sh",
-      "category": "injection",
-      "severity": "medium",
-      "line": 2264,
-      "message": "In the new auto-resume-via-latest-symlink path, _runner_issue is read from the state file without numeric validation, while _runner_run_id in the same block is sanitised with //[^a-zA-Z0-9_.-]//; a crafted state file with a non-numeric issue value propagates an unsanitised string into event-log key=value pairs and git branch-name construction.",
-      "quote": "_runner_issue=\"$(get_state_field \"$state_file\" '.issue' '0')\"",
+      "category": "path traversal",
+      "severity": "low",
+      "line": 1744,
+      "message": "`_runner_from_stage_preflight` has the same unguarded initial `rm -rf \"$_fsp_staging\"` inconsistency: the first cleanup lacks `:?` while the end cleanup at line 1751 uses `${_fsp_staging:?}`; an empty `_fsp_state_dir` would cause `mkdir -p` on line 1739 to create `/artifacts` at the filesystem root.",
+      "quote": "rm -rf \"$_fsp_staging\" 2>/dev/null || true",
       "introduced": true,
       "fix": "code"
     },
@@ -46,9 +46,9 @@
       "file": "core/state/artifact-persist.sh",
       "category": "path traversal",
       "severity": "low",
-      "line": 646,
-      "message": "The path-traversal guard in _artifact_persist_put_back checks for `..` only when it appears at the start of rel or is followed by `/`; a path component ending in `..` (e.g. `foo/..`) passes the guard, resolving to the parent directory on cp.",
-      "quote": "[[ \"$rel\" == /* || \"$rel\" == *../* || \"$rel\" == ..* ]] && continue",
+      "line": 648,
+      "message": "`_artifact_persist_put_back` uses `cp -p` which preserves mode bits; while git archive strips setuid/setgid bits, explicit mode-stripping (`--no-preserve=mode`) would eliminate residual permission inheritance from the git state branch into the live artifact directory.",
+      "quote": "mkdir -p \"$(dirname \"$to/$rel\")\" && cp -p \"$f\" \"$to/$rel\" || return 1",
       "introduced": true,
       "fix": "code"
     }

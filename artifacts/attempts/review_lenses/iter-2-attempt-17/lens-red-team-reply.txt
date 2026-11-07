@@ -1,0 +1,46 @@
+--- reply 1 ---
+{
+  "score": 4,
+  "findings": [
+    {
+      "file": "core/pipeline/cycle-orchestrator.sh",
+      "category": "logic",
+      "severity": "high",
+      "line": 2396,
+      "message": "`--from-stage <cycle>` with pre-existing `cycle_iterations[cycle].current_iter > 0` causes the cycle to start at the persisted iteration rather than iter=1, because `_ZBUILD_RESUME_ACTIVE=true` is exported for every resume path including `--from-stage`, and the orchestrator unconditionally reads `current_iter` whenever the flag is true; DSFSTG-1 says `stage.start` is emitted for \"<s>'s first cycle member\" (implying iter=1 member=0); the from-stage test fixture writes no `cycle_iterations` key, so `_persisted_iter` defaults to 0 and the bug is never triggered.",
+      "quote": "if [[ \"${_ZBUILD_RESUME_ACTIVE:-false}\" == \"true\" ]]; then\n        _is_resume=true\n        local _persisted_iter\n        # Sanitize cycle_id to prevent jq injection via template-sourced cycle IDs.\n        local _safe_cycle_id=\"${cycle_id//[^a-zA-Z0-9_-]/}\"\n        _persisted_iter=\"$(get_state_field \"$state_file\" \\\n            \".cycle_iterations[\\\"$_safe_cycle_id\\\"].current_iter\" 0 2>/dev/null || echo 0)\"\n        [[ \"$_persisted_iter\" =~ ^[0-9]+$ ]] || _persisted_iter=0\n        # Consume the flag: nested cycles and subsequent re-entries start at 1.\n        _ZBUILD_RESUME_ACTIVE=false\n        # Start at the persisted iter (re-run the interrupted iteration); fall\n        # back to 1 when no iteration has been recorded yet.\n        _start_iter=$(( _persisted_iter > 0 ? _persisted_iter : 1 ))",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/cycle-orchestrator.sh",
+      "category": "logic",
+      "severity": "medium",
+      "line": 1468,
+      "message": "The DSCMBR-1 'skip complete member' path in `_cycle_iter_dispatch` does not verify the skipped member's primary artifact is present before emitting `stage.start` for the subsequent interrupted member; DSRHYD-2 requires exit 1 before any `stage.start` when a complete stage's artifact is absent after rehydration, but `stage.start` for the interrupted member (line 1489) fires without first checking whether each already-skipped member's artifact is on disk.",
+      "quote": "if [[ \"$_cmbr_status\" == \"complete\" ]]; then\n                # Add persisted verdict/status to blob so exit_when/abort_when/until\n                # predicates that reference this member can evaluate correctly.\n                local _cmbr_verdict\n                _cmbr_verdict=\"$(jq -r --arg s \"$s\" '.stage_verdicts[$s] // \"pass\"' \\\n                    \"$state_file\" 2>/dev/null || echo \"pass\")\"\n                local _cmbr_blob_entry _cmbr_new_blob\n                _cmbr_blob_entry=\"$(jq -cn --arg v \"$_cmbr_verdict\" --arg st \"$_cmbr_status\" \\\n                    '{verdict: $v, status: $st}')\"\n                _cmbr_new_blob=\"$(jq -c --arg s \"$s\" --argjson e \"$_cmbr_blob_entry\" \\\n                    '. + {($s): $e}' <<< \"$blob\" 2>/dev/null)\" && blob=\"$_cmbr_new_blob\"\n                continue",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "race condition",
+      "severity": "medium",
+      "line": 2242,
+      "message": "TOCTOU in the auto-resume `latest`-symlink block: `get_resume_recommendation(\"$state_dir/latest/pipeline-state.json\")` is called at line 2242 before the symlink target is validated against the state root; the escape check only runs inside the `auto_resume` branch at line 2256; an attacker who can write to the state directory and atomically replace `latest` between the `[[ -L ... ]]` test and the `readlink -f` call can cause `get_resume_recommendation` to read from a file outside the state root before the escape check fires.",
+      "quote": "elif ! $no_resume && [[ -z \"${ZBUILD_STATE_FILE:-}\" && -L \"$state_dir/latest\" ]] \\\n         && [[ -f \"$state_dir/latest/pipeline-state.json\" ]]; then\n        # Auto-resume via latest symlink (per-run layout, ADR-059 §1 / #1805 DSENTR-2):\n        # flat state file absent; follow latest to find the interrupted per-run state.\n        local _lr_recommendation\n        _lr_recommendation=\"$(get_resume_recommendation \"$state_dir/latest/pipeline-state.json\")\"",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "race condition",
+      "severity": "low",
+      "line": 1849,
+      "message": "Issue-discovery TOCTOU: the containment check at line 1843 resolves `$_ls_sd` via `readlink -f` and verifies the target is within the state root, but the `jq` read at line 1849 follows the original symlink `\"$_ls_sd/pipeline-state.json\"` rather than the resolved path; if the symlink is replaced between `readlink -f` (line 1843) and `jq` (line 1849), the read follows the new target regardless of containment.",
+      "quote": "            if [[ -n \"$_ls_issue_resolved\" && \\\n                  ( \"$_ls_issue_resolved\" == \"${_ls_issue_root%%/}/\"* || \\\n                    \"$_ls_issue_resolved\" == \"${_ls_issue_root%%/}\" ) ]]; then\n                local _ls_issue\n                _ls_issue=\"$(jq -r '.issue // \"\"' \"$_ls_sd/pipeline-state.json\" 2>/dev/null || true)\"",
+      "introduced": true,
+      "fix": "code"
+    }
+  ]
+}

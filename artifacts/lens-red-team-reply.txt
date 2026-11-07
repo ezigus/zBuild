@@ -1,78 +1,46 @@
 --- reply 1 ---
 {
-  "score": 5,
+  "score": 4,
   "findings": [
+    {
+      "file": "core/pipeline/cycle-orchestrator.sh",
+      "category": "logic",
+      "severity": "high",
+      "line": 2396,
+      "message": "`--from-stage <cycle>` with pre-existing `cycle_iterations[cycle].current_iter > 0` causes the cycle to start at the persisted iteration rather than iter=1, because `_ZBUILD_RESUME_ACTIVE=true` is exported for every resume path including `--from-stage`, and the orchestrator unconditionally reads `current_iter` whenever the flag is true; DSFSTG-1 says `stage.start` is emitted for \"<s>'s first cycle member\" (implying iter=1 member=0); the from-stage test fixture writes no `cycle_iterations` key, so `_persisted_iter` defaults to 0 and the bug is never triggered.",
+      "quote": "if [[ \"${_ZBUILD_RESUME_ACTIVE:-false}\" == \"true\" ]]; then\n        _is_resume=true\n        local _persisted_iter\n        # Sanitize cycle_id to prevent jq injection via template-sourced cycle IDs.\n        local _safe_cycle_id=\"${cycle_id//[^a-zA-Z0-9_-]/}\"\n        _persisted_iter=\"$(get_state_field \"$state_file\" \\\n            \".cycle_iterations[\\\"$_safe_cycle_id\\\"].current_iter\" 0 2>/dev/null || echo 0)\"\n        [[ \"$_persisted_iter\" =~ ^[0-9]+$ ]] || _persisted_iter=0\n        # Consume the flag: nested cycles and subsequent re-entries start at 1.\n        _ZBUILD_RESUME_ACTIVE=false\n        # Start at the persisted iter (re-run the interrupted iteration); fall\n        # back to 1 when no iteration has been recorded yet.\n        _start_iter=$(( _persisted_iter > 0 ? _persisted_iter : 1 ))",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/cycle-orchestrator.sh",
+      "category": "logic",
+      "severity": "medium",
+      "line": 1468,
+      "message": "The DSCMBR-1 'skip complete member' path in `_cycle_iter_dispatch` does not verify the skipped member's primary artifact is present before emitting `stage.start` for the subsequent interrupted member; DSRHYD-2 requires exit 1 before any `stage.start` when a complete stage's artifact is absent after rehydration, but `stage.start` for the interrupted member (line 1489) fires without first checking whether each already-skipped member's artifact is on disk.",
+      "quote": "if [[ \"$_cmbr_status\" == \"complete\" ]]; then\n                # Add persisted verdict/status to blob so exit_when/abort_when/until\n                # predicates that reference this member can evaluate correctly.\n                local _cmbr_verdict\n                _cmbr_verdict=\"$(jq -r --arg s \"$s\" '.stage_verdicts[$s] // \"pass\"' \\\n                    \"$state_file\" 2>/dev/null || echo \"pass\")\"\n                local _cmbr_blob_entry _cmbr_new_blob\n                _cmbr_blob_entry=\"$(jq -cn --arg v \"$_cmbr_verdict\" --arg st \"$_cmbr_status\" \\\n                    '{verdict: $v, status: $st}')\"\n                _cmbr_new_blob=\"$(jq -c --arg s \"$s\" --argjson e \"$_cmbr_blob_entry\" \\\n                    '. + {($s): $e}' <<< \"$blob\" 2>/dev/null)\" && blob=\"$_cmbr_new_blob\"\n                continue",
+      "introduced": true,
+      "fix": "code"
+    },
     {
       "file": "core/pipeline/runner.sh",
       "category": "race condition",
       "severity": "medium",
-      "line": 1836,
-      "message": "The `latest` symlink is dereferenced twice without atomicity: once for issue discovery (line 1836, through the symlink path) and again for auto-resume resolution (line 2245, via `readlink -f`); a concurrent run that atomically replaces the symlink between those two reads causes `issue` and `_runner_issue` to reference different runs' state files, so the pipeline identity (what `issue` controls: template, goal, event context) diverges from the state being resumed.",
-      "quote": "_ls_issue=\"$(jq -r '.issue // \"\"' \"$_ls_sd/pipeline-state.json\" 2>/dev/null || true)\"",
+      "line": 2242,
+      "message": "TOCTOU in the auto-resume `latest`-symlink block: `get_resume_recommendation(\"$state_dir/latest/pipeline-state.json\")` is called at line 2242 before the symlink target is validated against the state root; the escape check only runs inside the `auto_resume` branch at line 2256; an attacker who can write to the state directory and atomically replace `latest` between the `[[ -L ... ]]` test and the `readlink -f` call can cause `get_resume_recommendation` to read from a file outside the state root before the escape check fires.",
+      "quote": "elif ! $no_resume && [[ -z \"${ZBUILD_STATE_FILE:-}\" && -L \"$state_dir/latest\" ]] \\\n         && [[ -f \"$state_dir/latest/pipeline-state.json\" ]]; then\n        # Auto-resume via latest symlink (per-run layout, ADR-059 §1 / #1805 DSENTR-2):\n        # flat state file absent; follow latest to find the interrupted per-run state.\n        local _lr_recommendation\n        _lr_recommendation=\"$(get_resume_recommendation \"$state_dir/latest/pipeline-state.json\")\"",
       "introduced": true,
       "fix": "code"
     },
     {
       "file": "core/pipeline/runner.sh",
-      "category": "logic",
-      "severity": "medium",
-      "line": 3848,
-      "message": "DSRHYD-2 / fail-closed is enforced only when the stage's plugin directory is found AND the manifest declares a primary artifact path; a stage marked `complete` whose plugin cannot be located or whose manifest has no `primary_artifact` field is silently skipped (`info "Skipping already-complete stage"` / `continue`) without any artifact verification, defeating the fail-closed contract for that stage.",
-      "quote": "if [[ -n \"$_du_plugin_dir\" ]]; then\n                                _du_manifest=\"$_du_plugin_dir/manifest.yaml\"\n                                _verdict_primary_output_path_v _du_prim_path \\\n                                    \"$_du_manifest\" 2>/dev/null || true\n                                if [[ -n \"$_du_prim_path\" ]]; then",
-      "introduced": true,
-      "fix": "code"
-    },
-    {
-      "file": "core/pipeline/runner.sh",
-      "category": "logic",
-      "severity": "medium",
-      "line": 3531,
-      "message": "The cycle:* dispatch-unit arm applies the same unguarded two-layer skip to cycle members: if `_TPL_CYCLE_STAGES_<id>` is empty (the indirection yields `''`), `IFS=',' read -ra _dc_members` produces one empty-string element, the `[[ -z \"$_dc_m\" ]] && continue` guard fires for it, and the entire skip loop exits without verifying any artifact — the cycle is silently skipped even though no member artifact was checked.",
-      "quote": "local _dc_csv=\"${!_dc_stages_var:-}\"\n                            local _dc_m _dc_plugin_dir _dc_manifest \\\n                                  _dc_prim _dc_resolved\n                            IFS=',' read -ra _dc_members <<< \"$_dc_csv\"\n                            for _dc_m in \"${_dc_members[@]}\"; do\n                                [[ -z \"$_dc_m\" ]] && continue",
-      "introduced": true,
-      "fix": "code"
-    },
-    {
-      "file": "core/pipeline/runner.sh",
-      "category": "logic",
-      "severity": "medium",
-      "line": 2277,
-      "message": "`export _ZBUILD_RESUME_ACTIVE=false` is placed in the `if ! $resume_mode` branch, but `_ZBUILD_RESUME_ACTIVE=true` (line 2949) is set inside `if $resume_mode` — the two branches are not exclusive at parse time for the auto-resume-via-latest path: `resume_mode` can flip from false to true inside the elif block at line 2230, so a runner that falls through to `! $resume_mode` after the elif block already set `resume_mode=true` never reaches the false-export, leaving the flag value from any parent process environment unchanged until the cycle orchestrator consumes it.",
-      "quote": "if ! $resume_mode; then\n        # Guard: clear _ZBUILD_RESUME_ACTIVE so a subprocess runner that inherits a\n        # stale `true` value from a parent resume run does not enter cycle-resume mode\n        # on a fresh start, violating RQGUAR-1 (#1805).\n        export _ZBUILD_RESUME_ACTIVE=false",
-      "introduced": true,
-      "fix": "code"
-    },
-    {
-      "file": "core/pipeline/cycle-orchestrator.sh",
-      "category": "logic",
-      "severity": "medium",
-      "line": 1465,
-      "message": "In `_cycle_iter_dispatch`, the `_resume_first_iter` skip block fires for every member of `_CYCLE_STAGES` on the first resumed iteration, but it reads `stage_statuses[$s]` from the state file without holding any lock; `_cycle_state_write_member_atomic` can write a new status for a sibling member concurrently (from an always-run stage or a background hook), causing a member that actually completed between the status read and the skip decision to be re-dispatched instead of skipped.",
-      "quote": "if [[ \"$_resume_first_iter\" == \"true\" ]]; then\n            local _cmbr_status\n            _cmbr_status=\"$(jq -r --arg s \"$s\" '.stage_statuses[$s] // \"pending\"' \\\n                \"$state_file\" 2>/dev/null || echo \"pending\")\"",
-      "introduced": true,
-      "fix": "design"
-    },
-    {
-      "file": "core/pipeline/cycle-orchestrator.sh",
-      "category": "logic",
+      "category": "race condition",
       "severity": "low",
-      "line": 1235,
-      "message": "`_cycle_state_write_iter_start` does not unset `_ZB_CYCLE_ID`/`_ZB_CYCLE_N` on the failure path: when `locked_state_update` returns non-zero the `|| return 1` short-circuits past the `unset` line, leaving both exports populated with the failed call's values; the caller silences the failure with `|| true`, so a later call from a different context that checks the exported value before the next assignment would observe stale data.",
-      "quote": "    locked_state_update \"$state_file\" \"_cycle_state_jq_write_iter_start\" || return 1\n    unset _ZB_CYCLE_ID _ZB_CYCLE_N",
-      "introduced": true,
-      "fix": "code"
-    },
-    {
-      "file": "core/pipeline/runner.sh",
-      "category": "logic",
-      "severity": "low",
-      "line": 1740,
-      "message": "In `_runner_from_stage_preflight`, when `_artifact_persist_restore` fails, the function warns and continues (consistent with `_runner_resume_rehydrate`), then proceeds to verify artifact presence; but because the restore never happened the check will immediately find every pre-target stage's artifact missing and exit 1 with an opaque \"has no restorable primary artifact\" error, with no indication that the root cause was a git restore failure — an adversarially timed git-layer failure silently converts a recoverable warning into a hard abort with a misleading message.",
-      "quote": "    _artifact_persist_restore \"$_fsp_issue\" \"$_fsp_staging\" \\\n        || warn \"from-stage-preflight: git state restore failed for issue=$_fsp_issue — artifact verification may fail\"",
+      "line": 1849,
+      "message": "Issue-discovery TOCTOU: the containment check at line 1843 resolves `$_ls_sd` via `readlink -f` and verifies the target is within the state root, but the `jq` read at line 1849 follows the original symlink `\"$_ls_sd/pipeline-state.json\"` rather than the resolved path; if the symlink is replaced between `readlink -f` (line 1843) and `jq` (line 1849), the read follows the new target regardless of containment.",
+      "quote": "            if [[ -n \"$_ls_issue_resolved\" && \\\n                  ( \"$_ls_issue_resolved\" == \"${_ls_issue_root%%/}/\"* || \\\n                    \"$_ls_issue_resolved\" == \"${_ls_issue_root%%/}\" ) ]]; then\n                local _ls_issue\n                _ls_issue=\"$(jq -r '.issue // \"\"' \"$_ls_sd/pipeline-state.json\" 2>/dev/null || true)\"",
       "introduced": true,
       "fix": "code"
     }
   ]
 }
---- reply 2 ---
-{"score": 5, "findings": [{"file": "core/pipeline/runner.sh", "category": "race condition", "severity": "medium", "line": 1842, "message": "The `latest` symlink is dereferenced twice in separate reads: once at line 1842 for issue discovery (through `$_ls_sd/pipeline-state.json`) and again at line 2245 (`readlink -f \"$state_dir/latest\"`) for auto-resume resolution; a concurrent pipeline run that atomically replaces the `latest` symlink between those two reads causes `issue` (governs template and goal lookup) to be sourced from one run's state while `state_dir`, `state_file`, and `_runner_issue` are sourced from a different run's state, producing a cross-run identity mismatch.", "quote": "_ls_issue=\"$(jq -r '.issue // \"\"' \"$_ls_sd/pipeline-state.json\" 2>/dev/null || true)\"", "introduced": true, "fix": "code"}, {"file": "core/pipeline/runner.sh", "category": "logic", "severity": "medium", "line": 3855, "message": "The DSRHYD-2 fail-closed contract (a complete stage with an absent artifact must exit 1) is bypassed when the stage's plugin directory cannot be located or the manifest declares no primary artifact: both cases fall through to `info \"Skipping already-complete stage\"` and `continue` without any artifact check, so a complete stage with a missing artifact is silently skipped rather than causing the required exit 1.", "quote": "if [[ -n \"$_du_plugin_dir\" ]]; then", "introduced": true, "fix": "code"}, {"file": "core/pipeline/runner.sh", "category": "logic", "severity": "medium", "line": 3537, "message": "When `_TPL_CYCLE_STAGES_<id>` is unset or empty, `IFS=',' read -ra _dc_members <<< \"\"` produces a single-element array containing the empty string; the `[[ -z \"$_dc_m\" ]] && continue` guard fires for that element, and the loop exits without verifying any member artifact, so a complete cycle whose stage-list variable is empty is silently skipped instead of triggering exit 1.", "quote": "local _dc_csv=\"${!_dc_stages_var:-}\"", "introduced": true, "fix": "code"}, {"file": "core/pipeline/cycle-orchestrator.sh", "category": "logic", "severity": "low", "line": 1235, "message": "`_cycle_state_write_iter_start` does not unset `_ZB_CYCLE_ID` or `_ZB_CYCLE_N` on the failure path: `locked_state_update ... || return 1` short-circuits past the `unset` line, leaving both variables exported with the failed call's values; although callers suppress the error with `|| true`, a subsequent `_cycle_state_jq_write_iter_start` call executed before the next `_cycle_state_write_iter_start` assignment would silently operate on stale IDs.", "quote": "locked_state_update \"$state_file\" \"_cycle_state_jq_write_iter_start\" || return 1\n    unset _ZB_CYCLE_ID _ZB_CYCLE_N", "introduced": true, "fix": "code"}, {"file": "core/pipeline/runner.sh", "category": "logic", "severity": "low", "line": 1739, "message": "In `_runner_from_stage_preflight`, when `_artifact_persist_restore` fails the function warns and continues; the subsequent per-stage artifact loop then immediately finds every pre-target artifact missing and exits 1 with \"has no restorable primary artifact\" for the first stage — an error message that attributes the failure to the stage rather than to the git-layer restore failure that caused it, making the root cause non-obvious.", "quote": "_artifact_persist_restore \"$_fsp_issue\" \"$_fsp_staging\" \\\n        || warn \"from-stage-preflight: git state restore failed for issue=$_fsp_issue — artifact verification may fail\"", "introduced": true, "fix": "code"}]}
