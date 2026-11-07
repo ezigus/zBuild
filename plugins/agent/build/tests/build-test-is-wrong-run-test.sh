@@ -56,7 +56,7 @@ mkdir -p "$ARTIFACT_DIR_TW"
 cp "$PLAN_JSON_PROMPT" "$ARTIFACT_DIR_TW/plan.json"
 REPO_TW="$(setup_build_repo "repo_testwrong")"
 export ZBUILD_REPO_ROOT="$REPO_TW"
-MOCK_LOOP_RESPONSE=$'Checked it.\nANSWER test finding 2: nothing to do — the test is wrong: plugins/agent/intake/tests/intake-result-test.sh: its fake skips every path holding intake-result, and the test runs in plugin-intake-result.*\nLOOP_COMPLETE'
+MOCK_LOOP_RESPONSE=$'Checked it.\nANSWER test finding 2: wrong — the test is wrong: plugins/agent/intake/tests/intake-result-test.sh: its fake skips every path holding intake-result, and the test runs in plugin-intake-result.*\nLOOP_COMPLETE'
 set +e
 _build_stage_run_inner "$SCOPE_MANIFEST" "$ARTIFACT_DIR_TW/plan.json" "$ARTIFACT_DIR_TW/diff.patch" \
     "$ARTIFACT_DIR_TW/build-summary.json" "$ARTIFACT_DIR_TW" >/dev/null 2>&1

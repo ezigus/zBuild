@@ -134,9 +134,12 @@ _ta_write_result() {
     local _ans; _ans="$(printf '%s\n' "${_TA_ANSWERS[@]+"${_TA_ANSWERS[@]}"}" | jq -Rnc '[inputs | select(length > 0)]' 2>/dev/null || true)"
     [[ -n "$_ans" ]] || _ans="[]"
     _data="$(jq -nc --argjson n "${n:-0}" --argjson o "${_owned:-[]}" --argjson t "$_tfh" --argjson f "$fnd" --argjson a "$_ans" --arg e "$ends" \
+        --argjson fs "${_ZB_ANS_SHOWN:-0}" --arg un "${_ZB_ANS_MISSING:-}" \
         '{specs_covered: $n, owned_files: $o, testfiles: $t}
          + (if ($f | length) > 0 then {findings: $f} else {} end)
          + (if ($a | length) > 0 then {answers: $a} else {} end)
+         + {findings_shown: $fs}
+         + (if $un != "" then {unanswered: ($un | split("\n"))} else {} end)
          + (if $e == "ends_round" then {ends_round: true} else {} end)')"
     if ! stage_result_write "$dir/test-author-result.json" "$o" "$r" "$_data"; then
         _ta_emit "test_author.result.write_failed" "dir=$dir"
@@ -167,17 +170,18 @@ _ta_write_result() {
         _sum_body="- the test files, and the requirements each covers:${_tf_lines}"
         _sum_body+=$'\n'"- Each [code] requirement's test must fail on the code from before this change, and pass once the code is written."
     fi
-    local _a
-    for _a in ${_TA_ANSWERS[@]+"${_TA_ANSWERS[@]}"}; do _sum_body+="${_sum_body:+$'\n'}- answered: ${_a}"; done
+    local _a; zb_answers_summary_v _a _TA_ANSWERS
+    _sum_body+="${_sum_body:+$'\n'}$_a"
     stage_summary_write "$dir/test-author-summary.md" "test-author" "$o" "$_sum_head" "$_sum_body"
 }
 
-# _ta_collect_answers <reply> — the model's `ANSWER <stage> finding <n>: …`
-# lines, added to _TA_ANSWERS without the word ANSWER (ADR-068 §6).
+# _ta_collect_answers <reply> [prompt] [tier] — the model's `ANSWER <stage>
+# finding <n>: …` lines, added to _TA_ANSWERS without the word ANSWER; a
+# finding [prompt] showed it and it did not answer is asked for (ADR-068 §6).
 _TA_ANSWERS=()
 # #2460: a wrapped answer is read whole, and a finding answered again keeps
 # only its latest answer (#2464: the one reader build and design use too).
-_ta_collect_answers() { zb_answers_collect_v _TA_ANSWERS "${1:-}"; }
+_ta_collect_answers() { zb_answers_finish _TA_ANSWERS "${2:-}" "${1:-}" "${3:-T1}"; }
 
 # ─── test_author_run <stage_id> <state_file> [resolved_inputs] ───────────────
 # ADR-054 §4: rc is binary. rc=0 = "my result file is on disk"; rc=1 = "I
@@ -346,7 +350,7 @@ If every requirement below already has its test and no finding is open for you, 
 
 Findings from other stages about your tests are yours (under Previous work): a test that already passes on the code from before this change, a test that fails on the new code, a test that flags code that already meets its requirement, a test file far slower than the rest, a test build says is wrong (build-tests findings), with its reason. Fix the test from its requirement, or say why the test is right. Answer each such finding on its own line, before LOOP_COMPLETE:
 ANSWER <stage> finding <n>: done — <what you changed>
-ANSWER <stage> finding <n>: nothing to do — <why the test is right>
+ANSWER <stage> finding <n>: wrong — <why the test is right>
 
 Work one testfile at a time: read only what that file's SPECs need, write it to disk, and only then move on — write each file before you plan the next. Do not plan every SPEC up front. Your call has a time limit; a file already written survives it and is continued by the next attempt, and a plan that was never written is lost.
 
@@ -398,7 +402,7 @@ EOF
     printf '%s' "$prompt" > "$prompt_file"
     route_to_model_loop "$tier" "$prompt_file" "$repo" || rc=$?
     rm -f "$prompt_file"
-    _ta_collect_answers "${_ROUTE_LOOP_LAST_RESPONSE:-}"
+    _ta_collect_answers "${_ROUTE_LOOP_LAST_RESPONSE:-}" "$prompt" "$tier"
     local _end="${_ROUTE_LOOP_TERMINATED_REASON:-}"
 
     if [[ "$_end" != "done_sentinel" ]]; then

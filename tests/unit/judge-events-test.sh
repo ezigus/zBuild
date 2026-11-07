@@ -101,7 +101,7 @@ _reset
     printf 'MARK3\n' >> "$ZBUILD_EVENTS_JSONL"
     _ta_write_result "$A" unusable "1 finding" 2 \
         "$(printf '%s\n' "LOOP-1 Then 1 is not asserted: only fresh" | stage_findings_json)"
-    _TA_ANSWERS=("test-author finding 1: nothing to do — it covers both")
+    _TA_ANSWERS=("test-author finding 1: wrong — it covers both")
     _R=$'LOOP-1 Then 1: ok\nLOOP-1 sections: ok\n'
     _ta_correspondence "$D" "$R" T2 "$A"
 ) >/dev/null 2>&1

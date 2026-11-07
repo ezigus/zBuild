@@ -19,6 +19,9 @@
 # E5 [code] design may answer a finding of its own check (#2464, ADR-072 §5):
 #           its reply's ANSWER line is kept in its result and shown to the
 #           check, which judges again; the prompt says how to answer
+# E6        a finding design is shown and does not answer is asked for, and
+#           every answer, with how many findings it was shown, is in its
+#           result (ADR-068 §6)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -100,13 +103,34 @@ assert_eq "[E4] ...and is not told the ids are R-1, R-2" "0" "$_num"
 
 # ── E5 ───────────────────────────────────────────────────────────────────────
 assert_contains "[E5] design is told it may answer its own check's finding" "$_p" \
-    "ANSWER design finding <n>: nothing to do — <why>"
-REPLY=$'Wrote the design.\nANSWER design finding 1: nothing to do — DSDOCW-1 is the whole of RQDOCS-1'
+    "ANSWER design finding <n>: wrong — <why>"
+REPLY=$'Wrote the design.\nANSWER design finding 1: wrong — DSDOCW-1 is the whole of RQDOCS-1'
 _run "" "Write the docs."
 assert_eq "[E5] the answer is kept in design's result" \
-    "design finding 1: nothing to do — DSDOCW-1 is the whole of RQDOCS-1" \
+    "design finding 1: wrong — DSDOCW-1 is the whole of RQDOCS-1" \
     "$(jq -r '.data.answers[0] // ""' "$_F_ART/design-verdict.json" 2>/dev/null)"
 assert_contains "[E5] ...and shown to the check" "$(cat "$TEST_TEMP_DIR/judge-prompt" 2>/dev/null)" "DSDOCW-1 is the whole of RQDOCS-1"
+REPLY=""
+
+# ── E6 ───────────────────────────────────────────────────────────────────────
+# The engine's answer check (zb_answers_finish, finding-answers-test.sh B1-B3)
+# is handed design's prompt and reply, and what it returns is kept.
+eval "_e6_real_$(declare -f zb_answers_finish)"
+zb_answers_finish() {
+    local -n _e6a="$1"; printf '%s' "$2" > "$TEST_TEMP_DIR/finish-prompt"; printf '%s' "$3" > "$TEST_TEMP_DIR/finish-reply"
+    _e6a+=("lens-scope-design finding 1: not mine — the README is not part of this issue"); _ZB_ANS_SHOWN=1; _ZB_ANS_MISSING=""
+}
+REPLY='Wrote the design.'
+DRAFT="$(_design 'DSDOCW-1[no-code]: the docs say so covers: RQDOCS-1')"
+_run "" "Write the docs."
+assert_contains "[E6] the check is handed design's prompt" "$(cat "$TEST_TEMP_DIR/finish-prompt" 2>/dev/null)" "RQDOCS-1"
+assert_eq "[E6] ...and its reply" "Wrote the design." "$(cat "$TEST_TEMP_DIR/finish-reply" 2>/dev/null)"
+assert_eq "[E6] what it returns is kept in design's result" \
+    "lens-scope-design finding 1: not mine — the README is not part of this issue" \
+    "$(jq -r '.data.answers[0] // ""' "$_F_ART/design-verdict.json" 2>/dev/null)"
+assert_eq "[E6] ...with how many findings it was shown" "1" \
+    "$(jq -r '.data.findings_shown // "none"' "$_F_ART/design-verdict.json" 2>/dev/null)"
+eval "$(declare -f _e6_real_zb_answers_finish | sed '1s/_e6_real_//')"
 REPLY=""
 
 cleanup_test_env

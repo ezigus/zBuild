@@ -7,9 +7,10 @@
 #   R1b [change]: each lens persona gives examples of each level for its lens
 #   R2 [change]: with fail_on [medium, high, critical], an introduced medium
 #                finding fails the lens; a low one, or a pre-existing one, does not
-#   R3 [change]: the lens writes its findings that send the run back to one
-#                output per topic: code and test findings to code-findings,
-#                design findings to requirement-findings — never the other
+#   R3 [change]: the lens writes its findings to one output per topic: code
+#                and test findings to code-findings, design findings to
+#                requirement-findings — never the other; one that does not send
+#                the run back goes too, marked as not blocking (ADR-071 §5)
 #   R7 [change]: a finding that the issue itself is wrong stops the run: the
 #                lens's outcome is misconfigured and it says so
 set -uo pipefail
@@ -95,7 +96,9 @@ assert_contains "R3: a test finding goes to code-findings" "$_ct" "the test prov
 assert_contains "R3: a design finding goes to requirement-findings" "$_dt" "the design leaves the empty op open"
 assert_eq "R3: no design finding in code-findings" "0" "$(grep -c 'design leaves' <<< "$_ct" || true)"
 assert_eq "R3: no code finding in requirement-findings" "0" "$(grep -c 'code misses\|test proves' <<< "$_dt" || true)"
-assert_eq "R3: a finding that does not send the run back goes to neither" "0" "$(grep -c 'a design nit' <<< "$_ct$_dt" || true)"
+assert_contains "R3: a finding that does not send the run back still goes to its topic" "$_dt" "a design nit"
+assert_eq "R3: ...marked as not blocking" "false" "$(jq -r '.data.findings[] | select(.text | test("a design nit")) | .blocking' "$_d" 2>/dev/null)"
+assert_eq "R3: ...and the others as blocking" "true true" "$(jq -r '[.data.findings[].blocking] | map(tostring) | join(" ")' "$_c" 2>/dev/null)"
 assert_eq "R3: findings are numbered" "1 2" "$(jq -r '[.data.findings[].n] | map(tostring) | join(" ")' "$_c" 2>/dev/null)"
 assert_contains "R3: a finding names its lens and severity" "$_ct" "r3 lens, medium"
 assert_eq "R3: code-findings fails when it holds a finding" "fail" "$(jq -r .outcome "$_c" 2>/dev/null)"

@@ -22,7 +22,10 @@
 #           its result the output it names: it answers each finding only with
 #           what goes into that output, says so when a finding needs more, and
 #           does not do the rest (#1801: plan debugged build's failing tests and
-#           never wrote a plan); not to fill in lines for the engine
+#           never wrote a plan). Since ADR-068 §6's 2026-11-07 amendment a
+#           working call is told to answer every finding, in its own reply:
+#           the answers are its result's, and the engine keeps no record of
+#           them beside it (§8)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -172,11 +175,8 @@ assert_contains "[K5] each finding is answered only with what goes into that out
     "$_c" "Answer each finding only with what goes into that output"
 assert_contains "[K5] …and what a finding needs beyond it is said, not done" \
     "$_c" "say so in your result and do not do it"
-if grep -qF "Answer every finding you are given" <<< "$_c"; then
-    assert_fail "[K5] no stage is told to fill in answer lines" "found 'Answer every finding you are given'"
-else
-    assert_pass "[K5] no stage is told to fill in answer lines"
-fi
+assert_contains "[K5] a working call is told to answer every finding in its reply" \
+    "$_c" "ANSWER <stage> finding <n>: not mine — <why your job cannot fix it>"
 
 cleanup_test_env
 print_test_results

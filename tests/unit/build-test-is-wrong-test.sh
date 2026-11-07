@@ -59,7 +59,7 @@ unset ZBUILD_STAGE_INPUTS ZBUILD_STAGE_BLOCKS ZBUILD_INPUTS_FLOW ZBUILD_MAP_ELEM
 # ── W1 ───────────────────────────────────────────────────────────────────────
 _instr="$(_build_compose_instructions "x.sh")"
 assert_contains "[W1] build is told how to answer a test that is wrong" "$_instr" \
-    "nothing to do — the test is wrong:"
+    "wrong — the test is wrong:"
 assert_contains "[W1] ...naming the test file and why" "$_instr" "<test file>: <why>"
 assert_contains "[W1] ...and to stop working on it" "$_instr" "stop working on that test"
 assert_contains "[W4] build answers as soon as it is sure" "$_instr" "as soon as you are sure"

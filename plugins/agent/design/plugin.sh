@@ -107,10 +107,13 @@ _design_write_outcome() {
     local _data
     _data="$(jq -nc --arg at "$_at" --arg sha "$_sha" \
         --argjson w "${_wiring:-[]}" --argjson sc "${_scope:-[]}" --argjson f "$findings" --argjson a "${_ans:-[]}" \
+        --argjson fs "${_ZB_ANS_SHOWN:-0}" --arg un "${_ZB_ANS_MISSING:-}" \
         '{authored_at: $at, authored_at_commit: $sha, wiring_files: $w}
          + (if ($sc | length) > 0 then {scope_files: $sc} else {} end)
          + (if ($f | length) > 0 then {findings: $f} else {} end)
-         + (if ($a | length) > 0 then {answers: $a} else {} end)')"
+         + (if ($a | length) > 0 then {answers: $a} else {} end)
+         + {findings_shown: $fs}
+         + (if $un != "" then {unanswered: ($un | split("\n"))} else {} end)')"
     stage_result_write "$dir/design-verdict.json" "$outcome" "$reason" "$_data" 2>/dev/null \
         || warn "_design_write_outcome: failed to write design-verdict.json (outcome=$outcome)"
 }
@@ -452,7 +455,7 @@ DESIGN_PROMPT
     # #2464 (ADR-072 §5, ADR-068 §6): a finding of design's own check that
     # design says is wrong is answered, not designed around; the check judges
     # it again with the answer.
-    printf '\nIf a finding of your design'"'"'s own check (under Previous work, as design finding <n>) is wrong, do not change the design for it: answer it on its own line in your reply, ANSWER design finding <n>: nothing to do — <why>. The check judges it again, with your answer.\n' \
+    printf '\nIf a finding of your design'"'"'s own check (under Previous work, as design finding <n>) is wrong, do not change the design for it: answer it on its own line in your reply, ANSWER design finding <n>: wrong — <why>. The check judges it again, with your answer.\n' \
         >> "$prompt_input_file"
 
     # #2308: the limits close the stage's own text.
@@ -495,8 +498,9 @@ ${_dp_limits}")"; then
     local _dp_reply_f="${ZBUILD_STAGE_SCRATCH:-$artifact_dir}/design-reply.txt"
     route_to_model "$tier" "$_dp_composed" > "$_dp_reply_f" || router_rc=$?
     [[ -f "$_dp_reply_f" ]] && { IFS= read -r -d '' _dp_reply < "$_dp_reply_f" || true; }
+    # ADR-068 §6: a finding it was shown and did not answer is asked for.
     _DESIGN_ANSWERS=()
-    zb_answers_collect_v _DESIGN_ANSWERS "$_dp_reply"
+    zb_answers_finish _DESIGN_ANSWERS "$_dp_composed" "$_dp_reply" "$tier"
     if [[ $router_rc -eq 130 ]]; then
         warn "_design_stage_run_inner: the model call was interrupted (SIGINT) — propagating abort"
         return 130
@@ -586,9 +590,10 @@ ${_dp_limits}")"; then
         _design_write_outcome "$artifact_dir" "unusable" "the design fails ${#_fnd[@]} of its checks" "${_fj:-[]}"
         # #2470 (ADR-055 §9): the findings are in the result, shown once; the
         # summary says where they are, never copies them.
+        local _fsa=""; zb_answers_summary_v _fsa _DESIGN_ANSWERS
         stage_summary_write "$artifact_dir/design-summary.md" "design" "fail" \
             "the design fails ${#_fnd[@]} check(s)" \
-            "The findings are in design's result. This try is kept as the working copy for the next run; design.md is unchanged."
+            "The findings are in design's result. This try is kept as the working copy for the next run; design.md is unchanged."$'\n'"$_fsa"
         emit_event "plugin.result" "outcome=unusable" "plugin=design" "reason=checks_failed"
         return 1
     fi

@@ -429,10 +429,12 @@ _build_stage_run_inner() {
     # #2476 (ADR-064 §4): the line names what changed; how it got there is below.
     local _sum_head; _build_summary_head_v _sum_head "$build_verdict" "$terminated_reason" \
         "$lines_added" "$lines_removed" "$files_changed_json"
+    local _sum_ans=""; zb_answers_summary_v _sum_ans _BUILD_ANSWERS
     stage_summary_write "$artifact_dir/build-summary.md" "build" "$build_verdict" "$_sum_head" \
         "$(printf -- '- over %s pass(es), %s iteration(s)' "$_BUILD_ROUND_PASSES" "$(_build_round_total_iterations "$iterations")"
            [[ "$scope_violation" == true ]] && printf -- '\n- it wrote outside its scope'
-           [[ -n "$_needs_line" ]] && printf '\n%s' "$_needs_line")"
+           [[ -n "$_needs_line" ]] && printf '\n%s' "$_needs_line"
+           printf '\n%s' "$_sum_ans")"
     emit_event "plugin.result" "stage=build" \
         "plugin=build" \
         "files_changed_count=$files_changed_count" \

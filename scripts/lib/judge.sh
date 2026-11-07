@@ -4,8 +4,8 @@
 # A judge reads the code itself, read-only, and the code from before the change
 # is a copy it can open (§1 §2). Each complaint quotes the text it is about, and
 # the quote is checked (§3). Its answers are kept while nothing it judged has
-# changed, and judged again when a stage answers one of its findings with
-# "nothing to do" (§4 §5).
+# changed, and judged again when a stage answers one of its findings `wrong`
+# (§4 §5).
 #
 # Sourced library: no set -euo pipefail.
 
@@ -14,6 +14,8 @@ _ZBUILD_JUDGE_LOADED=1
 _ZB_JUDGE_DIR="${BASH_SOURCE[0]%/*}"
 # shellcheck source=reply-units.sh
 source "$_ZB_JUDGE_DIR/reply-units.sh"
+# shellcheck source=stage-answers.sh
+source "$_ZB_JUDGE_DIR/stage-answers.sh"
 
 # _judge_emit <type> [k=v]... — an event, when the event bus is loaded (#2466).
 _judge_emit() { declare -F eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" 2>/dev/null; return 0; }
@@ -143,31 +145,10 @@ judge_quote_path_v() {
 
 # ─── Answers to a check's findings (§5, ADR-068 §6) ──────────────────────────
 
-# zb_answers_collect_v <array_var> <reply> — the reply's `ANSWER <stage>
-# finding <n>: …` lines, without the word ANSWER, added to the array; a finding
-# answered twice keeps its latest answer.
-zb_answers_collect_v() {
-    local -n _zac="$1"
-    local _zb_ans_line _zb_ans_a _zb_ans_k _zb_ans_i _joined _zb_ans_re='^[[:space:]>*`_-]*ANSWER[[:space:]]+(.+[[:space:]]finding[[:space:]]+[0-9]+[[:space:]]*:.*)$'
-    declare -F zb_reply_join_v >/dev/null 2>&1 || source "$_ZB_JUDGE_DIR/reply-units.sh" 2>/dev/null || true
-    zb_reply_join_v _joined "${2:-}"
-    while IFS= read -r _zb_ans_line; do
-        [[ "$_zb_ans_line" =~ $_zb_ans_re ]] || continue
-        _zb_ans_a="${BASH_REMATCH[1]}"
-        while [[ "$_zb_ans_a" == *[[:space:]] ]]; do _zb_ans_a="${_zb_ans_a%[[:space:]]}"; done
-        _zb_ans_k="${_zb_ans_a%%:*}"
-        for _zb_ans_i in "${!_zac[@]}"; do
-            [[ "${_zac[_zb_ans_i]%%:*}" == "$_zb_ans_k" ]] && unset '_zac[_zb_ans_i]'
-        done
-        _zac=(${_zac[@]+"${_zac[@]}"})
-        _zac+=("$_zb_ans_a")
-    done <<< "$_joined"
-    return 0
-}
-
-# judge_answers_to <artifact_dir> <label>... — every "nothing to do" answer a
-# stage keeps in its result (data.answers) to a finding labelled <label>, one
-# per line. A "done" answer changed something, so what is judged changed too.
+# judge_answers_to <artifact_dir> <label>... — every `wrong` answer a stage
+# keeps in its result (data.answers) to a finding labelled <label>, one per
+# line: the finding goes back to its judge. A `done` answer changed something,
+# so what is judged changed too; a `not mine` says nothing about the finding.
 judge_answers_to() { local _jat=""; judge_answers_to_v _jat "$@"; [[ -n "$_jat" ]] && printf '%s\n' "$_jat"; return 0; }
 # judge_answers_to_v <var> <artifact_dir> <label>... — the same into <var>.
 judge_answers_to_v() {
@@ -186,8 +167,8 @@ judge_answers_to_v() {
         [[ "$_jat_body" == *'"answers"'* ]] && files+=("$f")
     done
     [[ ${#files[@]} -gt 0 ]] || return 0
-    _jatv="$(jq -r --arg re "^($re) finding [0-9]+[[:space:]]*:[[:space:]]*nothing to do" \
-        '(.data.answers // [])[]? | strings | select(test($re))' "${files[@]}" 2>/dev/null)" || true
+    _jatv="$(jq -r --arg re "^($re) finding [0-9]+[[:space:]]*:[[:space:]*_\`]*wrong([^A-Za-z]|$)" \
+        '(.data.answers // [])[]? | strings | select(test($re; "i"))' "${files[@]}" 2>/dev/null)" || true
 }
 
 # ─── Kept answers (§4) ───────────────────────────────────────────────────────
@@ -454,8 +435,44 @@ judge_opened_v() {
     done < "$_judge__f"
 }
 
+# judge_last_findings_block_v <var> <artifact_dir> <label> <result_json>... —
+# what a stage that reports findings is shown of its own findings from last
+# time: each one, with every answer a stage gave it (ADR-068 §6, ADR-072 §5).
+# Its grade holds unless it can quote what changed: on #1805 run 42374066107 the
+# same finding was low one round and medium the next. Pairs of <label> and its
+# result; empty when there were none. No process when no result exists.
+judge_last_findings_block_v() {
+    local -n _jlf="$1"; shift
+    local dir="${1%/}"; shift
+    local _jlf_l _jlf_f _jlf_body="" _jlf_ans="" _jlf_s f
+    local -a _jlf_with=()
+    _jlf=""
+    for f in "$dir"/*.json; do
+        [[ -f "$f" ]] || continue
+        _jlf_s=""; IFS= read -r -d '' _jlf_s < "$f" || true
+        [[ "$_jlf_s" == *'"answers"'* ]] && _jlf_with+=("$f")
+    done
+    while [[ $# -ge 2 ]]; do
+        _jlf_l="$1" _jlf_f="$2"; shift 2
+        [[ -s "$_jlf_f" ]] || continue
+        _jlf_s=""; IFS= read -r -d '' _jlf_s < "$_jlf_f" || true
+        [[ "$_jlf_s" == *'"findings"'* ]] || continue
+        _jlf_ans=""
+        [[ ${#_jlf_with[@]} -gt 0 ]] && _jlf_ans="$(jq -r --arg re "^${_jlf_l//[^A-Za-z0-9_-]/.} finding [0-9]+[[:space:]]*:" \
+            '(.data.answers // [])[]? | strings | select(test($re))' "${_jlf_with[@]}" 2>/dev/null)"
+        _jlf_body+="$(jq -r --arg l "$_jlf_l" --arg a "$_jlf_ans" '
+            ($a | split("\n") | map(select(length > 0))) as $ans
+            | (.data.findings // [])[]? | select((.n | type) == "number")
+            | "\($l) finding \(.n)" as $k
+            | "- \($k): \(.text | tostring | split("\n")[0])"
+              + ([$ans[] | select(startswith($k + ":")) | "\n  answered: " + ltrimstr($k + ": ")] | join(""))' "$_jlf_f" 2>/dev/null)"$'\n'
+    done
+    [[ -n "${_jlf_body//[[:space:]]/}" ]] || return 0
+    _jlf=$'\n'"YOUR FINDINGS LAST TIME — each with what the stages given it answered. A finding you report again keeps the grade you gave it, unless you quote what changed since that makes it worse. One answered done: check that what was done fixes it. One answered wrong: judge it again with the answer in mind."$'\n'"${_jlf_body%$'\n'}"
+}
+
 # judge_disputes_block <answers> — what a judge is shown when a stage answers
-# one of its findings with "nothing to do".
+# one of its findings `wrong`.
 judge_disputes_block() {
     [[ -n "${1//[[:space:]]/}" ]] || return 0
     printf '\nANSWERS TO YOUR EARLIER FINDINGS — a stage that had to act on these says each is wrong, and why. Judge each again with its answer in mind: keep a finding only when you can quote what shows it still holds.\n'

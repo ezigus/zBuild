@@ -117,7 +117,20 @@ On #1805 run 42229975998 the six review lenses failed in both rounds, and build'
 - **Every file of an output is read as a single file is** (`_stage_block_previous_work`, `_sp_output_paths_v`): each member's findings, by the topic its output names (§2, unchanged), labelled by its file — the name `open_items_json` gives it (`lens-correctness-code finding 1`); each member's summary; each member's result for its findings. Nothing is special to the lenses: any map group's outputs are read so.
 - **A map group counts as having a summary when any member wrote one** (`_summaries_collect`), not only the first.
 
+## Amendment 2026-11-07 — §5: a finding that does not block still reaches the stages that take its topic
+
+A review lens sent on only the findings at its fail rule's severity. On #1805 run 42374066107 the performance
+lens graded "an extra state write each round" low and passed, so no stage was given it; the next round graded the
+same finding medium and failed.
+
+- A stage sends on every finding the change introduced, whatever its grade, each with `blocking`: `true` when it is
+  at the stage's fail rule, `false` when not. Only a blocking finding fails the stage, or the output it is in.
+- Previous work shows one that does not block as `(opened by <stage>, does not block)`. A stage that takes its topic
+  answers it like any other (ADR-068 §6).
+
 ## Enforced by
+
+- §5 amendment 2026-11-07 (a finding that does not block still travels, marked) → `tests/unit/finding-answers-test.sh` C1, C2; `plugins/agent/review-lens/tests/review-lens-loop-test.sh` R3
 
 - §2 amendment 2026-11-06 (#2480: a map group's outputs are read member by member) → `tests/unit/map-findings-reach-stages-test.sh` M1–M6
 

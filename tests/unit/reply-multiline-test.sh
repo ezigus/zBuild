@@ -128,8 +128,8 @@ assert_eq "[Q5] a wrapped ANSWER is kept whole" "test finding 2: done — rewrot
 # ── Q6 ───────────────────────────────────────────────────────────────────────
 (
     source "$REPO_ROOT/plugins/agent/build/plugin.sh" >/dev/null 2>&1
-    _build_test_wrong $'ANSWER test finding 1: nothing to do — the test is wrong:\n  tests/x-test.sh: asserts the old exit code' > "$TEST_TEMP_DIR/q6a.txt"
-    _build_not_reproduced $'ANSWER test finding 2: nothing to do — not reproduced:\n  tests/y-test.sh' > "$TEST_TEMP_DIR/q6b.txt"
+    _build_test_wrong $'ANSWER test finding 1: wrong — the test is wrong:\n  tests/x-test.sh: asserts the old exit code' > "$TEST_TEMP_DIR/q6a.txt"
+    _build_not_reproduced $'ANSWER test finding 2: wrong — not reproduced:\n  tests/y-test.sh' > "$TEST_TEMP_DIR/q6b.txt"
 )
 assert_eq "[Q6] a wrapped 'the test is wrong' answer is read" "test finding 1: tests/x-test.sh: asserts the old exit code" \
     "$(cat "$TEST_TEMP_DIR/q6a.txt" 2>/dev/null)"

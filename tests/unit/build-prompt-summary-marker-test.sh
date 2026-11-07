@@ -13,13 +13,13 @@
 # M2 [change] it names the section the engine's block actually uses for earlier
 #             stages (Previous work), and a failing stage there by its verdict
 # M3 [change] finishing with no change requires answering each finding
-#             (`nothing to do` with a reason) or reporting it not reproduced
+#             (`wrong` with a reason) or reporting it not reproduced
 # M4 (retired, ADR-067 §8): there is no separate prior-attempt context any
 #             more — build's own latest summary is under Previous work
 # M5 [change] the plain-prompt lint refuses RESOLVE in model-facing text
 # M6 [change] the run-status comment and the cycle banner do not label their
 #             count RESOLVE
-# M7 [change] one answer vocabulary: the prompt asks for `nothing to do — not
+# M7 [change] one answer vocabulary: the prompt asks for `wrong — not
 #             reproduced: <path>` and offers no separate NOT_REPRODUCED form
 #             (#2322: the router did not know that word, so the answer was lost)
 set -uo pipefail
@@ -63,14 +63,14 @@ else
 fi
 assert_contains "[M2] it names the section earlier stages arrive in" "$PROMPT" "under Previous work"
 assert_contains "[M2] …and what makes a stage there red" "$PROMPT" "A failed stage under Previous work"
-assert_contains "[M3] finishing with no change needs each finding answered" "$PROMPT" "nothing to do"
+assert_contains "[M3] finishing with no change needs each finding answered" "$PROMPT" "wrong — "
 if grep -qF 'NOT_REPRODUCED' <<< "$PROMPT"; then
     assert_fail "[M7] the build prompt offers no separate NOT_REPRODUCED form" "$(grep -F NOT_REPRODUCED <<< "$PROMPT")"
 else
     assert_pass "[M7] the build prompt offers no separate NOT_REPRODUCED form"
 fi
-assert_contains "[M7] it asks for nothing to do, with not reproduced as the reason" "$PROMPT" \
-    "nothing to do — not reproduced: <the path you ran>"
+assert_contains "[M7] it asks for wrong, with not reproduced as the reason" "$PROMPT" \
+    "wrong — not reproduced: <the path you ran>"
 
 R="$TEST_TEMP_DIR/repo"; mkdir -p "$R/config" "$R/plugins/x"
 printf '%s\n' 'cat <<EOF' 'If no summary is marked RESOLVE, stop.' 'EOF' > "$R/plugins/x/a.sh"
