@@ -1444,8 +1444,25 @@ _cycle_iter_dispatch() {
             _cmbr_status="$(jq -r --arg s "$s" '.stage_statuses[$s] // "pending"' \
                 "$state_file" 2>/dev/null || echo "pending")"
             if [[ "$_cmbr_status" == "complete" ]]; then
+                # Add persisted verdict/status to blob so exit_when/abort_when/until
+                # predicates that reference this member can evaluate correctly.
+                local _cmbr_verdict
+                _cmbr_verdict="$(jq -r --arg s "$s" '.stage_verdicts[$s] // "pass"' \
+                    "$state_file" 2>/dev/null || echo "pass")"
+                local _cmbr_blob_entry _cmbr_new_blob
+                _cmbr_blob_entry="$(jq -cn --arg v "$_cmbr_verdict" --arg st "$_cmbr_status" \
+                    '{verdict: $v, status: $st}')"
+                _cmbr_new_blob="$(jq -c --arg s "$s" --argjson e "$_cmbr_blob_entry" \
+                    '. + {($s): $e}' <<< "$blob" 2>/dev/null)" && blob="$_cmbr_new_blob"
                 continue
             fi
+            # Non-complete (interrupted) member: emit stage.start before dispatch.
+            # DSPK-1 / FSTG-1 (#1805): stage.start for the interrupted cycle member
+            # is emitted here, not unconditionally. Fresh runs and later resumed
+            # iterations receive no stage.start for cycle members via this path
+            # (preserving pre-branch behavior and golden file event sequences).
+            eb_emit_event "stage.start" "stage=$s" \
+                || { local _cmbr_r=$?; warn "eb_emit_event stage.start failed (rc=$_cmbr_r, continuing — disk/perm/lock?)"; true; }
         fi
         _cycle_emit_member_dispatch_start "$_cyc_pos" "$s" "$_member_kind_pre"
         export ZBUILD_CYCLE_ITER="$iter"
@@ -1856,16 +1873,6 @@ _cycle_iter_dispatch() {
                 "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-unknown}" \
                 "iter=$iter" "stage=$s" \
                 "base=$_g3_base" "bumped=$_g3_bumped" "cap=$_g3_cap" 2>/dev/null || true
-        fi
-
-        # ADR-006 / #1805 (DSPK-1, FRSH-1): emit stage.start for leaf cycle members
-        # when iter > 0. iter > 0 distinguishes cycle-member dispatches from the
-        # stage:* arm path (which passes iter=0 and emits stage.start before calling
-        # cycle_dispatch_stage). The CMBR-1 skip guard above fires before this point,
-        # so members skipped on resume never emit stage.start.
-        if [[ "$iter" -gt 0 ]]; then
-            eb_emit_event "stage.start" "stage=$s" \
-                || { local _r=$?; warn "eb_emit_event stage.start failed (rc=$_r, continuing — disk/perm/lock?)"; true; }
         fi
 
         set +e
@@ -2353,8 +2360,13 @@ _cycle_orchestrator_run_body() {
     # iteration. Consume the flag immediately so nested cycles and subsequent
     # re-entries always start at 1. On a fresh run or nested-loop re-entry,
     # always start at 1 so inner cycles reset correctly on each outer iteration.
+    # _is_resume tracks whether THIS cycle entry is a resume (for CMBR-1 guard
+    # below); it is NOT cleared by the flag consumption so the first-iter guard
+    # can use it even after _ZBUILD_RESUME_ACTIVE=false is consumed.
     local _start_iter
+    local _is_resume=false
     if [[ "${_ZBUILD_RESUME_ACTIVE:-false}" == "true" ]]; then
+        _is_resume=true
         local _persisted_iter
         _persisted_iter="$(get_state_field "$state_file" \
             ".cycle_iterations[\"$cycle_id\"].current_iter" 0 2>/dev/null || echo 0)"
@@ -2430,10 +2442,12 @@ _cycle_orchestrator_run_body() {
         fi
 
         # Dispatch the cycle's stages in order.
-        # CMBR-1 (#1805): signal resume_first_iter only for the first resumed iteration
+        # CMBR-1 (#1805): signal resume_first_iter for the first resumed iteration
         # so _cycle_iter_dispatch skips members already complete in persisted state.
+        # Use _is_resume (not _start_iter > 1) so iter=1 interruptions are also
+        # covered — _start_iter can be 1 when interrupted before any iter completed.
         local _cid_resume_first_iter=false
-        if [[ "$iter" -eq "$_start_iter" && "$_start_iter" -gt 1 ]]; then
+        if [[ "$_is_resume" == "true" && "$iter" -eq "$_start_iter" ]]; then
             _cid_resume_first_iter=true
         fi
         set +e

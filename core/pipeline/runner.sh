@@ -1712,11 +1712,13 @@ _runner_resume_rehydrate() {
     local _rr_staging="$_rr_state_dir/resume-rehydrate.staging"
     rm -rf "$_rr_staging" 2>/dev/null || true
     _artifact_persist_restore "$_rr_issue" "$_rr_staging" || {
+        warn "resume-rehydrate: git state restore failed for issue=$_rr_issue — artifacts not restored; dispatch loop will exit 1 for any missing primary artifact"
         rm -rf "${_rr_staging:?}" 2>/dev/null || true
         return 0
     }
     if [[ -d "$_rr_staging/artifacts" ]]; then
-        _artifact_persist_put_back "$_rr_staging/artifacts" "$_rr_artifacts_dir" || true
+        _artifact_persist_put_back "$_rr_staging/artifacts" "$_rr_artifacts_dir" \
+            || warn "resume-rehydrate: put_back failed for $_rr_artifacts_dir — partial restoration; dispatch loop will exit 1 for any missing primary artifact"
     fi
     rm -rf "${_rr_staging:?}" 2>/dev/null || true
     return 0
@@ -1734,9 +1736,11 @@ _runner_from_stage_preflight() {
     local _fsp_staging="$_fsp_state_dir/from-stage-preflight.staging"
     rm -rf "$_fsp_staging" 2>/dev/null || true
     # Restore + put_back (same sequence as _runner_resume_rehydrate)
-    _artifact_persist_restore "$_fsp_issue" "$_fsp_staging" || true
+    _artifact_persist_restore "$_fsp_issue" "$_fsp_staging" \
+        || warn "from-stage-preflight: git state restore failed for issue=$_fsp_issue — artifact verification may fail"
     if [[ -d "$_fsp_staging/artifacts" ]]; then
-        _artifact_persist_put_back "$_fsp_staging/artifacts" "$_fsp_artifacts_dir" || true
+        _artifact_persist_put_back "$_fsp_staging/artifacts" "$_fsp_artifacts_dir" \
+            || warn "from-stage-preflight: put_back failed for $_fsp_artifacts_dir — partial restoration"
     fi
     rm -rf "${_fsp_staging:?}" 2>/dev/null || true
     # When from_stage is a cycle ID, stop checking before the cycle's first
@@ -2223,17 +2227,28 @@ main() {
                 # Resolve the per-run dir so artifact operations use the concrete path.
                 # Guard against broken symlink or missing readlink -f (macOS without GNU coreutils):
                 # an empty result would route all artifact operations to paths under an empty prefix.
+                # Also guard against the symlink escaping the state root (prevent path traversal).
+                local _lr_original_state_dir="$state_dir"
                 local _lr_resolved_dir
                 _lr_resolved_dir="$(readlink -f "$state_dir/latest")" || true
                 if [[ -z "$_lr_resolved_dir" ]]; then
                     warn "auto-resume: could not resolve latest symlink — falling back to fresh start"
+                    resume_mode=false
+                elif [[ "$_lr_resolved_dir" != "${_lr_original_state_dir%%/}/"* && \
+                        "$_lr_resolved_dir" != "${_lr_original_state_dir%%/}" ]]; then
+                    warn "auto-resume: resolved path escapes state root — falling back to fresh start"
                     resume_mode=false
                 else
                     state_dir="$_lr_resolved_dir"
                     state_file="$state_dir/pipeline-state.json"
                     _runner_state_file="$state_file"
                     resume_mode=true
-                    _runner_run_id="$(get_state_field "$state_file" '.run_id' "$(date +%Y%m%d%H%M%S)-$$")"
+                    # Sanitize run_id from state file (same as fresh-run path) to prevent
+                    # path traversal via unsafe characters in report/state dir filenames.
+                    local _lr_raw_run_id
+                    _lr_raw_run_id="$(get_state_field "$state_file" '.run_id' "$(date +%Y%m%d%H%M%S)-$$")"
+                    _runner_run_id="${_lr_raw_run_id//[^a-zA-Z0-9_.-]/}"
+                    [[ -z "$_runner_run_id" ]] && _runner_run_id="$(date +%Y%m%d%H%M%S)-$$"
                     _runner_issue="$(get_state_field "$state_file" '.issue' '0')"
                 fi
                 ;;
