@@ -1,29 +1,126 @@
 diff --git a/core/pipeline/cycle-orchestrator.sh b/core/pipeline/cycle-orchestrator.sh
-index b653ca22..42233eb1 100644
+index b653ca22..f2321557 100644
 --- a/core/pipeline/cycle-orchestrator.sh
 +++ b/core/pipeline/cycle-orchestrator.sh
-@@ -1858,6 +1858,16 @@ _cycle_iter_dispatch() {
-                 "base=$_g3_base" "bumped=$_g3_bumped" "cap=$_g3_cap" 2>/dev/null || true
+@@ -1444,8 +1444,25 @@ _cycle_iter_dispatch() {
+             _cmbr_status="$(jq -r --arg s "$s" '.stage_statuses[$s] // "pending"' \
+                 "$state_file" 2>/dev/null || echo "pending")"
+             if [[ "$_cmbr_status" == "complete" ]]; then
++                # Add persisted verdict/status to blob so exit_when/abort_when/until
++                # predicates that reference this member can evaluate correctly.
++                local _cmbr_verdict
++                _cmbr_verdict="$(jq -r --arg s "$s" '.stage_verdicts[$s] // "pass"' \
++                    "$state_file" 2>/dev/null || echo "pass")"
++                local _cmbr_blob_entry _cmbr_new_blob
++                _cmbr_blob_entry="$(jq -cn --arg v "$_cmbr_verdict" --arg st "$_cmbr_status" \
++                    '{verdict: $v, status: $st}')"
++                _cmbr_new_blob="$(jq -c --arg s "$s" --argjson e "$_cmbr_blob_entry" \
++                    '. + {($s): $e}' <<< "$blob" 2>/dev/null)" && blob="$_cmbr_new_blob"
+                 continue
+             fi
++            # Non-complete (interrupted) member: emit stage.start before dispatch.
++            # DSPK-1 / FSTG-1 (#1805): stage.start for the interrupted cycle member
++            # is emitted here, not unconditionally. Fresh runs and later resumed
++            # iterations receive no stage.start for cycle members via this path
++            # (preserving pre-branch behavior and golden file event sequences).
++            eb_emit_event "stage.start" "stage=$s" \
++                || { local _cmbr_r=$?; warn "eb_emit_event stage.start failed (rc=$_cmbr_r, continuing — disk/perm/lock?)"; true; }
+         fi
+         _cycle_emit_member_dispatch_start "$_cyc_pos" "$s" "$_member_kind_pre"
+         export ZBUILD_CYCLE_ITER="$iter"
+@@ -2343,8 +2360,13 @@ _cycle_orchestrator_run_body() {
+     # iteration. Consume the flag immediately so nested cycles and subsequent
+     # re-entries always start at 1. On a fresh run or nested-loop re-entry,
+     # always start at 1 so inner cycles reset correctly on each outer iteration.
++    # _is_resume tracks whether THIS cycle entry is a resume (for CMBR-1 guard
++    # below); it is NOT cleared by the flag consumption so the first-iter guard
++    # can use it even after _ZBUILD_RESUME_ACTIVE=false is consumed.
+     local _start_iter
++    local _is_resume=false
+     if [[ "${_ZBUILD_RESUME_ACTIVE:-false}" == "true" ]]; then
++        _is_resume=true
+         local _persisted_iter
+         _persisted_iter="$(get_state_field "$state_file" \
+             ".cycle_iterations[\"$cycle_id\"].current_iter" 0 2>/dev/null || echo 0)"
+@@ -2420,10 +2442,12 @@ _cycle_orchestrator_run_body() {
          fi
  
-+        # ADR-006 / #1805 (DSPK-1, FRSH-1): emit stage.start for leaf cycle members
-+        # when iter > 0. iter > 0 distinguishes cycle-member dispatches from the
-+        # stage:* arm path (which passes iter=0 and emits stage.start before calling
-+        # cycle_dispatch_stage). The CMBR-1 skip guard above fires before this point,
-+        # so members skipped on resume never emit stage.start.
-+        if [[ "$iter" -gt 0 ]]; then
-+            eb_emit_event "stage.start" "stage=$s" \
-+                || { local _r=$?; warn "eb_emit_event stage.start failed (rc=$_r, continuing — disk/perm/lock?)"; true; }
-+        fi
-+
+         # Dispatch the cycle's stages in order.
+-        # CMBR-1 (#1805): signal resume_first_iter only for the first resumed iteration
++        # CMBR-1 (#1805): signal resume_first_iter for the first resumed iteration
+         # so _cycle_iter_dispatch skips members already complete in persisted state.
++        # Use _is_resume (not _start_iter > 1) so iter=1 interruptions are also
++        # covered — _start_iter can be 1 when interrupted before any iter completed.
+         local _cid_resume_first_iter=false
+-        if [[ "$iter" -eq "$_start_iter" && "$_start_iter" -gt 1 ]]; then
++        if [[ "$_is_resume" == "true" && "$iter" -eq "$_start_iter" ]]; then
+             _cid_resume_first_iter=true
+         fi
          set +e
-         cycle_dispatch_stage "$s" "$iter" "$state_file"
-         rc=$?
 diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
-index 696ff0ff..1cf3ec99 100755
+index 696ff0ff..1e61e649 100755
 --- a/core/pipeline/runner.sh
 +++ b/core/pipeline/runner.sh
-@@ -3208,12 +3208,10 @@ main() {
+@@ -1710,11 +1710,13 @@ _runner_resume_rehydrate() {
+     local _rr_staging="$_rr_state_dir/resume-rehydrate.staging"
+     rm -rf "$_rr_staging" 2>/dev/null || true
+     _artifact_persist_restore "$_rr_issue" "$_rr_staging" || {
++        warn "resume-rehydrate: git state restore failed for issue=$_rr_issue — artifacts not restored; dispatch loop will exit 1 for any missing primary artifact"
+         rm -rf "${_rr_staging:?}" 2>/dev/null || true
+         return 0
+     }
+     if [[ -d "$_rr_staging/artifacts" ]]; then
+-        _artifact_persist_put_back "$_rr_staging/artifacts" "$_rr_artifacts_dir" || true
++        _artifact_persist_put_back "$_rr_staging/artifacts" "$_rr_artifacts_dir" \
++            || warn "resume-rehydrate: put_back failed for $_rr_artifacts_dir — partial restoration; dispatch loop will exit 1 for any missing primary artifact"
+     fi
+     rm -rf "${_rr_staging:?}" 2>/dev/null || true
+     return 0
+@@ -1732,9 +1734,11 @@ _runner_from_stage_preflight() {
+     local _fsp_staging="$_fsp_state_dir/from-stage-preflight.staging"
+     rm -rf "$_fsp_staging" 2>/dev/null || true
+     # Restore + put_back (same sequence as _runner_resume_rehydrate)
+-    _artifact_persist_restore "$_fsp_issue" "$_fsp_staging" || true
++    _artifact_persist_restore "$_fsp_issue" "$_fsp_staging" \
++        || warn "from-stage-preflight: git state restore failed for issue=$_fsp_issue — artifact verification may fail"
+     if [[ -d "$_fsp_staging/artifacts" ]]; then
+-        _artifact_persist_put_back "$_fsp_staging/artifacts" "$_fsp_artifacts_dir" || true
++        _artifact_persist_put_back "$_fsp_staging/artifacts" "$_fsp_artifacts_dir" \
++            || warn "from-stage-preflight: put_back failed for $_fsp_artifacts_dir — partial restoration"
+     fi
+     rm -rf "${_fsp_staging:?}" 2>/dev/null || true
+     # When from_stage is a cycle ID, stop checking before the cycle's first
+@@ -2214,17 +2218,28 @@ main() {
+                 # Resolve the per-run dir so artifact operations use the concrete path.
+                 # Guard against broken symlink or missing readlink -f (macOS without GNU coreutils):
+                 # an empty result would route all artifact operations to paths under an empty prefix.
++                # Also guard against the symlink escaping the state root (prevent path traversal).
++                local _lr_original_state_dir="$state_dir"
+                 local _lr_resolved_dir
+                 _lr_resolved_dir="$(readlink -f "$state_dir/latest")" || true
+                 if [[ -z "$_lr_resolved_dir" ]]; then
+                     warn "auto-resume: could not resolve latest symlink — falling back to fresh start"
+                     resume_mode=false
++                elif [[ "$_lr_resolved_dir" != "${_lr_original_state_dir%%/}/"* && \
++                        "$_lr_resolved_dir" != "${_lr_original_state_dir%%/}" ]]; then
++                    warn "auto-resume: resolved path escapes state root — falling back to fresh start"
++                    resume_mode=false
+                 else
+                     state_dir="$_lr_resolved_dir"
+                     state_file="$state_dir/pipeline-state.json"
+                     _runner_state_file="$state_file"
+                     resume_mode=true
+-                    _runner_run_id="$(get_state_field "$state_file" '.run_id' "$(date +%Y%m%d%H%M%S)-$$")"
++                    # Sanitize run_id from state file (same as fresh-run path) to prevent
++                    # path traversal via unsafe characters in report/state dir filenames.
++                    local _lr_raw_run_id
++                    _lr_raw_run_id="$(get_state_field "$state_file" '.run_id' "$(date +%Y%m%d%H%M%S)-$$")"
++                    _runner_run_id="${_lr_raw_run_id//[^a-zA-Z0-9_.-]/}"
++                    [[ -z "$_runner_run_id" ]] && _runner_run_id="$(date +%Y%m%d%H%M%S)-$$"
+                     _runner_issue="$(get_state_field "$state_file" '.issue' '0')"
+                 fi
+                 ;;
+@@ -3208,12 +3223,10 @@ main() {
              _CYCLE_DISPATCH_STATUS="failed"
              return 1
          fi
@@ -40,8 +137,94 @@ index 696ff0ff..1cf3ec99 100755
          set +e; plugin_hook_call "$_cd_plugin_dir" run "$_cd_stage" "$_cd_state"; _cd_rc=$?
          [[ $_cd_had_e -eq 1 ]] && set -e
          _cd_manifest="$_cd_plugin_dir/manifest.yaml"
+diff --git a/tests/integration/resume-loop-state-test.sh b/tests/integration/resume-loop-state-test.sh
+index c050e4b8..87ab7c15 100644
+--- a/tests/integration/resume-loop-state-test.sh
++++ b/tests/integration/resume-loop-state-test.sh
+@@ -269,6 +269,81 @@ assert_eq \
+     "[#1805/CMBR-1] stage.start emitted for 'test' in iter 2 (interrupted cycle member dispatched on resume)" \
+     "1" "$_CMBR1_TEST_DISPATCHED"
+ 
++# ── [#1805/CMBR-1] iter=1 scenario: most common interruption point ────────────
++# Red-team finding: CMBR-1 skip guard must work for any interrupted iteration,
++# including iter=1 (the most common first-failure point). The guard must NOT
++# require _start_iter > 1; if it does, complete iter-1 members are re-dispatched.
++print_test_section "[#1805/CMBR-1] iter=1 interrupted: build complete in iter=1 is skipped, test dispatched"
++
++# Given — a run is being resumed; in the interrupted iteration (iter 1), member
++#   stage "build" completed and member stage "test" was interrupted before
++#   completing; persisted state records build as complete within iter 1.
++#   _ZBUILD_RESUME_ACTIVE=true is exported.
++: > "$ZBUILD_EVENTS_JSONL"
++jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$STATE_FILE"
++
++# Use zb_engine_loop_state to write cycle state: 1 round → current_iter=1
++# (interrupted during iter 1; this is the most common interruption scenario).
++# cycle_iterations["build-test"].current_iter = 1 (_start_iter = 1 on resume).
++zb_engine_loop_state "$STATE_FILE" "build-test" 1 5 "in_progress"
++
++# Record that "build" completed in iter 1 before the interruption.
++# stage_statuses.build = "complete" is what the cycle orchestrator checks to
++# decide whether to skip a member on resume (ADR-006 §3.6 / CMBR-1).
++jq '.stage_statuses.build = "complete"' "$STATE_FILE" \
++    > "${STATE_FILE}.cmbr1i1.tmp" && mv "${STATE_FILE}.cmbr1i1.tmp" "$STATE_FILE"
++
++# Load the template: same cycle-converges-iter2.yaml, build + test as cycle members.
++load_template "$FIXT/cycle-converges-iter2.yaml"
++
++# Track which cycle members are dispatched. cycle_dispatch_stage causes stage.start
++# events in a unit-test context; not being called for "build" is functionally
++# equivalent to no stage.start for build.
++_CMBR1I1_BUILD_DISPATCHED=0
++_CMBR1I1_TEST_DISPATCHED=0
++cycle_dispatch_stage() {
++    local stage="$1" iter="$2"
++    if [[ "$stage" == "build" ]]; then
++        _CMBR1I1_BUILD_DISPATCHED=1
++    elif [[ "$stage" == "test" ]]; then
++        _CMBR1I1_TEST_DISPATCHED=1
++    fi
++    _CYCLE_DISPATCH_VERDICT="pass"
++    _CYCLE_DISPATCH_STATUS="complete"
++    return 0
++}
++
++zb_stub_reports_tests test
++
++# When — _ZBUILD_RESUME_ACTIVE=true is exported and the cycle orchestrator
++#   dispatches members of iter 1. "build" is complete; "test" is pending.
++set +e
++export _ZBUILD_RESUME_ACTIVE=true
++cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"
++_cmbr1i1_rc=$?
++set -e
++
++# Then — no stage.start event for "build" (already complete in iter 1).
++# cycle_dispatch_stage must NOT be called for "build" in iter 1.
++# Before the fix: CMBR-1 guard requires _start_iter > 1; for _start_iter=1 the
++#   condition is false, _cid_resume_first_iter stays false → build IS dispatched →
++#   _CMBR1I1_BUILD_DISPATCHED=1 → assert 0==1 → FAILS (exposes the code bug).
++# After the fix: guard works for _start_iter=1 too → build is skipped →
++#   _CMBR1I1_BUILD_DISPATCHED=0 → PASSES.
++assert_eq \
++    "[#1805/CMBR-1] no stage.start for 'build' in iter 1 (complete member skipped on resume within interrupted iter=1; CMBR-1 guard must work for _start_iter=1 not only _start_iter>1)" \
++    "0" "$_CMBR1I1_BUILD_DISPATCHED"
++
++# Then — stage.start is emitted for "test" (the interrupted member of iter 1).
++# cycle_dispatch_stage must be called for "test" in iter 1.
++# Before the fix: build is re-dispatched and test may also run, but the guard
++#   failure means the skip invariant is violated.
++# After the fix: build is skipped, test is dispatched →
++#   _CMBR1I1_TEST_DISPATCHED=1 → PASSES.
++assert_eq \
++    "[#1805/CMBR-1] stage.start emitted for 'test' in iter 1 (interrupted cycle member dispatched; CMBR-1 applies to iter=1 not only iter>1)" \
++    "1" "$_CMBR1I1_TEST_DISPATCHED"
++
+ # ── CYCL-1: test uses a fixture containing a cyclic stage ────────────────────
+ print_test_section "resume-loop-state test uses a fixture containing a cyclic stage"
+ 
 diff --git a/tests/integration/resume-rehydrate-test.sh b/tests/integration/resume-rehydrate-test.sh
-index ab27fe18..956c90d5 100644
+index ab27fe18..cf5a51fa 100644
 --- a/tests/integration/resume-rehydrate-test.sh
 +++ b/tests/integration/resume-rehydrate-test.sh
 @@ -237,6 +237,23 @@ fi
@@ -68,7 +251,33 @@ index ab27fe18..956c90d5 100644
  # ── SPEC-1 path 2: auto-resume on status=interrupted ─────────────────────────
  # [#1805/RHYD-1] all entry paths: path 2 — auto-resume when status=interrupted.
  # No --resume flag; runner detects interrupted status and auto-resumes.
-@@ -855,12 +872,6 @@ assert_eq \
+@@ -764,6 +781,25 @@ _s12_fixt_content="$(cat "$REPO_ROOT/tests/fixtures/templates/artifact-snapshot-
+ assert_contains "cycle fixture used in fresh-run sub-case has type: cycle" \
+     "$_s12_fixt_content" "type: cycle"
+ 
++# [#1805/FRSH-1]: a fresh run must NOT emit stage.start for cycle members (cycled).
++# Design (Gap 7): stage.start for cycle members is only emitted via the CMBR-1
++# resume_first_iter=true path; it must NOT fire unconditionally on fresh runs.
++# Before this change (pre-#1805): cycle members never emitted stage.start (they emit
++#   cycle.member.dispatch.{start,complete} instead); _s12_cycled_starts=0 → PASSES (no-code ✓).
++# After this change with the iter>0 guard bug: stage.start fires for every cycle member
++#   dispatch unconditionally (iter starts at 1, so iter>0 is always true) → cycled emits
++#   stage.start on fresh runs → _s12_cycled_starts=1 → assert 0==1 → FAILS (exposes bug).
++# After fix (iter>0 guard removed or guarded by _ZBUILD_RESUME_ACTIVE):
++#   cycle members emit stage.start only via CMBR-1 resume path → 0 on fresh run → PASSES.
++# This covers GUAR-1 on the cycle-member side (the gap red-team finding 4 names).
++_s12_cycled_starts=0
++if [[ -f "$S12_EVENTS_JSONL" ]]; then
++    _s12_cycled_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="cycled") | .type' \
++        "$S12_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
++fi
++assert_eq "[#1805/FRSH-1] no stage.start for cycle member (cycled) on fresh run (cycle members only emit stage.start via CMBR-1 resume path; iter>0 guard must not fire unconditionally on fresh runs)" \
++    "0" "$_s12_cycled_starts"
++
+ # ── FRSH-2: fresh run with prior state branch artifacts never skips via dispatch-unit guard ─
+ print_test_section "[#1805/FRSH-2] fresh run (no --resume, in_progress status) never skips stages due to prior-run artifacts in git state branch"
+ 
+@@ -855,12 +891,6 @@ assert_eq \
      "[#1805/FRSH-2] fresh run emits no stage.skip events (dispatch-unit skip guard conditional on resume_mode; does not activate for fresh runs)" \
      "0" "$_frsh2_stage_skips"
  
