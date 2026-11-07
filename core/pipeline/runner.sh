@@ -1763,9 +1763,9 @@ _runner_from_stage_preflight() {
         _fsp_plugin_dir="$(_find_plugin_for_stage "$_fsp_s" "$_fsp_plugins_root" 2>/dev/null || true)"
         [[ -z "$_fsp_plugin_dir" ]] && continue
         _fsp_manifest="$_fsp_plugin_dir/manifest.yaml"
-        _fsp_prim_path="$(_verdict_primary_output_path "$_fsp_manifest" 2>/dev/null || true)"
+        _verdict_primary_output_path_v _fsp_prim_path "$_fsp_manifest" 2>/dev/null || true
         [[ -z "$_fsp_prim_path" ]] && continue
-        _fsp_resolved="$(_verdict_resolve_path "$_fsp_prim_path" "$_fsp_state_dir")"
+        _verdict_resolve_path_v _fsp_resolved "$_fsp_prim_path" "$_fsp_state_dir"
         if [[ ! -s "$_fsp_resolved" ]]; then
             echo "error: --from-stage '$_fsp_from_stage': stage '$_fsp_s' has no restorable primary artifact" >&2
             return 1
@@ -1829,10 +1829,22 @@ main() {
     if [[ -z "$issue" && -z "$goal" && -z "${ZBUILD_STATE_FILE:-}" ]]; then
         local _ls_sd="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}/latest"
         if [[ -L "$_ls_sd" && -f "$_ls_sd/pipeline-state.json" ]]; then
-            local _ls_issue
-            _ls_issue="$(jq -r '.issue // ""' "$_ls_sd/pipeline-state.json" 2>/dev/null || true)"
-            if [[ "$_ls_issue" =~ ^[0-9]+$ && "$_ls_issue" != "0" ]]; then
-                issue="$_ls_issue"
+            # Safety: verify the symlink target is within the state root before
+            # trusting its contents. A crafted or stale symlink escaping the root
+            # could route the run under a different issue's identity (#1805).
+            local _ls_issue_resolved
+            _ls_issue_resolved="$(readlink -f "$_ls_sd" 2>/dev/null || true)"
+            local _ls_issue_root="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}"
+            if [[ -n "$_ls_issue_resolved" && \
+                  ( "$_ls_issue_resolved" == "${_ls_issue_root%%/}/"* || \
+                    "$_ls_issue_resolved" == "${_ls_issue_root%%/}" ) ]]; then
+                local _ls_issue
+                _ls_issue="$(jq -r '.issue // ""' "$_ls_sd/pipeline-state.json" 2>/dev/null || true)"
+                if [[ "$_ls_issue" =~ ^[0-9]+$ && "$_ls_issue" != "0" ]]; then
+                    issue="$_ls_issue"
+                fi
+            else
+                warn "auto-resume: latest symlink escapes state root — ignoring for issue discovery"
             fi
         fi
     fi
@@ -2263,6 +2275,10 @@ main() {
     fi
 
     if ! $resume_mode; then
+        # Guard: clear _ZBUILD_RESUME_ACTIVE so a subprocess runner that inherits a
+        # stale `true` value from a parent resume run does not enter cycle-resume mode
+        # on a fresh start, violating RQGUAR-1 (#1805).
+        export _ZBUILD_RESUME_ACTIVE=false
         # Sanitize ZBUILD_RUN_ID: strip characters unsafe in filenames (/, .., spaces, etc.)
         # to prevent path traversal when run_id is used in report-${run_id}.md filenames
         # AND in the per-run state dir below (#887). Generated BEFORE the re-root.
@@ -3513,6 +3529,37 @@ main() {
                         _du_cyc_status="$(get_state_field "$state_file" \
                             ".stage_statuses[\"$_cyc_id\"]" '' 2>/dev/null || true)"
                         if [[ "$_du_cyc_status" == "complete" ]]; then
+                            # DSRHYD-2 / fail-closed (#1805): verify each cycle member's
+                            # primary artifact is present after rehydration. Absent →
+                            # exit 1, mirroring the stage:* arm's stale-artifact check.
+                            local _dc_safe="${_cyc_id//-/_}"
+                            local _dc_stages_var="_TPL_CYCLE_STAGES_${_dc_safe}"
+                            local _dc_csv="${!_dc_stages_var:-}"
+                            local _dc_m _dc_plugin_dir _dc_manifest \
+                                  _dc_prim _dc_resolved
+                            IFS=',' read -ra _dc_members <<< "$_dc_csv"
+                            for _dc_m in "${_dc_members[@]}"; do
+                                [[ -z "$_dc_m" ]] && continue
+                                _dc_plugin_dir=""; _dc_manifest=""; _dc_prim=""; _dc_resolved=""
+                                _dc_plugin_dir="$(_find_plugin_for_stage \
+                                    "$_dc_m" "$plugins_root" 2>/dev/null || true)"
+                                [[ -z "$_dc_plugin_dir" ]] && continue
+                                _dc_manifest="$_dc_plugin_dir/manifest.yaml"
+                                _verdict_primary_output_path_v _dc_prim \
+                                    "$_dc_manifest" 2>/dev/null || true
+                                [[ -z "$_dc_prim" ]] && continue
+                                _verdict_resolve_path_v _dc_resolved \
+                                    "$_dc_prim" "$state_dir"
+                                if [[ ! -s "$_dc_resolved" ]]; then
+                                    eb_emit_event \
+                                        "stage.verdict.stale_artifact" \
+                                        "stage=$_dc_m" "cycle=$_cyc_id" \
+                                        "path=$_dc_resolved" \
+                                        "run_id=$_runner_run_id"
+                                    echo "error: resume: cycle '$_cyc_id' member '$_dc_m' is marked complete but its primary artifact is absent after rehydration (expected: $_dc_resolved)" >&2
+                                    return 1
+                                fi
+                            done
                             info "Skipping already-complete cycle: $_cyc_id"
                             continue
                         fi
@@ -3807,11 +3854,11 @@ main() {
                                 "$_ust" "$plugins_root" 2>/dev/null || true)"
                             if [[ -n "$_du_plugin_dir" ]]; then
                                 _du_manifest="$_du_plugin_dir/manifest.yaml"
-                                _du_prim_path="$(_verdict_primary_output_path \
-                                    "$_du_manifest" 2>/dev/null || true)"
+                                _verdict_primary_output_path_v _du_prim_path \
+                                    "$_du_manifest" 2>/dev/null || true
                                 if [[ -n "$_du_prim_path" ]]; then
-                                    _du_resolved="$(_verdict_resolve_path \
-                                        "$_du_prim_path" "$state_dir")"
+                                    _verdict_resolve_path_v _du_resolved \
+                                        "$_du_prim_path" "$state_dir"
                                     if [[ ! -s "$_du_resolved" ]]; then
                                         eb_emit_event \
                                             "stage.verdict.stale_artifact" \

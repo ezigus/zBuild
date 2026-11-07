@@ -1213,6 +1213,29 @@ _cycle_state_write_iter_atomic() {
           _ZB_CYCLE_FC _ZB_CYCLE_OVERALL
 }
 
+# ─── _cycle_state_write_iter_start ───────────────────────────────────────────
+# Writes current_iter = N at the START of iteration N, before dispatch runs.
+# This ensures that if the run is interrupted mid-iter, the state records the
+# interrupted iteration number (not the last COMPLETED iteration number).
+# A resume reading current_iter then starts from the correct iteration (#1805).
+_cycle_state_jq_write_iter_start() {
+    local _now; TZ=UTC0 printf -v _now '%(%Y-%m-%dT%H:%M:%SZ)T' -1
+    jq --arg id "$_ZB_CYCLE_ID" \
+       --argjson n "$_ZB_CYCLE_N" \
+       --arg now "$_now" \
+       '(.cycle_iterations //= {})
+        | (.cycle_iterations[$id] //= {iter:[]})
+        | .cycle_iterations[$id].current_iter = $n
+        | .updated_at = $now'
+}
+
+_cycle_state_write_iter_start() {
+    local state_file="$1" cycle_id="$2" n="$3"
+    export _ZB_CYCLE_ID="$cycle_id" _ZB_CYCLE_N="$n"
+    locked_state_update "$state_file" "_cycle_state_jq_write_iter_start" || return 1
+    unset _ZB_CYCLE_ID _ZB_CYCLE_N
+}
+
 # ─── _cycle_state_write_member_atomic ────────────────────────────────────────
 # Persists a cycle member's terminal status and classified verdict into the
 # top-level stage_statuses / stage_verdicts maps of pipeline-state.json.
@@ -1458,11 +1481,17 @@ _cycle_iter_dispatch() {
             fi
             # Non-complete (interrupted) member: emit stage.start before dispatch.
             # DSDSPK-1 / DSFSTG-1 (#1805): stage.start for the interrupted cycle member
-            # is emitted here, not unconditionally. Fresh runs and later resumed
-            # iterations receive no stage.start for cycle members via this path
-            # (preserving pre-branch behavior and golden file event sequences).
+            # is emitted here, not unconditionally. Only the FIRST non-complete member
+            # gets stage.start; subsequent non-complete members (never ran this iter)
+            # are dispatched normally without stage.start, preserving fresh-run behavior.
+            # Fresh runs and later resumed iterations receive no stage.start for cycle
+            # members via this path (preserving pre-branch behavior and golden file
+            # event sequences).
             eb_emit_event "stage.start" "stage=$s" \
                 || { local _cmbr_r=$?; warn "eb_emit_event stage.start failed (rc=$_cmbr_r, continuing — disk/perm/lock?)"; true; }
+            # Turn off the resume-first-iter flag: subsequent members in this iteration
+            # are dispatched without stage.start (they never ran; treat like fresh run).
+            _resume_first_iter=false
         fi
         _cycle_emit_member_dispatch_start "$_cyc_pos" "$s" "$_member_kind_pre"
         export ZBUILD_CYCLE_ITER="$iter"
@@ -2440,6 +2469,13 @@ _cycle_orchestrator_run_body() {
             _cycle_clear_traps
             { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 1; }
         fi
+
+        # Persist current_iter=N before dispatch so an interruption mid-iter leaves
+        # the state recording the interrupted iteration number, not the last completed
+        # one. The end-of-iter write (_cycle_state_write_iter_atomic) also updates
+        # current_iter; this start write is what makes the resume formula correct for
+        # a run interrupted before the first iter completes (#1805, correctness).
+        _cycle_state_write_iter_start "$state_file" "$cycle_id" "$iter" || true
 
         # Dispatch the cycle's stages in order.
         # DSCMBR-1 (#1805): signal resume_first_iter for the first resumed iteration
