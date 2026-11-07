@@ -364,5 +364,11 @@ assert_contains "[MB-10] bundle spans the WHOLE branch (first work commit presen
     "$_BUNDLE_OK_TEXT" "+one"
 assert_contains "[MB-10] bundle spans the whole branch (last work commit present)" \
     "$_BUNDLE_OK_TEXT" "+two"
+# #2482 (ADR-065): the same bundle into a variable, with no subshell around
+# it — issue-acceptance and every lens read it once a dispatch.
+_bv=""; zbuild_change_bundle_v _bv "$ART_OK" "$R_MASTER"
+assert_eq "[MB-10] the _v form gives the same bundle" "$BUNDLE_OK" "$_bv"
+_bv=""; zbuild_change_bundle_v _bv "$ART_NB" "$R_SHALLOW"
+assert_eq "[MB-10] ...and the same fallback" "$BUNDLE_NB" "$_bv"
 
 print_test_results

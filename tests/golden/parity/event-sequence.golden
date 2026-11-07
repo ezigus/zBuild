@@ -20,6 +20,7 @@ artifact.snapshot.saved
 stage.start
 stage.previous_work.written
 plugin.run.start
+judge.base.failed
 redaction.applied
 redaction.applied
 model.route

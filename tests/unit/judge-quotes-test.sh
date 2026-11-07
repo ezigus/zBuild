@@ -86,10 +86,10 @@ print_test_section "Q2: design's coverage check"
     cat > "$D" <<'MD'
 # Design
 ```acceptance
-WORK-1[code]: a --dry-run flag is accepted covers: RQST-1
-CNFG-1[done]: a missing config is refused covers: RQST-2 evidence: scripts/cfg.sh:"refuse_missing_config()"
+DSWORK-1[code]: a --dry-run flag is accepted covers: RQRQST-1
+DSCNFG-1[done]: a missing config is refused covers: RQRQST-2 evidence: scripts/cfg.sh:"refuse_missing_config()"
 TESTFILES:
-WORK-1: tests/acc-test.sh
+DSWORK-1: tests/acc-test.sh
 WIRING: none
 ```
 ```scope
@@ -97,10 +97,10 @@ scripts/thing.sh
 scripts/telemetry.sh
 ```
 MD
-    REQS='- RQST-1: add a --dry-run flag
-- RQST-2: refuse a missing config file'
+    REQS='- RQRQST-1: add a --dry-run flag
+- RQRQST-2: refuse a missing config file'
     _cov() { printf 0 > "$_N"; _design_coverage "$D" "$REQS" T2 >/dev/null 2>&1; }
-    _ok=$'RQST-1: covered\nRQST-2: covered\nWORK-1: ok\nCNFG-1: ok\n'
+    _ok=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-1: ok\nDSCNFG-1: ok\n'
 
     _R1="$_ok"; _R2=""; _cov
     echo "Q2a|${#_DESIGN_UNCOVERED[@]}${#_DESIGN_OUTSIDE[@]}${#_DESIGN_DONE_WRONG[@]}|$_DESIGN_COV_OUTCOME|$(cat "$_N")"
@@ -115,22 +115,22 @@ OUTSIDE: (none)
 DONE_WRONG: none"; _R2=""; _cov
     echo "Q2b|${#_DESIGN_UNCOVERED[@]}${#_DESIGN_OUTSIDE[@]}${#_DESIGN_DONE_WRONG[@]}|$_DESIGN_COV_OUTCOME"
 
-    _R1=$'RQST-1: covered\nRQST-2: uncovered | WHY: no SPEC refuses an unreadable file | QUOTE: "refuse a missing config file"\nWORK-1: ok\nCNFG-1: ok\n'; _R2=""; _cov
+    _R1=$'RQRQST-1: covered\nRQRQST-2: uncovered | WHY: no SPEC refuses an unreadable file | QUOTE: "refuse a missing config file"\nDSWORK-1: ok\nDSCNFG-1: ok\n'; _R2=""; _cov
     echo "Q2c|${#_DESIGN_UNCOVERED[@]}|${_DESIGN_UNCOVERED[0]:-}|$(cat "$_N")"
 
-    _R1=$'RQST-1: covered\nRQST-2: covered\nCNFG-1: ok\n'; _R2="$_ok"; _cov
+    _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSCNFG-1: ok\n'; _R2="$_ok"; _cov
     echo "Q2d|$(cat "$_N")|$_DESIGN_COV_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
 
-    _R1=$'RQST-1: covered\nRQST-2: uncovered | WHY: x | QUOTE: "accept a flag"\nWORK-1: ok\nCNFG-1: ok\n'; _R2=""; _cov
+    _R1=$'RQRQST-1: covered\nRQRQST-2: uncovered | WHY: x | QUOTE: "accept a flag"\nDSWORK-1: ok\nDSCNFG-1: ok\n'; _R2=""; _cov
     echo "Q2e|$(cat "$_N")|$_DESIGN_COV_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
 
-    _R1=$'RQST-1: covered\nRQST-2: covered\nWORK-1: ok\nCNFG-1: done_wrong | WHY: it returns 2 only when the file is absent | QUOTE: scripts/cfg.sh:"[[ -f "$1" ]] || return 2"\n'; _R2=""; _cov
+    _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-1: ok\nDSCNFG-1: done_wrong | WHY: it returns 2 only when the file is absent | QUOTE: scripts/cfg.sh:"[[ -f "$1" ]] || return 2"\n'; _R2=""; _cov
     echo "Q2f|${#_DESIGN_DONE_WRONG[@]}|${_DESIGN_DONE_WRONG[0]:-}|$_DESIGN_COV_OUTCOME"
 
-    _R1=$'RQST-1: covered\nRQST-2: covered\nWORK-1: done_wrong | WHY: x | QUOTE: scripts/cfg.sh:"line one"\nCNFG-1: ok\n'; _R2="$_R1"; _cov
+    _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-1: done_wrong | WHY: x | QUOTE: scripts/cfg.sh:"line one"\nDSCNFG-1: ok\n'; _R2="$_R1"; _cov
     echo "Q2h|$_DESIGN_COV_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
 
-    _R1=$'RQST-1: covered\nRQST-2: covered\nWORK-1: ok\nCNFG-1: ok\nSCOPE: scripts/telemetry.sh | WHY: the issue asks for no telemetry\n'; _R2=""; _cov
+    _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-1: ok\nDSCNFG-1: ok\nSCOPE: scripts/telemetry.sh | WHY: the issue asks for no telemetry\n'; _R2=""; _cov
     echo "Q2i|${#_DESIGN_OUTSIDE[@]}|$(_design_coverage_findings)"
 ) > "$TEST_TEMP_DIR/q2.out" 2>"$TEST_TEMP_DIR/q2.err"
 _l() { grep "^$1|" "$TEST_TEMP_DIR/q2.out" | head -1 | cut -d'|' -f2-; }
@@ -140,16 +140,16 @@ assert_eq "[Q2] ...it names the evidence's file" "named" "$(_l Q2g2)"
 assert_eq "[Q2] ...and where the code from before the change is" "base" "$(_l Q2g3)"
 assert_eq "[Q2] ...and asks for a quote with each complaint" "quote" "$(_l Q2g4)"
 assert_eq "[Q2] 'omitted', '(none)' and 'none' are never findings" "000|" "$(_l Q2b)"
-assert_contains "[Q2] an uncovered requirement with a real quote is a finding" "$(_l Q2c)" "1|RQST-2"
+assert_contains "[Q2] an uncovered requirement with a real quote is a finding" "$(_l Q2c)" "1|RQRQST-2"
 assert_contains "[Q2] ...that says why" "$(_l Q2c)" "no SPEC refuses an unreadable file"
 assert_contains "[Q2] a missing line is asked again, naming it" "$(_l Q2d)" "2||"
-assert_contains "[Q2] ...naming it" "$(_l Q2d)" "no line for WORK-1"
+assert_contains "[Q2] ...naming it" "$(_l Q2d)" "no line for DSWORK-1"
 assert_contains "[Q2] a quote the requirement does not say is asked again, then unusable" "$(_l Q2e)" "2|unusable|"
-assert_contains "[Q2] ...saying which quote" "$(_l Q2e)" "RQST-2's quote is not in"
-assert_contains "[Q2] a [done] claim is judged on the code from before the change" "$(_l Q2f)" "1|CNFG-1"
+assert_contains "[Q2] ...saying which quote" "$(_l Q2e)" "RQRQST-2's quote is not in"
+assert_contains "[Q2] a [done] claim is judged on the code from before the change" "$(_l Q2f)" "1|DSCNFG-1"
 assert_contains "[Q2] ...and carries its quote" "$(_l Q2f)" 'return 2'
 assert_contains "[Q2] done_wrong on a SPEC not marked [done] cannot be used" "$(_l Q2h)" "unusable|"
-assert_contains "[Q2] ...and is asked again, saying so" "$(_l Q2h)" "WORK-1 is not marked [done]"
+assert_contains "[Q2] ...and is asked again, saying so" "$(_l Q2h)" "DSWORK-1 is not marked [done]"
 assert_contains "[Q2] a scope entry the issue does not ask for is a finding" "$(_l Q2i)" "1|SCOPE scripts/telemetry.sh: the issue asks for no telemetry [FIX IN DESIGN:"
 
 print_test_section "Q3: test-author's assertion check"
@@ -163,38 +163,38 @@ print_test_section "Q3: test-author's assertion check"
         if [[ $n -eq 1 ]]; then printf '%s' "$_R1"; else printf '%s' "${_R2:-$_R1}"; fi
     }
     R="$TEST_TEMP_DIR/q3-repo"; mkdir -p "$R/tests"; D="$TEST_TEMP_DIR/q3.md"
-    printf '# Design\n```acceptance\nLOOP-1[code]: fresh runs and nested re-entries start at round 1\nWIRING: none\nTESTFILES:\nLOOP-1: tests/acc-test.sh\n```\n' > "$D"
-    printf 'unset RESUME\nassert_eq "[LOOP-1] a fresh run starts at 1" "1" "$got"\n' > "$R/tests/acc-test.sh"
+    printf '# Design\n```acceptance\nDSLOOP-1[code]: fresh runs and nested re-entries start at round 1\nWIRING: none\nTESTFILES:\nDSLOOP-1: tests/acc-test.sh\n```\n' > "$D"
+    printf 'unset RESUME\nassert_eq "[DSLOOP-1] a fresh run starts at 1" "1" "$got"\n' > "$R/tests/acc-test.sh"
     _j() { printf 0 > "$_N"; _ta_correspondence "$D" "$R" T2 >/dev/null 2>&1; }
 
     # #2467 (ADR-073 §6): a line per failing part (this one-line SPEC is its
     # one Then), named by its word (#2470).
-    _R1=$'LOOP-1 Then: missing | WHY: only a fresh run is tested | QUOTE: "nested re-entries"'; _R2=""; _j
+    _R1=$'DSLOOP-1 Then: missing | WHY: only a fresh run is tested | QUOTE: "nested re-entries"'; _R2=""; _j
     echo "Q3a|${#_TA_CORR_FINDINGS[@]}|${_TA_CORR_FINDINGS[0]:-}|$_TA_CORR_OUTCOME|$(cat "$_N")"
     echo "Q3p|$([[ "$(cat "$_P.1")" == *'QUOTE: "<that part'"'"'s own words'* ]] && echo asked)"
 
-    _R1=$'LOOP-1 Then: missing | WHY: only a fresh run is tested'
-    _R2=$'LOOP-1 Then: missing | WHY: only a fresh run is tested | QUOTE: "nested re-entries"'; _j
+    _R1=$'DSLOOP-1 Then: missing | WHY: only a fresh run is tested'
+    _R2=$'DSLOOP-1 Then: missing | WHY: only a fresh run is tested | QUOTE: "nested re-entries"'; _j
     echo "Q3b|$(cat "$_N")|${#_TA_CORR_FINDINGS[@]}|$_TA_CORR_OUTCOME"
 
-    _R1=$'LOOP-1 Then: missing | WHY: only a fresh run is tested'
+    _R1=$'DSLOOP-1 Then: missing | WHY: only a fresh run is tested'
     _R2="$_R1"; _j
     echo "Q3c|$(cat "$_N")|${#_TA_CORR_FINDINGS[@]}|$_TA_CORR_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.3" 2>/dev/null)"
 
-    _R1=$'LOOP-1 Then: wrong | WHY: x | QUOTE: "a resumed run reads the saved round"'
+    _R1=$'DSLOOP-1 Then: wrong | WHY: x | QUOTE: "a resumed run reads the saved round"'
     _R2="$_R1"; _j
     echo "Q3d|${#_TA_CORR_FINDINGS[@]}|$_TA_CORR_OUTCOME"
 
-    _R1=$'LOOP-1: ok'; _R2=""; _j
+    _R1=$'DSLOOP-1: ok'; _R2=""; _j
     echo "Q3e|${#_TA_CORR_FINDINGS[@]}|$_TA_CORR_OUTCOME|$(cat "$_N")"
 ) > "$TEST_TEMP_DIR/q3.out" 2>/dev/null
 _l() { grep "^$1|" "$TEST_TEMP_DIR/q3.out" | head -1 | cut -d'|' -f2-; }
-assert_contains "[Q3] partial with the requirement's words quoted is a finding" "$(_l Q3a)" "1|LOOP-1"
+assert_contains "[Q3] partial with the requirement's words quoted is a finding" "$(_l Q3a)" "1|DSLOOP-1"
 assert_contains "[Q3] ...in one call" "$(_l Q3a)" "||1"
 assert_eq "[Q3] the check asks for the quote" "asked" "$(_l Q3p)"
 assert_eq "[Q3] partial with no quote is asked again on its own, and the answer counts" "2|1|" "$(_l Q3b)"
 assert_contains "[Q3] still no quote: asked again once more, then not judged" "$(_l Q3c)" "3|0|unusable|"
-assert_contains "[Q3] ...told what was wrong" "$(_l Q3c)" "LOOP-1 Then has no QUOTE"
+assert_contains "[Q3] ...told what was wrong" "$(_l Q3c)" "DSLOOP-1 Then has no QUOTE"
 assert_eq "[Q3] a quote the requirement does not say is not judged" "0|unusable" "$(_l Q3d)"
 assert_eq "[Q3] corresponds needs no quote" "0||1" "$(_l Q3e)"
 
@@ -207,11 +207,11 @@ _mk_inputs() {  # <dir> — the issue, its requirements, a design, a diff, a tes
         source "$REPO_ROOT/plugins/agent/intake/plugin.sh" >/dev/null 2>&1
         route_to_model() {
             if [[ "$2" == *"check a list of requirements"* ]]; then printf 'MISSING: none\n'
-            else printf 'REQUIREMENT: FLAG-1 add a --dry-run flag\nREQUIREMENT: CNFG-1 refuse a missing config file\n'; fi
+            else printf 'REQUIREMENT: RQFLAG-1 add a --dry-run flag\nREQUIREMENT: RQCNFG-1 refuse a missing config file\n'; fi
         }
         _intake_write_requirements "$in" '{"title":"Add a flag","body":"Add a flag. Refuse a missing config file."}'
     ) >/dev/null 2>&1
-    printf '%s\n' '# Design' '```acceptance' 'FLAG-1[code]: a --dry-run flag is accepted' 'CNFG-2[done]: a missing config is refused evidence: scripts/cfg.sh:"refuse_missing_config()"' 'TESTFILES:' 'FLAG-1: tests/t.sh' 'WIRING: none' '```' > "$in/design.md"
+    printf '%s\n' '# Design' '```acceptance' 'DSFLAG-1[code]: a --dry-run flag is accepted' 'DSCNFG-2[done]: a missing config is refused evidence: scripts/cfg.sh:"refuse_missing_config()"' 'TESTFILES:' 'DSFLAG-1: tests/t.sh' 'WIRING: none' '```' > "$in/design.md"
     printf '%s\n' 'diff --git a/p.sh b/p.sh' '+dry_run=1' > "$in/diff.patch"
     zb_test_test_run_output "$in" pass 1 0 >/dev/null
 }
@@ -236,22 +236,22 @@ _mk_inputs() {  # <dir> — the issue, its requirements, a design, a diff, a tes
     # Each case is a new answer to the same inputs: the kept one is cleared (ADR-072 §4).
     _ia() { printf 0 > "$_N"; rm -f "$A/issue-acceptance-result.json" "$A/issue-acceptance-judged.json"; issue_acceptance_run issue-acceptance "$S/pipeline-state.json" >/dev/null 2>&1; jq -r '.outcome' "$A/issue-acceptance-result.json" 2>/dev/null; }
 
-    _R1=$'MET: FLAG-1\nMET: CNFG-1'; _R2=""
+    _R1=$'MET: RQFLAG-1\nMET: RQCNFG-1'; _R2=""
     echo "Q4a|$(_ia)|$(cat "$_N")"
     _p1="$(tr -s '[:space:]' ' ' < "$_P.1")"
     echo "Q4w|$([[ "$_p1" =~ \ [0-9]+\|\  ]] && echo window || echo nowindow)"
     echo "Q4w2|$([[ "$_p1" == *'scripts/cfg.sh:"refuse_missing_config()"'* ]] && echo named)"
 
-    _R1=$'MET: FLAG-1\nUNMET: [fix-code] CNFG-1 | WHY: an unreadable file is not refused | QUOTE: "refuse a missing config file"'; _R2=""
+    _R1=$'MET: RQFLAG-1\nUNMET: [fix-code] RQCNFG-1 | WHY: an unreadable file is not refused | QUOTE: "refuse a missing config file"'; _R2=""
     echo "Q4b|$(_ia)|$(jq -r '.data.findings[0].text // ""' "$A/issue-acceptance-result.json")"
 
-    _R1=$'MET: FLAG-1'; _R2=$'MET: FLAG-1\nMET: CNFG-1'
+    _R1=$'MET: RQFLAG-1'; _R2=$'MET: RQFLAG-1\nMET: RQCNFG-1'
     echo "Q4c|$(_ia)|$(cat "$_N")|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
 
-    _R1=$'MET: FLAG-1\nUNMET: [fix-code] CNFG-1 | WHY: x | QUOTE: scripts/cfg.sh:"return 9"'; _R2=""
+    _R1=$'MET: RQFLAG-1\nUNMET: [fix-code] RQCNFG-1 | WHY: x | QUOTE: scripts/cfg.sh:"return 9"'; _R2=""
     echo "Q4d|$(_ia)|$(cat "$_N")|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
 
-    _R1=$'MET: FLAG-1\nMET: CNFG-1\nUNMET: none\nUNSURE: omitted'; _R2=""
+    _R1=$'MET: RQFLAG-1\nMET: RQCNFG-1\nUNMET: none\nUNSURE: omitted'; _R2=""
     echo "Q4e|$(_ia)"
 ) > "$TEST_TEMP_DIR/q4.out" 2>/dev/null
 _l() { grep "^$1|" "$TEST_TEMP_DIR/q4.out" | head -1 | cut -d'|' -f2-; }
@@ -259,11 +259,11 @@ assert_eq "[Q4] every requirement met: pass, in one call" "pass|1" "$(_l Q4a)"
 assert_eq "[Q4] the prompt carries no numbered window of code" "nowindow" "$(_l Q4w)"
 assert_eq "[Q4] ...it names the evidence by its file and text" "named" "$(_l Q4w2)"
 assert_contains "[Q4] an unmet requirement with a real quote fails, as a finding" "$(_l Q4b)" "fail|"
-assert_contains "[Q4] ...that names it and says why" "$(_l Q4b)" "CNFG-1"
+assert_contains "[Q4] ...that names it and says why" "$(_l Q4b)" "RQCNFG-1"
 assert_contains "[Q4] a requirement with no line is asked again" "$(_l Q4c)" "pass|2|"
-assert_contains "[Q4] ...naming it" "$(_l Q4c)" "no line for CNFG-1"
+assert_contains "[Q4] ...naming it" "$(_l Q4c)" "no line for RQCNFG-1"
 assert_contains "[Q4] a quote the file does not hold, twice: unusable" "$(_l Q4d)" "unusable|2|"
-assert_contains "[Q4] ...asked again saying which quote" "$(_l Q4d)" "CNFG-1's quote is not in scripts/cfg.sh"
+assert_contains "[Q4] ...asked again saying which quote" "$(_l Q4d)" "RQCNFG-1's quote is not in scripts/cfg.sh"
 assert_eq "[Q4] 'none' and 'omitted' are never findings" "pass" "$(_l Q4e)"
 
 print_test_section "Q5: a review lens quotes each finding"
@@ -311,7 +311,7 @@ assert_contains "[Q5] ...asked again saying which finding" "$(_l Q5d)" "finding 
 print_test_section "Q6: formatting aside (#2472)"
 # #1805 run 41951779189: the issue wrote `stage *k* is dispatched`; the judge
 # quoted it as it reads, and the check refused it twice.
-_Q6W='RESU-4: Resuming it does not dispatch stages 1…*k−1*, and stage *k* is dispatched. Run `zbuild_resume` on __init__.'
+_Q6W='RQRESU-4: Resuming it does not dispatch stages 1…*k−1*, and stage *k* is dispatched. Run `zbuild_resume` on __init__.'
 assert_eq "[Q6] a quote with the emphasis left out holds" "ok" "$(_q '"stage k is dispatched"' "$_Q6W")"
 assert_eq "[Q6] ...across marks next to other characters" "ok" "$(_q '"stages 1…k−1, and"' "$_Q6W")"
 assert_eq "[Q6] backticks and underscores left out hold" "ok" "$(_q '"Run zbuildresume on init"' "$_Q6W")"

@@ -34,21 +34,28 @@ source "$_ZBUILD_MERGE_BASE_DIR/default-branch.sh" || _ZBUILD_CONTRACT_LOAD_ERRO
 # answer, and every consumer already handles it — fail-loud
 # (baseline_resolve_failed), explicit skip (no_baseline), or documented degrade.
 zbuild_resolve_merge_base() {
-    local repo_root="${1:-}"
+    local _zrm; zbuild_resolve_merge_base_v _zrm "${1:-}"; printf '%s' "$_zrm"
+}
+
+# zbuild_resolve_merge_base_v <var> [<repo_root>] — the same, into <var>: the
+# trunk is read with no subshell, and memoised (#2482, ADR-065).
+zbuild_resolve_merge_base_v() {
+    local -n _zrmv="$1"; _zrmv=""
+    local repo_root="${2:-}"
     local -a git=(git)
     [[ -n "$repo_root" ]] && git=(git -C "$repo_root")
-    local trunk
-    trunk="$(zbuild_resolve_default_branch "${repo_root:-$PWD}")"
-    [[ -z "$trunk" ]] && return 0
-    local base="" candidate
-    for candidate in "origin/$trunk" "$trunk"; do
+    local _zrm_trunk
+    zbuild_resolve_default_branch_v _zrm_trunk "${repo_root:-$PWD}"
+    [[ -z "$_zrm_trunk" ]] && return 0
+    local _zrm_base="" candidate
+    for candidate in "origin/$_zrm_trunk" "$_zrm_trunk"; do
         # No `rev-parse --verify` pre-check: existence was never the question.
         # merge-base itself is the computation that can fail, and an empty
         # result from a ref that DOES exist is exactly the shallow-clone case.
-        base="$("${git[@]}" merge-base "$candidate" HEAD 2>/dev/null || true)"
-        [[ -n "$base" ]] && break
+        _zrm_base="$("${git[@]}" merge-base "$candidate" HEAD 2>/dev/null || true)"
+        [[ -n "$_zrm_base" ]] && break
     done
-    printf '%s' "$base"
+    _zrmv="$_zrm_base"
 }
 
 # zbuild_change_bundle <artifact_dir> [<repo_root>]
@@ -63,18 +70,23 @@ zbuild_resolve_merge_base() {
 #      `-s` guard yields its "(no change bundle available)" sentinel.
 # Fail-soft: never propagates git errors.
 zbuild_change_bundle() {
-    local artifact_dir="$1" repo_root="${2:-}"
+    local _zcb; zbuild_change_bundle_v _zcb "$1" "${2:-}"; printf '%s' "$_zcb"
+}
+
+# zbuild_change_bundle_v <var> <artifact_dir> [<repo_root>] — the same path,
+# into <var>, with no subshell around it: issue-acceptance and every lens read
+# it once a dispatch (#2482, ADR-065). The diff goes straight to its file.
+zbuild_change_bundle_v() {
+    local -n _zcbv="$1"
+    local artifact_dir="$2" repo_root="${3:-}"
     local -a git=(git)
     [[ -n "$repo_root" ]] && git=(git -C "$repo_root")
-    local base diff=""
-    base="$(zbuild_resolve_merge_base "$repo_root")"
-    if [[ -n "$base" ]]; then
-        diff="$("${git[@]}" diff "$base" HEAD 2>/dev/null || true)"
-    fi
-    if [[ -n "$diff" ]]; then
-        printf '%s' "$diff" > "$artifact_dir/branch-diff.patch"
-        printf '%s' "$artifact_dir/branch-diff.patch"
-        return 0
-    fi
-    printf '%s' "$artifact_dir/diff.patch"
+    # Names of their own: a nameref is resolved in the callee's scope.
+    local _zcb_base
+    zbuild_resolve_merge_base_v _zcb_base "$repo_root"
+    _zcbv="$artifact_dir/diff.patch"
+    [[ -n "$_zcb_base" ]] || return 0
+    "${git[@]}" diff "$_zcb_base" HEAD > "$artifact_dir/branch-diff.patch" 2>/dev/null || true
+    [[ -s "$artifact_dir/branch-diff.patch" ]] && _zcbv="$artifact_dir/branch-diff.patch"
+    return 0
 }

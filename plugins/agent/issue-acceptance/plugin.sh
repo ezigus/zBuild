@@ -34,7 +34,7 @@ source "$_IA_ROOT/scripts/lib/llm-agent.sh" 2>/dev/null || true
 # shellcheck source=../../../scripts/lib/judge.sh
 source "$_IA_ROOT/scripts/lib/judge.sh"
 # shellcheck source=../../../scripts/lib/merge-base.sh
-declare -F zbuild_change_bundle >/dev/null 2>&1 || source "$_IA_ROOT/scripts/lib/merge-base.sh"
+declare -F zbuild_change_bundle_v >/dev/null 2>&1 || source "$_IA_ROOT/scripts/lib/merge-base.sh"
 # shellcheck source=../../../scripts/lib/router-rc-classify.sh
 source "$_IA_ROOT/scripts/lib/router-rc-classify.sh" 2>/dev/null || true
 # shellcheck source=../../../scripts/lib/persona-resolve.sh
@@ -213,7 +213,7 @@ issue_acceptance_run() {
     # the lenses judge it. Build's diff.patch holds this round's work only: on
     # #1805 run 42293991602 the judge called code an earlier round added "not in
     # this incremental DIFF", and design took it for the code from before.
-    local _bd; _bd="$(zbuild_change_bundle "$art" "$_root")"
+    local _bd; zbuild_change_bundle_v _bd "$art" "$_root"
     [[ "${_bd##*/}" == branch-* && -s "$_bd" ]] && diff_f="$_bd"
     [[ -n "$diff_f" && -f "$diff_f" ]] && diff="$(cat "$diff_f" 2>/dev/null || true)"
     [[ -n "$tests_f" && -f "$tests_f" ]] && test_verdict="$(jq -r '.outcome // empty' "$tests_f" 2>/dev/null || true)"

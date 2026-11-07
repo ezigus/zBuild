@@ -20,6 +20,7 @@ _make_design_plugin() {
 id: design
 name: Test design
 kind: agent
+id_prefix: ZA
 version: 0.0.1
 hooks:
   run: design_run
@@ -60,6 +61,7 @@ _make_plan_plugin() {
 id: plan
 name: Test plan
 kind: agent
+id_prefix: ZB
 version: 0.0.1
 hooks:
   run: plan_run
@@ -98,6 +100,7 @@ _make_acceptance_gate_plugin() {
 id: acceptance-gate
 name: Test acceptance-gate
 kind: agent
+id_prefix: ZC
 version: 0.0.1
 hooks:
   run: acceptance_gate_run
@@ -149,6 +152,7 @@ _make_design_gate_plugin() {
 id: design-gate
 name: Test design-gate
 kind: agent
+id_prefix: ZD
 version: 0.0.1
 hooks:
   run: design_gate_run
@@ -191,6 +195,7 @@ _make_gate_aggregator_plugin() {
 id: gate-aggregator
 name: Test gate-aggregator
 kind: agent
+id_prefix: ZE
 version: 0.0.1
 hooks:
   run: gate_aggregator_run
@@ -241,6 +246,7 @@ _make_build_plugin() {
 id: build
 name: Test build (passing)
 kind: agent
+id_prefix: ZF
 version: 0.0.1
 hooks:
   run: build_run

@@ -50,6 +50,7 @@ cat > "$A3_PLUGINS/agent/noartifact/manifest.yaml" <<'EOF'
 id: intake
 name: No-Artifact Intake
 kind: agent
+id_prefix: ZA
 version: 0.0.1
 hooks:
   run: noartifact_run
@@ -89,6 +90,7 @@ cat > "$A3_PLUGINS/agent/security-lens/manifest.yaml" <<'EOF'
 id: security-lens
 name: Fast SL
 kind: agent
+id_prefix: ZB
 version: 0.0.1
 hooks:
   run: sl_run
@@ -118,6 +120,7 @@ cat > "$A3_PLUGINS/tool/output/manifest.yaml" <<'EOF'
 id: output
 name: Fast Out
 kind: tool
+id_prefix: ZC
 version: 0.0.1
 hooks:
   run: out_run
@@ -226,6 +229,7 @@ cat > "$B_PLUGINS/agent/noartifact-nopaths/manifest.yaml" <<'EOF'
 id: intake
 name: No-Artifact No-Paths Intake
 kind: agent
+id_prefix: ZD
 version: 0.0.1
 hooks:
   run: noartifact_nopaths_run

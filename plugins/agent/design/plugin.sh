@@ -398,8 +398,11 @@ DESIGN_PROMPT
     # #2482 (ADR-069 §2): the code a [done] claim is checked on, as the judges
     # are shown it (ADR-072 §2). On #1805 run 42293991602 design had only the
     # working copy and took code this branch added for the code from before.
+    # Read once a run of this stage: the coverage check reads the same copy
+    # (_DESIGN_BASE_DIR, set when this has run).
     local _base_dir=""
     judge_base_dir_v _base_dir "${ZBUILD_REPO_ROOT:-$PWD}" 2>/dev/null || _base_dir=""
+    local _DESIGN_BASE_DIR="$_base_dir"
     [[ -n "$_base_dir" ]] && printf '\n### The code from before this change\nThe commit this branch started from is a copy at %s. A [done] SPEC is checked\nthere: to see whether the code from before your change already does something,\nopen the file there, not in the working copy — the working copy holds every\nchange this branch made, in this round and in earlier ones.\n' "$_base_dir" >> "$prompt_input_file"
     [[ -n "$_reqs" ]] && printf '\n### Requirements from the issue (each with its id)\n%s\n\nEvery requirement above must be covered by at least one SPEC. End each SPEC line with ` covers: ` and the ids of the requirements it covers, before any ` evidence: ` — for example `'"${_DCK_ID_PREFIX}"'LOOP-1[code]: <behaviour> covers: <requirement ids>`. A requirement the code already meets is covered by a [done] SPEC with evidence.\n' "$_reqs" >> "$prompt_input_file"
 
