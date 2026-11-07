@@ -9,8 +9,17 @@
 - tests/integration/resume-entry-points-test.sh — DSENTR-1, DSENTR-2, DSCYCL-1
 - tests/unit/hydrate-stage-test.sh — DSDLGT-1
 - Each [code] requirement's test must fail on the code from before this change, and pass once the code is written.
-- answered: test-author finding 1: done** — Moved `export _ZBUILD_RESUME_ACTIVE=true` from the `# When` block to a new `# Given —` comment block immediately before it in the DSITER-1 first sub-case (`tests/integration/resume-loop-state-test.sh`). The SPEC lists it as a Given precondition (environment state), not an action; the When action is `cycle_orchestrator_run`.
-- answered: test-author finding 2: done** — Updated the DSCMBR-1 iter-2 sub-case jq call to set both `.stage_statuses.build = "complete"` and `.stage_statuses.test = "in_progress"` in a single pipeline (`tests/integration/resume-loop-state-test.sh`). The SPEC Given says "persisted state records build as complete and test as in-progress within iter k"; the previous code omitted the `test = "in_progress"` half.
-- answered: lens-correctness-code finding 2: nothing to do** — The SPEC DSITER-1 explicitly requires `current_iter=2` in the Given; the fixture is correct per the SPEC.
-- answered: lens-correctness-code finding 3: nothing to do** — Same reasoning as finding 2; the DSCMBR-1 scenario uses `current_iter=2` per the SPEC.
-- answered: lens-scope-code finding 1: nothing to do** — Path 4 of `resume-entry-points-test.sh` already uses `env -u ZBUILD_STATE_FILE -u ZBUILD_STATE_DIR` and exercises the latest-symlink branch; the finding's claim that "every entry-point sub-test sets ZBUILD_STATE_FILE explicitly" is incorrect.
+- answered: lens-scope-code finding 2: done — added a write-side DSITER-1 sub-section to `tests/integration/resume-loop-state-test.sh` (inserted between the "without _ZBUILD_RESUME_ACTIVE" and DSCMBR-1 sections). The new sub-case runs a fresh cycle (no resume, `_ZBUILD_RESUME_ACTIVE` unset, no prior cycle state), mocks `cycle_dispatch_stage` to read `current_iter` from the state file at the moment of first call, and asserts `current_iter==1`. If `_cycle_state_write_iter_start` is removed, `current_iter` stays at its init value (0 or absent → jq `// -99` fallback) and the assertion `"1" == "0"` / `"1" == "-99"` fails. The existing read-side tests are unchanged.
+- answered: lens-security-code finding 1: nothing to do — fix: code, not in test scope; I cannot modify implementation files.
+- answered: lens-security-code finding 2: nothing to do — fix: code, not in test scope.
+- answered: lens-security-code finding 3: nothing to do — fix: code, not in test scope.
+- answered: lens-security-code finding 4: nothing to do — fix: code, not in test scope.
+- answered: lens-red-team-code finding 1: nothing to do — fix: code, not in test scope.
+- answered: lens-red-team-code finding 2: nothing to do — fix: code, not in test scope.
+- answered: lens-red-team-code finding 3: nothing to do — fix: code, not in test scope.
+- answered: lens-correctness-code finding 1: nothing to do — fix: code, not in test scope.
+- answered: lens-correctness-code finding 2: nothing to do — fix: code, not in test scope.
+- answered: lens-scope-code finding 1: nothing to do — fix: code, not in test scope.
+- answered: lens-sre-code finding 1: nothing to do — fix: code, not in test scope.
+- answered: build-tests finding 1: nothing to do — the build stage confirms the test fixture for `resume-loop-state-test.sh:51` is correct after the correctness-1 code fix; no test change needed.
+- answered: build-tests finding 2: nothing to do — same as finding 1; the build stage confirms the DSCMBR-1 scenario fixture is correct after the correctness-1 code fix.
