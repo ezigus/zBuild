@@ -563,9 +563,9 @@ Summary:
 - HYDR-1: Rehydration follows the same path the hydrate stage already uses (ADR-050, `plugins/tool/hydrate`), so "exactly as before" means the same files at the same paths.
 - TEST-1: Tests for R1–R5 must use a cycle.
 - DISP-1: No requirement may be marked done, and no change made, on the strength of the legacy loop.
-- the requirements are the same as the last run's
+- the issue is unchanged since the last run: its requirements were kept, with no model call
 
-### design (verdict: pass) — your own
+### design (verdict: unusable) — your own
 Outputs:
 - design: /home/runner/work/_temp/zbuild-state/artifacts/design.md
 - design_draft: /home/runner/work/_temp/zbuild-state/artifacts/design-draft.md
@@ -574,12 +574,23 @@ Outputs:
 - work_steps: /home/runner/work/_temp/zbuild-state/artifacts/design-steps.json
 
 Findings:
-- design finding 1 (opened by design): REMOVED: names GUAR-3, which the last list never had — remove only an id that was there
+- design finding 1 (opened by design): FSTG-1: 1 part to fix
+    FSTG-1[code]: --from-stage <s> rehydrates all stages before <s> and dispatches <s> as the first stage covers: FROM-1 FROM-2
+      Given: A previous run completed stages before <s>; their artifacts are present in the git state branch; a new invocation uses --from-stage <s>
+      When: The runner starts with --from-stage <s>
+      Then: The artifacts from every stage before <s> appear in ZBUILD_ARTIFACT_DIR before the dispatch loop starts
+      And: Stage <s> is dispatched as the first stage (a stage.start event is emitted for <s>) [FIX IN DESIGN: the design fixture sets <s>=cyc, a cycle stage dispatched through the cycle:* arm (runner.sh:3482), which calls cycle_orchestrator_run; that function emits cycle.start (cycle-orchestrator.sh:2363), never stage.start for the cycle ID; stage.start is only emitted for leaf stages via the stage:* arm (runner.sh:3820) or for cycle members inside _cycle_dispatch (runner.sh:3213–3215); the test compensates by asserting stage.start for cycled (the inner member of cyc, a different stage ID), not for <s>=cyc itself, so the And's literal requirement is never satisfied by any code path — it cannot be true together with that; make them agree]
+      And: No stage.start event is emitted for any stage before <s>
+- design finding 2 (opened by design): DSPK-1: 1 part to fix
+    DSPK-1[code]: On resume, stage k (the interrupted stage) is dispatched and emits stage.start covers: RESU-3 RESU-4
+      Given: A run with stages 1…N was interrupted during stage k; stages 1…k-1 are marked complete with their artifacts present in ZBUILD_ARTIFACT_DIR after rehydration
+      When: The dispatch loop reaches stage k during resume
+      Then: Stage k emits a stage.start event [FIX IN DESIGN: the fixture used by the DSPK-1 assertion (s1 state, same as RHYD-1 path 1) sets k=cyc, a cycle stage; the cycle:* dispatch arm (runner.sh:3482) calls cycle_orchestrator_run, which emits cycle.start (cycle-orchestrator.sh:2363) for the cycle ID, not stage.start; the test asserts stage.start for cycled (the inner member, stage ID ≠ k), not for k=cyc itself; so "Stage k emits a stage.start event" is never true when k is a cycle stage dispatched through the cycle:* arm — it cannot be true together with that; make them agree]
 
 Summary:
 ## design — fail
 
-- the design fails 1 check(s)
+- the design fails 2 check(s)
 
 The findings are in design's result. This try is kept as the working copy for the next run; design.md is unchanged.
 
@@ -600,81 +611,26 @@ Summary of that output:
 Your notes so far:
 # Design notes: #1805 — resume and --from-stage trust-and-rehydrate
 
-## Status: Thirty-seventh pass — GUAR-3 dropped (code clashes with GUAR requirement prefix); GUAR-1 covered by FRSH-1[no-code]
+## Status: Thirty-ninth pass — CYCM-1[done] removed; GUAR-1 covered by FRSH-1[no-code] alone
 
-### Change this pass (thirty-seventh)
-
-The design checker rejected GUAR-3 on four grounds (design findings 1–4):
-1. Missing Given/When/Then parts
-2. Evidence text (`"Emit stage.start for cycle members"`) was added by this branch — not pre-existing
-3. First use of a code must be CODE-1, not CODE-3
-4. GUAR is used as an issue requirement prefix — SPECs cannot use it
-
-**Resolution:** Drop GUAR-3 entirely. GUAR-1 is fully covered by FRSH-1[no-code] (explicitly in its `covers: GUAR-1` field). The `_cd_iter > 0` guard in `_cycle_dispatch` is pre-existing code confirmed by the issue-acceptance finding itself ("it is not in this incremental DIFF"). The cycle-member-dispatch-events-test.sh update (in the supersedes block) adds the previously-missing assertion about this pre-existing behavior.
-
-**Changes made:**
-- Removed GUAR-3[done] from acceptance block (line 121 in previous draft)
-- Added `REMOVED: GUAR-3 — code GUAR clashes with issue requirement prefix (GUAR-1, GUAR-2 are requirement ids); GUAR-1 is covered by FRSH-1[no-code]`
-- Updated Finding 1: removed GUAR-3 from SPEC list; added to REMOVED list
-- Updated Finding 3: removed GUAR-3 from GUAR-1 coverage line; replaced with explanation that FRSH-1 covers GUAR-1 and the `_cd_iter > 0` guard is pre-existing
-- Updated Finding 24: explains GUAR-3 was dropped rather than added
-
-No other changes — the design was otherwise passing after the previous (thirty-sixth) pass.
-
-### Change this pass
+### Change this pass (thirty-ninth)
 
 **design finding 1** (from previous pass design verdict: unusable):
-LOOP-1 was only partially covered. ITER-1 covers restoring the iteration count so the cycle
-orchestrator starts at iter k (not iter 1). But no SPEC covered skipping already-complete member
-stages WITHIN that iteration. If build completed in iter 2 before test was interrupted, build
-would re-run on resume because `_cycle_dispatch` has no skip-on-complete guard — it emits
-`stage.start` for all members at `_cd_iter > 0` unconditionally. SKIP-1's skip guard is in the
-top-level dispatch-unit loop only.
+"CYCM-1 is marked [done], but its evidence `core/pipeline/runner.sh:"Emit` is not in the code from before this change — this branch added or changed it, so it is not done yet: tag CYCM-1 [code] and give it a test"
 
-LOOP-1 says "resumes at the interrupted stage of that round" — this requires BOTH:
-1. Starting at the right iteration (ITER-1) — ALREADY COVERED
-2. Skipping already-complete members within that iteration (CMBR-1) — NEW
+The design checker confirmed the comment `"Emit stage.start for cycle members"` at runner.sh:3211 was added by this branch. CYCM-1[done] is therefore untenable.
 
-**CMBR-1[code]** added: covers LOOP-1. Implementation (Gap 9, NOT YET FIXED):
-- Cycle orchestrator passes `resume_first_iter=true` to `_cycle_dispatch` only when dispatching
-  members of `_start_iter` during a resume (i.e., `_start_iter > 1`, current iter == `_start_iter`)
-- `_cycle_dispatch` with that flag checks the cycle member stage's persisted status and skips
-  (no stage.start, no dispatch) any member already marked complete
-- Flag is passed as a local argument — no interaction with `_ZBUILD_RESUME_ACTIVE` (already consumed)
-- Test: resume-loop-state-test.sh (alongside ITER-1)
-- Touches: core/pipeline/runner.sh (where `_cycle_dispatch` is defined ~line 3204) and
-  core/pipeline/cycle-orchestrator.sh (where it is called from)
+**Resolution:**
+- Removed CYCM-1[done] from the acceptance block entirely
+- No REMOVED tombstone needed — CYCM-1 never appeared in an accepted design (the last accepted design was iter-3-attempt-1 which had 14 SPECs, none of which was CYCM-1 or GUAR-3)
+- GUAR-1 remains covered by FRSH-1[no-code], which verifies fresh runs dispatch all stages with no skips
+- Cycle members emitting stage.start at _cd_iter > 0 (new behavior from this branch) is not a GUAR-1 violation — GUAR-1 concerns stage skipping, not additional stage.start events
+- Updated Gap 7 description to remove CYCM-1 reference
+- Updated Decision section to remove CYCM-1 reference
+- Updated supersedes entry for cycle-member-dispatch-events-test.sh to remove "pre-existing" language
+- Updated Findings 1, 3, 20, 24
 
-### Changes made to design-draft.md
-
-- Goal in architectural decision: added sentence about within-iteration cycle member skip
-- Gap 9 added to Decision section (NOT YET FIXED)
-- Decision section: added CMBR-1 implementation approach (resume_first_iter flag)
-- Steps block: split resume-loop-state-test.sh update step to also add CMBR-1 sub-case;
-  added new step for the `_cycle_dispatch` skip-on-complete guard implementation
-- Acceptance block: CMBR-1[code] added after ITER-1, covers: LOOP-1
-  Given/When/Then: iter k, build complete, test interrupted; resume; no stage.start for build, yes for test
-- TESTFILES: CMBR-1: tests/integration/resume-loop-state-test.sh
-- Finding 1: updated SPEC list to include CMBR-1; noted Finding 23
-- Finding 3: LOOP-1 coverage updated to ITER-1 + CMBR-1 with explanation
-- Finding 23: added explaining the gap and the CMBR-1 fix
-
-### This pass: issue-acceptance finding 1
-
-The issue-acceptance stage flagged GUAR-1 as "not sure": could not determine from the diff
-whether the `_cd_iter > 0` branch at runner.sh:3213 is pre-existing or new.
-
-The issue-acceptance finding itself said "it is not in this incremental DIFF."
-Reading runner.sh:3211-3215 confirms: comment "Emit stage.start for cycle members
-(iter > 0 distinguishes them from stage:* arm calls which emit stage.start before calling
-this function)" and the guard are unmodified pre-existing code.
-
-**Resolution:** GUAR-3[done] added with evidence `core/pipeline/runner.sh:"Emit stage.start for
-cycle members"`. Gap 7 and Finding 20 corrected: no "event-contract widening" — cycle members
-have always emitted stage.start at iter > 0. The cycle-member-dispatch-events-test.sh update
-adds a previously-missing assertion about pre-existing behaviour. GUAR-1 is satisfied.
-
-### SPEC summary (17 SPECs: 11 [code], 5 [no-code], 1 [done], 3 REMOVED)
+### SPEC summary (15 SPECs: 11 [code], 4 [no-code], 3 REMOVED)
 
 | SPEC | Classification | Covers |
 |------|---------------|--------|
@@ -692,7 +648,6 @@ adds a previously-missing assertion about pre-existing behaviour. GUAR-1 is sati
 | ENTR-2 | [code] | PATH-1 |
 | FRSH-1 | [no-code] | GUAR-1 |
 | FRSH-2 | [no-code] | GUAR-2 |
-| GUAR-3 | [done] | GUAR-1 |
 | DLGT-1 | [code] | HYDR-1 |
 | CYCL-1 | [no-code] | TEST-1 |
 | REMOVED: DISP-1 | — | id collision |
@@ -709,7 +664,7 @@ All 16 requirements covered:
 - FROM-3: FSTG-2
 - LOOP-1: ITER-1, CMBR-1
 - PATH-1: ENTR-1, ENTR-2
-- GUAR-1: FRSH-1, GUAR-3
+- GUAR-1: FRSH-1
 - GUAR-2: FRSH-2
 - ADR-1: AMDR-1
 - ADR-2: AMDR-2
@@ -717,40 +672,41 @@ All 16 requirements covered:
 - TEST-1: CYCL-1
 - DISP-1: SKIP-1
 
+### Key structural facts
+
+1. `_ZBUILD_RESUME_ACTIVE` lifecycle:
+   - Set `true` at runner.sh:2862 (resume entry, after `_runner_resume_rehydrate`)
+   - Consumed (set `false`) at cycle-orchestrator.sh:2343 on first cycle orchestrator entry
+   - Sole purpose: select `_start_iter` (read persisted iter vs. start at 1)
+   - Any code called after orchestrator entry sees flag as false — this is by design
+
+2. `_cycle_dispatch` stage.start guard:
+   - `if [[ "$_cd_iter" -gt 0 ]]; then eb_emit_event "stage.start"`
+   - Fires for all cycle member dispatches at iter > 0 (fresh and resume)
+   - Comment text at runner.sh:3211 added by this branch (confirmed by design checker)
+   - GUAR-1 satisfied by FRSH-1[no-code], not by a [done] SPEC
+
+3. CMBR-1 implementation (Gap 9, NOT YET FIXED in branch):
+   - Cycle orchestrator passes `resume_first_iter=true` to `_cycle_dispatch` for the first
+     iteration dispatched during a resume (when `_start_iter > 1`, current_iter == `_start_iter`)
+   - `_cycle_dispatch` skips members already marked complete in persisted state when flag is set
+   - Passed as local argument, no interaction with `_ZBUILD_RESUME_ACTIVE`
+
+4. Gap 8 (auto-resume state discovery) NOT YET FIXED in branch:
+   - runner.sh:2174 auto-resume elif checks flat path only
+   - Fix: when flat path absent, check `$state_dir/latest/pipeline-state.json`
+   - ENTR-2[code] test: set state under `runs/<run_id>/`, no ZBUILD_STATE_FILE, verify auto-resume fires
+
 ### Outstanding (requires build stage)
 
 - CMBR-1 implementation: `_cycle_dispatch` skip-on-complete guard for first resumed iteration
-  (Gap 9, NOT YET FIXED) — touches runner.sh and cycle-orchestrator.sh
-- runner.sh auto-resume elif needs `latest` symlink check (Gap 8) — still NOT YET FIXED
+- runner.sh auto-resume elif needs `latest` symlink check (Gap 8)
 - resume-entry-points-test.sh needs ENTR-2 sub-case
 - ADR-006 step 3.6 amendment (AMDR-1)
 - ADR-050 §6 boundary note + Enforced by citations (AMDR-2)
 - resume-loop-state-test.sh: needs CMBR-1 sub-case + `export _ZBUILD_RESUME_ACTIVE=true` for ITER-1
 - cycle-member-dispatch-events-test.sh: needs update for stage.start at iter > 0
 - Other test updates (resume-rehydrate-test.sh, from-stage-rehydrate-test.sh, hydrate-stage-test.sh)
-
-### Key structural facts
-
-1. `_ZBUILD_RESUME_ACTIVE` lifecycle:
-   - Set `true` at runner.sh:2862 (resume entry, after `_runner_resume_rehydrate`)
-   - Consumed (set `false`) at cycle-orchestrator.sh:2343 on first cycle orchestrator entry
-   - Sole purpose: selecting `_start_iter` in cycle orchestrator
-   - NOT a general "this dispatch is part of a resume" signal — flag is false when _cycle_dispatch runs
-
-2. `stage.start` for cycle members:
-   - `_cycle_dispatch` (runner.sh:3213) emits `stage.start` for `_cd_iter > 0` unconditionally
-   - Fires for resume (stage k → DSPK-1) AND fresh cycle runs (iter 1+)
-   - This is PRE-EXISTING code, NOT modified by this branch (confirmed by issue-acceptance finding)
-   - cycle-member-dispatch-events-test.sh update adds a MISSING ASSERTION about pre-existing behaviour
-   - GUAR-1 satisfied: fresh cycle runs have always emitted stage.start at iter > 0
-
-3. CMBR-1 fix mechanism:
-   - Cycle orchestrator knows `_start_iter` (from ITER-1 fix)
-   - When dispatching iter == `_start_iter` and `_start_iter > 1`, pass `resume_first_iter=true`
-   - `_cycle_dispatch` with that flag: check stage status in persisted state, skip if complete
-   - For subsequent iters (iter > `_start_iter`): `resume_first_iter=false`, no skip
-
-4. ITER-1 fix: already in branch (cycl
 
 ### test (verdict: pass)
 Outputs:
