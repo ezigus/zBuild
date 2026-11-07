@@ -109,7 +109,10 @@ setup_test_env "fork-budget"
 # the shell, not with a grep a provider a plugin; issue-acceptance and design
 # now read the commit the branch started from, the lenses' bundle with no
 # subshell) — measured 1,885 macOS; main measured 1,903.
-FORK_BUDGET=1892
+# 1888 (ADR-070 amendment 2026-11-07: intake reads the issue's labels in its
+# shell; design's check reads the issue only when it judges the requirements)
+# — measured 1,885 macOS; main measured 1,885.
+FORK_BUDGET=1888
 # PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
 # the programs above plus each `$( )` subshell, a copy of the whole engine shell
 # that FORK_BUDGET cannot see. Ratchets down only, like FORK_BUDGET. History:
@@ -141,8 +144,9 @@ FORK_BUDGET=1892
 # measured — 2,604 macOS). 2555 (#2476, the same
 # change as FORK_BUDGET 1920 — measured 2,546 macOS). 2545 (#2480, the same
 # change as FORK_BUDGET 1910 — measured 2,538 macOS). 2541 (#2482, the same
-# change as FORK_BUDGET 1892 — measured 2,534 macOS).
-PROCESS_BUDGET=2541
+# change as FORK_BUDGET 1892 — measured 2,534 macOS). 2537 (the same change
+# as FORK_BUDGET 1888 — measured 2,534 macOS).
+PROCESS_BUDGET=2537
 # The run's cost in two parts (ADR-065 §6, #2472). Each budget ratchets down
 # like the totals; each floor is the goal, an estimate, measured again when
 # reached. History: 505 / 298 a dispatch, 12 / 7 a plugin at start-up (#2472 —
@@ -163,7 +167,7 @@ PROCESS_BUDGET=2541
 #   and write checks (~4), safe writes (~6), the model call (~2) — ~50 execs.
 # - Start-up, per plugin manifest: discovery and the manifest checks; about one
 #   process and one exec a plugin once each read is in the shell.
-DISPATCH_PROCS_BUDGET=482
+DISPATCH_PROCS_BUDGET=481
 DISPATCH_PROCS_FLOOR=20
 DISPATCH_EXECS_BUDGET=275
 DISPATCH_EXECS_FLOOR=50

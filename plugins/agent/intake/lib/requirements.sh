@@ -51,6 +51,9 @@ or digits, starting with a letter, that says what the requirement is about, a
 dash, and a number — ${_IREQ_PX}LOOP-1 for a requirement about loop state.
 Requirements about the same thing share the code and count up: ${_IREQ_PX}LOOP-1,
 ${_IREQ_PX}LOOP-2. Never use an id the issue itself writes.
+When a requirement refers to another of the issue's items by the issue's own
+name for it (R1, R1–R5), write the ids of the requirements it means instead:
+every later stage sees only this list, never the issue's names.
 EOF
     # #2460, #2462: a list from the last run is where the work starts, and its
     # ids never move.
@@ -86,6 +89,9 @@ what the requirement is about, a dash, and a number: ${_IREQ_PX}LOOP-1. A requir
 thing as a listed one shares its code, with the number one more than the
 highest that code has had, the removed ids counted. Never use an id the list or
 the issue already writes, or a removed one.
+When a requirement refers to another of the issue's items by the issue's own
+name for it (R1, R1–R5), write the ids of the requirements it means instead:
+every later stage sees only this list, never the issue's names.
 
 A listed item that is not a requirement — a note about how or when to do the
 work, such as the order to do it in or what not to run it alongside, which no
@@ -147,6 +153,20 @@ _ireq_prev_load() {
     return 0
 }
 
+# _ireq_issue_labels_v <var> <issue> — the issue's own names for its items: a
+# line that starts, after any bullet, number or heading mark and any bold, with
+# 1 to 3 capital letters and a number, then a stop ("- **R1.** …", "R2: …").
+# Space separated; empty when it names none.
+_ireq_issue_labels_v() {
+    local -n _iil="$1"; local _l re='^[[:space:]]*(#+[[:space:]]+|[-*+][[:space:]]+|[0-9]+[.)][[:space:]]+)?(\*\*|__)?([A-Z]{1,3}[0-9]{1,3})(\*\*|__)?([.:)]|[[:space:]]+[—–-][[:space:]])'
+    _iil=" "
+    while IFS= read -r _l; do
+        [[ "$_l" =~ $re && "$_iil" != *" ${BASH_REMATCH[3]} "* ]] && _iil+="${BASH_REMATCH[3]} "
+    done <<< "$2"
+    [[ "$_iil" == " " ]] && _iil=""
+    return 0
+}
+
 # _ireq_parse <LABEL> <reply> — the reply's <LABEL>: lines into _IREQ_IDS,
 # _IREQ_TEXTS (parallel arrays) and, for REQUIREMENT, its REMOVED: lines into
 # _IREQ_RM_IDS / _IREQ_RM_WHY. A line with no id, or a removal with no reason,
@@ -188,7 +208,8 @@ _ireq_parse() {
 # list a MISSING answer adds to. rc 1 with _INTAKE_REQ_OUTCOME set when the call
 # fails or its answer still breaks a rule.
 _ireq_call_parsed() {
-    local prompt="$1" label="$2" ask="$1" reply _try v plain
+    local prompt="$1" label="$2" ask="$1" reply _try v plain i labels
+    _ireq_issue_labels_v labels "$5"
     local -a _iv=()
     for _try in 1 2; do
         _ireq_call_v reply "$ask" || return 1
@@ -198,6 +219,15 @@ _ireq_call_parsed() {
         plain=""
         for v in "${_IREQ_NR_IDS[@]+"${_IREQ_NR_IDS[@]}"}"; do
             [[ " $6 " == *" $v "* ]] || _IREQ_FORM+=("NOT-A-REQUIREMENT: names $v, which the list does not have — name only a listed id")
+        done
+        # A requirement that names one of the issue's own items by its label
+        # (#1805 run 42340358110: "Tests for R1–R5" reached checks that never
+        # see the issue, and one took R1–R5 for the ids that looked like it).
+        for i in "${!_IREQ_TEXTS[@]}"; do
+            for v in $labels; do
+                [[ "${_IREQ_TEXTS[i]}" =~ (^|[^A-Za-z0-9])$v([^A-Za-z0-9]|$) ]] \
+                    && _IREQ_FORM+=("${_IREQ_IDS[i]} writes $v, the issue's own name for one of its items — write the id of the requirement it means instead")
+            done
         done
         for v in "${_IREQ_FORM[@]+"${_IREQ_FORM[@]}"}"; do plain+="${plain:+; }$v"; done
         for v in "${_iv[@]+"${_iv[@]}"}"; do plain+="${plain:+; }$(zb_id_plain "$v" requirement)"; done

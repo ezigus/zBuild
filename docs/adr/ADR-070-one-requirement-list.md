@@ -134,7 +134,26 @@ On #1805 run 42229975998 no requirement took a SPEC's code, but nothing showed w
 - A requirement and a SPEC can no longer have the same id. So intake no longer reads the last design's SPEC codes, and its `intake.requirements.design_codes` event (#2480) is gone. Amendments #2476 and #2480 above are replaced by this one as far as the one pool goes. Their rule on notes about the work stands.
 - An id in the last list without the prefix is the old numbering, like `R-n`. It is shown to the call without its id, gets a new one, and needs no REMOVED line.
 
+## Amendment 2026-11-07 — §1: a requirement names the issue's items by their ids; §4: the design check is shown the issue
+
+On #1805 run 42340358110 one requirement read "Tests for R1–R5 must use a cycle", in the issue's words. R1–R5
+are the issue's own names for its items, and no later stage is shown which items they name. Design's coverage
+check was told the issue was "under Previous work", where it was not. It took R1–R5 for `RQRES-1`…`RQRES-5`,
+the ids that looked like them, and refused a SPEC that covered R3 and R4. Design lost its last try to it.
+
+- **§1: an issue's name for its items becomes the ids.** A requirement that refers to another of the issue's
+  items by the issue's own name for it (R1, R1–R5) is written with the ids of the requirements it means. The
+  issue's names are read from the issue: a line that starts, after any bullet, number or heading mark and any
+  bold, with one to three capital letters and a number, then a stop (`- **R1.** …`). A requirement whose words
+  write one is asked again, once, naming it (ADR-060 §6). A word the issue does not use as a name, such as S3,
+  is not one.
+- **§4: the design check is shown the issue.** As §4 says, it judges the list beside the issue's own words. They
+  are found among the stage's inputs by what they are (`earlier_issue_text`, ADR-055 §1). It is shown them
+  only when it judges the requirements; with no issue, its prompt claims none.
+
 ## Enforced by
+
+- Amendment 2026-11-07 §1 → `tests/unit/intake-stable-ids-test.sh` S13 (a requirement writing the issue's name R1 or R2 is asked again, naming each; a word the issue does not use as a name is not refused; the list is written with the ids); §4 → `tests/unit/design-coverage-test.sh` I1 (the prompt carries the issue's own words, found among the inputs; with no issue it claims none)
 
 - Amendment 2026-11-06 (#2482) §1 → `tests/unit/intake-stable-ids-test.sh` S12 (an id without RQ is asked again, naming the prefix; the call is told it; a requirement may share a SPEC's code; a last-list id from before the prefix is shown without it and needs no REMOVED line)
 
