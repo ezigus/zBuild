@@ -104,7 +104,7 @@ SKIP-1[code]: On resume, the dispatch-unit loop skips a stage marked complete wh
 DSPK-1[code]: On resume, stage k (the interrupted stage) is dispatched and emits stage.start covers: RESU-3 RESU-4
   Given: A run with stages 1…N was interrupted during stage k; stages 1…k-1 are marked complete with their artifacts present in ZBUILD_ARTIFACT_DIR after rehydration
   When: The dispatch loop reaches stage k during resume
-  Then: Stage k is dispatched — when k is a cycle stage, a cycle.start event is emitted for k and stage.start is emitted for k's first non-complete cycle member (the interrupted member, via the CMBR-1 resume_first_iter path); when k is a leaf stage, a stage.start event is emitted for k
+  Then: Stage k is dispatched — when k is a cycle stage, a cycle.start event is emitted for k and stage.start is emitted for k's first non-complete cycle member; when k is a leaf stage, a stage.start event is emitted for k
 ENTR-1[code]: All three resume entry paths (--resume flag, auto-resume on status=interrupted, zbuild pipeline resume --run-id) restore completed-stage artifacts before the dispatch loop covers: PATH-1
   Given: A run has been interrupted and its state is persisted in runs/<run_id>/
   When: The run is resumed via any of the three entry paths in turn

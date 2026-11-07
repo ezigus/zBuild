@@ -1,6 +1,6 @@
 # Design notes: #1805 — resume and --from-stage trust-and-rehydrate
 
-## Status: Forty-first pass — Remove erroneous `_cd_iter > 0` guard; CMBR-1 emits stage.start for interrupted cycle member; ENTR-2 ZBUILD_STATE_FILE constraint tightened
+## Status: Forty-second pass — DSPK-1 Then clause: removed internal code path reference
 
 ### Changes this pass (forty-first)
 
