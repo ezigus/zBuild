@@ -7,7 +7,7 @@
   [38;2;0;212;255m[#1805/DSRHYD-1] on resume, artifacts restored from git state branch into ZBUILD_ARTIFACT_DIR[0m
   [38;2;74;222;128m✓[0m [#1805/DSRHYD-1] setup: state branch populated with intake-result.json
   [38;2;248;113;113m✗[0m [#1805/DSRHYD-1] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/resume-rehydrate-1805.MFVAAf/s1-state/artifacts/intake-result.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/resume-rehydrate-1805.E2juUm/s1-state/artifacts/intake-result.json[0m
   [38;2;248;113;113m✗[0m [#1805/DSRHYD-1] artifact content is byte-identical to its state at interruption (via _artifact_persist_restore + _artifact_persist_put_back from git state branch)
     [2mexpected: {"result_contract":3,"outcome":"pass","reason":"prior-run intake"}, got: [0m
   [38;2;248;113;113m✗[0m [#1805/DSRHYD-1] at least one stage dispatched after resume (dispatch loop ran; artifact was present before loop)
@@ -24,7 +24,7 @@
 
   [38;2;0;212;255m[#1805/DSRHYD-1] path 2: auto-resume (status=interrupted) restores artifacts[0m
   [38;2;248;113;113m✗[0m [#1805/DSRHYD-1] path 2 (auto-resume/interrupted): intake-result.json restored
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/resume-rehydrate-1805.MFVAAf/s1p2-state/artifacts/intake-result.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/resume-rehydrate-1805.E2juUm/s1p2-state/artifacts/intake-result.json[0m
   [38;2;248;113;113m✗[0m [#1805/DSRHYD-1] path 2 (auto-resume): artifact content is byte-identical to its state at interruption (via _artifact_persist_restore + _artifact_persist_put_back from git state branch)
     [2mexpected: {"result_contract":3,"outcome":"pass","reason":"prior-run intake"}, got: [0m
   [38;2;248;113;113m✗[0m [#1805/DSRHYD-1] path 2 (auto-resume): at least one stage dispatched (pipeline ran via path-2 resume)
@@ -36,7 +36,7 @@
 
   [38;2;0;212;255m[#1805/DSRHYD-1] path 3: zbuild pipeline resume --run-id restores artifacts[0m
   [38;2;248;113;113m✗[0m [#1805/DSRHYD-1] path 3 (zbuild pipeline resume): intake-result.json restored
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/resume-rehydrate-1805.MFVAAf/s1p3-state/artifacts/intake-result.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/resume-rehydrate-1805.E2juUm/s1p3-state/artifacts/intake-result.json[0m
   [38;2;248;113;113m✗[0m [#1805/DSRHYD-1] path 3 (zbuild pipeline resume): artifact content is byte-identical to its state at interruption (via _artifact_persist_restore + _artifact_persist_put_back from git state branch)
     [2mexpected: {"result_contract":3,"outcome":"pass","reason":"prior-run intake"}, got: [0m
   [38;2;248;113;113m✗[0m [#1805/DSRHYD-1] path 3 (zbuild pipeline resume): at least one stage dispatched (pipeline ran via path-3)
