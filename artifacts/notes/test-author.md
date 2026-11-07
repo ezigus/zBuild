@@ -1,89 +1,98 @@
-# test-author notes — issue #1805 (round 36: fix two failing test assertions)
+# test-author notes — issue #1805 (round 37: fix review_lenses test findings)
 
 ## Status: COMPLETE
 
-## What was done this round
+## Round summary
 
-Fixed two failing test assertions from the previous round's test run.
+review_lenses stage found code bugs and test gaps. My job: fix the test gaps.
 
-### test finding 1 (cycle-member-dispatch-events-test.sh FRSH-1): REMOVED wrong assertion
+### "fix: test" findings to address
 
-The assertion at lines 122-136 expected cycle members to emit `stage.start` on fresh
-runs via `_cd_iter > 0` guard (`expected: 2, got: 0`). It was wrong for two reasons:
+1. **lens-red-team finding 3** (fix: test): Add CMBR-1 sub-case for iter=1
+   - resume-loop-state-test.sh
+   - Insert new sub-case with rounds=1 → `current_iter=1`, `stage_statuses.build=complete`
+   - Asserts build NOT dispatched, test dispatched
+   - Fails on current code (`_start_iter > 1` bug); passes after code fix
 
-1. The test stubs `cycle_dispatch_stage` (lines 67-85), so the guard code is never
-   called — the assertion can never pass regardless of implementation.
-2. Per the design and correctness findings, the guard after the fix is
-   `_ZBUILD_RESUME_ACTIVE && _cd_iter > 0`, meaning fresh runs do NOT get this extra
-   `stage.start` emission. The assertion was testing the WRONG behavior.
+2. **lens-correctness finding 4** (fix: test): NOTHING TO DO
+   - Finding says `current_iter=2` from rounds=2 is wrong for "interrupted during iter=2"
+   - But all 882 tests pass with rounds=2 and asserting `_start_iter=2 = current_iter=2`
+   - The comment says "iter 2 in_progress = current interrupted iter" with `current_iter=2`
+   - `zb_engine_loop_state rounds=N` gives `current_iter=N`; test correctly represents scenario
+   - Changing to rounds=1 would assert `_start_iter=2` from `current_iter=1`, but code
+     uses `_start_iter=current_iter` (not +1), so would fail on correct new code
+   - Conclusion: finding is wrong about semantics. Leave unchanged.
 
-FRSH-1 is a [no-code] requirement already correctly tested in resume-rehydrate-test.sh
-(the FRSH-1 sub-case there: intake dispatches, no stage.skip, no prior-run artifact).
-The cycle-member-dispatch-events-test.sh assertion was redundant and wrong.
+3. **lens-scope finding 3** (fix: test): NOTHING TO DO
+   - Assertion at from-stage-rehydrate-test.sh:185 checks `stage.start > 0` for cycled
+   - FSTG-1 requirement says "stage.start is emitted for <s>'s first cycle member"
+   - Weakening to `cycle.member.dispatch.start` would let the test pass on incompletely-fixed code
+   - If code fix removes `iter > 0` without fixing CMBR-1 for `_start_iter=1`, assertion
+     correctly fails (exposing incomplete fix). Leave unchanged.
 
-Removed lines 122-136 (the entire FRSH-1 comment block + variable + assert_eq).
+4. **lens-red-team finding 4** (fix: test): Add cycled stage.start=0 to FRSH-1 sub-case
+   - resume-rehydrate-test.sh
+   - Add assertion that cycled emits 0 stage.starts on fresh run
+   - Design: stage.start for cycle members only via CMBR-1 resume path; not on fresh runs
+   - Fails on current code (`iter > 0` bug emits stage.start unconditionally); passes after fix
 
-### test finding 2 (resume-rehydrate-test.sh FRSH-2 cycle.start): REMOVED wrong assertion
+5. **lens-scope finding 4** (fix: test for cycle-member-dispatch-events-test.sh): OUT OF SCOPE
+   - That file is not in my testfile list. Cannot change it.
 
-The assertion expected `cycle.start > 0` on fresh run (`expected >0, got: 0`). It
-was wrong because:
+### "fix: code" findings: OUT OF SCOPE for test-author
+- lens-security findings 1, 2
+- lens-performance finding 1 (iter > 0 guard always true — code fix)
+- lens-red-team findings 1, 2 (CMBR-1 _start_iter > 1 bug — code fix)
+- lens-correctness findings 1, 2, 3 (iter > 0 / CMBR-1 bugs — code fix)
+- lens-scope findings 1, 2 (iter > 0 — code fix)
+- lens-sre findings 1-5 (logging gaps — code fix)
 
-The FRSH-2 runner (artifact-snapshot-coverage template, in_progress status) dispatches
-`intake` (stage.start emitted ✓) but then exits — the pipeline halts because the actual
-intake plugin fails without real issue content, before dispatching the cycle stage `cyc`.
-So `cycle.start = 0` does NOT mean the skip guard fired; it means the pipeline never
-reached `cyc`. The assertion was testing an observable that never becomes non-zero in
-this runner setup.
+## Changes made this round
 
-The two existing FRSH-2 assertions are sufficient for the requirement:
-1. intake dispatches (stage.start for intake = 1) — proves skip guard didn't skip intake
-2. no stage.skip events — proves skip guard didn't fire for any stage
+1. resume-loop-state-test.sh: added CMBR-1 iter=1 sub-case (before CYCL-1 section)
+2. resume-rehydrate-test.sh: added cycled stage.start=0 assertion to FRSH-1 sub-case
 
-Removed lines 875-890 (the FRSH-2 cycle.start comment block + variable + assert_gt).
+## Answers to findings
 
-## Findings answered this round
+ANSWER lens-red-team finding 3: done — added CMBR-1 iter=1 sub-case in resume-loop-state-test.sh;
+  tests that build (complete in iter=1) is NOT dispatched and test IS dispatched on resume with
+  _start_iter=1; will fail on current code (CMBR-1 _start_iter > 1 bug) and pass after fix.
 
-ANSWER test finding 1: done — removed the FRSH-1 assertion block from
-  cycle-member-dispatch-events-test.sh (lines 122-136). The assertion expected cycle
-  members to emit stage.start via `_cd_iter > 0` guard on fresh runs, but that code
-  path is blocked by the stub AND the correct code uses `_ZBUILD_RESUME_ACTIVE &&
-  _cd_iter > 0` so fresh runs never trigger it. FRSH-1 is already correctly covered
-  in resume-rehydrate-test.sh.
+ANSWER lens-correctness finding 4: nothing to do — the finding is incorrect about how
+  `current_iter` is semantically written; `zb_engine_loop_state rounds=2` gives `current_iter=2`
+  which correctly represents "interrupted during iter=2" (the test comment confirms this);
+  changing to rounds=1 would assert _start_iter=2 from current_iter=1, but current code uses
+  _start_iter=current_iter (not +1), so the test would fail on correct new code.
 
-ANSWER test finding 2: done — removed the FRSH-2 `cycle.start > 0` assertion block
-  from resume-rehydrate-test.sh (lines 875-890). The FRSH-2 runner exits after intake,
-  never dispatching cyc, so cycle.start is always 0 regardless of the skip guard.
-  The two existing assertions (intake dispatches + no stage.skip) are sufficient for
-  the FRSH-2 requirement.
+ANSWER lens-red-team finding 4: done — added `assert_eq "0" "$_s12_cycled_starts"` assertion
+  to FRSH-1 sub-case in resume-rehydrate-test.sh; verifies cycle members do NOT emit stage.start
+  on fresh runs; fails on current code (iter>0 bug causes unconditional stage.start for cycle
+  members); passes after removing/guarding the iter>0 guard.
 
-ANSWER issue-acceptance finding 1: nothing to do — path 4 (lines 425-550 of
-  resume-entry-points-test.sh) exercises ENTR-2 via `latest` symlink with
-  `env -u ZBUILD_STATE_FILE -u ZBUILD_STATE_DIR`. The test passes (not in the failing
-  test list). The finding's claim that "path 2 sets ZBUILD_STATE_FILE" is accurate but
-  path 2 is an ENTR-1 test (not ENTR-2). Path 4 is the ENTR-2 test and correctly
-  does NOT set ZBUILD_STATE_FILE.
+ANSWER lens-scope finding 3: nothing to do — the FSTG-1 assertion correctly tests the
+  requirement that stage.start is emitted for <s>'s first cycle member; weakening to
+  cycle.member.dispatch.start would allow the test to pass on incompletely-fixed code (where
+  CMBR-1 _start_iter>1 bug persists); keeping stage.start correctly fails when code is
+  incompletely fixed.
 
-ANSWER issue-acceptance finding 2: nothing to do — this is a code finding (the
-  `_cd_iter > 0` guard lacks `_ZBUILD_RESUME_ACTIVE` check). My job is test-author.
-  The wrong FRSH-1 assertion in cycle-member-dispatch-events-test.sh (which asserted
-  the buggy behavior) has been removed. FRSH-1/GUAR-1 is correctly tested in
-  resume-rehydrate-test.sh. The code fix is for the code-author stage.
+ANSWER lens-scope finding 4: nothing to do from test-author — cycle-member-dispatch-events-test.sh
+  is not in my testfile list; cannot change it.
 
-## All SPECs coverage
+## All SPECs coverage (unchanged from previous round)
 
 ### tests/unit/hydrate-stage-test.sh
 - DLGT-1 ✓
 
 ### tests/integration/resume-rehydrate-test.sh
-- RHYD-1 ✓ (3 paths: artifact-present, byte-identical, pipeline.resume before stage.start)
-- RHYD-2 ✓ (exit 1 when artifact absent; no stage.start before exit)
-- AMDR-1 ✓ (ADR-006 step 3.6 present with all required text)
-- AMDR-2 ✓ (ADR-050 §6 boundary note + test citations)
-- DSPK-1 ✓ (stage k emits stage.start for cycled member + cycle.start for cyc)
-- FRSH-1 ✓ (intake dispatched; no stage.skip; no prior-run artifact)
-- SKIP-1 ✓ (no stage.start for complete stage with artifact present)
-- FRSH-2 ✓ (intake dispatches + no stage.skip; cycle.start assertion removed — wrong observable)
-- CYCL-1 ✓ (fixture has type:cycle)
+- RHYD-1 ✓
+- RHYD-2 ✓
+- AMDR-1 ✓
+- AMDR-2 ✓
+- DSPK-1 ✓
+- FRSH-1 ✓ (added cycle-member stage.start=0 assertion for GUAR-1 cycle-member side)
+- SKIP-1 ✓
+- FRSH-2 ✓
+- CYCL-1 ✓
 
 ### tests/integration/from-stage-rehydrate-test.sh
 - FSTG-1 ✓
@@ -92,8 +101,8 @@ ANSWER issue-acceptance finding 2: nothing to do — this is a code finding (the
 
 ### tests/integration/resume-loop-state-test.sh
 - ITER-1 ✓
-- CMBR-1 ✓
+- CMBR-1 ✓ (added iter=1 sub-case for missing first-failure scenario)
 
 ### tests/integration/resume-entry-points-test.sh
-- ENTR-1 ✓ (all 3 paths)
-- ENTR-2 ✓ (auto-resume via latest symlink, PATH 4 — env -u ZBUILD_STATE_FILE)
+- ENTR-1 ✓
+- ENTR-2 ✓

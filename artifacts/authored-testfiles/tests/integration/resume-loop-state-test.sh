@@ -269,6 +269,81 @@ assert_eq \
     "[#1805/CMBR-1] stage.start emitted for 'test' in iter 2 (interrupted cycle member dispatched on resume)" \
     "1" "$_CMBR1_TEST_DISPATCHED"
 
+# ── [#1805/CMBR-1] iter=1 scenario: most common interruption point ────────────
+# Red-team finding: CMBR-1 skip guard must work for any interrupted iteration,
+# including iter=1 (the most common first-failure point). The guard must NOT
+# require _start_iter > 1; if it does, complete iter-1 members are re-dispatched.
+print_test_section "[#1805/CMBR-1] iter=1 interrupted: build complete in iter=1 is skipped, test dispatched"
+
+# Given — a run is being resumed; in the interrupted iteration (iter 1), member
+#   stage "build" completed and member stage "test" was interrupted before
+#   completing; persisted state records build as complete within iter 1.
+#   _ZBUILD_RESUME_ACTIVE=true is exported.
+: > "$ZBUILD_EVENTS_JSONL"
+jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$STATE_FILE"
+
+# Use zb_engine_loop_state to write cycle state: 1 round → current_iter=1
+# (interrupted during iter 1; this is the most common interruption scenario).
+# cycle_iterations["build-test"].current_iter = 1 (_start_iter = 1 on resume).
+zb_engine_loop_state "$STATE_FILE" "build-test" 1 5 "in_progress"
+
+# Record that "build" completed in iter 1 before the interruption.
+# stage_statuses.build = "complete" is what the cycle orchestrator checks to
+# decide whether to skip a member on resume (ADR-006 §3.6 / CMBR-1).
+jq '.stage_statuses.build = "complete"' "$STATE_FILE" \
+    > "${STATE_FILE}.cmbr1i1.tmp" && mv "${STATE_FILE}.cmbr1i1.tmp" "$STATE_FILE"
+
+# Load the template: same cycle-converges-iter2.yaml, build + test as cycle members.
+load_template "$FIXT/cycle-converges-iter2.yaml"
+
+# Track which cycle members are dispatched. cycle_dispatch_stage causes stage.start
+# events in a unit-test context; not being called for "build" is functionally
+# equivalent to no stage.start for build.
+_CMBR1I1_BUILD_DISPATCHED=0
+_CMBR1I1_TEST_DISPATCHED=0
+cycle_dispatch_stage() {
+    local stage="$1" iter="$2"
+    if [[ "$stage" == "build" ]]; then
+        _CMBR1I1_BUILD_DISPATCHED=1
+    elif [[ "$stage" == "test" ]]; then
+        _CMBR1I1_TEST_DISPATCHED=1
+    fi
+    _CYCLE_DISPATCH_VERDICT="pass"
+    _CYCLE_DISPATCH_STATUS="complete"
+    return 0
+}
+
+zb_stub_reports_tests test
+
+# When — _ZBUILD_RESUME_ACTIVE=true is exported and the cycle orchestrator
+#   dispatches members of iter 1. "build" is complete; "test" is pending.
+set +e
+export _ZBUILD_RESUME_ACTIVE=true
+cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"
+_cmbr1i1_rc=$?
+set -e
+
+# Then — no stage.start event for "build" (already complete in iter 1).
+# cycle_dispatch_stage must NOT be called for "build" in iter 1.
+# Before the fix: CMBR-1 guard requires _start_iter > 1; for _start_iter=1 the
+#   condition is false, _cid_resume_first_iter stays false → build IS dispatched →
+#   _CMBR1I1_BUILD_DISPATCHED=1 → assert 0==1 → FAILS (exposes the code bug).
+# After the fix: guard works for _start_iter=1 too → build is skipped →
+#   _CMBR1I1_BUILD_DISPATCHED=0 → PASSES.
+assert_eq \
+    "[#1805/CMBR-1] no stage.start for 'build' in iter 1 (complete member skipped on resume within interrupted iter=1; CMBR-1 guard must work for _start_iter=1 not only _start_iter>1)" \
+    "0" "$_CMBR1I1_BUILD_DISPATCHED"
+
+# Then — stage.start is emitted for "test" (the interrupted member of iter 1).
+# cycle_dispatch_stage must be called for "test" in iter 1.
+# Before the fix: build is re-dispatched and test may also run, but the guard
+#   failure means the skip invariant is violated.
+# After the fix: build is skipped, test is dispatched →
+#   _CMBR1I1_TEST_DISPATCHED=1 → PASSES.
+assert_eq \
+    "[#1805/CMBR-1] stage.start emitted for 'test' in iter 1 (interrupted cycle member dispatched; CMBR-1 applies to iter=1 not only iter>1)" \
+    "1" "$_CMBR1I1_TEST_DISPATCHED"
+
 # ── CYCL-1: test uses a fixture containing a cyclic stage ────────────────────
 print_test_section "resume-loop-state test uses a fixture containing a cyclic stage"
 
