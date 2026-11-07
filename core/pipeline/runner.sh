@@ -2219,30 +2219,35 @@ main() {
                 resume_mode=false
                 ;;
         esac
-    elif ! $no_resume && [[ -z "${ZBUILD_STATE_FILE:-}" && -L "$state_dir/latest" ]] \
-         && [[ -f "$state_dir/latest/pipeline-state.json" ]]; then
+    elif ! $no_resume && [[ -z "${ZBUILD_STATE_FILE:-}" && -L "$state_dir/latest" ]]; then
         # Auto-resume via latest symlink (per-run layout, ADR-059 §1 / #1805 DSENTR-2):
         # flat state file absent; follow latest to find the interrupted per-run state.
-        local _lr_recommendation
-        _lr_recommendation="$(get_resume_recommendation "$state_dir/latest/pipeline-state.json")"
-        case "$_lr_recommendation" in
-            auto_resume)
-                info "Auto-resuming previous run via latest symlink (use --no-resume to force fresh start)"
-                # Resolve the per-run dir so artifact operations use the concrete path.
-                # Guard against broken symlink or missing readlink -f (macOS without GNU coreutils):
-                # an empty result would route all artifact operations to paths under an empty prefix.
-                # Also guard against the symlink escaping the state root (prevent path traversal).
-                local _lr_original_state_dir="$state_dir"
-                local _lr_resolved_dir
-                _lr_resolved_dir="$(readlink -f "$state_dir/latest")" || true
-                if [[ -z "$_lr_resolved_dir" ]]; then
-                    warn "auto-resume: could not resolve latest symlink — falling back to fresh start"
-                    resume_mode=false
-                elif [[ "$_lr_resolved_dir" != "${_lr_original_state_dir%%/}/"* && \
-                        "$_lr_resolved_dir" != "${_lr_original_state_dir%%/}" ]]; then
-                    warn "auto-resume: resolved path escapes state root — falling back to fresh start"
-                    resume_mode=false
-                else
+        # Resolve symlink BEFORE reading to prevent TOCTOU — the escape check runs
+        # on the resolved path before any file access (#1805 red-team finding).
+        local _lr_original_state_dir="$state_dir"
+        local _lr_resolved_dir
+        _lr_resolved_dir="$(readlink -f "$state_dir/latest")" || true
+        # Strip ALL trailing slashes from the original dir for the prefix containment
+        # check (%%/ only strips a single slash — use a loop for multi-slash paths).
+        local _lr_prefix="${_lr_original_state_dir}"
+        while [[ "$_lr_prefix" == */ && "${#_lr_prefix}" -gt 1 ]]; do
+            _lr_prefix="${_lr_prefix%/}"
+        done
+        if [[ -z "$_lr_resolved_dir" ]]; then
+            : # symlink resolution failed; fall through to fresh start
+        elif [[ "$_lr_resolved_dir" != "${_lr_prefix}/"* && \
+                "$_lr_resolved_dir" != "${_lr_prefix}" ]]; then
+            warn "auto-resume: resolved path escapes state root — falling back to fresh start"
+            resume_mode=false
+        elif [[ ! -f "$_lr_resolved_dir/pipeline-state.json" ]]; then
+            : # state file not present in resolved dir; fall through to fresh start
+        else
+            # Resolved path validated; read recommendation from resolved path (not symlink).
+            local _lr_recommendation
+            _lr_recommendation="$(get_resume_recommendation "$_lr_resolved_dir/pipeline-state.json")"
+            case "$_lr_recommendation" in
+                auto_resume)
+                    info "Auto-resuming previous run via latest symlink (use --no-resume to force fresh start)"
                     state_dir="$_lr_resolved_dir"
                     state_file="$state_dir/pipeline-state.json"
                     _runner_state_file="$state_file"
@@ -2258,16 +2263,16 @@ main() {
                     # Validate: issue number must be numeric to prevent injection into
                     # event-log key=value pairs and git branch-name construction.
                     [[ "$_lr_raw_issue" =~ ^[0-9]+$ ]] && _runner_issue="$_lr_raw_issue" || _runner_issue="0"
-                fi
-                ;;
-            manual_resume_only)
-                info "Previous run requires explicit --resume (or --force for aborted)"
-                resume_mode=false
-                ;;
-            fresh_start|*)
-                resume_mode=false
-                ;;
-        esac
+                    ;;
+                manual_resume_only)
+                    info "Previous run requires explicit --resume (or --force for aborted)"
+                    resume_mode=false
+                    ;;
+                fresh_start|*)
+                    resume_mode=false
+                    ;;
+            esac
+        fi
     fi
 
     if ! $resume_mode; then
@@ -2950,6 +2955,10 @@ main() {
         if [[ -n "$from_stage" ]]; then
             warn "Skipping ahead to stage '$from_stage' as requested (--from-stage)"
             eb_emit_event "pipeline.skip_to_stage" "stage=$from_stage" "run_id=$_runner_run_id"
+            # DSFSTG-1 (#1805): --from-stage restarts the target cycle from iter=1.
+            # Clear the resume flag so the cycle orchestrator does not restore the
+            # persisted iteration count — from-stage always starts the cycle fresh.
+            export _ZBUILD_RESUME_ACTIVE=false
         fi
     else
         # #1791: the engine sha rides on pipeline.start and the banner so an
