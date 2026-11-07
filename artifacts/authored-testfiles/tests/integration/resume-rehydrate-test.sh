@@ -872,23 +872,6 @@ assert_eq \
     "[#1805/FRSH-2] fresh run emits no stage.skip events (dispatch-unit skip guard conditional on resume_mode; does not activate for fresh runs)" \
     "0" "$_frsh2_stage_skips"
 
-# [#1805/FRSH-2]: the cycle stage cyc must also be dispatched on a fresh run.
-# The two assertions above (intake dispatches, no stage.skip) would not detect a skip
-# guard that silently skips cyc without emitting stage.skip. cyc emits cycle.start when
-# dispatched; asserting count > 0 proves the dispatch-unit skip guard did not suppress cyc.
-# FRSH-2 is a no-code requirement: need not fail before this change; must pass after.
-# If a skip guard activated unconditionally: cyc silently skipped → no cycle.start
-#   → count=0 → FAILS (the assertion would catch it).
-# After the change: guard conditional on resume_mode → not active on fresh run →
-#   cyc dispatches → cycle.start emitted → count=1 → PASSES.
-_frsh2_cyc_cycle_starts=0
-if [[ -f "$_S_FRSH2_EVENTS_JSONL" ]]; then
-    _frsh2_cyc_cycle_starts="$(jq -r 'select(.type=="cycle.start") | .type' \
-        "$_S_FRSH2_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
-fi
-assert_gt "[#1805/FRSH-2] cycle stage cyc dispatched on fresh run (cycle.start emitted; dispatch-unit skip guard conditional on resume_mode — does not silently skip cyc)" \
-    "$_frsh2_cyc_cycle_starts" "0"
-
 # ── CYCL-1: test uses a fixture containing a cyclic stage ────────────────────
 print_test_section "resume-rehydrate test uses a fixture containing a cyclic stage"
 

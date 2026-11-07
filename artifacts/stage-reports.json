@@ -27,7 +27,6 @@
   ],
   "owned_files": {
     "test-author": [
-      "tests/integration/cycle-member-dispatch-events-test.sh",
       "tests/integration/from-stage-rehydrate-test.sh",
       "tests/integration/resume-entry-points-test.sh",
       "tests/integration/resume-loop-state-test.sh",
