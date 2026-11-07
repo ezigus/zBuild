@@ -78,7 +78,8 @@ _setup() {
     zb_test_test_run_output "$_in" pass 1 0 >/dev/null
     jq -n --arg i "$_in/intake-result.json" --arg d "$_in/design.md" --arg p "$_in/diff.patch" --arg t "$_in/test-results.json" \
         '{inputs: {a: $i, b: $d, c: $p, d: $t}}' > "$_S/stage-inputs.json"
-    export ZBUILD_STAGE_INPUTS="$_S/stage-inputs.json" ZBUILD_ARTIFACT_DIR="$_A"
+    # #2482: no git repository, so no branch diff — the index's diff.patch is the change.
+    export ZBUILD_STAGE_INPUTS="$_S/stage-inputs.json" ZBUILD_ARTIFACT_DIR="$_A" ZBUILD_REPO_ROOT="$_S"
 }
 _res() { jq -r "$1" "$_A/issue-acceptance-result.json" 2>/dev/null || echo MISSING; }
 _run() { : > "$_IA_PROMPT"; issue_acceptance_run "issue-acceptance" "$_S/pipeline-state.json" >/dev/null 2>&1; }
@@ -231,6 +232,27 @@ _ia_two 1 "" $'MET: no artifact paths in code\nMET: an interrupted push reports 
 _run
 assert_eq "[SPEC-11] a failed call is not asked again" "1" "$(cat "$_IA_N")"
 route_to_model() { printf '%s' "$2" > "$_IA_PROMPT"; printf '%s\n' "$_IA_ANSWER"; return $_IA_RC; }
+
+print_test_section "SPEC-13: the judge sees the whole branch's change, not this round's alone (#2482)"
+# #1805 run 42293991602: build's diff.patch held round 3's change only, and the
+# judge wrote of code an earlier round had added "it is not in this
+# incremental DIFF" — design then took that code for the code from before.
+_setup s13
+_R13="$TEST_TEMP_DIR/r13"; mkdir -p "$_R13"
+(
+    cd "$_R13" || exit 1
+    git init -q -b main . && git config user.email t@t && git config user.name t
+    printf 'base\n' > p.sh && git add p.sh && git commit -q -m base
+    git checkout -q -b zbuild/issue-1
+    printf 'base\nemit_from_round_one\n' > p.sh && git commit -q -am round1
+    printf 'base\nemit_from_round_one\nround_three_line\n' > p.sh && git commit -q -am round3
+) >/dev/null 2>&1
+printf '%s\n' 'diff --git a/p.sh b/p.sh' '+round_three_line' > "$_S/inputs/diff.patch"
+_IA_ANSWER=$'MET: no artifact paths in code\nMET: an interrupted push reports unavailable'
+ZBUILD_REPO_ROOT="$_R13" _run
+_p13="$(cat "$_IA_PROMPT")"
+assert_contains "[SPEC-13] a line an earlier round added is in the judged change" "$_p13" "+emit_from_round_one"
+assert_contains "[SPEC-13] ...and this round's line too" "$_p13" "+round_three_line"
 
 print_test_section "#2366: contract 3 and no verdict words"
 _M="$REPO_ROOT/plugins/agent/issue-acceptance/manifest.yaml"
