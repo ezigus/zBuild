@@ -128,12 +128,20 @@ can show, so it stayed UNSURE in every round.
 
 On #1805 run 42229975998 no requirement took a SPEC's code, but nothing showed whether intake had read the last design's codes at all. Intake now leaves `intake.requirements.design_codes` each time it writes its list, with `codes=` the codes it read and `design=` the file it read them from, both empty when there was no design.
 
+## Amendment 2026-11-06 (#2482) — §1: every requirement id starts with intake's prefix
+
+- Every requirement id starts with intake's `id_prefix` (`RQ`, ADR-001): `RQLOOP-1`. intake's calls are given the prefix from its manifest. A reply whose id lacks it is asked again with a plain sentence naming the prefix (ADR-060 §6).
+- A requirement and a SPEC can no longer have the same id. So intake no longer reads the last design's SPEC codes, and its `intake.requirements.design_codes` event (#2480) is gone. Amendments #2476 and #2480 above are replaced by this one as far as the one pool goes. Their rule on notes about the work stands.
+- An id in the last list without the prefix is the old numbering, like `R-n`. It is shown to the call without its id, gets a new one, and needs no REMOVED line.
+
 ## Enforced by
 
-- §1 amendment 2026-11-06 (#2480: intake says which codes it held the one pool to) → `tests/unit/intake-stable-ids-test.sh` S13
+- Amendment 2026-11-06 (#2482) §1 → `tests/unit/intake-stable-ids-test.sh` S12 (an id without RQ is asked again, naming the prefix; the call is told it; a requirement may share a SPEC's code; a last-list id from before the prefix is shown without it and needs no REMOVED line)
+
+- §1 amendment 2026-11-06 (#2480: intake says which codes it held the one pool to) → replaced by #2482: the event is gone, enforced by `tests/unit/intake-stable-ids-test.sh` S12
 
 - §1 §2 amendment 2026-11-06 (#2477: the list is kept while nothing it is written from changed) → `tests/unit/intake-kept-list-test.sh` K1–K6
-- §1 amendment 2026-11-06 (#2476: one pool, held by intake too; a note about the work is not a requirement) → `tests/unit/intake-stable-ids-test.sh` S12; `tests/unit/design-stable-ids-test.sh` D6; `tests/unit/intake-process-notes-test.sh` P1–P4
+- §1 amendment 2026-11-06 (#2476: one pool, held by intake too — replaced by #2482's prefixes; a note about the work is not a requirement) → `tests/unit/intake-stable-ids-test.sh` S12; `tests/unit/design-stable-ids-test.sh` D6; `tests/unit/intake-process-notes-test.sh` P1–P4
 - §1 §2 amendment 2026-11-03 (#2462: ids describe their requirement and never move; a removal says why) → `tests/unit/intake-stable-ids-test.sh` S1–S11; `tests/unit/intake-requirements-model-test.sh` I1, I2; `tests/unit/intake-previous-list-test.sh` P2
 - §1 §2 amendment 2026-11-02 (#2460: intake starts from its last list and says what changed; one item per line) → `tests/unit/intake-previous-list-test.sh` P1–P4; `tests/unit/reply-multiline-test.sh` Q1
 - §1 amendment 2026-11-01 (#2448: intake's calls have no tools) → `tests/unit/intake-no-tools-test.sh` T4
