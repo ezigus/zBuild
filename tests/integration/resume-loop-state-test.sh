@@ -77,11 +77,13 @@ cycle_dispatch_stage() {
 # The report stub makes the test member report zero test failures (pass).
 zb_stub_reports_tests test
 
-# When — _ZBUILD_RESUME_ACTIVE=true is exported and the cycle orchestrator's run
-#   body executes. Before this change: loop starts at iter=1. After: reads
-#   current_iter=2 and starts at iter 2.
-set +e
+# Given — _ZBUILD_RESUME_ACTIVE=true is exported (the resume flag set by the runner
+#   before invoking the cycle orchestrator on a resume path).
 export _ZBUILD_RESUME_ACTIVE=true
+
+# When — the cycle orchestrator's run body executes. Before this change: loop
+#   starts at iter=1. After: reads current_iter=2 and starts at iter 2.
+set +e
 cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"
 _s7_rc=$?
 set -e
@@ -210,12 +212,13 @@ jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$STATE_FILE"
 # cycle_iterations["build-test"].current_iter = 2.
 zb_engine_loop_state "$STATE_FILE" "build-test" 2 5 "in_progress"
 
-# Record that "build" completed in iter 2 before the interruption.
-# stage_statuses.build = "complete" is the standard field the cycle orchestrator
-# checks to decide whether to skip a member on resume (ADR-006 §3.6 / DSCMBR-1).
+# Record that "build" completed in iter 2 before the interruption, and that
+# "test" was interrupted (in_progress). stage_statuses is what the cycle
+# orchestrator checks to decide whether to skip a member on resume
+# (ADR-006 §3.6 / DSCMBR-1).
 # Use jq to merge this into the existing state; the cycle_iterations block
 # written by zb_engine_loop_state is preserved (`.` merge keeps all other fields).
-jq '.stage_statuses.build = "complete"' "$STATE_FILE" \
+jq '.stage_statuses.build = "complete" | .stage_statuses.test = "in_progress"' "$STATE_FILE" \
     > "${STATE_FILE}.cmbr1.tmp" && mv "${STATE_FILE}.cmbr1.tmp" "$STATE_FILE"
 
 # Load the template: cycle-converges-iter2.yaml has build + test as cycle members,
