@@ -2359,6 +2359,15 @@ _cycle_orchestrator_run_body() {
     else
         _start_iter=1
     fi
+    # DSFSTG-1 (#1805): when --from-stage targets this cycle, emit stage.start for
+    # its first member even though _ZBUILD_RESUME_ACTIVE was cleared (iter always 1
+    # for from-stage so persisted iter must not be used). Override _is_resume so the
+    # DSCMBR-1 guard runs and emits stage.start for the first (non-complete) member.
+    # Consume the flag immediately so nested cycles and later iterations are not affected.
+    if [[ "${_ZBUILD_FROM_STAGE_EMIT_START:-false}" == "true" ]]; then
+        _is_resume=true
+        export _ZBUILD_FROM_STAGE_EMIT_START=false
+    fi
 
     _cycle_install_traps
 
