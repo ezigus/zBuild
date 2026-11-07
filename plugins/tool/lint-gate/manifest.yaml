@@ -1,6 +1,8 @@
 id: lint-gate
 name: Lint Read-out Gate
 kind: tool
+# #2482 (ADR-001): the ids this stage writes start with it.
+id_prefix: LG
 version: 0.1.0
 description: |
   Deterministic, LLM-free T0 read-out gate (ADR-040, issue #1135, EPIC #1129).

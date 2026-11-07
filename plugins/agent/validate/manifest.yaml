@@ -1,6 +1,8 @@
 id: validate
 name: Validate Agent
 kind: agent
+# #2482 (ADR-001): the ids this stage writes start with it.
+id_prefix: VA
 version: 0.1.0
 description: |
   Validate agent (kind:agent, T2). Reads deploy-result.json; refuses if absent.

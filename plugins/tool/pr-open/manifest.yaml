@@ -6,6 +6,8 @@
 id: pr
 name: PR Open Stage
 kind: tool
+# #2482 (ADR-001): the ids this stage writes start with it.
+id_prefix: PR
 version: 0.1.0
 description: |
   Opens a pull request via `gh pr create`. Refuses to open one unless the

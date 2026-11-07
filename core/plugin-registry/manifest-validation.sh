@@ -109,6 +109,7 @@ _ZBUILD_YAML_PREWARM_KEYS=(
     persona.role persona.perspective
     hooks.run hooks.cleanup
     provides.role provides.result_contract
+    id_prefix
 )
 
 # yaml_cache_prewarm [plugins_root] — fill the cache IN THE CALLING SHELL.

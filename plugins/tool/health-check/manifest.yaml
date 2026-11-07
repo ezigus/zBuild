@@ -1,6 +1,8 @@
 id: health-check
 name: Health Check Executor
 kind: tool
+# #2482 (ADR-001): the ids this stage writes start with it.
+id_prefix: HC
 version: 0.1.0
 description: |
   Health-check tool executor (kind:tool, T0). Performs the actual HTTP/smoke

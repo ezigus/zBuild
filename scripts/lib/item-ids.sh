@@ -92,6 +92,34 @@ zb_ids_check_v() {
     return 0
 }
 
+# zb_id_prefixes_check <plugins_root> — every stage (a plugin of kind agent or
+# tool) declares `id_prefix:`, two capital letters, its own (#2482, ADR-001):
+# the ids a stage writes start with it, so no two stages' ids are the same. Each
+# stage without one, with one of another form, or sharing one, is an `error`
+# line; rc 1 when there is any. Read from the manifest index: no process.
+zb_id_prefixes_check() {
+    local root="$1" d m kind px rc=0
+    local -a dirs=()
+    local -A owner=()
+    discover_plugins_into dirs "$root" || return 1
+    for d in ${dirs[@]+"${dirs[@]}"}; do
+        m="$d/manifest.yaml"
+        yaml_get_v kind "$m" kind
+        [[ "$kind" == agent || "$kind" == tool ]] || continue
+        yaml_get_v px "$m" id_prefix
+        if [[ -z "$px" ]]; then
+            error "$m declares no id_prefix: — every stage declares its own, two capital letters (ADR-001)"; rc=1
+        elif [[ ! "$px" =~ ^[A-Z][A-Z]$ ]]; then
+            error "$m: id_prefix '$px' is not two capital letters (ADR-001)"; rc=1
+        elif [[ -n "${owner[$px]:-}" ]]; then
+            error "id_prefix '$px' is declared by both ${owner[$px]} and $m — each stage has its own (ADR-001)"; rc=1
+        else
+            owner[$px]="$m"
+        fi
+    done
+    return "$rc"
+}
+
 # zb_id_codes_v <var> <id>... — the codes of the ids given, each once, space
 # separated: the other_codes zb_ids_check_v takes (#2476). Read by the shell.
 zb_id_codes_v() {

@@ -1,6 +1,8 @@
 id: memory-ruflo
 name: ruflo HNSW Vector Memory Backend
 kind: tool
+# #2482 (ADR-001): the ids this stage writes start with it.
+id_prefix: MR
 version: 0.0.1
 provides:
   role: memory-backend

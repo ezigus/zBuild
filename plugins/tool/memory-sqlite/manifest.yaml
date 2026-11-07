@@ -1,6 +1,8 @@
 id: memory-sqlite
 name: SQLite Memory Backend
 kind: tool
+# #2482 (ADR-001): the ids this stage writes start with it.
+id_prefix: MS
 version: 0.0.1
 provides:
   role: memory-backend
