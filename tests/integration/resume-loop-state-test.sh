@@ -194,6 +194,57 @@ assert_eq \
     "[#1805/DSITER-1] without _ZBUILD_RESUME_ACTIVE, fresh run starts at iter=1 (guard prevents iter-skip)" \
     "1" "$_SPEC7_FRESH_FIRST_ITER"
 
+# ── [#1805/DSITER-1] write side: current_iter persisted before first dispatch ─────
+# The read-side tests above pre-seed current_iter=2 and verify the orchestrator
+# READS it. This sub-case verifies the WRITE side: at the moment
+# cycle_dispatch_stage is first called for iter=1 on a fresh run, current_iter=1
+# must already be in the state file (written by _cycle_state_write_iter_start).
+# Without _cycle_state_write_iter_start the value would remain at its init value
+# (0 / absent) at dispatch time and this assertion would FAIL.
+print_test_section "[#1805/DSITER-1] write side: current_iter=1 persisted in state before first cycle_dispatch_stage call"
+
+# Given — a fresh run (no resume); state file has no prior cycle iterations;
+#   _ZBUILD_RESUME_ACTIVE is unset so this exercises the fresh-run write path.
+: > "$ZBUILD_EVENTS_JSONL"
+jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$STATE_FILE"
+load_template "$FIXT/cycle-converges-iter2.yaml"
+unset _ZBUILD_RESUME_ACTIVE
+
+# When the orchestrator runs, capture current_iter from the state file at the
+# moment cycle_dispatch_stage is first called. This pins write-before-dispatch.
+_SPEC7W_CURRENT_ITER_AT_FIRST_DISPATCH=-99
+_SPEC7W_FIRST_DISPATCH_SEEN=0
+cycle_dispatch_stage() {
+    local stage="$1" iter="$2"
+    if [[ "$_SPEC7W_FIRST_DISPATCH_SEEN" -eq 0 ]]; then
+        _SPEC7W_FIRST_DISPATCH_SEEN=1
+        _SPEC7W_CURRENT_ITER_AT_FIRST_DISPATCH="$(jq -r \
+            '.cycle_iterations["build-test"].current_iter // -99' \
+            "$STATE_FILE" 2>/dev/null || echo "-99")"
+    fi
+    _CYCLE_DISPATCH_VERDICT="pass"
+    _CYCLE_DISPATCH_STATUS="complete"
+    return 0
+}
+
+zb_stub_reports_tests test
+
+# When — cycle orchestrator runs a fresh iteration 1 (no resume).
+set +e
+cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"
+_s7w_rc=$?
+set -e
+
+# Then — at the moment cycle_dispatch_stage was first called for iter=1,
+# current_iter in the state file was already 1.
+# If _cycle_state_write_iter_start is removed: current_iter stays at init value
+# (0 → or absent → -99 fallback) → assert "1" == "0" or "1" == "-99" → FAILS.
+# After the change: _cycle_state_write_iter_start writes current_iter=1 before
+# cycle_dispatch_stage is called → assert "1" == "1" → PASSES.
+assert_eq \
+    "[#1805/DSITER-1] current_iter=1 written to state before first cycle_dispatch_stage call (write-before-dispatch; removing _cycle_state_write_iter_start leaves current_iter at init value)" \
+    "1" "$_SPEC7W_CURRENT_ITER_AT_FIRST_DISPATCH"
+
 # ── [#1805/DSCMBR-1] cycle member stages already complete in iter k are skipped ─
 # On resume, within the interrupted iteration, cycle member stages already marked
 # complete in persisted state are skipped; the first dispatched cycle member is
