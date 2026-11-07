@@ -306,8 +306,8 @@ path/to/file2
    - \`GARD-1[done]:\` — the code from before your change already does it. Name the evidence at the end of the line, after \` evidence: \` —
      a file by its path from the repository root with an exact piece of its text in double quotes
      (scripts/x.sh:"run_guard()"), or an existing test file named alone; several separated by spaces.
-     The text must be in the file on the default branch, outside anything this branch changed: code this
-     work added is not done yet, so it is [code], with a test. No test is written for a [done] SPEC.
+     The text must be in the file on the commit this branch started from, outside anything this branch
+     changed: code this work added is not done yet, so it is [code], with a test. No test is written for a [done] SPEC.
    Every requirement carries one of the three. A change that edits code needs at least one [code] requirement.
 
    Test labels: each test file under TESTFILES holds at least one assertion
@@ -395,6 +395,12 @@ DESIGN_PROMPT
     # #2364: found by what it contains.
     local _req_f _reqs; _req_f="$(earlier_requirements "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
     _reqs="$(acceptance_requirements_list "$_req_f")"
+    # #2482 (ADR-069 §2): the code a [done] claim is checked on, as the judges
+    # are shown it (ADR-072 §2). On #1805 run 42293991602 design had only the
+    # working copy and took code this branch added for the code from before.
+    local _base_dir=""
+    judge_base_dir_v _base_dir "${ZBUILD_REPO_ROOT:-$PWD}" 2>/dev/null || _base_dir=""
+    [[ -n "$_base_dir" ]] && printf '\n### The code from before this change\nThe commit this branch started from is a copy at %s. A [done] SPEC is checked\nthere: to see whether the code from before your change already does something,\nopen the file there, not in the working copy — the working copy holds every\nchange this branch made, in this round and in earlier ones.\n' "$_base_dir" >> "$prompt_input_file"
     [[ -n "$_reqs" ]] && printf '\n### Requirements from the issue (each with its id)\n%s\n\nEvery requirement above must be covered by at least one SPEC. End each SPEC line with ` covers: ` and the ids of the requirements it covers, before any ` evidence: ` — for example `LOOP-1[code]: <behaviour> covers: <requirement ids>`. A requirement the code already meets is covered by a [done] SPEC with evidence.\n' "$_reqs" >> "$prompt_input_file"
 
     # On a later round design REFINES its prior design.md rather than
