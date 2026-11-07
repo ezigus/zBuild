@@ -66,6 +66,7 @@
   [38;2;74;222;128m✓[0m [#1805/FRSH-1] fresh run (--no-resume) emits no stage.skip events (all stages dispatched from stage 1; none skipped due to prior state)
   [38;2;74;222;128m✓[0m [#1805/FRSH-1] no prior-run artifact content in ZBUILD_ARTIFACT_DIR (fresh --no-resume run does not restore prior-run artifacts from state branch)
   [38;2;74;222;128m✓[0m cycle fixture used in fresh-run sub-case has type: cycle
+  [38;2;74;222;128m✓[0m [#1805/FRSH-1] no stage.start for cycle member (cycled) on fresh run (cycle members only emit stage.start via CMBR-1 resume path; iter>0 guard must not fire unconditionally on fresh runs)
 
   [38;2;0;212;255m[#1805/FRSH-2] fresh run (no --resume, in_progress status) never skips stages due to prior-run artifacts in git state branch[0m
   [38;2;74;222;128m✓[0m [#1805/FRSH-2] fresh run (no --resume, in_progress status) dispatches intake even with prior-run artifacts on git state branch (dispatch-unit skip guard conditional on resume_mode)
@@ -77,7 +78,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m7 of 46 tests failed[0m
+  [38;2;248;113;113m[1m7 of 47 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1805/RHYD-1] at least one stage dispatched after resume (dispatch loop ran; artifact was present before loop)
   [38;2;248;113;113m✗[0m [#1805/RHYD-1] pipeline.resume precedes first stage.start (restore before dispatch loop)
@@ -148,6 +149,7 @@
   [38;2;74;222;128m✓[0m [#1805/FRSH-1] fresh run (--no-resume) emits no stage.skip events (all stages dispatched from stage 1; none skipped due to prior state)
   [38;2;74;222;128m✓[0m [#1805/FRSH-1] no prior-run artifact content in ZBUILD_ARTIFACT_DIR (fresh --no-resume run does not restore prior-run artifacts from state branch)
   [38;2;74;222;128m✓[0m cycle fixture used in fresh-run sub-case has type: cycle
+  [38;2;74;222;128m✓[0m [#1805/FRSH-1] no stage.start for cycle member (cycled) on fresh run (cycle members only emit stage.start via CMBR-1 resume path; iter>0 guard must not fire unconditionally on fresh runs)
 
   [38;2;0;212;255m[#1805/FRSH-2] fresh run (no --resume, in_progress status) never skips stages due to prior-run artifacts in git state branch[0m
   [38;2;74;222;128m✓[0m [#1805/FRSH-2] fresh run (no --resume, in_progress status) dispatches intake even with prior-run artifacts on git state branch (dispatch-unit skip guard conditional on resume_mode)
@@ -159,5 +161,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 46 tests passed[0m
+  [38;2;74;222;128m[1mAll 47 tests passed[0m
 

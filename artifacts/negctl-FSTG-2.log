@@ -7,7 +7,7 @@
   [38;2;0;212;255m[#1805/FSTG-1] --from-stage rehydrates stages before <s> and dispatches <s> first[0m
   [38;2;74;222;128m✓[0m [#1805/FSTG-1] setup: state branch populated
   [38;2;248;113;113m✗[0m [#1805/FSTG-1] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR via --from-stage
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/from-stage-rehydrate-1805.YIhuMO/s3-state/artifacts/intake-result.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/from-stage-rehydrate-1805.3kI13B/s3-state/artifacts/intake-result.json[0m
   [38;2;248;113;113m✗[0m [#1805/FSTG-1] restored artifact contains original payload (proves _artifact_persist_restore + _artifact_persist_put_back used git state branch)
     [2moutput missing: prior-run intake[0m
   [38;2;248;113;113m✗[0m [#1805/FSTG-1] pipeline.resume event emitted (from-stage preflight ran before dispatch loop)
