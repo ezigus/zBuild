@@ -1,5 +1,5 @@
 ## issue-acceptance — fail
 
-- judged the change against the issue: 1 requirement(s) not met or not sure
+- judged the change against the issue: 2 requirement(s) not met or not sure
 
-- NOT SURE: GUAR-1: `cycle_dispatch_stage` in runner.sh emits `stage.start` for every cycle member dispatch where `_cd_iter > 0`, with no `_ZBUILD_RESUME_ACTIVE` guard. This fires on all runs, fresh and resume alike. The review lenses flagged this as a behavior change introduced by this issue's earlier rounds and cited it as "Gap 7 / NOT YET FIXED" in the design document. I cannot determine from this DIFF alone whether the `_cd_iter > 0` branch at runner.sh:3213 was pre-existing; it is not in this incremental DIFF. The FRSH-1/GUAR-1 tests check only that intake dispatches exactly once and no stage.skip events fire — they do not assert that cycle members emit no stage.start on a fresh run, so they would not catch this if it is a regression. Resolution: check runner.sh git history to confirm whether the `_cd_iter > 0` stage.start branch predates this issue. — "A run with no prior state behaves exactly as today. This is a guard." — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
+- 2 requirement(s) not met — each is a finding, sent to the stages that can fix it
