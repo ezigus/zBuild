@@ -309,12 +309,17 @@ assert_contains "--from-stage unknown stage says it is not a known stage" \
 # ─── Integration: --from-stage without --resume exits 1 ───────────────────────
 print_test_section "integration: --from-stage without --resume exits 1"
 
-# Reset state for a fresh start scenario
+# Reset state: use status "complete" and issue=$_ZB_ID (matching --issue) so
+# auto-resume returns fresh_start (not auto_resume) and the --from-stage check
+# fires correctly. Using in_progress would auto-resume instead, changing the
+# expected error (DSFSTG-1 / lens-scope-code finding 1, #1805 moved the check
+# after auto-resume so in_progress state auto-resumes and bypasses the check).
 jq -n \
     --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    '{schema_version:1,run_id:"fresh-run",issue:225,stage_statuses:{},current_iteration:0,
+    --argjson _ZB_ID "$_ZB_ID" \
+    '{schema_version:1,run_id:"fresh-run",issue:$_ZB_ID,stage_statuses:{},current_iteration:0,
       self_heal_count:{},scope_manifest_hash:"",cost_ledger_pointer:0,claim_lease_id:"",
-      plugin_state:{},status:"in_progress",updated_at:$now}' > "$INT_STATE_FILE"
+      plugin_state:{},status:"complete",updated_at:$now}' > "$INT_STATE_FILE"
 
 set +e
 ( cd "$INT_OVERLAY_REPO" && env \

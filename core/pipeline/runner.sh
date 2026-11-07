@@ -1846,13 +1846,6 @@ main() {
         return 1
     fi
 
-    # --from-stage is only valid in resume mode
-    if [[ -n "$from_stage" ]] && ! $resume_mode; then
-        error "--from-stage is only valid with --resume"
-        _usage
-        return 1
-    fi
-
     local plugins_root="${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}"
     # #1614: fill the manifest cache HERE, in main()'s own shell. yaml_get was
     # 6,338 awk spawns per run (~13s of 27s); most call sites read it inside $( ),
@@ -2273,6 +2266,16 @@ main() {
                     ;;
             esac
         fi
+    fi
+
+    # --from-stage is only valid in resume mode — checked AFTER auto-resume so
+    # a run that qualifies for auto-resume (status=in_progress, fresh timestamp)
+    # does not need an explicit --resume flag when --from-stage is also given
+    # (DSFSTG-1 / lens-scope-code finding 1, #1805).
+    if [[ -n "$from_stage" ]] && ! $resume_mode; then
+        error "--from-stage is only valid with --resume"
+        _usage
+        return 1
     fi
 
     if ! $resume_mode; then
@@ -2959,6 +2962,19 @@ main() {
             # Clear the resume flag so the cycle orchestrator does not restore the
             # persisted iteration count — from-stage always starts the cycle fresh.
             export _ZBUILD_RESUME_ACTIVE=false
+            # DSFSTG-1 (#1805): when the from-stage target is a cycle, signal the cycle
+            # orchestrator to emit stage.start for the first cycle member (iter=1 always).
+            # Only set for cycle targets; leaf targets emit stage.start via the dispatch loop.
+            # _ZBUILD_FROM_STAGE_EMIT_START is consumed by the first cycle orchestrator entry.
+            if declare -p _TPL_CYCLES >/dev/null 2>&1; then
+                local _fs_tgt_cyc
+                for _fs_tgt_cyc in "${_TPL_CYCLES[@]}"; do
+                    if [[ "$_fs_tgt_cyc" == "$from_stage" ]]; then
+                        export _ZBUILD_FROM_STAGE_EMIT_START=true
+                        break
+                    fi
+                done
+            fi
         fi
     else
         # #1791: the engine sha rides on pipeline.start and the banner so an
