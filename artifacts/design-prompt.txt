@@ -402,7 +402,7 @@ DSITER-1[code]: Cycle orchestrator reads current_iter from persisted state on re
   And: No stage.start event is emitted for any iter-1 stage
   And: When _ZBUILD_RESUME_ACTIVE is false or unset (fresh run or nested-loop re-entry), the loop starts at iter=1
 DSCMBR-1[code]: On resume, within the interrupted iteration, cycle member stages already marked complete in persisted state are skipped; the first dispatched cycle member is the interrupted stage covers: RQLOOP-1
-  Given: A run is being resumed; in the interrupted iteration (iter k), member stage "build" completed and member stage "test" was interrupted before completing; persisted state records build as complete and test as in-progress within iter k
+  Given: A run is being resumed; in the interrupted iteration (iter k), member stage "build" completed and member stage "test" was interrupted before completing; persisted state records build as complete and test as aborted within iter k
   When: The cycle orchestrator dispatches members of iter k
   Then: No stage.start event is emitted for "build" (already complete in iter k)
   And: stage.start is emitted for "test" (the interrupted member of iter k)
@@ -511,6 +511,8 @@ tests/integration/cycle-member-dispatch-events-test.sh: the DSITER-1 fix in cycl
 
 **Finding 26 — RQTEST-1 coverage widened:** DSCYCL-1 covers all four required test files (resume-rehydrate-test.sh for RQRESU-4, resume-loop-state-test.sh for RQLOOP-1, from-stage-rehydrate-test.sh for RQFROM-2/RQFROM-3, resume-entry-points-test.sh for RQPATH-1); update steps for resume-loop-state-test.sh and resume-entry-points-test.sh each include an [#1805/DSCYCL-1] assertion item.
 
+**Finding 28 — DSCMBR-1 Given uses production status value "aborted":** The test-author stage found that the test sets `stage_statuses.test = "aborted"` (the production value for an interrupted stage), not "in-progress". The Given's phrase "test as in-progress" was wrong; changed to "test as aborted" to match the production value and what the test actually constructs.
+
 **Finding 27 — pipeline.skip_to_stage in combined resume+from-stage mode (lens-correctness-design finding 1):** runner.sh:2963 emits `pipeline.skip_to_stage` whenever `--from-stage` is active, including when `--resume` is also active. RQFROM-2 says the event must not be FOLLOWED BY running an earlier stage — that constraint is met because rehydration and the dispatch-loop skip guards prevent earlier-stage dispatch in both modes. The event's emission is therefore RQFROM-2-compliant. No code change is needed to suppress it; DSFSTG-1 makes the boundary explicit via an additional Then clause (Gap 10 above). No new SPEC is required; the existing DSFSTG-1[code] covers RQFROM-2 and its test will verify that no stage before <s> is dispatched after the event in either mode.
 
 Refine YOUR LATEST DESIGN. Preserve all existing scope entries unless one is clearly wrong.
@@ -585,11 +587,23 @@ Summary:
 - DSDLGT-1 (covers RQHYDR-1): The hydrate plugin's hydrate_run calls _artifact_persist_put_back so artifacts placed by the resume path appear at the same filesystem paths as those a hydrate run would produce
 - DSCYCL-1 (covers RQTEST-1): The pipeline fixtures used by resume-rehydrate-test.sh, from-stage-rehydrate-test.sh, resume-loop-state-test.sh, and resume-entry-points-test.sh each contain a stage of type: cycle, verified by an assert_contains tagged [#1805/DSCYCL-1] in each file, ensuring RQRESU-4, RQLOOP-1, RQFROM-2, RQFROM-3, and RQPATH-1 tests run against a cyclic pipeline
 - the files it may change: core/pipeline/runner.sh, core/state/artifact-persist.sh, plugins/tool/hydrate/plugin.sh, core/pipeline/cycle-orchestrator.sh, docs/adr/ADR-006-resume-contract.md, docs/adr/ADR-050-prior-work-reuse-contract.md, tests/integration/resume-rehydrate-test.sh, tests/integration/from-stage-rehydrate-test.sh, tests/integration/resume-loop-state-test.sh, tests/integration/resume-entry-points-test.sh, tests/integration/pipeline-resume-test.sh, tests/integration/resume-after-sigint-test.sh, tests/unit/hydrate-stage-test.sh, tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh, tests/integration/nested-loop-rounds-test.sh, tests/integration/nested-loop-rounds-build-test.sh, tests/integration/cycle-member-dispatch-events-test.sh, tests/golden/full-pipeline/event-sequence.golden, tests/golden/parity/event-sequence.golden
-- answered: design finding 1: done — Removed the mechanism explanation from DSFSTG-1's 4th "And" clause. The old text named rehydration and dispatch-loop skip guards as the enforcement mechanism ("— rehydration and dispatch-loop skip guards prevent it, satisfying RQFROM-2 in both pure from-stage and combined resume+from-stage modes"). The new text states only what a test can observe: "`pipeline.skip_to_stage` is emitted when `--from-stage` is active; no stage before `<s>` is dispatched after that event."
-- answered: lens-correctness-design finding 1: done — The same DSFSTG-1 fix resolves this. The 4th And clause no longer describes internal mechanics. The observable constraint — no stage before `<s>` dispatched after `pipeline.skip_to_stage` — is verifiable from the event log in both pure `--from-stage` and combined `--resume + --from-stage` modes. No code change is required; the existing behavior already satisfies RQFROM-2. The Gap 10 note in the architectural decision explains the analysis in context prose only, not as an acceptance assertion.
+- answered: test-author finding 1: done — Changed DSCMBR-1's Given from "test as in-progress" to "test as aborted" (the production status value for an interrupted stage, as confirmed by the test's inline annotation). Added Finding 28 documenting the change.
+- not answered: lens-correctness-design finding 1
 
 Your notes so far:
 # Design notes: #1805 — resume and --from-stage trust-and-rehydrate
+
+## Status: Forty-sixth pass — DSCMBR-1 Given fixed ("in-progress" → "aborted")
+
+### Changes this pass (forty-sixth)
+
+**test-author finding 1** (DSCMBR-1 Given uses wrong status value):
+- Test sets `stage_statuses.test = "aborted"` for iter-2 (the production value for interrupted stages)
+- DSCMBR-1's Given said "test as in-progress" — wrong; "aborted" is the production status value
+- Fix: Changed "test as in-progress" to "test as aborted" in the Given clause
+- Added Finding 28 documenting this change
+
+---
 
 ## Status: Forty-fifth pass — DSFSTG-1 And clause fixed (mechanism text removed)
 
@@ -727,58 +741,38 @@ All 16 requirements covered:
 5. **`_ZBUILD_RESUME_ACTIVE` lifecycle (unchanged):**
    - Set `true` at runner.sh:2862 (resume entry, after `_runner_resume_rehydrate`)
    - Consumed (set `false`) at cycle-orchestrator.sh:2343 on first cycle orchestrator entry
-   - Sole purpose: select `_start_iter`; not a general resume broadcast
+   - 
 
-6. **DSCMBR-1 implementation (Gap 9, still NOT YET FIXED in branch):**
-   - Cycle orchestrator passes `resume_first_iter=true` to `_cycle_dispatch` for first resumed iteration
-   - `_cycle_dispatch` skips complete members (no stage.start) and explicitly emits stage.start for interrupted member
-   - Passed as local argument, no interaction with `_ZBUILD_RESUME_ACTIVE`
-
-7. **DSFSTG-1 and DSDSPK-1 dispatch semantics (from fortieth pass, uncha
-
-### test-author (verdict: unusable)
+### test-author (verdict: pass)
 Outputs:
 - test_author_result: /home/runner/work/_temp/zbuild-state/artifacts/test-author-result.json
 
-Findings:
-- test-author finding 1 (opened by test-author): DSCMBR-1 Given: the test does something else: for iter-2, test sets `stage_statuses.test = "aborted"` (explicitly noted inline as the production value); for iter-1, test does not set test's status at all — neither matches the Given's claim
-    DSCMBR-1[code]: On resume, within the interrupted iteration, cycle member stages already marked complete in persisted state are skipped; the first dispatched cycle member is the interrupted stage covers: RQLOOP-1
-      Given: A run is being resumed; in the interrupted iteration (iter k), member stage "build" completed and member stage "test" was interrupted before completing; persisted state records build as complete and test as in-progress within iter k [FIX IN TEST: the test does something else: for iter-2, test sets `stage_statuses.test = "aborted"` (explicitly noted inline as the production value); for iter-1, test does not set test's status at all — neither matches the Given's claim — make it do what this line says]
-      When: The cycle orchestrator dispatches members of iter k
-      Then: No stage.start event is emitted for "build" (already complete in iter k)
-      And: stage.start is emitted for "test" (the interrupted member of iter k)
-
-Its last good output, from an earlier attempt:
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/test-author/iter-3-attempt-2/test-author-result.json
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/test-author/iter-3-attempt-2/test-author-summary.md
-
-### test (verdict: fail)
+### test (verdict: pass)
 Outputs:
 - acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
 - acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
 
-### issue-acceptance (verdict: unusable)
+### issue-acceptance (verdict: fail)
 Outputs:
 - issue_acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-result.json
 - issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
 
 Summary:
-## issue-acceptance — unusable
-
-- the answer could not be used, even when asked again: RQLOOP-1's quote is not in core/pipeline/cycle-orchestrator.sh: "eb_emit_event \"cycle.state.write.failed\" \"cycle_id=$cycle_id\" \"iter=$iter\" \"op=iter_start\" 2>/dev/null || true"; RQGUAR-1's quote is not in core/pipeline/runner.sh: "if ! _runner_startup_preflight_gate \"$dry_run\" \"$_spg_resume_mode\";  then" — the change was not judged
-
-- the change was not judged against the issue
-
-Its last good output, from an earlier attempt:
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/issue-acceptance/iter-3-attempt-1/issue-acceptance-result.json
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/issue-acceptance/iter-3-attempt-1/issue-acceptance-summary.md
-
-Summary of that output:
 ## issue-acceptance — fail
 
 - judged the change against the issue: 1 requirement(s) not met or not sure
 
-- NOT SURE: ORDE-1: This is a workflow/process constraint — "do not run this in parallel with #1714". Nothing in the diff enforces or records it. It cannot be verified from code, tests, or the diff alone. Settling it would require checking whether #1714 touched runner.sh's dispatch loop in the same merge window. — "Do not run this in parallel with another issue that edits the dispatch loop (#1714 touches the allow-list builder in runner.sh)." — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
+- 1 requirement(s) not met — each is a finding, sent to the stages that can fix it
+- answered: lens-performance-code finding 1: not mine — performance cost of two `locked_state_update` calls per iteration is not a requirement in the issue; none of the RQRESU-*/RQLOOP-*/RQFROM-*/RQPATH-*/RQGUAR-*/RQADR-*/RQHYDR-*/RQTEST-*/RQDISP-* requirements govern cycle I/O performance.
+- answered: lens-red-team-code finding 1: not mine — describes an edge case where `--from-stage <cycle>` with pre-existing `cycle_iterations[cycle].current_iter > 0` could start at the wrong iteration; none of the issue requirements name this scenario, the test fixture writes no `cycle_iterations` key (so the current test does not expose the gap), and fixing it requires code changes beyond my verdict scope.
+- answered: lens-red-team-code finding 2: not mine — describes a gap in DSRHYD-2 enforcement within the `_cycle_iter_dispatch` member-skip path; it is a correctness concern but not an ISSUE REQUIREMENT; the DSRHYD-2 test at the dispatch-loop level passes, and the gap requires a code change outside the verdict scope.
+- answered: lens-red-team-code finding 3: not mine — TOCTOU in the `latest`-symlink auto-resume block is a security concern; no ISSUE REQUIREMENT governs the escape-check ordering; it cannot be addressed by my verdict.
+- answered: lens-correctness-code finding 1: not mine — describes a real edge case where `stage_statuses[$s] == "complete"` survives from iter k-1 and incorrectly skips the first member of iter k when the interruption happened before that member ran in iter k; RQLOOP-1 is met for the tested scenario (interrupted mid-round with at least one member dispatched), and fixing this edge case requires a code change beyond my verdict scope.
+- answered: lens-correctness-code finding 2: wrong — the finding claims `resume-loop-state-test.sh:272` uses `stage_statuses.test = "in_progress"`, but the diff shows the test at that line writes `'.stage_statuses.build = "complete" | .stage_statuses.test = "aborted"'`; the comment in the same test block explicitly explains why `"aborted"` (not `"in_progress"`) is used: `"in_progress"` is never written by `_cycle_state_write_member_atomic` and would miss the production data shape.
+- answered: lens-correctness-code finding 3: not mine — single trailing-slash strip with `%%/` in the auto-resume symlink block is a robustness gap; it doesn't affect any issue requirement; fixing it requires a code change outside my verdict scope.
+- answered: lens-scope-code finding 1: not mine — the `skip_restore=false` branch of `_runner_from_stage_preflight` is in practice dead code: `--from-stage` requires `resume_mode=true` (the guard at line 2313 exits otherwise), and `skip_restore = "$resume_mode"` = `true` at every call site; the S5 test added to address this finding auto-resumes (status=in_progress, fresh timestamp → `get_resume_recommendation` returns `auto_resume`), so it exercises `skip_restore=true`, not `false`; the branch is structurally unreachable, but no ISSUE REQUIREMENT is unmet as a result.
+- answered: lens-sre-code finding 1: not mine — silent blob-update failure in the DSCMBR-1 member-skip path is an observability concern; no ISSUE REQUIREMENT governs blob update error reporting; cannot be addressed by my verdict.
+- answered: lens-sre-code finding 2: not mine — missing event emission on `_cycle_state_write_iter_start` failure is an observability concern; no ISSUE REQUIREMENT governs event emission on iter-start write failure; cannot be addressed by my verdict.
 
 ### review_lenses (verdict: pass)
 Outputs:
