@@ -95,7 +95,7 @@ DSITER-1[code]: Cycle orchestrator reads current_iter from persisted state on re
   And: No stage.start event is emitted for any iter-1 stage
   And: When _ZBUILD_RESUME_ACTIVE is false or unset (fresh run or nested-loop re-entry), the loop starts at iter=1
 DSCMBR-1[code]: On resume, within the interrupted iteration, cycle member stages already marked complete in persisted state are skipped; the first dispatched cycle member is the interrupted stage covers: RQLOOP-1
-  Given: A run is being resumed; in the interrupted iteration (iter k), member stage "build" completed and member stage "test" was interrupted before completing; persisted state records build as complete and test as in-progress within iter k
+  Given: A run is being resumed; in the interrupted iteration (iter k), member stage "build" completed and member stage "test" was interrupted before completing; persisted state records build as complete and test as aborted within iter k
   When: The cycle orchestrator dispatches members of iter k
   Then: No stage.start event is emitted for "build" (already complete in iter k)
   And: stage.start is emitted for "test" (the interrupted member of iter k)
@@ -203,5 +203,7 @@ tests/integration/cycle-member-dispatch-events-test.sh: the DSITER-1 fix in cycl
 **Finding 25 — DSENTR-2 ZBUILD_STATE_FILE constraint:** Issue-acceptance finding 1 confirms the DSENTR-2 test sets `ZBUILD_STATE_FILE="$P2_STATE_FILE"` at line 219, making the symlink branch guard false. The design spec is correct (Given says ZBUILD_STATE_FILE must be unset). The DSENTR-2 step carries a CRITICAL note to enforce this constraint on the build stage.
 
 **Finding 26 — RQTEST-1 coverage widened:** DSCYCL-1 covers all four required test files (resume-rehydrate-test.sh for RQRESU-4, resume-loop-state-test.sh for RQLOOP-1, from-stage-rehydrate-test.sh for RQFROM-2/RQFROM-3, resume-entry-points-test.sh for RQPATH-1); update steps for resume-loop-state-test.sh and resume-entry-points-test.sh each include an [#1805/DSCYCL-1] assertion item.
+
+**Finding 28 — DSCMBR-1 Given uses production status value "aborted":** The test-author stage found that the test sets `stage_statuses.test = "aborted"` (the production value for an interrupted stage), not "in-progress". The Given's phrase "test as in-progress" was wrong; changed to "test as aborted" to match the production value and what the test actually constructs.
 
 **Finding 27 — pipeline.skip_to_stage in combined resume+from-stage mode (lens-correctness-design finding 1):** runner.sh:2963 emits `pipeline.skip_to_stage` whenever `--from-stage` is active, including when `--resume` is also active. RQFROM-2 says the event must not be FOLLOWED BY running an earlier stage — that constraint is met because rehydration and the dispatch-loop skip guards prevent earlier-stage dispatch in both modes. The event's emission is therefore RQFROM-2-compliant. No code change is needed to suppress it; DSFSTG-1 makes the boundary explicit via an additional Then clause (Gap 10 above). No new SPEC is required; the existing DSFSTG-1[code] covers RQFROM-2 and its test will verify that no stage before <s> is dispatched after the event in either mode.

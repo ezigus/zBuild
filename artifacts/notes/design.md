@@ -1,5 +1,17 @@
 # Design notes: #1805 — resume and --from-stage trust-and-rehydrate
 
+## Status: Forty-sixth pass — DSCMBR-1 Given fixed ("in-progress" → "aborted")
+
+### Changes this pass (forty-sixth)
+
+**test-author finding 1** (DSCMBR-1 Given uses wrong status value):
+- Test sets `stage_statuses.test = "aborted"` for iter-2 (the production value for interrupted stages)
+- DSCMBR-1's Given said "test as in-progress" — wrong; "aborted" is the production status value
+- Fix: Changed "test as in-progress" to "test as aborted" in the Given clause
+- Added Finding 28 documenting this change
+
+---
+
 ## Status: Forty-fifth pass — DSFSTG-1 And clause fixed (mechanism text removed)
 
 ### Changes this pass (forty-fifth)

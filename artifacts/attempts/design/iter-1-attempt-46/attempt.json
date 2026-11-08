@@ -1,0 +1,18 @@
+{
+  "stage": "design",
+  "cycle_iter": 1,
+  "attempt": 46,
+  "rc": "0",
+  "generated_at": "2026-11-08T14:17:26Z",
+  "files": 4,
+  "outputs": {
+    "design.md": "changed",
+    "design-steps.json": "unchanged",
+    "design-draft.md": "absent",
+    "design-verdict.json": "changed",
+    "design-summary.md": "changed",
+    "__notes__": "changed",
+    "__cutoff__": "absent"
+  },
+  "progress": true
+}
