@@ -1,4 +1,0 @@
-[
-  "tests/unit/event-schema-emitted-coverage-test.sh",
-  "tests/unit/runner-startup-preflight-test.sh"
-]
