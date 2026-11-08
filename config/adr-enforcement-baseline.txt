@@ -10,7 +10,6 @@ ADR-007-test-strategy.md
 ADR-008-dependency-policy.md
 ADR-009-platform-aware-modularity.md
 ADR-010-ci-cli-parity.md
-ADR-012-test-tiering-and-ci-gating.md
 ADR-013-canonical-stage-list.md
 ADR-014-backend-init-timing.md
 ADR-015-stage-io-capture.md
