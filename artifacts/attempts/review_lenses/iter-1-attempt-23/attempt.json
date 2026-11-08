@@ -1,0 +1,18 @@
+{
+  "stage": "review_lenses",
+  "cycle_iter": 1,
+  "attempt": 23,
+  "rc": "0",
+  "generated_at": "2026-11-08T15:45:38Z",
+  "files": 5,
+  "outputs": {
+    "lens-correctness.json": "changed",
+    "lens-correctness-summary.md": "changed",
+    "lens-correctness-code-result.json": "changed",
+    "lens-correctness-design-result.json": "changed",
+    "lens-correctness-reply.txt": "changed",
+    "__notes__": "absent",
+    "__cutoff__": "absent"
+  },
+  "progress": true
+}

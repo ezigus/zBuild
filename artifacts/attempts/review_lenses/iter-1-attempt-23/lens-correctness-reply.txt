@@ -1,0 +1,26 @@
+--- reply 1 ---
+{
+  "score": 5,
+  "findings": [
+    {
+      "file": "core/pipeline/cycle-orchestrator.sh",
+      "category": "logic",
+      "severity": "high",
+      "line": 1472,
+      "message": "The DSCMBR-1 skip guard reads `stage_statuses[$s]` which is a flat, never-reset map: if the run is interrupted after `_cycle_state_write_iter_start` writes `current_iter=N` but before any member of iteration N has dispatched, every member still shows `complete` from iteration N-1, so the guard silently skips every member of iteration N — the entire iteration completes with zero dispatches and no stage.start events.",
+      "quote": "_cmbr_status=\"$(jq -r --arg s \"$s\" '.stage_statuses[$s] // \"pending\"' \\\n                \"$state_file\" 2>/dev/null || echo \"pending\")\"",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/cycle-orchestrator.sh",
+      "category": "logic",
+      "severity": "medium",
+      "line": 2408,
+      "message": "The read path sanitises `cycle_id` to `_safe_cycle_id` (stripping any character outside `[a-zA-Z0-9_-]`) before constructing the jq path, but the write paths (`_cycle_state_jq_write_iter_start`, `_cycle_state_jq_write_iter`) pass the original unsanitised `cycle_id` via `--arg id \"$_ZB_CYCLE_ID\"`; a cycle whose ID contains a stripped character (e.g. a dot) will be written under the original key but read under a different key, causing resume to silently return 0 for `_persisted_iter` and start from iteration 1 instead of the interrupted iteration.",
+      "quote": "local _safe_cycle_id=\"${cycle_id//[^a-zA-Z0-9_-]/}\"",
+      "introduced": true,
+      "fix": "code"
+    }
+  ]
+}

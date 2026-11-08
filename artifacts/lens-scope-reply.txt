@@ -3,14 +3,24 @@
   "score": 8,
   "findings": [
     {
-      "file": "tests/integration/from-stage-rehydrate-test.sh",
-      "category": "coverage",
-      "severity": "medium",
-      "line": 111,
-      "message": "Both DSFSTG-1 and DSFSTG-2 test `--from-stage` only with `--resume`, always exercising the `skip_restore=true` branch of `_runner_from_stage_preflight`; the `skip_restore=false` branch (plain `--from-stage` without `--resume`, which performs the git archive restore itself) is never exercised, leaving the substantively different restore path untested despite DSFSTG-1's Given clause saying 'a new invocation uses --from-stage' without requiring --resume.",
-      "quote": "bash \"$RUNNER\" --template artifact-snapshot-coverage \\\n        --resume --from-stage cyc --issue \"$S3_ID\" )",
+      "file": "core/state/artifact-persist.sh",
+      "category": "scope",
+      "severity": "low",
+      "line": 635,
+      "message": "The docstring for `_artifact_persist_put_back` claims 'Identical semantics to _hydrate_put_back' but the new function adds path-traversal guards (`[[ \"$rel\" == /* || \"$rel\" == *../* || \"$rel\" == ..* || \"$rel\" == *.. ]]`) that the original `_hydrate_put_back` did not have; the issue asked for a shared implementation (RQHYDR-1), not for new guards to be added to the existing hydrate copy path.",
+      "quote": "# model calls, not stage output). Identical semantics to _hydrate_put_back;",
       "introduced": true,
-      "fix": "test"
+      "fix": "code"
+    },
+    {
+      "file": "plugins/tool/hydrate/plugin.sh",
+      "category": "scope",
+      "severity": "low",
+      "line": 64,
+      "message": "Delegating `_hydrate_put_back` to `_artifact_persist_put_back` silently changes the behaviour of the existing hydrate copy path: files whose relative path matches `/*`, `*../`, `..` patterns are now skipped rather than copied, which the issue did not request; in practice these guards cannot fire for git-archive-extracted content, but the change is not what RQHYDR-1 asked for.",
+      "quote": "_artifact_persist_put_back \"$1\" \"$2\"",
+      "introduced": true,
+      "fix": "code"
     }
   ]
 }

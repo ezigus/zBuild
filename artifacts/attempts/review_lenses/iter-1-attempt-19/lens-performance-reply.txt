@@ -1,0 +1,36 @@
+--- reply 1 ---
+{
+  "score": 7,
+  "findings": [
+    {
+      "file": "core/pipeline/cycle-orchestrator.sh",
+      "category": "hot-path I/O",
+      "severity": "medium",
+      "line": 2496,
+      "message": "Every cycle iteration now performs two `locked_state_update` calls — the new `_cycle_state_write_iter_start` at the top of each iteration plus the pre-existing `_cycle_state_write_iter_atomic` at the end — each acquiring flock, spawning jq for JSON validation, spawning jq for the transform, and doing an atomic rename, doubling per-iteration blocking state I/O on the cycle hot path.",
+      "quote": "_cycle_state_write_iter_start \"$state_file\" \"$cycle_id\" \"$iter\" \\\n            || warn \"cycle-orchestrator: failed to write iter-start state for cycle=$cycle_id iter=$iter (a resume may start at the wrong iteration)\"",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/state/artifact-persist.sh",
+      "category": "unnecessary allocations",
+      "severity": "low",
+      "line": 648,
+      "message": "`_artifact_persist_put_back` spawns a subshell and an external `dirname` process for every artifact file copied during resume rehydration; replacing `$(dirname \"$to/$rel\")` with the pure-bash parameter expansion `\"${to}/${rel%/*}\"` eliminates O(files) subprocess pairs.",
+      "quote": "mkdir -p \"$(dirname \"$to/$rel\")\" && cp -p \"$f\" \"$to/$rel\" || return 1",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/cycle-orchestrator.sh",
+      "category": "unnecessary allocations",
+      "severity": "low",
+      "line": 1472,
+      "message": "In the DSCMBR-1 block of `_cycle_iter_dispatch`, each already-complete cycle member triggers five separate jq subprocess spawns (two reads from the state file, one `jq -cn` to build the entry, one `jq -c` to merge it into the blob, and one re-read for the verdict); a single jq invocation could extract both `stage_statuses[$s]` and `stage_verdicts[$s]` simultaneously, reducing the total to one per skipped member.",
+      "quote": "_cmbr_status=\"$(jq -r --arg s \"$s\" '.stage_statuses[$s] // \"pending\"' \\\n                \"$state_file\" 2>/dev/null || echo \"pending\")\"",
+      "introduced": true,
+      "fix": "code"
+    }
+  ]
+}

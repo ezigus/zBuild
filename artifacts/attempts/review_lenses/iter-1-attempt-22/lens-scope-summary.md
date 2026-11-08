@@ -1,0 +1,7 @@
+## review-lens-scope — pass
+
+- found: low: The docstring for `_artifact_persist_put_back` claims 'Identical semantics to _hydrate_put_back' but the new function adds path-traversal guards (`[[ "$rel" == /* || "$rel" == *../* || "$rel" == ..* || "$rel" == *.. ]]`) that the original `_hydrate_put_back` did not have; the issue asked for a shared implementation (RQHYDR-1), not for new guards to be added to the existing hydrate copy path. (core/state/artifact-persist.sh:635) (and 1 more)
+
+- low: The docstring for `_artifact_persist_put_back` claims 'Identical semantics to _hydrate_put_back' but the new function adds path-traversal guards (`[[ "$rel" == /* || "$rel" == *../* || "$rel" == ..* || "$rel" == *.. ]]`) that the original `_hydrate_put_back` did not have; the issue asked for a shared implementation (RQHYDR-1), not for new guards to be added to the existing hydrate copy path. (core/state/artifact-persist.sh:635)
+- low: Delegating `_hydrate_put_back` to `_artifact_persist_put_back` silently changes the behaviour of the existing hydrate copy path: files whose relative path matches `/*`, `*../`, `..` patterns are now skipped rather than copied, which the issue did not request; in practice these guards cannot fire for git-archive-extracted content, but the change is not what RQHYDR-1 asked for. (plugins/tool/hydrate/plugin.sh:64)
+- score: 8

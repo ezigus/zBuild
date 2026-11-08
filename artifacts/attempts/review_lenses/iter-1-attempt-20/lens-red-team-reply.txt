@@ -1,0 +1,26 @@
+--- reply 1 ---
+{
+  "score": 5,
+  "findings": [
+    {
+      "file": "core/pipeline/cycle-orchestrator.sh",
+      "category": "logic",
+      "severity": "high",
+      "line": 2416,
+      "message": "A persisted `current_iter` larger than `_CYCLE_MAX_ITER` causes the iteration loop to execute zero times on resume, then fall through to the post-loop `unconverged` path (line 2954), so the entire cycle's work is skipped; with `on_max=continue`, downstream stages (review, pr, deploy) then run against unbuilt code.",
+      "quote": "_start_iter=$(( _persisted_iter > 0 ? _persisted_iter : 1 ))",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/cycle-orchestrator.sh",
+      "category": "logic",
+      "severity": "medium",
+      "line": 1474,
+      "message": "The DSCMBR-1 member-skip path skips a cycle member marked complete without verifying its primary artifact is present after rehydration; DSRHYD-2 requires exit 1 before any stage.start when a complete stage's artifact is absent, but `stage.start` for the interrupted member at line 1497 fires even when a skipped member's artifact is gone.",
+      "quote": "if [[ \"$_cmbr_status\" == \"complete\" ]]; then\n                # Add persisted verdict/status to blob so exit_when/abort_when/until\n                # predicates that reference this member can evaluate correctly.\n                local _cmbr_verdict\n                _cmbr_verdict=\"$(jq -r --arg s \"$s\" '.stage_verdicts[$s] // \"pass\"' \\\n                    \"$state_file\" 2>/dev/null || echo \"pass\")\"\n                local _cmbr_blob_entry _cmbr_new_blob\n                _cmbr_blob_entry=\"$(jq -cn --arg v \"$_cmbr_verdict\" --arg st \"$_cmbr_status\" \\\n                    '{verdict: $v, status: $st}')\"\n                _cmbr_new_blob=\"$(jq -c --arg s \"$s\" --argjson e \"$_cmbr_blob_entry\" \\\n                    '. + {($s): $e}' <<< \"$blob\" 2>/dev/null)\" \\\n                    && blob=\"$_cmbr_new_blob\" \\\n                    || warn \"cycle-orchestrator: failed to update verdict blob for skipped member '$s'; cycle predicates (exit_when/abort_when/until) may evaluate incorrectly\"\n                continue",
+      "introduced": true,
+      "fix": "code"
+    }
+  ]
+}

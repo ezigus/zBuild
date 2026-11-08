@@ -1,0 +1,56 @@
+--- reply 1 ---
+{
+  "score": 6,
+  "findings": [
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "path traversal",
+      "severity": "high",
+      "line": 1775,
+      "message": "Manifest-sourced `primary_output` paths are passed to `_verdict_resolve_path_v` and checked for existence without verifying the resolved path stays inside `state_dir`; a hostile manifest with `primary_output: ../../../../etc/hostname` causes the skip guard to find the system file, treat the stage as complete-with-artifact, and skip it, inverting the designed fail-closed guarantee.",
+      "quote": "_verdict_resolve_path_v _fsp_resolved \"$_fsp_prim_path\" \"$_fsp_state_dir\"\n        if [[ ! -s \"$_fsp_resolved\" ]]; then",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "path traversal",
+      "severity": "high",
+      "line": 3607,
+      "message": "Same manifest-path bypass as line 1775 in the new cycle-skip guard: `_verdict_resolve_path_v` returns an unconstrained path and `[[ ! -s \"$_dc_resolved\" ]]` only exits 1 when the file is absent; a hostile manifest pointing outside `artifact_dir` to any non-empty system file causes the cycle to be silently skipped on resume.",
+      "quote": "_verdict_resolve_path_v _dc_resolved \\\n                                    \"$_dc_prim\" \"$state_dir\"\n                                if [[ ! -s \"$_dc_resolved\" ]]; then",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "path traversal",
+      "severity": "high",
+      "line": 3918,
+      "message": "Same manifest-path bypass as lines 1775 and 3607 in the new dispatch-unit stage-skip guard; the resolved path from `_verdict_resolve_path_v` is not checked to be inside `state_dir`, so a hostile manifest causes a stage to be skipped on resume even when its real artifact is absent.",
+      "quote": "_verdict_resolve_path_v _du_resolved \\\n                                        \"$_du_prim_path\" \"$state_dir\"\n                                    if [[ ! -s \"$_du_resolved\" ]]; then",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "injection",
+      "severity": "medium",
+      "line": 2217,
+      "message": "The explicit `--resume` and flat-file auto-resume paths restore `run_id` and `issue` from the state file without sanitization, while the newly introduced `latest`-symlink auto-resume path at lines 2272–2282 explicitly sanitizes both fields to prevent path traversal and event-log key=value injection; a malicious state file content for `run_id` (e.g., `../evil` or a value containing `=`) is used unsanitised in event log emissions (`run_id=$_runner_run_id`) and potentially in path construction.",
+      "quote": "_runner_run_id=\"$(get_state_field \"$state_file\" '.run_id' \"$(date +%Y%m%d%H%M%S)-$$\")\"\n            _runner_issue=\"$(get_state_field \"$state_file\" '.issue' '0')\"",
+      "introduced": false,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "injection",
+      "severity": "low",
+      "line": 1758,
+      "message": "Variable-name construction from `_fsp_from_stage` strips only `-` → `_`, while the adjacent jq-sanitisation path at line 3578 uses the stricter `[^a-zA-Z0-9_-]` pattern; a template cycle name containing `[@]` or `%` would survive into `${!_fsp_cycle_stages_var}` and trigger unexpected bash indirect array expansion (`${_TPL_CYCLE_STAGES_foo[@]}`), leaking all array elements into `_fsp_cycle_csv`.",
+      "quote": "local _fsp_cycle_safe=\"${_fsp_from_stage//-/_}\"\n    local _fsp_cycle_stages_var=\"_TPL_CYCLE_STAGES_${_fsp_cycle_safe}\"\n    local _fsp_cycle_csv=\"${!_fsp_cycle_stages_var:-}\"",
+      "introduced": true,
+      "fix": "code"
+    }
+  ]
+}
