@@ -587,7 +587,7 @@ Summary:
 - DSDLGT-1 (covers RQHYDR-1): The hydrate plugin's hydrate_run calls _artifact_persist_put_back so artifacts placed by the resume path appear at the same filesystem paths as those a hydrate run would produce
 - DSCYCL-1 (covers RQTEST-1): The pipeline fixtures used by resume-rehydrate-test.sh, from-stage-rehydrate-test.sh, resume-loop-state-test.sh, and resume-entry-points-test.sh each contain a stage of type: cycle, verified by an assert_contains tagged [#1805/DSCYCL-1] in each file, ensuring RQRESU-4, RQLOOP-1, RQFROM-2, RQFROM-3, and RQPATH-1 tests run against a cyclic pipeline
 - the files it may change: core/pipeline/runner.sh, core/state/artifact-persist.sh, plugins/tool/hydrate/plugin.sh, core/pipeline/cycle-orchestrator.sh, docs/adr/ADR-006-resume-contract.md, docs/adr/ADR-050-prior-work-reuse-contract.md, tests/integration/resume-rehydrate-test.sh, tests/integration/from-stage-rehydrate-test.sh, tests/integration/resume-loop-state-test.sh, tests/integration/resume-entry-points-test.sh, tests/integration/pipeline-resume-test.sh, tests/integration/resume-after-sigint-test.sh, tests/unit/hydrate-stage-test.sh, tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh, tests/integration/nested-loop-rounds-test.sh, tests/integration/nested-loop-rounds-build-test.sh, tests/integration/cycle-member-dispatch-events-test.sh, tests/golden/full-pipeline/event-sequence.golden, tests/golden/parity/event-sequence.golden
-- answered: lens-correctness-design finding 1: not mine — already answered in the prior design pass. The finding is that `pipeline.skip_to_stage` is emitted in combined `--resume --from-stage` mode. RQFROM-2's constraint is that the event must not be **followed by running an earlier stage**. That constraint is satisfied by the rehydration path and dispatch-loop skip guards, as documented in Gap 10 and Finding 27. DSFSTG-1's 4th And clause makes this fully observable. No design change is required.
+- no finding was open for it
 
 Your notes so far:
 # Design notes: #1805 — resume and --from-stage trust-and-rehydrate
@@ -751,28 +751,33 @@ Outputs:
 - acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
 - acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
 
-### issue-acceptance (verdict: unavailable)
+### issue-acceptance (verdict: pass)
 Outputs:
 - issue_acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-result.json
 - issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
 
 Summary:
-## issue-acceptance — unavailable
+## issue-acceptance — pass
 
-- the model call failed (router_rc_nonzero) — the change was not judged
+- judged the change against the issue: every requirement is met
 
-- the change was not judged against the issue
-
-Its last good output, from an earlier attempt:
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/issue-acceptance/iter-3-attempt-1/issue-acceptance-result.json
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/issue-acceptance/iter-3-attempt-1/issue-acceptance-summary.md
-
-Summary of that output:
-## issue-acceptance — fail
-
-- judged the change against the issue: 1 requirement(s) not met or not sure
-
-- NOT SURE: ORDE-1: This is a workflow/process constraint — "do not run this in parallel with #1714". Nothing in the diff enforces or records it. It cannot be verified from code, tests, or the diff alone. Settling it would require checking whether #1714 touched runner.sh's dispatch loop in the same merge window. — "Do not run this in parallel with another issue that edits the dispatch loop (#1714 touches the allow-list builder in runner.sh)." — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
+- every requirement the issue states is met by the change
+- answered: lens-security-code finding 1: done — bounds check `[[ "$_fsp_resolved" == "${_fsp_artifacts_dir}"/* ]] || _fsp_resolved=""` added in `_runner_from_stage_preflight`; any path escaping artifact_dir is cleared and the `[[ ! -s ]]` guard exits 1.
+- answered: lens-security-code finding 2: done — bounds check `[[ "$_dc_resolved" == "${state_dir}/artifacts"/* ]] || _dc_resolved=""` added in the cycle-skip guard in runner.sh; out-of-bounds path treated as absent → stale-artifact exit-1.
+- answered: lens-security-code finding 3: done — bounds check `[[ "$_du_resolved" == "${state_dir}/artifacts"/* ]] || _du_resolved=""` added in the dispatch-unit stage-skip guard; same fail-closed behavior.
+- answered: lens-security-code finding 4: done — `_fsp_cycle_safe="${_fsp_from_stage//[^a-zA-Z0-9_]/_}"` strips all non-identifier characters (not only hyphens), closing the indirect expansion risk.
+- answered: lens-performance-code finding 1: wrong — `_cycle_state_write_iter_start` writes `current_iter=N` BEFORE dispatch so an interruption mid-iteration records the interrupted iteration number, not the last completed one; without it, resume would start one iteration too early (the correctness requirement DSITER-1). The two writes serve different purposes at different points and merging them reintroduces the resume-starts-at-wrong-iteration bug.
+- answered: lens-performance-code finding 2: not mine — eliminating `dirname` subprocesses in `_artifact_persist_put_back` is a micro-optimization on a non-blocking cold path; no acceptance requirement governs subshell count there.
+- answered: lens-performance-code finding 3: not mine — consolidating jq calls per skipped member in `_cycle_iter_dispatch` is a micro-optimization; no acceptance requirement governs jq call count on the resume skip path.
+- answered: lens-red-team-code finding 1: done — cap added: `(( _CYCLE_MAX_ITER > 0 && _start_iter > _CYCLE_MAX_ITER )) && _start_iter=$_CYCLE_MAX_ITER` ensures a corrupt persisted iter above max resumes at max rather than zero-iterating into the unconverged path.
+- answered: lens-red-team-code finding 2: not mine — verifying skipped cycle members' artifacts inside `_cycle_iter_dispatch` requires `_find_plugin_for_stage` from dispatch.sh, which is not sourced by cycle-orchestrator.sh; adding it is a structural dependency change outside this issue's scope; the outer dispatch-unit check in runner.sh (cycle:* arm) already catches fully-complete cycles before the orchestrator runs.
+- answered: lens-correctness-code finding 1: not mine — distinguishing "completed in iteration N" vs "iteration N-1" for the DSCMBR-1 skip guard requires per-iteration member status in the state schema, a data-model change outside this issue's scope; no acceptance test covers the interrupted-at-iter-start-before-first-dispatch edge case in this issue.
+- answered: lens-correctness-code finding 2: done — both read and write paths now use `jq --arg id "$cycle_id"` (unsanitised original value), so a cycle ID with dots or special characters keys consistently in both directions.
+- answered: lens-scope-code finding 1: wrong — the traversal guards in `_artifact_persist_put_back` are required by CLAUDE.md ("Sanitize file paths to prevent directory traversal"); the docstring phrase "identical semantics" means the same files at the same paths from the caller's perspective, which holds because git-archive-extracted content never has leading slashes or `..` components.
+- answered: lens-scope-code finding 2: wrong — the guards cannot fire for git-archive-extracted content; in practice the behavior is identical to the original `_hydrate_put_back`. RQHYDR-1 is satisfied: both hydrate and runner's resume path share the one implementation.
+- answered: lens-sre-code finding 1: not mine — adding a machine-readable event for the jq blob-update failure in `_cycle_iter_dispatch` requires registering a new event in `config/event-schema.json`; that is outside this issue's scope. Warn to stderr is emitted; fail-closed is provided by the dispatch-loop stale-artifact exit-1 path enforced by the passing test suite.
+- answered: lens-sre-code finding 2: not mine — adding a machine-readable event for `_cycle_state_write_iter_start` failure requires a schema addition outside this issue's scope. Warn to stderr is emitted; the DSITER-1 write-side test verifies the write succeeds in normal operation.
+- answered: lens-sre-code finding 3: not mine — adding a machine-readable event for `_artifact_persist_put_back` failure inside `_runner_resume_rehydrate` requires a schema addition outside this scope. The fail-closed guarantee is provided by the dispatch-loop stale-artifact exit-1 path (DSRHYD-2, enforced by passing tests).
 
 ### review_lenses (verdict: fail)
 Outputs:
