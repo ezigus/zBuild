@@ -2,7 +2,7 @@
 # Integration Tests: plugins/tool/cache-gh-actions/ — adversarial and correctness edge cases
 # Covers: concurrent push race, pull-after-interrupted-push, unreadable src,
 #         unwritable dest, RUNNER_TEMP env independence per-call.
-# These tests spawn real subprocesses and exercise the filesystem layer.
+# These tests exercise the filesystem layer; an interruption is faked, never raced.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,8 +31,9 @@ _subshell_push() {
     local src="$2"
     (
         # Each subshell gets a fresh source of the plugin
+        # Not test-helpers.sh: its exit trap would kill the test's other
+        # children (pkill -P $$), here the other push (#2497).
         source "$REPO_ROOT/scripts/lib/helpers.sh"
-        source "$REPO_ROOT/scripts/lib/test-helpers.sh"
         # shellcheck disable=SC1090
         source "$PLUGIN_DIR/plugin.sh"
         export RUNNER_TEMP="$RUNNER_TEMP"
@@ -99,78 +100,65 @@ else
         "got corrupt/mixed content: '$pulled_payload'"
 fi
 
-# ─── Test 4-5: Pull after interrupted push → CACHE_MISS, not corrupt hit ──────
-# Why it matters: if push writes directly to the final path (not via a tmp file
-# + atomic rename), a kill mid-write leaves a partial tarball at the final
-# location.  A subsequent pull must see CACHE_MISS, not extract corrupt data.
-print_test_section "4-5. Pull after interrupted push: CACHE_MISS, no corrupt hit"
+# ─── Test 4-5: an interrupted push never becomes a cache entry (ADR-011) ─────
+# Why it matters: a push writes into <key>.tmp.<pid> and renames it to <key>
+# only when the copy is whole, so a pull never reads a partial copy. The
+# interruption is faked rather than raced: a KILL timed against a ~35ms copy
+# rarely lands, and when it does nothing can clean up after it (#2497).
+print_test_section "4-5. Interrupted push: never a cache entry, never a corrupt hit"
 
-INTERRUPTED_KEY="interrupted-push-key-001"
 INTERRUPTED_SRC="$TEST_TEMP_DIR/interrupted-src"
 mkdir -p "$INTERRUPTED_SRC"
-# Create a file large enough that the push is unlikely to complete before we kill it.
-dd if=/dev/urandom bs=1024 count=512 2>/dev/null > "$INTERRUPTED_SRC/large-blob.bin" || \
-    printf '%0512000d' 0 > "$INTERRUPTED_SRC/large-blob.bin"
+head -c 524288 /dev/urandom > "$INTERRUPTED_SRC/large-blob.bin"
+_CACHE_ROOT="$RUNNER_TEMP/zbuild-cache"
 
-# Start push in a subshell and kill it immediately after it launches.
-(
-    source "$REPO_ROOT/scripts/lib/helpers.sh"
-    source "$REPO_ROOT/scripts/lib/test-helpers.sh"
-    # shellcheck disable=SC1090
-    source "$PLUGIN_DIR/plugin.sh"
-    export RUNNER_TEMP="$RUNNER_TEMP"
-    cache_push "$INTERRUPTED_KEY" "$INTERRUPTED_SRC" 2>/dev/null || true
-) &
-INTERRUPTED_PID=$!
-# Give the process a moment to start writing, then terminate it.
-sleep 0.1
-kill -KILL "$INTERRUPTED_PID" 2>/dev/null || true
-wait "$INTERRUPTED_PID" 2>/dev/null || true
+# 4a. A copy that fails partway: the fake cp writes half the blob, then fails.
+FAKE_BIN="$TEST_TEMP_DIR/fake-cp-bin"
+mkdir -p "$FAKE_BIN"
+cat > "$FAKE_BIN/cp" <<'EOF'
+#!/usr/bin/env bash
+src="${*: -2:1}"; dest="${*: -1}"
+head -c 262144 "$src/large-blob.bin" > "$dest/large-blob.bin"
+exit 1
+EOF
+chmod +x "$FAKE_BIN/cp"
 
-# Test 4: pull must not return CACHE_HIT on a partial write.
-INTERRUPTED_PULL="$TEST_TEMP_DIR/interrupted-pull"
 set +e
-interrupted_out="$(cache_pull "$INTERRUPTED_KEY" "$INTERRUPTED_PULL" 2>/dev/null)"
-interrupted_rc=$?
+half_err="$(PATH="$FAKE_BIN:$PATH" cache_push "interrupted-copy-key" "$INTERRUPTED_SRC" 2>&1 >/dev/null)"
+half_rc=$?
 set -e
+assert_exit_code "copy fails partway: push exits 1" "1" "$half_rc"
+assert_contains "copy fails partway: push says the copy failed" "$half_err" "copy failed"
+half_left="$(find "$_CACHE_ROOT" -maxdepth 1 -name 'interrupted-copy-key*' 2>/dev/null)" || true
+assert_eq "copy fails partway: no <key> or <key>.tmp.* folder is left" "" "$half_left"
+set +e
+half_pull="$(cache_pull "interrupted-copy-key" "$TEST_TEMP_DIR/interrupted-copy-pull" 2>/dev/null)"
+set -e
+assert_eq "copy fails partway: a later pull returns CACHE_MISS" "CACHE_MISS" "$half_pull"
 
-assert_exit_code "interrupted push: pull exits 0" "0" "$interrupted_rc"
-
-# If the plugin uses atomic rename, the partial file lives in a tmp location
-# and is never promoted — so the pull sees CACHE_MISS.
-# If the plugin uses in-place writes, the partial file may appear but extracting
-# it should fail → the plugin must treat extract failure as CACHE_MISS.
-if [[ "$interrupted_out" == "CACHE_MISS" ]]; then
-    assert_pass "interrupted push: pull returns CACHE_MISS (partial write not surfaced)"
-elif [[ "$interrupted_out" == "CACHE_HIT" ]]; then
-    # If the plugin claims a HIT, the pulled content must not be corrupt.
-    # Verify the dest dir is non-empty and large-blob.bin is complete (512 KiB).
-    if [[ -f "$INTERRUPTED_PULL/large-blob.bin" ]]; then
-        blob_size="$(wc -c < "$INTERRUPTED_PULL/large-blob.bin" 2>/dev/null || echo 0)"
-        if [[ "$blob_size" -eq 524288 ]]; then
-            assert_pass "interrupted push: CACHE_HIT with complete content (512 KiB)"
-        else
-            assert_fail "interrupted push: CACHE_MISS or CACHE_HIT with complete content" \
-                "CACHE_HIT returned but blob is $blob_size bytes (expected 524288) — CORRUPT"
-        fi
-    else
-        assert_fail "interrupted push: CACHE_MISS or CACHE_HIT with complete content" \
-            "CACHE_HIT returned but large-blob.bin is missing — CORRUPT"
-    fi
+# 4b. A push that died partway, no earlier entry: only its tmp folder is left.
+mkdir -p "$_CACHE_ROOT/interrupted-dead-key.tmp.99999"
+head -c 262144 "$INTERRUPTED_SRC/large-blob.bin" > "$_CACHE_ROOT/interrupted-dead-key.tmp.99999/large-blob.bin"
+set +e
+dead_pull="$(cache_pull "interrupted-dead-key" "$TEST_TEMP_DIR/interrupted-dead-pull" 2>/dev/null)"
+set -e
+assert_eq "push died partway: pull returns CACHE_MISS" "CACHE_MISS" "$dead_pull"
+if [[ -e "$TEST_TEMP_DIR/interrupted-dead-pull/large-blob.bin" ]]; then
+    assert_fail "push died partway: pull writes no blob" "the partial blob was pulled"
 else
-    assert_fail "interrupted push: pull returns CACHE_MISS or CACHE_HIT" \
-        "stdout was: $interrupted_out"
+    assert_pass "push died partway: pull writes no blob"
 fi
 
-# Test 5: no partial/tmp files left exposed under RUNNER_TEMP with the key's name
-#         (tmp files should be cleaned up on failure)
-_temp_leftover="$(find "$RUNNER_TEMP" \( -name "*.tmp" -o -name "*.partial" -o -name "*.tmp.*" \) 2>/dev/null)" || true
-if grep -q . <<< "$_temp_leftover"; then
-    assert_fail "interrupted push: no .tmp/.partial files left in RUNNER_TEMP" \
-        "leftover temp files found; plugin did not clean up after kill"
-else
-    assert_pass "interrupted push: no .tmp/.partial files left in RUNNER_TEMP"
-fi
+# 5. A push that died partway beside a good entry: the good entry is pulled whole.
+cache_push "interrupted-good-key" "$INTERRUPTED_SRC" >/dev/null 2>&1 || true
+mkdir -p "$_CACHE_ROOT/interrupted-good-key.tmp.99999"
+head -c 262144 "$INTERRUPTED_SRC/large-blob.bin" > "$_CACHE_ROOT/interrupted-good-key.tmp.99999/large-blob.bin"
+set +e
+good_pull="$(cache_pull "interrupted-good-key" "$TEST_TEMP_DIR/interrupted-good-pull" 2>/dev/null)"
+set -e
+assert_eq "push died beside a good entry: pull returns CACHE_HIT" "CACHE_HIT" "$good_pull"
+good_size="$(wc -c < "$TEST_TEMP_DIR/interrupted-good-pull/large-blob.bin" 2>/dev/null | tr -d ' ')" || good_size=0
+assert_eq "push died beside a good entry: the whole blob is pulled (524288 bytes)" "524288" "$good_size"
 
 # ─── Test 6: cache_push with unreadable src_dir → rc=1 + stderr diagnostic ────
 # Why it matters: a world-unreadable directory must produce a clear error to
