@@ -1,8 +1,32 @@
-# test-author notes — issue #1805 (round 46)
+# test-author notes — issue #1805 (round 47)
 
 ## Status: COMPLETE
 
 All 16 SPECs confirmed on disk with correct tags.
+
+## Round 47 changes
+
+### test-author finding 1 (fix: test) — DONE
+Added a leaf-stage sub-case for DSDSPK-1 in `tests/integration/resume-rehydrate-test.sh`
+(inserted after line ~255, before the SPEC-1 path 2 / auto-resume section).
+
+The finding said both existing DSDSPK-1 assertions exercise only the cycle-stage branch
+(stage k = cyc). The Then clause also says "when k is a leaf stage, a stage.start event
+is emitted for k" — no assertion covered that.
+
+The new sub-case:
+- Uses `resume-minimal` template (intake → build → test, all leaf stages, no roles)
+- Creates mock plugins for `build` and `test` via `mock_plugin_factory`
+- Sets up: intake=complete (artifact on state branch), build=pending (k = interrupted leaf)
+- Resumes via `--resume` flag
+- Asserts:
+  1. `assert_gt` stage.start emitted for `build` (the leaf stage k) — tagged `[#1805/DSDSPK-1]`
+  2. `assert_eq` no stage.start for `intake` (k-1 rehydrated+skipped) — tagged `[#1805/DSDSPK-1]`
+
+Before the change: runner has no rehydration + dispatch-skip logic → build never dispatched
+  → `_dspk_leaf_build_starts=0` → `assert 0 > 0` → FAILS.
+After the change: rehydrate → dispatch-loop skips intake → dispatches build (leaf) →
+  stage.start emitted → count≥1 → PASSES.
 
 ## Round 46 changes
 

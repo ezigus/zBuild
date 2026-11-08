@@ -1,5 +1,5 @@
 # authored_by: test-author
-b76ffd1f3e4c1a8d2a1bfac3328c56eefebbe1e0bc54f127bca2b5d23f4b320f  tests/integration/resume-rehydrate-test.sh
+212094e6f2159ee478ea6a7cba27eda33685847df1c9ea099d4779b44ae508bb  tests/integration/resume-rehydrate-test.sh
 36f231a2f4dc4f0b99d60d80f372690ef5e241a809e4cc24c603c0bafdc72718  tests/integration/from-stage-rehydrate-test.sh
 f90e6b67d7310d351f227e3d002315a79c5d099362927e85ad843e4574f54538  tests/integration/resume-loop-state-test.sh
 9728536ca7db0f64a468bf81ee62acfc412a11da6c0ff953328f4686297d989d  tests/integration/resume-entry-points-test.sh

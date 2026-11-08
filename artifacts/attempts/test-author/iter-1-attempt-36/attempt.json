@@ -1,0 +1,17 @@
+{
+  "stage": "test-author",
+  "cycle_iter": 1,
+  "attempt": 36,
+  "rc": "1",
+  "generated_at": "2026-11-08T21:25:12Z",
+  "files": 2,
+  "outputs": {
+    "test-author-result.json": "changed",
+    "test-author-summary.md": "changed",
+    "__repository__": "unchanged",
+    "__notes__": "unchanged",
+    "__cutoff__": "absent",
+    "__findings__": "changed"
+  },
+  "progress": true
+}
