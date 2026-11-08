@@ -1,8 +1,28 @@
-# test-author notes — issue #1805 (round 47)
+# test-author notes — issue #1805 (round 48)
 
 ## Status: COMPLETE
 
 All 16 SPECs confirmed on disk with correct tags.
+
+## Round 48 changes
+
+### lens-red-team-code finding 1 (fix: test) — DONE
+Replaced the vacuous `stage.skip=0` assertions in DSFRSH-1 and DSFRSH-2 with
+non-vacuous `cycle.start > 0` assertions in `tests/integration/resume-rehydrate-test.sh`.
+
+The finding: `stage.skip` is registered in event-schema.json but never emitted by any
+.sh file, so asserting count=0 can never fail. The fix: replace each with an assertion
+that `cycle.start` was emitted for the fixture's cycle stage `cyc`.
+
+Failure mechanism for the new assertion:
+- If the skip guard fires unconditionally (not keyed on resume_mode), it skips intake
+  due to prior-run artifacts on the state branch → intake doesn't complete → pipeline
+  doesn't proceed to dispatch cyc → cycle.start absent → count=0 → assert_gt 0 > 0 → FAILS.
+- After the change: guard is keyed on resume_mode → not active on fresh run →
+  intake dispatches → cyc dispatched → cycle.start emitted → count≥1 → PASSES.
+
+DSFRSH-1: replaced lines ~844-855 (old _s12_stage_skips block)
+DSFRSH-2: replaced lines ~978-988 (old _frsh2_stage_skips block)
 
 ## Round 47 changes
 
