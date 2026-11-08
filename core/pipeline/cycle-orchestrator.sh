@@ -241,6 +241,9 @@ _cycle_clear_traps() {
     trap - INT TERM
 }
 _cycle_on_signal() {
+    # ADR-054 §7 (#2493): a repeat signal is ignored while this runs, never
+    # handled inside it (on bash 5.2 that broke this handler off part-way).
+    trap '' INT TERM
     local sig="$1" word="sigint"
     [[ "$sig" == "SIGTERM" ]] && word="sigterm"
     _zbuild_arm_abort_sentinel "$word"
