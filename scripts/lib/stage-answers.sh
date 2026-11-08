@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # scripts/lib/stage-answers.sh — a stage's answers to the findings it is given
 # (ADR-068 §6): read from its reply, each done, wrong or not mine; one it did
-# not give asked for once; and the lines its summary shows about them. Sourced
-# by judge.sh, whose judges read the `wrong` ones back (ADR-072 §5).
+# not give stays open; and the lines its summary shows about them. Sourced by
+# judge.sh, whose judges read the `wrong` ones back (ADR-072 §5).
 #
 # Sourced library: no set -euo pipefail.
 
@@ -16,7 +16,8 @@ source "${BASH_SOURCE[0]%/*}/reply-units.sh"
 # answered twice keeps its latest answer.
 zb_answers_collect_v() {
     local -n _zac="$1"
-    local _zb_ans_line _zb_ans_a _zb_ans_k _zb_ans_i _joined _zb_ans_re='^[[:space:]>*`_-]*ANSWER[[:space:]]+(.+[[:space:]]finding[[:space:]]+[0-9]+[[:space:]]*:.*)$'
+    local _zb_ans_line _zb_ans_a _zb_ans_k _zb_ans_i _joined _zb_ans_re='^[[:space:]>*`_-]*ANSWER[[:space:]]+(.+[[:space:]]finding[[:space:]]+[0-9]+[[:space:]]*(\([^)]*\))?[[:space:]]*:.*)$'
+    local _zb_ans_kre='([^[:space:]]+[[:space:]]+finding[[:space:]]+[0-9]+)[[:space:]]*(\([^)]*\))?[[:space:]]*$'
     zb_reply_join_v _joined "${2:-}"
     while IFS= read -r _zb_ans_line; do
         [[ "$_zb_ans_line" =~ $_zb_ans_re ]] || continue
@@ -24,8 +25,9 @@ zb_answers_collect_v() {
         while [[ "$_zb_ans_a" == *[[:space:]] ]]; do _zb_ans_a="${_zb_ans_a%[[:space:]]}"; done
         _zb_ans_k="${_zb_ans_a%%:*}"
         # #2487: a stage that names the opening stage first ("review_lenses
-        # finding lens-sre-code finding 2") still answers lens-sre-code finding 2.
-        if [[ "$_zb_ans_k" =~ ([^[:space:]]+[[:space:]]+finding[[:space:]]+[0-9]+)[[:space:]]*$ ]]; then
+        # finding lens-sre-code finding 2") still answers lens-sre-code finding 2;
+        # #2491: so does one that copies the finding as listed, "(opened by …)" and all.
+        if [[ "$_zb_ans_k" =~ $_zb_ans_kre ]]; then
             _zb_ans_a="${BASH_REMATCH[1]}:${_zb_ans_a#*:}"; _zb_ans_k="${BASH_REMATCH[1]}"
         fi
         for _zb_ans_i in "${!_zac[@]}"; do
@@ -49,15 +51,15 @@ zb_answer_kind_v() {
 }
 
 # zb_answers_finish <arr> <prompt> <reply> — a stage's answers to the findings
-# its prompt showed it (ADR-068 §6): read from <reply> into <arr>, and those not
-# answered asked for once, in a call that shows the stage the findings and its
-# reply and may only read files. Sets _ZB_ANS_SHOWN (how many it was shown) and
-# _ZB_ANS_MISSING (each still not answered, one per line). A finding is shown as
+# its prompt showed it (ADR-068 §6), read from <reply> into <arr>. Sets
+# _ZB_ANS_SHOWN (how many it was shown) and _ZB_ANS_MISSING (each not answered,
+# one per line). Nothing is asked again (#2491): a finding with no answer stays
+# open, and is shown again next round. A finding is shown as
 # `- <label> finding <n> (opened by …): …` (stage-previous-work.sh).
 _ZB_ANS_SHOWN=0 _ZB_ANS_MISSING=""
 zb_answers_finish() {
     local -n _zaf="$1"
-    local _zaf_l _zaf_k _zaf_a _zaf_kind _zaf_miss="" _zaf_lines="" _zaf_reply _zaf_ask
+    local _zaf_l _zaf_k _zaf_a _zaf_kind
     local _zaf_re='^-[[:space:]]+([^[:space:]]+[[:space:]]+finding[[:space:]]+[0-9]+)[[:space:]]+\(opened[[:space:]]by'
     local -A _zaf_seen=() _zaf_ok=()
     _ZB_ANS_SHOWN=0 _ZB_ANS_MISSING=""
@@ -70,33 +72,8 @@ zb_answers_finish() {
         _zaf_k="${BASH_REMATCH[1]}"
         [[ -n "${_zaf_seen[$_zaf_k]+x}" ]] && continue
         _zaf_seen["$_zaf_k"]=1; _ZB_ANS_SHOWN=$((_ZB_ANS_SHOWN + 1))
-        [[ -n "${_zaf_ok[$_zaf_k]+x}" ]] && continue
-        _zaf_miss+="$_zaf_k"$'\n'; _zaf_lines+="$_zaf_l"$'\n'
+        [[ -n "${_zaf_ok[$_zaf_k]+x}" ]] || _ZB_ANS_MISSING+="${_ZB_ANS_MISSING:+$'\n'}$_zaf_k"
     done <<< "${2:-}"
-    if [[ -n "$_zaf_miss" ]] && declare -F route_to_model >/dev/null 2>&1; then
-        _zaf_reply="${3:-}"
-        (( ${#_zaf_reply} > 20000 )) && _zaf_reply="${_zaf_reply: -20000}"
-        # #2487: composed in the contract order like every stage call (ADR-067
-        # §8) — as plain text the router refused it on every stage.
-        declare -F stage_prompt_compose_text >/dev/null 2>&1 \
-            || source "${BASH_SOURCE[0]%/*}/stage-prompt.sh" 2>/dev/null || true
-        _zaf_ask="$(stage_prompt_compose_text --fresh "Your job: you were given the findings below and your answer says nothing about them. Say what you did about each, from what you did — shown below as your answer. Do not do anything else.
-
-${_ZB_ANSWER_FORMS:-}" "THE FINDINGS YOU DID NOT ANSWER:
-${_zaf_lines}
-YOUR ANSWER:
-<<<
-${_zaf_reply}
->>>" "- Answer only, one line per finding, in the form above." 2>/dev/null)" || _zaf_ask=""
-        local -x ZBUILD_ROUTE_TOOLS=read
-        [[ -n "$_zaf_ask" ]] && zb_answers_collect_v _zaf "$(route_to_model "${4:-T1}" "$_zaf_ask" </dev/null 2>/dev/null)"
-        for _zaf_a in ${_zaf[@]+"${_zaf[@]}"}; do
-            zb_answer_kind_v _zaf_kind "$_zaf_a"; [[ -n "$_zaf_kind" ]] && _zaf_ok["${_zaf_a%%:*}"]=1
-        done
-    fi
-    while IFS= read -r _zaf_k; do
-        [[ -n "$_zaf_k" && -z "${_zaf_ok[$_zaf_k]+x}" ]] && _ZB_ANS_MISSING+="${_ZB_ANS_MISSING:+$'\n'}$_zaf_k"
-    done <<< "$_zaf_miss"
     return 0
 }
 

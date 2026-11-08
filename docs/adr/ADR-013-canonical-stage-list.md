@@ -570,6 +570,8 @@ failure, and builds all result JSON via `jq -n` (injection-safe). The unused `ro
 
 **Amendment (2026-09-25, #2188) — `test-author` is blocking.** `test-author` (#2022, not a canonical stage id) is blocking since #2188: when it authors no assertions (after its `retry:` budget), the cycle stops before `build`, which would otherwise write its own acceptance tests — the correlated-error defect #2022 exists to remove. Blocking is not convergence: it is not an `exit_when` gate, so ADR-040 §5 is unaffected. Its testfiles are committed after every attempt, partial ones included, so a retry continues from them.
 
+**Amendment (2026-11-08, #2491) — `test-author` is no longer blocking.** On #1805 run 42439063480 test-author ran out of tries on a SPEC whose Given no test could meet, and being blocking it ended the run in round 1, before design — the only stage that can rewrite a Given — had another round. Out of tries, the round now goes on with the tests as they are, and the loop's next round starts from design, which is shown what test-author's check found (ADR-068 §3, ADR-071 §1, amended). Build still may not edit the acceptance tests, and the acceptance check still names a requirement with no tagged assertion, so a test-author that wrote nothing does not let build write its own. `tests/integration/test-author-out-of-tries-goes-on-test.sh` T1–T3 and `tests/unit/test-author-test.sh` SPEC-7 enforce it.
+
 ## Amendment (2026-10-31, issue #2439) — a timeout ends the try
 
 The #1208 amendment's "repeated timeout" yield is now a single timeout: build and test-author make one model

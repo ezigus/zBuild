@@ -318,14 +318,14 @@ EOF
 
 # stage_answer_forms — how a stage answers each finding it is given, in the
 # three words the engine reads (zb_answer_kind_v, ADR-068 §6). A finding with
-# none of them is asked for again. Read once, by the shell (ADR-065 §5).
+# none of them stays open (#2491). Read once, by the shell (ADR-065 §5).
 IFS= read -r -d '' _ZB_ANSWER_FORMS <<'EOF' || true
 - Answer every finding you are given under Previous work, each on its own line
   in your reply. Name it as its line there begins, before "(opened by":
     ANSWER <the finding as listed>: done — <what you changed for it>
     ANSWER <the finding as listed>: wrong — <why it does not hold>
     ANSWER <the finding as listed>: not mine — <why your job cannot fix it>
-  A finding with no such line is asked for again.
+  A finding you do not answer stays open, and is shown to you again.
 EOF
 stage_answer_forms() { printf '%s' "$_ZB_ANSWER_FORMS"; }
 

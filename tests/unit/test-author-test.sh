@@ -204,8 +204,10 @@ _ta_rt() { awk '/^test-author:/{f=1;next} /^[a-z]/{f=0} f && /^    timeout_s:/{p
 _b_rt()  { awk '/^build:/{f=1;next} /^[a-z]/{f=0} f && /^    timeout_s:/{print $2}' "$_tpl"; }
 assert_eq "[SPEC-7][change] test-author.router.timeout_s equals build's" "$(_b_rt)" "$(_ta_rt)"
 assert_eq "[SPEC-7][change] test-author.router.max_turns equals build's" "$(_b_field max_turns)" "$(_ta_field max_turns)"
-assert_eq "[SPEC-7][change] test-author is blocking: authoring nothing stops the cycle before build" "true" "$(_ta_field blocking)"
-assert_eq "[SPEC-7][change] …and the engine loads it as blocking" "true" \
+# #2491 (ADR-013): it no longer stops the run — out of tries, the round goes on
+# with the tests as they are and the next round starts from design.
+assert_eq "[SPEC-7][change] test-author is not blocking" "" "$(_ta_field blocking)"
+assert_eq "[SPEC-7][change] …and the engine loads it as not blocking" "" \
     "$(bash -c 'source "$1/scripts/lib/helpers.sh"; source "$1/core/pipeline/template.sh"; load_template "$2" >/dev/null 2>&1; printf "%s" "${_TPL_STAGE_BLOCKING_test_author:-}"' _ "$REPO_ROOT" "$_tpl")"
 
 # ─── SPEC-8/9 (#2174): the author owns every [SPEC-n] tag in the files it writes ─

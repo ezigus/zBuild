@@ -247,7 +247,7 @@ ${BT}
     route_to_model() {
         local _t; _t="$(zb_test_prompt_write_path "$2")"
         if [[ -n "$_t" ]]; then printf '%s\n' "$2" > "$TEST_TEMP_DIR/f1-design-prompt"; printf '%s' "$DRAFT" > "$_t"; return 0; fi
-        printf 'RQDOCS-1: uncovered | WHY: the docs say nothing yet | QUOTE: "the docs say so"\nDSDOCW-1: ok\nDSLEGC-1: ok\n'
+        printf 'RQDOCS-1: uncovered | WHY: the docs say nothing yet | QUOTE: "the docs say so"\nDSDOCW-1: ok\nDSLEGC-1: ok\nSCOPE: foo.sh: ok\n'
     }
     d="$TEST_TEMP_DIR/f1"; mkdir -p "$d/state/artifacts"; git -C "$d" init -q >/dev/null 2>&1
     export ZBUILD_REPO_ROOT="$d" ZBUILD_EVENTS_JSONL="$d/state/events.jsonl"; : > "$ZBUILD_EVENTS_JSONL"

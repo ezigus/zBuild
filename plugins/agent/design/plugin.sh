@@ -498,9 +498,9 @@ ${_dp_limits}")"; then
     local _dp_reply_f="${ZBUILD_STAGE_SCRATCH:-$artifact_dir}/design-reply.txt"
     route_to_model "$tier" "$_dp_composed" > "$_dp_reply_f" || router_rc=$?
     [[ -f "$_dp_reply_f" ]] && { IFS= read -r -d '' _dp_reply < "$_dp_reply_f" || true; }
-    # ADR-068 §6: a finding it was shown and did not answer is asked for.
+    # ADR-068 §6: a finding it was shown and did not answer stays open.
     _DESIGN_ANSWERS=()
-    zb_answers_finish _DESIGN_ANSWERS "$_dp_composed" "$_dp_reply" "$tier"
+    zb_answers_finish _DESIGN_ANSWERS "$_dp_composed" "$_dp_reply"
     if [[ $router_rc -eq 130 ]]; then
         warn "_design_stage_run_inner: the model call was interrupted (SIGINT) — propagating abort"
         return 130

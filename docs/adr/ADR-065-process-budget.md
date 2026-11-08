@@ -380,6 +380,11 @@ After #2489 (a stop polls for a KILLed child to be gone, one `sleep` on the run'
 is a parameter expansion), measured on macOS: execs 1,874 (`FORK_BUDGET` 1877 → 1876), processes 2,522
 (`PROCESS_BUDGET` 2526 → 2525).
 
+After #2491 (Previous work reads the state's stages and the input index in one `jq`, sorted by `jq`, where it ran
+two `jq` and a `sort` on every dispatch), measured on macOS: execs 1,856 (`FORK_BUDGET` 1876 → 1859), processes
+2,504 (`PROCESS_BUDGET` 2525 → 2507), one more dispatch 476 processes and 270 execs (`DISPATCH_PROCS_BUDGET`
+479 → 477, `DISPATCH_EXECS_BUDGET` 273 → 271).
+
 ## Enforced by
 
 - §5 amendment 2026-11-06 (#2476: an include checked only when it fails to load) → `tests/unit/route-missing-include-test.sh` SPEC-1–SPEC-6; `tests/e2e/fork-budget-test.sh` (the budgets above)

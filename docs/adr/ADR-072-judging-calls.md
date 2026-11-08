@@ -1,6 +1,6 @@
 # ADR-072 — A judge reads the code itself, quotes what it complains about, and keeps its answer while nothing changes
 
-**Status:** Accepted (2026-11-03); amended 2026-11-07 (#2487, §3: an escaped quote mark is the mark itself); amended 2026-11-04 (#2466, §2 §4: the old-code copy and every kept answer leave events); amended 2026-11-04 (#2467, §3: the checks answer one line per part of a SPEC); amended 2026-11-04 (#2470, §3 §4: one line per SPEC that is fine and one per failing part; design's check keeps its answer per SPEC, is given the draft by its path, and judges only the SPECs that changed); amended 2026-11-05 (#2472, §3 §4: quotes ignore formatting; a kept answer does not depend on the file its items come from; a bad line costs only its own item); amended 2026-11-05 (#2474, §3: every reply line is read with its formatting aside)
+**Status:** Accepted (2026-11-03); amended 2026-11-08 (#2491, §3 §4: each scope entry gets a line of its own, ok or outside, kept per entry); amended 2026-11-07 (#2487, §3: an escaped quote mark is the mark itself); amended 2026-11-04 (#2466, §2 §4: the old-code copy and every kept answer leave events); amended 2026-11-04 (#2467, §3: the checks answer one line per part of a SPEC); amended 2026-11-04 (#2470, §3 §4: one line per SPEC that is fine and one per failing part; design's check keeps its answer per SPEC, is given the draft by its path, and judges only the SPECs that changed); amended 2026-11-05 (#2472, §3 §4: quotes ignore formatting; a kept answer does not depend on the file its items come from; a bad line costs only its own item); amended 2026-11-05 (#2474, §3: every reply line is read with its formatting aside)
 **Issue:** #2464 (runs 41643063636 and 41679237388 on #1805)
 **Amends:** ADR-068 §6 §7 (answers are kept in a stage's result; a check keeps a verdict whose inputs have not changed), ADR-017 §11 (`tools: read`), ADR-069 §2 (a `[done]` claim is read in the code from before the change, by file), ADR-067 §8 (a judging call can read and search files, and nothing else)
 **Related:** ADR-060 §6 (one re-ask), ADR-054 §7 (teardown frees run resources), ADR-066 (every ADR statement has a test)
@@ -32,7 +32,7 @@ A judging call is a model call whose answer the engine acts on: design's coverag
      - teardown removes it, and git's record of it, on every exit path (ADR-054 §7).
    - Design's coverage check reads a `[done]` claim's code in that copy.
 3. **One line per item, and every complaint quoted.**
-   - **Design's coverage check** answers one line per requirement (`covered`, or `uncovered`) and one per SPEC (`ok`, `outside`, or `done_wrong`). `done_wrong` is only for a SPEC marked `[done]`. A scope entry the issue does not ask for gets its own `SCOPE:` line.
+   - **Design's coverage check** answers one line per requirement (`covered`, or `uncovered`) and one per SPEC (`ok`, `outside`, or `done_wrong`). `done_wrong` is only for a SPEC marked `[done]`. *Amended 2026-11-08 (#2491):* one line per scope entry too, `SCOPE: <entry>: ok` or `SCOPE: <entry>: outside` (see the amendment below).
    - **test-author's assertion check** answers one line per SPEC.
    - **issue-acceptance** answers `MET:`, `UNMET:` or `UNSURE:` for each listed requirement.
    - **A review lens** gives each finding a `quote` field.
@@ -158,7 +158,16 @@ On #1805 run 42397891946 issue-acceptance quoted two code lines that hold `"`, i
 
 - **A quote is read as written, then with its escapes read.** Inside `"…"`, `\"` is a quote mark and `\\` a backslash. It is checked as written first, since code holds real backslashes (`_judge_holds`).
 
+## Amendment 2026-11-08 (#2491) — §3 §4: each scope entry gets a line of its own
+
+On #1805 run 42439063480 design's first try ($2.26) failed on a line that said nothing was wrong. A scope entry the issue did not ask for got a `SCOPE:` line with no verdict word, so writing the line at all was a failure; the judge wrote one whose reason ended "this entry is consistent with the issue's intent and raises no concern".
+
+- **§3: a scope entry is judged as a SPEC is.** One line for every scope entry it is shown: `SCOPE: <entry>: ok`, or `SCOPE: <entry>: outside | WHY: <what the issue does not ask for, or how it contradicts it>`. Only `outside` is a finding. The entry is named exactly as listed, and that is checked: it is its own quote. A missing line, or a word that is not `ok` or `outside`, makes the answer unusable and is asked again once, as for a SPEC. The old `SCOPE:` line with no word is no line.
+- **§4: each entry's answer is kept by itself,** with a fingerprint of the entry, the requirements and any answer to its finding. A changed SPEC does not ask it again; requirement coverage no longer depends on the scope.
+
 ## Enforced by
+
+- §3 §4 amendment 2026-11-08 (#2491: a line per scope entry, ok or outside, kept per entry) → `tests/unit/design-coverage-test.sh` SC1–SC5, X2; `tests/unit/judge-quotes-test.sh` Q2
 
 - §3 amendment 2026-11-07 (#2487: an escaped quote mark is the mark itself) → `tests/unit/judge-quotes-test.sh` Q7
 

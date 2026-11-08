@@ -13,8 +13,8 @@
 # M2 [change] build, which takes requirement-findings too, is shown its design finding
 # M3 [change] design is shown that design finding, and no code finding: each
 #             finding still goes by its topic
-# M4 [change] every member's summary is shown, under its stage, not the first
-#             only (the security lens's, as before, is the guard)
+# M4 [change] no lens summary is shown: it lists the findings again, which
+#             already reach the stages as findings (#2491, ADR-071 §1)
 # M5 [change] the first member's findings are shown too: today none was, only
 #             its summary
 # M6 [change] stage_summaries_count counts the group when only a later member
@@ -93,9 +93,9 @@ assert_contains "[M3] design is shown the correctness lens's design finding" "$D
 assert_not_contains "[M3] …and no code finding: design does not take code-findings" "$DESIGN" "CORR-CODE"
 
 # ── M4 ───────────────────────────────────────────────────────────────────────
-print_test_section "M4: every member's summary"
-assert_contains "[M4] the correctness lens's summary is shown" "$BUILD" "review-lens-correctness"
-assert_contains "[M4] …and the security lens's, as before" "$BUILD" "review-lens-security"
+print_test_section "M4: no lens summary"
+assert_not_contains "[M4] the correctness lens's summary is not shown" "$BUILD" "review-lens-correctness"
+assert_not_contains "[M4] …nor the security lens's" "$BUILD" "review-lens-security"
 
 # ── M5 ───────────────────────────────────────────────────────────────────────
 print_test_section "M5: the first member too"

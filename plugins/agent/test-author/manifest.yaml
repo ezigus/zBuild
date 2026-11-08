@@ -65,8 +65,10 @@ capabilities:
   writes_repository: true
 
 outputs:
+  # #2491 (ADR-071 §1): its findings are about a test against its SPEC, so
+  # design is shown them: only design can rewrite a Given no test can meet.
   - id: test_author_result
-    topic: code-findings
+    topic: requirement-findings
     description: "the tests written for each requirement, with each file's fingerprint; findings: an assertion that does not test what its requirement says"
     path: "${artifact_dir}/test-author-result.json"
     finding_topics: none

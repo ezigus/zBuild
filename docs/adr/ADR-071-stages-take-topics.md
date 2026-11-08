@@ -1,6 +1,6 @@
 # ADR-071 — Each output names its topic; each stage takes only the topics it needs
 
-**Status:** Accepted (2026-10-27); amended 2026-11-06 (#2480, §2: a map group's outputs are read member by member); amended 2026-10-28 (§3: test-author takes requirement-findings); amended 2026-10-30 (#2428, §1 §2: each stage states its contract; every finding a stage takes reaches it); amended 2026-10-31 (#2441, §1: build writes its answers that a test is wrong to its own code-findings output); amended 2026-11-02 (#2452, §1 §2: each finding can carry its own topic); amended 2026-11-02 (#2454, §1 §2: every stage result declares where its findings may go; the test stage labels by whose test it is)
+**Status:** Accepted (2026-10-27); amended 2026-11-08 (#2491, §1 §3: a lens finding goes by what fixes it, and reaches a stage once; test-author's check findings are requirement-findings); amended 2026-11-06 (#2480, §2: a map group's outputs are read member by member); amended 2026-10-28 (§3: test-author takes requirement-findings); amended 2026-10-30 (#2428, §1 §2: each stage states its contract; every finding a stage takes reaches it); amended 2026-10-31 (#2441, §1: build writes its answers that a test is wrong to its own code-findings output); amended 2026-11-02 (#2452, §1 §2: each finding can carry its own topic); amended 2026-11-02 (#2454, §1 §2: every stage result declares where its findings may go; the test stage labels by whose test it is)
 **Issue:** #1944 (run 40393999128)
 **Amends:** ADR-067 §8 (Previous work), ADR-068 §6 and §8 (every stage's latest output goes to every later stage)
 **Related:** ADR-055 (inter-stage data contract), ADR-060 (stages return structure), ADR-066 (every ADR statement has a test)
@@ -128,11 +128,22 @@ same finding medium and failed.
 - Previous work shows one that does not block as `(opened by <stage>, does not block)`. A stage that takes its topic
   answers it like any other (ADR-068 §6).
 
+## Amendment 2026-11-08 (#2491) — §1 §3: a finding reaches the stages that can fix it, once
+
+On #1805 run 42439063480 every lens finding about code reached test-author, which can change no code: a lens put the findings the code must fix and those a test must fix into one output under `code-findings`, which test-author and build both take. Test-author answered the same 11 findings "not mine", then "wrong", then "done" across its three tries. Each also reached it a second time, inside the lens's summary, which lists every finding under the same topic. And test-author's own check found a test could not meet DSCMBR-1's Given, which only design can rewrite; but the check's findings were `code-findings`, and design takes `ask` and `requirement-findings`.
+
+- **A lens finding goes by what fixes it.** The lens's code output lists `change` in `finding_topics`; a finding the code must fix (`fix: code`) names `change`, which build takes and test-author never does. One a test must fix keeps the output's `code-findings`. The lens decides nothing new: it already says what fixes each finding.
+- **A lens finding reaches a stage once.** The lens's verdict file, summary and replies name no topic, so they reach no stage that declares `takes:` (§2). Their findings already reach the stages, numbered, from the code and design outputs. The run-status comment reads the summaries by path, as before.
+- **Test-author's result is `requirement-findings`** (§1's list: what checks found against the requirements and the design). Its check's findings say a test does not do what its SPEC says; design is shown them, so a Given no test can meet reaches the one stage that can rewrite it. Build still takes them.
+- **§3's table is unchanged:** each stage takes what it took; what changes is the topic the findings carry.
+
 ## Enforced by
+
+- §1 §3 amendment 2026-11-08 (#2491: a lens finding by what fixes it, once; test-author's check findings reach design) → `tests/unit/finding-goes-to-fixer-test.sh` F1–F4; `tests/unit/map-findings-reach-stages-test.sh` M4; `tests/unit/stage-takes-topics-test.sh` T7
 
 - §5 amendment 2026-11-07 (a finding that does not block still travels, marked) → `tests/unit/finding-answers-test.sh` C1, C2; `plugins/agent/review-lens/tests/review-lens-loop-test.sh` R3
 
-- §2 amendment 2026-11-06 (#2480: a map group's outputs are read member by member) → `tests/unit/map-findings-reach-stages-test.sh` M1–M6
+- §2 amendment 2026-11-06 (#2480: a map group's outputs are read member by member) → `tests/unit/map-findings-reach-stages-test.sh` M1–M3, M5, M6 (M4 now says no lens summary is shown, #2491)
 
 - §1 §2 amendment 2026-11-02 (#2458: design's work steps carry a topic; each stage is shown its own) → `tests/unit/design-step-topics-test.sh` T1–T4
 

@@ -74,8 +74,11 @@ config:
     tools: read
 
 outputs:
+  # #2491 (ADR-071 §1): the verdict, summary and replies name no topic, so they
+  # reach no stage — their findings already do, numbered, from the two outputs
+  # below; on #1805 run 42439063480 each lens finding reached build three times.
+  # The run-status comment reads the summaries by path.
   - id: lens_result
-    topic: code-findings
     description: "one review lens's verdict on the change; findings: each problem the lens found in the code"
     path: "${artifact_dir}/lens-${ZBUILD_REVIEW_LENS_ID}.json"
     finding_topics: none
@@ -86,7 +89,6 @@ outputs:
   # ADR-055 §9: this stage's statement of what it DID. required:true —
   # written on every terminal verdict, so absence means something went wrong.
   - id: review_lens_summary
-    topic: code-findings
     description: "the lens's summary"
     path: "${artifact_dir}/lens-${ZBUILD_REVIEW_LENS_ID}-summary.md"
     type: review-lens-summary.md@1
@@ -95,11 +97,13 @@ outputs:
     summary: true
   # #2433 (ADR-071 §1): one output per topic the lens writes findings to —
   # those that send the run back, numbered; each passes when it holds none.
+  # #2491: a finding the code must fix names `change`, so it reaches build and
+  # not test-author; one a test must fix keeps code-findings.
   - id: review_lens_code
     topic: code-findings
-    description: "the lens's findings that send the run back and that the code or a test must fix"
+    description: "the lens's findings that send the run back and that the code or a test must fix; one the code must fix goes to change"
     path: "${artifact_dir}/lens-${ZBUILD_REVIEW_LENS_ID}-code-result.json"
-    finding_topics: none
+    finding_topics: change
     type: review-lens-routed.json@1
     format: json
     required: false
@@ -114,7 +118,6 @@ outputs:
   # ADR-060 §6: every reply the lens got, in order — a reply that could not be
   # used is kept beside the one that was.
   - id: review_lens_replies
-    topic: code-findings
     description: "every reply the lens got, in order, including any that could not be used"
     path: "${artifact_dir}/lens-${ZBUILD_REVIEW_LENS_ID}-reply.txt"
     type: review-lens-reply.txt@1

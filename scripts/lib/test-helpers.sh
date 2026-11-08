@@ -1494,17 +1494,21 @@ zb_test_test_run_output() {
 
 # zb_test_coverage_ok <prompt> — design's coverage check answering that it
 # finds nothing (#2464, ADR-072 §3): every requirement it is asked about
-# covered and every SPEC it is shown in full ok — one line each (#2470) — read
-# off the prompt it was asked, as the real judge reads them.
+# covered, every SPEC it is shown in full ok — one line each (#2470) — and
+# every scope entry it is shown ok (#2491), read off the prompt it was asked,
+# as the real judge reads them.
 zb_test_coverage_ok() {
     local l sec=""
     while IFS= read -r l; do
         case "$l" in
             REQUIREMENTS:) sec=r; continue ;;
             ACCEPTANCE:)   sec=a; continue ;;
-            "OTHER SPECS —"*|"SCOPE —"*|TESTFILES:) sec=""; continue ;;
+            "SCOPE —"*)    sec=s; continue ;;
+            "OTHER SPECS —"*|TESTFILES:) sec=""; continue ;;
         esac
-        if [[ "$sec" == r && "$l" =~ ^-[[:space:]]+([A-Za-z0-9]+-[0-9]+): ]]; then
+        if [[ "$sec" == s ]]; then
+            if [[ -n "$l" ]]; then printf 'SCOPE: %s: ok\n' "$l"; else sec=""; fi
+        elif [[ "$sec" == r && "$l" =~ ^-[[:space:]]+([A-Za-z0-9]+-[0-9]+): ]]; then
             printf '%s: covered\n' "${BASH_REMATCH[1]}"
         elif [[ "$sec" == a && "$l" =~ ^([A-Z][A-Z0-9][A-Z0-9][A-Z0-9]?[A-Z0-9]?[A-Z0-9]?-[0-9]+)(\[[a-z-]+\])?: ]]; then
             printf '%s: ok\n' "${BASH_REMATCH[1]}"
