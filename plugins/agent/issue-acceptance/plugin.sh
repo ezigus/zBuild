@@ -308,8 +308,8 @@ issue_acceptance_run() {
             "the answer could not be used, even when asked again: $_IA_PROBLEM — the change was not judged"
         return 0
     fi
-    # ADR-068 §6: a finding it was shown and did not answer is asked for.
-    _IA_ANSWERS=(); zb_answers_finish _IA_ANSWERS "$_framed" "$_raw" "$tier"; _IA_ANS_KNOWN=1
+    # ADR-068 §6: a finding it was shown and did not answer stays open.
+    _IA_ANSWERS=(); zb_answers_finish _IA_ANSWERS "$_framed" "$_raw"; _IA_ANS_KNOWN=1
     local _q
     for _q in ${_IA_QUOTED[@]+"${_IA_QUOTED[@]}"}; do _deps+=("$_root_q/$_q"); done
     judge_kept_put_one "$kf" issue "$fp" "$_raw" ${_deps[@]+"${_deps[@]}"}

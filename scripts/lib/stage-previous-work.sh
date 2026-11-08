@@ -206,22 +206,31 @@ _stage_block_previous_work() {
         [[ -n "$changed" ]] && printf '\n%s\n' "$changed"
     fi
 
-    # Everything read once: the stages in the order they first completed with
-    # their verdicts, then every output in the index.
-    local -a order=()
+    # Everything read once, in one jq (#2491, ADR-065 §5): the stages in the
+    # order they first completed with their verdicts, then every output in the
+    # index, by id.
+    local -a order=() _pw_ins=()
     local -A verdicts=() outs=() seen=() outtext=() outpath=()
-    local line k v id
-    while IFS=$'\t' read -r k v; do
+    local line k v id _pw_t
+    local -a _pw_args=(--argjson st '[]')
+    [[ -s "$state_file" ]] && _pw_args=(--slurpfile st "$state_file")
+    if [[ -n "$index" && -s "$index" ]]; then _pw_args+=(--slurpfile ix "$index"); else _pw_args+=(--argjson ix '[]'); fi
+    while IFS=$'\t' read -r _pw_t k v; do
+        if [[ "$_pw_t" == I ]]; then _pw_ins+=("$k"$'\t'"$v"); continue; fi
         [[ -n "$k" && -z "${seen[$k]:-}" ]] || continue
         seen[$k]=1; order+=("$k"); verdicts[$k]="$v"
-    done < <(jq -r '. as $r | ($r.stage_statuses // {}) | keys_unsorted[]
-                    | "\(.)\t\($r.stage_verdicts[.] // "")"' "$state_file" 2>/dev/null || true)
+    done < <(jq -rn "${_pw_args[@]}" '(($st[0] // {}) as $r | ($r.stage_statuses // {}) | keys_unsorted[]
+                    | "S\t\(.)\t\($r.stage_verdicts[.] // "")"),
+                    (($ix[0].inputs // {}) | to_entries | sort_by(.key)[]
+                    | "I\t\(.key)\t\(if (.value|type) == "array" then (.value | join("\u001f")) + "\u001f" else .value end)")' 2>/dev/null || true)
     while IFS= read -r k; do
         [[ -n "$k" && -z "${seen[$k]:-}" ]] || continue
         seen[$k]=1; order+=("$k")
     done < <(_inputs_flow_stages 2>/dev/null)
-    if [[ -n "$index" && -s "$index" ]]; then
-        while IFS=$'\t' read -r id v; do
+    if [[ ${#_pw_ins[@]} -gt 0 ]]; then
+        local _pw_in
+        for _pw_in in "${_pw_ins[@]}"; do
+            id="${_pw_in%%$'\t'*}"; v="${_pw_in#*$'\t'}"
             [[ -n "$id" ]] || continue
             k="${_IR_PRODUCER[$id]:-}"; [[ -n "$k" ]] || continue
             outs[$k]+="$id "
@@ -237,9 +246,7 @@ _stage_block_previous_work() {
                 outtext[$id]="- $id: $v"$'\n'
                 outpath[$id]="$v"
             fi
-        done < <(jq -r '(.inputs // {}) | to_entries[]
-                        | "\(.key)\t\(if (.value|type) == "array" then (.value | join("\u001f")) + "\u001f" else .value end)"' \
-                        "$index" 2>/dev/null | LC_ALL=C sort)
+        done
     fi
 
     local s manifest roles summ errp res req notes cutoff verdict own body any=0 raw content

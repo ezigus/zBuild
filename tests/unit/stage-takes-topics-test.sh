@@ -223,8 +223,9 @@ assert_eq "[T7] intake: every output is ask" \
 assert_eq "[T7] design: the design is ask, its checks are requirement-findings" \
     "design=ask work_steps=ask design_draft=ask design_result=requirement-findings design_summary=requirement-findings " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/design/manifest.yaml")"
-assert_eq "[T7] test-author: its checker is code-findings, its list of tests is tests" \
-    "test_author_result=code-findings test_author_summary=tests " \
+# #2491: test-author's check is about a test against its SPEC — design is shown it.
+assert_eq "[T7] test-author: its checker is requirement-findings, its list of tests is tests" \
+    "test_author_result=requirement-findings test_author_summary=tests " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/test-author/manifest.yaml")"
 assert_eq "[T7] build: change; its answers that a test is wrong are code-findings (#2441)" "diff_patch=change build_summary=change build_tests=code-findings build_stage_summary=change " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/build/manifest.yaml")"
@@ -234,7 +235,8 @@ assert_eq "[T7] test: the suite is code-findings, the acceptance check requireme
 assert_eq "[T7] issue-acceptance: requirement-findings" \
     "issue_acceptance_result=requirement-findings issue_acceptance_summary=requirement-findings " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/issue-acceptance/manifest.yaml")"
-assert_eq "[T7] review-lens: code-findings" "lens_result=code-findings review_lens_summary=code-findings review_lens_code=code-findings review_lens_design=requirement-findings review_lens_replies=code-findings " \
+# #2491: its verdict, summary and replies reach no stage; its findings do.
+assert_eq "[T7] review-lens: only its findings have a topic" "lens_result= review_lens_summary= review_lens_code=code-findings review_lens_design=requirement-findings review_lens_replies= " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/review-lens/manifest.yaml")"
 assert_eq "[T7] security-lens: code-findings" "findings=code-findings security_lens_summary=code-findings " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/security-lens/manifest.yaml")"

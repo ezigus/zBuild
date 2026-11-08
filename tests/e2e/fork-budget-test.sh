@@ -119,7 +119,10 @@ setup_test_env "fork-budget"
 # 1876 (#2489: a stop polls for a KILLed child to be gone, one `sleep` the
 # run's exit pays; the exit trap's dirname is a parameter expansion now)
 # — measured 1,874 macOS; main measured 1,874.
-FORK_BUDGET=1876
+# 1859 (#2491: Previous work reads the state's stages and the input index in
+# one jq, sorted by jq, not two jq and a sort a dispatch) — measured 1,856
+# macOS; main measured 1,874.
+FORK_BUDGET=1859
 # PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
 # the programs above plus each `$( )` subshell, a copy of the whole engine shell
 # that FORK_BUDGET cannot see. Ratchets down only, like FORK_BUDGET. History:
@@ -156,7 +159,9 @@ FORK_BUDGET=1876
 # FORK_BUDGET 1886 — measured 2,532 macOS). 2526 (#2487, the same change as
 # FORK_BUDGET 1877 — measured 2,523 macOS). 2525 (#2489, the same change as
 # FORK_BUDGET 1876 — measured 2,522 macOS).
-PROCESS_BUDGET=2525
+# FORK_BUDGET 1877 — measured 2,523 macOS). 2508 (#2491, the same change as
+# FORK_BUDGET 1859 — measured 2,504 macOS; main measured 2,522).
+PROCESS_BUDGET=2507
 # The run's cost in two parts (ADR-065 §6, #2472). Each budget ratchets down
 # like the totals; each floor is the goal, an estimate, measured again when
 # reached. History: 505 / 298 a dispatch, 12 / 7 a plugin at start-up (#2472 —
@@ -169,7 +174,9 @@ PROCESS_BUDGET=2525
 # 484 / 276 a dispatch (#2480: a result with no numbered finding is not handed
 # to jq — measured 483 and 275). 482 / 275 a dispatch, 11 / 6 a plugin (#2482:
 # a lens reads its change bundle with no subshell; the manifest check's grep is
-# gone — measured 481 and 275; 472 and 236 over 43 plugins).
+# gone — measured 481 and 275; 472 and 236 over 43 plugins). 479 / 273 a
+# dispatch (#2487 — measured 478 and 272). 477 / 271 a dispatch (#2491: one jq
+# and no sort for Previous work's state and index — measured 476 and 270).
 # - Per dispatch, the extra cost of one more dispatch. A dispatch needs a shell
 #   to isolate the plugin, one for the model call and a few for its time limit
 #   and watchers (~20 processes); and its programs: jq for its result and
@@ -177,9 +184,9 @@ PROCESS_BUDGET=2525
 #   and write checks (~4), safe writes (~6), the model call (~2) — ~50 execs.
 # - Start-up, per plugin manifest: discovery and the manifest checks; about one
 #   process and one exec a plugin once each read is in the shell.
-DISPATCH_PROCS_BUDGET=479
+DISPATCH_PROCS_BUDGET=477
 DISPATCH_PROCS_FLOOR=20
-DISPATCH_EXECS_BUDGET=273
+DISPATCH_EXECS_BUDGET=271
 DISPATCH_EXECS_FLOOR=50
 STARTUP_PROCS_PER_PLUGIN_BUDGET=11
 STARTUP_PROCS_PER_PLUGIN_FLOOR=1

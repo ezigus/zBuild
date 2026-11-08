@@ -175,13 +175,13 @@ _ta_write_result() {
     stage_summary_write "$dir/test-author-summary.md" "test-author" "$o" "$_sum_head" "$_sum_body"
 }
 
-# _ta_collect_answers <reply> [prompt] [tier] — the model's `ANSWER <the finding
-# as listed>: …` lines, added to _TA_ANSWERS without the word ANSWER; a
-# finding [prompt] showed it and it did not answer is asked for (ADR-068 §6).
+# _ta_collect_answers <reply> [prompt] — the model's `ANSWER <the finding as
+# listed>: …` lines, added to _TA_ANSWERS without the word ANSWER; a finding
+# [prompt] showed it and it did not answer stays open (ADR-068 §6).
 _TA_ANSWERS=()
 # #2460: a wrapped answer is read whole, and a finding answered again keeps
 # only its latest answer (#2464: the one reader build and design use too).
-_ta_collect_answers() { zb_answers_finish _TA_ANSWERS "${2:-}" "${1:-}" "${3:-T1}"; }
+_ta_collect_answers() { zb_answers_finish _TA_ANSWERS "${2:-}" "${1:-}"; }
 
 # ─── test_author_run <stage_id> <state_file> [resolved_inputs] ───────────────
 # ADR-054 §4: rc is binary. rc=0 = "my result file is on disk"; rc=1 = "I
@@ -402,7 +402,7 @@ EOF
     printf '%s' "$prompt" > "$prompt_file"
     route_to_model_loop "$tier" "$prompt_file" "$repo" || rc=$?
     rm -f "$prompt_file"
-    _ta_collect_answers "${_ROUTE_LOOP_LAST_RESPONSE:-}" "$prompt" "$tier"
+    _ta_collect_answers "${_ROUTE_LOOP_LAST_RESPONSE:-}" "$prompt"
     local _end="${_ROUTE_LOOP_TERMINATED_REASON:-}"
 
     if [[ "$_end" != "done_sentinel" ]]; then

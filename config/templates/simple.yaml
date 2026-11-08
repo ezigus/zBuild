@@ -103,10 +103,10 @@ test-author:
   # finds problems ends `unusable` with them, and the engine runs test-author
   # again — up to 2 more tries a round, each shown the last one's findings.
   retry: 2
-  # #2188: no authored assertions → the cycle stops before build. Otherwise build
-  # writes its own tests, the defect #2022 exists to prevent (#1849 run
-  # 35949629759). Its failure is retried first (the stage's `retry:` budget).
-  blocking: true
+  # #2491 (ADR-013): not blocking. Out of tries, the round goes on with the tests
+  # as they are, and the next round starts from design, which is shown what its
+  # check found: on #1805 run 42439063480 a Given no test could meet ended the
+  # run before design could rewrite it.
   # ADR-015: every stage declares its capture; without it the stage records
   # nothing (on #1754's run test-author left no trace in the log).
   io:

@@ -224,15 +224,14 @@ _build_write_test_findings() {
 
 # _build_answers_json_v <var> — build's answers to the findings its prompt
 # showed it, as JSON, as test-author keeps its own (#2464): one it did not give
-# is asked for (zb_answers_finish, ADR-068 §6), at build's own tier (the
-# stage run's `tier`, in scope here). Kept in _BUILD_ANSWERS for its summary;
-# no process when there are none (ADR-065 §5).
+# stays open (zb_answers_finish, ADR-068 §6). Kept in _BUILD_ANSWERS for its
+# summary; no process when there are none (ADR-065 §5).
 _BUILD_ANSWERS=()
 _build_answers_json_v() {
     local -n _baj="$1"; local _bap="" _bapf="${prompt_input_file:-${artifact_dir:+$artifact_dir/build-prompt.txt}}"
     _baj="[]"; _BUILD_ANSWERS=()
     [[ -n "$_bapf" && -f "$_bapf" ]] && { IFS= read -r -d '' _bap < "$_bapf" || true; }
-    declare -F zb_answers_finish >/dev/null 2>&1 && zb_answers_finish _BUILD_ANSWERS "$_bap" "${_ROUTE_LOOP_LAST_RESPONSE:-}" "${tier:-T1}"
+    declare -F zb_answers_finish >/dev/null 2>&1 && zb_answers_finish _BUILD_ANSWERS "$_bap" "${_ROUTE_LOOP_LAST_RESPONSE:-}"
     [[ ${#_BUILD_ANSWERS[@]} -gt 0 ]] || return 0
     _baj="$(printf '%s\n' "${_BUILD_ANSWERS[@]}" | jq -Rnc '[inputs | select(length > 0)]' 2>/dev/null)" || _baj="[]"
     [[ -n "$_baj" ]] || _baj="[]"

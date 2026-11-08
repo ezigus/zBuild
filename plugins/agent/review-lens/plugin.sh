@@ -143,13 +143,13 @@ _rl_quote_problem_v() {
 
 # _rl_write_routed <path> <lines-json> <what> — one routed result (#2433): fail
 # with a numbered finding per line, or pass with none.
-# Each finding is {text, blocking}: one that does not block is still sent on,
-# marked, and the output fails only on one that does (ADR-071 §5).
+# Each finding is {text, blocking[, topic]}: one that does not block is still
+# sent on, marked, and the output fails only on one that does (ADR-071 §5).
 _rl_write_routed() {
     # One jq: how many block, and the findings (ADR-065 §5).
     local o=pass r="$3: none" _rw _rw_n=0 _rw_b=0 _rw_j='{}' _rw_re=$'^([0-9]+) ([0-9]+)\t(.*)$'
     _rw="$(jq -r '"\(length) \([.[] | select(.blocking)] | length)\t" + (if length > 0 then {findings: [to_entries[]
-        | {n: (.key + 1), text: .value.text, blocking: .value.blocking}]} else {} end | tojson)' <<< "$2" 2>/dev/null)" || _rw=""
+        | {n: (.key + 1), text: .value.text, blocking: .value.blocking} + (if .value.topic then {topic: .value.topic} else {} end)]} else {} end | tojson)' <<< "$2" 2>/dev/null)" || _rw=""
     [[ "$_rw" =~ $_rw_re ]] && { _rw_n="${BASH_REMATCH[1]}"; _rw_b="${BASH_REMATCH[2]}"; _rw_j="${BASH_REMATCH[3]}"; }
     (( _rw_n > 0 )) && r="$3"
     (( _rw_b > 0 )) && o=fail
@@ -566,7 +566,8 @@ _review_lens_run_inner() {
     _rl_route="$(printf '%s' "$normalized" | jq -c --arg on " $_rl_fail_on " --arg n "$lens" '
         def at_fail_on: .severity as $s | ($on | contains(" \($s) "));
         def line: "\($n) lens, \(.severity): \(.message) (\(.file)\(if .line then ":\(.line)" else "" end); fix: \(.fix))";
-        def routed: {text: line, blocking: at_fail_on};
+        # #2491 (ADR-071 §1): a finding the code must fix goes to `change`.
+        def routed: {text: line, blocking: at_fail_on} + (if .fix == "code" then {topic: "change"} else {} end);
         [.findings[] | select(.fix == "issue" and at_fail_on)] as $issue
         | [.findings[] | select(.fix != "issue" and .introduced)] as $sent
         | { outcome: (if ($issue | length) > 0 then "misconfigured" elif ([$sent[] | select(at_fail_on)] | length) > 0 then "fail" else "pass" end),

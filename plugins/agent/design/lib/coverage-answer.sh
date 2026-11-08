@@ -11,7 +11,8 @@
 _ZBUILD_DESIGN_COVERAGE_ANSWER_LOADED=1
 
 # _dcov_parse <reply> <want> — the reply's lines for the items in <want> (SPEC
-# ids, and `requirements` when requirement coverage was asked), read in
+# ids, `SCOPE <entry>` for each scope entry asked, and `requirements` when
+# requirement coverage was asked), read in
 # _design_coverage's scope (ids, first, text, st, labs, pword, ptext, req_text,
 # req_order, scope, repo, base), into _DESIGN_UNCOVERED, _DESIGN_OUTSIDE,
 # _DESIGN_DONE_WRONG, _DESIGN_NEEDS_CLEANUP and _DESIGN_PART_WRONG.
@@ -29,16 +30,17 @@ _dcov_parse() {
     [[ "$want" == *$'\nrequirements\n'* ]] && reqs_asked=1
     while IFS= read -r l; do
         judge_reply_line_v l "$l"
-        if [[ "$l" =~ ^SCOPE:[[:space:]]*(.*)$ ]]; then
-            (( reqs_asked )) || continue
-            rest="${BASH_REMATCH[1]}"; w="${rest%%|*}"; w="${w%"${w##*[![:space:]]}"}"
-            why=""; [[ "$rest" == *"| WHY:"* ]] && { why="${rest#*| WHY:}"; why="${why#"${why%%[![:space:]]*}"}"; }
-            if [[ $'\n'"$scope"$'\n' == *$'\n'"$w"$'\n'* ]]; then
-                _DESIGN_OUTSIDE+=("SCOPE"$'\t'"$w"$'\t'"${why:-the issue does not ask for it}")
-                _DCOV_LINES["requirements"]+="$l"$'\n'
-            else
-                bad+=("SCOPE names $w, which is not in the design's scope")
-            fi
+        # #2491 (ADR-072 §3): a scope entry's line, as a SPEC's — ok or outside.
+        if [[ "$l" =~ ^SCOPE:[[:space:]]*([^:]*[^:[:space:]])[[:space:]]*:[[:space:]]*(.*)$ \
+                && "$want" == *$'\n'"SCOPE ${BASH_REMATCH[1]}"$'\n'* ]]; then
+            w="${BASH_REMATCH[1]}"; rest="${BASH_REMATCH[2]}"; word="${rest%%[!a-z_]*}"
+            seen["SCOPE $w"]=1; _DCOV_LINES["SCOPE $w"]+="$l"$'\n'
+            _dcov_why_quote "${rest#"$word"}"
+            case "$word" in
+                ok) ;;
+                outside) _DESIGN_OUTSIDE+=("SCOPE"$'\t'"$w"$'\t'"${why:-the issue does not ask for it}") ;;
+                *) bad+=("$w is a scope entry: it is ok or outside, not ${word:-nothing}") ;;
+            esac
             continue
         fi
         if [[ "$l" =~ ^([A-Za-z0-9]+-[0-9]+)[[:space:]]+(Given|When|Then|And|Cleanup)([[:space:]]+[0-9]+)?[*\`_]*:[[:space:]]*([a-z_]+)(.*)$ ]]; then
@@ -93,6 +95,9 @@ _dcov_parse() {
     for id in ${ids[@]+"${ids[@]}"}; do
         [[ "$want" == *$'\n'"$id"$'\n'* && -z "${seen[$id]+x}" ]] && missing+=("$id")
     done
+    while IFS= read -r id; do
+        [[ "$id" == "SCOPE "* && -z "${seen[$id]+x}" ]] && missing+=("${id#SCOPE }")
+    done <<< "$want"
     [[ ${#missing[@]} -gt 0 ]] && bad=("it has no line for ${missing[*]}" ${bad[@]+"${bad[@]}"})
     if [[ ${#bad[@]} -gt 0 ]]; then
         local IFS=';'; _DCOV_PROBLEM="${bad[*]}"; _DCOV_PROBLEM="${_DCOV_PROBLEM//;/; }"
@@ -136,7 +141,8 @@ _dcov_need_names() {
     local _dn_k _dn_out="" _dn_req=""
     while IFS= read -r _dn_k; do
         [[ -n "$_dn_k" ]] || continue
-        if [[ "$_dn_k" == requirements ]]; then _dn_req=1; else _dn_out+="${_dn_out:+, }$_dn_k"; fi
+        if [[ "$_dn_k" == requirements ]]; then _dn_req=1; elif [[ "$_dn_k" == "SCOPE "* ]]; then _dn_out+="${_dn_out:+, }SCOPE: ${_dn_k#SCOPE }"
+        else _dn_out+="${_dn_out:+, }$_dn_k"; fi
     done <<< "$1"
     [[ -n "$_dn_req" ]] && _dn_out+="${_dn_out:+, }every requirement"
     printf '%s' "$_dn_out"

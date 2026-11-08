@@ -16,19 +16,22 @@
 # A1 an answer is done, wrong or not mine; anything else is no answer
 # A2 only a `wrong` answer goes back to the stage that raised the finding
 # A3 a working call is told the three forms; a judging call is not
-# B1 a finding a stage was shown and did not answer is asked for once, alone,
-#    with the stage's reply shown and tools for reading only
-# B2 a stage shown no finding is asked nothing; one that answered all is not
-#    asked again
+# B1 a finding a stage was shown and did not answer is not asked for (#2491):
+#    no call is made; it is named as not answered, and stays open
+# B2 a stage shown no finding has nothing unanswered
 # B3 the summary lines: what each finding was answered, what was not, or that
 #    no finding was open
-# B4 build: an unanswered finding is asked for, and every answer is kept
+# B4 build: every answer is kept, and one it did not give is named, not asked for
 # B5 issue-acceptance is told the forms, and keeps its answers
 # C1 a lens sends on every finding the change introduced, each marked whether
 #    it blocks; one below its fail rule does not fail it
 # C2 Previous work marks a finding that does not block
 # C3 a lens is shown its findings from last time, with their answers, and told
 #    a finding keeps its grade unless it quotes what changed
+# D1 an answer counts with the opening stage's name in front, or with the
+#    finding copied as listed, "(opened by …)" and all (#2491: run 42439063480)
+# D2 a stage is told a finding it does not answer stays open
+# D3 no prompt still tells a stage to write the stage and number
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -70,35 +73,20 @@ assert_contains "[A3] ...and the other two forms" "$_work" "ANSWER <the finding 
 _a3_j=1; [[ "$_judge" == *"ANSWER <the finding as listed>"* ]] && _a3_j=0
 assert_eq "[A3] a judging call is not told to answer findings" "1" "$_a3_j"
 
-print_test_section "B1-B3: the engine asks for what was not answered"
+print_test_section "B1-B3: a finding not answered stays open"
 _P_SHOWN=$'Previous work\n- lens-sre-code finding 1 (opened by review_lenses): the write is silent\n- lens-sre-code finding 2 (opened by review_lenses): the jq error is hidden\n- issue-acceptance finding 1 (opened by issue-acceptance): R2 is not met\nmore'
-# The call runs in a command substitution: it counts in a file.
-_calls() { cat "$TEST_TEMP_DIR/calls" 2>/dev/null || echo 0; }
-route_to_model() {
-    local n; n=$(( $(_calls) + 1 )); printf '%s' "$n" > "$TEST_TEMP_DIR/calls"
-    printf '%s' "$2" > "$TEST_TEMP_DIR/ask-$n"
-    printf '%s' "${ZBUILD_ROUTE_TOOLS:-}" > "$TEST_TEMP_DIR/ask-tools-$n"
-    printf '%s\n' "$_ASK_REPLY"; return 0
-}
-_ASK_REPLY='ANSWER lens-sre-code finding 2: not mine — a code fix'
+route_to_model() { printf '1' > "$TEST_TEMP_DIR/called"; return 0; }
+rm -f "$TEST_TEMP_DIR/called"
 declare -a _ANS=()
 zb_answers_finish _ANS "$_P_SHOWN" $'Fixed it.\nANSWER lens-sre-code finding 1: done — the write emits an event'
-assert_eq "[B1] one call asks for the unanswered findings" "1" "$(_calls)"
-assert_contains "[B1] ...it shows the finding not answered" "$(cat "$TEST_TEMP_DIR/ask-1")" "lens-sre-code finding 2 (opened by review_lenses): the jq error is hidden"
-_b1_ans=1; [[ "$(cat "$TEST_TEMP_DIR/ask-1")" == *"finding 1 (opened by review_lenses)"* ]] && _b1_ans=0
-assert_eq "[B1] ...and not the one answered" "1" "$_b1_ans"
-assert_contains "[B1] ...with the stage's own reply" "$(cat "$TEST_TEMP_DIR/ask-1")" "the write emits an event"
-assert_eq "[B1] ...and tools for reading only" "read" "$(cat "$TEST_TEMP_DIR/ask-tools-1")"
-assert_eq "[B1] every answer is kept" $'lens-sre-code finding 1: done — the write emits an event\nlens-sre-code finding 2: not mine — a code fix' "$(printf '%s\n' "${_ANS[@]}")"
-assert_eq "[B1] the one still not answered is named" "issue-acceptance finding 1" "$_ZB_ANS_MISSING"
+assert_eq "[B1] nothing is asked for: no call is made" "no" "$([[ -f "$TEST_TEMP_DIR/called" ]] && echo yes || echo no)"
+assert_eq "[B1] the answer given is kept" "lens-sre-code finding 1: done — the write emits an event" "$(printf '%s\n' "${_ANS[@]}")"
+assert_eq "[B1] the ones not answered are named" $'lens-sre-code finding 2\nissue-acceptance finding 1' "$_ZB_ANS_MISSING"
 assert_eq "[B1] three findings were shown" "3" "$_ZB_ANS_SHOWN"
-rm -f "$TEST_TEMP_DIR/calls"; _ANS=()
-zb_answers_finish _ANS "no findings here" "done"
-assert_eq "[B2] a stage shown no finding is asked nothing" "0" "$(_calls)"
-assert_eq "[B2] ...and none was shown" "0" "$_ZB_ANS_SHOWN"
 _ANS=()
-zb_answers_finish _ANS "$_P_SHOWN" $'ANSWER lens-sre-code finding 1: done — x\nANSWER lens-sre-code finding 2: wrong — y\nANSWER issue-acceptance finding 1: not mine — z'
-assert_eq "[B2] a stage that answered every finding is not asked again" "0" "$(_calls)"
+zb_answers_finish _ANS "no findings here" "done"
+assert_eq "[B2] a stage shown no finding has none unanswered" "" "$_ZB_ANS_MISSING"
+assert_eq "[B2] ...and none was shown" "0" "$_ZB_ANS_SHOWN"
 _ANS=('lens-sre-code finding 1: done — x'); _ZB_ANS_SHOWN=2; _ZB_ANS_MISSING="lens-sre-code finding 2"
 _b3=""; zb_answers_summary_v _b3 _ANS
 assert_eq "[B3] the summary says what each was answered, and what was not" \
@@ -111,21 +99,21 @@ unset -f route_to_model
 print_test_section "B4: build"
 (
     source "$REPO_ROOT/plugins/agent/build/plugin.sh" >/dev/null 2>&1
-    route_to_model() { printf '%s' "$1" > "$TEST_TEMP_DIR/b4-tier"; printf '%s\n' 'ANSWER lens-red-team-code finding 2: wrong — the plugin dir is always found'; return 0; }
-    tier=T3  # build's own tier, a local of the stage run in scope here
+    route_to_model() { printf '1' > "$TEST_TEMP_DIR/b4-called"; return 0; }
     B4="$TEST_TEMP_DIR/b4"; mkdir -p "$B4"; artifact_dir="$B4"
     printf '%s\n' "$_P_SHOWN" | sed 's/lens-sre-code finding 1/lens-red-team-code finding 1/; s/lens-sre-code finding 2/lens-red-team-code finding 2/; /issue-acceptance/d' > "$B4/build-prompt.txt"
     output_summary_json="$B4/build-summary.json"; terminated_reason=done_sentinel files_changed_count=1 files_changed_json='["a.sh"]' iterations=1 repo_root="$TEST_TEMP_DIR"
     scope_violations=(); scope_violations_created=()
     _ROUTE_LOOP_LAST_RESPONSE=$'Security-1: sanitized.\nANSWER lens-red-team-code finding 1: done — the link is read once\nLOOP_COMPLETE'
     _build_write_build_summary >/dev/null 2>&1
-    echo "B4|$(jq -r '[.data.answers[]?] | join(" ;; ")' "$output_summary_json" 2>/dev/null)|$(jq -r '.data.findings_shown // "none"' "$output_summary_json" 2>/dev/null)"
+    echo "B4|$(jq -r '[.data.answers[]?] | join(" ;; ")' "$output_summary_json" 2>/dev/null)|$(jq -r '.data.findings_shown // "none"' "$output_summary_json" 2>/dev/null)|$(jq -r '[.data.unanswered[]?] | join(",")' "$output_summary_json" 2>/dev/null)"
 ) > "$TEST_TEMP_DIR/b4.out" 2>/dev/null
-assert_eq "[B4] build's answers, the one asked for included, are in its result" \
-    "lens-red-team-code finding 1: done — the link is read once ;; lens-red-team-code finding 2: wrong — the plugin dir is always found" \
+assert_eq "[B4] build's answers are in its result" \
+    "lens-red-team-code finding 1: done — the link is read once" \
     "$(grep '^B4|' "$TEST_TEMP_DIR/b4.out" | cut -d'|' -f2)"
 assert_eq "[B4] ...with how many findings it was shown" "2" "$(grep '^B4|' "$TEST_TEMP_DIR/b4.out" | cut -d'|' -f3)"
-assert_eq "[B4] ...and the follow-up call runs at build's own tier (review on #2486)" "T3" "$(cat "$TEST_TEMP_DIR/b4-tier" 2>/dev/null)"
+assert_eq "[B4] ...and the one it did not answer, named" "lens-red-team-code finding 2" "$(grep '^B4|' "$TEST_TEMP_DIR/b4.out" | cut -d'|' -f4)"
+assert_eq "[B4] ...not asked for" "no" "$([[ -f "$TEST_TEMP_DIR/b4-called" ]] && echo yes || echo no)"
 
 print_test_section "B5: issue-acceptance"
 (
@@ -177,23 +165,12 @@ rm -f "$ART/build-summary.json"
 
 print_test_section "D1-D3: the answer names the finding as it is listed"
 _D_ANS=()
-route_to_model() { printf '1' > "$TEST_TEMP_DIR/d-called"; return 0; }
-rm -f "$TEST_TEMP_DIR/d-called"
-zb_answers_finish _D_ANS "$_P_SHOWN" $'ANSWER review_lenses finding lens-sre-code finding 1: done — x\nANSWER review_lenses finding lens-sre-code finding 2: wrong — y\nANSWER issue-acceptance finding 1: not mine — z'
-assert_eq "[D1] an answer with the opening stage in front counts" "" "$_ZB_ANS_MISSING"
-assert_eq "[D1] ...so nothing is asked again" "no" "$([[ -f "$TEST_TEMP_DIR/d-called" ]] && echo yes || echo no)"
+zb_answers_finish _D_ANS "$_P_SHOWN" $'ANSWER review_lenses finding lens-sre-code finding 1: done — x\nANSWER lens-sre-code finding 2 (opened by review_lenses): wrong — y\nANSWER issue-acceptance finding 1 (opened by issue-acceptance): not mine — z'
+assert_eq "[D1] an answer with the opening stage in front, or copied as listed, counts" "" "$_ZB_ANS_MISSING"
 assert_eq "[D1] ...and it is kept under the finding's own name" \
     $'lens-sre-code finding 1: done — x\nlens-sre-code finding 2: wrong — y\nissue-acceptance finding 1: not mine — z' "$(printf '%s\n' "${_D_ANS[@]}")"
-D2B="$TEST_TEMP_DIR/d2-blocks"; mkdir -p "$D2B"
-for _f in from-repo previous-work-fresh rules-fresh previous-work rules; do printf 'the %s block\n' "$_f" > "$D2B/$_f.md"; done
-route_to_model() { printf '%s' "$2" > "$TEST_TEMP_DIR/d2-ask"; return 0; }
-_D_ANS=(); rm -f "$TEST_TEMP_DIR/d2-ask"
-ZBUILD_STAGE_BLOCKS="$D2B" zb_answers_finish _D_ANS "$_P_SHOWN" 'ANSWER lens-sre-code finding 1: done — x'
-assert_eq "[D2] the follow-up ask is in the contract order" "0" \
-    "$(stage_prompt_check "$TEST_TEMP_DIR/d2-ask" && echo 0 || echo 1)"
-assert_contains "[D2] ...and names what it was not given an answer for" "$(cat "$TEST_TEMP_DIR/d2-ask" 2>/dev/null)" \
-    "lens-sre-code finding 2 (opened by review_lenses): the jq error is hidden"
-unset -f route_to_model
+assert_contains "[D2] a stage is told a finding it does not answer stays open" "$_work" \
+    "A finding you do not answer stays open"
 _d3="$(grep -rlF 'ANSWER <stage> finding <n>' "$REPO_ROOT/scripts" "$REPO_ROOT/plugins" "$REPO_ROOT/core" 2>/dev/null)"
 assert_eq "[D3] no prompt still tells a stage to write the stage and number" "" "$_d3"
 

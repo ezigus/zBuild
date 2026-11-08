@@ -57,7 +57,7 @@ answer, emit \`LOOP_COMPLETE\` immediately. Do NOT keep iterating when there is
 nothing left to do. Every finding you are given is answered, each on its own
 line before the sentinel: \`done\` (you changed something for it), \`wrong\`
 (it does not hold, and why) or \`not mine\` (your job cannot fix it, and why).
-A finding with no answer is asked for again.
+A finding with no answer stays open, and is shown to you again.
 
 ### When a finding does not reproduce
 If a failing stage names a test and that test PASSES when you run it on this
