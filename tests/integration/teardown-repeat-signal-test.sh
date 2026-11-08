@@ -12,6 +12,19 @@
 #
 # T1 a TERM that arrives while release runs: release still finishes
 # T2 ...and persist, the always-run stage after it, still runs
+#
+# A TERM can also land while the run's TERM handler is itself running: `timeout`
+# sends a second, and a stage's or the run's watchdog TERMs the whole group. On
+# Ubuntu's bash (5.2.21) a handler run inside a handler that was part-way
+# through a command substitution broke the outer one off: the run carried on as
+# if never signalled, ran the stage again, and was KILLed with nothing released
+# (runner-release-exit-paths SPEC-5, 1 of 60 suite runs in diag run 42483294833). A TERM
+# to the group also ends the handler's own command substitutions, which take the
+# default TERM.
+# T3 a group that keeps getting TERM from the moment the stage starts: the run
+#    still ends through its handler (rc 1)
+# T4 ...release finishes and persist runs
+# T5 ...and the stage is not run again
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -95,6 +108,32 @@ if [[ ! -e "$REL_IN" ]]; then
 fi
 assert_file_exists "[T1] release finishes despite a second TERM" "$REL_OUT"
 assert_file_exists "[T2] persist still runs after it" "$PERSISTED"
+
+# ── T3–T5: TERM after TERM to the run's group, from the stage's start ──────
+rm -f "$STARTED" "$REL_IN" "$REL_OUT" "$PERSISTED"
+STARTS="$TEST_TEMP_DIR/outcome-starts"; : > "$STARTS"
+cat > "$PLUGINS_ROOT/agent/outcome/plugin.sh" <<PLUG
+outcome_run() { echo x >> "$STARTS"; : > "$STARTED"; sleep 60; return 0; }
+PLUG
+cat > "$PLUGINS_ROOT/tool/teardown/plugin.sh" <<PLUG
+teardown_run() { : > "$REL_IN"; sleep 1; : > "$REL_OUT"; return 0; }
+PLUG
+set -m
+( cd "$REPO" && exec bash "$RUNNER" --template teardown-two --goal "teardown signal storm" ) \
+    > "$TEST_TEMP_DIR/storm.out" 2>&1 &
+RUNNER_PID=$!
+set +m
+for _ in $(seq 1 300); do [[ -e "$STARTED" ]] && break; sleep 0.1; done
+# Every 10 ms for 3 s: through the handler, the EXIT trap and release.
+for _ in $(seq 1 300); do kill -TERM -- "-$RUNNER_PID" 2>/dev/null || break; sleep 0.01; done
+for _ in $(seq 1 300); do kill -0 "$RUNNER_PID" 2>/dev/null || break; sleep 0.1; done
+kill -KILL -- "-$RUNNER_PID" 2>/dev/null || true
+_storm_rc=0; wait "$RUNNER_PID" 2>/dev/null || _storm_rc=$?
+assert_eq "[T3] the run ends through its handler under repeated TERM (rc 1)" "1" "$_storm_rc"
+assert_file_exists "[T4] release finishes under repeated TERM" "$REL_OUT"
+assert_file_exists "[T4] persist runs under repeated TERM" "$PERSISTED"
+assert_eq "[T5] the stage is not run again" "1" "$(grep -c x "$STARTS")"
+[[ "$_storm_rc" == 1 && -e "$PERSISTED" ]] || tail -15 "$TEST_TEMP_DIR/storm.out" >&2
 
 print_test_results
 exit $((FAIL > 0))
