@@ -2536,7 +2536,8 @@ main() {
         # stages — it has already done its work (or was never needed on this path).
         # SIGKILL (not TERM): the watchdog has `trap '' TERM` so TERM would be
         # ignored and `wait` would block until the full sleep expires. SIGKILL
-        # cannot be caught or ignored, so the wait returns immediately.
+        # cannot be caught or ignored, so it ends at once (zb_wait_gone, not
+        # `wait`: #2489).
         # Collect watchdog children BEFORE the KILL — once the watchdog is dead
         # its children are reparented to init and pgrep -P can no longer find them.
         # The `sleep` child inherits SIG_IGN for TERM (POSIX: exec inherits SIG_IGN)
@@ -2548,7 +2549,7 @@ main() {
             _wdg_orphans="$(pgrep -P "${_RUNNER_WATCHDOG_PID}" 2>/dev/null || true)"
         fi
         kill -KILL "${_RUNNER_WATCHDOG_PID:-}" 2>/dev/null || true
-        [[ -n "${_RUNNER_WATCHDOG_PID:-}" ]] && wait "${_RUNNER_WATCHDOG_PID}" 2>/dev/null || true
+        [[ -n "${_RUNNER_WATCHDOG_PID:-}" ]] && zb_wait_gone "${_RUNNER_WATCHDOG_PID}" || true
         # Kill any orphaned children the watchdog left behind (the `sleep`).
         if [[ -n "$_wdg_orphans" ]]; then
             local _wc
@@ -2590,7 +2591,7 @@ main() {
         # this is belt-and-suspenders to the authoritative --no-resume startup
         # clear (the trap may be deferred behind a foreground `wait`, #run-hygiene).
         if [[ -n "${_runner_state_file:-}" ]]; then
-            local _rd; _rd="$(dirname "$_runner_state_file")"
+            local _rd="${_runner_state_file%/*}"
             rm -f "$_runner_state_file.lock" "$_rd/events.jsonl.lock" 2>/dev/null || true
         fi
         # #2131: the normal path — pipeline.end and the always-run stages are

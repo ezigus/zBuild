@@ -29,6 +29,11 @@
 # S7 [change] …even when the sleep does not act on TERM: a TERM that reaches it
 #             between its fork and its exec is lost (it left 1 in 16 runs under
 #             load); a sleep that ignores TERM stands in for that, every time
+# S11 [change] a TERM to the run's group, whose trap stops a bounded stage and
+#             exits, ends within 1s, 20 times in a row: on Ubuntu's bash a
+#             `wait` in that trap on a child it had just KILLed blocked until
+#             another child changed state (#2489; the run stalled ~10s, until
+#             its watchdog's KILL)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -131,6 +136,34 @@ else
     assert_pass "[S4] no watchdog outlives the stopped stage"
 fi
 unset _TPL_SOURCE_FILE
+
+print_test_section "S11: a trap that stops a bounded stage ends at once, every time"
+# As the run's watchdog does: TERM to the run's whole group. The runner's trap
+# stops the stage and its time-limit watchdog (which the same TERM is ending),
+# then exits. A child that ignores TERM stays, as the run watchdog does; a
+# stop that waits on a child already gone was held until it ended, 4s on.
+export _TPL_SOURCE_FILE="$TPL" SLOW_SECS=30 SLOW_RC=0
+_slow11=""
+for _i in $(seq 1 20); do
+    rm -f "$SLOW_PID_FILE"
+    set -m
+    (
+        trap 'plugin_stop_running; exit 143' TERM
+        ( trap '' TERM; sleep 4 ) &
+        ZBUILD_CURRENT_STAGE=slow plugin_hook_call "$PLUGIN_DIR" run slow "$STATE_FILE" >/dev/null 2>&1
+    ) &
+    _s11=$!
+    set +m
+    for _ in $(seq 1 100); do [[ -s "$SLOW_PID_FILE" ]] && break; sleep 0.05; done
+    _t0=${EPOCHREALTIME/./}
+    kill -TERM -- "-$_s11" 2>/dev/null || true
+    wait "$_s11" 2>/dev/null || true
+    _ms=$(( (${EPOCHREALTIME/./} - _t0) / 1000 ))
+    (( _ms >= 1000 )) && _slow11+=" #$_i:${_ms}ms"
+    kill -KILL -- "-$_s11" 2>/dev/null || true
+done
+unset _TPL_SOURCE_FILE
+assert_eq "[S11] each of 20 stops ends within 1s" "" "${_slow11# }"
 
 print_test_section "S5: a watchdog with no trap yet loses its sleep too"
 # The watchdog's first lines start its sleep and set its trap; a stop landing
