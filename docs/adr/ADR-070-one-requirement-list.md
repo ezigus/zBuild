@@ -1,6 +1,6 @@
 # ADR-070 — One fixed list of requirements per issue
 
-**Status:** Accepted (2026-10-05)
+**Status:** Accepted (2026-10-05); amended 2026-11-08 (#2495, §4: the check looks both ways through the SPECs only, and does not judge the scope)
 **Issue:** #2306
 **Amends:** ADR-046 (design-gate gains C7), ADR-069 §2 (a requirement line may also carry ` covers: `)
 **Related:** ADR-055 (inter-stage data contract), ADR-040 §5 (spec-coverage judges against the issue), ADR-066 (every ADR statement has a test), ADR-067 (prompts speak plainly)
@@ -44,6 +44,7 @@ run it again, and no list is written. The checkbox scraping is gone.
 something the issue does not ask for, or contradicts it (`OUTSIDE:`). It is always shown the design's scope,
 and for each `[done]` SPEC the lines its evidence points at, and names each one whose code does not do what
 it says (`DONE_WRONG:`, ADR-069 §2). Each item is a finding design must fix, whatever the coverage verdict.
+*Amended 2026-11-08 (#2495):* the scope is no longer judged; see the amendment below.
 
 ## Amendment 2026-11-01 (#2448) — §1: intake's calls have no tools
 
@@ -151,7 +152,21 @@ the ids that looked like them, and refused a SPEC that covered R3 and R4. Design
   are found among the stage's inputs by what they are (`earlier_issue_text`, ADR-055 §1). It is shown them
   only when it judges the requirements; with no issue, its prompt claims none.
 
+## Amendment 2026-11-08 (#2495) — §4: the check looks both ways through the SPECs only
+
+On #1805 run 42439063480 design's first try ($2.26, 8 minutes) failed on a scope line whose own reason said the
+entry "raises no concern". #2491 gave each scope entry a verdict word, but the judging itself costs more than it
+finds.
+
+- **The scope is a prediction** (ADR-030): it is written before any code exists, and build may widen it.
+- **A design that goes beyond the issue does so in a SPEC,** and every SPEC is already judged `outside` when the
+  issue does not ask for it. So the check is no longer shown the scope to judge, and answers no line for it; a
+  `SCOPE:` line in its reply is ignored. Design still writes the scope block, and the design-gate still requires
+  it (C1).
+
 ## Enforced by
+
+- Amendment 2026-11-08 (#2495) §4 → `tests/unit/design-coverage-test.sh` NS1 (the prompt asks for no scope verdict), NS2 (a reply with no scope lines is complete, in one call), NS3 (a scope line is no finding), X3 (the scope is not shown to judge)
 
 - Amendment 2026-11-07 §1 → `tests/unit/intake-stable-ids-test.sh` S13 (a requirement writing the issue's name R1 or R2 is asked again, naming each; a word the issue does not use as a name is not refused; the list is written with the ids); §4 → `tests/unit/design-coverage-test.sh` I1 (the prompt carries the issue's own words, found among the inputs; with no issue it claims none)
 
@@ -165,7 +180,7 @@ the ids that looked like them, and refused a SPEC that covered R3 and R4. Design
 - §1 §2 amendment 2026-11-02 (#2460: intake starts from its last list and says what changed; one item per line) → `tests/unit/intake-previous-list-test.sh` P1–P4; `tests/unit/reply-multiline-test.sh` Q1
 - §1 amendment 2026-11-01 (#2448: intake's calls have no tools) → `tests/unit/intake-no-tools-test.sh` T4
 - §1 amendment 2026-11-01 (#2445: a model writes and checks the list) → `tests/unit/intake-requirements-model-test.sh` I1–I7; `tests/unit/requirements-list-test.sh` Q1
-- §4 amendment 2026-11-01 (#2445: the check looks both ways; scope and [done] evidence shown) → `tests/unit/design-coverage-test.sh` X1–X5
+- §4 amendment 2026-11-01 (#2445: the check looks both ways; [done] evidence shown — scope judging removed by #2495) → `tests/unit/design-coverage-test.sh` X1, X2, X4, X5
 
 - §1 → `tests/unit/requirements-list-test.sh` Q1 (sequential ids, assigned by the engine; words kept)
 - §2 → `tests/unit/requirements-list-test.sh` Q1 (the manifests declare the output and the four inputs; a goal run leaves no list)
