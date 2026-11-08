@@ -1740,7 +1740,7 @@ _runner_from_stage_preflight() {
     # in active_stages[], so a literal match would never fire and all stages
     # (including cycle members) would be checked — wrong.
     local _fsp_stop_stage="$_fsp_from_stage"
-    local _fsp_cycle_safe="${_fsp_from_stage//-/_}"
+    local _fsp_cycle_safe="${_fsp_from_stage//[^a-zA-Z0-9_]/_}"
     local _fsp_cycle_stages_var="_TPL_CYCLE_STAGES_${_fsp_cycle_safe}"
     local _fsp_cycle_csv="${!_fsp_cycle_stages_var:-}"
     if [[ -n "$_fsp_cycle_csv" ]]; then
@@ -1758,6 +1758,9 @@ _runner_from_stage_preflight() {
         _verdict_primary_output_path_v _fsp_prim_path "$_fsp_manifest" 2>/dev/null || true
         [[ -z "$_fsp_prim_path" ]] && continue
         _verdict_resolve_path_v _fsp_resolved "$_fsp_prim_path" "$_fsp_state_dir"
+        # Security (#1805): reject paths outside artifact_dir to prevent manifest
+        # path traversal from treating a system file as a valid artifact.
+        [[ "$_fsp_resolved" == "${_fsp_artifacts_dir}"/* ]] || _fsp_resolved=""
         if [[ ! -s "$_fsp_resolved" ]]; then
             echo "error: --from-stage '$_fsp_from_stage': stage '$_fsp_s' has no restorable primary artifact" >&2
             return 1
@@ -3592,6 +3595,9 @@ main() {
                                 [[ -z "$_dc_prim" ]] && continue
                                 _verdict_resolve_path_v _dc_resolved \
                                     "$_dc_prim" "$state_dir"
+                                # Security (#1805): reject paths outside artifact_dir.
+                                [[ "$_dc_resolved" == "${state_dir}/artifacts"/* ]] \
+                                    || _dc_resolved=""
                                 if [[ ! -s "$_dc_resolved" ]]; then
                                     eb_emit_event \
                                         "stage.verdict.stale_artifact" \
@@ -3901,6 +3907,9 @@ main() {
                                 if [[ -n "$_du_prim_path" ]]; then
                                     _verdict_resolve_path_v _du_resolved \
                                         "$_du_prim_path" "$state_dir"
+                                    # Security (#1805): reject paths outside artifact_dir.
+                                    [[ "$_du_resolved" == "${state_dir}/artifacts"/* ]] \
+                                        || _du_resolved=""
                                     if [[ ! -s "$_du_resolved" ]]; then
                                         eb_emit_event \
                                             "stage.verdict.stale_artifact" \

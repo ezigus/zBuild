@@ -2346,16 +2346,22 @@ _cycle_orchestrator_run_body() {
     if [[ "${_ZBUILD_RESUME_ACTIVE:-false}" == "true" ]]; then
         _is_resume=true
         local _persisted_iter
-        # Sanitize cycle_id to prevent jq injection via template-sourced cycle IDs.
-        local _safe_cycle_id="${cycle_id//[^a-zA-Z0-9_-]/}"
-        _persisted_iter="$(get_state_field "$state_file" \
-            ".cycle_iterations[\"$_safe_cycle_id\"].current_iter" 0 2>/dev/null || echo 0)"
+        # Use jq --arg to pass cycle_id safely (matches the write path's --arg id,
+        # so dots or other special chars in cycle_id resolve to the same key).
+        _persisted_iter="$(jq -r --arg id "$cycle_id" \
+            '.cycle_iterations[$id].current_iter // 0' \
+            "$state_file" 2>/dev/null || echo 0)"
         [[ "$_persisted_iter" =~ ^[0-9]+$ ]] || _persisted_iter=0
         # Consume the flag: nested cycles and subsequent re-entries start at 1.
         _ZBUILD_RESUME_ACTIVE=false
         # Start at the persisted iter (re-run the interrupted iteration); fall
         # back to 1 when no iteration has been recorded yet.
         _start_iter=$(( _persisted_iter > 0 ? _persisted_iter : 1 ))
+        # Red-team guard: a corrupt persisted iter > _CYCLE_MAX_ITER would cause
+        # the loop to execute zero times and fall through to unconverged. Cap so
+        # resume always runs at least one iteration (#1805).
+        (( _CYCLE_MAX_ITER > 0 && _start_iter > _CYCLE_MAX_ITER )) \
+            && _start_iter=$_CYCLE_MAX_ITER
     else
         _start_iter=1
     fi
