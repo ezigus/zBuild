@@ -129,6 +129,13 @@ half_rc=$?
 set -e
 assert_exit_code "copy fails partway: push exits 1" "1" "$half_rc"
 assert_contains "copy fails partway: push says the copy failed" "$half_err" "copy failed"
+# The cache root is the plugin's; if it moves, the find below would find nothing
+# and pass, so its being there is asserted first (review on #2498).
+if [[ -d "$_CACHE_ROOT" ]]; then
+    assert_pass "copy fails partway: the cache root the checks look in exists"
+else
+    assert_fail "copy fails partway: the cache root the checks look in exists" "no $_CACHE_ROOT"
+fi
 half_left="$(find "$_CACHE_ROOT" -maxdepth 1 -name 'interrupted-copy-key*' 2>/dev/null)" || true
 assert_eq "copy fails partway: no <key> or <key>.tmp.* folder is left" "" "$half_left"
 set +e
