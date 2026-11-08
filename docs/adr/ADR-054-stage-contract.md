@@ -620,13 +620,15 @@ TERM handler is normal: `timeout` sends two, and the run's and a stage's watchdo
 - **On every bash, the `:` trap left the EXIT trap's own subshells and command substitutions on the default TERM,**
   so a TERM to the group ended them part-way, and an always-run stage could die before its subshell set its trap.
 - **Every INT/TERM handler ignores INT and TERM as its first step:** the run's handler, its EXIT trap, the cycle's,
-  the parallel group's, the model loop's and a stage's signal guard. The always-run subshell still traps TERM itself,
-  so the stage it starts takes the default TERM and its limit can stop it; `plugin_stop_running` stops its killer
-  with KILL, since one started inside a handler now ignores TERM.
+  the parallel group's, the model loop's and a stage's signal guard.
+- **An always-run stage takes the default TERM back only once it leads its own group,** so its limit can stop it,
+  and a TERM to the run's group in between cannot end it (with TERM trapped in its subshell, the stage's job took the
+  default at its fork, before it had its own group: release was lost in 86 of 1,930 storm runs on Ubuntu). That
+  subshell's watchdog and `plugin_stop_running`'s killer are stopped with KILL, since both now ignore TERM.
 
 ## Enforced by
 
-- §7 amendment 2026-11-08 (#2493: a signal that arrives while a handler runs is ignored) → `tests/integration/teardown-repeat-signal-test.sh` T3–T5 (TERM every 10 ms to the run's group: the run still ends rc 1, release and persist run, the stage is not run again); `tests/unit/signal-handler-hold-test.sh` H1–H4 (each handler runs once when its first step TERMs its own shell)
+- §7 amendment 2026-11-08 (#2493: a signal that arrives while a handler runs is ignored) → `tests/integration/teardown-repeat-signal-test.sh` T3–T5 (TERM every 10 ms to the run's group: the run still ends rc 1, release (T4a) and persist (T4b) run, the stage is not run again); `tests/unit/signal-handler-hold-test.sh` H1–H4 (each handler runs once when its first step TERMs its own shell)
 
 - §7 amendment 2026-11-08 (#2489: a stop does not wait on a child it has just stopped) → `tests/unit/stage-stop-on-signal-test.sh` S11 (a trap that stops a bounded stage and exits ends within 1 s, 20 times in a row)
 
