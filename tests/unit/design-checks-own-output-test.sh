@@ -99,7 +99,7 @@ _run() {
 }
 
 # ── C1 ───────────────────────────────────────────────────────────────────────
-DESIGNS=("$NO_WIRING" "$GOOD"); JUDGE=($'RQWANT-1: covered\nDSDOCS-1: ok\nSCOPE: foo.sh: ok'); JUDGE_RC=0
+DESIGNS=("$NO_WIRING" "$GOOD"); JUDGE=($'RQWANT-1: covered\nDSDOCS-1: ok'); JUDGE_RC=0
 _run
 assert_eq "[C1] one design call: a failed check is not sent back to the model" "1" "$CALLS"
 assert_eq "[C1] a design that fails a check is unusable" "unusable" "$OUTCOME"
@@ -107,7 +107,7 @@ assert_contains "[C1] the result carries the finding" "$FINDINGS" "WIRING"
 
 # ── C2 ───────────────────────────────────────────────────────────────────────
 DESIGNS=("$GOOD"); # #2464 (ADR-072 §3): one line per item, the complaint quoted.
-JUDGE=($'RQWANT-1: uncovered | WHY: RQWANT-1 is only half covered | QUOTE: "the docs say so"\nDSDOCS-1: ok\nSCOPE: foo.sh: ok' $'RQWANT-1: covered\nDSDOCS-1: ok\nSCOPE: foo.sh: ok'); JUDGE_RC=0
+JUDGE=($'RQWANT-1: uncovered | WHY: RQWANT-1 is only half covered | QUOTE: "the docs say so"\nDSDOCS-1: ok' $'RQWANT-1: covered\nDSDOCS-1: ok'); JUDGE_RC=0
 _run
 assert_eq "[C2] an uncovered requirement: unusable" "unusable" "$OUTCOME"
 assert_contains "[C2] the finding names the uncovered requirement and its words" "$FINDINGS" 'RQWANT-1 is not covered: RQWANT-1 is only half covered — "the docs say so"'
@@ -123,7 +123,7 @@ assert_eq "[C3] a rate-limited coverage call is design's outcome" "rate_limited"
 unset -f _router_rc_classify
 
 # ── C4 ───────────────────────────────────────────────────────────────────────
-DESIGNS=("$GOOD"); JUDGE=($'RQWANT-1: covered\nDSDOCS-1: ok\nSCOPE: foo.sh: ok'); JUDGE_RC=0
+DESIGNS=("$GOOD"); JUDGE=($'RQWANT-1: covered\nDSDOCS-1: ok'); JUDGE_RC=0
 _run
 assert_eq "[C4] a design that passes both checks: pass" "pass" "$OUTCOME"
 assert_eq "[C4] one design call" "1" "$CALLS"

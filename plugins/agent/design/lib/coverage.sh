@@ -28,10 +28,9 @@ source "${BASH_SOURCE[0]%/*}/coverage-answer.sh"
 
 # The call's three parts, composed with the engine's blocks in the one prompt
 # order (ADR-067 §8). #2470: requirement coverage is asked only when a SPEC
-# changed or a requirement's finding was answered; with [reqs] it is. #2491:
-# with [scope], the scope entries it judges, each gets a line as a SPEC does.
+# changed or a requirement's finding was answered; with [reqs] it is.
 _dcov_prompt_own() {
-    local reqs="${1:-}" scope="${2:-}"
+    local reqs="${1:-}"
     printf 'You are checking whether a DESIGN covers what an ISSUE asked for, SPEC by SPEC.\n'
     [[ -n "$reqs" ]] && cat <<'EOF2'
 
@@ -86,17 +85,6 @@ leaves, something that outlives the test — an exported variable, a file outsid
 the test's own folder, global config or git state — when no Cleanup part puts
 it back.
 EOF2
-    [[ -n "$scope" ]] && cat <<'EOF2'
-
-One line for every scope entry shown under SCOPE, the entry as listed. When the
-issue asks for it, or the change needs it:
-
-SCOPE: <scope entry>: ok
-
-When the issue does not ask for it, or it contradicts the issue:
-
-SCOPE: <scope entry>: outside | WHY: <what the issue does not ask for, or how it contradicts it>
-EOF2
     cat <<'EOF2'
 
 Copy each QUOTE exactly from what it names. It is checked: a quote that is not
@@ -104,7 +92,7 @@ there makes the answer unusable.
 EOF2
 }
 
-# _dcov_prompt_judge <draft> <shown> [requirements] [others] [scope] [done_evidence] [base] [issue]
+# _dcov_prompt_judge <draft> <shown> [requirements] [others] [done_evidence] [base] [issue]
 # — <shown> the SPECs to judge, in full; [others] the rest, by their first line,
 # given only with [requirements], for what they cover (#2470, ADR-072 §4).
 _dcov_prompt_judge() {
@@ -113,7 +101,7 @@ The design you judge is the file at $1 — read it there for anything you need
 that is not shown here. Do not open design.md: it is an earlier design, not the
 one you judge.
 EOF2
-    [[ -n "${8:-}" ]] && printf '\nISSUE — the issue itself, in the requester'"'"'s own words:\n%s\n' "$8"
+    [[ -n "${7:-}" ]] && printf '\nISSUE — the issue itself, in the requester'"'"'s own words:\n%s\n' "$7"
     [[ -n "${3:-}" ]] && cat <<EOF2
 
 REQUIREMENTS — the issue's requirements, each with its id.
@@ -152,9 +140,8 @@ EOF2
     printf '\nACCEPTANCE — the SPECs to judge, each with its parts:\n'
     printf 'ACCEPTANCE:\n%s\n' "${2:-(none)}"
     [[ -n "${3:-}" && -n "${4:-}" ]] && printf '\nOTHER SPECS — judged before and unchanged, shown by their first line for what they cover. Do not answer for them.\n%s\n' "$4"
-    [[ -n "${5:-}" ]] && printf '\nSCOPE — the files the design plans to change, each to judge:\n%s\n' "$5"
-    [[ -n "${6:-}" ]] && printf "\nTHE [done] SPECS' EVIDENCE — a file and a piece of its text. Open the file\nand read the code around that text, as much as you need:\n%s\n" "$6"
-    [[ -n "${6:-}" && -n "${7:-}" ]] && printf '\nThe code from before this change is a copy at %s — read the code of each\n[done] SPEC there. The repository as it is now is the current directory.\n' "$7"
+    [[ -n "${5:-}" ]] && printf "\nTHE [done] SPECS' EVIDENCE — a file and a piece of its text. Open the file\nand read the code around that text, as much as you need:\n%s\n" "$5"
+    [[ -n "${5:-}" && -n "${6:-}" ]] && printf '\nThe code from before this change is a copy at %s — read the code of each\n[done] SPEC there. The repository as it is now is the current directory.\n' "$6"
     return 0
 }
 _dcov_prompt_limits() {
@@ -217,8 +204,8 @@ _dcov_ev_items_v() {
 }
 
 # _dcov_disputes_v <assoc_var> <answers> <verdict_json> — each `wrong` answer
-# (zb_answer_kind_v) by the item its finding is about: a SPEC id, `SCOPE
-# <entry>` for a scope entry's, or `requirements` for a requirement's. A finding's first word names it, as
+# (zb_answer_kind_v) by the item its finding is about: a SPEC id, or
+# `requirements` for a requirement's. A finding's first word names it, as
 # _design_coverage_findings writes it; one that names nothing known disputes
 # every item (#2470, ADR-072 §5).
 _dcov_disputes_v() {
@@ -234,7 +221,6 @@ _dcov_disputes_v() {
         _ddv_n="${BASH_REMATCH[1]}"; zb_answer_kind_v _ddv_k "$_ddv_a"; [[ "$_ddv_k" == wrong ]] || continue
         _ddv_t="${_ddv_txt[$_ddv_n]:-}"; _ddv_id="${_ddv_t%%[: ]*}"
         if [[ -n "${first[$_ddv_id]+x}" ]]; then _ddv["$_ddv_id"]+="$_ddv_a"$'\n'
-        elif [[ "$_ddv_id" == SCOPE ]]; then _ddv_t="${_ddv_t#SCOPE }"; _ddv["SCOPE ${_ddv_t%%:*}"]+="$_ddv_a"$'\n'
         elif [[ -n "${req_text[$_ddv_id]+x}" ]]; then _ddv["requirements"]+="$_ddv_a"$'\n'
         else
             for _ddv_k in ${ids[@]+"${ids[@]}"} requirements; do _ddv["$_ddv_k"]+="$_ddv_a"$'\n'; done
@@ -272,14 +258,13 @@ _design_coverage() {
         req_text["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"; req_order+=("${BASH_REMATCH[1]}")
     done <<< "$reqs"
 
-    local repo="${ZBUILD_REPO_ROOT:-$PWD}" base="" base_sha="" scope
+    local repo="${ZBUILD_REPO_ROOT:-$PWD}" base="" base_sha=""
     # #2482: the copy design's prompt named, when it has run — the local
     # _DESIGN_BASE_DIR of _design_stage_run_inner (plugin.sh), read through
     # bash's dynamic scope; else, called on its own, made here.
     if [[ -n "${_DESIGN_BASE_DIR+x}" ]]; then base="$_DESIGN_BASE_DIR"
     else judge_base_dir_v base "$repo" || base=""; fi
     [[ -n "$base" && -f "$base.sha" ]] && base_sha="$(<"$base.sha")"
-    scope="$(acceptance_list_scope "$design_md" 2>/dev/null || true)"
     local -A ev=()
     _dcov_done_evidence_v ev "$design_md" "$base"
 
@@ -297,15 +282,6 @@ _design_coverage() {
     done
     judge_fp_v _fpv "$eng"$'\n'"$reqs"$'\n'"$_all"$'\n'"$_ev_all"$'\n'"$base_sha"$'\n'"${disp[requirements]:-}"
     fps["requirements"]="$_fpv"
-    # #2491 (ADR-072 §4): each scope entry is an item of its own, judged against
-    # the requirements: a changed SPEC does not ask it again.
-    local -a scope_ids=()
-    while IFS= read -r k; do
-        [[ -n "$k" ]] || continue
-        scope_ids+=("$k")
-        judge_fp_v _fpv "$eng"$'\n'"SCOPE $k"$'\n'"$reqs"$'\n'"${disp["SCOPE $k"]:-}"
-        fps["SCOPE $k"]="$_fpv"
-    done <<< "$scope"
     [[ -n "$kf" ]] && judge_kept_get_all_v kept "$kf" fps disp
 
     # A kept answer is read as it was given; one that no longer reads is judged again.
@@ -320,11 +296,8 @@ _design_coverage() {
         if [[ -n "${kept[$id]+x}" ]]; then others+="${first[$id]}"$'\n'; continue; fi
         want+="$id"$'\n'; shown+="${render[$id]}"$'\n'; done_ev+="${ev[$id]:-}"
     done
-    local reqs_asked="" scope_asked=""
+    local reqs_asked=""
     [[ -n "${kept["requirements"]+x}" ]] || { want+=requirements$'\n'; reqs_asked="$reqs"; }
-    for k in ${scope_ids[@]+"${scope_ids[@]}"}; do
-        [[ -n "${kept["SCOPE $k"]+x}" ]] || { want+="SCOPE $k"$'\n'; scope_asked+="$k"$'\n'; }
-    done
     if [[ -z "$want" ]]; then
         _dcov_parse "$kept_raw" "$kept_want"
         _dcov_findings_build
@@ -332,10 +305,10 @@ _design_coverage() {
     fi
 
     local framed _disp_shown="" issue=""
-    [[ -n "$reqs_asked$scope_asked" ]] && issue="$(earlier_issue_text "${artifact_dir:-${ZBUILD_ARTIFACT_DIR:-}}" "${state_dir:-}" 2>/dev/null || true)"
+    [[ -n "$reqs_asked" ]] && issue="$(earlier_issue_text "${artifact_dir:-${ZBUILD_ARTIFACT_DIR:-}}" "${state_dir:-}" 2>/dev/null || true)"
     for k in "${!disp[@]}"; do [[ $'\n'"$want" == *$'\n'"$k"$'\n'* ]] && _disp_shown+="${disp[$k]}"; done
     # #2458: it judges, so it composes fresh — no notes, and no rule to confirm earlier work.
-    if ! framed="$(stage_prompt_compose_text --fresh "$(_dcov_prompt_own "$reqs_asked" "$scope_asked")" "$(_dcov_prompt_judge "$design_md" "${shown%$'\n'}" "$reqs_asked" "${others%$'\n'}" "${scope_asked%$'\n'}" "$done_ev" "$base" "$issue")$(judge_disputes_block "$_disp_shown")" "$(_dcov_prompt_limits)")"; then
+    if ! framed="$(stage_prompt_compose_text --fresh "$(_dcov_prompt_own "$reqs_asked")" "$(_dcov_prompt_judge "$design_md" "${shown%$'\n'}" "$reqs_asked" "${others%$'\n'}" "$done_ev" "$base" "$issue")$(judge_disputes_block "$_disp_shown")" "$(_dcov_prompt_limits)")"; then
         _DESIGN_COV_OUTCOME=misconfigured
         return 0
     fi

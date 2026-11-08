@@ -33,19 +33,18 @@
 #          the issue does not ask for, or gets wrong (#2445)
 #   X2     each such item is one entry, and becomes a finding design must fix,
 #          whatever the coverage verdict
-#   X3     the check is shown the design's scope (#2445)
+#   X3     the check is not shown the design's scope to judge: a design that goes
+#          beyond the issue shows as an outside SPEC (ADR-070 §4, #2495)
 #   X4     for a SPEC marked [done], the check is pointed at the file its
 #          evidence names, and asked whether that code does what the SPEC says
 #          (#2445; #2464: it opens the file itself — no window of lines)
 #   X5     each [done] SPEC it says the code does not do is one entry, and a
 #          finding
-#   SC1    the check answers one line for every scope entry, as for a SPEC:
-#          ok, or outside with why (#2491)
-#   SC2    an entry that is ok is no finding: on #1805 run 42439063480 a scope
-#          line whose own reason said "raises no concern" failed design
-#   SC3    an entry outside the issue is a finding design must fix
-#   SC4    a scope entry with no line is asked again, naming it, then unusable
-#   SC5    each entry's answer is kept: a changed SPEC does not ask it again
+#   NS1    the check is asked for no verdict on a scope entry (#2495): on #1805
+#          run 42439063480 a scope line whose own reason said "raises no concern"
+#          failed design
+#   NS2    a reply with no scope lines is complete: judged in one call
+#   NS3    a scope line in a reply is no finding
 #
 # #2464 (ADR-072 §3): the check answers one line per requirement and per SPEC,
 # each complaint quoted; tests/unit/judge-quotes-test.sh covers the form.
@@ -62,6 +61,10 @@ setup_test_env "design-coverage"
 
 # shellcheck source=../../plugins/agent/design/plugin.sh
 source "$REPO_ROOT/plugins/agent/design/plugin.sh"
+
+assert_not_contains() {
+    if grep -qF -- "$3" <<< "$2" 2>/dev/null; then assert_fail "$1" "output unexpectedly has: $3"; else assert_pass "$1"; fi
+}
 
 # Mocks AFTER the source: the plugin sources core/router/route.sh at file scope.
 _P_FILE="$TEST_TEMP_DIR/prompt.txt"
@@ -207,84 +210,52 @@ MD
 _REPLY='RQST-1: covered
 RQST-2: covered
 WORK-1: ok
-CNFG-1: ok
-SCOPE: scripts/thing.sh: ok
-SCOPE: scripts/telemetry.sh: ok'
+CNFG-1: ok'
 ZBUILD_REPO_ROOT="$XR" _design_coverage "$DX" "$REQS" T2
 _P="$(tr -s '[:space:]' ' ' < "$_P_FILE")"
 assert_contains "[X1] the check looks the other way too" "$_P" "<SPEC id>: outside"
 assert_contains "[X1] ...for what the design commits to that the issue does not ask for, or gets wrong" "$_P" \
     "that the issue does not ask for, or that contradicts it"
-assert_contains "[X3] the check is shown the design's scope" "$_P" "scripts/telemetry.sh"
+assert_not_contains "[X3] the check is not shown the design's scope" "$_P" "scripts/telemetry.sh"
 assert_contains "[X4] the check is pointed at the file a [done] SPEC's evidence names" "$_P" 'CNFG-1: scripts/cfg.sh:"refuse_missing_config()" — open'
 assert_contains "[X4] ...and asked whether it does what the SPEC says" "$_P" "<SPEC id>: done_wrong"
 _REPLY='RQST-1: covered
 RQST-2: covered
 WORK-1: outside | WHY: also renames the flag | QUOTE: "a --dry-run flag is accepted"
-CNFG-1: done_wrong | WHY: it returns 2 only when the file is absent, not when it is unreadable | QUOTE: scripts/cfg.sh:"[[ -f "$1" ]] || return 2"
-SCOPE: scripts/thing.sh: ok
-SCOPE: scripts/telemetry.sh: outside | WHY: the issue asks for no telemetry'
+CNFG-1: done_wrong | WHY: it returns 2 only when the file is absent, not when it is unreadable | QUOTE: scripts/cfg.sh:"[[ -f "$1" ]] || return 2"'
 ZBUILD_REPO_ROOT="$XR" _design_coverage "$DX" "$REQS" T2
-assert_eq "[X2] each item outside the issue is one entry, whatever the coverage verdict" "2" "${#_DESIGN_OUTSIDE[@]}"
+assert_eq "[X2] each item outside the issue is one entry, whatever the coverage verdict" "1" "${#_DESIGN_OUTSIDE[@]}"
 assert_eq "[X5] each [done] SPEC the code does not do is one entry" "1" "${#_DESIGN_DONE_WRONG[@]}"
 _fx="$(_design_coverage_findings)"
 # #2470 (ADR-073 §5): the line to fix is marked with what to do.
-assert_contains "[X2] ...and a finding design must fix" "$_fx" "SCOPE scripts/telemetry.sh: the issue asks for no telemetry [FIX IN DESIGN: the issue does not ask for it"
 assert_contains "[X2] ...the SPEC's own line marked" "$_fx" "WORK-1[code]: a --dry-run flag is accepted covers: RQST-1 [FIX IN DESIGN: also renames the flag — the issue does not ask for this"
 assert_contains "[X5] ...and a finding too" "$_fx" "CNFG-1: 1 part to fix"
 assert_contains "[X5] ...its line marked with what the code does" "$_fx" "[FIX IN DESIGN: it returns 2 only when the file is absent, not when it is unreadable: scripts/cfg.sh:"
 
-# ── SC1–SC5 (#2491) ──────────────────────────────────────────────────────────
-_REPLY='RQST-1: covered
-RQST-2: covered
-WORK-1: ok
-CNFG-1: ok
-SCOPE: scripts/thing.sh: ok
-SCOPE: scripts/telemetry.sh: ok'
-ZBUILD_REPO_ROOT="$XR" _design_coverage "$DX" "$REQS" T2
-_P="$(tr -s '[:space:]' ' ' < "$_P_FILE")"
-assert_contains "[SC1] the check is asked one line for every scope entry" "$_P" "SCOPE: <scope entry>: ok"
-assert_contains "[SC1] ...or outside, with why" "$_P" "SCOPE: <scope entry>: outside | WHY:"
-assert_eq "[SC2] an entry that is ok is no finding" "0|" "${#_DESIGN_OUTSIDE[@]}|$_DESIGN_COV_OUTCOME"
-_REPLY='RQST-1: covered
-RQST-2: covered
-WORK-1: ok
-CNFG-1: ok
-SCOPE: scripts/thing.sh: ok
-SCOPE: scripts/telemetry.sh | WHY: this entry is consistent with the issue and raises no concern'
+# ── NS1–NS3 (#2495, ADR-070 §4) ─────────────────────────────────────────────
 printf '0' > "$_RA_N"
 route_to_model() { local n; n=$(( $(cat "$_RA_N") + 1 )); printf '%s' "$n" > "$_RA_N"; printf '%s' "$2" > "$_P_FILE.$n"; printf '%s' "$_REPLY"; }
+_REPLY='RQST-1: covered
+RQST-2: covered
+WORK-1: ok
+CNFG-1: ok'
 ZBUILD_REPO_ROOT="$XR" _design_coverage "$DX" "$REQS" T2
-assert_eq "[SC2] the old line with no verdict is no finding" "0" "${#_DESIGN_OUTSIDE[@]}"
-assert_contains "[SC4] an entry with no line is asked again, naming it" "$(cat "$_P_FILE.2" 2>/dev/null)" "no line for scripts/telemetry.sh"
-assert_contains "[SC4] ...in the form its line takes (review on #2492)" "$(cat "$_P_FILE.2" 2>/dev/null)" \
-    "Answer again only for: SCOPE: scripts/telemetry.sh"
-assert_eq "[SC4] ...then the answer is unusable" "unusable" "$_DESIGN_COV_OUTCOME"
-route_to_model() { printf '%s' "$2" > "$_P_FILE"; printf '%s' "$_REPLY"; return 0; }
+_P="$(tr -s '[:space:]' ' ' < "$_P_FILE.1")"
+assert_not_contains "[NS1] the check is asked for no verdict on a scope entry" "$_P" "scope entry"
+assert_not_contains "[NS1] ...and no SCOPE line" "$_P" "SCOPE:"
+assert_eq "[NS2] a reply with no scope lines is complete, judged in one call" "|1|0" \
+    "$_DESIGN_COV_OUTCOME|$(cat "$_RA_N")|${#_DESIGN_OUTSIDE[@]}"
+printf '0' > "$_RA_N"
 _REPLY='RQST-1: covered
 RQST-2: covered
 WORK-1: ok
 CNFG-1: ok
-SCOPE: scripts/thing.sh: ok
+SCOPE: scripts/telemetry.sh | WHY: this entry is consistent with the issue and raises no concern
 SCOPE: scripts/telemetry.sh: outside | WHY: the issue asks for no telemetry'
 ZBUILD_REPO_ROOT="$XR" _design_coverage "$DX" "$REQS" T2
-assert_contains "[SC3] an entry outside the issue is a finding design must fix" "$(_design_coverage_findings)" \
-    "SCOPE scripts/telemetry.sh: the issue asks for no telemetry [FIX IN DESIGN:"
-SCA="$TEST_TEMP_DIR/sc5-art"; mkdir -p "$SCA"
-_REPLY='RQST-1: covered
-RQST-2: covered
-WORK-1: ok
-CNFG-1: ok
-SCOPE: scripts/thing.sh: ok
-SCOPE: scripts/telemetry.sh: ok'
-artifact_dir="$SCA" ZBUILD_REPO_ROOT="$XR" _design_coverage "$DX" "$REQS" T2
-sed 's/a --dry-run flag is accepted/a --dry-run flag is accepted and logged/' "$DX" > "$DX.2"
-_REPLY='RQST-1: covered
-RQST-2: covered
-WORK-1: ok'
-artifact_dir="$SCA" ZBUILD_REPO_ROOT="$XR" _design_coverage "$DX.2" "$REQS" T2
-assert_eq "[SC5] a changed SPEC does not ask the scope entries again" "|0" \
-    "$_DESIGN_COV_OUTCOME|$(grep -c 'scripts/telemetry.sh' "$_P_FILE" || true)"
+assert_eq "[NS3] a scope line in a reply is no finding" "|0|" \
+    "$_DESIGN_COV_OUTCOME|${#_DESIGN_OUTSIDE[@]}|$(_design_coverage_findings)"
+route_to_model() { printf '%s' "$2" > "$_P_FILE"; printf '%s' "$_REPLY"; return 0; }
 
 cleanup_test_env
 print_test_results

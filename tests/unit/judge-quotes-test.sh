@@ -104,8 +104,8 @@ MD
     REQS='- RQRQST-1: add a --dry-run flag
 - RQRQST-2: refuse a missing config file'
     _cov() { printf 0 > "$_N"; _design_coverage "$D" "$REQS" T2 >/dev/null 2>&1; }
-    # #2491: a line for every scope entry, as for every SPEC.
-    _sc=$'SCOPE: scripts/thing.sh: ok\nSCOPE: scripts/telemetry.sh: ok\n'
+    # #2495 (ADR-070 §4): no line for a scope entry.
+    _sc=""
     _ok=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-1: ok\nDSCNFG-1: ok\n'"$_sc"
 
     _R1="$_ok"; _R2=""; _cov
@@ -156,7 +156,7 @@ assert_contains "[Q2] a [done] claim is judged on the code from before the chang
 assert_contains "[Q2] ...and carries its quote" "$(_l Q2f)" 'return 2'
 assert_contains "[Q2] done_wrong on a SPEC not marked [done] cannot be used" "$(_l Q2h)" "unusable|"
 assert_contains "[Q2] ...and is asked again, saying so" "$(_l Q2h)" "DSWORK-1 is not marked [done]"
-assert_contains "[Q2] a scope entry the issue does not ask for is a finding" "$(_l Q2i)" "1|SCOPE scripts/telemetry.sh: the issue asks for no telemetry [FIX IN DESIGN:"
+assert_eq "[Q2] a scope line is no finding, and needs no line (#2495)" "0|" "$(_l Q2i)"
 
 print_test_section "Q3: test-author's assertion check"
 (
