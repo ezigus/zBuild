@@ -11,8 +11,8 @@ _ZBUILD_STAGE_ANSWERS_LOADED=1
 # shellcheck source=reply-units.sh
 source "${BASH_SOURCE[0]%/*}/reply-units.sh"
 
-# zb_answers_collect_v <array_var> <reply> — the reply's `ANSWER <stage>
-# finding <n>: …` lines, without the word ANSWER, added to the array; a finding
+# zb_answers_collect_v <array_var> <reply> — the reply's `ANSWER <the finding
+# as listed>: …` lines, without the word ANSWER, added to the array; a finding
 # answered twice keeps its latest answer.
 zb_answers_collect_v() {
     local -n _zac="$1"
@@ -23,6 +23,11 @@ zb_answers_collect_v() {
         _zb_ans_a="${BASH_REMATCH[1]}"
         while [[ "$_zb_ans_a" == *[[:space:]] ]]; do _zb_ans_a="${_zb_ans_a%[[:space:]]}"; done
         _zb_ans_k="${_zb_ans_a%%:*}"
+        # #2487: a stage that names the opening stage first ("review_lenses
+        # finding lens-sre-code finding 2") still answers lens-sre-code finding 2.
+        if [[ "$_zb_ans_k" =~ ([^[:space:]]+[[:space:]]+finding[[:space:]]+[0-9]+)[[:space:]]*$ ]]; then
+            _zb_ans_a="${BASH_REMATCH[1]}:${_zb_ans_a#*:}"; _zb_ans_k="${BASH_REMATCH[1]}"
+        fi
         for _zb_ans_i in "${!_zac[@]}"; do
             [[ "${_zac[_zb_ans_i]%%:*}" == "$_zb_ans_k" ]] && unset '_zac[_zb_ans_i]'
         done
@@ -71,20 +76,20 @@ zb_answers_finish() {
     if [[ -n "$_zaf_miss" ]] && declare -F route_to_model >/dev/null 2>&1; then
         _zaf_reply="${3:-}"
         (( ${#_zaf_reply} > 20000 )) && _zaf_reply="${_zaf_reply: -20000}"
-        _zaf_ask="Your job: you were given the findings below and your answer says nothing about them. Say what you did about each, from what you did — shown below as your answer. Do not do anything else.
+        # #2487: composed in the contract order like every stage call (ADR-067
+        # §8) — as plain text the router refused it on every stage.
+        declare -F stage_prompt_compose_text >/dev/null 2>&1 \
+            || source "${BASH_SOURCE[0]%/*}/stage-prompt.sh" 2>/dev/null || true
+        _zaf_ask="$(stage_prompt_compose_text --fresh "Your job: you were given the findings below and your answer says nothing about them. Say what you did about each, from what you did — shown below as your answer. Do not do anything else.
 
-${_ZB_ANSWER_FORMS:-}
-
-THE FINDINGS YOU DID NOT ANSWER:
+${_ZB_ANSWER_FORMS:-}" "THE FINDINGS YOU DID NOT ANSWER:
 ${_zaf_lines}
 YOUR ANSWER:
 <<<
 ${_zaf_reply}
->>>
-
-- Answer only, one line per finding, in the form above."
+>>>" "- Answer only, one line per finding, in the form above." 2>/dev/null)" || _zaf_ask=""
         local -x ZBUILD_ROUTE_TOOLS=read
-        zb_answers_collect_v _zaf "$(route_to_model "${4:-T1}" "$_zaf_ask" </dev/null 2>/dev/null)"
+        [[ -n "$_zaf_ask" ]] && zb_answers_collect_v _zaf "$(route_to_model "${4:-T1}" "$_zaf_ask" </dev/null 2>/dev/null)"
         for _zaf_a in ${_zaf[@]+"${_zaf[@]}"}; do
             zb_answer_kind_v _zaf_kind "$_zaf_a"; [[ -n "$_zaf_kind" ]] && _zaf_ok["${_zaf_a%%:*}"]=1
         done

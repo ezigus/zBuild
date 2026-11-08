@@ -3,6 +3,7 @@
 **Status:** Accepted (2026-08-09)
 **Date:** 2026-08-09
 **Issue:** #1820
+**Amended:** 2026-11-07 (#2487) — §6a: a first try that ends `unusable` is run again, even when it changed nothing.
 **Amended:** 2026-10-31 (#2439) — §6a: the engine runs ANY stage again, from plugin_hook_call; the default `retry:` is 1; a stage never repeats a model call itself (Amendment at the end). Previously amended 2026-10-24 — §7: a signal stops the running stage instead of waiting for it to end. Previously amended 2026-10-13 (#2366) — §6: result contract 3 carries ONE word, `outcome`, from one closed list the engine owns (Amendment at the end). Previously amended 2026-10-07 (#1798) — §4: a leaf stage whose verdict is fail-class ends the run unless its template marks it `blocking: false` (Amendment at the end).
 **Amended:** 2026-09-16 (#2111) — §6: a rate limit observed by the router resolves to `unavailable`, not `throttled`. The engine now enforces `halt_unavailable` on the cycle dispatch path (it was announced only): the run ends `aborted` with `reason=llm_rate_limited` and the reset text under `.rate_limit.message`, state persisted for ADR-050 resume. `throttled` stays in the closed set with no rate-limit emitter. Waiting and retrying re-entered the same limit for five iterations on #1840/#1841, re-verifying an unchanged tree each time.
 **Amended:** 2026-08-23 (#141) — §7: the three-actor table is run-keyed in every row; the **issue** is a second scope, and `release` gains the `always-run` attribute plus a `persist` sibling (ADR-059).
@@ -589,8 +590,15 @@ The steps of a call cut off at its time limit are saved beside the stage's notes
   names problems with its work that its last try did not — its findings differ — left its next try something
   to act on, and is run again. The same findings again, or none, is no progress, and the retries stop.
 
+### Amendment (2026-11-07, #2487) — §6a: a try whose output could not be used is run again once
+
+On #1805 run 42397891946 issue-acceptance's reply could not be used (`unusable`, whose response is retry), and it was never run again: a judging stage writes only its result and its summary, so its try "changed nothing". The run ended on that one reply.
+
+- **A first try that ends `unusable` is run again, even when it changed nothing.** A second such try is not: the progress rule applies from then on.
+
 ## Enforced by
 
+- §6a amendment 2026-11-07 (#2487: a first unusable try is run again) → `tests/unit/stage-retry-test.sh` R12
 - §6a amendment 2026-11-02 (#2460: new own findings are progress; a stage's own check is a retry) → `tests/unit/attempt-progress-test.sh` P10, P11; `tests/unit/own-check-retry-test.sh` R1–R3
 - §6a amendment 2026-11-02 (#2454: a cut-off call's saved steps are progress) → `tests/unit/attempt-progress-test.sh` P8, P9
 - §5 amendment 2026-11-01 (#1754: a failed result write leaves no result) → `tests/unit/test-plugin-result-write-fallback-test.sh` SPEC-1; `tests/unit/test-result-reason-contract-test.sh` SPEC-2; `plugins/agent/intake/tests/intake-result-test.sh` SPEC-3, SPEC-4; `tests/unit/plugin-primary-output-atomic-test.sh` SPEC-5–SPEC-8; `scripts/lib/lint-atomic-write-unchecked.sh`

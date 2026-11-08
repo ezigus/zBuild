@@ -83,10 +83,17 @@ _judge_words_v() {
 # _judge_holds <text> <quote> — rc 0 when <text> holds <quote>, spacing and
 # the markdown marks `*`, `_` and backticks aside (#2472: the issue wrote
 # `stage *k*`, the judge quoted "stage k", as it reads).
+# A quote written inside "…" escapes its quote marks and backslashes (\" and
+# \\, #2487): read as written first, since code holds real backslashes, then
+# with each escape read as the character it stands for.
 _judge_holds() {
-    local _jh_t="${1//[*_\`]/}" _jh_q="${2//[*_\`]/}"
+    local _jh_t="${1//[*_\`]/}" _jh_q="${2//[*_\`]/}" _jh_u
     _judge_words_v _jh_t "$_jh_t"; _judge_words_v _jh_q "$_jh_q"
-    [[ -n "$_jh_q" && " $_jh_t " == *"$_jh_q"* ]]
+    [[ -n "$_jh_q" ]] || return 1
+    [[ " $_jh_t " == *"$_jh_q"* ]] && return 0
+    [[ "$_jh_q" == *\\* ]] || return 1
+    _jh_u="${_jh_q//\\\\/$'\x01'}"; _jh_u="${_jh_u//\\\"/\"}"; _jh_u="${_jh_u//$'\x01'/\\}"
+    [[ " $_jh_t " == *"$_jh_u"* ]]
 }
 
 # judge_quote_check_v <why_var> <quote> <own_words> <repo> [base_dir] — rc 0

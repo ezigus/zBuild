@@ -985,9 +985,13 @@ _cycle_detect_blocked() {
             "iter=$iter" "reason=jq_failed"
         return 0
     fi
-    local s v
+    local s v d
     for s in "${_CYCLE_STAGES[@]}"; do
-        v="$(jq -r --arg s "$s" '.[$s].verdict // empty' <<< "$blob" 2>/dev/null || true)"
+        v="$(jq -r --arg s "$s" '"\(.[$s].verdict // "")|\(.[$s].disposition // "")"' <<< "$blob" 2>/dev/null || true)"
+        d="${v#*|}"; v="${v%%|*}"
+        # #2487: a member whose output could not be used, after its own retry,
+        # is run again next round — it is not a stage that cannot recover.
+        [[ "$v" == error && "$d" == unusable ]] && continue
         case "$v" in
             error|corrupt_diff|block)
                 # ADR-029 G2 (#810): a verdict=error from this iter that

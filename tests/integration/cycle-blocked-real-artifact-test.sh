@@ -15,6 +15,9 @@
 #   4. _cycle_detect_blocked fires on raw "error"
 #   5. cycle_orchestrator_run aborts at iter 1 (not 3), rc=1, outcome
 #      interrupted, reason=blocked (#1850, ADR-054 §4: was rc=5)
+#   C. a member whose output could not be used (outcome unusable) does not
+#      block: the next round runs it again (#2487: on #1805 run 42397891946
+#      issue-acceptance's one unusable reply ended the run after round 1)
 #
 # Existing core-pipeline-cycle-blocked-integration-test.sh stubs
 # cycle_dispatch_stage directly and hard-codes _CYCLE_DISPATCH_VERDICT, so
@@ -122,7 +125,7 @@ cycle_dispatch_stage() {
             # pipeline engine reads the verdict from the artifact rather
             # than the plugin exit code").
             printf '%s\n' '{"tests_run":0,"tests_passed":0,"tests_failed":0}' > "$art"
-            stage_result_add "$art" broken "diff_apply_failed"
+            stage_result_add "$art" "${_TEST_OUTCOME:-broken}" "diff_apply_failed"
             rc=0
             ;;
         *)
@@ -131,6 +134,11 @@ cycle_dispatch_stage() {
     esac
     _CYCLE_DISPATCH_VERDICT="$(runner_read_stage_verdict \
         "$ZBUILD_STATE_DIR" "$manifest" "$stage" "$rc" 2>/dev/null || echo "missing")"
+    # Sub-test C: the disposition channel too, read as the runner reads it
+    # (runner.sh). B leaves it empty: `broken` would halt the run on its own.
+    _CYCLE_DISPATCH_DISPOSITION=""
+    [[ -n "${_TEST_OUTCOME:-}" ]] && runner_read_stage_disposition_v _CYCLE_DISPATCH_DISPOSITION "$ZBUILD_STATE_DIR" "$manifest" "$stage" "$rc" "" 0 2>/dev/null \
+        || _CYCLE_DISPATCH_DISPOSITION=""
     if [[ $rc -eq 0 ]]; then
         _CYCLE_DISPATCH_STATUS="complete"
     else
@@ -171,5 +179,18 @@ assert_contains "B8: cycle.complete reason=blocked (NOT max_iterations)" \
 ic_count=$(grep -c '"type":"cycle.iteration.complete"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)
 assert_eq "B9: exactly 1 cycle.iteration.complete (no retry of structural error)" \
     "1" "$ic_count"
+
+# ─── Sub-test C: an unusable member does not block; the loop goes round
+print_test_section "a member whose output could not be used is run again next round"
+_seed_state
+load_template "$FIXT/cycle-blocked.yaml"
+set +e
+_TEST_OUTCOME=unusable cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"
+rc=$?
+set -e
+assert_eq "C1: the loop is not blocked by an unusable member" "no" \
+    "$(grep -q '"type":"cycle.blocked"' "$ZBUILD_EVENTS_JSONL" && echo yes || echo no)"
+assert_eq "C2: ...it runs every round it has" "5" "${_CYCLE_LAST_ITERATIONS:-unset}"
+assert_eq "C3: ...and ends on its rounds, not as blocked" "max_iterations" "${_CYCLE_LAST_TERMINATED_REASON:-unset}"
 
 print_test_results

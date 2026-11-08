@@ -3,6 +3,7 @@
 **Status:** Proposed (F1) → Accepted (after F2 / #511)
 **Date:** 2026-05-30
 **Amends:** ADR-006 (resume contract), ADR-013 (canonical stage list), ADR-015 (stage-io v6), ADR-018 (Pattern 2 inner loops), ADR-020 (contract validator)
+**Amended:** 2026-11-07 (#2487) — Blocked termination: a member whose output could not be used (`unusable`) does not block; the next round runs it again.
 **Amended:** 2026-10-11 — decision point 3 and the per-iter cleanup contract (#511 Pin 8) are replaced by ADR-068 §8: the orchestrator copies nothing between iterations (a `feedback:` edge only declares a backward flow; the consumer reads the producer's latest output) and deletes no member output before re-dispatch (a result older than the member's latest dispatch is read as absent). In #1932's run the iteration copy was handed to the design's checkers after design had rewritten it.
 **Amended:** 2026-10-05 (#2032) — generic member-unfinished convergence suppression: when any iteration member carries an unfinished disposition (`timed_out`, `out_of_turns`, `interrupted`) and the `exit_when` predicate fires, convergence is suppressed and `cycle.member_unfinished.suppressed_convergence` is emitted. This joins the two existing suppressions: `cycle.build_unfinished.suppressed_convergence` (#1208) fires only when the build member is unfinished; `cycle.no_committed_changes.suppressed_convergence` (#1265) fires when an iteration would converge on zero commits. The new suppression fires for ANY member, on ANY cycle type (including design-only cycles without a build member). The `converged==0` guard prevents double-fire with the build-specific suppression. At `max_iterations` when the suppression fires, the existing #1261 exhaustion path halts with `cycle.timeout_exhausted` and `term_rc=8`.
 **Amended:** 2026-10-05 (#2296) — R2: a `stream-json` capture is judged by the CLI's own records (a refused `rate_limit_event`, the final `result` line), never by text found anywhere in it; a call cut off by its time limit is not a rate limit.
@@ -395,6 +396,8 @@ max_iterations, divergence, blocked, verdict_missing, aborted, error}`.
 emitted between `cycle.iteration.complete` and `cycle.complete reason=blocked`.
 
 **State enum extension:** `cycle_iterations[X].status ∈ {..., blocked}`.
+
+**Amended 2026-11-07 (#2487): an unusable member does not block.** A member whose verdict is `error` because its output could not be used (disposition `unusable`), after its own retry (ADR-054 §6a), is run again the next round, within `max_iterations`. It is not a stage that cannot recover. On #1805 run 42397891946 issue-acceptance's one unusable reply blocked the build loop after round 1, so build never got the round that fixes the two tests it broke. Enforced by `tests/integration/cycle-blocked-real-artifact-test.sh` C1–C3 (B1–B9 still block on `broken`).
 
 **Fail-CLOSED handling:** jq parse failure on verdicts blob → emit
 `cycle.metric.invalid metric=blocked_eval reason=jq_failed`, treat as

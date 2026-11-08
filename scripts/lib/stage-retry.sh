@@ -81,7 +81,10 @@ stage_retry_next() {
     # ADR-058 C12: a try whose repository writes the engine put back did change
     # something — the engine undid it — and is run again once (#2443).
     local _wb_key="${stage//[^A-Za-z0-9._-]/_}"   # zbuild_stage_key
+    # #2487: a first try whose output could not be used is run again once even
+    # so: a judging stage writes only its result, so it never changes anything.
     if [[ "$outcome" != interrupted && "$outcome" != throttled \
+          && ! ( "$outcome" == unusable && "$tries" -eq 1 ) \
           && ! -f "$state_dir/runtime/write-boundary-reverted.$_wb_key" \
           && "${_ATTEMPT_LAST_PROGRESS:-}" == "false" ]]; then
         return 1

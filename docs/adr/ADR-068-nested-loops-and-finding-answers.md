@@ -1,6 +1,6 @@
 # ADR-068 — Nested loops and finding answers: the engine never decides who owns a finding
 
-**Status:** Accepted (2026-10-04); amended 2026-10-10 (§1 §8: impact removed from delivery_loop); amended 2026-10-11 (§6–§8: the engine keeps only stage outputs; §8: only each stage's latest output is passed on); amended 2026-10-12 (§8: every stage's latest output, from any run and the stage's own included, goes to every later stage — ADR-067 §8, ADR-050 §9; §1: impact retired from zBuild; §8: loop `feedback:` edges retired); amended 2026-10-18 (§1 §2 §3 §10: design makes one model call per run and keeps its last good design; a design that still fails ends the run — #1944 run 38883031887); amended 2026-10-27 (§6 §8: a stage is given, and answers, only the topics it takes — ADR-071, #1944 run 40393999128); amended 2026-10-28 (§5: a finding is never split); amended 2026-10-31 (§1 §2 §3: design runs in every round of the build loop; only the lenses send the change round again; §6: test-author answers the findings about its tests — #1754 run 41138244027); amended 2026-10-31 (#2441, §6: build may answer that a test is wrong; that answer is a finding for test-author — #1754 run 41208786459); amended 2026-11-03 (#2464, §6 §7: answers are kept in the result; a check keeps a verdict whose inputs are unchanged); amended 2026-11-05 (#2474, §3: a stage can end its loop's round); amended 2026-11-06 (#2480, §8: every member's output of a map group reaches every later stage)
+**Status:** Accepted (2026-10-04); amended 2026-11-07 (#2487, §6: an answer names the finding as listed; the follow-up ask in the contract order); amended 2026-10-10 (§1 §8: impact removed from delivery_loop); amended 2026-10-11 (§6–§8: the engine keeps only stage outputs; §8: only each stage's latest output is passed on); amended 2026-10-12 (§8: every stage's latest output, from any run and the stage's own included, goes to every later stage — ADR-067 §8, ADR-050 §9; §1: impact retired from zBuild; §8: loop `feedback:` edges retired); amended 2026-10-18 (§1 §2 §3 §10: design makes one model call per run and keeps its last good design; a design that still fails ends the run — #1944 run 38883031887); amended 2026-10-27 (§6 §8: a stage is given, and answers, only the topics it takes — ADR-071, #1944 run 40393999128); amended 2026-10-28 (§5: a finding is never split); amended 2026-10-31 (§1 §2 §3: design runs in every round of the build loop; only the lenses send the change round again; §6: test-author answers the findings about its tests — #1754 run 41138244027); amended 2026-10-31 (#2441, §6: build may answer that a test is wrong; that answer is a finding for test-author — #1754 run 41208786459); amended 2026-11-03 (#2464, §6 §7: answers are kept in the result; a check keeps a verdict whose inputs are unchanged); amended 2026-11-05 (#2474, §3: a stage can end its loop's round); amended 2026-11-06 (#2480, §8: every member's output of a map group reaches every later stage)
 **Issue:** #2271; §8 amended by #2330 (2026-10-06); §1 §8 amended by #1668 (2026-10-10); §6–§8 amended 2026-10-11 (after the #1668 and #1932 runs)
 **Supersedes:** ADR-045 (bounded typed backward-route), ADR-061 (fault-class vocabulary)
 **Amends:** ADR-021, ADR-027, ADR-040, ADR-046, ADR-047, ADR-054 §4, ADR-055 (finding-owner amendment)
@@ -148,7 +148,17 @@ them, and its two disputes never reached red-team.
   own result, the latest replaces the last, and the engine keeps nothing beside them; it asks only for an answer
   missing from the reply it was given.
 
+## Amendment 2026-11-07 (#2487) — §6: an answer names the finding as it is listed, and the engine's follow-up ask reaches the model
+
+On #1805 run 42397891946 no stage's answers counted. The form said `ANSWER <stage> finding <n>`, and a finding is listed as `lens-sre-code finding 2 (opened by review_lenses)`: design wrote `review_lenses finding 1`, test-author and build `review_lenses finding lens-sre-code finding 2`. All 11 of build's answers were read as missing. The ask for missing answers was plain text, so the router refused it (ADR-067 §8) after every stage.
+
+- **The form names the finding as its line begins:** `ANSWER <the finding as listed>: done | wrong | not mine — …`, in every prompt that asks for answers.
+- **An answer with the opening stage's name in front counts** for the finding it names.
+- **The follow-up ask is composed in the contract order** (`stage_prompt_compose_text --fresh`), as a judging call.
+
 ## Enforced by
+
+- §6 amendment 2026-11-07 (#2487: the finding as listed; the opening stage in front; the follow-up ask in the contract order) → `tests/unit/finding-answers-test.sh` A3, B5, D1–D3
 
 - §6 amendment 2026-11-07 (three answers; every finding answered) → `tests/unit/finding-answers-test.sh` A1–A3, B1–B5; `tests/unit/design-stage-ids-test.sh` E5, E6; `tests/unit/test-author-checks-own-output-test.sh` A12, A13; `tests/unit/issue-acceptance-test.sh` SPEC-14; `tests/unit/judge-kept-test.sh` K3, K5–K8; `tests/unit/build-prompt-summary-marker-test.sh` M3, M7; `tests/unit/lint-plain-prompts-test.sh` P12; `tests/unit/engine-keeps-only-stage-outputs-test.sh` K5
 
