@@ -1991,10 +1991,11 @@ main() {
     # exemption logic is testable independently of the full pipeline startup sequence.
     # --from-stage is only valid with --resume (or auto-resume): skip the persona
     # preflight so the targeted "only valid with --resume" rejection fires instead
-    # of a spurious persona-missing failure (#1805).
-    local _spg_resume_mode="$resume_mode"
-    [[ -n "$from_stage" ]] && _spg_resume_mode=true
-    if ! _runner_startup_preflight_gate "$dry_run" "$_spg_resume_mode"; then
+    # of a spurious persona-missing failure (#1805). Save/restore resume_mode so the
+    # auto-resume block (below) still sees the original value for its own logic.
+    local _pre_preflight_resume="$resume_mode"
+    [[ -n "$from_stage" ]] && resume_mode=true
+    if ! _runner_startup_preflight_gate "$dry_run" "$resume_mode"; then
         error "Startup preflight validation failed (ZBUILD_CONTRACT_VALIDATOR=${ZBUILD_CONTRACT_VALIDATOR:-warn}). See above."
         _runner_run_id="${_runner_run_id:-${ZBUILD_RUN_ID:-preflight}}"
         _runner_issue="${_runner_issue:-${issue:-0}}"
@@ -2004,6 +2005,9 @@ main() {
         _render_pipeline_end "preflight_failed"
         return 1
     fi
+    # Restore resume_mode so the auto-resume block sees the value that --resume set,
+    # not the from-stage sentinel true used to skip preflight above.
+    resume_mode="$_pre_preflight_resume"
 
     # ADR-049 §Phase-1.1 (#1360): vision-document admission gate.
     # Runs BEFORE the --dry-run branch so dry-run also enforces vision conformance.

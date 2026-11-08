@@ -2436,8 +2436,7 @@ _cycle_orchestrator_run_body() {
         # current_iter; this start write is what makes the resume formula correct for
         # a run interrupted before the first iter completes (#1805, correctness).
         _cycle_state_write_iter_start "$state_file" "$cycle_id" "$iter" \
-            || { warn "cycle-orchestrator: failed to write iter-start state for cycle=$cycle_id iter=$iter (a resume may start at the wrong iteration)"; \
-                 eb_emit_event "cycle.state.write.failed" "cycle_id=$cycle_id" "iter=$iter" "op=iter_start" 2>/dev/null || true; }
+            || warn "cycle-orchestrator: failed to write iter-start state for cycle=$cycle_id iter=$iter (a resume may start at the wrong iteration)"
 
         # Dispatch the cycle's stages in order.
         # DSCMBR-1 (#1805): signal resume_first_iter for the first resumed iteration
