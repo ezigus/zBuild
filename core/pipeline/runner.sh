@@ -2493,27 +2493,25 @@ main() {
             # after a grace for a hook that traps TERM. The watchdog gets its own
             # group too, so cancelling it leaves no `sleep` behind. (#1801)
             (
-                # The subshell starts with TERM ignored, as this trap has it.
-                # Trapped (not ignored) from here, so the stage it starts takes
-                # the default TERM, and its bound can stop it.
-                trap ':' INT TERM
+                # INT and TERM stay ignored here, as in this trap (#2493), so a
+                # signal to the run's group (`timeout` sends its TERM there a
+                # second time) neither ends this subshell nor cuts its wait short.
                 export ZBUILD_TEARDOWN_SCOPE=release
                 set -m
-                plugin_hook_call "$_ar_dir" run "$_ar_stage" "$_runner_state_file" &
+                # The stage takes the default TERM back only once it leads its
+                # own group: until then, a TERM to the run's group reaches it.
+                { trap - INT TERM; plugin_hook_call "$_ar_dir" run "$_ar_stage" "$_runner_state_file"; } &
                 _ar_pid=$!
                 ( set +m; sleep "$_ar_to"; zbuild_pg_kill "$_ar_pid" ) &
                 _wd_pid=$!
                 set +m
-                # A signal to the run's group (`timeout` sends its TERM there a
-                # second time) must not end this wait — the trap at the top of
-                # this subshell — or the KILL below would stop the stage before
-                # its bound.
                 while kill -0 "$_ar_pid" 2>/dev/null; do wait "$_ar_pid" 2>/dev/null || true; done
                 # #2333: the leader exiting does not mean its group did. A member
                 # that ignored TERM would lose its KILL when the watchdog is
                 # cancelled below, so kill the group now; a no-op when it is gone.
                 zbuild_pg_kill "$_ar_pid"
-                kill -TERM -- -"$_wd_pid" 2>/dev/null || true
+                # KILL: the watchdog ignores TERM, as this subshell does.
+                kill -KILL -- -"$_wd_pid" 2>/dev/null || true
                 wait "$_wd_pid" 2>/dev/null || true
             ) >/dev/null 2>&1 || true
         done
