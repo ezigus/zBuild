@@ -1,0 +1,44 @@
+diff --git a/core/pipeline/cycle-orchestrator.sh b/core/pipeline/cycle-orchestrator.sh
+index da5e65c5..f54bdbf1 100644
+--- a/core/pipeline/cycle-orchestrator.sh
++++ b/core/pipeline/cycle-orchestrator.sh
+@@ -2494,8 +2494,7 @@ _cycle_orchestrator_run_body() {
+         # current_iter; this start write is what makes the resume formula correct for
+         # a run interrupted before the first iter completes (#1805, correctness).
+         _cycle_state_write_iter_start "$state_file" "$cycle_id" "$iter" \
+-            || { warn "cycle-orchestrator: failed to write iter-start state for cycle=$cycle_id iter=$iter (a resume may start at the wrong iteration)"; \
+-                 eb_emit_event "cycle.state.write.failed" "cycle_id=$cycle_id" "iter=$iter" "op=iter_start" 2>/dev/null || true; }
++            || warn "cycle-orchestrator: failed to write iter-start state for cycle=$cycle_id iter=$iter (a resume may start at the wrong iteration)"
+ 
+         # Dispatch the cycle's stages in order.
+         # DSCMBR-1 (#1805): signal resume_first_iter for the first resumed iteration
+diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
+index 0d14ee10..34b8b6ea 100755
+--- a/core/pipeline/runner.sh
++++ b/core/pipeline/runner.sh
+@@ -2006,10 +2006,11 @@ main() {
+     # exemption logic is testable independently of the full pipeline startup sequence.
+     # --from-stage is only valid with --resume (or auto-resume): skip the persona
+     # preflight so the targeted "only valid with --resume" rejection fires instead
+-    # of a spurious persona-missing failure (#1805).
+-    local _spg_resume_mode="$resume_mode"
+-    [[ -n "$from_stage" ]] && _spg_resume_mode=true
+-    if ! _runner_startup_preflight_gate "$dry_run" "$_spg_resume_mode"; then
++    # of a spurious persona-missing failure (#1805). Save/restore resume_mode so the
++    # auto-resume block (below) still sees the original value for its own logic.
++    local _pre_preflight_resume="$resume_mode"
++    [[ -n "$from_stage" ]] && resume_mode=true
++    if ! _runner_startup_preflight_gate "$dry_run" "$resume_mode"; then
+         error "Startup preflight validation failed (ZBUILD_CONTRACT_VALIDATOR=${ZBUILD_CONTRACT_VALIDATOR:-warn}). See above."
+         _runner_run_id="${_runner_run_id:-${ZBUILD_RUN_ID:-preflight}}"
+         _runner_issue="${_runner_issue:-${issue:-0}}"
+@@ -2019,6 +2020,9 @@ main() {
+         _render_pipeline_end "preflight_failed"
+         return 1
+     fi
++    # Restore resume_mode so the auto-resume block sees the value that --resume set,
++    # not the from-stage sentinel true used to skip preflight above.
++    resume_mode="$_pre_preflight_resume"
+ 
+     # ADR-049 §Phase-1.1 (#1360): vision-document admission gate.
+     # Runs BEFORE the --dry-run branch so dry-run also enforces vision conformance.
