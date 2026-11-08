@@ -356,6 +356,32 @@ fi
 assert_eq "[#1805/DSFSTG-1] no stage before <s>=cyc dispatched after pipeline.skip_to_stage (no --resume path; RQFROM-2)" \
     "0" "$_s5_intake_after_skip"
 
+# [#1805/DSFSTG-1]: stage <s>=cyc must be dispatched as the first unit on the
+# plain --from-stage path; a cycle.start event must be emitted for cyc.
+# Before the change: without --from-stage support cyc is never dispatched on this
+#   path → no cycle.start → _s5_cyc_starts=0 → assert 0 > 0 → FAILS.
+# After the change: cyc is the first dispatched unit → cycle.start emitted → PASSES.
+_s5_cyc_starts=0
+if [[ -f "$S5_EVENTS_JSONL" ]]; then
+    _s5_cyc_starts="$(jq -r 'select(.type=="cycle.start" and .data.cycle_id=="cyc") | .type' \
+        "$S5_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_gt "[#1805/DSFSTG-1] cycle.start emitted for <s>=cyc (first dispatch unit on plain --from-stage path)" \
+    "$_s5_cyc_starts" "0"
+
+# [#1805/DSFSTG-1]: stage.start for cycled (cyc's first cycle member) on the
+# plain --from-stage path; confirms the cycle stage <s> was actually dispatched
+# and its first member was started.
+# Before the change: cyc not dispatched → no stage.start for cycled → FAILS.
+# After the change: cyc dispatches cycled → stage.start emitted → PASSES.
+_s5_cycled_started=0
+if [[ -f "$S5_EVENTS_JSONL" ]]; then
+    _s5_cycled_started="$(jq -r 'select(.type=="stage.start" and .data.stage=="cycled") | .type' \
+        "$S5_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_gt "[#1805/DSFSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage dispatches <s> as first unit on plain path)" \
+    "$_s5_cycled_started" "0"
+
 # ── SPEC-4: missing artifact with --from-stage exits 1 and names missing stage ─
 print_test_section "[#1805/DSFSTG-2] --from-stage with no restorable artifact emits diagnostic and exits 1"
 
