@@ -19,6 +19,10 @@
     [2mexpected >0, got: 0[0m
   [38;2;74;222;128m✓[0m [#1805/DSDSPK-1] cycle.start emitted for stage k (cyc) on resume (cycle.start half of Then: cycle stage k was dispatched)
 
+  [38;2;0;212;255m[#1805/DSDSPK-1] leaf stage k (build) emits stage.start on resume (leaf-stage branch)[0m
+  [38;2;74;222;128m✓[0m [#1805/DSDSPK-1] leaf stage k (build) is dispatched and emits stage.start on resume (leaf-stage branch: when k is a leaf stage, a stage.start event is emitted for k)
+  [38;2;74;222;128m✓[0m [#1805/DSDSPK-1] complete stage intake (k-1) emits no stage.start on resume (skipped by rehydration; only k dispatched)
+
   [38;2;0;212;255m[#1805/DSRHYD-1] path 2: auto-resume (status=interrupted) restores artifacts[0m
   [38;2;74;222;128m✓[0m [#1805/DSRHYD-1] path 2 (auto-resume/interrupted): intake-result.json restored
   [38;2;74;222;128m✓[0m [#1805/DSRHYD-1] path 2 (auto-resume): artifact content is byte-identical to its state at interruption (via _artifact_persist_restore + _artifact_persist_put_back from git state branch)
@@ -78,7 +82,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m7 of 47 tests failed[0m
+  [38;2;248;113;113m[1m7 of 49 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1805/DSRHYD-1] at least one stage dispatched after resume (dispatch loop ran; artifact was present before loop)
   [38;2;248;113;113m✗[0m [#1805/DSRHYD-1] pipeline.resume precedes first stage.start (restore before dispatch loop)
@@ -105,6 +109,10 @@
   [38;2;74;222;128m✓[0m [#1805/DSSKIP-1] dispatch-unit loop emits no stage.start for complete stage whose artifact is present after rehydration (intake skipped)
   [38;2;74;222;128m✓[0m [#1805/DSDSPK-1] stage k (cyc → member cycled) dispatched and emits stage.start on resume (interrupted stage was dispatched)
   [38;2;74;222;128m✓[0m [#1805/DSDSPK-1] cycle.start emitted for stage k (cyc) on resume (cycle.start half of Then: cycle stage k was dispatched)
+
+  [38;2;0;212;255m[#1805/DSDSPK-1] leaf stage k (build) emits stage.start on resume (leaf-stage branch)[0m
+  [38;2;74;222;128m✓[0m [#1805/DSDSPK-1] leaf stage k (build) is dispatched and emits stage.start on resume (leaf-stage branch: when k is a leaf stage, a stage.start event is emitted for k)
+  [38;2;74;222;128m✓[0m [#1805/DSDSPK-1] complete stage intake (k-1) emits no stage.start on resume (skipped by rehydration; only k dispatched)
 
   [38;2;0;212;255m[#1805/DSRHYD-1] path 2: auto-resume (status=interrupted) restores artifacts[0m
   [38;2;74;222;128m✓[0m [#1805/DSRHYD-1] path 2 (auto-resume/interrupted): intake-result.json restored
@@ -161,5 +169,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 47 tests passed[0m
+  [38;2;74;222;128m[1mAll 49 tests passed[0m
 

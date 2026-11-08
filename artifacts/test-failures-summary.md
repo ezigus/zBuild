@@ -1,8 +1,8 @@
 # Test stage summary
 
-- all 885 tests passed
+- all 887 tests passed
 - verdict: pass
-- passed: 885
+- passed: 887
 - failed: 0
 - exit_code: 0
 
