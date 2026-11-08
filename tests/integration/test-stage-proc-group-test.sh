@@ -182,14 +182,14 @@ else
         # No pgid file — simulates a spawn whose group could not be proven.
 
         _test_kill_staging_pg "$_spec5_pid_file" "$_spec5_pgid_file"
-        wait "$_spec5_pid" 2>/dev/null || true
-        sleep 0.1 2>/dev/null || true
+        # The wait itself is the marker (ADR-012): a signalled sleep returns
+        # >128 at once; one nothing killed runs out its 10s and returns 0.
+        _spec5_rc=0; wait "$_spec5_pid" 2>/dev/null || _spec5_rc=$?
 
-        if kill -0 "$_spec5_pid" 2>/dev/null; then
-            printf 'SPEC5_PROC_ALIVE\n'
-            kill -KILL "$_spec5_pid" 2>/dev/null || true
-        else
+        if (( _spec5_rc > 128 )); then
             printf 'SPEC5_PROC_DEAD\n'
+        else
+            printf 'SPEC5_PROC_ALIVE rc=%s\n' "$_spec5_rc"
         fi
     ) > "$TEST_TEMP_DIR/spec5-out.txt" 2>/dev/null || true
 

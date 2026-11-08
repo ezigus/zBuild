@@ -181,9 +181,11 @@ case "$_action" in
         _key="$(_get_flag -k "$@" || true)"
         _ns="$(_get_flag -n "$@" || true)"
         [[ -z "$_key" || -z "$_ns" ]] && { printf 'mock ruflo delete: missing -k or -n\n' >&2; exit 1; }
-        # Simulate a hung/killable clear if RUFLO_HANG_NS matches ns
-        if [[ -n "${RUFLO_HANG_NS:-}" && "$_ns" == "$RUFLO_HANG_NS" ]]; then
-            sleep 60
+        # Simulate a hung/killable clear if RUFLO_HANG_NS matches ns (the
+        # plugin scopes it: zbuild-repo-<hash>-<ns>)
+        if [[ -n "${RUFLO_HANG_NS:-}" && "$_ns" == *"-$RUFLO_HANG_NS" ]]; then
+            printf 'hanging %s %s\n' "$RUFLO_HANG_NS" "$$" >> "${RUFLO_STORE}/../ruflo.hang"
+            exec sleep 60
         fi
         _f="$STORE/$_ns/$_key"
         [[ -f "$_f" ]] && rm -f "$_f"
@@ -248,18 +250,27 @@ set -e
 assert_exit_code "mid-clear kill: namespace exists before test (rc=0)" "0" "$pre_exists_rc"
 
 # Launch a namespace_clear in a subshell that will hang (RUFLO_HANG_NS set),
-# then kill it after a short delay.
+# then kill it once the mock says it is inside the clear (ADR-012: wait for a
+# marker, never a sleep).
 export RUFLO_HANG_NS="$KILL_NS"
 
 set +e
+# The fresh plugin copy is initialised first, so the clear lists the real
+# scoped namespace and reaches the (hung) delete.
+_init_then_clear() { memory_backend_init >/dev/null 2>&1; memory_namespace_clear "$1"; }
 (
     export RUFLO_HANG_NS="$KILL_NS"
-    _subshell_plugin memory_namespace_clear "$KILL_NS"
+    _subshell_plugin _init_then_clear "$KILL_NS"
 ) &
 _kill_pid=$!
-sleep 0.15
+_hang_seen=1
+wait_for_event "$TEST_TEMP_DIR/ruflo.hang" "hanging $KILL_NS" 600 0.05 || _hang_seen=0
+assert_eq "mid-clear kill: the clear reached the hung delete before the kill" "1" "$_hang_seen"
 kill -KILL "$_kill_pid" 2>/dev/null || true
 wait "$_kill_pid" 2>/dev/null || true
+# The hung mock outlives the killed caller; stop it so it holds no pipe open.
+_hang_pid="$(awk -v ns="$KILL_NS" '$2 == ns { print $3; exit }' "$TEST_TEMP_DIR/ruflo.hang" 2>/dev/null)"
+[[ -n "$_hang_pid" ]] && kill -KILL "$_hang_pid" 2>/dev/null || true
 set -e
 
 unset RUFLO_HANG_NS

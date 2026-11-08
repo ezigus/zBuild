@@ -147,8 +147,12 @@ _reset
 ( cd "$_ZB_REPO" && exec bash "$REPO_ROOT/core/pipeline/runner.sh" --issue "$_ZB_ISSUE" --template simple --no-resume \
     >"$TEST_TEMP_DIR/runner4.stdout" 2>"$TEST_TEMP_DIR/runner4.stderr" ) &
 RUNNER_PID=$!
+# ADR-012: the TERM waits for a marker, not a sleep — the slow intake has
+# started, and the live comment already shows its running row.
+_running_posted() { [[ "$(last_body)" == *"intake**"*"→ running"* ]]; }
 if wait_for_event "$ZBUILD_TEST_SLOW_MARK" 'running' 600 0.1; then
-    sleep 1
+    for (( _w = 0; _w < 300; _w++ )); do _running_posted && break; sleep 0.1; done
+    _running_posted || assert_fail "[SPEC-4] the live comment showed the running intake before TERM" "no body did; log: $(tail -5 "$STATE_DIR/status-comment.log" 2>/dev/null)"
     kill -TERM "$RUNNER_PID" 2>/dev/null || true
     set +e; wait "$RUNNER_PID"; rc4=$?; set -e
     assert_eq "[SPEC-4] runner exits 1 on TERM (not 143)" "1" "$rc4"

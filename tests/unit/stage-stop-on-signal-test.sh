@@ -225,7 +225,8 @@ plugin_stop_running
 _lc_dispatch_starting
 sleep 30 & _s9=$!
 _lc_stage_started "$_s9"
-sleep 0.3
+# No sleep (ADR-012): a stop waits until the stage is gone and reaps it, so
+# had one happened, the stage would already be gone here.
 assert_eq "[S9] a stop outside a dispatch does not stop the next stage" "1" "$(kill -0 "$_s9" 2>/dev/null && echo 1 || echo 0)"
 kill -KILL "$_s9" 2>/dev/null; wait "$_s9" 2>/dev/null
 _ZB_LC_STAGE_PID=""
