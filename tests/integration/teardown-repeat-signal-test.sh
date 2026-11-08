@@ -23,7 +23,7 @@
 # default TERM.
 # T3 a group that keeps getting TERM from the moment the stage starts: the run
 #    still ends through its handler (rc 1)
-# T4 ...release finishes and persist runs
+# T4 ...release finishes (T4a) and persist runs (T4b)
 # T5 ...and the stage is not run again
 set -uo pipefail
 
@@ -130,8 +130,8 @@ for _ in $(seq 1 300); do kill -0 "$RUNNER_PID" 2>/dev/null || break; sleep 0.1;
 kill -KILL -- "-$RUNNER_PID" 2>/dev/null || true
 _storm_rc=0; wait "$RUNNER_PID" 2>/dev/null || _storm_rc=$?
 assert_eq "[T3] the run ends through its handler under repeated TERM (rc 1)" "1" "$_storm_rc"
-assert_file_exists "[T4] release finishes under repeated TERM" "$REL_OUT"
-assert_file_exists "[T4] persist runs under repeated TERM" "$PERSISTED"
+assert_file_exists "[T4a] release finishes under repeated TERM" "$REL_OUT"
+assert_file_exists "[T4b] persist runs under repeated TERM" "$PERSISTED"
 assert_eq "[T5] the stage is not run again" "1" "$(grep -c x "$STARTS")"
 [[ "$_storm_rc" == 1 && -e "$PERSISTED" ]] || tail -15 "$TEST_TEMP_DIR/storm.out" >&2
 
