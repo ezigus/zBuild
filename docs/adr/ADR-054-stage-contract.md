@@ -3,6 +3,7 @@
 **Status:** Accepted (2026-08-09)
 **Date:** 2026-08-09
 **Issue:** #1820
+**Amended:** 2026-11-08 (#2493) — §7: a signal that arrives while a signal handler runs is ignored, never handled inside it (Amendment at the end).
 **Amended:** 2026-11-07 (#2487) — §6a: a first try that ends `unusable` is run again, even when it changed nothing.
 **Amended:** 2026-11-08 (#2489) — §7: a stop watches a child it has stopped until it is gone, never `wait`s on it (Amendment at the end). Previously amended 2026-10-31 (#2439) — §6a: the engine runs ANY stage again, from plugin_hook_call; the default `retry:` is 1; a stage never repeats a model call itself (Amendment at the end). Previously amended 2026-10-24 — §7: a signal stops the running stage instead of waiting for it to end. Previously amended 2026-10-13 (#2366) — §6: result contract 3 carries ONE word, `outcome`, from one closed list the engine owns (Amendment at the end). Previously amended 2026-10-07 (#1798) — §4: a leaf stage whose verdict is fail-class ends the run unless its template marks it `blocking: false` (Amendment at the end).
 **Amended:** 2026-09-16 (#2111) — §6: a rate limit observed by the router resolves to `unavailable`, not `throttled`. The engine now enforces `halt_unavailable` on the cycle dispatch path (it was announced only): the run ends `aborted` with `reason=llm_rate_limited` and the reset text under `.rate_limit.message`, state persisted for ADR-050 resume. `throttled` stays in the closed set with no rate-limit emitter. Waiting and retrying re-entered the same limit for five iterations on #1840/#1841, re-verifying an unchanged tree each time.
@@ -607,7 +608,27 @@ does not do this.
   every 10 ms), never `wait`ed on: the stage, its time-limit watchdog and its 2 s killer in `plugin_stop_running`,
   and the run watchdog in `_runner_abort_trap`. Bash reaps the child itself; the stage's rc is then read from it.
 
+### Amendment (2026-11-08, #2493) — §7: a signal that arrives while a handler runs is ignored, not handled inside it
+
+"Every later one is ignored" was carried out with a `:` trap, which still runs a handler. A second TERM inside a
+TERM handler is normal: `timeout` sends two, and the run's and a stage's watchdogs TERM the whole group.
+
+- **On Ubuntu's bash (5.2.21), a handler run inside another broke the outer one off** when the outer was in a command
+  substitution (`unexpected EOF while looking for matching ')'`). The run's TERM handler never reached its `exit 1`:
+  the run went on, ran its stage again, and was killed with nothing released (`runner-release-exit-paths-test.sh`
+  SPEC-5, 7 of 125 Ubuntu attempts).
+- **On every bash, the `:` trap left the EXIT trap's own subshells and command substitutions on the default TERM,**
+  so a TERM to the group ended them part-way, and an always-run stage could die before its subshell set its trap.
+- **Every INT/TERM handler ignores INT and TERM as its first step:** the run's handler, its EXIT trap, the cycle's,
+  the parallel group's, the model loop's and a stage's signal guard.
+- **An always-run stage takes the default TERM back only once it leads its own group,** so its limit can stop it,
+  and a TERM to the run's group in between cannot end it (with TERM trapped in its subshell, the stage's job took the
+  default at its fork, before it had its own group: release was lost in 86 of 1,930 storm runs on Ubuntu). That
+  subshell's watchdog and `plugin_stop_running`'s killer are stopped with KILL, since both now ignore TERM.
+
 ## Enforced by
+
+- §7 amendment 2026-11-08 (#2493: a signal that arrives while a handler runs is ignored) → `tests/integration/teardown-repeat-signal-test.sh` T3–T5 (TERM every 10 ms to the run's group: the run still ends rc 1, release (T4a) and persist (T4b) run, the stage is not run again); `tests/unit/signal-handler-hold-test.sh` H1–H4 (each handler runs once when its first step TERMs its own shell)
 
 - §7 amendment 2026-11-08 (#2489: a stop does not wait on a child it has just stopped) → `tests/unit/stage-stop-on-signal-test.sh` S11 (a trap that stops a bounded stage and exits ends within 1 s, 20 times in a row)
 
