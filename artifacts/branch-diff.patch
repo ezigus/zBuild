@@ -1,8 +1,8 @@
 diff --git a/core/pipeline/cycle-orchestrator.sh b/core/pipeline/cycle-orchestrator.sh
-index b8eae46d..fdea8b7d 100644
+index 85c4e892..b90eea20 100644
 --- a/core/pipeline/cycle-orchestrator.sh
 +++ b/core/pipeline/cycle-orchestrator.sh
-@@ -1219,6 +1219,28 @@ _cycle_state_write_iter_atomic() {
+@@ -1222,6 +1222,28 @@ _cycle_state_write_iter_atomic() {
            _ZB_CYCLE_FC _ZB_CYCLE_OVERALL
  }
  
@@ -31,7 +31,7 @@ index b8eae46d..fdea8b7d 100644
  # ─── _cycle_state_write_member_atomic ────────────────────────────────────────
  # Persists a cycle member's terminal status and classified verdict into the
  # top-level stage_statuses / stage_verdicts maps of pipeline-state.json.
-@@ -1339,7 +1361,7 @@ _CYCLE_VERIFIED_BLOB=""
+@@ -1342,7 +1364,7 @@ _CYCLE_VERIFIED_BLOB=""
  # with _CYCLE_ITER_OUTCOME naming why: failed | interrupted | aborted | error
  # (#1850, ADR-054 §4 — the word, never an rc).
  _cycle_iter_dispatch() {
@@ -40,7 +40,7 @@ index b8eae46d..fdea8b7d 100644
      _CYCLE_LAST_VERDICTS_BLOB="{}"
      _CYCLE_LAST_FAILURE_COUNT=0
      _CYCLE_ITER_OUTCOME="error"
-@@ -1443,6 +1465,41 @@ _cycle_iter_dispatch() {
+@@ -1446,6 +1468,41 @@ _cycle_iter_dispatch() {
                  "$(jq -r '.status // "complete"' <<< "$_ru_entry")" "$(jq -r '.verdict // "pass"' <<< "$_ru_entry")" || true
              continue
          fi
@@ -82,7 +82,7 @@ index b8eae46d..fdea8b7d 100644
          _cycle_emit_member_dispatch_start "$_cyc_pos" "$s" "$_member_kind_pre"
          export ZBUILD_CYCLE_ITER="$iter"
          export ZBUILD_CYCLE_ID="${_CYCLE_TRAP_CYCLE_ID}"
-@@ -2334,15 +2391,57 @@ _cycle_orchestrator_run_body() {
+@@ -2337,15 +2394,57 @@ _cycle_orchestrator_run_body() {
          { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 1; }
      }
  
@@ -142,7 +142,7 @@ index b8eae46d..fdea8b7d 100644
          _CYCLE_TRAP_ITER="$iter"
          _CYCLE_LAST_ITERATIONS="$iter"
  
-@@ -2395,9 +2494,25 @@ _cycle_orchestrator_run_body() {
+@@ -2398,9 +2497,25 @@ _cycle_orchestrator_run_body() {
              { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 1; }
          fi
  
@@ -170,10 +170,10 @@ index b8eae46d..fdea8b7d 100644
          [[ $_ORCH_HAD_E -eq 1 ]] && set -e
          # The round stopped before every member ran (#1850: the word, not an rc).
 diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
-index d975a269..d247fc4e 100755
+index ee069d8d..7fee003b 100755
 --- a/core/pipeline/runner.sh
 +++ b/core/pipeline/runner.sh
-@@ -1701,6 +1701,89 @@ _runner_rearm_traps() {
+@@ -1704,6 +1704,89 @@ _runner_rearm_traps() {
      trap '_runner_signal_trap TERM' TERM
  }
  
@@ -263,7 +263,7 @@ index d975a269..d247fc4e 100755
  main() {
      local issue="" goal="" dry_run=false template="simple"
      local resume_mode=false from_stage="" no_resume=false force=false
-@@ -1742,19 +1825,45 @@ main() {
+@@ -1745,19 +1828,45 @@ main() {
      export ZBUILD_RESUME
      [[ "$ZBUILD_RESUME" == "0" ]] && no_resume=true
  
@@ -316,7 +316,7 @@ index d975a269..d247fc4e 100755
      local plugins_root="${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}"
      # #1614: fill the manifest cache HERE, in main()'s own shell. yaml_get was
      # 6,338 awk spawns per run (~13s of 27s); most call sites read it inside $( ),
-@@ -1898,6 +2007,12 @@ main() {
+@@ -1901,6 +2010,12 @@ main() {
      # ADR-051 §warn-first (#1318): startup preflight — persona bindings + requires.plugins.
      # Routed through _runner_startup_preflight_gate (defined above) so the dry-run/resume
      # exemption logic is testable independently of the full pipeline startup sequence.
@@ -329,7 +329,7 @@ index d975a269..d247fc4e 100755
      if ! _runner_startup_preflight_gate "$dry_run" "$resume_mode"; then
          error "Startup preflight validation failed (ZBUILD_CONTRACT_VALIDATOR=${ZBUILD_CONTRACT_VALIDATOR:-warn}). See above."
          _runner_run_id="${_runner_run_id:-${ZBUILD_RUN_ID:-preflight}}"
-@@ -1908,6 +2023,9 @@ main() {
+@@ -1911,6 +2026,9 @@ main() {
          _render_pipeline_end "preflight_failed"
          return 1
      fi
@@ -339,7 +339,7 @@ index d975a269..d247fc4e 100755
  
      # ADR-049 §Phase-1.1 (#1360): vision-document admission gate.
      # Runs BEFORE the --dry-run branch so dry-run also enforces vision conformance.
-@@ -2005,12 +2123,21 @@ main() {
+@@ -2008,12 +2126,21 @@ main() {
      fi
      _runner_state_file="$state_file"
  
@@ -362,7 +362,7 @@ index d975a269..d247fc4e 100755
          if ! $_fs_valid; then
              error "--from-stage '$from_stage' is not a known stage (active stages: ${active_stages[*]})"
              return 1
-@@ -2112,9 +2239,77 @@ main() {
+@@ -2115,9 +2242,77 @@ main() {
                  resume_mode=false
                  ;;
          esac
@@ -440,7 +440,7 @@ index d975a269..d247fc4e 100755
          # Sanitize ZBUILD_RUN_ID: strip characters unsafe in filenames (/, .., spaces, etc.)
          # to prevent path traversal when run_id is used in report-${run_id}.md filenames
          # AND in the per-run state dir below (#887). Generated BEFORE the re-root.
-@@ -2776,11 +2971,36 @@ main() {
+@@ -2781,11 +2976,36 @@ main() {
          # resumed run immediately. Resume must always start from a clean
          # signal channel.
          _zbuild_disarm_abort_sentinel
@@ -477,7 +477,7 @@ index d975a269..d247fc4e 100755
          fi
      else
          # #1791: the engine sha rides on pipeline.start and the banner so an
-@@ -2859,6 +3079,16 @@ main() {
+@@ -2864,6 +3084,16 @@ main() {
      local skip_until_stage=""
      [[ -n "$from_stage" ]] && skip_until_stage="$from_stage"
  
@@ -494,7 +494,7 @@ index d975a269..d247fc4e 100755
      # ADR-021 (#512 + #511 F2): cycle-aware dispatch.
      # #511 Pin 4 — detect-and-enable with env override:
      #   ZBUILD_CYCLES_ENABLED=0  → disabled (force off, even if template asks)
-@@ -3069,6 +3299,10 @@ main() {
+@@ -3074,6 +3304,10 @@ main() {
              _CYCLE_DISPATCH_STATUS="failed"
              return 1
          fi
@@ -505,7 +505,7 @@ index d975a269..d247fc4e 100755
          set +e; plugin_hook_call "$_cd_plugin_dir" run "$_cd_stage" "$_cd_state"; _cd_rc=$?
          [[ $_cd_had_e -eq 1 ]] && set -e
          _cd_manifest="$_cd_plugin_dir/manifest.yaml"
-@@ -3336,6 +3570,67 @@ main() {
+@@ -3341,6 +3575,67 @@ main() {
              case "$_unit" in
                  cycle:*)
                      local _cyc_id="${_unit#cycle:}"
@@ -573,7 +573,7 @@ index d975a269..d247fc4e 100755
                      # #524: replace bare `info` with operator-visible cycle
                      # entry banner (heavy ═ + ▸ Entering + DIM trailer).
                      local _cyc_stages_csv=""
-@@ -3604,6 +3899,56 @@ main() {
+@@ -3609,6 +3904,56 @@ main() {
                      ;;
                  stage:*)
                      local _ust="${_unit#stage:}"
@@ -630,7 +630,7 @@ index d975a269..d247fc4e 100755
                      # Re-enter the legacy loop for a single stage by re-using
                      # active_stages — simplest correct path: run that stage's
                      # body inline via cycle_dispatch_stage (gives same plugin
-@@ -3750,9 +4095,12 @@ main() {
+@@ -3755,9 +4100,12 @@ main() {
                              eb_emit_event "stage.verdict.stale_artifact" \
                                  "stage=$stage" "path=$_sk_resolved" \
                                  "run_id=$_runner_run_id"
@@ -2390,10 +2390,10 @@ index 00000000..2ebaf465
 +exit $((FAIL > 0))
 diff --git a/tests/integration/resume-rehydrate-test.sh b/tests/integration/resume-rehydrate-test.sh
 new file mode 100644
-index 00000000..96d4285a
+index 00000000..35453bca
 --- /dev/null
 +++ b/tests/integration/resume-rehydrate-test.sh
-@@ -0,0 +1,910 @@
+@@ -0,0 +1,1006 @@
 +#!/usr/bin/env bash
 +# Tests: resume rehydrates completed-stage artifacts from the git state branch
 +# before the dispatch loop. (issue #1805, ADR-006 §3.5)
@@ -2649,6 +2649,102 @@ index 00000000..96d4285a
 +fi
 +assert_gt "[#1805/DSDSPK-1] cycle.start emitted for stage k (cyc) on resume (cycle.start half of Then: cycle stage k was dispatched)" \
 +    "$_s1_cyc_cycle_starts" "0"
++
++# ── DSDSPK-1 leaf-stage branch: leaf stage k emits stage.start on resume ─────
++# [#1805/DSDSPK-1] Then (leaf-stage branch): when k is a leaf stage, a stage.start
++# event is emitted for k. The cycle-stage sub-case above exercises the cycle.start +
++# member-stage.start branch. This sub-case uses resume-minimal (intake → build → test,
++# all leaf stages) with intake=complete and build=pending, so k=build is a leaf stage.
++print_test_section "[#1805/DSDSPK-1] leaf stage k (build) emits stage.start on resume (leaf-stage branch)"
++
++# Given — a run with stages intake (k-1, complete) and build (k, leaf stage,
++#   interrupted, pending); stages 1…k-1 are marked complete with their artifacts
++#   present in ZBUILD_ARTIFACT_DIR after rehydration.
++_DSPK_LEAF_ID="$(zb_test_issue)"
++_DSPK_LEAF_STATE_DIR="$TEST_TEMP_DIR/dspk-leaf-state"
++_DSPK_LEAF_EVENTS_DIR="$TEST_TEMP_DIR/dspk-leaf-events"
++_DSPK_LEAF_EVENTS_JSONL="$_DSPK_LEAF_EVENTS_DIR/events.jsonl"
++_DSPK_LEAF_STATE_FILE="$_DSPK_LEAF_STATE_DIR/pipeline-state.json"
++mkdir -p "$_DSPK_LEAF_STATE_DIR/artifacts" "$_DSPK_LEAF_EVENTS_DIR"
++
++_DSPK_LEAF_WORK_REPO="$(setup_git_temp_repo dspk-leaf-work)"
++# resume-minimal: intake → build → test; linear, no cycles; stages have no roles.
++install_template_overlay "$_DSPK_LEAF_WORK_REPO" resume-minimal
++
++# Create mock plugins for build and test (resolved by stage ID; no roles declared).
++# intake plugin already created at top of file; build and test need new entries.
++mock_plugin_factory "build" "agent" 0 >/dev/null
++mock_plugin_factory "test" "agent" 0 >/dev/null
++
++# Write intake artifact and snapshot to the state branch to simulate a run
++# that completed intake (k-1) before being interrupted at build (k).
++printf '{"result_contract":3,"outcome":"pass","reason":"prior-run intake"}' \
++    > "$_DSPK_LEAF_STATE_DIR/artifacts/intake-result.json"
++
++_dspk_leaf_snap_rc=0
++( export ZBUILD_STATE_DIR="$_DSPK_LEAF_STATE_DIR"
++  cd "$_DSPK_LEAF_WORK_REPO" && _artifact_persist_snapshot "$_DSPK_LEAF_STATE_DIR" "$_DSPK_LEAF_ID" ) \
++    >"$TEST_TEMP_DIR/dspk-leaf-snap.log" 2>&1 || _dspk_leaf_snap_rc=$?
++if [[ "$_dspk_leaf_snap_rc" -ne 0 ]]; then
++    assert_fail "[#1805/DSDSPK-1] setup (leaf): snapshot to state branch failed" \
++        "rc=$_dspk_leaf_snap_rc; $(cat "$TEST_TEMP_DIR/dspk-leaf-snap.log" 2>/dev/null | tail -5)"
++fi
++rm -f "$_DSPK_LEAF_STATE_DIR/artifacts/intake-result.json"
++
++# State: intake=complete (k-1), build=pending (k = interrupted leaf stage).
++jq -n \
++    --arg run_id "dspk-leaf-1805" \
++    --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
++    --argjson issue "$_DSPK_LEAF_ID" \
++    '{
++        schema_version: 1, run_id: $run_id, issue: $issue,
++        stage_statuses: {intake: "complete", build: "pending"},
++        current_iteration: 0, self_heal_count: {}, scope_manifest_hash: "",
++        cost_ledger_pointer: 0, claim_lease_id: "", plugin_state: {},
++        status: "in_progress", updated_at: $now
++    }' > "$_DSPK_LEAF_STATE_FILE"
++
++# When — the dispatch loop reaches stage build (k, leaf) during resume (--resume flag).
++set +e
++( cd "$_DSPK_LEAF_WORK_REPO" && env \
++    ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
++    ZBUILD_STATE_DIR="$_DSPK_LEAF_STATE_DIR" \
++    ZBUILD_STATE_FILE="$_DSPK_LEAF_STATE_FILE" \
++    ZBUILD_EVENTS_DIR="$_DSPK_LEAF_EVENTS_DIR" \
++    ZBUILD_EVENTS_JSONL="$_DSPK_LEAF_EVENTS_JSONL" \
++    ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
++    ZBUILD_CONTRACT_VALIDATOR=warn \
++    ZBUILD_VISION_GATE=off \
++    PATH="$PATH" HOME="$HOME" \
++    bash "$RUNNER" --template resume-minimal --resume --issue "$_DSPK_LEAF_ID" ) \
++    >"$TEST_TEMP_DIR/dspk-leaf-stdout.txt" 2>"$TEST_TEMP_DIR/dspk-leaf-stderr.txt"
++set -e
++
++# Then — when k is a leaf stage, a stage.start event is emitted for k (build).
++# Before the change: runner has no rehydration + dispatch-skip logic → it may exit
++#   before dispatching build, OR it dispatches intake again instead of skipping it.
++#   Either way, build emits no stage.start because the skip-and-dispatch path is absent
++#   → _dspk_leaf_build_starts=0 → assert 0 > 0 → FAILS.
++# After the change: rehydrate places intake artifact → dispatch loop skips intake
++#   (resume_mode + artifact present) → dispatches build (leaf stage k) →
++#   stage.start emitted for build → count >= 1 → PASSES.
++_dspk_leaf_build_starts=0
++if [[ -f "$_DSPK_LEAF_EVENTS_JSONL" ]]; then
++    _dspk_leaf_build_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="build") | .type' \
++        "$_DSPK_LEAF_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
++fi
++assert_gt "[#1805/DSDSPK-1] leaf stage k (build) is dispatched and emits stage.start on resume (leaf-stage branch: when k is a leaf stage, a stage.start event is emitted for k)" \
++    "$_dspk_leaf_build_starts" "0"
++
++# [#1805/DSDSPK-1]: complete stage intake (k-1) must NOT emit stage.start on resume.
++# This confirms skip-then-dispatch: k-1 rehydrated+skipped, k dispatched.
++_dspk_leaf_intake_starts=0
++if [[ -f "$_DSPK_LEAF_EVENTS_JSONL" ]]; then
++    _dspk_leaf_intake_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="intake") | .type' \
++        "$_DSPK_LEAF_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
++fi
++assert_eq "[#1805/DSDSPK-1] complete stage intake (k-1) emits no stage.start on resume (skipped by rehydration; only k dispatched)" \
++    "0" "$_dspk_leaf_intake_starts"
 +
 +# ── SPEC-1 path 2: auto-resume on status=interrupted ─────────────────────────
 +# [#1805/DSRHYD-1] all entry paths: path 2 — auto-resume when status=interrupted.
