@@ -16,6 +16,8 @@
 # A1 an answer is done, wrong or not mine; anything else is no answer
 # A2 only a `wrong` answer goes back to the stage that raised the finding
 # A3 a working call is told the three forms; a judging call is not
+# A4 only this reply's answers count: a finding answered before is answered again
+# A5 what each answer means; a finding about your own output is yours
 # B1 a finding a stage was shown and did not answer is not asked for (#2491):
 #    no call is made; it is named as not answered, and stays open
 # B2 a stage shown no finding has nothing unanswered
@@ -72,6 +74,20 @@ assert_contains "[A3] a working call is told every finding gets an answer" "$_wo
 assert_contains "[A3] ...and the other two forms" "$_work" "ANSWER <the finding as listed>: wrong — <why it does not hold>"
 _a3_j=1; [[ "$_judge" == *"ANSWER <the finding as listed>"* ]] && _a3_j=0
 assert_eq "[A3] a judging call is not told to answer findings" "1" "$_a3_j"
+
+print_test_section "A4-A5: what each answer means, and only this reply counts (#2501)"
+# #1805 run 42488374386: build skipped 11 findings its earlier output had
+# answered, and answered "not mine" for "needs no change", "needs a file outside
+# my scope" and "a function is not sourced" — none of them another stage's work.
+assert_contains "[A4] only this reply's answers count" "$_work" "Only the answers in this reply count"
+assert_contains "[A4] ...so a finding answered before is answered again" "$_work" "even one you answered in an earlier reply or a past run"
+assert_contains "[A5] done means the stage changed its output" "$_work" "done — you changed your output for it"
+assert_contains "[A5] wrong covers a finding that needs no change" "$_work" "wrong — it does not hold, or it needs no change"
+assert_contains "[A5] not mine is only another stage's output" "$_work" "not mine — it holds and needs a change, and that change is to another stage's output, not yours"
+assert_contains "[A5] a finding about your own output is yours" "$_work" "A finding about your own output is yours, even when its fix is outside this issue's requirements or needs a file you may not touch"
+assert_contains "[A5] ...and a file you may not touch is asked for" "$_work" "ask for it the way your instructions say"
+_a5_j=1; [[ "$_judge" == *"Only the answers in this reply count"* ]] && _a5_j=0
+assert_eq "[A5] a judging call is told none of it" "1" "$_a5_j"
 
 print_test_section "B1-B3: a finding not answered stays open"
 _P_SHOWN=$'Previous work\n- lens-sre-code finding 1 (opened by review_lenses): the write is silent\n- lens-sre-code finding 2 (opened by review_lenses): the jq error is hidden\n- issue-acceptance finding 1 (opened by issue-acceptance): R2 is not met\nmore'

@@ -325,7 +325,14 @@ IFS= read -r -d '' _ZB_ANSWER_FORMS <<'EOF' || true
     ANSWER <the finding as listed>: done — <what you changed for it>
     ANSWER <the finding as listed>: wrong — <why it does not hold>
     ANSWER <the finding as listed>: not mine — <why your job cannot fix it>
+  Only the answers in this reply count: answer every finding listed, even one you answered in an earlier reply or a past run.
   A finding you do not answer stays open, and is shown to you again.
+- What each answer means:
+  - done — you changed your output for it.
+  - wrong — it does not hold, or it needs no change. Say why.
+  - not mine — it holds and needs a change, and that change is to another stage's output, not yours.
+  A finding about your own output is yours, even when its fix is outside this issue's requirements or needs a file you may not touch:
+  fix it, or answer wrong and say why it needs no change. A file you may not touch, ask for it the way your instructions say.
 EOF
 stage_answer_forms() { printf '%s' "$_ZB_ANSWER_FORMS"; }
 
