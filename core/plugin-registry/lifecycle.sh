@@ -266,7 +266,8 @@ plugin_stop_running() {
     # bash kept for it.
     zb_wait_gone "$p"
     _ZB_LC_STAGE_RC=0; wait "$p" 2>/dev/null || _ZB_LC_STAGE_RC=$?
-    kill "$w" 2>/dev/null; zb_wait_gone "$w"
+    # KILL: started inside a signal handler, it ignores TERM (#2493).
+    kill -KILL "$w" 2>/dev/null; zb_wait_gone "$w"
     # What ignored TERM and outlived the stage's shell (#2333's lesson).
     # shellcheck disable=SC2086
     kill -KILL $tree 2>/dev/null || true

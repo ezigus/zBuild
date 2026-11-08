@@ -906,7 +906,10 @@ _runner_restore_stderr() {
     # _runner_abort_trap could execute. By setting it HERE the guard is already
     # active by the time the function returns. B3 is satisfied because
     # _runner_restore_stderr is still the first call in _runner_abort_trap.
-    trap ':' INT TERM
+    # Ignored, not trapped with ':' (#2493): a handler run inside the trap broke
+    # it off on bash 5.2, and a TERM to the group ended the trap's own command
+    # substitutions, which take the default TERM.
+    trap '' INT TERM
     [[ -n "${_RUNNER_ERR_FD:-}" ]] && exec 2>&"$_RUNNER_ERR_FD"
     return 0
 }
@@ -2490,8 +2493,9 @@ main() {
             # after a grace for a hook that traps TERM. The watchdog gets its own
             # group too, so cancelling it leaves no `sleep` behind. (#1801)
             (
-                # First: a subshell starts with the default TERM, so a signal to
-                # the run's group before this line would end it (and its stage).
+                # The subshell starts with TERM ignored, as this trap has it.
+                # Trapped (not ignored) from here, so the stage it starts takes
+                # the default TERM, and its bound can stop it.
                 trap ':' INT TERM
                 export ZBUILD_TEARDOWN_SCOPE=release
                 set -m
@@ -2528,7 +2532,7 @@ main() {
         # pressed twice) would otherwise run _runner_signal_trap, whose `exit 1`
         # ends this trap before the always-run stages are done. Each always-run
         # stage is bounded by its own timeout_s, so teardown cannot hang.
-        trap ':' INT TERM
+        trap '' INT TERM
         # ADR-054 §7: a signal ends the run while a stage is still running;
         # stop it, and all it started, before anything else.
         declare -F plugin_stop_running >/dev/null 2>&1 && plugin_stop_running
@@ -2658,6 +2662,9 @@ main() {
     # sentinel FIRST so any in-flight subshell (cycle iter, strategy fanout)
     # sees it via _zbuild_check_abort at its next boundary.
     _runner_signal_trap() {
+        # ADR-054 §7 (#2493): a repeat signal is ignored, never handled inside
+        # this handler (on bash 5.2 that broke this one off part-way).
+        trap '' INT TERM
         local _sig="${1:-INT}" _word="sigint"
         [[ "$_sig" == "TERM" ]] && _word="sigterm"
         _zbuild_arm_abort_sentinel "$_word"

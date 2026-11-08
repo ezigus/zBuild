@@ -34,6 +34,9 @@ stage_signal_begin() {
 }
 
 _stage_signal_fire() {
+    # ADR-054 §7 (#2493): a repeat signal is ignored while this runs, never
+    # handled inside it (on bash 5.2 that broke this handler off part-way).
+    trap '' INT TERM
     "$_ZB_SIGNAL_CB" "$STAGE_SIGNAL_DISPOSITION" "$STAGE_SIGNAL_REASON"
 }
 
