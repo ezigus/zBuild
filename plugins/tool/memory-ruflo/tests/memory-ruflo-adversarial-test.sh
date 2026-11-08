@@ -269,7 +269,7 @@ assert_eq "mid-clear kill: the clear reached the hung delete before the kill" "1
 kill -KILL "$_kill_pid" 2>/dev/null || true
 wait "$_kill_pid" 2>/dev/null || true
 # The hung mock outlives the killed caller; stop it so it holds no pipe open.
-_hang_pid="$(awk -v ns="$KILL_NS" '$2 == ns { print $3 }' "$TEST_TEMP_DIR/ruflo.hang" 2>/dev/null)"
+_hang_pid="$(awk -v ns="$KILL_NS" '$2 == ns { print $3; exit }' "$TEST_TEMP_DIR/ruflo.hang" 2>/dev/null)"
 [[ -n "$_hang_pid" ]] && kill -KILL "$_hang_pid" 2>/dev/null || true
 set -e
 
