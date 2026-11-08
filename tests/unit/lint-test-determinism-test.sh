@@ -75,6 +75,8 @@ assert_eq "[T2] a mock of gh does not cover curl" "rc=1" \
 print_test_section "T3: a call by absolute path fails, mock or not"
 assert_eq "[T3] /usr/bin/curl"    "rc=1" "$(_rc "$U" $'mock_anthropic_api\n/usr/bin/curl -s https://example.com')"
 assert_eq "[T3] /usr/local/bin/gh" "rc=1" "$(_rc "$U" $'mock_gh x\n/usr/local/bin/gh pr list')"
+assert_eq "[T3] a path with a hyphen in it (review on #2500)" "rc=1" \
+    "$(_rc "$U" $'mock_gh x\n/opt/my-tool/bin/gh pr list')"
 
 print_test_section "T4: mentions of the name pass"
 assert_eq "[T4] a comment"        "rc=0" "$(_rc "$U" '# gh pr create used to refuse here')"
@@ -103,6 +105,8 @@ assert_eq "[T6] a multi-line poll loop" "rc=0" \
 assert_eq "[T6] a background sleeper" "rc=0" "$(_rc "$U" $'sleep 30 &\np=$!\nkill "$p"')"
 assert_eq "[T6] kill -0 is a liveness check" "rc=0" \
     "$(_rc "$U" $'sleep 0.2\nkill -0 "$pid" && alive=1')"
+assert_eq "[T6] ...and so is kill -s 0 (review on #2500)" "rc=0" \
+    "$(_rc "$U" $'sleep 0.2\nkill -s 0 "$pid" && alive=1')"
 assert_eq "[T6] a kill more than three commands later" "rc=0" \
     "$(_rc "$U" $'sleep 1\na\nb\nc\nkill "$pid"')"
 

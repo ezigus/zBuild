@@ -21,7 +21,10 @@
 # code under test, and only the sleep that times them is refused.
 #
 # Only what a file runs is read: comments, quoted text and heredoc bodies
-# (where mocks are written) are not calls (zb_shell_code_named). A line may opt
+# (where mocks are written) are not calls (zb_shell_code_named). Mocks are found
+# in the raw text, since a mock's name or path is often quoted (`mock_binary
+# "gh"`) and its script a heredoc; so a mock's name in a string or a comment
+# also counts as a mock (a known blind spot, review on #2500). A line may opt
 # out with
 #   # determinism-ok: <reason>
 # and the reason is required. On a sleep-kill, the mark may sit on either line.
@@ -76,7 +79,7 @@ tag == "K" {
     if (f != pf) { left = 0; pf = f }
     if (mark[f ":" l] == "bare") bad(f, l, "mark|a determinism-ok mark needs its reason")
     if (c !~ /[^ \t]/) next
-    if (mark[f ":" l] != "ok" && at(c, "(/[A-Za-z0-9_.-/]*/)?(gh|claude|curl|wget)")) {
+    if (mark[f ":" l] != "ok" && at(c, "(/[A-Za-z0-9_./-]*/)?(gh|claude|curl|wget)")) {
         s = substr(c, RSTART, RLENGTH); sub(/[ \t;|&)]$/, "", s); sub(/^.*[ \t;&|(`!{]/, "", s)
         abs = (s ~ /^\//); cmd = s; sub(/.*\//, "", cmd); sub(/[^a-z].*/, "", cmd)
         if (abs) bad(f, l, "remote|calls " cmd " by its path, past any mock")
