@@ -1,0 +1,13 @@
+# Tests that predate "tests are deterministic" (ADR-012 amendment 2026-11-08).
+# This list ONLY SHRINKS: each entry is `<kind>|<file>|<the line, trimmed>`.
+# When a test is fixed, remove its line — scripts/lib/lint-test-determinism.sh
+# fails until you do. Never add a line: a new test mocks the remote service, or
+# waits for a marker the process writes before signalling it.
+#
+# sleep-kill: a signal timed by a sleep. Convert to wait-for-marker: the
+# process writes a marker at the point under test, the test waits for it with a
+# timeout, then signals. The signal itself stays real.
+sleep-kill|plugins/tool/memory-ruflo/tests/memory-ruflo-adversarial-test.sh|sleep 0.15
+sleep-kill|tests/integration/run-status-comment-runner-test.sh|sleep 1
+sleep-kill|tests/integration/test-stage-proc-group-test.sh|sleep 0.1 2>/dev/null || true
+sleep-kill|tests/unit/stage-stop-on-signal-test.sh|sleep 0.3

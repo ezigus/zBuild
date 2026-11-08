@@ -1,6 +1,6 @@
 # ADR-012 — Test Tiering and CI Gating
 
-**Status:** Accepted  
+**Status:** Accepted; amended 2026-11-08 (tests are deterministic)  
 **Date:** 2026-05-25  
 **Deciders:** zbuild core team  
 
@@ -154,6 +154,25 @@ Out of scope until a budget-capped, secret-gated, `safe-to-test-e2e`-labeled wor
 
 ### Neutral
 - Backward compat: `tests/run-all.sh` and `tests/run-unit.sh` delegate to the new runner; existing `npm test` / `npm run test:unit` continue to work.
+
+## Amendment 2026-11-08 — tests are deterministic
+
+A test depends on no remote service and on no clock. The cache-gh-actions "interrupted push" test started a push, slept 0.1s and sent KILL. On an idle machine the push took about 35ms, so it had always finished and nothing was interrupted; under load the kill landed mid-copy, the temp folder was still there when the test looked, and the test failed. It was a race in the test, not a defect in the plugin.
+
+1. **Remote services are mocked.** Anything over the network or needing credentials — `gh`, `claude` and other model calls, `curl`, `wget` — is mocked in a test, through the test helpers (`mock_binary`, `mock_gh`, `mock_claude`, `install_envelope_mock_claude`) or a script the test writes first on `PATH`. A call by absolute path goes past the mock and is refused.
+2. **Our own code is never mocked to make a test pass.** Signals sent to the engine's own processes stay real: signal handling is code under test, and the Ubuntu bugs fixed in #2490 and #2494 were found exactly that way.
+3. **A signal is never timed by a sleep.** "Start it, sleep N, kill it" passes or fails with the machine's load. The process writes a marker at the point under test; the test waits for the marker, with a timeout, then signals. A poll loop waiting on a condition is this form; a sleep that only guesses when the moment has come is not. A deliberate stress test that randomises timing (the TERM-every-10ms cases in `teardown-repeat-signal-test.sh`) is marked `# determinism-ok: stress test of signal timing`.
+4. **Fast, local, deterministic tools run for real**, inside the test's sandbox: git in a temporary repository, jq, the filesystem. Mocking them would test the mock (*Software Engineering at Google*, ch. 13: prefer the real implementation when it is fast and deterministic).
+5. **The rule is enforced by code, not prose** (Fowler, "Eradicating Non-Determinism in Tests": no bare sleeps, test doubles for remote services, and a code check that fails the build). `scripts/lib/lint-test-determinism.sh`, in `npm run lint`, reads what each file in `tests/` and `plugins/*/tests/` runs (not its comments, strings or heredoc bodies) and refuses a remote call in a file with no mock for it, and a `kill` within three commands after a `sleep`. A line may be marked `# determinism-ok: <reason>`. Tests written before this rule are listed in `config/test-determinism-baseline.txt`, which only shrinks: each is converted to wait-for-marker, not mocked.
+
+References: Martin Fowler, "Eradicating Non-Determinism in Tests" (martinfowler.com/articles/nonDeterminism.html); Google, hermetic tests and *Software Engineering at Google* ch. 13, "Test Doubles" (abseil.io/resources/swe-book/html/ch13.html).
+
+## Enforced by
+
+- Amendment 2026-11-08 (tests are deterministic) → `tests/unit/lint-test-determinism-test.sh` T1–T10 (the lint, its marks and its shrink-only baseline); `scripts/lib/lint-test-determinism.sh` runs in `npm run lint`; it reads code through `scripts/lib/shell-join.sh` (`tests/unit/shell-join-test.sh` S5–S6).
+- Per-tier runner: the `total:` summary line → `tests/unit/run-tests-total-note-test.sh`; only `*-test.sh` files are run (the filename rule) → `tests/unit/run-tests-files-guard-test.sh`.
+- Coverage denominator (#1761) → `tests/unit/coverage-untraced-file-test.sh`.
+- The other statements above (the tier constraints, the golden and mutation conventions, the CI job graph, empty tiers) have no test yet.
 
 ## Implementation Notes (Phase 0.5 — issue #291)
 
