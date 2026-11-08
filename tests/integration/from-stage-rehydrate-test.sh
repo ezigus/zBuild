@@ -185,6 +185,39 @@ fi
 assert_gt "[#1805/DSFSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage target cyc was dispatched as first stage)" \
     "$_s3_cycled_started" "0"
 
+# [#1805/DSFSTG-1]: pipeline.skip_to_stage must be emitted when --from-stage is active.
+# RQFROM-2 says the event must be emitted and no earlier stage dispatched after it.
+# Before the change: no --from-stage support → no pipeline.skip_to_stage event →
+#   _s3_skip_stage_count=0 → assert 0 > 0 → FAILS.
+# After the change: runner emits pipeline.skip_to_stage → PASSES.
+_s3_skip_stage_count=0
+if [[ -f "$S3_EVENTS_JSONL" ]]; then
+    _s3_skip_stage_count="$(jq -r 'select(.type=="pipeline.skip_to_stage") | .type' \
+        "$S3_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_gt "[#1805/DSFSTG-1] pipeline.skip_to_stage emitted when --from-stage is active (--resume path)" \
+    "$_s3_skip_stage_count" "0"
+
+# [#1805/DSFSTG-1]: no stage before <s>=cyc dispatched after pipeline.skip_to_stage.
+# intake must not appear as a stage.start event after pipeline.skip_to_stage fires.
+# Before the change: skip_to_stage absent → lineno=0 → guard skips → intake_after=0
+#   but skip_stage_count=0 assertion above already fails.
+# After the change: skip_to_stage fires before dispatch loop; intake is rehydrated
+#   not dispatched → no stage.start for intake after skip_to_stage → PASSES.
+_s3_skip_lineno=0
+_s3_intake_after_skip=0
+if [[ -f "$S3_EVENTS_JSONL" ]]; then
+    _s3_skip_lineno="$(awk '/"pipeline.skip_to_stage"/{print NR; exit}' "$S3_EVENTS_JSONL" 2>/dev/null)"
+    _s3_skip_lineno="${_s3_skip_lineno:-0}"
+    if [[ "$_s3_skip_lineno" -gt 0 ]]; then
+        _s3_intake_after_skip="$(awk -v n="$_s3_skip_lineno" \
+            'NR>n && /"stage\.start"/ && /"intake"/ {c++} END{print c+0}' \
+            "$S3_EVENTS_JSONL" 2>/dev/null)"
+    fi
+fi
+assert_eq "[#1805/DSFSTG-1] no stage before <s>=cyc dispatched after pipeline.skip_to_stage (--resume path; RQFROM-2)" \
+    "0" "$_s3_intake_after_skip"
+
 # ── SPEC-3b: --from-stage WITHOUT --resume exercises skip_restore=false branch ──
 # This sub-case covers the plain `--from-stage <s>` path (no --resume flag),
 # which routes through _runner_from_stage_preflight with skip_restore=false —
@@ -294,6 +327,34 @@ if [[ -f "$S5_EVENTS_JSONL" ]]; then
 fi
 assert_eq "[#1805/DSFSTG-1] intake emits no stage.start when skipped via --from-stage without --resume" \
     "0" "$_s5_intake_starts"
+
+# [#1805/DSFSTG-1]: pipeline.skip_to_stage must be emitted when --from-stage is active
+# (plain --from-stage without --resume; skip_restore=false branch).
+# Before the change: no --from-stage support → no pipeline.skip_to_stage event → FAILS.
+# After the change: runner emits pipeline.skip_to_stage on the no-resume path → PASSES.
+_s5_skip_stage_count=0
+if [[ -f "$S5_EVENTS_JSONL" ]]; then
+    _s5_skip_stage_count="$(jq -r 'select(.type=="pipeline.skip_to_stage") | .type' \
+        "$S5_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_gt "[#1805/DSFSTG-1] pipeline.skip_to_stage emitted when --from-stage active without --resume (skip_restore=false branch; RQFROM-2)" \
+    "$_s5_skip_stage_count" "0"
+
+# [#1805/DSFSTG-1]: no stage before <s>=cyc dispatched after pipeline.skip_to_stage
+# (plain --from-stage without --resume path).
+_s5_skip_lineno=0
+_s5_intake_after_skip=0
+if [[ -f "$S5_EVENTS_JSONL" ]]; then
+    _s5_skip_lineno="$(awk '/"pipeline.skip_to_stage"/{print NR; exit}' "$S5_EVENTS_JSONL" 2>/dev/null)"
+    _s5_skip_lineno="${_s5_skip_lineno:-0}"
+    if [[ "$_s5_skip_lineno" -gt 0 ]]; then
+        _s5_intake_after_skip="$(awk -v n="$_s5_skip_lineno" \
+            'NR>n && /"stage\.start"/ && /"intake"/ {c++} END{print c+0}' \
+            "$S5_EVENTS_JSONL" 2>/dev/null)"
+    fi
+fi
+assert_eq "[#1805/DSFSTG-1] no stage before <s>=cyc dispatched after pipeline.skip_to_stage (no --resume path; RQFROM-2)" \
+    "0" "$_s5_intake_after_skip"
 
 # ── SPEC-4: missing artifact with --from-stage exits 1 and names missing stage ─
 print_test_section "[#1805/DSFSTG-2] --from-stage with no restorable artifact emits diagnostic and exits 1"
