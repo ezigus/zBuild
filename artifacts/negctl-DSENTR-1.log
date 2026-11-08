@@ -6,7 +6,7 @@
 
   [38;2;0;212;255m[#1805/DSENTR-1] path 1: bash runner.sh --resume restores artifacts[0m
   [38;2;248;113;113m✗[0m [#1805/DSENTR-1] path 1 (--resume flag): intake-result.json restored from state branch
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/resume-entry-points-1805.a4Lf0F/p1-state-root/runs/s9-p1-resume-1805/artifacts/intake-result.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/resume-entry-points-1805.jR6dUq/p1-state-root/runs/s9-p1-resume-1805/artifacts/intake-result.json[0m
   [38;2;74;222;128m✓[0m [#1805/DSENTR-1] path 1 (--resume flag): pipeline.resume event emitted (rehydration ran before dispatch)
   [38;2;74;222;128m✓[0m [#1805/DSENTR-1] path 1 (--resume flag): pipeline.resume precedes first stage.start (rehydration before dispatch loop)
   [38;2;248;113;113m✗[0m [#1805/DSENTR-1] path 1 (--resume flag): no stage.start for intake (complete stage skipped before dispatch loop)
@@ -14,7 +14,7 @@
 
   [38;2;0;212;255m[#1805/DSENTR-1] path 2: auto-resume on status=interrupted restores artifacts[0m
   [38;2;248;113;113m✗[0m [#1805/DSENTR-1] path 2 (auto-resume/interrupted): intake-result.json restored from state branch
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/resume-entry-points-1805.a4Lf0F/p2-state-root/runs/s9-p2-resume-1805/artifacts/intake-result.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/resume-entry-points-1805.jR6dUq/p2-state-root/runs/s9-p2-resume-1805/artifacts/intake-result.json[0m
   [38;2;248;113;113m✗[0m [#1805/DSENTR-1] path 2 (auto-resume): pipeline.resume event emitted (rehydration ran before dispatch)
     [2mexpected >0, got: 0[0m
   [38;2;248;113;113m✗[0m [#1805/DSENTR-1] path 2 (auto-resume): pipeline.resume precedes first stage.start (rehydration before dispatch loop)
@@ -23,7 +23,7 @@
 
   [38;2;0;212;255m[#1805/DSENTR-1] path 3: zbuild pipeline resume --run-id restores artifacts[0m
   [38;2;248;113;113m✗[0m [#1805/DSENTR-1] path 3 (zbuild pipeline resume): intake-result.json restored from state branch
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/resume-entry-points-1805.a4Lf0F/p3-state-root/runs/s9-p3-resume-1805/artifacts/intake-result.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/resume-entry-points-1805.jR6dUq/p3-state-root/runs/s9-p3-resume-1805/artifacts/intake-result.json[0m
   [38;2;74;222;128m✓[0m [#1805/DSENTR-1] path 3 (zbuild pipeline resume): pipeline.resume event emitted (rehydration ran before dispatch)
   [38;2;74;222;128m✓[0m [#1805/DSENTR-1] path 3 (zbuild pipeline resume): pipeline.resume precedes first stage.start (rehydration before dispatch loop)
   [38;2;248;113;113m✗[0m [#1805/DSENTR-1] path 3 (zbuild pipeline resume): no stage.start for intake (complete stage skipped before dispatch loop)
@@ -39,7 +39,7 @@
   [38;2;248;113;113m✗[0m [#1805/DSENTR-2] auto-resume via latest symlink: pipeline.resume precedes first stage.start (artifact restored before dispatch loop)
     [2mexpected >0, got: 0[0m
   [38;2;248;113;113m✗[0m [#1805/DSENTR-2] auto-resume via latest symlink: intake-result.json restored from per-run state dir
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/resume-entry-points-1805.a4Lf0F/p4-state-root/runs/e2-p4-resume-1805/artifacts/intake-result.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/resume-entry-points-1805.jR6dUq/p4-state-root/runs/e2-p4-resume-1805/artifacts/intake-result.json[0m
   [38;2;74;222;128m✓[0m [#1805/DSENTR-2] auto-resume via latest symlink: no stage.start for intake (complete stage skipped)
 
 [2m  ──────────────────────────────────────────[0m

@@ -1,0 +1,70 @@
+{
+  "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 587/587 passed (4 skipped)\nintegration: 261/261 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 885/885 passed (4 skipped)",
+  "run_mode": "full",
+  "exit_code": 0,
+  "data": {
+    "exit_code": 0,
+    "passed": 885,
+    "failed": 0,
+    "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 587/587 passed (4 skipped)\nintegration: 261/261 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 885/885 passed (4 skipped)",
+    "diff_applied": false,
+    "test_cmd": "npm test",
+    "run_mode": "full",
+    "timing": {
+      "tiers": {
+        "lint": 190167,
+        "e2e": 101013,
+        "golden": 6386,
+        "unit": 416689,
+        "integration": 325803
+      },
+      "slowest_files": [
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.aSmENC/tests/unit/finding-topics-test.sh",
+          "ms": 144698
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.aSmENC/tests/e2e/fork-budget-test.sh",
+          "ms": 93787
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.aSmENC/tests/integration/core-pipeline-runner-test.sh",
+          "ms": 62160
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.aSmENC/tests/unit/lint-test-engine-state-test.sh",
+          "ms": 48024
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.aSmENC/tests/integration/cycle-acceptance-terminal-failure-test.sh",
+          "ms": 47751
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.aSmENC/tests/integration/leaf-verdict-halts-test.sh",
+          "ms": 43669
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.aSmENC/tests/e2e/parity-local-vs-ci-test.sh",
+          "ms": 37758
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.aSmENC/tests/integration/runner-release-exit-paths-test.sh",
+          "ms": 37614
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.aSmENC/tests/integration/cycle-on-max-pipeline-continues-test.sh",
+          "ms": 37412
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.aSmENC/tests/unit/run-status-comment-pages-test.sh",
+          "ms": 37039
+        }
+      ]
+    },
+    "tree_sha": "33e32b9520ce687aed6f1d4b7a512de5b13af443",
+    "findings": []
+  },
+  "result_contract": 3,
+  "outcome": "pass",
+  "reason": "885 of 885 tests passed"
+}
