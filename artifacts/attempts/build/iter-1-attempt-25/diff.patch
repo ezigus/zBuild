@@ -1,0 +1,107 @@
+diff --git a/tests/integration/resume-rehydrate-test.sh b/tests/integration/resume-rehydrate-test.sh
+index 96d4285a..35453bca 100644
+--- a/tests/integration/resume-rehydrate-test.sh
++++ b/tests/integration/resume-rehydrate-test.sh
+@@ -254,6 +254,102 @@ fi
+ assert_gt "[#1805/DSDSPK-1] cycle.start emitted for stage k (cyc) on resume (cycle.start half of Then: cycle stage k was dispatched)" \
+     "$_s1_cyc_cycle_starts" "0"
+ 
++# ── DSDSPK-1 leaf-stage branch: leaf stage k emits stage.start on resume ─────
++# [#1805/DSDSPK-1] Then (leaf-stage branch): when k is a leaf stage, a stage.start
++# event is emitted for k. The cycle-stage sub-case above exercises the cycle.start +
++# member-stage.start branch. This sub-case uses resume-minimal (intake → build → test,
++# all leaf stages) with intake=complete and build=pending, so k=build is a leaf stage.
++print_test_section "[#1805/DSDSPK-1] leaf stage k (build) emits stage.start on resume (leaf-stage branch)"
++
++# Given — a run with stages intake (k-1, complete) and build (k, leaf stage,
++#   interrupted, pending); stages 1…k-1 are marked complete with their artifacts
++#   present in ZBUILD_ARTIFACT_DIR after rehydration.
++_DSPK_LEAF_ID="$(zb_test_issue)"
++_DSPK_LEAF_STATE_DIR="$TEST_TEMP_DIR/dspk-leaf-state"
++_DSPK_LEAF_EVENTS_DIR="$TEST_TEMP_DIR/dspk-leaf-events"
++_DSPK_LEAF_EVENTS_JSONL="$_DSPK_LEAF_EVENTS_DIR/events.jsonl"
++_DSPK_LEAF_STATE_FILE="$_DSPK_LEAF_STATE_DIR/pipeline-state.json"
++mkdir -p "$_DSPK_LEAF_STATE_DIR/artifacts" "$_DSPK_LEAF_EVENTS_DIR"
++
++_DSPK_LEAF_WORK_REPO="$(setup_git_temp_repo dspk-leaf-work)"
++# resume-minimal: intake → build → test; linear, no cycles; stages have no roles.
++install_template_overlay "$_DSPK_LEAF_WORK_REPO" resume-minimal
++
++# Create mock plugins for build and test (resolved by stage ID; no roles declared).
++# intake plugin already created at top of file; build and test need new entries.
++mock_plugin_factory "build" "agent" 0 >/dev/null
++mock_plugin_factory "test" "agent" 0 >/dev/null
++
++# Write intake artifact and snapshot to the state branch to simulate a run
++# that completed intake (k-1) before being interrupted at build (k).
++printf '{"result_contract":3,"outcome":"pass","reason":"prior-run intake"}' \
++    > "$_DSPK_LEAF_STATE_DIR/artifacts/intake-result.json"
++
++_dspk_leaf_snap_rc=0
++( export ZBUILD_STATE_DIR="$_DSPK_LEAF_STATE_DIR"
++  cd "$_DSPK_LEAF_WORK_REPO" && _artifact_persist_snapshot "$_DSPK_LEAF_STATE_DIR" "$_DSPK_LEAF_ID" ) \
++    >"$TEST_TEMP_DIR/dspk-leaf-snap.log" 2>&1 || _dspk_leaf_snap_rc=$?
++if [[ "$_dspk_leaf_snap_rc" -ne 0 ]]; then
++    assert_fail "[#1805/DSDSPK-1] setup (leaf): snapshot to state branch failed" \
++        "rc=$_dspk_leaf_snap_rc; $(cat "$TEST_TEMP_DIR/dspk-leaf-snap.log" 2>/dev/null | tail -5)"
++fi
++rm -f "$_DSPK_LEAF_STATE_DIR/artifacts/intake-result.json"
++
++# State: intake=complete (k-1), build=pending (k = interrupted leaf stage).
++jq -n \
++    --arg run_id "dspk-leaf-1805" \
++    --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
++    --argjson issue "$_DSPK_LEAF_ID" \
++    '{
++        schema_version: 1, run_id: $run_id, issue: $issue,
++        stage_statuses: {intake: "complete", build: "pending"},
++        current_iteration: 0, self_heal_count: {}, scope_manifest_hash: "",
++        cost_ledger_pointer: 0, claim_lease_id: "", plugin_state: {},
++        status: "in_progress", updated_at: $now
++    }' > "$_DSPK_LEAF_STATE_FILE"
++
++# When — the dispatch loop reaches stage build (k, leaf) during resume (--resume flag).
++set +e
++( cd "$_DSPK_LEAF_WORK_REPO" && env \
++    ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
++    ZBUILD_STATE_DIR="$_DSPK_LEAF_STATE_DIR" \
++    ZBUILD_STATE_FILE="$_DSPK_LEAF_STATE_FILE" \
++    ZBUILD_EVENTS_DIR="$_DSPK_LEAF_EVENTS_DIR" \
++    ZBUILD_EVENTS_JSONL="$_DSPK_LEAF_EVENTS_JSONL" \
++    ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
++    ZBUILD_CONTRACT_VALIDATOR=warn \
++    ZBUILD_VISION_GATE=off \
++    PATH="$PATH" HOME="$HOME" \
++    bash "$RUNNER" --template resume-minimal --resume --issue "$_DSPK_LEAF_ID" ) \
++    >"$TEST_TEMP_DIR/dspk-leaf-stdout.txt" 2>"$TEST_TEMP_DIR/dspk-leaf-stderr.txt"
++set -e
++
++# Then — when k is a leaf stage, a stage.start event is emitted for k (build).
++# Before the change: runner has no rehydration + dispatch-skip logic → it may exit
++#   before dispatching build, OR it dispatches intake again instead of skipping it.
++#   Either way, build emits no stage.start because the skip-and-dispatch path is absent
++#   → _dspk_leaf_build_starts=0 → assert 0 > 0 → FAILS.
++# After the change: rehydrate places intake artifact → dispatch loop skips intake
++#   (resume_mode + artifact present) → dispatches build (leaf stage k) →
++#   stage.start emitted for build → count >= 1 → PASSES.
++_dspk_leaf_build_starts=0
++if [[ -f "$_DSPK_LEAF_EVENTS_JSONL" ]]; then
++    _dspk_leaf_build_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="build") | .type' \
++        "$_DSPK_LEAF_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
++fi
++assert_gt "[#1805/DSDSPK-1] leaf stage k (build) is dispatched and emits stage.start on resume (leaf-stage branch: when k is a leaf stage, a stage.start event is emitted for k)" \
++    "$_dspk_leaf_build_starts" "0"
++
++# [#1805/DSDSPK-1]: complete stage intake (k-1) must NOT emit stage.start on resume.
++# This confirms skip-then-dispatch: k-1 rehydrated+skipped, k dispatched.
++_dspk_leaf_intake_starts=0
++if [[ -f "$_DSPK_LEAF_EVENTS_JSONL" ]]; then
++    _dspk_leaf_intake_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="intake") | .type' \
++        "$_DSPK_LEAF_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
++fi
++assert_eq "[#1805/DSDSPK-1] complete stage intake (k-1) emits no stage.start on resume (skipped by rehydration; only k dispatched)" \
++    "0" "$_dspk_leaf_intake_starts"
++
+ # ── SPEC-1 path 2: auto-resume on status=interrupted ─────────────────────────
+ # [#1805/DSRHYD-1] all entry paths: path 2 — auto-resume when status=interrupted.
+ # No --resume flag; runner detects interrupted status and auto-resumes.

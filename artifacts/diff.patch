@@ -1,181 +1,107 @@
-diff --git a/core/pipeline/cycle-orchestrator.sh b/core/pipeline/cycle-orchestrator.sh
-index da5e65c5..fdea8b7d 100644
---- a/core/pipeline/cycle-orchestrator.sh
-+++ b/core/pipeline/cycle-orchestrator.sh
-@@ -2404,16 +2404,22 @@ _cycle_orchestrator_run_body() {
-     if [[ "${_ZBUILD_RESUME_ACTIVE:-false}" == "true" ]]; then
-         _is_resume=true
-         local _persisted_iter
--        # Sanitize cycle_id to prevent jq injection via template-sourced cycle IDs.
--        local _safe_cycle_id="${cycle_id//[^a-zA-Z0-9_-]/}"
--        _persisted_iter="$(get_state_field "$state_file" \
--            ".cycle_iterations[\"$_safe_cycle_id\"].current_iter" 0 2>/dev/null || echo 0)"
-+        # Use jq --arg to pass cycle_id safely (matches the write path's --arg id,
-+        # so dots or other special chars in cycle_id resolve to the same key).
-+        _persisted_iter="$(jq -r --arg id "$cycle_id" \
-+            '.cycle_iterations[$id].current_iter // 0' \
-+            "$state_file" 2>/dev/null || echo 0)"
-         [[ "$_persisted_iter" =~ ^[0-9]+$ ]] || _persisted_iter=0
-         # Consume the flag: nested cycles and subsequent re-entries start at 1.
-         _ZBUILD_RESUME_ACTIVE=false
-         # Start at the persisted iter (re-run the interrupted iteration); fall
-         # back to 1 when no iteration has been recorded yet.
-         _start_iter=$(( _persisted_iter > 0 ? _persisted_iter : 1 ))
-+        # Red-team guard: a corrupt persisted iter > _CYCLE_MAX_ITER would cause
-+        # the loop to execute zero times and fall through to unconverged. Cap so
-+        # resume always runs at least one iteration (#1805).
-+        (( _CYCLE_MAX_ITER > 0 && _start_iter > _CYCLE_MAX_ITER )) \
-+            && _start_iter=$_CYCLE_MAX_ITER
-     else
-         _start_iter=1
-     fi
-@@ -2494,8 +2500,7 @@ _cycle_orchestrator_run_body() {
-         # current_iter; this start write is what makes the resume formula correct for
-         # a run interrupted before the first iter completes (#1805, correctness).
-         _cycle_state_write_iter_start "$state_file" "$cycle_id" "$iter" \
--            || { warn "cycle-orchestrator: failed to write iter-start state for cycle=$cycle_id iter=$iter (a resume may start at the wrong iteration)"; \
--                 eb_emit_event "cycle.state.write.failed" "cycle_id=$cycle_id" "iter=$iter" "op=iter_start" 2>/dev/null || true; }
-+            || warn "cycle-orchestrator: failed to write iter-start state for cycle=$cycle_id iter=$iter (a resume may start at the wrong iteration)"
+diff --git a/tests/integration/resume-rehydrate-test.sh b/tests/integration/resume-rehydrate-test.sh
+index 96d4285a..35453bca 100644
+--- a/tests/integration/resume-rehydrate-test.sh
++++ b/tests/integration/resume-rehydrate-test.sh
+@@ -254,6 +254,102 @@ fi
+ assert_gt "[#1805/DSDSPK-1] cycle.start emitted for stage k (cyc) on resume (cycle.start half of Then: cycle stage k was dispatched)" \
+     "$_s1_cyc_cycle_starts" "0"
  
-         # Dispatch the cycle's stages in order.
-         # DSCMBR-1 (#1805): signal resume_first_iter for the first resumed iteration
-diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
-index 0d14ee10..d247fc4e 100755
---- a/core/pipeline/runner.sh
-+++ b/core/pipeline/runner.sh
-@@ -1755,7 +1755,7 @@ _runner_from_stage_preflight() {
-     # in active_stages[], so a literal match would never fire and all stages
-     # (including cycle members) would be checked — wrong.
-     local _fsp_stop_stage="$_fsp_from_stage"
--    local _fsp_cycle_safe="${_fsp_from_stage//-/_}"
-+    local _fsp_cycle_safe="${_fsp_from_stage//[^a-zA-Z0-9_]/_}"
-     local _fsp_cycle_stages_var="_TPL_CYCLE_STAGES_${_fsp_cycle_safe}"
-     local _fsp_cycle_csv="${!_fsp_cycle_stages_var:-}"
-     if [[ -n "$_fsp_cycle_csv" ]]; then
-@@ -1773,6 +1773,9 @@ _runner_from_stage_preflight() {
-         _verdict_primary_output_path_v _fsp_prim_path "$_fsp_manifest" 2>/dev/null || true
-         [[ -z "$_fsp_prim_path" ]] && continue
-         _verdict_resolve_path_v _fsp_resolved "$_fsp_prim_path" "$_fsp_state_dir"
-+        # Security (#1805): reject paths outside artifact_dir to prevent manifest
-+        # path traversal from treating a system file as a valid artifact.
-+        [[ "$_fsp_resolved" == "${_fsp_artifacts_dir}"/* ]] || _fsp_resolved=""
-         if [[ ! -s "$_fsp_resolved" ]]; then
-             echo "error: --from-stage '$_fsp_from_stage': stage '$_fsp_s' has no restorable primary artifact" >&2
-             return 1
-@@ -2006,10 +2009,11 @@ main() {
-     # exemption logic is testable independently of the full pipeline startup sequence.
-     # --from-stage is only valid with --resume (or auto-resume): skip the persona
-     # preflight so the targeted "only valid with --resume" rejection fires instead
--    # of a spurious persona-missing failure (#1805).
--    local _spg_resume_mode="$resume_mode"
--    [[ -n "$from_stage" ]] && _spg_resume_mode=true
--    if ! _runner_startup_preflight_gate "$dry_run" "$_spg_resume_mode"; then
-+    # of a spurious persona-missing failure (#1805). Save/restore resume_mode so the
-+    # auto-resume block (below) still sees the original value for its own logic.
-+    local _pre_preflight_resume="$resume_mode"
-+    [[ -n "$from_stage" ]] && resume_mode=true
-+    if ! _runner_startup_preflight_gate "$dry_run" "$resume_mode"; then
-         error "Startup preflight validation failed (ZBUILD_CONTRACT_VALIDATOR=${ZBUILD_CONTRACT_VALIDATOR:-warn}). See above."
-         _runner_run_id="${_runner_run_id:-${ZBUILD_RUN_ID:-preflight}}"
-         _runner_issue="${_runner_issue:-${issue:-0}}"
-@@ -2019,6 +2023,9 @@ main() {
-         _render_pipeline_end "preflight_failed"
-         return 1
-     fi
-+    # Restore resume_mode so the auto-resume block sees the value that --resume set,
-+    # not the from-stage sentinel true used to skip preflight above.
-+    resume_mode="$_pre_preflight_resume"
- 
-     # ADR-049 §Phase-1.1 (#1360): vision-document admission gate.
-     # Runs BEFORE the --dry-run branch so dry-run also enforces vision conformance.
-@@ -3602,6 +3609,9 @@ main() {
-                                 [[ -z "$_dc_prim" ]] && continue
-                                 _verdict_resolve_path_v _dc_resolved \
-                                     "$_dc_prim" "$state_dir"
-+                                # Security (#1805): reject paths outside artifact_dir.
-+                                [[ "$_dc_resolved" == "${state_dir}/artifacts"/* ]] \
-+                                    || _dc_resolved=""
-                                 if [[ ! -s "$_dc_resolved" ]]; then
-                                     eb_emit_event \
-                                         "stage.verdict.stale_artifact" \
-@@ -3913,6 +3923,9 @@ main() {
-                                 if [[ -n "$_du_prim_path" ]]; then
-                                     _verdict_resolve_path_v _du_resolved \
-                                         "$_du_prim_path" "$state_dir"
-+                                    # Security (#1805): reject paths outside artifact_dir.
-+                                    [[ "$_du_resolved" == "${state_dir}/artifacts"/* ]] \
-+                                        || _du_resolved=""
-                                     if [[ ! -s "$_du_resolved" ]]; then
-                                         eb_emit_event \
-                                             "stage.verdict.stale_artifact" \
-diff --git a/docs/adr/ADR-006-resume-contract.md b/docs/adr/ADR-006-resume-contract.md
-index 31e40c65..a05a7b20 100644
---- a/docs/adr/ADR-006-resume-contract.md
-+++ b/docs/adr/ADR-006-resume-contract.md
-@@ -246,6 +246,66 @@ success on a still-corrupt file — closing a latent silent-failure the bare `cp
- - **Atomic `.bak` rotation (issue #909):** `atomic_write` rotates `.bak` via `atomic_replace` (`scripts/lib/helpers.sh`, temp+rename). Regression-guarded by `tests/unit/scripts-lib-atomic-replace-test.sh` (incl. a concurrent-reader negative control) and the 50× stability loop in `tests/integration/concurrent-state-test.sh`.
- - **Atomic recovery restore (issue #946):** the three `.bak`→target restores (`validate_json` in `scripts/lib/helpers.sh`; `read_state` and the empty-recovery branch of `locked_state_update` in `core/state/atomic.sh`) restore via `atomic_replace` and fail closed on restore failure. Guarded by Case F (`[SPEC-3]`, a 12-writer concurrent-restore negative control proven to tear under bare `cp`) in `tests/unit/scripts-lib-atomic-replace-test.sh`, a `read_state` recovery case in `tests/unit/core-state-test.sh`, and Scenario 11 (complete large-`.bak` recovery) in `tests/integration/state-corruption-failclosed-b-test.sh`.
- 
-+## Amendment — full resume and `--from-stage` contract (issue #1805)
++# ── DSDSPK-1 leaf-stage branch: leaf stage k emits stage.start on resume ─────
++# [#1805/DSDSPK-1] Then (leaf-stage branch): when k is a leaf stage, a stage.start
++# event is emitted for k. The cycle-stage sub-case above exercises the cycle.start +
++# member-stage.start branch. This sub-case uses resume-minimal (intake → build → test,
++# all leaf stages) with intake=complete and build=pending, so k=build is a leaf stage.
++print_test_section "[#1805/DSDSPK-1] leaf stage k (build) emits stage.start on resume (leaf-stage branch)"
 +
-+The step 3.5 hand-off above (from ADR-021) described two branches: "re-run iter N from
-+scratch" on stale artifact, or "start iter N+1 with feedback already wired" on artifact
-+present. That description is superseded by the implemented contract below, which restores
-+and continues at the interrupted iteration rather than restarting or advancing past it.
++# Given — a run with stages intake (k-1, complete) and build (k, leaf stage,
++#   interrupted, pending); stages 1…k-1 are marked complete with their artifacts
++#   present in ZBUILD_ARTIFACT_DIR after rehydration.
++_DSPK_LEAF_ID="$(zb_test_issue)"
++_DSPK_LEAF_STATE_DIR="$TEST_TEMP_DIR/dspk-leaf-state"
++_DSPK_LEAF_EVENTS_DIR="$TEST_TEMP_DIR/dspk-leaf-events"
++_DSPK_LEAF_EVENTS_JSONL="$_DSPK_LEAF_EVENTS_DIR/events.jsonl"
++_DSPK_LEAF_STATE_FILE="$_DSPK_LEAF_STATE_DIR/pipeline-state.json"
++mkdir -p "$_DSPK_LEAF_STATE_DIR/artifacts" "$_DSPK_LEAF_EVENTS_DIR"
 +
-+### Cycle iteration restoration (`_ZBUILD_RESUME_ACTIVE`)
++_DSPK_LEAF_WORK_REPO="$(setup_git_temp_repo dspk-leaf-work)"
++# resume-minimal: intake → build → test; linear, no cycles; stages have no roles.
++install_template_overlay "$_DSPK_LEAF_WORK_REPO" resume-minimal
 +
-+When a resume is active, the cycle orchestrator reads `cycle_iterations[X].current_iter`
-+from persisted state (via `_persisted_iter`) and starts the iteration loop from that value
-+instead of 1. The flag `_ZBUILD_RESUME_ACTIVE` is exported by the runner immediately after
-+the step 3.6 rehydration call and consumed at the top of `_cycle_orchestrator_run_body`;
-+nested cycles and subsequent re-entries always start at iter=1 (the flag is not propagated
-+to them — it is consumed on first use).
++# Create mock plugins for build and test (resolved by stage ID; no roles declared).
++# intake plugin already created at top of file; build and test need new entries.
++mock_plugin_factory "build" "agent" 0 >/dev/null
++mock_plugin_factory "test" "agent" 0 >/dev/null
 +
-+Within the interrupted iteration (iter k), `_cycle_dispatch` with `resume_first_iter=true`:
-+(a) skips member stages already marked complete in persisted state — no stage.start emitted;
-+(b) explicitly emits stage.start for the non-complete (interrupted) member, then dispatches
-+normally. This ensures the first dispatched cycle member is the one that was actually
-+interrupted, not an already-completed earlier member.
++# Write intake artifact and snapshot to the state branch to simulate a run
++# that completed intake (k-1) before being interrupted at build (k).
++printf '{"result_contract":3,"outcome":"pass","reason":"prior-run intake"}' \
++    > "$_DSPK_LEAF_STATE_DIR/artifacts/intake-result.json"
 +
-+Enforced by: tests/integration/resume-loop-state-test.sh (DSITER-1, DSCMBR-1)
++_dspk_leaf_snap_rc=0
++( export ZBUILD_STATE_DIR="$_DSPK_LEAF_STATE_DIR"
++  cd "$_DSPK_LEAF_WORK_REPO" && _artifact_persist_snapshot "$_DSPK_LEAF_STATE_DIR" "$_DSPK_LEAF_ID" ) \
++    >"$TEST_TEMP_DIR/dspk-leaf-snap.log" 2>&1 || _dspk_leaf_snap_rc=$?
++if [[ "$_dspk_leaf_snap_rc" -ne 0 ]]; then
++    assert_fail "[#1805/DSDSPK-1] setup (leaf): snapshot to state branch failed" \
++        "rc=$_dspk_leaf_snap_rc; $(cat "$TEST_TEMP_DIR/dspk-leaf-snap.log" 2>/dev/null | tail -5)"
++fi
++rm -f "$_DSPK_LEAF_STATE_DIR/artifacts/intake-result.json"
 +
-+### Dispatch-loop skip guard
++# State: intake=complete (k-1), build=pending (k = interrupted leaf stage).
++jq -n \
++    --arg run_id "dspk-leaf-1805" \
++    --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
++    --argjson issue "$_DSPK_LEAF_ID" \
++    '{
++        schema_version: 1, run_id: $run_id, issue: $issue,
++        stage_statuses: {intake: "complete", build: "pending"},
++        current_iteration: 0, self_heal_count: {}, scope_manifest_hash: "",
++        cost_ledger_pointer: 0, claim_lease_id: "", plugin_state: {},
++        status: "in_progress", updated_at: $now
++    }' > "$_DSPK_LEAF_STATE_FILE"
 +
-+On resume, the dispatch-unit loop (`_TPL_DISPATCH_UNITS`) skips every stage already marked
-+complete whose primary artifact is present in ZBUILD_ARTIFACT_DIR after the step 3.6
-+rehydration. The skip guard is conditioned on `resume_mode`; fresh runs never activate it
-+and always dispatch all stages from stage 1 with no stage skipped.
++# When — the dispatch loop reaches stage build (k, leaf) during resume (--resume flag).
++set +e
++( cd "$_DSPK_LEAF_WORK_REPO" && env \
++    ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
++    ZBUILD_STATE_DIR="$_DSPK_LEAF_STATE_DIR" \
++    ZBUILD_STATE_FILE="$_DSPK_LEAF_STATE_FILE" \
++    ZBUILD_EVENTS_DIR="$_DSPK_LEAF_EVENTS_DIR" \
++    ZBUILD_EVENTS_JSONL="$_DSPK_LEAF_EVENTS_JSONL" \
++    ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
++    ZBUILD_CONTRACT_VALIDATOR=warn \
++    ZBUILD_VISION_GATE=off \
++    PATH="$PATH" HOME="$HOME" \
++    bash "$RUNNER" --template resume-minimal --resume --issue "$_DSPK_LEAF_ID" ) \
++    >"$TEST_TEMP_DIR/dspk-leaf-stdout.txt" 2>"$TEST_TEMP_DIR/dspk-leaf-stderr.txt"
++set -e
 +
-+Enforced by: tests/integration/resume-rehydrate-test.sh (DSSKIP-1, DSFRSH-1, DSFRSH-2)
++# Then — when k is a leaf stage, a stage.start event is emitted for k (build).
++# Before the change: runner has no rehydration + dispatch-skip logic → it may exit
++#   before dispatching build, OR it dispatches intake again instead of skipping it.
++#   Either way, build emits no stage.start because the skip-and-dispatch path is absent
++#   → _dspk_leaf_build_starts=0 → assert 0 > 0 → FAILS.
++# After the change: rehydrate places intake artifact → dispatch loop skips intake
++#   (resume_mode + artifact present) → dispatches build (leaf stage k) →
++#   stage.start emitted for build → count >= 1 → PASSES.
++_dspk_leaf_build_starts=0
++if [[ -f "$_DSPK_LEAF_EVENTS_JSONL" ]]; then
++    _dspk_leaf_build_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="build") | .type' \
++        "$_DSPK_LEAF_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
++fi
++assert_gt "[#1805/DSDSPK-1] leaf stage k (build) is dispatched and emits stage.start on resume (leaf-stage branch: when k is a leaf stage, a stage.start event is emitted for k)" \
++    "$_dspk_leaf_build_starts" "0"
 +
-+### `--from-stage <s>` pre-flight contract
++# [#1805/DSDSPK-1]: complete stage intake (k-1) must NOT emit stage.start on resume.
++# This confirms skip-then-dispatch: k-1 rehydrated+skipped, k dispatched.
++_dspk_leaf_intake_starts=0
++if [[ -f "$_DSPK_LEAF_EVENTS_JSONL" ]]; then
++    _dspk_leaf_intake_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="intake") | .type' \
++        "$_DSPK_LEAF_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
++fi
++assert_eq "[#1805/DSDSPK-1] complete stage intake (k-1) emits no stage.start on resume (skipped by rehydration; only k dispatched)" \
++    "0" "$_dspk_leaf_intake_starts"
 +
-+When `--from-stage <s>` is active, `_runner_from_stage_preflight` runs before the dispatch
-+loop:
-+
-+1. For every stage before `<s>`: verify a restorable primary artifact exists in the git
-+   state branch.
-+2. Any stage with no restorable artifact emits the phrase "has no restorable primary
-+   artifact" to stderr and causes exit 1 before any stage.start event.
-+3. Artifacts from every stage before `<s>` are placed in ZBUILD_ARTIFACT_DIR before the
-+   dispatch loop starts.
-+4. Stage `<s>` is dispatched as the first unit; no stage before `<s>` receives a dispatch
-+   event.
-+
-+Enforced by: tests/integration/from-stage-rehydrate-test.sh (DSFSTG-1, DSFSTG-2)
-+
-+### Auto-resume state discovery via `latest` symlink
-+
-+The runner's auto-resume check (`get_resume_recommendation`) is extended: when
-+ZBUILD_STATE_FILE is unset and `$state_root/pipeline-state.json` does not exist (the flat
-+legacy path), the runner checks `$state_root/latest/pipeline-state.json` via the `latest`
-+symlink, which points to the most recent per-run directory under
-+`$state_root/runs/<run_id>/`. When auto-resume fires via this path, `state_dir` is updated
-+to the resolved per-run directory so artifact operations use the correct per-run location.
-+
-+Enforced by: tests/integration/resume-entry-points-test.sh (DSENTR-2)
-+
- ## References
- 
- - [KEEPERS.md §C correction: CURRENT_ITERATION lost on resume](../KEEPERS.md#section-c--reliability--safety-expanded)
+ # ── SPEC-1 path 2: auto-resume on status=interrupted ─────────────────────────
+ # [#1805/DSRHYD-1] all entry paths: path 2 — auto-resume when status=interrupted.
+ # No --resume flag; runner detects interrupted status and auto-resumes.
