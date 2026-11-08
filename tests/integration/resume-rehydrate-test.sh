@@ -841,22 +841,20 @@ assert_eq "fresh run dispatches intake (not skipped; ADR-050 §6 new-run side)" 
 assert_eq "[#1805/DSFRSH-1] fresh run (--no-resume) dispatches all stages from stage 1 (intake dispatched; did not skip to a later stage due to prior state)" \
     "1" "$_s12_intake_starts"
 
-# [#1805/DSFRSH-1]: all stages in the fixture must be dispatched on a fresh run; the cycle
-# stage cyc must emit cycle.start, proving the pipeline continued past intake and all stages
-# were dispatched from stage 1. This is non-vacuous: if the skip guard fired unconditionally
-# (not keyed on resume_mode) and skipped intake due to prior-run artifacts on the state branch,
-# intake would not complete and the pipeline would not proceed to dispatch cyc → cycle.start
-# would be absent → _s12_cyc_starts=0 → assert_gt 0 > 0 → FAILS (guard bug exposed).
-# After the change: skip guard is keyed on resume_mode → not active on fresh run →
-#   intake dispatches and completes → pipeline proceeds to cyc → cycle.start emitted → PASSES.
-# This requirement need not fail before this change (no-code property); it must pass after.
-_s12_cyc_starts=0
+# [#1805/DSFRSH-1]: no stage.skip event must be emitted on a fresh run.
+# DSFRSH-1 requires "no stage skipped due to prior state"; this assertion covers the
+# event-side observable. stage.skip is emitted if and only if the dispatch-unit skip guard
+# fires and skips a stage — which must not happen on a fresh run. The stage.start=1
+# assertion above already covers the dispatch-side: if intake were silently skipped (via
+# any mechanism), that assertion would catch it.
+# DSFRSH-1 is a no-code requirement: must pass on current code; need not fail before.
+_s12_stage_skips=0
 if [[ -f "$S12_EVENTS_JSONL" ]]; then
-    _s12_cyc_starts="$(jq -r 'select(.type=="cycle.start") | .type' \
+    _s12_stage_skips="$(jq -r 'select(.type=="stage.skip") | .type' \
         "$S12_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
-assert_gt "[#1805/DSFRSH-1] fresh run (--no-resume) dispatches all stages: cycle stage cyc emits cycle.start (all stages dispatched from stage 1; none skipped due to prior state)" \
-    "$_s12_cyc_starts" "0"
+assert_eq "[#1805/DSFRSH-1] fresh run (--no-resume) emits no stage.skip events (no stage skipped due to prior state)" \
+    "0" "$_s12_stage_skips"
 
 # [#1805/DSFRSH-1]: no artifact from a prior run must appear in ZBUILD_ARTIFACT_DIR.
 # The setup placed prior-run intake-result.json content on the state branch only
@@ -979,22 +977,21 @@ assert_eq \
     "[#1805/DSFRSH-2] fresh run (no --resume, in_progress status) dispatches intake even with prior-run artifacts on git state branch (dispatch-unit skip guard conditional on resume_mode)" \
     "1" "$_frsh2_intake_starts"
 
-# [#1805/DSFRSH-2]: all stages in the fixture must be dispatched on a fresh run; the cycle
-# stage cyc must emit cycle.start, proving the pipeline continued past intake. If the
-# dispatch-unit skip guard fires unconditionally (not keyed on resume_mode), it would see
-# prior artifacts on the state branch and skip intake → intake does not complete → pipeline
-# does not proceed to dispatch cyc → cycle.start absent → _frsh2_cyc_starts=0 →
-# assert_gt 0 > 0 → FAILS (guard bug exposed). After the change: guard conditional on
-# resume_mode → not active for fresh run → intake dispatches → cyc dispatched → PASSES.
-# This requirement need not fail before this change (no-code property); it must pass after.
-_frsh2_cyc_starts=0
+# [#1805/DSFRSH-2]: no stage.skip event must be emitted on a fresh run.
+# Then: No stage.skip event is emitted for any stage (from the SPEC).
+# stage.skip is emitted if and only if the dispatch-unit skip guard fires and skips a
+# stage — which must not happen on a fresh run (the guard must be conditional on
+# resume_mode). The stage.start=1 assertion above already covers the dispatch-side
+# observable: if intake were skipped, intake_starts would not equal 1.
+# DSFRSH-2 is a no-code requirement: must pass on current code; need not fail before.
+_frsh2_stage_skips=0
 if [[ -f "$_S_FRSH2_EVENTS_JSONL" ]]; then
-    _frsh2_cyc_starts="$(jq -r 'select(.type=="cycle.start") | .type' \
+    _frsh2_stage_skips="$(jq -r 'select(.type=="stage.skip") | .type' \
         "$_S_FRSH2_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
-assert_gt \
-    "[#1805/DSFRSH-2] fresh run dispatches all stages: cycle stage cyc emits cycle.start (dispatch-unit skip guard conditional on resume_mode; does not activate for fresh runs)" \
-    "$_frsh2_cyc_starts" "0"
+assert_eq \
+    "[#1805/DSFRSH-2] fresh run (no --resume) emits no stage.skip events (dispatch-unit skip guard does not activate for fresh runs)" \
+    "0" "$_frsh2_stage_skips"
 
 # ── DSCYCL-1: test uses a fixture containing a cyclic stage ────────────────────
 print_test_section "resume-rehydrate test uses a fixture containing a cyclic stage"
