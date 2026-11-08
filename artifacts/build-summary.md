@@ -1,21 +1,18 @@
-## build — pass
+## build — timed_out
 
-- changed no file
+- ran out of time; changed core/pipeline/cycle-orchestrator.sh, core/pipeline/runner.sh, tests/integration/resume-rehydrate-test.sh (+82 / -22) so far
 
-- over 1 pass(es), 1 iteration(s)
-- answered: lens-security-code finding 1: done — bounds check added at runner.sh:1779-1781: `[[ "$_fsp_resolved" == "${_fsp_artifacts_dir}"/* ]] || _fsp_resolved=""` clears any path that escapes artifact_dir, causing the `[[ ! -s ]]` guard to fail-closed.
-- answered: lens-security-code finding 2: done — bounds check added at runner.sh:3617-3619: `[[ "$_dc_resolved" == "${state_dir}/artifacts"/* ]] || _dc_resolved=""` treats any out-of-bounds path as absent, triggering stale-artifact exit-1.
-- answered: lens-security-code finding 3: done — bounds check added at runner.sh:3931-3933: `[[ "$_du_resolved" == "${state_dir}/artifacts"/* ]] || _du_resolved=""` treats any out-of-bounds path as absent, triggering stale-artifact exit-1.
-- answered: lens-security-code finding 4: done — runner.sh:1761 changed to `"${_fsp_from_stage//[^a-zA-Z0-9_]/_}"` stripping all non-identifier characters rather than only hyphens.
-- answered: lens-performance-code finding 1: wrong — `_cycle_state_write_iter_start` writes `current_iter=N` BEFORE dispatch per DSITER-1 requirement: without it, an interruption mid-iter leaves `current_iter` at the previously-completed iteration's value, so resume starts one iteration too late. The two writes serve different purposes at distinct points and cannot be merged without reintroducing the resume-starts-at-wrong-iteration bug.
-- answered: lens-performance-code finding 2: not mine — `dirname` subprocess elimination is a micro-optimization in a non-blocking path; no acceptance requirement governs subshell count in `_artifact_persist_put_back`.
-- answered: lens-performance-code finding 3: not mine — per-skipped-member jq call consolidation is a micro-optimization in a non-blocking path; no acceptance requirement governs jq call count in `_cycle_iter_dispatch`.
-- answered: lens-red-team-code finding 1: done — cap added at cycle-orchestrator.sh:2424-2425: `(( _CYCLE_MAX_ITER > 0 && _start_iter > _CYCLE_MAX_ITER )) && _start_iter=$_CYCLE_MAX_ITER` ensures a corrupt persisted iter > max resumes at max rather than zero-iterating into the unconverged path.
-- answered: lens-red-team-code finding 2: not mine — verifying a cycle member's artifact in the DSCMBR-1 skip path requires `_find_plugin_for_stage` (from dispatch.sh) which is not sourced by cycle-orchestrator.sh; adding it would pull in dispatch.sh as a new dependency, a structural change beyond this issue's scope. The outer dispatch-unit check in runner.sh (lines 3595-3620) catches fully-complete cycles before the orchestrator runs.
-- answered: lens-correctness-code finding 1: not mine — `stage_statuses` is a flat per-stage map; distinguishing "completed in iteration N" from "completed in iteration N-1" requires per-iteration member status in the state schema, a data-model change outside this issue's scope; no acceptance test covers the interrupted-at-iter-start-before-first-dispatch edge case.
-- answered: lens-correctness-code finding 2: done — cycle-orchestrator.sh:2412 now uses `jq -r --arg id "$cycle_id"` for the `_persisted_iter` read, matching the write path's `--arg id "$_ZB_CYCLE_ID"` so both paths key on the original `cycle_id` value consistently.
-- answered: lens-scope-code finding 1: wrong — the traversal guards in `_artifact_persist_put_back` are required by CLAUDE.md ("Sanitize file paths to prevent directory traversal"); they do not change behavior for the git-archive-extracted content the function receives in practice. The docstring imprecision is non-blocking.
-- answered: lens-scope-code finding 2: wrong — the traversal guards in `_artifact_persist_put_back` apply to git-archive-extracted paths that by construction never contain leading slashes or `..` components; in practice behavior is identical to the original `_hydrate_put_back`. Non-blocking.
-- answered: lens-sre-code finding 1: not mine — adding a machine-readable event for jq failure in `_cycle_iter_dispatch` requires registering a new event in `config/event-schema.json` and event-bus, outside this branch's scope. The warn to stderr IS emitted; fail-closed behavior is provided by the dispatch-loop's stale-artifact exit-1 path enforced by passing tests.
-- answered: lens-sre-code finding 2: not mine — adding a machine-readable failure event for `_cycle_state_write_iter_start` requires a schema addition outside this branch's scope. The warn to stderr IS emitted; the DSITER-1 write-side test verifies the write succeeds in normal operation.
-- answered: lens-sre-code finding 3: not mine — adding a machine-readable event for `_artifact_persist_put_back` failure requires a schema addition. The fail-closed guarantee is provided by the dispatch-loop's stale-artifact exit-1 path (DSRHYD-2 / runner.sh:3920), enforced by the passing test suite.
+- over 4 pass(es), 4 iteration(s)
+- not answered: test-author finding 1
+- not answered: lens-security-code finding 1
+- not answered: lens-performance-code finding 1
+- not answered: lens-red-team-code finding 1
+- not answered: lens-correctness-code finding 1
+- not answered: lens-correctness-code finding 2
+- not answered: lens-correctness-code finding 3
+- not answered: lens-scope-code finding 1
+- not answered: lens-scope-code finding 2
+- not answered: lens-sre-code finding 1
+- not answered: lens-sre-code finding 2
+- not answered: lens-sre-code finding 3
+- not answered: lens-sre-code finding 4

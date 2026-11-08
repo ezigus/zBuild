@@ -1,0 +1,46 @@
+- (… 63 earlier steps not shown)
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/contract-validator.sh
+- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree TMPD=$(mktemp -d) source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh export TEST_TEMP_DIR="$TMPD" REPO_ROOT="$(pwd)" RUNNER="$REPO_ROOT/core/pipeline/runner.sh" WORK_REPO="$(setup_git_temp_repo s12-repro)" install_templat…
+- Bash: grep -n "hook_fn\|hook.*run\|run.*hook\|\"$hook\"\|hooks.*run" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh | head -15
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh
+- Bash: grep -n "manifest_graph_output_summary_v\|finding_topics\|summary" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/contract-validator.sh | head -20
+- Bash: grep -n "manifest_graph_output_summary_v" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/manifest-graph.sh 2>/dev/null | head -5 || grep -rn "manifest_graph_output_summary_v" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/ | head -5
+- Bash: grep -rn "manifest_graph_output_summary_v\|output_summary" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/ --include="*.sh" | grep -v "legacy\|\.git" | head -10
+- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree TMPD=$(mktemp -d) source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh export TEST_TEMP_DIR="$TMPD" REPO_ROOT="$(pwd)" RUNNER="$REPO_ROOT/core/pipeline/runner.sh" WORK_REPO="$(setup_git_temp_repo s12-repro)" install_templat…
+- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree TMPD=$(mktemp -d) source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh export TEST_TEMP_DIR="$TMPD" REPO_ROOT="$(pwd)" RUNNER="$REPO_ROOT/core/pipeline/runner.sh" WORK_REPO="$(setup_git_temp_repo s12-repro)" install_templat…
+- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree TMPD=$(mktemp -d) source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh export TEST_TEMP_DIR="$TMPD" REPO_ROOT="$(pwd)" RUNNER="$REPO_ROOT/core/pipeline/runner.sh" WORK_REPO="$(setup_git_temp_repo s12-repro)" install_templat…
+- Bash: git show 239ca069 -- tests/integration/resume-rehydrate-test.sh | grep -A5 "DSFRSH-1.*cycle\|DSFRSH-2.*cycle\|stage.skip\|stage\.skip\|_s12_stage" | head -40
+- Bash: git show 239ca069 --stat | head -5
+- Bash: git show 239ca069 -- tests/integration/resume-rehydrate-test.sh | grep -A5 "stage.skip\|stage_skip\|DSFRSH-1\|DSFRSH-2" | head -50
+- Bash: git show 239ca069:tests/integration/resume-rehydrate-test.sh | grep -n "DSFRSH\|stage.skip\|stage_skip\|cycle.start\|s12_cyc" | head -30
+- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree TMPD=$(mktemp -d) source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh export TEST_TEMP_DIR="$TMPD" REPO_ROOT="$(pwd)" RUNNER="$REPO_ROOT/core/pipeline/runner.sh" WORK_REPO="$(setup_git_temp_repo s12-repro)" install_templat…
+- Bash: grep -n "scan_plugin_outputs\|stage_result_is_current\|stage_errors\|_lc_missing" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh | grep -v "^#" | head -20
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh
+- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree TMPD=$(mktemp -d) source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh export TEST_TEMP_DIR="$TMPD" REPO_ROOT="$(pwd)" RUNNER="$REPO_ROOT/core/pipeline/runner.sh" WORK_REPO="$(setup_git_temp_repo s12-repro)" install_templat…
+- Bash: grep -n "registry.role-unresolved\|role-unresolved\|role_unresolved" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | head -15
+- Bash: grep -rn "registry.role-unresolved\|role-unresolved\|role_unresolved" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/ | grep -v ".git\|legacy" | head -15
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/dispatch.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Bash: grep -n "plugin_dir.*_find_plugin_for_stage\|roles_out\|fanout\|dispatch.*strategy" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | grep -v "^\|#" | head -20
+- Bash: grep -n "roles_out\|plugin_dir\|_find_plugin_for_stage" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | grep -v "^#\|dry.run\|preflight\|from.stage\|cycle\|always_run" | head -30
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree TMPD=$(mktemp -d) source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh export TEST_TEMP_DIR="$TMPD" REPO_ROOT="$(pwd)" RUNNER="$REPO_ROOT/core/pipeline/runner.sh" WORK_REPO="$(setup_git_temp_repo s12-repro)" install_templat…
+- Bash: grep -n "_strategy_run_fanout\|_ZB_STRATEGY_OUTCOME\|no_plugin" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/strategies/fanout.sh | head -20
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/strategies/fanout.sh
+- Bash: grep -n "eb_emit_event.*stage.fail\|stage\.fail.*stage=\|emit.*stage.fail" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | head -20
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Bash: grep -n "plugins_root\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | grep -v "#\|_find_plugin\|resolve.*stage\|cycle\|from_stage\|_du_\|_dc_\|_sk_\|_pd_\|_cd_\|_fsp_\|_ar_" | head -20
+- Bash: grep -n "verify_plugin_for_source\|ZBUILD_STRICT_PLUGIN_LOCK\|lockfile" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/discovery.sh | head -15
+- Bash: grep -n "^verify_plugin_for_source\|^function verify_plugin_for_source" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/discovery.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/discovery.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree TMPD=$(mktemp -d) source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh export TEST_TEMP_DIR="$TMPD" REPO_ROOT="$(pwd)" mock_plugin_factory "intake" "agent" 0 >/dev/null PLUGINS_ROOT="$TMPD/plugins" # Test _find_plugin_for_s…
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/strategies/fanout.sh
+- Bash: git stash 2>/dev/null; git checkout 51762730 -- tests/integration/resume-rehydrate-test.sh 2>/dev/null bash tests/integration/resume-rehydrate-test.sh 2>&1 | tail -10 git checkout HEAD -- tests/integration/resume-rehydrate-test.sh 2>/dev/null
+- Bash: bash tests/integration/resume-rehydrate-test.sh 2>&1 | grep "DSFRSH\|stage.start\|cycle.start" | head -20
