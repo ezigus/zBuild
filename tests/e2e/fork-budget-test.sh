@@ -116,7 +116,10 @@ setup_test_env "fork-budget"
 # one jq, not two) — measured 1,883 macOS; main measured 1,885.
 # 1877 (#2487: the template's retry: is read by the shell, not an awk a
 # dispatch) — measured 1,874 macOS; main measured 1,883.
-FORK_BUDGET=1877
+# 1876 (#2489: a stop polls for a KILLed child to be gone, one `sleep` the
+# run's exit pays; the exit trap's dirname is a parameter expansion now)
+# — measured 1,874 macOS; main measured 1,874.
+FORK_BUDGET=1876
 # PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
 # the programs above plus each `$( )` subshell, a copy of the whole engine shell
 # that FORK_BUDGET cannot see. Ratchets down only, like FORK_BUDGET. History:
@@ -151,8 +154,9 @@ FORK_BUDGET=1877
 # change as FORK_BUDGET 1892 — measured 2,534 macOS). 2537 (the same change
 # as FORK_BUDGET 1888 — measured 2,534 macOS). 2535 (the same change as
 # FORK_BUDGET 1886 — measured 2,532 macOS). 2526 (#2487, the same change as
-# FORK_BUDGET 1877 — measured 2,523 macOS).
-PROCESS_BUDGET=2526
+# FORK_BUDGET 1877 — measured 2,523 macOS). 2525 (#2489, the same change as
+# FORK_BUDGET 1876 — measured 2,522 macOS).
+PROCESS_BUDGET=2525
 # The run's cost in two parts (ADR-065 §6, #2472). Each budget ratchets down
 # like the totals; each floor is the goal, an estimate, measured again when
 # reached. History: 505 / 298 a dispatch, 12 / 7 a plugin at start-up (#2472 —

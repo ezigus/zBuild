@@ -205,6 +205,12 @@ _lc_tree() {
     for c in $(pgrep -P "$1" 2>/dev/null); do _lc_tree "$c"; done
 }
 
+# zb_wait_gone <pid> — return once <pid>, a child, has ended, without `wait`:
+# on Ubuntu's bash 5.2 a `wait` in a trap that cut another `wait` short can
+# block on a child that has already ended, until some other child changes
+# state (#2489). Bash reaps the child itself; this only watches for that.
+zb_wait_gone() { while kill -0 "$1" 2>/dev/null; do sleep 0.01; done; }
+
 # plugin_stop_running — stop the stage plugin_hook_call is waiting on, and all
 # it started (ADR-054 §7): TERM, then KILL after 2s for what ignores TERM. Its
 # rc is left in _ZB_LC_STAGE_RC. A no-op when no stage is running.
@@ -245,7 +251,7 @@ plugin_stop_running() {
         local _wdt; _wdt="$(_lc_tree "$_ZB_LC_WATCHDOG_PID")"
         # KILL: it has nothing to tidy, and a TERM can be lost (see its trap).
         # shellcheck disable=SC2086  # a list of pids
-        kill -KILL $_wdt 2>/dev/null; wait "$_ZB_LC_WATCHDOG_PID" 2>/dev/null
+        kill -KILL $_wdt 2>/dev/null; zb_wait_gone "$_ZB_LC_WATCHDOG_PID"
         _ZB_LC_WATCHDOG_PID=""
     fi
     [[ -n "$p" ]] && kill -0 "$p" 2>/dev/null || return 0
@@ -256,11 +262,11 @@ plugin_stop_running() {
     # shellcheck disable=SC2086
     ( sleep 2; kill -KILL $tree 2>/dev/null ) >/dev/null 2>&1 &
     w=$!
-    # A repeat signal cuts `wait` short; the stage still gets its 2s.
-    while kill -0 "$p" 2>/dev/null; do
-        _ZB_LC_STAGE_RC=0; wait "$p" 2>/dev/null || _ZB_LC_STAGE_RC=$?
-    done
-    kill "$w" 2>/dev/null; wait "$w" 2>/dev/null || true
+    # The stage still gets its 2s. Once it is gone, `wait` only reads the rc
+    # bash kept for it.
+    zb_wait_gone "$p"
+    _ZB_LC_STAGE_RC=0; wait "$p" 2>/dev/null || _ZB_LC_STAGE_RC=$?
+    kill "$w" 2>/dev/null; zb_wait_gone "$w"
     # What ignored TERM and outlived the stage's shell (#2333's lesson).
     # shellcheck disable=SC2086
     kill -KILL $tree 2>/dev/null || true

@@ -376,6 +376,10 @@ After #2487 (the template's `retry:` is read by the shell, not with an awk on ev
 execs 1,874 (`FORK_BUDGET` 1886 → 1877), processes 2,523 (`PROCESS_BUDGET` 2535 → 2526), one more dispatch 478
 processes and 272 execs (`DISPATCH_PROCS_BUDGET` 480 → 479, `DISPATCH_EXECS_BUDGET` 274 → 273).
 
+After #2489 (a stop polls for a KILLed child to be gone, one `sleep` on the run's exit; the exit trap's `dirname`
+is a parameter expansion), measured on macOS: execs 1,874 (`FORK_BUDGET` 1877 → 1876), processes 2,522
+(`PROCESS_BUDGET` 2526 → 2525).
+
 ## Enforced by
 
 - §5 amendment 2026-11-06 (#2476: an include checked only when it fails to load) → `tests/unit/route-missing-include-test.sh` SPEC-1–SPEC-6; `tests/e2e/fork-budget-test.sh` (the budgets above)

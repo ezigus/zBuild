@@ -4,7 +4,7 @@
 **Date:** 2026-08-09
 **Issue:** #1820
 **Amended:** 2026-11-07 (#2487) — §6a: a first try that ends `unusable` is run again, even when it changed nothing.
-**Amended:** 2026-10-31 (#2439) — §6a: the engine runs ANY stage again, from plugin_hook_call; the default `retry:` is 1; a stage never repeats a model call itself (Amendment at the end). Previously amended 2026-10-24 — §7: a signal stops the running stage instead of waiting for it to end. Previously amended 2026-10-13 (#2366) — §6: result contract 3 carries ONE word, `outcome`, from one closed list the engine owns (Amendment at the end). Previously amended 2026-10-07 (#1798) — §4: a leaf stage whose verdict is fail-class ends the run unless its template marks it `blocking: false` (Amendment at the end).
+**Amended:** 2026-11-08 (#2489) — §7: a stop watches a child it has stopped until it is gone, never `wait`s on it (Amendment at the end). Previously amended 2026-10-31 (#2439) — §6a: the engine runs ANY stage again, from plugin_hook_call; the default `retry:` is 1; a stage never repeats a model call itself (Amendment at the end). Previously amended 2026-10-24 — §7: a signal stops the running stage instead of waiting for it to end. Previously amended 2026-10-13 (#2366) — §6: result contract 3 carries ONE word, `outcome`, from one closed list the engine owns (Amendment at the end). Previously amended 2026-10-07 (#1798) — §4: a leaf stage whose verdict is fail-class ends the run unless its template marks it `blocking: false` (Amendment at the end).
 **Amended:** 2026-09-16 (#2111) — §6: a rate limit observed by the router resolves to `unavailable`, not `throttled`. The engine now enforces `halt_unavailable` on the cycle dispatch path (it was announced only): the run ends `aborted` with `reason=llm_rate_limited` and the reset text under `.rate_limit.message`, state persisted for ADR-050 resume. `throttled` stays in the closed set with no rate-limit emitter. Waiting and retrying re-entered the same limit for five iterations on #1840/#1841, re-verifying an unchanged tree each time.
 **Amended:** 2026-08-23 (#141) — §7: the three-actor table is run-keyed in every row; the **issue** is a second scope, and `release` gains the `always-run` attribute plus a `persist` sibling (ADR-059).
 **Amended:** 2026-08-23 (#1920) — §7: the `release` "deletes nothing" promise scoped to the run's own lifecycle; operator-invoked reclamation (`zbuild cleanup --state-dirs`) named as a third actor with its own clock and guards.
@@ -596,7 +596,20 @@ On #1805 run 42397891946 issue-acceptance's reply could not be used (`unusable`,
 
 - **A first try that ends `unusable` is run again, even when it changed nothing.** A second such try is not: the progress rule applies from then on.
 
+### Amendment (2026-11-08, #2489) — §7: a stop does not `wait` on a child it has just stopped
+
+On Ubuntu's bash (5.2.21), a `wait <pid>` inside a trap that cut another `wait` short can block on a child that
+has already ended, until some other child changes state. The run's exit path stalled for about 10 s, until the
+run watchdog's KILL (`runner-release-exit-paths-test.sh` P2 failed in 8 of 125 Ubuntu attempts). macOS's bash
+does not do this.
+
+- **Every pid the signal path stops and then waits for is watched until it is gone** (`zb_wait_gone`: `kill -0`
+  every 10 ms), never `wait`ed on: the stage, its time-limit watchdog and its 2 s killer in `plugin_stop_running`,
+  and the run watchdog in `_runner_abort_trap`. Bash reaps the child itself; the stage's rc is then read from it.
+
 ## Enforced by
+
+- §7 amendment 2026-11-08 (#2489: a stop does not wait on a child it has just stopped) → `tests/unit/stage-stop-on-signal-test.sh` S11 (a trap that stops a bounded stage and exits ends within 1 s, 20 times in a row)
 
 - §6a amendment 2026-11-07 (#2487: a first unusable try is run again) → `tests/unit/stage-retry-test.sh` R12
 - §6a amendment 2026-11-02 (#2460: new own findings are progress; a stage's own check is a retry) → `tests/unit/attempt-progress-test.sh` P10, P11; `tests/unit/own-check-retry-test.sh` R1–R3
