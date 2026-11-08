@@ -26,6 +26,10 @@
 #             change to the code is (#2443: the result changes every try)
 # R11 [change] the engine tells each try its number (ZBUILD_STAGE_TRY), so a
 #             try's records are its own (#2443)
+# R12 [change] a try whose output could not be used is run again once, even when
+#             it changed nothing (#2487: on #1805 run 42397891946 a judging
+#             stage, which writes only its result, was never run again, and
+#             the run ended on its one unusable reply); a second such try is not
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -233,6 +237,15 @@ assert_eq "[R10] ...one whose code changed did" "true" "${_ATTEMPT_LAST_PROGRESS
 # ── R11 ──────────────────────────────────────────────────────────────────────
 _fresh; OUTCOMES="timed_out timed_out pass" _dispatch twice
 assert_eq "[R11] each try is told its number" "1 2 3 " "$(cat "$S/artifacts/tries.twice" 2>/dev/null)"
+
+# ── R12 ──────────────────────────────────────────────────────────────────────
+_same() { _fresh; printf 'same' > "$S/artifacts/flaky-work.txt"; }
+_same; SAME=1 OUTCOMES="timed_out" _dispatch twice
+assert_eq "[R12] a timed_out try that changed nothing is still not run again" "1" "$(_runs twice)"
+_same; SAME=1 OUTCOMES="unusable" _dispatch twice
+assert_eq "[R12] an unusable try that changed nothing is run again once, not twice" "2" "$(_runs twice)"
+_same; SAME=1 OUTCOMES="unusable pass" _dispatch twice; _rc=$?
+assert_eq "[R12] ...and the try that passes is what the dispatch reports" "2 0" "$(_runs twice) $_rc"
 
 cleanup_test_env
 print_test_results

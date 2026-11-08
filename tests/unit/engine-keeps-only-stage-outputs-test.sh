@@ -176,7 +176,7 @@ assert_contains "[K5] each finding is answered only with what goes into that out
 assert_contains "[K5] …and what a finding needs beyond it is said, not done" \
     "$_c" "say so in your result and do not do it"
 assert_contains "[K5] a working call is told to answer every finding in its reply" \
-    "$_c" "ANSWER <stage> finding <n>: not mine — <why your job cannot fix it>"
+    "$_c" "ANSWER <the finding as listed>: not mine — <why your job cannot fix it>"
 
 cleanup_test_env
 print_test_results

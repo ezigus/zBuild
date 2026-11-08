@@ -16,32 +16,36 @@ _ZB_SR_ROOT="$(cd "${BASH_SOURCE[0]%/*}/../.." 2>/dev/null && pwd)"
 
 # Per-stage `retry:` — how many times the engine runs a stage again when its
 # outcome says retry. Prints nothing when unset.
-template_stage_retry() {
-    local stage_id="$1"
-    [[ -n "${_TPL_SOURCE_FILE:-}" && -f "${_TPL_SOURCE_FILE}" ]] || return 0
-    awk -v stage="$stage_id" '
-        function indent(s,   i) { i = 0; while (substr(s, i+1, 1) == " ") i++; return i }
-        $0 ~ "^"stage":[[:space:]]*$" { in_block = 1; block_ind = 0; in_defs = 0; next }
-        /^stage_definitions:[[:space:]]*$/ { in_defs = 1; next }
-        in_defs && /^[a-zA-Z_]/ { in_defs = 0 }
-        in_defs && !in_block && $0 ~ "^  "stage":[[:space:]]*$" { in_block = 1; block_ind = 2; next }
-        in_block {
-            ind = indent($0)
-            if ($0 ~ /[^[:space:]]/ && ind <= block_ind) { in_block = 0 }
-        }
-        in_block && indent($0) == block_ind + 2 && $0 ~ "^[[:space:]]+retry:" {
-            sub(/^[[:space:]]+retry:[[:space:]]*/, "")
-            sub(/[[:space:]]*#.*/, ""); gsub(/[[:space:]]/, "")
-            print; exit
-        }
-    ' "${_TPL_SOURCE_FILE}" 2>/dev/null
+template_stage_retry() { local _tsr; template_stage_retry_v _tsr "$@"; [[ -n "$_tsr" ]] && printf '%s\n' "$_tsr"; return 0; }
+# template_stage_retry_v <var> <stage> — the same into <var>, read by the shell:
+# it is asked on every dispatch (ADR-065 §5). The stage's own block, top level
+# or under stage_definitions:, at the indent just inside it.
+template_stage_retry_v() {
+    local -n _tsrv="$1"; local stage="${2:-}" _l _t _ind in_block=0 block_ind=0 in_defs=0
+    _tsrv=""
+    [[ -n "${_TPL_SOURCE_FILE:-}" && -f "${_TPL_SOURCE_FILE}" && -n "$stage" ]] || return 0
+    while IFS= read -r _l || [[ -n "$_l" ]]; do
+        _t="${_l%"${_l##*[![:space:]]}"}"
+        if [[ "$_t" == "$stage:" ]]; then in_block=1; block_ind=0; in_defs=0; continue; fi
+        if [[ "$_t" == "stage_definitions:" ]]; then in_defs=1; continue; fi
+        [[ "$in_defs" == 1 && "$_l" == [a-zA-Z_]* ]] && in_defs=0
+        if [[ "$in_defs" == 1 && "$in_block" == 0 && "$_t" == "  $stage:" ]]; then in_block=1; block_ind=2; continue; fi
+        (( in_block )) || continue
+        _ind="${_l%%[! ]*}"; _ind="${#_ind}"
+        if [[ "$_l" == *[![:space:]]* ]] && (( _ind <= block_ind )); then in_block=0; continue; fi
+        if (( _ind == block_ind + 2 )) && [[ "$_l" =~ ^[[:space:]]+retry:[[:space:]]*(.*)$ ]]; then
+            _t="${BASH_REMATCH[1]%%#*}"; _tsrv="${_t//[[:space:]]/}"
+            return 0
+        fi
+    done < "$_TPL_SOURCE_FILE"
+    return 0
 }
 
 # stage_retry_budget_v <var> <stage> — the template's `retry:`, else 1; capped
 # at 5. A value that is not a number is the default.
 stage_retry_budget_v() {
     local -n _srb="$1"
-    _srb="$(template_stage_retry "${2:-}" 2>/dev/null || true)"
+    template_stage_retry_v _srb "${2:-}"
     [[ "$_srb" =~ ^[0-9]+$ ]] || _srb=1
     (( _srb > 5 )) && _srb=5
     return 0
@@ -81,7 +85,10 @@ stage_retry_next() {
     # ADR-058 C12: a try whose repository writes the engine put back did change
     # something — the engine undid it — and is run again once (#2443).
     local _wb_key="${stage//[^A-Za-z0-9._-]/_}"   # zbuild_stage_key
+    # #2487: a first try whose output could not be used is run again once even
+    # so: a judging stage writes only its result, so it never changes anything.
     if [[ "$outcome" != interrupted && "$outcome" != throttled \
+          && ! ( "$outcome" == unusable && "$tries" -eq 1 ) \
           && ! -f "$state_dir/runtime/write-boundary-reverted.$_wb_key" \
           && "${_ATTEMPT_LAST_PROGRESS:-}" == "false" ]]; then
         return 1

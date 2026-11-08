@@ -321,10 +321,10 @@ EOF
 # none of them is asked for again. Read once, by the shell (ADR-065 §5).
 IFS= read -r -d '' _ZB_ANSWER_FORMS <<'EOF' || true
 - Answer every finding you are given under Previous work, each on its own line
-  in your reply, with the stage and number it is listed under:
-    ANSWER <stage> finding <n>: done — <what you changed for it>
-    ANSWER <stage> finding <n>: wrong — <why it does not hold>
-    ANSWER <stage> finding <n>: not mine — <why your job cannot fix it>
+  in your reply. Name it as its line there begins, before "(opened by":
+    ANSWER <the finding as listed>: done — <what you changed for it>
+    ANSWER <the finding as listed>: wrong — <why it does not hold>
+    ANSWER <the finding as listed>: not mine — <why your job cannot fix it>
   A finding with no such line is asked for again.
 EOF
 stage_answer_forms() { printf '%s' "$_ZB_ANSWER_FORMS"; }

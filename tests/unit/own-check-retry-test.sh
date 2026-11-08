@@ -15,7 +15,10 @@
 #             changed nothing, and its test still failed
 # R3 [guard]  the engine runs again a try that ended `unusable` with new
 #             findings about its own work, even when it changed no file — how
-#             those findings are compared is attempt-progress-test.sh P10-P12
+#             those findings are compared is attempt-progress-test.sh P10-P12;
+#             a later one with the same findings is not (#2487: the first
+#             unusable try is run again once whatever it changed, R12 in
+#             stage-retry-test.sh)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -70,7 +73,7 @@ else
     assert_fail "[R3] an unusable try with new findings (progress) is run again" "no retry"
 fi
 _ATTEMPT_LAST_PROGRESS=false
-if stage_retry_next "$PROOT/agent/build" build "$STATE/pipeline-state.json" 1 1 2 >/dev/null 2>&1; then
+if stage_retry_next "$PROOT/agent/build" build "$STATE/pipeline-state.json" 1 2 2 >/dev/null 2>&1; then
     assert_fail "[R3] ...the same findings again (no progress) are not" "retried"
 else
     assert_pass "[R3] ...the same findings again (no progress) are not"

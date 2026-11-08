@@ -65,9 +65,9 @@ print_test_section "A3: a working call is told the forms; a judging call is not"
 _own=$'## What you own\nWrite x.'
 _work="$(stage_prompt_compose_text "$_own" "THE THING" "- do not y" 2>/dev/null)"
 _judge="$(stage_prompt_compose_text --fresh "$_own" "THE THING" "- do not y" 2>/dev/null)"
-assert_contains "[A3] a working call is told every finding gets an answer" "$_work" "ANSWER <stage> finding <n>: not mine — <why your job cannot fix it>"
-assert_contains "[A3] ...and the other two forms" "$_work" "ANSWER <stage> finding <n>: wrong — <why it does not hold>"
-_a3_j=1; [[ "$_judge" == *"ANSWER <stage> finding <n>"* ]] && _a3_j=0
+assert_contains "[A3] a working call is told every finding gets an answer" "$_work" "ANSWER <the finding as listed>: not mine — <why your job cannot fix it>"
+assert_contains "[A3] ...and the other two forms" "$_work" "ANSWER <the finding as listed>: wrong — <why it does not hold>"
+_a3_j=1; [[ "$_judge" == *"ANSWER <the finding as listed>"* ]] && _a3_j=0
 assert_eq "[A3] a judging call is not told to answer findings" "1" "$_a3_j"
 
 print_test_section "B1-B3: the engine asks for what was not answered"
@@ -131,7 +131,7 @@ print_test_section "B5: issue-acceptance"
 (
     source "$REPO_ROOT/plugins/agent/issue-acceptance/plugin.sh" >/dev/null 2>&1
     _b5="$(_ia_prompt "the issue" "<none>" "<no diff>" pass "" "")"
-    echo "B5|$([[ "$_b5" == *"ANSWER <stage> finding <n>: not mine —"* ]] && echo told)"
+    echo "B5|$([[ "$_b5" == *"ANSWER <the finding as listed>: not mine —"* ]] && echo told)"
 ) > "$TEST_TEMP_DIR/b5.out" 2>/dev/null
 assert_eq "[B5] issue-acceptance is told how to answer the findings it is given" "told" "$(grep '^B5|' "$TEST_TEMP_DIR/b5.out" | cut -d'|' -f2)"
 
@@ -174,6 +174,28 @@ assert_contains "[C3] ...with what was answered" "$_c3" "done — one write a ro
 assert_contains "[C3] ...and told a finding keeps its grade unless it quotes what changed" "$_c3" \
     "A finding you report again keeps the grade you gave it, unless you quote what changed"
 rm -f "$ART/build-summary.json"
+
+print_test_section "D1-D3: the answer names the finding as it is listed"
+_D_ANS=()
+route_to_model() { printf '1' > "$TEST_TEMP_DIR/d-called"; return 0; }
+rm -f "$TEST_TEMP_DIR/d-called"
+zb_answers_finish _D_ANS "$_P_SHOWN" $'ANSWER review_lenses finding lens-sre-code finding 1: done — x\nANSWER review_lenses finding lens-sre-code finding 2: wrong — y\nANSWER issue-acceptance finding 1: not mine — z'
+assert_eq "[D1] an answer with the opening stage in front counts" "" "$_ZB_ANS_MISSING"
+assert_eq "[D1] ...so nothing is asked again" "no" "$([[ -f "$TEST_TEMP_DIR/d-called" ]] && echo yes || echo no)"
+assert_eq "[D1] ...and it is kept under the finding's own name" \
+    $'lens-sre-code finding 1: done — x\nlens-sre-code finding 2: wrong — y\nissue-acceptance finding 1: not mine — z' "$(printf '%s\n' "${_D_ANS[@]}")"
+D2B="$TEST_TEMP_DIR/d2-blocks"; mkdir -p "$D2B"
+for _f in from-repo previous-work-fresh rules-fresh previous-work rules; do printf 'the %s block\n' "$_f" > "$D2B/$_f.md"; done
+route_to_model() { printf '%s' "$2" > "$TEST_TEMP_DIR/d2-ask"; return 0; }
+_D_ANS=(); rm -f "$TEST_TEMP_DIR/d2-ask"
+ZBUILD_STAGE_BLOCKS="$D2B" zb_answers_finish _D_ANS "$_P_SHOWN" 'ANSWER lens-sre-code finding 1: done — x'
+assert_eq "[D2] the follow-up ask is in the contract order" "0" \
+    "$(stage_prompt_check "$TEST_TEMP_DIR/d2-ask" && echo 0 || echo 1)"
+assert_contains "[D2] ...and names what it was not given an answer for" "$(cat "$TEST_TEMP_DIR/d2-ask" 2>/dev/null)" \
+    "lens-sre-code finding 2 (opened by review_lenses): the jq error is hidden"
+unset -f route_to_model
+_d3="$(grep -rlF 'ANSWER <stage> finding <n>' "$REPO_ROOT/scripts" "$REPO_ROOT/plugins" "$REPO_ROOT/core" 2>/dev/null)"
+assert_eq "[D3] no prompt still tells a stage to write the stage and number" "" "$_d3"
 
 cleanup_test_env
 print_test_results

@@ -20,6 +20,10 @@
 # Q5 a review lens quotes each finding's text from its file
 # Q6 formatting is not the judge's to get right (#2472): `*`, `_` and backticks
 #    are left out on both sides, as spacing is
+# Q7 a quote mark written \" and a backslash written \\ inside a quote are the
+#    characters themselves (#2487): on #1805 run 42397891946 issue-acceptance
+#    quoted a line holding `"$dry_run"` as \"$dry_run\", and the check refused
+#    both its quotes
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -322,6 +326,14 @@ assert_contains "[Q6] the refusal says the item's own words" "$(_q '"stage k is 
 assert_not_contains "[Q6] ...and no variable name" "$(_q '"stage k is skipped"' "$_Q6W")" "_judge__"
 printf 'see `skip_stage` and *every* stage\n' >> "$XR/scripts/cfg.sh"
 assert_eq "[Q6] a file's text, formatting aside" "ok" "$(_q 'scripts/cfg.sh:"see skipstage and every stage"')"
+
+print_test_section "Q7: an escaped quote mark is the mark itself"
+printf '%s\n' 'if ! _gate "$dry_run" "$mode"; then' 'grep -c '"'"'_gate "\$dry_run"'"'"' f' >> "$XR/scripts/cfg.sh"
+assert_eq "[Q7] \\\" in a file quote is a quote mark" "ok" "$(_q 'scripts/cfg.sh:"if ! _gate \"$dry_run\" \"$mode\"; then"')"
+assert_eq "[Q7] ...and a backslash that is really in the file still holds" "ok" "$(_q 'scripts/cfg.sh:"_gate \"\$dry_run\""')"
+assert_eq "[Q7] ...as does \\\\ written for it" "ok" "$(_q 'scripts/cfg.sh:"_gate \"\\$dry_run\""')"
+assert_eq "[Q7] \\\" in the item's own words is a quote mark" "ok" "$(_q '"run \"zbuild\" now"' 'please run "zbuild" now')"
+assert_contains "[Q7] words that are not there are still refused" "$(_q 'scripts/cfg.sh:"if ! _gate \"$wet_run\""')" "bad:"
 
 cleanup_test_env
 print_test_results

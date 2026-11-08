@@ -1,6 +1,6 @@
 # ADR-072 — A judge reads the code itself, quotes what it complains about, and keeps its answer while nothing changes
 
-**Status:** Accepted (2026-11-03); amended 2026-11-04 (#2466, §2 §4: the old-code copy and every kept answer leave events); amended 2026-11-04 (#2467, §3: the checks answer one line per part of a SPEC); amended 2026-11-04 (#2470, §3 §4: one line per SPEC that is fine and one per failing part; design's check keeps its answer per SPEC, is given the draft by its path, and judges only the SPECs that changed); amended 2026-11-05 (#2472, §3 §4: quotes ignore formatting; a kept answer does not depend on the file its items come from; a bad line costs only its own item); amended 2026-11-05 (#2474, §3: every reply line is read with its formatting aside)
+**Status:** Accepted (2026-11-03); amended 2026-11-07 (#2487, §3: an escaped quote mark is the mark itself); amended 2026-11-04 (#2466, §2 §4: the old-code copy and every kept answer leave events); amended 2026-11-04 (#2467, §3: the checks answer one line per part of a SPEC); amended 2026-11-04 (#2470, §3 §4: one line per SPEC that is fine and one per failing part; design's check keeps its answer per SPEC, is given the draft by its path, and judges only the SPECs that changed); amended 2026-11-05 (#2472, §3 §4: quotes ignore formatting; a kept answer does not depend on the file its items come from; a bad line costs only its own item); amended 2026-11-05 (#2474, §3: every reply line is read with its formatting aside)
 **Issue:** #2464 (runs 41643063636 and 41679237388 on #1805)
 **Amends:** ADR-068 §6 §7 (answers are kept in a stage's result; a check keeps a verdict whose inputs have not changed), ADR-017 §11 (`tools: read`), ADR-069 §2 (a `[done]` claim is read in the code from before the change, by file), ADR-067 §8 (a judging call can read and search files, and nothing else)
 **Related:** ADR-060 §6 (one re-ask), ADR-054 §7 (teardown frees run resources), ADR-066 (every ADR statement has a test)
@@ -152,7 +152,15 @@ the grade it gave it, unless it quotes what changed since that makes it worse; t
 against what was done; and that one answered wrong is judged again with the answer. Only `wrong` answers are the
 disputes of §5 (ADR-068 §6).
 
+## Amendment 2026-11-07 (#2487) — §3: an escaped quote mark is the mark itself
+
+On #1805 run 42397891946 issue-acceptance quoted two code lines that hold `"`, in the form `<file>:"<text>"`, and wrote each `"` inside as `\"`. The check compared the backslashes with the file and refused both quotes; the stage's answer was thrown away, though both its verdicts were right.
+
+- **A quote is read as written, then with its escapes read.** Inside `"…"`, `\"` is a quote mark and `\\` a backslash. It is checked as written first, since code holds real backslashes (`_judge_holds`).
+
 ## Enforced by
+
+- §3 amendment 2026-11-07 (#2487: an escaped quote mark is the mark itself) → `tests/unit/judge-quotes-test.sh` Q7
 
 - §5 amendment 2026-11-07 (last time's findings and their answers are shown; a grade holds) → `tests/unit/finding-answers-test.sh` C3; `tests/unit/finding-answers-test.sh` A2
 

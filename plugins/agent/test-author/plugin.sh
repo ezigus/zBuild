@@ -175,8 +175,8 @@ _ta_write_result() {
     stage_summary_write "$dir/test-author-summary.md" "test-author" "$o" "$_sum_head" "$_sum_body"
 }
 
-# _ta_collect_answers <reply> [prompt] [tier] — the model's `ANSWER <stage>
-# finding <n>: …` lines, added to _TA_ANSWERS without the word ANSWER; a
+# _ta_collect_answers <reply> [prompt] [tier] — the model's `ANSWER <the finding
+# as listed>: …` lines, added to _TA_ANSWERS without the word ANSWER; a
 # finding [prompt] showed it and it did not answer is asked for (ADR-068 §6).
 _TA_ANSWERS=()
 # #2460: a wrapped answer is read whole, and a finding answered again keeps
@@ -349,8 +349,8 @@ ${written_block}
 If every requirement below already has its test and no finding is open for you, do not rewrite them: confirm they test what their requirement demands and end with LOOP_COMPLETE.
 
 Findings from other stages about your tests are yours (under Previous work): a test that already passes on the code from before this change, a test that fails on the new code, a test that flags code that already meets its requirement, a test file far slower than the rest, a test build says is wrong (build-tests findings), with its reason. Fix the test from its requirement, or say why the test is right. Answer each such finding on its own line, before LOOP_COMPLETE:
-ANSWER <stage> finding <n>: done — <what you changed>
-ANSWER <stage> finding <n>: wrong — <why the test is right>
+ANSWER <the finding as listed>: done — <what you changed>
+ANSWER <the finding as listed>: wrong — <why the test is right>
 
 Work one testfile at a time: read only what that file's SPECs need, write it to disk, and only then move on — write each file before you plan the next. Do not plan every SPEC up front. Your call has a time limit; a file already written survives it and is continued by the next attempt, and a plan that was never written is lost.
 

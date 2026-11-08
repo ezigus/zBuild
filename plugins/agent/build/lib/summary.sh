@@ -188,8 +188,8 @@ _build_not_reproduced() {
 }
 
 # _build_test_wrong <response_text> — build's answers that a test is wrong, one
-# per line, each `<stage> finding <n>: <test file>: <why>` (#2441). Read from
-# `ANSWER <stage> finding <n>: wrong — the test is wrong: <file>: <why>`.
+# per line, each `<the finding as listed>: <test file>: <why>` (#2441). Read from
+# `ANSWER <the finding as listed>: wrong — the test is wrong: <file>: <why>`.
 # Read by the shell: it runs on every try (ADR-065).
 _build_test_wrong() {
     local line re had=0 _joined

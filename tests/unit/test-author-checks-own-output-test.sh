@@ -191,7 +191,7 @@ assert_contains "[A10] ...a test that flags code that already meets its requirem
 assert_contains "[A10] ...and a test file far slower than the rest" "$_AP" "a test file far slower than the rest"
 assert_contains "[A10] ...and a test build says is wrong, with its reason (#2441)" "$_AP" \
     "a test build says is wrong (build-tests findings), with its reason"
-assert_contains "[A10] it answers each one on its own line" "$_AP" "ANSWER <stage> finding <n>:"
+assert_contains "[A10] it answers each one on its own line" "$_AP" "ANSWER <the finding as listed>:"
 assert_eq "[A11] it is not told its assertions fail on the code as it is today" "0" \
     "$(grep -c 'expected to fail on the code as it is today' <<< "$_AP" || true)"
 assert_contains "[A11] ...but on the code from before this change" "$_AP" \
