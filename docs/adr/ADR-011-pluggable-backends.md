@@ -1,7 +1,7 @@
 # ADR-011: Pluggable Backends (Memory, Orchestrator, Cache)
 
 **Status:** Accepted
-**Amended:** 2026-08-22 — retention: the cache store is reclaimable, the memory store never is
+**Amended:** 2026-08-22 — retention: the cache store is reclaimable, the memory store never is; 2026-11-08 (#2497) — a push that does not finish never becomes an entry
 **Date:** 2026-05-24
 
 > **Memory split:** The "memory backend" in this ADR is **learning memory** —
@@ -97,6 +97,8 @@ The `<key>` is an opaque, plugin-agnostic identifier (e.g., a slot id or a conte
 Reconciled with the code (`core/cache/contract.sh`) on 2026-05-26 per #310: the initial sketch used a single-arg `cache_pull <slot_id>` that conflated key and destination. The two-arg form is what every implementation already needs and what the existing `gh-actions-cache` / `cache-local` plugins ship.
 
 Defaults: `local` — a real filesystem-backed cache under `$ZBUILD_CACHE_DIR` (defaults to `~/.zbuild/cache`). Optionals: `gh-actions-cache`, `s3`, `gist`.
+
+*Amended 2026-11-08 (#2497):* **a push that does not finish never becomes an entry.** A push writes into its own temporary place and makes it the entry only once the copy is whole. A push whose copy fails cleans up after itself and returns 1. One that dies partway may leave its temporary place behind, but a pull never reads it: the pull returns the earlier entry, whole, or `CACHE_MISS`. A test of this fakes the interruption; it does not time a kill against a real copy, which rarely lands and, when it does, leaves what no code can clean up.
 
 ### Backend selection: `.zbuild/config.yaml`
 
@@ -207,6 +209,7 @@ with its own reasoning, not folded into artifact reclamation.
 
 ## Enforced by
 
+- §Cache backend contract (§ a push that does not finish never becomes an entry; a failed copy cleans up after itself) — `plugins/tool/cache-gh-actions/tests/cache-gh-actions-test.sh` section 4-5 [#2497].
 - §Orchestrator backend contract (§ orch_load_backend must fail when backend is absent, not fall back silently) — `tests/integration/orch-backend-misconfigured-test.sh` [#1801/SPEC-2], [#1801/SPEC-4], [#1801/SPEC-10].
 - §No sequential fallback (§ the built-in orch-sequential fallback is removed from orch_load_backend) — `tests/integration/orch-backend-misconfigured-test.sh` [#1801/SPEC-2] and `tests/unit/orch-sequential-absent-guard-test.sh` [#1801/SPEC-3].
 - §orch-sequential plugin directory absent from the installed tree — `tests/unit/orch-sequential-absent-guard-test.sh` [#1801/SPEC-3].
