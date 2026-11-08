@@ -979,16 +979,18 @@ _cycle_detect_blocked() {
             "iter=$iter"
         return 0
     fi
-    # Fail-CLOSED: jq parse failure on the blob itself.
-    if ! jq -e . <<< "$blob" >/dev/null 2>&1; then
+    # Every member's verdict and disposition in one jq (ADR-065 §5); a blob jq
+    # cannot parse fails CLOSED.
+    local s v d _row _rows
+    if ! _rows="$(jq -r '. as $b | $ARGS.positional[] | "\(.)|\($b[.].verdict // "")|\($b[.].disposition // "")"' \
+            --args "${_CYCLE_STAGES[@]}" <<< "$blob" 2>/dev/null)"; then
         _cycle_emit "cycle.metric.invalid" "metric=blocked_eval" \
             "iter=$iter" "reason=jq_failed"
         return 0
     fi
-    local s v d
-    for s in "${_CYCLE_STAGES[@]}"; do
-        v="$(jq -r --arg s "$s" '"\(.[$s].verdict // "")|\(.[$s].disposition // "")"' <<< "$blob" 2>/dev/null || true)"
-        d="${v#*|}"; v="${v%%|*}"
+    while IFS= read -r _row; do
+        [[ -n "$_row" ]] || continue
+        s="${_row%%|*}"; _row="${_row#*|}"; v="${_row%%|*}"; d="${_row#*|}"
         # #2487: a member whose output could not be used, after its own retry,
         # is run again next round — it is not a stage that cannot recover.
         [[ "$v" == error && "$d" == unusable ]] && continue
@@ -1015,7 +1017,7 @@ _cycle_detect_blocked() {
                 return 0
                 ;;
         esac
-    done
+    done <<< "$_rows"
     return 1
 }
 
