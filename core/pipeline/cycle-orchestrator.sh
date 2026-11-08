@@ -1303,7 +1303,7 @@ _CYCLE_VERIFIED_BLOB=""
 # with _CYCLE_ITER_OUTCOME naming why: failed | interrupted | aborted | error
 # (#1850, ADR-054 §4 — the word, never an rc).
 _cycle_iter_dispatch() {
-    local iter="$1" state_file="$2" _resume_first_iter="${3:-false}"
+    local iter="$1" state_file="$2" _resume_first_iter="${3:-false}" _from_stage_start="${4:-false}"
     _CYCLE_LAST_VERDICTS_BLOB="{}"
     _CYCLE_LAST_FAILURE_COUNT=0
     _CYCLE_ITER_OUTCOME="error"
@@ -1342,6 +1342,25 @@ _cycle_iter_dispatch() {
     # renders e.g. `seq=1.2` instead of the per-stage cardinal. Empty label
     # means cardinal fallback (back-compat).
     local _cyc_pos=0
+    # DSCMBR-1 edge case (#1805): if _resume_first_iter is true but ALL members
+    # show "complete" in stage_statuses, they completed in a PRIOR iteration — no
+    # member ran in the current (interrupted) iteration yet. Treat as a fresh
+    # iteration start: run all members but still emit stage.start for the first
+    # (since this is a resume starting the interrupted iteration at its beginning).
+    if [[ "$_resume_first_iter" == "true" ]]; then
+        local _cid_nc=0 _cid_s
+        for _cid_s in "${_CYCLE_STAGES[@]}"; do
+            local _cid_st
+            _cid_st="$(jq -r --arg s "$_cid_s" '.stage_statuses[$s] // "pending"' \
+                "$state_file" 2>/dev/null || echo "pending")"
+            [[ "$_cid_st" != "complete" ]] && _cid_nc=$(( _cid_nc + 1 ))
+        done
+        if [[ "$_cid_nc" -eq 0 ]]; then
+            # All complete from prior iter; run all members fresh, emit stage.start for first.
+            _resume_first_iter=false
+            _from_stage_start=true
+        fi
+    fi
     # ADR-027 (Wave 17-B #703): cycle-as-member support. For each cycle
     # member, check `_TPL_STAGE_TYPE_<member>` — if it's `cycle`, recurse
     # into cycle_orchestrator_run for that nested cycle and map how it ended
@@ -1406,6 +1425,14 @@ _cycle_iter_dispatch() {
             _cycle_state_write_member_atomic "$state_file" "$s" \
                 "$(jq -r '.status // "complete"' <<< "$_ru_entry")" "$(jq -r '.verdict // "pass"' <<< "$_ru_entry")" || true
             continue
+        fi
+        # DSFSTG-1 / finding-3 (#1805): emit stage.start for the FIRST member when
+        # --from-stage targets this cycle, or when all prior-iter members completed
+        # (interrupted-before-any-dispatch edge case). No skip guard: all members run.
+        if [[ "$_from_stage_start" == "true" ]]; then
+            eb_emit_event "stage.start" "stage=$s" \
+                || { local _fss_r=$?; warn "eb_emit_event stage.start failed for from-stage member '$s' (rc=$_fss_r, continuing — disk/perm/lock?)"; true; }
+            _from_stage_start=false
         fi
         # ADR-006 §3.6 / #1805 (DSCMBR-1): on the first resumed iteration, skip members
         # already complete in persisted state so dispatch begins at the interrupted member.
@@ -2367,11 +2394,13 @@ _cycle_orchestrator_run_body() {
     fi
     # DSFSTG-1 (#1805): when --from-stage targets this cycle, emit stage.start for
     # its first member even though _ZBUILD_RESUME_ACTIVE was cleared (iter always 1
-    # for from-stage so persisted iter must not be used). Override _is_resume so the
-    # DSCMBR-1 guard runs and emits stage.start for the first (non-complete) member.
+    # for from-stage so persisted iter must not be used). Use a SEPARATE flag so
+    # _is_resume stays false — the DSCMBR-1 skip guard must NOT run for from-stage
+    # (it would skip members "complete" from prior runs, leaving no dispatches).
     # Consume the flag immediately so nested cycles and later iterations are not affected.
+    local _from_stage_cycle_start=false
     if [[ "${_ZBUILD_FROM_STAGE_EMIT_START:-false}" == "true" ]]; then
-        _is_resume=true
+        _from_stage_cycle_start=true
         export _ZBUILD_FROM_STAGE_EMIT_START=false
     fi
 
@@ -2453,8 +2482,16 @@ _cycle_orchestrator_run_body() {
         if [[ "$_is_resume" == "true" && "$iter" -eq "$_start_iter" ]]; then
             _cid_resume_first_iter=true
         fi
+        # DSFSTG-1 (#1805): when --from-stage targets this cycle, signal the first
+        # iteration to emit stage.start for its first member (no skip guard runs).
+        # Consumed after first iter so subsequent iters are not affected.
+        local _cid_from_stage_start=false
+        if [[ "$_from_stage_cycle_start" == "true" && "$iter" -eq "$_start_iter" ]]; then
+            _cid_from_stage_start=true
+            _from_stage_cycle_start=false
+        fi
         set +e
-        _cycle_iter_dispatch "$iter" "$state_file" "$_cid_resume_first_iter"
+        _cycle_iter_dispatch "$iter" "$state_file" "$_cid_resume_first_iter" "$_cid_from_stage_start"
         local _iter_rc=$?
         [[ $_ORCH_HAD_E -eq 1 ]] && set -e
         # The round stopped before every member ran (#1850: the word, not an rc).

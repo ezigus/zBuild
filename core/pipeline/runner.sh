@@ -1763,6 +1763,12 @@ _runner_from_stage_preflight() {
         [[ "$_fsp_resolved" == "${_fsp_artifacts_dir}"/* ]] || _fsp_resolved=""
         if [[ ! -s "$_fsp_resolved" ]]; then
             echo "error: --from-stage '$_fsp_from_stage': stage '$_fsp_s' has no restorable primary artifact" >&2
+            # Emit a machine-readable event so monitoring systems can distinguish
+            # a preflight refusal from a user-initiated abort (sre-code #1805).
+            eb_emit_event "stage.verdict.stale_artifact" \
+                "stage=$_fsp_s" "from_stage=$_fsp_from_stage" \
+                "path=${_fsp_resolved:-}" "run_id=${_runner_run_id:-}" \
+                2>/dev/null || true
             return 1
         fi
     done
@@ -1834,7 +1840,9 @@ main() {
                   ( "$_ls_issue_resolved" == "${_ls_issue_root%%/}/"* || \
                     "$_ls_issue_resolved" == "${_ls_issue_root%%/}" ) ]]; then
                 local _ls_issue
-                _ls_issue="$(jq -r '.issue // ""' "$_ls_sd/pipeline-state.json" 2>/dev/null || true)"
+                # Security: read from the resolved path (not the unresolved symlink)
+                # to eliminate the TOCTOU race between validation and read.
+                _ls_issue="$(jq -r '.issue // ""' "$_ls_issue_resolved/pipeline-state.json" 2>/dev/null || true)"
                 if [[ "$_ls_issue" =~ ^[0-9]+$ && "$_ls_issue" != "0" ]]; then
                     issue="$_ls_issue"
                 fi
@@ -3756,6 +3764,12 @@ main() {
                                 ;;
                         esac
                         warn "$(_runner_unconverged_msg "$_cyc_id" "$_rc" "$_CYCLE_LAST_TERMINATED_REASON" "$_RUNNER_CYCLE_UNCONVERGED_ON_MAX")"
+                    fi
+                    # ADR-006 §3.6 (#1805): record cycle completion in stage_statuses so
+                    # the resume skip guard (cycle:* arm above) can detect a completed
+                    # cycle and skip it; cycles do not write stage_statuses themselves.
+                    if [[ "$_cyc_outcome" == "converged" ]]; then
+                        _update_stage_status "$state_file" "$_cyc_id" "complete" || true
                     fi
                     # #2368: every stage is told whether every loop that ran
                     # passed — "yes" only then; unset until a loop has run, so a
