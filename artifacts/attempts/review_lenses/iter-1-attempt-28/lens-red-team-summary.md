@@ -1,0 +1,7 @@
+## review-lens-red-team — fail
+
+- found: medium: The `stage.skip` assertions at lines 851–855 (DSFRSH-1) and 983–988 (DSFRSH-2) are vacuously true: `stage.skip` is registered in `config/event-schema.json` but is never emitted by any `.sh` file in the codebase, so asserting its count is zero can never fail regardless of whether a fresh run erroneously skips stages via any other mechanism. (tests/integration/resume-rehydrate-test.sh:851) (and 1 more)
+
+- medium: The `stage.skip` assertions at lines 851–855 (DSFRSH-1) and 983–988 (DSFRSH-2) are vacuously true: `stage.skip` is registered in `config/event-schema.json` but is never emitted by any `.sh` file in the codebase, so asserting its count is zero can never fail regardless of whether a fresh run erroneously skips stages via any other mechanism. (tests/integration/resume-rehydrate-test.sh:851)
+- medium: Within the first resumed iteration (`_resume_first_iter=true`), cycle members already marked complete are skipped with `continue` at line 1490 without verifying that their primary artifact is present after rehydration; DSRHYD-2 requires exit 1 before any `stage.start` when a complete stage's artifact is absent, but this check is absent for intra-iteration cycle members — the outer dispatch-unit cycle:* check in runner.sh only fires when the entire cycle is marked complete, leaving partially-complete iterations unguarded. (core/pipeline/cycle-orchestrator.sh:1477)
+- score: 7

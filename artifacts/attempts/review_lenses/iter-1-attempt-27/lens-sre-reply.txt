@@ -1,0 +1,46 @@
+--- reply 1 ---
+{
+  "score": 6,
+  "findings": [
+    {
+      "file": "core/pipeline/cycle-orchestrator.sh",
+      "category": "observability",
+      "severity": "medium",
+      "line": 1486,
+      "message": "When jq fails to update the verdict blob for a skipped (already-complete) cycle member, stderr is suppressed via `2>/dev/null` and the `&&` short-circuit leaves `blob` unchanged; cycle exit predicates (`exit_when`, `abort_when`, `until`) referencing that member then evaluate against a blob that is missing its entry, producing incorrect cycle-exit decisions with no machine-readable event and only a stderr warn that is easily lost in log volume.",
+      "quote": "_cmbr_new_blob=\"$(jq -c --arg s \"$s\" --argjson e \"$_cmbr_blob_entry\" \\\n                    '. + {($s): $e}' <<< \"$blob\" 2>/dev/null)\" \\\n                    && blob=\"$_cmbr_new_blob\" \\\n                    || warn \"cycle-orchestrator: failed to update verdict blob for skipped member '$s'; cycle predicates (exit_when/abort_when/until) may evaluate incorrectly\"",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/cycle-orchestrator.sh",
+      "category": "observability",
+      "severity": "medium",
+      "line": 2505,
+      "message": "When `_cycle_state_write_iter_start` fails, only a stderr warn is printed and no machine-readable event is emitted; a subsequent interruption mid-iteration leaves `current_iter` at whatever value was last successfully written (the previously-completed iteration number), so a resume silently restarts from the wrong iteration, defeating RQLOOP-1 with no observable signal other than a potentially-missed stderr line.",
+      "quote": "_cycle_state_write_iter_start \"$state_file\" \"$cycle_id\" \"$iter\" \\\n            || warn \"cycle-orchestrator: failed to write iter-start state for cycle=$cycle_id iter=$iter (a resume may start at the wrong iteration)\"",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "observability",
+      "severity": "medium",
+      "line": 1723,
+      "message": "When `_artifact_persist_put_back` fails mid-copy inside `_runner_resume_rehydrate`, the function returns 0 with only a stderr warn and no machine-readable event; artifacts already copied before the failure remain in `ZBUILD_ARTIFACT_DIR` (partial restoration), so complete stages whose artifacts happened to have been copied before the failure are silently skipped by the dispatch-loop guard while only the first stage whose artifact is absent triggers the fail-closed `stage.verdict.stale_artifact` event — the root cause (put_back failure) is unobservable from event logs alone.",
+      "quote": "_artifact_persist_put_back \"$_rr_staging/artifacts\" \"$_rr_artifacts_dir\" \\\n            || warn \"resume-rehydrate: put_back failed for $_rr_artifacts_dir — partial restoration; dispatch loop will exit 1 for any missing primary artifact\"",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "observability",
+      "severity": "medium",
+      "line": 1783,
+      "message": "When `_runner_from_stage_preflight` refuses a `--from-stage` run because a prior stage has no restorable artifact (DSFSTG-2 path), it emits only a stderr line before returning 1; unlike the dispatch-loop stale-artifact check at line 3935 which emits a `stage.verdict.stale_artifact` event before exiting, the preflight path emits no machine-readable event, so a monitoring system reading events.jsonl sees `pipeline.resume` then `pipeline.abort` with no distinguishable reason — it cannot tell a preflight validation refusal from a user-initiated abort.",
+      "quote": "echo \"error: --from-stage '$_fsp_from_stage': stage '$_fsp_s' has no restorable primary artifact\" >&2\n            return 1",
+      "introduced": true,
+      "fix": "code"
+    }
+  ]
+}

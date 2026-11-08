@@ -1,24 +1,24 @@
 --- reply 1 ---
 {
-  "score": 8,
+  "score": 7,
   "findings": [
     {
-      "file": "core/state/artifact-persist.sh",
-      "category": "scope",
-      "severity": "low",
-      "line": 635,
-      "message": "The docstring for `_artifact_persist_put_back` claims 'Identical semantics to _hydrate_put_back' but the new function adds path-traversal guards (`[[ \"$rel\" == /* || \"$rel\" == *../* || \"$rel\" == ..* || \"$rel\" == *.. ]]`) that the original `_hydrate_put_back` did not have; the issue asked for a shared implementation (RQHYDR-1), not for new guards to be added to the existing hydrate copy path.",
-      "quote": "# model calls, not stage output). Identical semantics to _hydrate_put_back;",
+      "file": "tests/integration/from-stage-rehydrate-test.sh",
+      "category": "coverage",
+      "severity": "medium",
+      "line": 221,
+      "message": "The SPEC-3b section asserts it exercises the `skip_restore=false` branch of `_runner_from_stage_preflight`, but the S5 state file has `status: \"in_progress\"` and a fresh `updated_at`, so `get_resume_recommendation` returns `auto_resume`, auto-resume fires, `resume_mode=true`, and the preflight is called with `skip_restore=true` — the same branch as SPEC-3. The `skip_restore=false` branch is in fact unreachable from `main()`: `runner.sh:2305` guards `--from-stage` with `! $resume_mode` and returns 1 before the preflight call, so whenever `from_stage` is set and the preflight is reached, `resume_mode` is already `true`.",
+      "quote": "# ── SPEC-3b: --from-stage WITHOUT --resume exercises skip_restore=false branch ──\n# This sub-case covers the plain `--from-stage <s>` path (no --resume flag),\n# which routes through _runner_from_stage_preflight with skip_restore=false —\n# the branch that performs the git archive restore itself rather than relying on\n# a prior resume rehydration step.",
       "introduced": true,
       "fix": "code"
     },
     {
-      "file": "plugins/tool/hydrate/plugin.sh",
-      "category": "scope",
+      "file": "tests/integration/from-stage-rehydrate-test.sh",
+      "category": "coverage",
       "severity": "low",
-      "line": 64,
-      "message": "Delegating `_hydrate_put_back` to `_artifact_persist_put_back` silently changes the behaviour of the existing hydrate copy path: files whose relative path matches `/*`, `*../`, `..` patterns are now skipped rather than copied, which the issue did not request; in practice these guards cannot fire for git-archive-extracted content, but the change is not what RQHYDR-1 asked for.",
-      "quote": "_artifact_persist_put_back \"$1\" \"$2\"",
+      "line": 3,
+      "message": "The test file header references ADR-006 §3.5, but the step this test covers (`_runner_from_stage_preflight`, added for --from-stage rehydration) is §3.6, the new step introduced by this PR.",
+      "quote": "# (issue #1805, ADR-006 §3.5 / _runner_from_stage_preflight)",
       "introduced": true,
       "fix": "code"
     }

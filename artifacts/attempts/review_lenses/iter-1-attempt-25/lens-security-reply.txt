@@ -1,0 +1,16 @@
+--- reply 1 ---
+{
+  "score": 9,
+  "findings": [
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "TOCTOU / path traversal",
+      "severity": "low",
+      "line": 1855,
+      "message": "Issue-discovery reads the state file through the unresolved symlink path after a readlink -f validation, not through the validated resolved path; a symlink swap between lines 1849 and 1855 could make the read land outside the validated state root.",
+      "quote": "_ls_issue=\"$(jq -r '.issue // \"\"' \"$_ls_sd/pipeline-state.json\" 2>/dev/null || true)\"",
+      "introduced": true,
+      "fix": "code"
+    }
+  ]
+}
