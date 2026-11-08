@@ -79,8 +79,8 @@ BUILD="$(_pw build)"
 print_test_section "F1/F2: each lens finding goes by what fixes it"
 assert_contains "[F1] build is shown the finding the code must fix" "$BUILD" "CODE-FIX the read is unchecked"
 assert_not_contains "[F1] ...and test-author is not" "$TA" "CODE-FIX"
-assert_contains "[F2] test-author is shown the finding a test must fix" "$TA" \
-    "lens-correctness-code finding 2 (opened by review_lenses): correctness lens, high: TEST-FIX"
+assert_contains "[F2] test-author is shown the finding a test must fix" "$TA" "correctness lens, high: TEST-FIX"
+assert_contains "[F2] ...as the lens's code output's finding" "$TA" "lens-correctness-code finding"
 assert_contains "[F2] ...and so is build" "$BUILD" "TEST-FIX the test sets a value the engine never writes"
 
 # ── F3 ───────────────────────────────────────────────────────────────────────

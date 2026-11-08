@@ -141,7 +141,8 @@ _dcov_need_names() {
     local _dn_k _dn_out="" _dn_req=""
     while IFS= read -r _dn_k; do
         [[ -n "$_dn_k" ]] || continue
-        if [[ "$_dn_k" == requirements ]]; then _dn_req=1; else _dn_out+="${_dn_out:+, }${_dn_k#SCOPE }"; fi
+        if [[ "$_dn_k" == requirements ]]; then _dn_req=1; elif [[ "$_dn_k" == "SCOPE "* ]]; then _dn_out+="${_dn_out:+, }SCOPE: ${_dn_k#SCOPE }"
+        else _dn_out+="${_dn_out:+, }$_dn_k"; fi
     done <<< "$1"
     [[ -n "$_dn_req" ]] && _dn_out+="${_dn_out:+, }every requirement"
     printf '%s' "$_dn_out"

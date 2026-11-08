@@ -257,6 +257,8 @@ route_to_model() { local n; n=$(( $(cat "$_RA_N") + 1 )); printf '%s' "$n" > "$_
 ZBUILD_REPO_ROOT="$XR" _design_coverage "$DX" "$REQS" T2
 assert_eq "[SC2] the old line with no verdict is no finding" "0" "${#_DESIGN_OUTSIDE[@]}"
 assert_contains "[SC4] an entry with no line is asked again, naming it" "$(cat "$_P_FILE.2" 2>/dev/null)" "no line for scripts/telemetry.sh"
+assert_contains "[SC4] ...in the form its line takes (review on #2492)" "$(cat "$_P_FILE.2" 2>/dev/null)" \
+    "Answer again only for: SCOPE: scripts/telemetry.sh"
 assert_eq "[SC4] ...then the answer is unusable" "unusable" "$_DESIGN_COV_OUTCOME"
 route_to_model() { printf '%s' "$2" > "$_P_FILE"; printf '%s' "$_REPLY"; return 0; }
 _REPLY='RQST-1: covered
