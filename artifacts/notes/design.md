@@ -1,6 +1,39 @@
 # Design notes: #1805 — resume and --from-stage trust-and-rehydrate
 
-## Status: Forty-third pass — DSCYCL-1 widened to cover all 4 RQTEST-1 test files
+## Status: Forty-fifth pass — DSFSTG-1 And clause fixed (mechanism text removed)
+
+### Changes this pass (forty-fifth)
+
+**design finding 1** (DSFSTG-1 names internal mechanisms in 4th And clause):
+- The clause "rehydration and dispatch-loop skip guards prevent it, satisfying RQFROM-2 in both pure from-stage and combined resume+from-stage modes" names implementation details, not observable behavior
+- Fix: Removed the mechanism explanation; rewritten as: "And: `pipeline.skip_to_stage` is emitted when `--from-stage` is active; no stage before <s> is dispatched after that event"
+- This is fully observable: the event appears in the event log; no stage.start for stages before <s> appears after it
+
+**lens-correctness-design finding 1** (pipeline.skip_to_stage in resume+from-stage mode):
+- Now fully addressed by the DSFSTG-1 fix above
+- DSFSTG-1's 4th And states only observable behavior; Gap 10 in the architectural decision explains the analysis in context terms only (not an acceptance assertion)
+
+---
+
+## Status: Forty-fourth pass — artifact-persist.sh scope defended; skip_to_stage lens finding addressed
+
+### Changes this pass (forty-fourth)
+
+**design finding 1** (remove core/state/artifact-persist.sh from scope):
+- Answered "wrong" — the file IS created by this change to satisfy RQHYDR-1
+- Scope block must list every file the change touches; removing it makes scope incomplete
+- RQHYDR-1's directive to reuse the hydrate path motivates the extraction
+- Added Finding 10 to the design explaining the reasoning
+- File kept in scope
+
+**lens-correctness-design finding 1** (pipeline.skip_to_stage in resume+from-stage mode):
+- runner.sh:2963 emits the event when --from-stage is active, including combined resume+from-stage
+- RQFROM-2 says the event must not be FOLLOWED BY running an earlier stage
+- That constraint IS met: rehydration + dispatch-loop skip guards prevent earlier-stage dispatch
+- No code change needed — existing behavior satisfies RQFROM-2
+- Added Gap 10 to architectural decision explaining this
+- Added a 4th Then clause to DSFSTG-1: explicitly states the event is emitted in both modes and RQFROM-2 is satisfied by the guards
+- Added Finding 27 explaining the analysis
 
 ### Changes this pass (forty-third)
 
