@@ -1,43 +1,35 @@
 # Build notes — #1805 resume and --from-stage trust-and-rehydrate
 
-## Status: ITERATION 18 — COMPLETE
+## Status: ITERATION 19 — COMPLETE
 
 ## Summary of previous iterations
-- Iterations 1-13: Core implementation (artifact-persist.sh, runner.sh, cycle-orchestrator.sh, ADRs, tests)
-- Iteration 14: All 882 tests passed. issue-acceptance passed. review_lenses found findings.
-- Iteration 15: Fixed red-team-1 (from-stage RESUME_ACTIVE clear), red-team-3 (TOCTOU),
-  correctness-3 (double-slash), sre-1 (jq warn), sre-2 (cycle.state.write.failed event),
-  lens-scope (from-stage without --resume test case), moved --from-stage requires --resume
-  check to after auto-resume block. All 882 tests passed.
-- Iteration 16: Fixed pipeline-resume-test.sh failure: startup preflight was
-  intercepting --from-stage without --resume invocations (PERSONA_MISSING in warn mode
-  returns 1). Used `_spg_resume_mode` variable to avoid modifying `resume_mode` itself.
-  This broke the SPEC-5 grep test which expects `"$resume_mode"` exactly.
-- Iteration 17: Fixed:
-  1. Removed eb_emit_event "cycle.state.write.failed" (event not in schema, can't add)
-  2. Restored "$resume_mode" call in startup preflight via save/restore approach
-  All 885 tests passed.
-- Iteration 17 result: test passed (885/885), but issue-acceptance failed with finding 1
+- Iterations 1-13: Core implementation
+- Iteration 14-17: Various fixes; 885 tests pass
+- Iteration 18: ADR-006 fully amended. build/test/issue-acceptance PASS. review_lenses FAIL.
 
-## Iteration 18 fix: Amend ADR-006 with full #1805 decision
+## Iteration 19: Address review_lenses findings
 
-The issue-acceptance finding says RQADR-1 is not fully met. While step 3.6 is present,
-the full decision from the design is not documented. Missing:
-1. Dispatch-loop skip guard (trust every stage that ran on resume)
-2. Cycle iteration restoration (_ZBUILD_RESUME_ACTIVE + current_iter)
-3. --from-stage pre-flight contract
-4. Auto-resume state discovery via `latest` symlink
-5. Step 3.5 contradicts actual behavior (says "re-run iter N from scratch" / "start iter N+1")
+### Changes made:
+1. runner.sh - Security finding 4: `_fsp_cycle_safe` now uses `//[^a-zA-Z0-9_]/_` pattern
+2. runner.sh - Security finding 1 (line ~1775): bounds check after `_verdict_resolve_path_v` in `_runner_from_stage_preflight`
+3. runner.sh - Security finding 2 (line ~3607): bounds check in cycle member skip guard
+4. runner.sh - Security finding 3 (line ~3918): bounds check in dispatch-unit stage skip guard  
+5. cycle-orchestrator.sh - Correctness finding 2 (line ~2410): use `jq --arg id` for cycle_id read (matches write path)
+6. cycle-orchestrator.sh - Red-team finding 1 (after line 2416): cap `_start_iter` to `_CYCLE_MAX_ITER`
 
-FIX: Added new amendment section at bottom of ADR-006 covering all these items:
-- "## Amendment — full resume and --from-stage contract (issue #1805)"
-- Section: Cycle iteration restoration (_ZBUILD_RESUME_ACTIVE)
-- Section: Dispatch-loop skip guard
-- Section: --from-stage <s> pre-flight contract
-- Section: Auto-resume state discovery via `latest` symlink
+### Tests run after changes:
+- resume-loop-state-test.sh: 11/11 PASS
+- from-stage-rehydrate-test.sh: 22/22 PASS
+- resume-rehydrate-test.sh: 47/47 PASS
+- resume-entry-points-test.sh: 18/18 PASS
+- hydrate-stage-test.sh: 25/25 PASS
 
-Verified: resume-rehydrate-test.sh still passes 47/47 (DSAMDR-1 test passes).
-The existing step 3.6 text is unchanged, so all DSAMDR-1 assertions still pass.
+### Findings answered as WRONG:
+- performance-code 1: wrong — two writes required by DSITER-1, cannot be combined
 
-## All tests pass
-- resume-rehydrate-test.sh: 47/47 (verified after iteration 18 change)
+### Findings answered as NOT MINE:
+- red-team-code 2: not mine — artifact check in DSCMBR-1 requires _find_plugin_for_stage not in cycle-orchestrator.sh scope
+- correctness-code 1: not mine — stage_statuses flat map issue requires per-iteration tracking; schema change beyond scope
+- sre-code 1, 2, 3: not mine — machine-readable events require schema changes; fail-closed behavior already in dispatch loop
+- performance-code 2, 3 (non-blocking): not mine — micro-optimizations, non-blocking
+- scope-code 1, 2 (non-blocking): addressed inline

@@ -1,8 +1,35 @@
 diff --git a/core/pipeline/cycle-orchestrator.sh b/core/pipeline/cycle-orchestrator.sh
-index da5e65c5..f54bdbf1 100644
+index da5e65c5..fdea8b7d 100644
 --- a/core/pipeline/cycle-orchestrator.sh
 +++ b/core/pipeline/cycle-orchestrator.sh
-@@ -2494,8 +2494,7 @@ _cycle_orchestrator_run_body() {
+@@ -2404,16 +2404,22 @@ _cycle_orchestrator_run_body() {
+     if [[ "${_ZBUILD_RESUME_ACTIVE:-false}" == "true" ]]; then
+         _is_resume=true
+         local _persisted_iter
+-        # Sanitize cycle_id to prevent jq injection via template-sourced cycle IDs.
+-        local _safe_cycle_id="${cycle_id//[^a-zA-Z0-9_-]/}"
+-        _persisted_iter="$(get_state_field "$state_file" \
+-            ".cycle_iterations[\"$_safe_cycle_id\"].current_iter" 0 2>/dev/null || echo 0)"
++        # Use jq --arg to pass cycle_id safely (matches the write path's --arg id,
++        # so dots or other special chars in cycle_id resolve to the same key).
++        _persisted_iter="$(jq -r --arg id "$cycle_id" \
++            '.cycle_iterations[$id].current_iter // 0' \
++            "$state_file" 2>/dev/null || echo 0)"
+         [[ "$_persisted_iter" =~ ^[0-9]+$ ]] || _persisted_iter=0
+         # Consume the flag: nested cycles and subsequent re-entries start at 1.
+         _ZBUILD_RESUME_ACTIVE=false
+         # Start at the persisted iter (re-run the interrupted iteration); fall
+         # back to 1 when no iteration has been recorded yet.
+         _start_iter=$(( _persisted_iter > 0 ? _persisted_iter : 1 ))
++        # Red-team guard: a corrupt persisted iter > _CYCLE_MAX_ITER would cause
++        # the loop to execute zero times and fall through to unconverged. Cap so
++        # resume always runs at least one iteration (#1805).
++        (( _CYCLE_MAX_ITER > 0 && _start_iter > _CYCLE_MAX_ITER )) \
++            && _start_iter=$_CYCLE_MAX_ITER
+     else
+         _start_iter=1
+     fi
+@@ -2494,8 +2500,7 @@ _cycle_orchestrator_run_body() {
          # current_iter; this start write is what makes the resume formula correct for
          # a run interrupted before the first iter completes (#1805, correctness).
          _cycle_state_write_iter_start "$state_file" "$cycle_id" "$iter" \
@@ -13,10 +40,29 @@ index da5e65c5..f54bdbf1 100644
          # Dispatch the cycle's stages in order.
          # DSCMBR-1 (#1805): signal resume_first_iter for the first resumed iteration
 diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
-index 0d14ee10..34b8b6ea 100755
+index 0d14ee10..d247fc4e 100755
 --- a/core/pipeline/runner.sh
 +++ b/core/pipeline/runner.sh
-@@ -2006,10 +2006,11 @@ main() {
+@@ -1755,7 +1755,7 @@ _runner_from_stage_preflight() {
+     # in active_stages[], so a literal match would never fire and all stages
+     # (including cycle members) would be checked — wrong.
+     local _fsp_stop_stage="$_fsp_from_stage"
+-    local _fsp_cycle_safe="${_fsp_from_stage//-/_}"
++    local _fsp_cycle_safe="${_fsp_from_stage//[^a-zA-Z0-9_]/_}"
+     local _fsp_cycle_stages_var="_TPL_CYCLE_STAGES_${_fsp_cycle_safe}"
+     local _fsp_cycle_csv="${!_fsp_cycle_stages_var:-}"
+     if [[ -n "$_fsp_cycle_csv" ]]; then
+@@ -1773,6 +1773,9 @@ _runner_from_stage_preflight() {
+         _verdict_primary_output_path_v _fsp_prim_path "$_fsp_manifest" 2>/dev/null || true
+         [[ -z "$_fsp_prim_path" ]] && continue
+         _verdict_resolve_path_v _fsp_resolved "$_fsp_prim_path" "$_fsp_state_dir"
++        # Security (#1805): reject paths outside artifact_dir to prevent manifest
++        # path traversal from treating a system file as a valid artifact.
++        [[ "$_fsp_resolved" == "${_fsp_artifacts_dir}"/* ]] || _fsp_resolved=""
+         if [[ ! -s "$_fsp_resolved" ]]; then
+             echo "error: --from-stage '$_fsp_from_stage': stage '$_fsp_s' has no restorable primary artifact" >&2
+             return 1
+@@ -2006,10 +2009,11 @@ main() {
      # exemption logic is testable independently of the full pipeline startup sequence.
      # --from-stage is only valid with --resume (or auto-resume): skip the persona
      # preflight so the targeted "only valid with --resume" rejection fires instead
@@ -32,7 +78,7 @@ index 0d14ee10..34b8b6ea 100755
          error "Startup preflight validation failed (ZBUILD_CONTRACT_VALIDATOR=${ZBUILD_CONTRACT_VALIDATOR:-warn}). See above."
          _runner_run_id="${_runner_run_id:-${ZBUILD_RUN_ID:-preflight}}"
          _runner_issue="${_runner_issue:-${issue:-0}}"
-@@ -2019,6 +2020,9 @@ main() {
+@@ -2019,6 +2023,9 @@ main() {
          _render_pipeline_end "preflight_failed"
          return 1
      fi
@@ -42,6 +88,26 @@ index 0d14ee10..34b8b6ea 100755
  
      # ADR-049 §Phase-1.1 (#1360): vision-document admission gate.
      # Runs BEFORE the --dry-run branch so dry-run also enforces vision conformance.
+@@ -3602,6 +3609,9 @@ main() {
+                                 [[ -z "$_dc_prim" ]] && continue
+                                 _verdict_resolve_path_v _dc_resolved \
+                                     "$_dc_prim" "$state_dir"
++                                # Security (#1805): reject paths outside artifact_dir.
++                                [[ "$_dc_resolved" == "${state_dir}/artifacts"/* ]] \
++                                    || _dc_resolved=""
+                                 if [[ ! -s "$_dc_resolved" ]]; then
+                                     eb_emit_event \
+                                         "stage.verdict.stale_artifact" \
+@@ -3913,6 +3923,9 @@ main() {
+                                 if [[ -n "$_du_prim_path" ]]; then
+                                     _verdict_resolve_path_v _du_resolved \
+                                         "$_du_prim_path" "$state_dir"
++                                    # Security (#1805): reject paths outside artifact_dir.
++                                    [[ "$_du_resolved" == "${state_dir}/artifacts"/* ]] \
++                                        || _du_resolved=""
+                                     if [[ ! -s "$_du_resolved" ]]; then
+                                         eb_emit_event \
+                                             "stage.verdict.stale_artifact" \
 diff --git a/docs/adr/ADR-006-resume-contract.md b/docs/adr/ADR-006-resume-contract.md
 index 31e40c65..a05a7b20 100644
 --- a/docs/adr/ADR-006-resume-contract.md
