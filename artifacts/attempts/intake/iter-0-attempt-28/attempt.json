@@ -1,0 +1,18 @@
+{
+  "stage": "intake",
+  "cycle_iter": 0,
+  "attempt": 28,
+  "rc": "0",
+  "generated_at": "2026-11-09T03:29:23Z",
+  "files": 5,
+  "outputs": {
+    "intake-result.json": "unchanged",
+    "scope-manifest.md": "changed",
+    "intake.md": "changed",
+    "requirements.json": "changed",
+    "intake-summary.md": "unchanged",
+    "__notes__": "unchanged",
+    "__cutoff__": "absent"
+  },
+  "progress": true
+}
