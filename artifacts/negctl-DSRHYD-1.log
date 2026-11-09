@@ -7,7 +7,7 @@
   [38;2;0;212;255m[#1805/DSRHYD-1] on resume, artifacts restored from git state branch into ZBUILD_ARTIFACT_DIR[0m
   [38;2;74;222;128m✓[0m [#1805/DSRHYD-1] setup: state branch populated with intake-result.json
   [38;2;248;113;113m✗[0m [#1805/DSRHYD-1] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/resume-rehydrate-1805.j20KkT/s1-state/artifacts/intake-result.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/resume-rehydrate-1805.IwLoGA/s1-state/artifacts/intake-result.json[0m
   [38;2;248;113;113m✗[0m [#1805/DSRHYD-1] artifact content is byte-identical to its state at interruption (via _artifact_persist_restore + _artifact_persist_put_back from git state branch)
     [2mexpected: {"result_contract":3,"outcome":"pass","reason":"prior-run intake"}, got: [0m
   [38;2;74;222;128m✓[0m [#1805/DSRHYD-1] at least one stage dispatched after resume (dispatch loop ran; artifact was present before loop)
@@ -28,7 +28,7 @@
 
   [38;2;0;212;255m[#1805/DSRHYD-1] path 2: auto-resume (status=interrupted) restores artifacts[0m
   [38;2;248;113;113m✗[0m [#1805/DSRHYD-1] path 2 (auto-resume/interrupted): intake-result.json restored
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/resume-rehydrate-1805.j20KkT/s1p2-state/artifacts/intake-result.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/resume-rehydrate-1805.IwLoGA/s1p2-state/artifacts/intake-result.json[0m
   [38;2;248;113;113m✗[0m [#1805/DSRHYD-1] path 2 (auto-resume): artifact content is byte-identical to its state at interruption (via _artifact_persist_restore + _artifact_persist_put_back from git state branch)
     [2mexpected: {"result_contract":3,"outcome":"pass","reason":"prior-run intake"}, got: [0m
   [38;2;74;222;128m✓[0m [#1805/DSRHYD-1] path 2 (auto-resume): at least one stage dispatched (pipeline ran via path-2 resume)
@@ -39,7 +39,7 @@
 
   [38;2;0;212;255m[#1805/DSRHYD-1] path 3: zbuild pipeline resume --run-id restores artifacts[0m
   [38;2;248;113;113m✗[0m [#1805/DSRHYD-1] path 3 (zbuild pipeline resume): intake-result.json restored
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/resume-rehydrate-1805.j20KkT/s1p3-state/artifacts/intake-result.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/resume-rehydrate-1805.IwLoGA/s1p3-state/artifacts/intake-result.json[0m
   [38;2;248;113;113m✗[0m [#1805/DSRHYD-1] path 3 (zbuild pipeline resume): artifact content is byte-identical to its state at interruption (via _artifact_persist_restore + _artifact_persist_put_back from git state branch)
     [2mexpected: {"result_contract":3,"outcome":"pass","reason":"prior-run intake"}, got: [0m
   [38;2;74;222;128m✓[0m [#1805/DSRHYD-1] path 3 (zbuild pipeline resume): at least one stage dispatched (pipeline ran via path-3)
@@ -86,16 +86,14 @@
   [38;2;0;212;255m[#1805/DSFRSH-1] fresh --no-resume run dispatches all stages (ADR-050 §6 new-run side)[0m
   [38;2;74;222;128m✓[0m fresh run dispatches intake (not skipped; ADR-050 §6 new-run side)
   [38;2;74;222;128m✓[0m [#1805/DSFRSH-1] fresh run (--no-resume) dispatches all stages from stage 1 (intake dispatched; did not skip to a later stage due to prior state)
-  [38;2;248;113;113m✗[0m [#1805/DSFRSH-1] fresh run (--no-resume) dispatches all stages: cycle stage cyc emits cycle.start (all stages dispatched from stage 1; none skipped due to prior state)
-    [2mexpected >0, got: 0[0m
+  [38;2;74;222;128m✓[0m [#1805/DSFRSH-1] fresh run (--no-resume) emits no stage.skip events (no stage skipped due to prior state)
   [38;2;74;222;128m✓[0m [#1805/DSFRSH-1] no prior-run artifact content in ZBUILD_ARTIFACT_DIR (fresh --no-resume run does not restore prior-run artifacts from state branch)
   [38;2;74;222;128m✓[0m cycle fixture used in fresh-run sub-case has type: cycle
   [38;2;74;222;128m✓[0m [#1805/DSFRSH-1] no stage.start for cycle member (cycled) on fresh run (cycle members only emit stage.start via DSCMBR-1 resume path; iter>0 guard must not fire unconditionally on fresh runs)
 
   [38;2;0;212;255m[#1805/DSFRSH-2] fresh run (no --resume, in_progress status) never skips stages due to prior-run artifacts in git state branch[0m
   [38;2;74;222;128m✓[0m [#1805/DSFRSH-2] fresh run (no --resume, in_progress status) dispatches intake even with prior-run artifacts on git state branch (dispatch-unit skip guard conditional on resume_mode)
-  [38;2;248;113;113m✗[0m [#1805/DSFRSH-2] fresh run dispatches all stages: cycle stage cyc emits cycle.start (dispatch-unit skip guard conditional on resume_mode; does not activate for fresh runs)
-    [2mexpected >0, got: 0[0m
+  [38;2;74;222;128m✓[0m [#1805/DSFRSH-2] fresh run (no --resume) emits no stage.skip events (dispatch-unit skip guard does not activate for fresh runs)
 
   [38;2;0;212;255mresume-rehydrate test uses a fixture containing a cyclic stage[0m
   [38;2;74;222;128m✓[0m [#1805/DSCYCL-1] resume-rehydrate (DSRHYD-1/RHYD-2/BNDY-1) fixture (artifact-snapshot-coverage) contains type: cycle
@@ -103,7 +101,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m28 of 49 tests failed[0m
+  [38;2;248;113;113m[1m26 of 49 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1805/DSRHYD-1] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR
   [38;2;248;113;113m✗[0m [#1805/DSRHYD-1] artifact content is byte-identical to its state at interruption (via _artifact_persist_restore + _artifact_persist_put_back from git state branch)
@@ -131,8 +129,6 @@
   [38;2;248;113;113m✗[0m [#1805/DSAMDR-2] ADR-050 §6 boundary note says a resume continues the same run
   [38;2;248;113;113m✗[0m [#1805/DSAMDR-2] ADR-050 §6 Enforced-by section cites resume-rehydrate-test.sh (DSFRSH-2 for new-run side)
   [38;2;248;113;113m✗[0m [#1805/DSAMDR-2] ADR-050 §6 Enforced-by section cites resume-entry-points-test.sh (DSENTR-1 for resume side)
-  [38;2;248;113;113m✗[0m [#1805/DSFRSH-1] fresh run (--no-resume) dispatches all stages: cycle stage cyc emits cycle.start (all stages dispatched from stage 1; none skipped due to prior state)
-  [38;2;248;113;113m✗[0m [#1805/DSFRSH-2] fresh run dispatches all stages: cycle stage cyc emits cycle.start (dispatch-unit skip guard conditional on resume_mode; does not activate for fresh runs)
 
 ### DSRHYD-1 head tests/integration/resume-rehydrate-test.sh
 
@@ -196,16 +192,14 @@
   [38;2;0;212;255m[#1805/DSFRSH-1] fresh --no-resume run dispatches all stages (ADR-050 §6 new-run side)[0m
   [38;2;74;222;128m✓[0m fresh run dispatches intake (not skipped; ADR-050 §6 new-run side)
   [38;2;74;222;128m✓[0m [#1805/DSFRSH-1] fresh run (--no-resume) dispatches all stages from stage 1 (intake dispatched; did not skip to a later stage due to prior state)
-  [38;2;248;113;113m✗[0m [#1805/DSFRSH-1] fresh run (--no-resume) dispatches all stages: cycle stage cyc emits cycle.start (all stages dispatched from stage 1; none skipped due to prior state)
-    [2mexpected >0, got: 0[0m
+  [38;2;74;222;128m✓[0m [#1805/DSFRSH-1] fresh run (--no-resume) emits no stage.skip events (no stage skipped due to prior state)
   [38;2;74;222;128m✓[0m [#1805/DSFRSH-1] no prior-run artifact content in ZBUILD_ARTIFACT_DIR (fresh --no-resume run does not restore prior-run artifacts from state branch)
   [38;2;74;222;128m✓[0m cycle fixture used in fresh-run sub-case has type: cycle
   [38;2;74;222;128m✓[0m [#1805/DSFRSH-1] no stage.start for cycle member (cycled) on fresh run (cycle members only emit stage.start via DSCMBR-1 resume path; iter>0 guard must not fire unconditionally on fresh runs)
 
   [38;2;0;212;255m[#1805/DSFRSH-2] fresh run (no --resume, in_progress status) never skips stages due to prior-run artifacts in git state branch[0m
   [38;2;74;222;128m✓[0m [#1805/DSFRSH-2] fresh run (no --resume, in_progress status) dispatches intake even with prior-run artifacts on git state branch (dispatch-unit skip guard conditional on resume_mode)
-  [38;2;248;113;113m✗[0m [#1805/DSFRSH-2] fresh run dispatches all stages: cycle stage cyc emits cycle.start (dispatch-unit skip guard conditional on resume_mode; does not activate for fresh runs)
-    [2mexpected >0, got: 0[0m
+  [38;2;74;222;128m✓[0m [#1805/DSFRSH-2] fresh run (no --resume) emits no stage.skip events (dispatch-unit skip guard does not activate for fresh runs)
 
   [38;2;0;212;255mresume-rehydrate test uses a fixture containing a cyclic stage[0m
   [38;2;74;222;128m✓[0m [#1805/DSCYCL-1] resume-rehydrate (DSRHYD-1/RHYD-2/BNDY-1) fixture (artifact-snapshot-coverage) contains type: cycle
@@ -213,8 +207,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m2 of 49 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1805/DSFRSH-1] fresh run (--no-resume) dispatches all stages: cycle stage cyc emits cycle.start (all stages dispatched from stage 1; none skipped due to prior state)
-  [38;2;248;113;113m✗[0m [#1805/DSFRSH-2] fresh run dispatches all stages: cycle stage cyc emits cycle.start (dispatch-unit skip guard conditional on resume_mode; does not activate for fresh runs)
+  [38;2;74;222;128m[1mAll 49 tests passed[0m
 
