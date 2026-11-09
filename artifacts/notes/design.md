@@ -1,5 +1,19 @@
 # Design notes: #1805 — resume and --from-stage trust-and-rehydrate
 
+## Status: Forty-eighth pass — DSFRSH-2 Then corrected for cycle event semantics
+
+### Changes this pass (forty-eighth)
+
+**design finding 1** (DSFRSH-2 Then: "count of stage.start == total declared stages" wrong for cycle fixture):
+- Fixture has `intake` (leaf → `stage.start`) and `cyc` (cycle → `cycle.start`)
+- In a fresh run, stage.start count = 1 (intake only); cycle stages emit `cycle.start`, not `stage.start`
+- Previous Then: "count of stage.start == total declared stages" → "1 == 2" → FAILS for correct behavior
+- Fix: Changed Then to "combined count of stage.start (leaf stages) + cycle.start (cycle stages) equals total declared stages"
+- With fixture: 1 stage.start + 1 cycle.start = 2 == 2 declared stages ✓
+- Updated Finding 29 to explain the cycle-semantics correction
+
+---
+
 ## Status: Forty-sixth pass — DSCMBR-1 Given fixed ("in-progress" → "aborted")
 
 ### Changes this pass (forty-sixth)
