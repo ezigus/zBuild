@@ -7,7 +7,7 @@
   [38;2;0;212;255m[#1805/DSFSTG-1] --from-stage rehydrates stages before <s> and dispatches <s> first[0m
   [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] setup: state branch populated
   [38;2;248;113;113m✗[0m [#1805/DSFSTG-1] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR via --from-stage
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/from-stage-rehydrate-1805.JWSFyb/s3-state/artifacts/intake-result.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/from-stage-rehydrate-1805.ZqjxUz/s3-state/artifacts/intake-result.json[0m
   [38;2;248;113;113m✗[0m [#1805/DSFSTG-1] restored artifact contains original payload (proves _artifact_persist_restore + _artifact_persist_put_back used git state branch)
     [2moutput missing: prior-run intake[0m
   [38;2;248;113;113m✗[0m [#1805/DSFSTG-1] pipeline.resume event emitted (from-stage preflight ran before dispatch loop)
@@ -24,7 +24,7 @@
   [38;2;0;212;255m[#1805/DSFSTG-1] --from-stage WITHOUT --resume rehydrates stages before <s> (skip_restore=false branch)[0m
   [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] setup s5: state branch populated (no-resume path)
   [38;2;248;113;113m✗[0m [#1805/DSFSTG-1] intake-result.json rehydrated via --from-stage without --resume (skip_restore=false branch)
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/from-stage-rehydrate-1805.JWSFyb/s5-state/artifacts/intake-result.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/from-stage-rehydrate-1805.ZqjxUz/s5-state/artifacts/intake-result.json[0m
   [38;2;248;113;113m✗[0m [#1805/DSFSTG-1] restored artifact contains prior-run payload (--from-stage without --resume; skip_restore=false used git state branch)
     [2moutput missing: prior-run-noresume-intake[0m
   [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] intake emits no stage.start when skipped via --from-stage without --resume
@@ -52,9 +52,17 @@
   [38;2;74;222;128m✓[0m [#1805/DSCYCL-1] from-stage-rehydrate test uses a cyclic fixture (type: cycle)
   [38;2;74;222;128m✓[0m cyclic fixture pipeline ran in from-stage-rehydrate test (intake dispatched)
 
+  [38;2;0;212;255m[#1805/DSFSTG-3] combined --resume --from-stage <s>: stages after <s> dispatched despite being marked complete in interrupted run[0m
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-3] setup s10: state branch populated (all-complete interrupted run)
+  [38;2;248;113;113m✗[0m [#1805/DSFSTG-3] cycle.start emitted for cyc (--from-stage target dispatched in combined --resume --from-stage mode)
+    [2mexpected >0, got: 0[0m
+  [38;2;248;113;113m✗[0m [#1805/DSFSTG-3] stage.start emitted for verify despite verify=complete in interrupted state (Gap 11 fix: resume_mode=false clears skip guard after --from-stage target reached; fails on old code where verify is skipped)
+    [2mexpected >0, got: 0[0m
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-3] no stage.skip emitted for verify (stage after --from-stage target must be dispatched, not skipped, in combined --resume --from-stage mode)
+
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m13 of 25 tests failed[0m
+  [38;2;248;113;113m[1m15 of 29 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1805/DSFSTG-1] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR via --from-stage
   [38;2;248;113;113m✗[0m [#1805/DSFSTG-1] restored artifact contains original payload (proves _artifact_persist_restore + _artifact_persist_put_back used git state branch)
@@ -69,6 +77,8 @@
   [38;2;248;113;113m✗[0m [#1805/DSFSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage dispatches <s> as first unit on plain path)
   [38;2;248;113;113m✗[0m [#1805/DSFSTG-2] stderr contains preflight diagnostic phrase (has no restorable primary artifact)
   [38;2;248;113;113m✗[0m [#1805/DSFSTG-1] stage.start emitted for leaf <s>=build (leaf-stage dispatch branch; covers DSFSTG-1 Then: when <s> is a leaf stage, stage.start is emitted for <s>)
+  [38;2;248;113;113m✗[0m [#1805/DSFSTG-3] cycle.start emitted for cyc (--from-stage target dispatched in combined --resume --from-stage mode)
+  [38;2;248;113;113m✗[0m [#1805/DSFSTG-3] stage.start emitted for verify despite verify=complete in interrupted state (Gap 11 fix: resume_mode=false clears skip guard after --from-stage target reached; fails on old code where verify is skipped)
 
 ### DSFSTG-2 head tests/integration/from-stage-rehydrate-test.sh
 
@@ -111,7 +121,18 @@
   [38;2;74;222;128m✓[0m [#1805/DSCYCL-1] from-stage-rehydrate test uses a cyclic fixture (type: cycle)
   [38;2;74;222;128m✓[0m cyclic fixture pipeline ran in from-stage-rehydrate test (intake dispatched)
 
+  [38;2;0;212;255m[#1805/DSFSTG-3] combined --resume --from-stage <s>: stages after <s> dispatched despite being marked complete in interrupted run[0m
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-3] setup s10: state branch populated (all-complete interrupted run)
+  [38;2;248;113;113m✗[0m [#1805/DSFSTG-3] cycle.start emitted for cyc (--from-stage target dispatched in combined --resume --from-stage mode)
+    [2mexpected >0, got: 0[0m
+  [38;2;248;113;113m✗[0m [#1805/DSFSTG-3] stage.start emitted for verify despite verify=complete in interrupted state (Gap 11 fix: resume_mode=false clears skip guard after --from-stage target reached; fails on old code where verify is skipped)
+    [2mexpected >0, got: 0[0m
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-3] no stage.skip emitted for verify (stage after --from-stage target must be dispatched, not skipped, in combined --resume --from-stage mode)
+
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 25 tests passed[0m
+  [38;2;248;113;113m[1m2 of 29 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1805/DSFSTG-3] cycle.start emitted for cyc (--from-stage target dispatched in combined --resume --from-stage mode)
+  [38;2;248;113;113m✗[0m [#1805/DSFSTG-3] stage.start emitted for verify despite verify=complete in interrupted state (Gap 11 fix: resume_mode=false clears skip guard after --from-stage target reached; fails on old code where verify is skipped)
 
