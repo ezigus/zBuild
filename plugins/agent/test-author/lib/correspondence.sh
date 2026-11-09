@@ -318,11 +318,14 @@ _ta_correspondence() {
     local sid _src _i _blk _x _shown _p _pn _tfs
     local -a _ids=() _txts=() _srcs=() _tfss=() _pnames=() _firsts=()
     _blk="$(extract_acceptance_block "$design" 2>/dev/null)" || _blk=""
+    # #2508: each SPEC's test files, found by tag, once.
+    local -A _sc_files=()
+    acceptance_spec_files_v _sc_files "$design" "$repo"
     while IFS= read -r sid; do
         [[ -n "$sid" ]] || continue
         _acceptance_spec_line "$_blk" "$sid" || continue
         [[ "$_ACC_SPEC_STATUS" == "done" || -z "$_ACC_SPEC_TEXT" ]] && continue
-        _tfs="$(acceptance_list_testfiles_for_spec "$design" "$sid" 2>/dev/null || true)"
+        _tfs="${_sc_files[$sid]:-}"
         # The whole assertion with its enclosing predicate, comments stripped:
         # a bare tagged line reads as a vacuous test, and a pasted SPEC sentence
         # in a comment would buy a false `corresponds`.

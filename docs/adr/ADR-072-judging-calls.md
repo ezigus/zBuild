@@ -1,6 +1,6 @@
 # ADR-072 — A judge reads the code itself, quotes what it complains about, and keeps its answer while nothing changes
 
-**Status:** Accepted (2026-11-03); amended 2026-11-09 (#2507, §1 §2 §4 §7: a judge's tools are listed in its manifest and include git; test-author reads the existing code in the old-code copy; judges are pointed at the change, not given it); amended 2026-11-09 (#2506, §3: a lens names no line; its finding is shown with its quote); amended 2026-11-09 (#2505, §3: a file name in formatting marks is the file); amended 2026-11-08 (#2495, §3 §4: the scope is not judged — #2491's scope lines are removed); amended 2026-11-08 (#2491, §3 §4: each scope entry gets a line of its own, ok or outside, kept per entry); amended 2026-11-07 (#2487, §3: an escaped quote mark is the mark itself); amended 2026-11-04 (#2466, §2 §4: the old-code copy and every kept answer leave events); amended 2026-11-04 (#2467, §3: the checks answer one line per part of a SPEC); amended 2026-11-04 (#2470, §3 §4: one line per SPEC that is fine and one per failing part; design's check keeps its answer per SPEC, is given the draft by its path, and judges only the SPECs that changed); amended 2026-11-05 (#2472, §3 §4: quotes ignore formatting; a kept answer does not depend on the file its items come from; a bad line costs only its own item); amended 2026-11-05 (#2474, §3: every reply line is read with its formatting aside)
+**Status:** Accepted (2026-11-03); amended 2026-11-09 (#2508, §3: issue-acceptance also names each part of the change no requirement asks for); amended 2026-11-09 (#2507, §1 §2 §4 §7: a judge's tools are listed in its manifest and include git; test-author reads the existing code in the old-code copy; judges are pointed at the change, not given it); amended 2026-11-09 (#2506, §3: a lens names no line; its finding is shown with its quote); amended 2026-11-09 (#2505, §3: a file name in formatting marks is the file); amended 2026-11-08 (#2495, §3 §4: the scope is not judged — #2491's scope lines are removed); amended 2026-11-08 (#2491, §3 §4: each scope entry gets a line of its own, ok or outside, kept per entry); amended 2026-11-07 (#2487, §3: an escaped quote mark is the mark itself); amended 2026-11-04 (#2466, §2 §4: the old-code copy and every kept answer leave events); amended 2026-11-04 (#2467, §3: the checks answer one line per part of a SPEC); amended 2026-11-04 (#2470, §3 §4: one line per SPEC that is fine and one per failing part; design's check keeps its answer per SPEC, is given the draft by its path, and judges only the SPECs that changed); amended 2026-11-05 (#2472, §3 §4: quotes ignore formatting; a kept answer does not depend on the file its items come from; a bad line costs only its own item); amended 2026-11-05 (#2474, §3: every reply line is read with its formatting aside)
 **Issue:** #2464 (runs 41643063636 and 41679237388 on #1805)
 **Amends:** ADR-068 §6 §7 (answers are kept in a stage's result; a check keeps a verdict whose inputs have not changed), ADR-017 §11 (`tools: read`), ADR-069 §2 (a `[done]` claim is read in the code from before the change, by file), ADR-067 §8 (a judging call can read and search files, and nothing else)
 **Related:** ADR-060 §6 (one re-ask), ADR-054 §7 (teardown frees run resources), ADR-066 (every ADR statement has a test)
@@ -189,11 +189,28 @@ On #1805 run 42556446368 each issue-acceptance prompt was ~250 KB, 214 KB of it 
 - **§4: a kept answer still changes when the change does.** Each judge's fingerprint holds the change's raw diff lines (each changed file's blob ids, from the same git call) in place of the diff text, so a change to a changed file's content is judged again, as before; with no starting commit, the patch.
 - **§3: a lens's quote of a line the change removed** is checked in the file as it was at the starting commit (`git show <base>:<file>`), only for a quote not found as the file is now.
 
+## Amendment 2026-11-09 (#2508) — §3: issue-acceptance asks the reverse question
+
+Build had a list of the files it may change, design's scope block, and the list was the only check on what build
+changed. On #1805 run 42556446368 the list let build remove the `--from-stage` needs `--resume` guard and rewrite
+an old test to match; nothing asked whether any requirement wanted it. The list is gone (ADR-030 amendment, #2508).
+This question replaces it.
+
+- **issue-acceptance also names each part of the change that no requirement asks for** — not the issue, not its
+  requirements, not the design's. A test for a requirement, and a file that test needs, are asked for by it. One
+  line for each such part: `UNASKED: <what the change does> | WHY: <why no requirement asks for it> | QUOTE:
+  <file>:"<its exact text>"`. Its quote is the code that does it, and is checked like any other (§3): a quote
+  that is not there makes the answer unusable, asked again once. `UNASKED: none` is no line.
+- **Each such part is a finding only the code can fix** (`change-findings`, ADR-071 §1), which build takes, and
+  the change does not pass. The result keeps them apart from the unmet requirements, in `data.unasked`.
+
 ## Enforced by
 
 - §3 amendment 2026-11-09 (#2506: a lens names no line; its finding is shown with its quote) → `tests/unit/no-line-numbers-test.sh` L2, L3
 
 - §1 §2 §4 §7 amendment 2026-11-09 (#2507) → `tests/unit/judge-change-list-test.sh` L1, L3 (the starting commit and the changed files, no diff), L2, L4 (a kept answer is judged again when a changed file's content changes), L5 (a removed line's quote is found), L6 (no starting commit: pointed at the patch); `tests/unit/call-tools-test.sh` C6, C7 (the judges' tools; each check names its call); `tests/unit/call-hook-test.sh` G5 (only the test folders and the copy are readable; a file named like a test outside them is not), G7 (test-author reads the old code in the copy); `tests/unit/judge-tools-test.sh` T5
+
+- §3 amendment 2026-11-09 (#2508: the reverse question) → `tests/unit/issue-acceptance-unasked-test.sh` U1–U4
 
 - §3 §4 amendment 2026-11-08 (#2495: the scope is not judged) → `tests/unit/design-coverage-test.sh` NS1–NS3, X3; `tests/unit/judge-quotes-test.sh` Q2 (a scope line is no finding, and needs no line)
 - §3 §4 amendment 2026-11-08 (#2491: a line per scope entry — removed by #2495) → `tests/unit/design-coverage-test.sh` NS1–NS3

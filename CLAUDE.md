@@ -48,7 +48,6 @@ zBuild's architecture and migration plan live in:
 - Issue PRs include the 5-test trial checklist in the description, marked complete before merge.
 - After a keeper merges, its legacy source is removed (`git rm`) in the same PR; nothing else is written.
 - Phase milestones gate progression: Phase 1 issues are blocked until Phase 0 ships.
-- **Test scope discovery**: before listing test files in scope for any issue that changes pipeline stage counts, template shape, or dispatch units, run `grep -rl <hardcoded-value> tests/` to find every test that pins that value. All matches must be in the issue's scope — a missed file causes build-loop failures that can't be fixed within the plan's scope enforcement.
 
 ## Build & Test
 

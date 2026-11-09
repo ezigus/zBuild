@@ -21,7 +21,8 @@
 # B5 [change] only the files the call created or changed are run: a test file
 #             it left as it was is not
 # B6 [change] the prompt lists, found by script, each test file and the
-#             requirements whose tag it already holds
+#             requirements whose tag it already holds; a file holding none of
+#             them is no requirement's test, and is not listed (#2508)
 # B7 [change] the prompt says that when every requirement already has its test
 #             and no finding is open, it confirms them and finishes
 # B8 [change] a test path that leaves the repository (absolute, or with ..) is
@@ -48,12 +49,13 @@ source "$REPO_ROOT/plugins/agent/test-author/plugin.sh"
 T1="$(acceptance_spec_tag SPEC-1)"; T2="$(acceptance_spec_tag SPEC-2)"
 
 # A test file body: passes — prints ✓ for its tag; fails — prints ✗ and exits 1;
-# crash — exits before any assertion.
+# crash — exits before its tagged assertion runs (#2508: the tag is what makes
+# it the requirement's test).
 _body() {
     case "$1" in
         passes) printf '#!/usr/bin/env bash\nprintf "  ✓ %%s it holds\\n" "%s"\n' "$2" ;;
         fails)  printf '#!/usr/bin/env bash\nprintf "  ✗ %%s it holds\\n" "%s"\nexit 1\n' "$2" ;;
-        crash)  printf '#!/usr/bin/env bash\nsource ./no-such-helper.sh || exit 2\n' ;;
+        crash)  printf '#!/usr/bin/env bash\nsource ./no-such-helper.sh || exit 2\nprintf "  ✓ %%s it holds\\n" "%s"\n' "$2" ;;
     esac
 }
 # The author's model: round n writes tests/a-test.sh as ${WRITE[n-1]} (the last
@@ -86,9 +88,6 @@ _run() {
 SPEC-1[code]: an empty input returns rc 1
 SPEC-2[no-code]: the docs say so
 WIRING: none
-TESTFILES:
-SPEC-1: tests/a-test.sh
-SPEC-2: tests/b-test.sh
 ```
 MD
     export ZBUILD_REPO_ROOT="$R" ZBUILD_EVENTS_JSONL="$d/events.jsonl"
@@ -110,7 +109,7 @@ assert_eq "[B1] it is no longer told to run its test files itself" "0" \
     "$(grep -c 'Run the test files you write' <<< "$_AP" || true)"
 assert_contains "[B6] the prompt lists what is already written" "$_AP" "Already written (found by script"
 assert_contains "[B6] ...each test file with the requirements whose tag it holds" "$_AP" "tests/b-test.sh: SPEC-2"
-assert_contains "[B6] ...and a file that holds none yet" "$_AP" "tests/a-test.sh: none yet"
+assert_eq "[B6] ...and not a file that holds none of them" "0" "$(grep -c 'tests/a-test.sh:' <<< "$_AP" || true)"
 assert_contains "[B10] the list names the requirement with no test yet" "$_AP" "Not written yet: SPEC-1"
 _nwy="$(grep -o 'Not written yet: [^.]*' "$TEST_TEMP_DIR/author-prompt-1" 2>/dev/null || true)"
 assert_eq "[B10] ...and only it: SPEC-2's test is written" "Not written yet: SPEC-1" "$_nwy"
@@ -162,7 +161,7 @@ _d8="$TEST_TEMP_DIR/b8"; mkdir -p "$_d8/repo"
 ( cd "$_d8/repo" && git init -q -b main . && git config user.email t@e.st && git config user.name t \
     && : > seed && git add -A && git commit -q -m seed ) >/dev/null 2>&1
 cp "$OUTSIDE" "$_d8/outside-test.sh"
-printf '```acceptance\nSPEC-1[code]: x\nTESTFILES:\nSPEC-1: ../outside-test.sh\n```\n' > "$_d8/design.md"
+printf '```acceptance\nSPEC-1[code]: x\n```\n' > "$_d8/design.md"
 (
     acceptance_list_testfiles() { printf '../outside-test.sh\n'; }
     acceptance_list_testfiles_for_spec() { printf '../outside-test.sh\n'; }

@@ -318,7 +318,7 @@ _ROUTE_TOOL_USES_JSON="[]"
 # or redaction.refused fail-closed on a missing/empty manifest). When no manifest
 # is configured (unit-test / bootstrap mode) fall back to a passthrough copy plus
 # a redaction.applied stub, so the by-construction invariant still holds. The
-# allowlist defaults to ZBUILD_SCOPE_ALLOWLIST (runner-exported from plan.files[])
+# allowlist defaults to ZBUILD_SCOPE_ALLOWLIST (no longer exported by the runner, #2508)
 # and is ADDITIVE to the manifest's own `+ path` allowlist.
 # Returns apply_scope_redaction's rc (0 ok / 1 fail-closed refusal / 2 io) in the
 # manifest path, or 0 in the passthrough-stub path.

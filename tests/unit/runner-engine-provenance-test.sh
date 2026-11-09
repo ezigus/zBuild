@@ -109,7 +109,7 @@ _out3="$(_runner_report_engine_drift "max_iterations" 2>&1 || true)"
 assert_eq "[SPEC-5] an unreachable remote does not fabricate a drift claim" "" "$_out3"
 
 # Explicitly disabled.
-_out4="$(ZBUILD_ENGINE_DRIFT_CHECK=0 _runner_report_engine_drift "blocked_on_scope" 2>&1 || true)"
+_out4="$(ZBUILD_ENGINE_DRIFT_CHECK=0 _runner_report_engine_drift "blocked_on_gate" 2>&1 || true)"
 assert_eq "[SPEC-5] the check can be disabled outright" "" "$_out4"
 
 # The positive case — without it the rest of this section only proves the check
@@ -129,7 +129,7 @@ echo two > "$UP/f"; git -C "$UP" commit -qam "the fix that landed mid-run"
 _RUNNER_ENGINE_SHA="$_old"
 _RUNNER_ENGINE_BRANCH="main"
 _ZBUILD_ROOT="$ENGCLONE"
-_drift="$(_runner_report_engine_drift "blocked_on_scope" 2>&1 || true)"
+_drift="$(_runner_report_engine_drift "blocked_on_gate" 2>&1 || true)"
 
 assert_contains "[SPEC-4] a superseded engine is reported on a non-terminal failure" \
     "$_drift" "origin/main is now"
@@ -138,7 +138,7 @@ assert_contains "[SPEC-4] the report names the commit that landed mid-run" \
 
 # Same tree, engine AT the tip → must stay silent.
 _RUNNER_ENGINE_SHA="$(git -C "$UP" rev-parse HEAD)"
-_none="$(_runner_report_engine_drift "blocked_on_scope" 2>&1 || true)"
+_none="$(_runner_report_engine_drift "blocked_on_gate" 2>&1 || true)"
 assert_eq "[SPEC-5] an engine at the remote tip reports nothing" "" "$_none"
 
 # A TAG must never answer for a branch. `ls-remote origin <name>` matches any
@@ -153,7 +153,7 @@ assert_eq "[SPEC-5] an engine at the remote tip reports nothing" "" "$_none"
 git -C "$UP" tag -f nosuchbranch "$_old" >/dev/null 2>&1 || true
 _RUNNER_ENGINE_BRANCH="nosuchbranch"
 _RUNNER_ENGINE_SHA="1111111111111111111111111111111111111111"
-_tagonly="$(_runner_report_engine_drift "blocked_on_scope" 2>&1 || true)"
+_tagonly="$(_runner_report_engine_drift "blocked_on_gate" 2>&1 || true)"
 assert_eq "[SPEC-5] a tag with no matching branch is not treated as a branch tip" \
     "" "$_tagonly"
 _RUNNER_ENGINE_BRANCH="main"
@@ -162,7 +162,7 @@ _RUNNER_ENGINE_SHA="$_old"
 # Detached HEAD reports the literal "HEAD" as its branch; it must fall back to
 # main rather than asking the remote for its symbolic HEAD.
 _RUNNER_ENGINE_BRANCH="HEAD"
-_detached="$(_runner_report_engine_drift "blocked_on_scope" 2>&1 || true)"
+_detached="$(_runner_report_engine_drift "blocked_on_gate" 2>&1 || true)"
 assert_contains "[SPEC-4] a detached-HEAD engine still resolves the branch tip" \
     "$_detached" "origin/main is now"
 _RUNNER_ENGINE_BRANCH="main"

@@ -492,7 +492,7 @@ _extracted_t13b="$(_test_extract_failing_files "$PASS_OUTPUT_T13B")"
 assert_eq "T13b: empty output when no FAIL lines" "" "$_extracted_t13b"
 
 # ─── T14: _test_compute_target_files — unions red-set + affected ──────────────
-print_test_section "T14. _test_compute_target_files: red-set ∪ path-matched ∪ plugin-local ∪ design TESTFILES (#2121)"
+print_test_section "T14. _test_compute_target_files: red-set ∪ path-matched ∪ plugin-local ∪ the design's tagged tests (#2121, #2508)"
 # #2121: selection is by PATH, not basename. Changed `plugins/agent/x/plugin.sh`
 # and `manifest.yaml` used to select every test that mentioned the bare words
 # `plugin.sh`/`manifest.yaml` — 286 files, 39 minutes, on #1841 — and never the
@@ -509,14 +509,16 @@ printf '#!/bin/bash\n# sources plugins/agent/x/plugin.sh by path\n' > "$REPO_T14
 printf '#!/bin/bash\n# every plugin has a plugin.sh and a manifest.yaml\n' > "$REPO_T14/tests/unit/references-plugin-word-test.sh"
 printf '#!/bin/bash\necho x\n' > "$REPO_T14/plugins/agent/x/tests/x-test.sh"
 printf '#!/bin/bash\necho y\n' > "$REPO_T14/plugins/agent/y/tests/y-test.sh"
-printf '#!/bin/bash\necho design-bound\n' > "$REPO_T14/tests/unit/design-bound-test.sh"
+# #2508: the design's test is the test-folder file holding its SPEC's tag.
+printf '#!/bin/bash\necho "design-bound %s"\n' "$(acceptance_spec_tag SPEC-1)" > "$REPO_T14/tests/unit/design-bound-test.sh"
+git -C "$REPO_T14" init -q
 : > "$REPO_T14/plugins/agent/x/plugin.sh"; : > "$REPO_T14/plugins/agent/y/plugin.sh"
 : > "$REPO_T14/core/source_module.sh"
 RED_SET_T14="$TEST_TEMP_DIR/red-set-t14.json"
 printf '["tests/unit/prev-fail-test.sh"]\n' > "$RED_SET_T14"
-# a design declaring one TESTFILE, delivered the #2098 way (ZBUILD_STAGE_INPUTS)
+# a design with one SPEC, delivered the #2098 way (ZBUILD_STAGE_INPUTS)
 DESIGN_T14="$TEST_TEMP_DIR/design-t14.md"
-printf '```acceptance\nSPEC-1[change]: x\nTESTFILES:\nSPEC-1: tests/unit/design-bound-test.sh\n```\n' > "$DESIGN_T14"
+printf '```acceptance\nSPEC-1[change]: x\n```\n' > "$DESIGN_T14"
 SI_T14="$TEST_TEMP_DIR/stage-inputs-t14.json"
 printf '{"inputs":{"design":"%s"}}\n' "$DESIGN_T14" > "$SI_T14"
 _target_t14="$(ZBUILD_TEST_RED_SET="$RED_SET_T14" \
@@ -527,7 +529,7 @@ assert_contains "T14: red-set path included" "$_target_t14" "prev-fail-test.sh"
 assert_contains "T14: a test that names a UNIQUE basename is included (source_module.sh)" "$_target_t14" "references-source-test.sh"
 assert_contains "T14 [#2121]: a test that names the changed PATH is included" "$_target_t14" "path-ref-test.sh"
 assert_contains "T14 [#2121]: the changed plugin's own tests/ are included" "$_target_t14" "plugins/agent/x/tests/x-test.sh"
-assert_contains "T14 [#2121]: the design's TESTFILES are included" "$_target_t14" "design-bound-test.sh"
+assert_contains "T14 [#2121]: the design's tests, found by tag, are included" "$_target_t14" "design-bound-test.sh"
 _t14_word="$(printf '%s\n' "$_target_t14" | grep -c "references-plugin-word" || true)"
 assert_eq "T14 [#2121]: a test that merely says the word plugin.sh is NOT included" "0" "$_t14_word"
 _t14_other="$(printf '%s\n' "$_target_t14" | grep -c "plugins/agent/y/" || true)"

@@ -156,17 +156,6 @@ _build_write_rate_limited_summary() {
 }
 
 # Writes build_verdict back to caller's scope (no `local` on it here).
-# _build_scope_needs_line <build-summary.json> — one summary line naming the
-# files this build needed outside the contract's scope, or nothing (#2178).
-# Build's own fact; the stage that owns the contract reads it in STAGE SUMMARIES.
-_build_scope_needs_line() {
-    local json="${1:-}" files=""
-    [[ -s "$json" ]] || return 0
-    files="$(jq -r '(.out_of_scope_files // []) | join(", ")' "$json" 2>/dev/null || true)"
-    [[ -n "$files" ]] || return 0
-    printf -- '- needs files outside the contract'"'"'s scope: %s' "$files"
-}
-
 # _build_not_reproduced <response_text> — the paths the model reported as not
 # reproducing, one per line (#2183). Its own fact: it ran them and they passed.
 # Read from build's answer `ANSWER … : wrong — not reproduced: <path>`
@@ -189,18 +178,20 @@ _build_not_reproduced() {
 
 # _build_test_wrong <response_text> — build's answers that a test is wrong, one
 # per line, each `<the finding as listed>: <test file>: <why>` (#2441). Read from
-# `ANSWER <the finding as listed>: wrong — the test is wrong: <file>: <why>`.
-# Read by the shell: it runs on every try (ADR-065).
+# `ANSWER <the finding as listed>: wrong — the test is wrong: <file>: <why>`, and
+# (#2508) from `ANSWER <the finding as listed>: not mine — the test must change:
+# <file>: <why>` — a test that pins what this change alters is the test
+# author's to change, never build's. Read by the shell: it runs on every try (ADR-065).
 _build_test_wrong() {
     local line re had=0 _joined
     # #2460: a wrapped answer is read whole.
     zb_reply_join_v _joined "${1:-}"
-    re='^[[:space:]>*`_-]*answer[[:space:]]+(.+[[:space:]]finding[[:space:]]+[0-9]+)[[:space:]]*:.*the[[:space:]]+test[[:space:]]+is[[:space:]]+wrong[[:space:]]*:[[:space:]]*(.+)$'
+    re='^[[:space:]>*`_-]*answer[[:space:]]+(.+[[:space:]]finding[[:space:]]+[0-9]+)[[:space:]]*:.*the[[:space:]]+test[[:space:]]+(is[[:space:]]+wrong|must[[:space:]]+change)[[:space:]]*:[[:space:]]*(.+)$'
     shopt -q nocasematch && had=1
     shopt -s nocasematch
     while IFS= read -r line; do
         [[ "$line" =~ $re ]] || continue
-        printf '%s: %s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]%"${BASH_REMATCH[2]##*[![:space:]]}"}"
+        printf '%s: %s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[3]%"${BASH_REMATCH[3]##*[![:space:]]}"}"
     done <<< "$_joined"
     (( had )) || shopt -u nocasematch
 }
@@ -239,10 +230,6 @@ _build_answers_json_v() {
 
 _build_write_build_summary() {
     local _sum_violations_json="[]"
-    local _sum_build_reason=""
-    local _sum_out_of_scope_files_json="[]"
-    local _sum_scope_expansion_request_json=""
-    local _sum_oos_paths
 
     # #2366 (ADR-054 §6): one outcome. `pass` / `fail` when the loop finished;
     # otherwise how it stopped, from the one shared mapping (#2187). build_verdict
@@ -250,7 +237,8 @@ _build_write_build_summary() {
     build_verdict="pass"
     local build_reason="" build_data_kind=""
     if [[ "${scope_violation:-false}" == "true" ]]; then
-        # #2187: build ran; scope_violation and the scope request carry it.
+        # #2508 (ADR-030 §8): build changed the test folders; that was put back,
+        # and the next try is told so (a finding below).
         build_verdict="fail"
         build_reason="scope_violation"
     elif [[ "${terminated_reason:-error}" == "router_timeout" || "${terminated_reason:-error}" == "error" ]]; then
@@ -294,64 +282,6 @@ _build_write_build_summary() {
             | jq -R . | jq -sc . 2>/dev/null || echo '[]')"
     fi
 
-    # #2252: build's own BLOCKED lines come first — the one request with build's
-    # word that it needs the file.
-    _sum_scope_expansion_request_json="$(_build_blocked_request \
-        "${_ROUTE_LOOP_LAST_RESPONSE:-}" "${plan_files_csv:-}" 2>/dev/null || true)"
-    if [[ -n "$_sum_scope_expansion_request_json" ]]; then
-        if [[ "$build_data_kind" == "empty_diff" ]]; then
-            _sum_build_reason="no_progress_scope_blocked"
-        else
-            _sum_build_reason="scope_request_pending"
-        fi
-        _sum_out_of_scope_files_json="$(jq -c '[.files[].path]' \
-            <<<"$_sum_scope_expansion_request_json" 2>/dev/null || echo '[]')"
-    fi
-
-    # #792: post-LLM no-progress diagnostic. #2252: only a file the failure text
-    # gives evidence for (a quote found in it) is requested.
-    if [[ -z "$_sum_scope_expansion_request_json" && "$build_data_kind" == "empty_diff" && -n "${_feedback_body:-}" && -n "${plan_files_csv:-}" ]]; then
-        _sum_oos_paths="$(_build_detect_out_of_scope_files "$_feedback_body" "$plan_files_csv")"
-        if [[ -n "$_sum_oos_paths" ]]; then
-            _sum_scope_expansion_request_json="$(_build_scope_expansion_request "$_sum_oos_paths" "${_feedback_body:-}" 2>/dev/null || true)"
-        fi
-        if [[ -n "$_sum_scope_expansion_request_json" ]]; then
-            _sum_build_reason="no_progress_scope_blocked"
-            _sum_out_of_scope_files_json="$(jq -c '[.files[].path]' \
-                <<<"$_sum_scope_expansion_request_json" 2>/dev/null || echo '[]')"
-        fi
-    fi
-
-    # #870: created OOS collateral request.
-    # shellcheck disable=SC2154  # scope_violations_created[] injected via dynamic scope from caller
-    if [[ -z "$_sum_scope_expansion_request_json" && ${#scope_violations_created[@]} -gt 0 ]]; then
-        _sum_scope_expansion_request_json="$(_build_created_collateral_request "${scope_violations_created[@]}" 2>/dev/null || true)"
-    fi
-
-    # REC-1 (#879): valid in-scope work but feedback names OOS files.
-    if [[ -z "$_sum_scope_expansion_request_json" ]]; then
-        _sum_scope_expansion_request_json="$(_build_pending_collateral_request \
-            "$build_verdict" "${_feedback_body:-}" "${plan_files_csv:-}" 2>/dev/null || true)"
-        if [[ -n "$_sum_scope_expansion_request_json" ]]; then
-            _sum_build_reason="scope_request_pending"
-            _sum_out_of_scope_files_json="$(jq -c '[.files[].path]' \
-                <<<"$_sum_scope_expansion_request_json" 2>/dev/null || echo '[]')"
-        fi
-    fi
-
-    # REC-2 (#880): edited OOS collateral.
-    if [[ -z "$_sum_scope_expansion_request_json" && ${#scope_violations[@]} -gt 0 ]]; then
-        _sum_scope_expansion_request_json="$(_build_edited_collateral_request \
-            "${_feedback_body:-}" \
-            "$(printf '%s\n' "${scope_violations_created[@]:-}")" \
-            "$(printf '%s\n' "${scope_violations[@]}")" 2>/dev/null || true)"
-        if [[ -n "$_sum_scope_expansion_request_json" ]]; then
-            _sum_build_reason="${_sum_build_reason:-scope_request_pending}"
-            _sum_out_of_scope_files_json="$(jq -c '[.files[].path]' \
-                <<<"$_sum_scope_expansion_request_json" 2>/dev/null || echo '[]')"
-        fi
-    fi
-
     local _sum_answers_json="[]"
     _build_answers_json_v _sum_answers_json
     local _sum_issue="${issue:-0}"
@@ -369,15 +299,13 @@ _build_write_build_summary() {
         --arg terminated_reason "${terminated_reason:-error}" \
         --argjson scope_violation "$([[ "${scope_violation:-false}" == "true" ]] && echo true || echo false)" \
         --argjson scope_violations "$_sum_violations_json" \
+        --arg offl "${_BUILD_VSCP_OFF_LIMITS_NL:-}" \
         --argjson loop_input_tokens "${loop_input_tokens:-0}" \
         --argjson loop_output_tokens "${loop_output_tokens:-0}" \
         --argjson not_reproduced "$(_build_not_reproduced "${_ROUTE_LOOP_LAST_RESPONSE:-}" | jq -R . | jq -sc . 2>/dev/null || echo '[]')" \
         --argjson answers "$_sum_answers_json" \
         --argjson findings_shown "${_ZB_ANS_SHOWN:-0}" \
         --arg unanswered "${_ZB_ANS_MISSING:-}" \
-        --arg reason "$_sum_build_reason" \
-        --argjson out_of_scope_files "$_sum_out_of_scope_files_json" \
-        --argjson scope_expansion_request "${_sum_scope_expansion_request_json:-null}" \
         --arg failing_acceptance_testfile "${_inert_failing_testfile:-}" \
         --arg notes "Build stage completed. Diff written to artifact; not applied." \
         --arg build_data_kind "${build_data_kind:-}" \
@@ -397,9 +325,6 @@ _build_write_build_summary() {
             loop_output_tokens: $loop_output_tokens,
             notes: $notes
         }
-        + (if $reason != "" then {out_of_scope_files: $out_of_scope_files} else {} end)
-
-        + (if $scope_expansion_request != null then {scope_expansion_request: $scope_expansion_request} else {} end)
         + (if $failing_acceptance_testfile != "" then {failing_acceptance_testfile: $failing_acceptance_testfile} else {} end)
         # #2323: the round, so a re-dispatch in the same round continues it.
         + (if $round != null then {passes: $round.passes, round: $round} else {} end)
@@ -418,6 +343,15 @@ _build_write_build_summary() {
             # #2460: what the next try is told — its test still fails.
             + (if $failing_acceptance_testfile != "" then {findings: [{n: 1,
                 text: "you said the work was done but changed no file, and \($failing_acceptance_testfile) still fails — make it pass by changing the code"}]} else {} end)
+            # #2508 (ADR-030 §8): and that its change to the test folders, or to
+            # a file that is off limits, was put back.
+            + ( ($offl | split("\n") | map(select(length > 0))) as $fl
+              | ($scope_violations - $fl) as $tv
+              | ( (if ($tv | length) > 0 then [
+                    "you changed \($tv | join(", ")) in the test folders, which only the stage that writes the tests may change; it was put back — change the code instead, or, if a test should change, answer its finding: not mine — the test must change: <test file>: <why>"] else [] end)
+                + (if ($fl | length) > 0 then [
+                    "you changed \($fl | join(", ")), which no stage may change (outside the repository, inside .git/, or listed in .zbuild/private-paths); it was put back — do the work without it"] else [] end) ) as $tx
+              | if ($tx | length) > 0 then {findings: [$tx | to_entries[] | {n: (.key + 1), text: .value}]} else {} end )
             ) as $d | if ($d | length) > 0 then {data: $d} else {} end )
         ' | atomic_write "$output_summary_json" \
         && stage_result_add "$output_summary_json" "$build_verdict" "${_sum_build_reason:-${build_reason:-unknown}}"
@@ -456,11 +390,8 @@ _build_guard_false_completion() {
     local testfiles="$1" repo_root="$2"
     local timeout_s="${ZBUILD_NEGCTL_TIMEOUT:-60}"
     local failing=""
-    # #2138: the design binds testfiles per SPEC ("SPEC-1: tests/x-test.sh")
-    # and the same file is bound many times; passed through verbatim the
-    # `-f` below was false for every line and the guard probed nothing —
-    # run 35355623656's build kept verdict=pass with its only acceptance
-    # testfile red. Strip the binding prefix and probe each file once.
+    # #2138: probe each file once (#2508: the list is found by tag, one path a
+    # line; an old binding prefix is still stripped).
     local -a _probe=() _seen=()
     local _raw _tfp _dup tf rc
     while IFS= read -r _raw; do

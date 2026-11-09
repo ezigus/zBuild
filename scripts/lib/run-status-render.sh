@@ -332,6 +332,10 @@ rsc_render_header() {
             fi
             ;;
     esac
+    # #2508 (ADR-064 §4): the questions design could not settle, from the
+    # moment it writes them, whatever the run's state.
+    local _qs; open_items_questions_v _qs "$state_dir"
+    [[ -n "$_qs" ]] && printf '\n%s\n' "$_qs"
     # Current stage: the newest open row, only while the run is live.
     if [[ "$status" == "running" ]]; then
         [[ -n "$current" ]] && printf 'current: **%s**\n' "$current"

@@ -77,8 +77,8 @@
 ./artifacts/test-output.log
 ./artifacts/test-results.json
 ./intake.md
+./mock-repo/fixtures/parity-fixture.txt
 ./mock-repo/seed.txt
-./mock-repo/tests/fixtures/parity-fixture.txt
 ./pipeline-state.json
 ./platforms.json
 ./scope-manifest.md

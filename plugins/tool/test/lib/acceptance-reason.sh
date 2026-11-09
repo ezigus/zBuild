@@ -180,10 +180,10 @@ _ag_build_reason() {
     [[ -n "$taut"     ]] && clauses+=("$(_ag_join_ids "$taut"): its test already passes on the code from before this change, so it cannot tell whether the change was made — make it check something the old code gets wrong")
     [[ -n "$nohead"   ]] && clauses+=("${_AG_CODE}$(_ag_join_ids "$nohead"): its test does not pass on the new code — the code or the test is wrong")
     [[ -n "$untagged" ]] && clauses+=("$(_ag_join_ids "$untagged"): no assertion in the test files carries its tag — add one labelled with it")
-    [[ -n "$notf"     ]] && clauses+=("$(_ag_join_ids "$notf"): no test file is listed for it under TESTFILES:")
+    [[ -n "$notf"     ]] && clauses+=("$(_ag_join_ids "$notf"): no test file in the test folders carries its tag — add an assertion labelled with it")
     [[ -n "$inert"    ]] && clauses+=("$(_ag_join_ids "$inert") was put back to its old version and every test still passed, so it is not what runs the new behaviour — name the file whose code calls it, or write WIRING: none")
     [[ -n "$untested" ]] && clauses+=("${_AG_CODE}$(_ag_join_ids "$untested") was put back to its old version on its own and every test still passed, so no test checks what this change does to it — add a test that fails without the change to it")
-    [[ -n "$nofiles"  ]] && clauses+=("$(_ag_join_ids "$nofiles"): none of the listed test files exist, so putting it back could not be checked")
+    [[ -n "$nofiles"  ]] && clauses+=("$(_ag_join_ids "$nofiles"): no test file carries a requirement's tag, so putting it back could not be checked")
     [[ -n "$notpath"  ]] && clauses+=("$(_ag_join_ids "$notpath") is not changed by this change — name a file the change touches, or write WIRING: none")
     [[ -n "$unb" ]] && clauses+=("${_AG_CODE}$(_ag_unreached_where "$unb"): its test never ran on the code from before this change — an earlier step in its test file stops the file there, so it is not shown to fail on the old code")
     [[ -n "$unh" ]] && clauses+=("${_AG_CODE}$(_ag_unreached_where "$unh"): its test never ran on the new code — an earlier step in its test file stops the file before the assertion, so it was not checked")
@@ -231,7 +231,7 @@ _ag_reason_findings_json() {
 # a lib did not load whole; the gate must not grade with what is left (#1752).
 _AG_REQUIRED_FNS=(
     extract_acceptance_block acceptance_list_spec_ids acceptance_list_testfiles
-    acceptance_list_testfiles_for_spec acceptance_spec_desc
+    acceptance_list_testfiles_for_spec acceptance_spec_files_v acceptance_spec_desc
     acceptance_find_assertion_label acceptance_list_wiring
     acceptance_unclaimed_code_check acceptance_coverage_check
     acceptance_negctl_check acceptance_reachability_check

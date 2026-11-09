@@ -133,7 +133,7 @@ _zbuild_build_permissions_settings() {
     # #2022: the deny list's first occupant. #1919 P5 measured that
     # permissions.deny is honoured only in Edit(...) form, and the Ordering note
     # reserved this list for evidence-based rules rather than guesses. The
-    # acceptance TESTFILES belong to the stage that AUTHORS them, so every other
+    # acceptance test files belong to the stage that AUTHORS them, so every other
     # spawn is denied Edit on them — otherwise build can rewrite an assertion to
     # agree with its own implementation, which is the defect #2022 exists for.
     #

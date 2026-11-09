@@ -36,7 +36,7 @@ print_test_section "C1-C4: test-author's check"
     source "$REPO_ROOT/plugins/agent/test-author/plugin.sh"
     # The judge answers and opens nothing: ZBUILD_ROUTER_OPENED_FILE stays empty.
     route_to_model() { printf '%s' "$(( $(cat "$_N") + 1 ))" > "$_N"; printf 'RUNS-1: ok\nDONE-1: ok\n'; }
-    R="$TEST_TEMP_DIR/repo"; mkdir -p "$R/tests" "$R/src"
+    R="$TEST_TEMP_DIR/repo"; mkdir -p "$R/tests" "$R/src"; git -C "$R" init -q
     printf 'run() { echo ran; }\n' > "$R/src/run.sh"
     printf 'refuse() { return 2; }\n' > "$R/src/refuse.sh"
     printf 'unrelated\n' > "$R/src/other.sh"
@@ -53,9 +53,6 @@ DONE-1[done]: a bad flag is refused evidence: src/refuse.sh:"return 2" covers: R
   Then: it exits 2
 WIRING:
 src/run.sh
-TESTFILES:
-RUNS-1: tests/a-test.sh
-DONE-1: tests/a-test.sh
 ```
 MD
     A="$TEST_TEMP_DIR/art"; mkdir -p "$A"
@@ -96,7 +93,7 @@ print_test_section "C5: issue-acceptance"
         }
         _intake_write_requirements "$in" '{"title":"Add a flag","body":"Add a flag."}'
     ) >/dev/null 2>&1
-    printf '%s\n' '# Design' '```acceptance' 'FLAG-1[code]: a flag is accepted covers: FLAG-1' 'TESTFILES:' 'FLAG-1: tests/t.sh' 'WIRING: none' '```' > "$in/design.md"
+    printf '%s\n' '# Design' '```acceptance' 'FLAG-1[code]: a flag is accepted covers: FLAG-1' 'WIRING: none' '```' > "$in/design.md"
     zb_test_test_run_output "$in" pass 1 0 >/dev/null
     jq -n --arg i "$in/intake-result.json" --arg r "$in/requirements.json" --arg d "$in/design.md" \
         --arg p "$in/diff.patch" --arg t "$in/test-results.json" \

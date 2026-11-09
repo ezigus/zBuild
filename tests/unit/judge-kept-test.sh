@@ -72,7 +72,7 @@ print_test_section "K1-K3: design's coverage check"
     artifact_dir="$ZBUILD_STATE_DIR/artifacts"
     _counting_judge _R
     D="$TEST_TEMP_DIR/k1.md"
-    printf '# Design\n```acceptance\nWORK-1[code]: a --dry-run flag is accepted covers: RQST-1\nTESTFILES:\nWORK-1: tests/acc-test.sh\nWIRING: none\n```\n' > "$D"
+    printf '# Design\n```acceptance\nWORK-1[code]: a --dry-run flag is accepted covers: RQST-1\nWIRING: none\n```\n' > "$D"
     REQS='- RQST-1: add a --dry-run flag'
     _R=$'RQST-1: uncovered | WHY: no SPEC refuses it | QUOTE: "add a --dry-run flag"\nWORK-1: ok\n'
     _cov() { printf 0 > "$_N"; _design_coverage "$D" "$REQS" T2 "${1:-}" >/dev/null 2>&1; printf '%s|%s|%s' "$(_calls)" "${#_DESIGN_UNCOVERED[@]}" "$_DESIGN_COV_OUTCOME"; }
@@ -125,7 +125,7 @@ print_test_section "K9: what the fingerprint depends on (review on #2465)"
         printf "%s" "$_R"
     }
     D="$TEST_TEMP_DIR/k9.md"
-    printf '# Design\n```acceptance\nWORK-1[code]: a --dry-run flag is accepted covers: RQST-1\nTESTFILES:\nWORK-1: tests/acc-test.sh\nWIRING: none\n```\n' > "$D"
+    printf '# Design\n```acceptance\nWORK-1[code]: a --dry-run flag is accepted covers: RQST-1\nWIRING: none\n```\n' > "$D"
     _cov() { printf 0 > "$_N"; _design_coverage "$D" "- RQST-1: add a --dry-run flag" T2 >/dev/null 2>&1; cat "$_N"; }
     echo "K9a|$(_cov)|$(_cov)"
     ( cd "$XR" && printf 'new\n' > scripts/new.sh && git add -A && git commit -qm more )
@@ -148,8 +148,8 @@ print_test_section "K4-K5: test-author's check, per SPEC"
     source "$REPO_ROOT/plugins/agent/test-author/plugin.sh"
     A="$ZBUILD_STATE_DIR/artifacts"
     _counting_judge _R
-    R="$TEST_TEMP_DIR/k4-repo"; mkdir -p "$R/tests"; D="$TEST_TEMP_DIR/k4.md"
-    printf '# Design\n```acceptance\nLOOP-1[code]: fresh runs and nested re-entries start at round 1\nKEEP-1[code]: the saved round is read on resume\nWIRING: none\nTESTFILES:\nLOOP-1: tests/loop-test.sh\nKEEP-1: tests/keep-test.sh\n```\n' > "$D"
+    R="$TEST_TEMP_DIR/k4-repo"; mkdir -p "$R/tests"; git -C "$R" init -q; D="$TEST_TEMP_DIR/k4.md"
+    printf '# Design\n```acceptance\nLOOP-1[code]: fresh runs and nested re-entries start at round 1\nKEEP-1[code]: the saved round is read on resume\nWIRING: none\n```\n' > "$D"
     printf 'assert_eq "[LOOP-1] a fresh run starts at 1" "1" "$got"\n' > "$R/tests/loop-test.sh"
     printf 'assert_eq "[KEEP-1] resume reads the saved round" "2" "$got"\n' > "$R/tests/keep-test.sh"
     # #2467 (ADR-073 §6): a line per part (a one-line SPEC is its one Then), and the sections.
@@ -199,7 +199,7 @@ print_test_section "K7: issue-acceptance"
     _counting_judge _R
     S="$TEST_TEMP_DIR/k7"; A="$S/artifacts"; IN="$S/inputs"; mkdir -p "$A" "$IN"; printf '{}' > "$S/pipeline-state.json"
     zb_test_issue_output "$IN" "Add a --dry-run flag." >/dev/null
-    printf '%s\n' '# Design' '```acceptance' 'FLAG-1[code]: a --dry-run flag is accepted' 'TESTFILES:' 'FLAG-1: tests/t.sh' 'WIRING: none' '```' > "$IN/design.md"
+    printf '%s\n' '# Design' '```acceptance' 'FLAG-1[code]: a --dry-run flag is accepted' 'WIRING: none' '```' > "$IN/design.md"
     printf '%s\n' 'diff --git a/p.sh b/p.sh' '+dry_run=1' > "$IN/diff.patch"
     zb_test_test_run_output "$IN" pass 1 0 >/dev/null
     jq -n --arg i "$IN/intake-result.json" --arg d "$IN/design.md" --arg p "$IN/diff.patch" --arg t "$IN/test-results.json" \

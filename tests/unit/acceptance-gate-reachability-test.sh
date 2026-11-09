@@ -46,7 +46,7 @@ REPO_K="$(setup_git_temp_repo reach-repo-137)"
     "$GIT" checkout -q -b feature
     mkdir -p tests
     printf '#!/usr/bin/env bash\nmy_feature() { return 0; }\n' > impl.sh
-    printf '#!/usr/bin/env bash\n# sigkill-rc fixture\nexit 137\n' > tests/sigkill-test.sh
+    printf '#!/usr/bin/env bash\n# [SPEC-1] sigkill-rc fixture\nexit 137\n' > tests/sigkill-test.sh
     chmod +x tests/sigkill-test.sh impl.sh
     "$GIT" add -A; "$GIT" commit -q -m "feat: rc=137 fixture"
 ) >/dev/null 2>&1
@@ -55,8 +55,6 @@ cat > "$REPO_K/design.md" <<'EOF'
 SPEC-1[change]: sigkill-rc fixture
 WIRING:
 impl.sh
-TESTFILES:
-tests/sigkill-test.sh
 ```
 EOF
 set +e; OUT_K="$(acceptance_reachability_check "$REPO_K/design.md" "$REPO_K" 2>/dev/null)"; set -e
@@ -76,7 +74,7 @@ REPO_NP="$(setup_git_temp_repo reach-repo-nopath)"
     mkdir -p .github/workflows tests
     printf '#!/usr/bin/env bash\nmy_feature() { return 0; }\n' > impl.sh
     # Testfile never mentions ci.yml — nothing can load it.
-    printf '#!/usr/bin/env bash\n# testfile always passes\nexit 0\n' > tests/nopath-test.sh
+    printf '#!/usr/bin/env bash\n# [SPEC-1] testfile always passes\nexit 0\n' > tests/nopath-test.sh
     chmod +x impl.sh tests/nopath-test.sh
     "$GIT_NP" add impl.sh tests/nopath-test.sh
     "$GIT_NP" commit -q -m "feat: impl only, no ci.yml change"
@@ -86,8 +84,6 @@ cat > "$REPO_NP/design.md" <<'EOF'
 SPEC-1[change]: wiring-not-on-path fixture
 WIRING:
 .github/workflows/ci.yml
-TESTFILES:
-tests/nopath-test.sh
 ```
 EOF
 set +e; OUT_NP="$(acceptance_reachability_check "$REPO_NP/design.md" "$REPO_NP" 2>/dev/null)"; set -e
@@ -115,7 +111,7 @@ REPO_INERT="$(setup_git_temp_repo reach-repo-inert)"
     printf '#!/usr/bin/env bash\nmy_feature() { return 0; }\n' > impl.sh
     printf 'on: [push]\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps: []\n' \
         > .github/workflows/ci.yml
-    printf '#!/usr/bin/env bash\n# testfile always passes — never flips\nexit 0\n' \
+    printf '#!/usr/bin/env bash\n# [SPEC-1] testfile always passes — never flips\nexit 0\n' \
         > tests/inert-test.sh
     chmod +x impl.sh tests/inert-test.sh
     "$GIT_NP" add impl.sh .github/workflows/ci.yml tests/inert-test.sh
@@ -126,8 +122,6 @@ cat > "$REPO_INERT/design.md" <<'EOF'
 SPEC-1[change]: inert-wiring guard fixture
 WIRING:
 .github/workflows/ci.yml
-TESTFILES:
-tests/inert-test.sh
 ```
 EOF
 set +e; OUT_INERT="$(acceptance_reachability_check "$REPO_INERT/design.md" "$REPO_INERT" 2>/dev/null)"; set -e
@@ -157,8 +151,6 @@ _design1() { cat > "$1/design.md" <<'EOF'
 SPEC-1[change]: my_feature exists
 WIRING:
 impl.sh
-TESTFILES:
-SPEC-1: tests/t-test.sh
 ```
 EOF
 }
@@ -197,8 +189,6 @@ cat > "$REPO_B4/design.md" <<'EOF'
 SPEC-1[change]: my_feature exists
 WIRING:
 impl.sh
-TESTFILES:
-SPEC-1: tests/does-not-exist-test.sh
 ```
 EOF
 set +e; OUT_B4="$(acceptance_reachability_check "$REPO_B4/design.md" "$REPO_B4" 2>/dev/null)"; set -e
@@ -239,8 +229,6 @@ cat > "$REPO_TT/design.md" <<'EOF'
 SPEC-1[code]: the marker is new
 WIRING:
 tests/t-test.sh
-TESTFILES:
-SPEC-1: tests/t-test.sh
 ```
 EOF
 _tt_logs="$TEST_TEMP_DIR/reach-tt-logs"

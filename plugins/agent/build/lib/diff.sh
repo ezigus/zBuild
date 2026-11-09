@@ -116,22 +116,27 @@ _build_harvest_diff() {
 _BUILD_VSCP_VIOLATION="false"
 _BUILD_VSCP_VIOLATIONS_NL=""
 _BUILD_VSCP_VIOLATIONS_CREATED_NL=""
+_BUILD_VSCP_OFF_LIMITS_NL=""
 _BUILD_VSCP_PRE_ZERO_NUMSTAT=""
 _BUILD_VSCP_DIFF_CONTENT=""
 
-# _build_validate_scope_violations <diff_content> <plan_files_csv> <repo_root>
+# _build_validate_scope_violations <diff_content> <unused> <repo_root>
 #   <artifact_dir> <output_diff_patch> <preexist_untracked>
-# Parse git diff --name-status -z, check per-path scope, revert out-of-scope
-# paths and keep the in-scope diff (ADR-030 Layer 3). Cleans up the preexist
-# temp file after use. Sets globals:
+# #2508 (ADR-030 §8): parse git diff --name-status -z; a path in the test
+# folders is not build's to change, so it is put back and reported, and every
+# change outside them is kept. A scratch file build created is removed. Cleans
+# up the preexist temp file after use. Sets globals:
 #   _BUILD_VSCP_VIOLATION             — "true"/"false"
-#   _BUILD_VSCP_VIOLATIONS_NL         — newline-delimited OOS paths
-#   _BUILD_VSCP_VIOLATIONS_CREATED_NL — newline-delimited created OOS paths
-#   _BUILD_VSCP_PRE_ZERO_NUMSTAT      — numstat captured before the out-of-scope revert
-#   _BUILD_VSCP_DIFF_CONTENT          — updated diff_content (out-of-scope paths removed)
+#   _BUILD_VSCP_VIOLATIONS_NL         — newline-delimited test-folder paths
+#   _BUILD_VSCP_VIOLATIONS_CREATED_NL — newline-delimited test-folder paths it created
+#   _BUILD_VSCP_OFF_LIMITS_NL              — those of the paths that are off limits
+# A path the repository defines as off limits (_build_path_off_limits: outside
+# the repository, or on its private-file list) is put back and reported the
+# same way.
+#   _BUILD_VSCP_PRE_ZERO_NUMSTAT      — numstat captured before they were put back
+#   _BUILD_VSCP_DIFF_CONTENT          — updated diff_content (those paths removed)
 _build_validate_scope_violations() {
     local _diff_content="$1"
-    local _plan_files_csv="$2"
     local _repo_root="$3"
     local _artifact_dir="$4"
     local _output_diff_patch="$5"
@@ -140,22 +145,19 @@ _build_validate_scope_violations() {
     _BUILD_VSCP_VIOLATION="false"
     _BUILD_VSCP_VIOLATIONS_NL=""
     _BUILD_VSCP_VIOLATIONS_CREATED_NL=""
+    _BUILD_VSCP_OFF_LIMITS_NL=""
     _BUILD_VSCP_PRE_ZERO_NUMSTAT=""
     _BUILD_VSCP_DIFF_CONTENT="$_diff_content"
 
     local _scope_violation="false"
     local _scratch_cleaned=0
     local -a _scope_violations=()
-    local -a _scope_violations_created=()
+    local -a _scope_violations_created=() _scope_move_sources=()
 
-    if [[ -n "$_diff_content" && -n "$_plan_files_csv" ]]; then
-        local -a _allowed_files=()
-        local _IFS_save="$IFS"
-        IFS=','
-        # shellcheck disable=SC2206
-        _allowed_files=( $_plan_files_csv )
-        IFS="$_IFS_save"
-
+    if [[ -n "$_diff_content" ]]; then
+        local _globs; local -a _gl=()
+        zb_test_path_globs_v _globs "$_repo_root"
+        read -ra _gl <<< "$_globs"
         local _ns_file="$_artifact_dir/.build-name-status.bin"
         git -C "$_repo_root" diff --name-status -z HEAD > "$_ns_file" 2>/dev/null || :
 
@@ -174,8 +176,10 @@ _build_validate_scope_violations() {
             local _first_path="${_tokens[$_i]:-}"
             _i=$((_i+1))
             local -a _paths_to_check=("$_first_path")
+            local _move_src=""
             if [[ "$_status" =~ ^[RC] ]]; then
                 _paths_to_check+=("${_tokens[$_i]:-}")
+                [[ "$_status" =~ ^R ]] && _move_src="$_first_path"
                 _i=$((_i+1))
             fi
             local _p
@@ -187,34 +191,28 @@ _build_validate_scope_violations() {
                    && grep -Fxq -- "$_p" "$_preexist_untracked"; then
                     continue
                 fi
-                if ! _build_path_in_scope "$_p" _allowed_files; then
-                    # #1789: editor/VCS residue (sed -i.bak, git show HEAD:f >
-                    # f.head) is the agent comparing versions of a file it was
-                    # authorised to edit, not scope. Narrowing is by suffix and
-                    # applies only OUT of scope, so a tracked or in-scope file
-                    # carrying one of these suffixes is never touched.
-                    if _build_path_is_scratch "$_p"; then
-                        # Test against HEAD, not the index: the `git add -N`
-                        # above (intent-to-add) makes `ls-files --error-unmatch`
-                        # succeed for brand-new residue too.
-                        if git -C "$_repo_root" cat-file -e "HEAD:$_p" 2>/dev/null; then
-                            # Genuinely tracked: rm would leave a deletion in the
-                            # diff — still an OOS change. Restore it instead.
-                            git -C "$_repo_root" checkout HEAD -- "$_p" 2>/dev/null || true
-                        else
-                            git -C "$_repo_root" rm -q -f --cached --ignore-unmatch \
-                                -- "$_p" >/dev/null 2>&1 || true
-                            rm -f "$_repo_root/$_p" 2>/dev/null || true
-                        fi
-                        _scratch_cleaned=$((_scratch_cleaned+1))
-                        emit_event "build.scratch.cleaned" "plugin=build" \
-                            "path=$_p" "status=$_status"
-                        continue
-                    fi
+                local _off_limits=0
+                _build_path_off_limits "$_p" "$_repo_root" && _off_limits=1
+                if [[ $_off_limits -eq 1 ]] || { [[ ${#_gl[@]} -gt 0 ]] && _zb_test_globs_match "$_p" "${_gl[@]}"; }; then
                     _scope_violation="true"
+                    [[ $_off_limits -eq 1 ]] && _BUILD_VSCP_OFF_LIMITS_NL+="$_p"$'\n'
                     _scope_violations+=("$_p")
                     [[ "$_status" =~ ^A ]] && _scope_violations_created+=("$_p")
+                    # A move into the put-back path takes its source with it:
+                    # putting back only the destination would commit the
+                    # source as deleted (review on #2513).
+                    [[ -n "$_move_src" && "$_p" != "$_move_src" ]] && _scope_move_sources+=("$_move_src")
                     emit_event "build.scope.violation" "plugin=build" \
+                        "path=$_p" "status=$_status"
+                elif [[ "$_status" =~ ^A ]] && _build_path_is_scratch "$_p"; then
+                    # #1789: editor/VCS residue (sed -i.bak, git show HEAD:f >
+                    # f.head) build created while comparing versions of a file.
+                    # Only a created file: a tracked one is real work.
+                    git -C "$_repo_root" rm -q -f --cached --ignore-unmatch \
+                        -- "$_p" >/dev/null 2>&1 || true
+                    rm -f "$_repo_root/$_p" 2>/dev/null || true
+                    _scratch_cleaned=$((_scratch_cleaned+1))
+                    emit_event "build.scratch.cleaned" "plugin=build" \
                         "path=$_p" "status=$_status"
                 fi
             done
@@ -240,14 +238,10 @@ _build_validate_scope_violations() {
 
     local _pre_zero_numstat=""
     if [[ "$_scope_violation" == "true" ]]; then
-        # ADR-030 Layer 3 (#827, #2185): revert ONLY the out-of-scope paths and
-        # keep the in-scope diff, whatever stopped the router. The needed files
-        # travel in the scope_expansion_request built from _scope_violations[].
-        # This once keyed on the router's rc (>=2 = timeout), but the router
-        # returns 0 on a timeout since #1208, so a timeout took the empty-diff
-        # branch and discarded the whole attempt (#1849).
+        # #2508 (ADR-030 §8): put back ONLY the test-folder paths and keep the
+        # rest, whatever stopped the router (#2185, #1849).
         _pre_zero_numstat="$(git -C "$_repo_root" diff HEAD --numstat 2>/dev/null || true)"
-        warn "_build_validate_scope_violations: scope violation — reverting out-of-scope paths, keeping the in-scope diff"
+        warn "_build_validate_scope_violations: build changed files in the test folders — putting them back, keeping the rest"
         local _oos_path
         for _oos_path in "${_scope_violations[@]}"; do
             [[ -z "$_oos_path" ]] && continue
@@ -261,6 +255,10 @@ _build_validate_scope_violations() {
                 rm -f "$_repo_root/$_oos_path" 2>/dev/null || true
             fi
         done
+        for _oos_path in ${_scope_move_sources[@]+"${_scope_move_sources[@]}"}; do
+            git -C "$_repo_root" cat-file -e "HEAD:$_oos_path" 2>/dev/null \
+                && git -C "$_repo_root" checkout HEAD -- "$_oos_path" 2>/dev/null || true
+        done
         git -C "$_repo_root" diff HEAD > "$_output_diff_patch" 2>/dev/null || true
         if [[ -s "$_output_diff_patch" ]]; then
             _diff_content="$(cat "$_output_diff_patch"; printf x)"
@@ -268,8 +266,8 @@ _build_validate_scope_violations() {
         else
             _diff_content=""
         fi
-        # The violation stays reported (verdict scope_violation); the in-scope
-        # work is committed anyway (commit.sh stages only plan files).
+        # The test-folder change stays reported; the rest is committed
+        # (commit.sh stages nothing in the test folders).
         emit_event "build.scope.inscope_preserved" "plugin=build" \
             "oos_paths_reverted=${#_scope_violations[@]}" \
             "in_scope_diff_bytes=${#_diff_content}"

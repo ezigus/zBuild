@@ -49,13 +49,14 @@ route_to_model() {
     return 0
 }
 
-R="$TEST_TEMP_DIR/repo"; mkdir -p "$R/tests"; D="$TEST_TEMP_DIR/design.md"
+# #2508: a SPEC's test is the file in the repo's test folders holding its tag,
+# so the repo is a git repo (its files are listed by git, committed or not).
+R="$TEST_TEMP_DIR/repo"; mkdir -p "$R/tests"; git -C "$R" init -q; D="$TEST_TEMP_DIR/design.md"
 _contract() {   # _contract <n> — SPEC-1..n, each with a tagged assertion
     local i; : > "$R/tests/acc-test.sh"
     { printf '# Design\n```acceptance\n'
       for (( i = 1; i <= $1; i++ )); do printf 'SPEC-%s[code]: thing %s holds\n' "$i" "$i"; done
-      printf 'WIRING: none\nTESTFILES:\n'
-      for (( i = 1; i <= $1; i++ )); do printf 'SPEC-%s: tests/acc-test.sh\n' "$i"; done
+      printf 'WIRING: none\n'
       printf '```\n'; } > "$D"
     for (( i = 1; i <= $1; i++ )); do
         printf 'assert_eq "[SPEC-%s] thing %s holds" "1" "$got"\n' "$i" "$i" >> "$R/tests/acc-test.sh"

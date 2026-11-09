@@ -25,11 +25,10 @@ _build_render_task_header() {
     printf '============== ZBUILD BUILD — round %s ==============\n' "$round"
 }
 
-# _build_compose_instructions <plan_files_csv>
-# Emits the INSTRUCTIONS section of the framed prompt — stable scope/loop/
-# sentinel/rules text, identical across tries.
+# _build_compose_instructions
+# Emits the INSTRUCTIONS section of the framed prompt — stable loop/sentinel/
+# rules text, identical across tries.
 _build_compose_instructions() {
-    : "${1:-}"   # plan files: the scope list is part of the limits (_build_compose_limits)
     # The persona (ADR-051) reaches the model through the provider, not this
     # text: the stage writes only its own job.
     local _framing="Your job is to edit the working tree to implement the ORIGINAL TASK
@@ -80,6 +79,15 @@ sentinel, and stop working on that test:
 Say exactly why it cannot pass. The stage that owns the tests is given this
 answer, and fixes the test.
 
+### When a test should change
+If a test checks behaviour this change is meant to alter — it pins the old
+output, value or rule — the test must change, and the stage that writes the
+tests changes it. Answer its finding, on its own line before the sentinel:
+
+    ANSWER <the finding as listed>: not mine — the test must change: <test file>: <why>
+
+Say what the test pins and what the change makes it.
+
 You know a test is wrong by a check, not by a feeling. If the test fails the
 same way with your change set aside (git stash), your change did not cause it:
 find what in the test makes it fail, give that answer, and stop.
@@ -95,8 +103,9 @@ is decides what you do:
 
     ANSWER <the finding as listed>: wrong — the test is wrong: <test file>: needs cleanup of <what>
 
-3. Every test needs the same guard: put it in the shared test helpers, which
-   are code like any other in your scope.
+3. Every test needs the same guard: it belongs in the shared test helpers,
+   which are in the test folders — answer the finding \`not mine — the test
+   must change: <helper file>: needs <the guard>\`.
 
 ### Running tests
 - Do NOT run \`npm test\`, the full suite, or \`npm run lint\` — the pipeline
@@ -126,36 +135,19 @@ omit this line the pipeline falls back to the plan title.
 BUILD_PROMPT
 }
 
-# _build_compose_limits <plan_files_csv> [read-only files, one per line]
-# What build must not do (#2308): the scope it may touch and its rules. The
-# body places it after everything build judges against.
+# _build_compose_limits [repo_root]
+# What build must not do (#2308): the files it may change and its rules. The
+# body places it after everything build judges against. #2508 (ADR-030 §8):
+# build has no file list — it may change any file outside the test folders and
+# none inside them.
 _build_compose_limits() {
-    local plan_files_csv="${1:-}" ro="${2:-}" scope_section="" _f
-    # #2458 (ADR-067 §6): the design's own test files are read-only for build,
-    # so the list of files it may touch does not name them.
-    local -A _ro=()
-    # A TESTFILES line may name its SPEC first ("FSTG-1: tests/x-test.sh").
-    while IFS= read -r _f; do
-        [[ "$_f" =~ ^[[:space:]]*${_ACCEPTANCE_ID_ERE}:[[:space:]]*(.*)$ ]] && _f="${BASH_REMATCH[1]}"
-        _f="${_f%"${_f##*[![:space:]]}"}"
-        [[ -n "$_f" ]] && _ro[$_f]=1
-    done <<< "$ro"
-    if [[ -n "$plan_files_csv" ]]; then
-        local -a _fl=()
-        IFS=',' read -r -a _fl <<< "$plan_files_csv"
-        for _f in ${_fl[@]+"${_fl[@]}"}; do
-            [[ -n "$_f" && -z "${_ro[$_f]:-}" ]] && scope_section+="${scope_section:+$'\n'}  - $_f"
-        done
-    fi
-    [[ -n "$scope_section" ]] \
-        || scope_section="  (no plan.files[] declared — refuse to edit if scope is unclear)"
+    local _globs
+    zb_test_path_globs_v _globs "${1:-}"
     cat <<BUILD_LIMITS
-### Scope (plan.files[])
-You may ONLY touch files listed here. Refuse any out-of-scope edit.
-${scope_section}
+### The files you may change
+You may change any file outside the test folders (${_globs// /, }), and none inside them. Every file in the test folders — a test, a fixture, a test helper — belongs to the stage that writes the tests: a change you make there is put back.
 
 ### Rules
-- Touch only files in the scope list above.
 - Do not run \`git commit\` — the pipeline owns commit semantics.
 - NEVER run a command that mutates git branch state or the working tree —
   no \`git checkout -b\`/\`switch\`/\`commit\`/\`push\`/\`tag\`/\`reset\`. You are running
@@ -164,14 +156,12 @@ ${scope_section}
 - If you must exercise a command you are building (or any command that could
   publish, tag, push, or otherwise mutate state), run it in \`--dry-run\` mode.
   Do everything you can to verify behavior without side effects.
-- Keep changes minimal and aligned with the plan.
+- Keep changes minimal and aligned with the plan: change what the task needs.
 - Clean up scratch siblings of the files you edit (\`*.bak\`, \`*.orig\`,
   \`*.rej\`, \`*.head\`, \`*.tmp\`, \`*~\`). \`sed -i.bak\` and
   \`git show HEAD:f > f.head\` both leave one behind — prefer \`sed -i\` with no
-  suffix, and delete any comparison scratch before you finish. Out-of-scope
-  scratch is removed for you; any OTHER out-of-scope path voids the whole
-  iteration, so do not rely on the cleanup.
-- If satisfying a gate requires a file outside your scope, do not work around it — emit \`BLOCKED: <gate> requires <file> (out of scope)\` and stop.
+  suffix, and delete any comparison scratch before you finish. A new scratch
+  file is removed for you; every other file you leave is part of your change.
 BUILD_LIMITS
 }
 
@@ -252,7 +242,7 @@ _build_compose_prompt_body() {
         if [[ -n "$_acceptance_testfiles" ]]; then
             # #2163: a fact about THIS stage's permissions — never a claim about
             # who else does what (ADR-061: stages do not name stages).
-            printf 'The acceptance testfiles listed above are read-only for this stage: the engine denies edits to them, and a mechanical check restores any change. They are the contract you implement against, written before your implementation existed. When an assertion fails, fix your code. If it fails the same way with your change set aside, the test is wrong: answer as "When a test is wrong" says, and do not edit it. You MUST NOT weaken, delete, retag or re-author any assertion.\n\n'
+            printf 'The acceptance testfiles listed above are read-only for this stage, as is every file in the test folders: a change to them is put back. They are the contract you implement against, written before your implementation existed. When an assertion fails, fix your code. If it fails the same way with your change set aside, the test is wrong: answer as "When a test is wrong" says, and do not edit it. You MUST NOT weaken, delete, retag or re-author any assertion.\n\n'
         fi
         [[ -n "$_limits" ]] && printf '%s\n' "$_limits"
     } > "$_prompt_input_file"

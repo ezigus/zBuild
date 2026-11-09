@@ -1064,67 +1064,6 @@ _cycle_detect_divergence() {
     return 0
 }
 
-# ─── _cycle_resolve_scope_expansion <cycle_id> <state_dir> (#840 / ADR-030) ──
-# Reads a scope_expansion_request emitted by a member (build-summary.json),
-# resolves it against the cycle's scope_policy via scripts/lib/scope-governance.sh,
-# and acts. Echoes the decision: none | grant | deny.
-#   grant   → granted paths written to <state_dir>/scope-expansion-grant.txt and
-#             exported as ZBUILD_SCOPE_EXPANSION_GRANT (build merges it next iter);
-#             the request is cleared so it does not re-trigger; cycle CONTINUES.
-#   deny    → caller terminates the cycle with blocked_on_scope (NO loop). Covers
-#             the default-off case: a non-expandable cycle resolves every request
-#             to deny, so a structurally-blocked build abandons cleanly.
-#   none    → no request present; cycle proceeds normally.
-# The security floor lives in scope-governance.sh and is unbreachable here.
-_cycle_resolve_scope_expansion() {
-    local cycle_id="$1" state_dir="$2" blob="${3:-}"
-    local safe="${cycle_id//-/_}"
-    : "$state_dir"
-
-    # #2189: only a request a member of THIS iteration reported. #1849's run
-    # ended when design_verify_cycle (no build member) read build's leftover
-    # request from build-summary.json and denied it.
-    local req
-    req="$(jq -c '[ .[]? | (.report.scope_request // empty)
-                  | select(((.files? // []) | length) > 0) ] | first // empty' <<< "${blob:-\{\}}" 2>/dev/null)"
-    [[ -z "$req" || "$req" == "null" ]] && { echo "none"; return 0; }
-
-    # Load the resolver core (idempotent source guard inside the lib).
-    local _gov="${_ZBUILD_ROOT:-$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)}/scripts/lib/scope-governance.sh"
-    # shellcheck source=/dev/null
-    [[ -f "$_gov" ]] && source "$_gov"
-    if ! declare -F scope_resolve_request >/dev/null 2>&1; then
-        # Resolver unavailable — fail safe to deny (clean abandon, never loop).
-        echo "deny"; return 0
-    fi
-
-    local expandable autogrant escalate
-    local ev="_TPL_CYCLE_SCOPE_EXPANDABLE_${safe}"; expandable="${!ev:-false}"
-    local av="_TPL_CYCLE_SCOPE_AUTO_GRANT_${safe}"; autogrant="${!av:-}"
-    local sv="_TPL_CYCLE_SCOPE_ESCALATE_${safe}";   escalate="${!sv:-none}"
-
-    local decision action
-    decision="$(scope_resolve_request "$req" "$expandable" "$autogrant" "$escalate" 2>/dev/null)"
-    action="$(jq -r '.action // "deny"' <<<"$decision" 2>/dev/null || echo deny)"
-
-    if [[ "$action" == "grant" ]]; then
-        local grant_file="$state_dir/scope-expansion-grant.txt"
-        jq -r '.granted[]?' <<<"$decision" 2>/dev/null > "$grant_file"
-        export ZBUILD_SCOPE_EXPANSION_GRANT="$grant_file"
-        # The request lives in this iteration's reports only; the next
-        # iteration starts from fresh ones, so nothing is cleared (#2189 — the
-        # engine used to rewrite build-summary.json here).
-        eb_emit_event "cycle.scope.granted" "cycle_id=$cycle_id" \
-            "files=$(jq -r '[.granted[]?] | join(",")' <<<"$decision" 2>/dev/null)" 2>/dev/null || true
-        echo "grant"; return 0
-    fi
-
-    # escalate (v1) and deny both end the cycle cleanly — no loop.
-    eb_emit_event "cycle.scope.denied" "cycle_id=$cycle_id" \
-        "action=$action" "reason=$(jq -r '.reason // ""' <<<"$decision" 2>/dev/null)" 2>/dev/null || true
-    echo "deny"; return 0
-}
-
 # ─── _cycle_apply_feedback <iter_next> <state_dir> ──────────────────────────
 # Before the next iteration: the targeted-test hand-offs for the test stage.
 # (Template feedback wires are retired, ADR-055 §4: every stage reads every
@@ -2527,13 +2466,13 @@ _cycle_orchestrator_run_body() {
         fi
 
         # #1265 — no-committed-changes fail-fast. A convergence that would fire
-        # with ZERO commits ahead of the intake baseline (e.g. a scope_violation
-        # discarded the entire diff, or the tree was never committed) is a FALSE
+        # with ZERO commits ahead of the intake baseline (the tree was never
+        # committed) is a FALSE
         # convergence: the branch has nothing to ship, so review passes on an
         # uncommitted tree and `pr` aborts ~38 min later with "No commits between
         # main and branch" (#1214 dogfood). Suppress it here (mirror the
-        # did_not_finish pattern) and, unless a governed scope grant lets the next
-        # iter commit, terminate no_committed_changes below (blocked-class).
+        # did_not_finish pattern) and terminate no_committed_changes below
+        # (blocked-class).
         # EXEMPT the legit empty_diff resting point (#1208/#895): "nothing to do"
         # with green gates genuinely converges and has nothing to commit by design.
         #
@@ -2601,18 +2540,6 @@ _cycle_orchestrator_run_body() {
             [[ $_ce2 -eq 1 ]] && set -e
         fi
 
-        # #840 (ADR-030): resolve any scope_expansion_request a member emitted
-        # this iter. grant → wider write-scope for the next iter (cycle
-        # continues); deny → blocked_on_scope terminal below (NO loop). Runs
-        # AFTER converged/abort so a converged iter is never overridden, and
-        # BEFORE max_iterations so a structurally-blocked build abandons in one
-        # iter instead of grinding to max_iterations (the dogfood failure).
-        local _scope_action="none"
-        if [[ "$converged" -ne 0 ]]; then
-            local _se=0; case $- in *e*) _se=1 ;; esac
-            set +e; _scope_action="$(_cycle_resolve_scope_expansion "$cycle_id" "$state_dir" "$verdicts_blob")"; [[ $_se -eq 1 ]] && set -e
-        fi
-
         # Decide overall status for the SINGLE atomic write (ADR-021: never
         # split state writes within an iter boundary).
         local overall_status="in_progress"
@@ -2650,11 +2577,6 @@ _cycle_orchestrator_run_body() {
         elif [[ "$abort_matched" -eq 0 ]]; then
             _CYCLE_LAST_TERMINATED_REASON="cycle_abort"
             overall_status="cycle_abort"; term_outcome="aborted"
-        elif [[ "$_scope_action" == "deny" ]]; then
-            # #840: build needs out-of-scope files the policy won't grant (or
-            # the cycle is not expandable). Abandon cleanly — never loop.
-            _CYCLE_LAST_TERMINATED_REASON="blocked_on_scope"
-            overall_status="blocked_on_scope"; term_outcome="interrupted"
         elif _cycle_check_max_iterations "$iter" "$_CYCLE_MAX_ITER"; then
             # #1208 — THE single fatal condition: the cycle exhausted its
             # iteration budget WITHOUT a clean, passing convergence. Split
@@ -2725,15 +2647,11 @@ _cycle_orchestrator_run_body() {
                 _CYCLE_LAST_TERMINATED_REASON="max_iterations"
                 overall_status="max_iterations"; term_outcome="unconverged"
             fi
-        elif [[ "$_no_committed_changes" -eq 1 && "$_scope_action" != "grant" ]]; then
+        elif [[ "$_no_committed_changes" -eq 1 ]]; then
             # #1265: the iteration would have converged on ZERO committed changes
-            # (a scope_violation discarded the diff, or nothing was ever committed)
-            # and no governed scope grant is pending to let the next iter commit.
-            # Halt terminally (blocked-class → the pipeline stops before
-            # review/pr) instead of shipping
-            # an empty branch to a confusing `pr` abort. When _scope_action==grant
-            # the #870/#840 expansion lets the next iter commit, so we do NOT
-            # terminate (fall through to in_progress and iterate).
+            # (nothing was ever committed). Halt terminally (blocked-class → the
+            # pipeline stops before review/pr) instead of shipping an empty
+            # branch to a confusing `pr` abort.
             _CYCLE_LAST_TERMINATED_REASON="no_committed_changes"
             overall_status="no_committed_changes"; term_outcome="interrupted"
             _cycle_emit "cycle.no_committed_changes" \
@@ -2742,8 +2660,8 @@ _cycle_orchestrator_run_body() {
         elif _cycle_detect_blocked "$verdicts_blob" "$iter"; then
             # #528: structural cannot-progress class (raw verdict error/corrupt_diff/
             # block — NOT a timeout, which iterates). It halts the pipeline.
-            # #1208: retained as the ONLY early terminator besides converge/abort/
-            # scope-deny — genuine structural failures still halt fast.
+            # #1208: retained as the ONLY early terminator besides converge/abort
+            # — genuine structural failures still halt fast.
             _CYCLE_LAST_TERMINATED_REASON="blocked"
             overall_status="blocked"; term_outcome="interrupted"
         fi

@@ -2,11 +2,12 @@
 # Unit: build acceptance charter injection (ADR-031 / #866).
 #
 # AC1: build prompt contains the acceptance-charter section header.
-# AC2: prompt contains each TESTFILES path from the design.md acceptance block.
+# AC2: prompt contains each acceptance test file — the test-folder files that
+#      hold a SPEC's tag (#2508: design names none).
 # AC3: prompt contains explicit 'MUST NOT weaken' prohibition.
-# AC4: behavioral — when the mocked router modifies an acceptance test file
-#      that is NOT in plan.files[], build.scope.violation is emitted for it,
-#      proving weakening an acceptance test is caught by the scope enforcer.
+# AC4: behavioral — when the mocked router modifies an acceptance test file,
+#      build.scope.violation is emitted for it: the file is in the test folders,
+#      which build may not change (#2508, ADR-030 §8).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -63,7 +64,11 @@ mkdir -p "$_CHARTER_REPO"
     && git config user.email t@t \
     && git config user.name t \
     && echo seed > seed.txt \
-    && git add seed.txt \
+    && mkdir -p tests/unit src \
+    && printf 'assert "[BUCHRT-1] charter" 1 1\n' > tests/unit/build-acceptance-charter-test.sh \
+    && printf 'assert "[BUCHRT-2] framing" 1 1\n' > tests/unit/build-prompt-framing-test.sh \
+    && printf '# [BUCHRT-1] a tag outside the test folders\n' > src/notes.sh \
+    && git add -A \
     && git commit -q -m seed ) >/dev/null
 export ZBUILD_REPO_ROOT="$_CHARTER_REPO"
 
@@ -90,11 +95,9 @@ cat > "$DESIGN_MD" <<'DESIGN'
 Some design prose.
 
 ```acceptance
-SPEC: build prompt must include acceptance charter section
-SPEC: weakening acceptance test files triggers scope violation
-TESTFILES:
-tests/unit/build-acceptance-charter-test.sh
-tests/unit/build-prompt-framing-test.sh
+BUCHRT-1[code]: build prompt must include acceptance charter section
+BUCHRT-2[code]: weakening acceptance test files is put back
+WIRING: none
 ```
 
 More prose.
@@ -126,7 +129,7 @@ else
         "header not found in prompt"
 fi
 
-# AC2: each TESTFILES path appears in the prompt.
+# AC2: each acceptance test file, found by its tag, appears in the prompt.
 if grep -qF "tests/unit/build-acceptance-charter-test.sh" <<< "$captured_prompt"; then
     assert_pass "AC2a: prompt contains first TESTFILES path"
 else
@@ -152,22 +155,16 @@ fi
 # Re-set events file for clean capture.
 : > "$ZBUILD_EVENTS_JSONL"
 
-# The acceptance test file is NOT in plan.files[]; the mocked router edits it
-# to simulate the LLM "weakening" the test. The scope enforcer must emit
-# build.scope.violation for that path.
+# The acceptance test file is in the test folders; the mocked router edits it
+# to simulate the LLM "weakening" the test. The test-folder check must emit
+# build.scope.violation for that path (it is tracked: the check uses git diff HEAD).
 ACCEPTANCE_TEST_FILE="tests/unit/build-acceptance-charter-test.sh"
-mkdir -p "$_CHARTER_REPO/tests/unit"
-echo "# original acceptance test" > "$_CHARTER_REPO/$ACCEPTANCE_TEST_FILE"
-# Commit so it's tracked (scope post-validation uses git diff HEAD).
-( cd "$_CHARTER_REPO" \
-    && git add "$ACCEPTANCE_TEST_FILE" \
-    && git commit -q -m "add acceptance test stub" ) >/dev/null
 
 # Redefine route_to_model_loop to edit the acceptance test file (not in scope).
 # shellcheck disable=SC2317
 route_to_model_loop() {
     local _repo="$3"
-    # Simulate the LLM weakening the acceptance test (out-of-scope edit).
+    # Simulate the LLM weakening the acceptance test (a test-folder edit).
     printf '# WEAKENED — assert removed\n' > "$_repo/$ACCEPTANCE_TEST_FILE"
     _ROUTE_LOOP_ITERATIONS=1
     _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
@@ -202,11 +199,11 @@ violation_count="$(jq -r --arg p "$ACCEPTANCE_TEST_FILE" \
 if [[ "$violation_count" -ge 1 ]]; then
     assert_pass "AC4: build.scope.violation emitted for acceptance test file"
 else
-    assert_fail "AC4: build.scope.violation must fire for out-of-scope acceptance test edit" \
+    assert_fail "AC4: build.scope.violation must fire for an acceptance test edit" \
         "count=$violation_count in $ZBUILD_EVENTS_JSONL"
 fi
 
-# Also confirm build-summary.json records scope_violation=true.
+# Also confirm build-summary.json records scope_violation=true, and the edit is put back.
 summary_violation="$(jq -r '.scope_violation' "$SUMMARY_JSON" 2>/dev/null || echo 'null')"
 if [[ "$summary_violation" == "true" ]]; then
     assert_pass "AC4: build-summary.json scope_violation=true"
@@ -214,6 +211,8 @@ else
     assert_fail "AC4: build-summary.json must have scope_violation=true" \
         "got scope_violation=$summary_violation"
 fi
+assert_eq "AC4: the weakened acceptance test is put back" 'assert "[BUCHRT-1] charter" 1 1' \
+    "$(cat "$_CHARTER_REPO/$ACCEPTANCE_TEST_FILE")"
 
 # ─── Helper unit: _build_read_acceptance_testfiles returns only paths ─────────
 if declare -F _build_read_acceptance_testfiles >/dev/null 2>&1; then
@@ -237,27 +236,15 @@ else
     assert_fail "H1: _build_read_acceptance_testfiles helper must exist" "missing"
 fi
 
-# ─── H3 (Copilot review): unsafe TESTFILES paths are not surfaced ─────────────
-# TESTFILES come from an LLM-produced design.md; absolute and ".."-containing
-# paths must be filtered out (mirrors design's guard) so the build prompt never
-# advertises an out-of-tree target design would reject.
+# ─── H3 (Copilot review; #2508): only test-folder files are surfaced ──────────
+# A file outside the test folders that holds a SPEC's tag is not a test, so the
+# build prompt never advertises it.
 if declare -F _build_read_acceptance_testfiles >/dev/null 2>&1; then
-    UNSAFE_DESIGN_MD="$ARTIFACT_DIR/design-unsafe.md"
-    {
-        printf '# Design\n\n```acceptance\nSPEC: s\nTESTFILES:\n'
-        printf '../escape-test.sh\n'
-        printf '/tmp/zbuild-abs-test.sh\n'
-        printf 'tests/unit/safe-charter-test.sh\n'
-        printf '```\n'
-    } > "$UNSAFE_DESIGN_MD"
-    unsafe_out="$(_build_read_acceptance_testfiles "$UNSAFE_DESIGN_MD" 2>/dev/null || true)"
-    case "$unsafe_out" in
-        *".."*|*"/tmp/"*)
-            assert_fail "H3: unsafe TESTFILES path leaked into output" "got: $unsafe_out" ;;
-        *"tests/unit/safe-charter-test.sh"*)
-            assert_pass "H3: absolute/.. TESTFILES paths filtered; safe path kept" ;;
+    case "$tf_out" in
+        *"src/notes.sh"*)
+            assert_fail "H3: a tagged file outside the test folders leaked into output" "got: $tf_out" ;;
         *)
-            assert_fail "H3: safe TESTFILES path must survive filtering" "got: $unsafe_out" ;;
+            assert_pass "H3: a tagged file outside the test folders is not a test file" ;;
     esac
 fi
 

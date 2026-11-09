@@ -14,26 +14,25 @@ _ZBUILD_DESIGN_CHECKS_LOADED=1
 source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/../../../../scripts/lib/test-paths.sh"
 # shellcheck source=../../../../scripts/lib/item-ids.sh
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/item-ids.sh"
+# shellcheck source=../../../../scripts/lib/unclear.sh
+source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/unclear.sh"
 _DCK_LIB_DIR="${BASH_SOURCE[0]%/*}/../../../../scripts/lib"
 # #2482 (ADR-001): design's id prefix, from its manifest — every SPEC id starts with it.
 zb_id_prefix_v _DCK_ID_PREFIX "${BASH_SOURCE[0]%/*}/../manifest.yaml"
 
-# _dck_scope_nonempty <design_md>
-# C1: returns 0 iff design.md carries a ```scope fence with ≥1 non-blank entry.
-_dck_scope_nonempty() {
-    local design_md="${1:-}"
-    [[ -f "$design_md" ]] || return 1
-    local in_scope=0 entries=0 line
-    while IFS= read -r line; do
-        line="${line%$'\r'}"
-        # #1227: tolerate a trailing-whitespace fence (mirrors the design
-        # stage's grep -q prefix match) so a fence line with a trailing space
-        # does not falsely trip SCOPE_MISSING.
-        if [[ "$line" == '```scope' || "$line" == '```scope'[[:space:]]* ]]; then in_scope=1; continue; fi
-        if [[ $in_scope -eq 1 && "$line" == '```'* ]]; then break; fi
-        if [[ $in_scope -eq 1 && -n "${line//[[:space:]]/}" ]]; then entries=$((entries + 1)); fi
-    done < "$design_md"
-    [[ $entries -gt 0 ]]
+# _dck_unclear_bad_v <array> <design_md> — each line outside a fence that
+# starts UNCLEAR: but is not `UNCLEAR: <id> | <question> | <assumed>` (#2508,
+# ADR-069 §12): a question no report could show, so it is refused, not dropped.
+_dck_unclear_bad_v() {
+    local -n _dub="$1"; local _l _in=0
+    _dub=()
+    while IFS= read -r _l || [[ -n "$_l" ]]; do
+        _l="${_l%$'\r'}"
+        if [[ "$_l" =~ ^[[:space:]]*\`\`\` ]]; then _in=$(( 1 - _in )); continue; fi
+        (( _in == 0 )) && [[ "$_l" =~ ^[[:space:]]*UNCLEAR: && ! "$_l" =~ $_ZB_UNCLEAR_RE ]] \
+            && _dub+=("${_l#"${_l%%[![:space:]]*}"}")
+    done < "$2"
+    return 0
 }
 
 # _dck_evidence_v <var> <repo_root> <item> <base> — what is wrong with one
@@ -87,7 +86,6 @@ _dck_block_ids_v() {
     re="^REMOVED:[[:space:]]*(${_ACCEPTANCE_ID_ERE})"
     _dbi="" _dbr=""
     while IFS= read -r _l; do
-        [[ "$_l" == "TESTFILES:" ]] && break
         if [[ "$_l" =~ $_ACCEPTANCE_SPEC_RE ]]; then _dbi+="${BASH_REMATCH[1]} "
         elif [[ "$_l" =~ $re ]]; then _dbr+="${BASH_REMATCH[1]} "; fi
     done <<< "$3"
@@ -95,7 +93,7 @@ _dck_block_ids_v() {
 }
 
 # _dck_bad_id_lines_v <array> <design_md> — each acceptance-block line (before
-# TESTFILES) shaped like a SPEC line whose id has no valid form (#2462): such a
+# an old design's TESTFILES list, which is not read) shaped like a SPEC line whose id has no valid form (#2462): such a
 # line is otherwise read as words of the SPEC before it.
 _dck_bad_id_lines_v() {
     local -n _dbl="$1"; local l in=0 re='^([A-Za-z][A-Za-z0-9_]*-[0-9]+)(\[[a-z-]+\])?:'
@@ -174,7 +172,7 @@ _dck_plain() {
     local v="$1" rest="${1#* }"
     local id="${rest%% *}" third="${rest#* }"; third="${third%% *}"
     case "$v" in
-        SCOPE_MISSING*)      printf 'design.md has no scope block — add a ```scope block listing every file the change touches' ;;
+        UNCLEAR_MALFORMED*)  printf 'an UNCLEAR line is not in its form (%s) — write it as UNCLEAR: <id> | <the question> | <what you assumed>, all three parts on one line' "${rest#(}" ;;
         ACCEPTANCE_MISSING*) printf 'design.md has no readable ```acceptance block — add one with a line per requirement' ;;
         NO_STATUS*)          printf '%s has no status — tag it [code] if it needs code (its test fails on the code from before your change and passes after), [no-code] if it needs work that changes no behaviour (docs, a test, config or a refactor), or [done] if the code already does it (then name the evidence after " evidence: ")' "$id" ;;
         # The retired tag is named, not written: design would copy it back.
@@ -190,14 +188,11 @@ _dck_plain() {
         DONE_NOT_BEFORE*)    printf '%s is marked [done], but its evidence %s is not in the code from before this change — this branch added or changed it, so it is not done yet: tag %s [code] and give it a test' "$id" "$third" "$id" ;;
         ID_*)                zb_id_plain "$v" SPEC ;;
         CONTENTS_NOT_BEHAVIOUR*) printf '%s describes what a file contains, not what the code does — no test can prove that; describe the behaviour someone could observe (an input and what happens)' "$id" ;;
-        MISSING_TESTFILE_FOR_SPEC*) printf '%s has no test file listed — add a "%s: <test file>" line under TESTFILES:' "$id" "$id" ;;
         "WIRING_MISSING ("*) printf 'the acceptance block does not say which existing file calls the new code — add a WIRING: line naming it, or WIRING: none if nothing calls it yet' ;;
         REQUIREMENT_NOT_COVERED*) local _rt="${rest#* (}"; _rt="${_rt%)}"
             # The requirement's own words go last, unquoted, so quotes inside them
             # cannot break the sentence (review #2320).
             printf 'requirement %s from the issue is not covered by any SPEC: %s. End the line of the SPEC that delivers it with " covers: %s" (before any " evidence: "), or add a SPEC for it; if the code already does it, a [done] SPEC with evidence covers it' "$id" "$_rt" "$id" ;;
-        TESTFILE_NOT_A_TEST*) local _tg; zb_test_path_globs_v _tg
-            printf '%s is named as a test, but it is not in a test folder (%s) — name a test file in one of them, or leave it out: a document or a source file is not a test' "$id" "${_tg// /, }" ;;
         WIRING_MISSING*)     printf 'the WIRING file %s does not exist — name a file that exists in the repository, or WIRING: none' "$id" ;;
         # #2467 (ADR-073 §1 §3): a SPEC's parts.
         GWT_MISSING*)        printf '%s is written on one line — rewrite it with its parts on the lines under it: Given: <the setup> (optional), When: <the one action>, Then: <what a test can observe> (one or more; And: adds another), and Cleanup: <what must be true again after> when the setup or a Then leaves something behind' "$id" ;;
@@ -211,13 +206,14 @@ _dck_plain() {
         GWT_ORPHAN_PART*)    local _op="${rest#(}"; _op="${_op%)}"
             printf 'a part line is under no SPEC (%s) — put each Given:, When:, Then:, And: or Cleanup: line under the SPEC it belongs to' "$_op" ;;
         GWT_PART_ON_REMOVED*) printf '%s is removed, so it has no parts — remove the lines under its REMOVED line' "$id" ;;
-        WIRING_IS_TEST*)     printf 'the WIRING file %s is one of your test files — a test is not what runs the change; name the file whose code calls the new code, or write WIRING: none' "$id" ;;
+        WIRING_IS_TEST*)     printf 'the WIRING file %s is in a test folder — a test is not what runs the change; name the file whose code calls the new code, or write WIRING: none' "$id" ;;
         *) printf '%s' "$v" ;;
     esac
 }
 
 # _design_checks <design_md> <repo_root> <requirements_json> [last_design] [issue_text]
-# Fills _DESIGN_VIOLATIONS with one code per violation (C1..C5, C7, C9, C11); empty
+# Fills _DESIGN_VIOLATIONS with one code per violation (C2, C3, C5, C7, C9,
+# C10, C11, C12); empty
 # when design.md passes. The requirements file is absent on a goal run;
 # [last_design] is the last design that passed, [issue_text] the issue's words
 # (the stage passes none: the requirement list carries the ids they write).
@@ -242,10 +238,9 @@ _design_checks() {
         done <<< "$_req_rows"
     fi
 
-    # ── C1 SCOPE: non-empty ```scope block ──────────────────────────────────
-    if ! _dck_scope_nonempty "$design_md"; then
-        violations+=("SCOPE_MISSING (design.md has no non-empty \`\`\`scope block)")
-    fi
+    # C1 (a scope block), C4 (a test file per [code] SPEC) and C8 (each listed
+    # test file in a test folder) are gone: design names no files (#2508,
+    # ADR-069 §11). A SPEC's test is found from its tag.
 
     # ── C2 ACCEPTANCE: block present + parseable ─────────────────────────────
     local _accept_ok=0
@@ -255,10 +250,10 @@ _design_checks() {
         violations+=("ACCEPTANCE_MISSING (design.md has no parseable \`\`\`acceptance block)")
     fi
 
-    # ── C3 STATUS + C4 CODE-HAS-TESTFILE (#2304, ADR-069 §1–§3) ─────────────
+    # ── C3 STATUS (#2304, ADR-069 §1–§3) ───────────────────────────────────
     # Every requirement carries a status. [done] names evidence that exists, so
     # "already done" is a claim the gate can check, not a way to skip the red
-    # step (#2035). Only a code requirement needs a test file of its own.
+    # step (#2035).
     if [[ $_accept_ok -eq 1 ]]; then
         local _blk _spec _ev _ev_n _na="" _nr=""
         _blk="$(extract_acceptance_block "$design_md" 2>/dev/null || true)"
@@ -267,7 +262,6 @@ _design_checks() {
         # C10: a part with no SPEC above it, or under a REMOVED line.
         local _bl _rre="^REMOVED:[[:space:]]*(${_ACCEPTANCE_ID_ERE})"
         while IFS= read -r _bl; do
-            [[ "$_bl" == "TESTFILES:" ]] && break
             if [[ "$_bl" =~ $_ACCEPTANCE_PART_RE ]]; then
                 violations+=("GWT_ORPHAN_PART (${_bl%%$'\x1f'*})")
             elif [[ "$_bl" =~ $_rre && "$_bl" == *$'\x1f'* ]]; then
@@ -286,14 +280,7 @@ _design_checks() {
                 && violations+=("CONTENTS_NOT_BEHAVIOUR $_spec (describes file contents, not behaviour)")
             case "$_ACC_SPEC_STATUS" in
                 "")      violations+=("NO_STATUS $_spec (requirement carries no [code], [no-code] or [done] status)") ;;
-                no-code) : ;;
-                code)
-                    # #1649: existence is deliberately NOT checked — design runs
-                    # before build, so requiring the file forced every design off
-                    # its own proposed test file. The acceptance gate checks it.
-                    # Traversal is dropped by acceptance-block.sh while parsing.
-                    [[ -n "$(acceptance_list_testfiles_for_spec "$design_md" "$_spec" 2>/dev/null || true)" ]] \
-                        || violations+=("MISSING_TESTFILE_FOR_SPEC $_spec (no testfile declared for [code] SPEC)") ;;
+                no-code|code) : ;;
                 done)
                     if [[ "$_ACC_SPEC_TAG" == "guard" ]]; then
                         violations+=("UNKNOWN_STATUS $_spec [guard] (the retired tag; use [done] with evidence)")
@@ -371,17 +358,6 @@ _design_checks() {
         for _bad in "${_bads[@]+"${_bads[@]}"}"; do violations+=("ID_BAD $_bad $_DCK_ID_PREFIX"); done
     fi
 
-    # ── C8 TEST FOLDERS (ADR-069 §10): every test file is in a test folder ──
-    # #1801 run 40390919951: two ADR documents named as tests were run with bash.
-    if [[ $_accept_ok -eq 1 ]]; then
-        local _tf
-        while IFS= read -r _tf; do
-            [[ -n "$_tf" ]] || continue
-            zb_is_test_path "$_tf" "$repo_root" \
-                || violations+=("TESTFILE_NOT_A_TEST $_tf (not in a test folder)")
-        done < <(acceptance_list_testfiles "$design_md" 2>/dev/null | LC_ALL=C sort -u)
-    fi
-
     # ── C7 REQUIREMENTS (#2306, ADR-070 §3): every requirement intake numbered
     # is covered by at least one SPEC, whatever its status. Read by script, so
     # no model decides what the issue asked for.
@@ -394,21 +370,27 @@ _design_checks() {
         done <<< "$_req_rows"
     fi
 
-    # ── C5 WIRING: section present ("none" ok); each concrete path exists and is no TESTFILE ─
+    # ── C5 WIRING: section present ("none" ok); each concrete path exists and is no test ─
     if [[ $_accept_ok -eq 1 ]]; then
         if ! acceptance_list_wiring "$design_md" >/dev/null 2>&1; then
             violations+=("WIRING_MISSING (design.md acceptance block has no WIRING: section)")
         else
-            local _w _tfs
-            _tfs="$(acceptance_list_testfiles "$design_md" 2>/dev/null || true)"
+            local _w
             while IFS= read -r _w; do
                 [[ -z "$_w" || "$_w" == "none" ]] && continue
                 [[ -e "$repo_root/$_w" ]] || { violations+=("WIRING_MISSING $_w (declared wiring path absent on disk)"); continue; }
                 # #2429: reachability cannot prove a test file load-bearing.
-                grep -qxF -- "$_w" <<< "$_tfs" && violations+=("WIRING_IS_TEST $_w (a TESTFILE named as WIRING)")
+                # #2508: a test is any file in the test folders.
+                zb_is_test_path "$_w" "$repo_root" && violations+=("WIRING_IS_TEST $_w (a file in a test folder named as WIRING)")
             done < <(acceptance_list_wiring "$design_md" 2>/dev/null || true)
         fi
     fi
+
+    # ── C12 UNCLEAR (#2508, ADR-069 §12): a question design could not settle
+    # is in its form, so every report can show it.
+    local -a _ub=(); local _u
+    [[ -f "$design_md" ]] && _dck_unclear_bad_v _ub "$design_md"
+    for _u in ${_ub[@]+"${_ub[@]}"}; do violations+=("UNCLEAR_MALFORMED ($_u)"); done
 
     _DESIGN_VIOLATIONS=("${violations[@]}")
     return 0

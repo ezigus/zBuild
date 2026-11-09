@@ -93,8 +93,6 @@ print_test_section "Q2: design's coverage check"
 ```acceptance
 DSWORK-1[code]: a --dry-run flag is accepted covers: RQRQST-1
 DSCNFG-1[done]: a missing config is refused covers: RQRQST-2 evidence: scripts/cfg.sh:"refuse_missing_config()"
-TESTFILES:
-DSWORK-1: tests/acc-test.sh
 WIRING: none
 ```
 ```scope
@@ -169,8 +167,8 @@ print_test_section "Q3: test-author's assertion check"
         local n; n=$(( $(cat "$_N") + 1 )); printf '%s' "$n" > "$_N"; printf '%s' "$2" > "$_P.$n"
         if [[ $n -eq 1 ]]; then printf '%s' "$_R1"; else printf '%s' "${_R2:-$_R1}"; fi
     }
-    R="$TEST_TEMP_DIR/q3-repo"; mkdir -p "$R/tests"; D="$TEST_TEMP_DIR/q3.md"
-    printf '# Design\n```acceptance\nDSLOOP-1[code]: fresh runs and nested re-entries start at round 1\nWIRING: none\nTESTFILES:\nDSLOOP-1: tests/acc-test.sh\n```\n' > "$D"
+    R="$TEST_TEMP_DIR/q3-repo"; mkdir -p "$R/tests"; git -C "$R" init -q; D="$TEST_TEMP_DIR/q3.md"
+    printf '# Design\n```acceptance\nDSLOOP-1[code]: fresh runs and nested re-entries start at round 1\nWIRING: none\n```\n' > "$D"
     printf 'unset RESUME\nassert_eq "[DSLOOP-1] a fresh run starts at 1" "1" "$got"\n' > "$R/tests/acc-test.sh"
     _j() { printf 0 > "$_N"; _ta_correspondence "$D" "$R" T2 >/dev/null 2>&1; }
 
@@ -218,7 +216,7 @@ _mk_inputs() {  # <dir> — the issue, its requirements, a design, a diff, a tes
         }
         _intake_write_requirements "$in" '{"title":"Add a flag","body":"Add a flag. Refuse a missing config file."}'
     ) >/dev/null 2>&1
-    printf '%s\n' '# Design' '```acceptance' 'DSFLAG-1[code]: a --dry-run flag is accepted' 'DSCNFG-2[done]: a missing config is refused evidence: scripts/cfg.sh:"refuse_missing_config()"' 'TESTFILES:' 'DSFLAG-1: tests/t.sh' 'WIRING: none' '```' > "$in/design.md"
+    printf '%s\n' '# Design' '```acceptance' 'DSFLAG-1[code]: a --dry-run flag is accepted' 'DSCNFG-2[done]: a missing config is refused evidence: scripts/cfg.sh:"refuse_missing_config()"' 'WIRING: none' '```' > "$in/design.md"
     printf '%s\n' 'diff --git a/p.sh b/p.sh' '+dry_run=1' > "$in/diff.patch"
     zb_test_test_run_output "$in" pass 1 0 >/dev/null
 }

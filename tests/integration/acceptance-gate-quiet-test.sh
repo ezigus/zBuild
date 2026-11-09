@@ -63,8 +63,6 @@ REPO_A="$(setup_git_temp_repo "quiet-negctl")"
 cat > "$REPO_A/design.md" <<'EOF'
 ```acceptance
 SPEC-1: feature is implemented
-TESTFILES:
-tests/feature-test.sh
 ```
 EOF
 
@@ -109,8 +107,6 @@ cat > "$REPO_B/design.md" <<'EOF'
 SPEC-1[change]: feature is implemented
 WIRING:
 impl.sh
-TESTFILES:
-tests/feature-test.sh
 ```
 EOF
 
@@ -194,9 +190,6 @@ cat > "$REPO_C/design.md" <<'EOF'
 ```acceptance
 SPEC-1[change]: feature is implemented
 SPEC-2[change]: always true
-TESTFILES:
-tests/feature-test.sh
-tests/taut-test.sh
 ```
 EOF
 
@@ -245,8 +238,6 @@ cat > "$REPO_D/design.md" <<'EOF'
 SPEC-1[change]: my_feature is provided by wiring.sh
 WIRING:
 wiring.sh
-TESTFILES:
-tests/feature-test.sh
 ```
 EOF
 
@@ -263,6 +254,8 @@ assert_contains "[SPEC-2] summary: WIRING target → REACHABILITY PASS on termin
 # path wrote it only when it had per-check lines. A block with TESTFILES and no
 # SPEC ids (with a real prod delta, so negctl emits no run-wide SKIP) produced none, and the previous iteration's file — a `summary: true`
 # output the per-iter cleanup does not clear — shipped as this iteration's.
+# #2508: a block names no test files, so the run here has one no-code SPEC
+# whose tagged test is found by its tag: negctl runs nothing for it.
 REPO_S="$(setup_git_temp_repo "quiet-summary-always")"
 (
     cd "$REPO_S"
@@ -270,15 +263,14 @@ REPO_S="$(setup_git_temp_repo "quiet-summary-always")"
     mkdir -p tests
     # The test needs impl.sh, so putting impl.sh back fails it (ADR-036: every
     # changed code file must be noticed by some test).
-    printf '#!/usr/bin/env bash\n[[ -f "$(dirname "$0")/../impl.sh" ]]\n' > tests/feature-test.sh
+    printf '#!/usr/bin/env bash\n# [SPEC-1] impl.sh is there\n[[ -f "$(dirname "$0")/../impl.sh" ]]\n' > tests/feature-test.sh
     printf '#!/usr/bin/env bash\nmy_feature() { return 0; }\n' > impl.sh
     chmod +x tests/feature-test.sh impl.sh
     "$GIT" add -A; "$GIT" commit -q -m "feat: impl + testfile, no SPEC ids"
 ) >/dev/null 2>&1
 cat > "$REPO_S/design.md" <<'EOF'
 ```acceptance
-TESTFILES:
-tests/feature-test.sh
+SPEC-1[no-code]: impl.sh is there
 ```
 EOF
 mkdir -p "$REPO_S/.zbuild-state/artifacts"

@@ -109,7 +109,7 @@ Optional inputs that are absent or empty leave their prompt section out entirely
 |----|----------|---------|
 | `scope_manifest` | yes | In-scope file list from intake |
 | `plan` | yes | Structured implementation plan |
-| `design` | no | `design.md` scope block overrides `plan.json files[]` when present |
+| `design` | no | the decisions and requirements build works to; build has no file list — it may change any file outside the test folders (#2508) |
 | `prior_test_assessment` | no | Test-failure detail from the previous cycle iteration |
 | `prior_review_feedback` | no | Review findings from `build_review_cycle` outer loop |
 | `prior_acceptance_feedback` | no | Untagged SPEC ids from the prior acceptance-gate run |

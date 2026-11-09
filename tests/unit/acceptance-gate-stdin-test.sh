@@ -30,6 +30,7 @@ REPO="$(setup_git_temp_repo gate-stdin)"   # main @ seed (baseline)
     cat > tests/drain-test.sh <<'EOS'
 #!/usr/bin/env bash
 cat >/dev/null
+# #2508: the file holds each SPEC's tag, which is how it is found: [SPEC-1] [SPEC-2] [SPEC-3] [SPEC-4]
 impl="$(cd "$(dirname "$0")/.." && pwd)/impl.sh"
 FAIL=0
 ok() { printf '  ✓ %s\n' "$1"; }; bad() { printf '  ✗ %s\n' "$1"; FAIL=1; }
@@ -44,20 +45,12 @@ EOS
 )
 DM="$REPO/design.md"
 cat > "$DM" <<'EOF2'
-```scope
-impl.sh
-```
 ```acceptance
 SPEC-1[change]: feature_a exists (1)
 SPEC-2[change]: feature_a exists (2)
 SPEC-3[change]: feature_a exists (3)
 SPEC-4[change]: feature_a exists (4)
 WIRING: impl.sh
-TESTFILES:
-SPEC-1: tests/drain-test.sh
-SPEC-2: tests/drain-test.sh
-SPEC-3: tests/drain-test.sh
-SPEC-4: tests/drain-test.sh
 ```
 EOF2
 

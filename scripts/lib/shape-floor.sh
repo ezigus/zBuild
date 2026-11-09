@@ -273,29 +273,6 @@ _sf_collect_missing_floor_files() {
     done < <(_sf_list_order_assertions "$tests_root")
 }
 
-# ─── sf_scope_floor_files <repo_root> <file>... (#1874) ──────────────────────
-# The floor a change's SCOPE owes: when any of <file>... matches a glob in
-# config/shape-change-paths.txt, every event-sequence golden and every
-# _TPL_STAGES[N] test, repo-relative, one per line; nothing otherwise. The same
-# listers _sf_collect_missing_floor_files judges with — computed into scope up
-# front, so build is never refused a file the gate then demands (#1701, #2032).
-sf_scope_floor_files() {
-    local repo="$1"; shift
-    local paths="$repo/config/shape-change-paths.txt" pattern f hit=0
-    [[ -f "$paths" && $# -gt 0 ]] || return 0
-    while IFS= read -r pattern; do
-        pattern="${pattern#"${pattern%%[![:space:]]*}"}"
-        [[ -z "$pattern" || "$pattern" == "#"* ]] && continue
-        for f in "$@"; do
-            # shellcheck disable=SC2053
-            [[ "$f" == $pattern ]] && { hit=1; break 2; }
-        done
-    done < "$paths"
-    (( hit )) || return 0
-    _sf_list_event_goldens "$repo/tests"
-    _sf_list_order_assertions "$repo/tests"
-}
-
 # ─── _sf_shape_floor <repo_root> ─────────────────────────────────────────────
 # If any diff file matches config/shape-change-paths.txt → shape change detected.
 # Exception: when config/event-schema.json is the SOLE matched file and its diff

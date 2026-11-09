@@ -1,6 +1,6 @@
 # ADR-021: Pipeline Cycle Semantics (Outer-Cycle Framework)
 
-**Status:** Proposed (F1) → Accepted (after F2 / #511)
+**Status:** Proposed (F1) → Accepted (after F2 / #511); amended 2026-11-09 (#2508: `blocked_on_scope` is removed — build has no file list to be blocked on, ADR-030 §8)
 **Date:** 2026-05-30
 **Amends:** ADR-006 (resume contract), ADR-013 (canonical stage list), ADR-015 (stage-io v6), ADR-018 (Pattern 2 inner loops), ADR-020 (contract validator)
 **Amended:** 2026-11-07 (#2487) — Blocked termination: a member whose output could not be used (`unusable`) does not block; the next round runs it again.
@@ -1003,3 +1003,7 @@ A parallel, additive guard alongside the `did_not_finish` (#1208/#1261) mid-flig
 ### Amendment (2026-10-04, #2271) — nested loops, no backward route
 
 ADR-068 supersedes the rc 11 `route_back` row of this ADR's terminal table. An inner loop that ends without converging ends the outer round when it declares `on_max: halt` or ran out with tests failing (rc 8) **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=failed`)**; the outer loop goes round, each inner loop restarting at round 1. With no outer rounds left, rc 8 still stops the run. A loop declares no `unowned:` key (removed by ADR-068 §8, amended 2026-10-11). Tests: `tests/integration/nested-loop-rounds-test.sh`, `tests/integration/nested-loop-rounds-build-test.sh`, `tests/unit/engine-keeps-only-stage-outputs-test.sh` K1.
+
+## Amendment 2026-11-09 (#2508) — no `blocked_on_scope`
+
+Build has no file list (ADR-030 §8): it may change any file outside the test folders, and a change inside them is put back. So a cycle has no scope request to resolve, and `blocked_on_scope` is no longer a terminal reason; the precedence list above reads `until > cycle_abort > velocity_plateau > max_iterations > plateau (tuple) > divergence > blocked > signal`. Build no longer derives a write scope from design.md.

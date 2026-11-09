@@ -83,8 +83,8 @@ _reset
     # shellcheck source=../../plugins/agent/test-author/plugin.sh
     source "$REPO_ROOT/plugins/agent/test-author/plugin.sh"
     A="$ZBUILD_STATE_DIR/artifacts"
-    R="$TEST_TEMP_DIR/v3-repo"; mkdir -p "$R/tests"; D="$TEST_TEMP_DIR/v3.md"
-    printf '# Design\n```acceptance\nLOOP-1[code]: fresh runs start at round 1\nKEEP-1[code]: the saved round is read on resume\nWIRING: none\nTESTFILES:\nLOOP-1: tests/loop-test.sh\nKEEP-1: tests/keep-test.sh\n```\n' > "$D"
+    R="$TEST_TEMP_DIR/v3-repo"; mkdir -p "$R/tests"; git -C "$R" init -q; D="$TEST_TEMP_DIR/v3.md"
+    printf '# Design\n```acceptance\nLOOP-1[code]: fresh runs start at round 1\nKEEP-1[code]: the saved round is read on resume\nWIRING: none\n```\n' > "$D"
     printf 'assert_eq "[LOOP-1] a fresh run starts at 1" "1" "$got"\n' > "$R/tests/loop-test.sh"
     printf 'assert_eq "[KEEP-1] resume reads the saved round" "2" "$got"\n' > "$R/tests/keep-test.sh"
     route_to_model() { printf '%s' "$_R"; }
@@ -126,7 +126,7 @@ _reset
     artifact_dir="$ZBUILD_STATE_DIR/artifacts"
     route_to_model() { printf 'RQST-1: covered\nWORK-1: ok\n'; }
     D="$TEST_TEMP_DIR/v4.md"
-    printf '# Design\n```acceptance\nWORK-1[code]: a flag is accepted covers: RQST-1\nTESTFILES:\nWORK-1: tests/a-test.sh\nWIRING: none\n```\n' > "$D"
+    printf '# Design\n```acceptance\nWORK-1[code]: a flag is accepted covers: RQST-1\nWIRING: none\n```\n' > "$D"
     _design_coverage "$D" "- RQST-1: add a flag" T2
     _design_coverage "$D" "- RQST-1: add a flag" T2
     _design_coverage "$D" "- RQST-1: add a flag to every command" T2

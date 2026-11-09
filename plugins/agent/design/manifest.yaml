@@ -9,16 +9,16 @@ takes:
   - topic: ask
     for: "the issue and its requirements, to design against"
   - topic: requirement-findings
-    for: "findings against the requirements or the design: what its acceptance contract, scope or WIRING gets wrong"
+    for: "findings against the requirements or the design: what its acceptance contract or WIRING gets wrong"
   - topic: test-findings
     for: "what test-author's check found wrong in a test: a Given or Then no test can meet is the design's to rewrite"
 description: |
   Design stage agent. Invokes the LLM (T2) to produce an ADR-style design.md
-  with a fenced ```scope block (the authoritative scope the build stage works
-  to), a ```steps block of ordered work items (#2445: the plan stage is gone)
-  and the acceptance contract.
+  with a ```steps block of ordered work items (#2445: the plan stage is gone)
+  and the acceptance contract. It names no files (#2508): no scope block and no
+  test file per requirement; a requirement it does not understand is an
+  UNCLEAR line, with the assumption it went on with.
   # legacy-citation: pipeline-stages-intake.sh:1004 (stage_design)
-  # legacy-citation: pipeline-stages.sh:38-71 (_extract_scope_from_design)
 
 hooks:
   run: design_stage_run
@@ -66,7 +66,7 @@ calls:
 outputs:
   - id: design
     topic: ask
-    description: "the design: its decisions, its acceptance contract (requirements, WIRING, test files) and its scope"
+    description: "the design: its decisions, its acceptance contract (requirements, WIRING) and the questions it could not settle"
     path: "${artifact_dir}/design.md"
     type: design.md@1
     format: markdown
@@ -75,7 +75,7 @@ outputs:
   # plan build and pr-open find by what it contains (a `steps` list).
   - id: work_steps
     topic: ask
-    description: "the ordered work items that deliver the change, each with the files it touches"
+    description: "the ordered work items that deliver the change, each with the areas of the code it is about"
     path: "${artifact_dir}/design-steps.json"
     type: design-steps.json@1
     format: json
@@ -96,7 +96,7 @@ outputs:
   # the model call (plugin.sh), so it is never stale.
   - id: design_result
     topic: requirement-findings
-    description: "design's checks on the design; findings: a missing scope or acceptance block, a requirement with no status or test file, a WIRING file that is missing or is one of the test files, an issue requirement no SPEC covers"
+    description: "design's checks on the design; findings: a missing acceptance block, a requirement with no status, a WIRING file that is missing or is in a test folder, an issue requirement no SPEC covers, an UNCLEAR line not in its form"
     path: "${artifact_dir}/design-verdict.json"
     finding_topics: none
     type: design-verdict.json@1

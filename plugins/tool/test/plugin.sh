@@ -50,7 +50,7 @@ source "$_ZBUILD_TEST_STAGE_ROOT/scripts/lib/framework-result.sh"
 # shellcheck source=../../../scripts/lib/proc-group.sh
 # Shared setsid capability probe + process-group kill (extracted from route.sh).
 source "$_ZBUILD_TEST_STAGE_ROOT/scripts/lib/proc-group.sh"
-# #2121: the design's TESTFILES are part of the targeted set.
+# #2121: the acceptance tests (#2508: found by their tags) are part of the targeted set.
 # #2372: the acceptance grammar comes through the contract-reader seam (#963),
 # like every contract lib the acceptance check reads — a run that edits the
 # grammar is checked by its own copy. A lib that fails to load is recorded.
@@ -74,8 +74,8 @@ source "$_ZBUILD_TEST_STAGE_DIR/lib/own-checks.sh"
 # entry (comma-separated, repo-relative) every test under tests/ or
 # plugins/*/*/tests/ that names its PATH, the same for its bare basename only
 # when that basename is unique in the repo, and — for a file inside a plugin —
-# that plugin's own tests/*-test.sh; and the design's declared TESTFILES
-# (optional input `design` via ZBUILD_STAGE_INPUTS). Deduplicated, one
+# that plugin's own tests/*-test.sh; and the files in the test folders holding
+# a SPEC tag of the design (optional input `design` via ZBUILD_STAGE_INPUTS). Deduplicated, one
 # repo-relative path per line. Empty when every input is absent/empty.
 # Usage: _test_compute_target_files <repo_root>
 _test_compute_target_files() {
@@ -154,8 +154,9 @@ _test_compute_target_files() {
         done
     fi
 
-    # #2121: the design's declared TESTFILES are always in the set — they are
-    # the assertions the acceptance gate will judge, delivered the #2098 way.
+    # #2121: the acceptance tests are always in the set — they are the
+    # assertions the acceptance gate will judge, delivered the #2098 way.
+    # #2508: found by their tags in the test folders.
     if true; then
         local _design_md
         # #2364: the acceptance contract, found by what it contains.
@@ -164,7 +165,7 @@ _test_compute_target_files() {
             local _dtf
             while IFS= read -r _dtf; do
                 [[ -n "$_dtf" && -f "$repo_root/$_dtf" ]] && all_files+=("$_dtf")
-            done < <(acceptance_list_testfiles "$_design_md" 2>/dev/null || true)
+            done < <(acceptance_list_testfiles "$_design_md" "$repo_root" 2>/dev/null || true)
         fi
     fi
 

@@ -49,9 +49,6 @@ FRSH-1[code]: a new run starts from the first stage covers: RQST-1
 WORK-2[code]: the flag is read covers: RQST-2
   When: the flag is given
   Then: ${2:-the run uses it}
-TESTFILES:
-FRSH-1: tests/a-test.sh
-WORK-2: tests/a-test.sh
 WIRING: none
 \`\`\`
 MD
@@ -128,7 +125,7 @@ print_test_section "D2: test-author's check"
     # shellcheck source=../../plugins/agent/test-author/plugin.sh
     source "$REPO_ROOT/plugins/agent/test-author/plugin.sh"
     _stub
-    R="$TEST_TEMP_DIR/t-repo"; mkdir -p "$R/tests"
+    R="$TEST_TEMP_DIR/t-repo"; mkdir -p "$R/tests"; git -C "$R" init -q
     A="$TEST_TEMP_DIR/t-art"; mkdir -p "$A"; D="$A/design.md"; _spec_design "$D"
     printf '# Given\nrun=done\n# When\nstart\n# Then\nassert_eq "[FRSH-1] first" "1" "$s"\nassert_eq "[WORK-2] flag" "1" "$f"\n' > "$R/tests/a-test.sh"
     _OPENS="$D"

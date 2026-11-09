@@ -9,15 +9,16 @@
 # nobody removes. The 371 test files that carry earlier issues' [SPEC-n] tags
 # must still read as before.
 #
-# R1  [code] the acceptance block's SPEC lines, bindings and REMOVED lines read
-#            with descriptive ids; a REMOVED line is not part of a SPEC's words
-# R2  [code] a binding's test files, and the per-requirement binding checks
+# R1  [code] the acceptance block's SPEC lines and REMOVED lines read with
+#            descriptive ids; a REMOVED line is not part of a SPEC's words
+# R2  [code] a SPEC's test files are found by its descriptive tag (#2508:
+#            design names no files, so there is no binding to read)
 # R3  [code] the WIRING list stops at a descriptive binding line
 # R4  [code] [done] evidence `file:"text with spaces"` is one item
 # R5  [code] the old-code check finds the last other verdict by a descriptive tag
 # R6  [code] the acceptance check reads the id on a NEGCTL line
-# R7  [code] build strips a descriptive binding prefix from a test file line,
-#            in its limits and in its false-completion probe
+# R7  [code] build's limits name no test file (#2508: no file list at all), and
+#            its false-completion probe does not read SPEC-<n> alone
 # R8  [code] the status comment shows a descriptive label as code
 # R9  [code] test-author drops this issue's tags no longer in the contract,
 #            whatever their form, and keeps other issues' tags
@@ -57,10 +58,6 @@ DSFSTG-1[code]: --from-stage runs the stage first
 REMOVED: DSFSTG-2 — folded into DSFSTG-1
 SPEC-3[no-code]: an old-form requirement
 DSGARD-1[done]: a new run never skips evidence: core/run.sh:"if $resume_mode && x" tests/unit/a-test.sh
-TESTFILES:
-DSFSTG-1: tests/unit/from-stage-test.sh
-  tests/unit/from-stage-more-test.sh
-SPEC-3: tests/unit/old-test.sh
 ```
 EOF
 
@@ -74,15 +71,17 @@ assert_eq "[R1] ...and is not part of the SPEC before it" \
 assert_eq "[R1] covers reads after a wrapped line" "RQRSUM-1" "$(acceptance_spec_covers "$D" DSFSTG-1)"
 
 # ── R2 ───────────────────────────────────────────────────────────────────────
-assert_eq "[R2] a descriptive binding's files, wrapped line included" \
-    "tests/unit/from-stage-test.sh tests/unit/from-stage-more-test.sh" \
-    "$(acceptance_list_testfiles_for_spec "$D" DSFSTG-1 | tr '\n' ' ' | sed 's/ $//')"
-assert_eq "[R11] an old binding's file" "tests/unit/old-test.sh" "$(acceptance_list_testfiles_for_spec "$D" SPEC-3)"
-assert_eq "[R2] the union of test files strips descriptive prefixes" \
-    "tests/unit/from-stage-test.sh tests/unit/from-stage-more-test.sh tests/unit/old-test.sh" \
-    "$(acceptance_list_testfiles "$D" | tr '\n' ' ' | sed 's/ $//')"
-acceptance_has_per_spec_binding "$D"; assert_eq "[R2] per-requirement binding is seen" "0" "$?"
-acceptance_spec_has_binding "$D" DSFSTG-1; assert_eq "[R2] DSFSTG-1 has a binding" "0" "$?"
+TR="$TEST_TEMP_DIR/tagrepo"; mkdir -p "$TR/tests/unit"; git -C "$TR" init -q
+printf 'assert "[DSFSTG-1] runs first"\n' > "$TR/tests/unit/from-stage-test.sh"
+printf 'assert "[DSFSTG-1] puts back"\n' > "$TR/tests/unit/from-stage-more-test.sh"
+printf 'assert "[SPEC-3] old"\n' > "$TR/tests/unit/old-test.sh"
+assert_eq "[R2] a descriptive id's test files, found by its tag" \
+    "tests/unit/from-stage-more-test.sh tests/unit/from-stage-test.sh" \
+    "$(acceptance_list_testfiles_for_spec "$D" DSFSTG-1 "$TR" | tr '\n' ' ' | sed 's/ $//')"
+assert_eq "[R11] an old id's file" "tests/unit/old-test.sh" "$(acceptance_list_testfiles_for_spec "$D" SPEC-3 "$TR")"
+assert_eq "[R2] the union of test files" \
+    "tests/unit/from-stage-more-test.sh tests/unit/from-stage-test.sh tests/unit/old-test.sh" \
+    "$(acceptance_list_testfiles "$D" "$TR" | tr '\n' ' ' | sed 's/ $//')"
 
 # ── R3 ───────────────────────────────────────────────────────────────────────
 assert_eq "[R3] WIRING stops at a descriptive SPEC line" "core/run.sh" "$(acceptance_list_wiring "$D")"
@@ -113,11 +112,11 @@ assert_eq "[R11] ...and an old one" "SPEC-4" "$_id"
 # ── R7 ───────────────────────────────────────────────────────────────────────
 # shellcheck source=../../plugins/agent/build/lib/prompt.sh
 source "$REPO_ROOT/plugins/agent/build/lib/prompt.sh" 2>/dev/null
-_lim="$(_build_compose_limits "core/run.sh,tests/unit/from-stage-test.sh" "DSFSTG-1: tests/unit/from-stage-test.sh" 2>/dev/null)"
-if [[ "$_lim" == *"tests/unit/from-stage-test.sh"* ]]; then
-    assert_fail "[R7] build's limits leave out a test file bound with a descriptive id" "$_lim"
+_lim="$(_build_compose_limits "" 2>/dev/null)"
+if [[ "$_lim" == *"tests/unit/from-stage-test.sh"* || "$_lim" == *"### Scope"* ]]; then
+    assert_fail "[R7] build's limits name no test file and no scope list" "$_lim"
 else
-    assert_pass "[R7] build's limits leave out a test file bound with a descriptive id"
+    assert_pass "[R7] build's limits name no test file and no scope list"
 fi
 _sum_src="$(cat "$REPO_ROOT/plugins/agent/build/lib/summary.sh")"
 _probe_re="$(sed -n '/_build_guard_false_completion()/,/^}/p' <<< "$_sum_src" | grep -c 'SPEC-\[0-9\]' || true)"
@@ -130,7 +129,7 @@ _o=""; _rsc_code_labels_v _o "failed [#1805/DSFSTG-1] and [#1805/SPEC-2]"
 assert_eq "[R8] descriptive and old labels are shown as code" 'failed `[#1805/DSFSTG-1]` and `[#1805/SPEC-2]`' "$_o"
 
 # ── R9 ───────────────────────────────────────────────────────────────────────
-REPO="$TEST_TEMP_DIR/repo"; mkdir -p "$REPO/tests/unit"
+REPO="$TEST_TEMP_DIR/repo"; mkdir -p "$REPO/tests/unit"; git -C "$REPO" init -q
 printf 'assert "[#%s/DSFSTG-1] keep" 1\nassert "[#%s/SPEC-3] old form, still in contract" 1\nassert "[#%s/SPEC-7] stale" 1\nassert "[#%s/DSLOOP-2] stale" 1\nassert "[#99/DSLOOP-2] other issue" 1\nassert "[UTF-8] not a tag" 1\n' "$_ID" "$_ID" "$_ID" "$_ID" \
     > "$REPO/tests/unit/from-stage-test.sh"
 # shellcheck source=../../plugins/agent/test-author/plugin.sh

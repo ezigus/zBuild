@@ -120,7 +120,6 @@ build_stage_run() {
     local artifacts_dir="$state_dir/artifacts"
     mkdir -p "$artifacts_dir"
 
-    local scope_manifest=""
     local plan_json_path=""
 
     # ADR-055 §1: the engine resolves input paths and hands them over in this
@@ -128,16 +127,20 @@ build_stage_run() {
     # is an engine contract violation, not a condition this plugin can recover
     # from — say so here rather than letting the inner arg guard report it as a
     # calling-convention error two frames down.
+    # ADR-054 §4b: it owes a v2 result like every other exit path (#2508: the
+    # scope manifest it used to stop on is no longer looked for).
     if [[ -z "${ZBUILD_STAGE_INPUTS:-}" || ! -s "${ZBUILD_STAGE_INPUTS}" ]]; then
         error "build_stage_run: ZBUILD_STAGE_INPUTS is unset or empty — the engine must resolve and export the input index (ADR-055 §1)"
+        stage_result_write "$artifacts_dir/build-summary.json" broken "missing_stage_inputs" 2>/dev/null || true
+        return 1
     fi
-    # #2364: the scope manifest and the work plan, found by what they contain.
-    # #2445: the work plan is design's steps (design-steps.json); none is fine.
-    scope_manifest="$(earlier_scope_manifest "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
+    # #2364: the work plan, found by what it contains. #2445: it is design's
+    # steps (design-steps.json); none is fine. #2508: build has no file list,
+    # so the scope manifest is not looked for.
     plan_json_path="$(earlier_work_plan "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
 
     _build_stage_run_checked \
-        "$scope_manifest" \
+        "" \
         "$plan_json_path" \
         "$artifacts_dir/diff.patch" \
         "$artifacts_dir/build-summary.json" \
@@ -146,7 +149,7 @@ build_stage_run() {
 
 # Inner implementation — unit-testable with explicit paths.
 # Args:
-#   $1 = scope_manifest path
+#   $1 = scope_manifest path — unused since #2508 (build has no file list)
 #   $2 = plan_json_path — design's work steps (#2445); may be empty
 #   $3 = output_diff_patch path
 #   $4 = output_summary_json path
@@ -158,13 +161,12 @@ _build_stage_run_inner() {
     local output_summary_json="$4"
     local artifact_dir="${5:-$(dirname "$output_summary_json")}"
 
-    if [[ -z "$scope_manifest" || -z "$output_diff_patch" || -z "$output_summary_json" ]]; then
+    : "$scope_manifest"   # #2508: build has no file list; the argument is kept for callers
+    if [[ -z "$output_diff_patch" || -z "$output_summary_json" ]]; then
         error "_build_stage_run_inner: requires <scope_manifest> <plan_json_path> <output_diff_patch> <output_summary_json> [artifact_dir]"
-        # ADR-054 §4b: an exit path like any other. Reachable in production when
-        # ZBUILD_STAGE_INPUTS named no scope_manifest/plan (guarded above), where
-        # the summary path IS known — so the engine gets a result rather than a
-        # bare rc. Direct unit callers passing nothing get no result: there is
-        # nowhere to write it, and inventing a path would be worse.
+        # ADR-054 §4b: an exit path like any other. Direct unit callers passing
+        # nothing get no result: there is nowhere to write it, and inventing a
+        # path would be worse.
         if [[ -n "$output_summary_json" ]]; then
             mkdir -p "$(dirname "$output_summary_json")" 2>/dev/null || true
             stage_result_write "$output_summary_json" broken "missing_stage_inputs" 2>/dev/null || true
@@ -174,21 +176,20 @@ _build_stage_run_inner() {
 
     mkdir -p "$artifact_dir"
 
-    # #2445: the work steps design wrote, when it wrote any; scope comes from
-    # the design either way (_build_load_context).
+    # #2445: the work steps design wrote, when it wrote any.
     local plan_json="{}"
     [[ -n "$plan_json_path" && -s "$plan_json_path" ]] && plan_json="$(cat "$plan_json_path")"
     # #2458 (ADR-071, ADR-067 §6): build is shown the steps that change code;
     # a step on the design's own test files is the test author's.
     [[ "$plan_json" == *'"topic":"tests"'* ]] && plan_json="$(work_steps_of_topic "$plan_json" change)"
 
-    local plan_files_csv="" _acceptance_testfiles="" _acceptance_spec_ids="" _design_decisions=""
+    local _acceptance_testfiles="" _acceptance_spec_ids="" _design_decisions=""
     _build_load_context
 
     # ─── Write build prompt (ADR-018 Pattern 2, #571 v2 framing) ─────────────
     # Three-section framed structure the LLM sees on every iteration:
     #   1. ORIGINAL TASK (immutable across iterations) — issue goal + plan md
-    #   2. INSTRUCTIONS — scope/loop/sentinel rules (stable across iters)
+    #   2. INSTRUCTIONS — loop/sentinel rules (stable across iters)
     #   3. STAGE SUMMARIES — appended by the router from every completed
     #      stage's declared summary (ADR-055 §9); nothing is read here.
     local prompt_input_file="$artifact_dir/build-prompt.txt"
@@ -206,19 +207,11 @@ _build_stage_run_inner() {
     _task_header="$(_build_render_task_header "$_iter_n")"
 
     local _build_instructions
-    _build_instructions="$(_build_compose_instructions "$plan_files_csv")"
-    # #2124: nothing here is composed INTO the prompt — what earlier stages
-    # found reaches it as the engine-collected STAGE SUMMARIES block (ADR-055
-    # §9), injected at the router. The test summary is still read, sanitized
-    # (#721), for the mechanical out-of-scope detection in the summary writer.
-    local _feedback_body
-    _feedback_body="$(_build_read_prior_assessment 2>/dev/null || true)"
-    [[ -n "$_feedback_body" ]] && \
-        _feedback_body="$(printf '%s' "$_feedback_body" | _zbuild_sanitize_for_llm)"
+    _build_instructions="$(_build_compose_instructions)"
 
     _build_compose_prompt_body "$prompt_input_file" "$_task_header" "$plan_payload" \
         "$_build_instructions" "$_design_decisions" "$_acceptance_testfiles" \
-        "$_acceptance_spec_ids" "$_iter_n" "$(_build_compose_limits "$plan_files_csv" "$_acceptance_testfiles")"
+        "$_acceptance_spec_ids" "$_iter_n" "$(_build_compose_limits "${ZBUILD_REPO_ROOT:-}")"
 
     # ADR-067 §8: build's three parts and the engine's blocks, in the one
     # prompt order. Build's own latest summary — and every earlier stage's
@@ -247,13 +240,12 @@ _build_stage_run_inner() {
     # 2>/dev/null would swallow every iteration's input banner, breaking the
     # ADR-015 §v4 input-before-action ordering contract for Pattern 2.
     # #646: --defer-final-banner-close keeps the final iter's stage-io banner
-    # open across post-loop bookkeeping (numstat, scope check, discrepancy
+    # open across post-loop bookkeeping (numstat, test-folder check, discrepancy
     # warn) so the operator-visible warn lands INSIDE the banner pair instead
     # of leaking into the inter-stage gap. We flush the deferred close via
     # _route_loop_close_final_banner after _build_emit_changed_files_summary
     # below (or unconditionally on the early-exit paths).
     route_to_model_loop "$tier" "$prompt_input_file" "$repo_root" \
-        --scope-allowlist "$plan_files_csv" \
         --defer-final-banner-close || router_rc=$?
 
 
@@ -315,8 +307,8 @@ _build_stage_run_inner() {
     local _preexist_untracked="$_BUILD_HARVEST_PREEXIST_UNTRACKED"
     local _diff_failure="$_BUILD_HARVEST_DIFF_FAILURE"
 
-    # ─── Scope post-validation via git diff --name-status -z ─────────────────────
-    _build_validate_scope_violations "$diff_content" "$plan_files_csv" "$repo_root" \
+    # ─── #2508: a change in the test folders is put back ───────────────────────
+    _build_validate_scope_violations "$diff_content" "" "$repo_root" \
         "$artifact_dir" "$output_diff_patch" "$_preexist_untracked"
     local scope_violation="$_BUILD_VSCP_VIOLATION"
     diff_content="$_BUILD_VSCP_DIFF_CONTENT"
@@ -382,7 +374,6 @@ _build_stage_run_inner() {
     # duplication. #587 removed the banner entirely — the function now emits
     # `build.discrepancy.detected` + `build.diff.empty_after_done_sentinel`
     # events plus a single-line stderr `warn` instead.
-    _BUILD_PLAN_FILES_CSV="$plan_files_csv" \
     _build_emit_changed_files_summary \
         "$repo_root" "$terminated_reason" \
         "$scope_violation" "$pre_zero_numstat" || true
@@ -409,7 +400,7 @@ _build_stage_run_inner() {
     # still passed for the single-iteration / legacy-stub fallback path.
     _build_commit_iteration \
         "$repo_root" \
-        "$plan_files_csv" \
+        "" \
         "$scope_violation" \
         "$build_verdict" \
         "${_ROUTE_LOOP_LAST_RESPONSE:-}" \
@@ -424,16 +415,20 @@ _build_stage_run_inner() {
 
     # #2124: headed by the verdict actually reached — `pass` here on an
     # `incomplete` run told the next prompt the opposite of build-summary.json.
-    # #2178: the files it needed outside scope are part of what build reports.
-    local _needs_line; _needs_line="$(_build_scope_needs_line "$artifact_dir/build-summary.json")"
     # #2476 (ADR-064 §4): the line names what changed; how it got there is below.
     local _sum_head; _build_summary_head_v _sum_head "$build_verdict" "$terminated_reason" \
         "$lines_added" "$lines_removed" "$files_changed_json"
     local _sum_ans=""; zb_answers_summary_v _sum_ans _BUILD_ANSWERS
     stage_summary_write "$artifact_dir/build-summary.md" "build" "$build_verdict" "$_sum_head" \
         "$(printf -- '- over %s pass(es), %s iteration(s)' "$_BUILD_ROUND_PASSES" "$(_build_round_total_iterations "$iterations")"
-           [[ "$scope_violation" == true ]] && printf -- '\n- it wrote outside its scope'
-           [[ -n "$_needs_line" ]] && printf '\n%s' "$_needs_line"
+           # #2508: what it changed in the test folders, or that is off limits
+           # (outside the repository, inside .git/, or listed in .zbuild/private-paths), was put back.
+           _bpb_t="" _bpb_f=""
+           for _bpb in "${scope_violations[@]}"; do
+               if [[ $'\n'"$_BUILD_VSCP_OFF_LIMITS_NL" == *$'\n'"$_bpb"$'\n'* ]]; then _bpb_f+="${_bpb_f:+ }$_bpb"; else _bpb_t+="${_bpb_t:+ }$_bpb"; fi
+           done
+           [[ -n "$_bpb_t" ]] && printf -- '\n- it changed files in the test folders, which were put back: %s' "$_bpb_t"
+           [[ -n "$_bpb_f" ]] && printf -- '\n- it changed files no stage may change (outside the repository, inside .git/, or listed in .zbuild/private-paths), which were put back: %s' "$_bpb_f"
            printf '\n%s' "$_sum_ans")"
     emit_event "plugin.result" "stage=build" \
         "plugin=build" \

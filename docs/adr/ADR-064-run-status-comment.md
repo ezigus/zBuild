@@ -293,7 +293,17 @@ On #1805 run 42293991602, design's first try failed with one finding. Since #248
 - A part's size counts that blank line, so where a part ends is unchanged in kind.
 - **A failed row with several findings names what they are about.** The same run's test and issue-acceptance rows read only "what failed: 2 findings". When none carries a severity and each names a requirement or SPEC on its first line, the line names them, once each, as code: "what failed: `LOOP-1`, `GUAR-2`". Lens findings, which carry a severity, are still counted by it; findings that name no id are counted.
 
+## Amendment 2026-11-09 (#2508) — §4: the questions design could not settle are shown
+
+On #1805 run 42556446368 nobody settled whether `--from-stage` needs `--resume`: the issue did not say, design never said it had to decide, and issue-acceptance read it one way in one run and the other way in the next. Design now writes `UNCLEAR: <id> | <the question> | <what it assumed>` for a requirement it does not understand, and carries on with that assumption (ADR-069, amended 2026-11-09).
+
+- **The comment shows each question from the moment design writes it**, under the header, whatever the run's state: "Questions design could not settle (it went on with the assumption shown)", then one line each, `- <id>: <question> — assumed: <assumption>`. The person who can answer is reading the issue; a question kept until the run ends comes too late to change it.
+- They are read from the design the design stage writes, `artifacts/design.md`, by one reader (`scripts/lib/unclear.sh`), shared with the end-of-run report (ADR-068 §8, amended 2026-11-09) and the PR description (ADR-040, amended 2026-11-09). A line inside a fenced block, or one missing a part, is not a question.
+- What design wrote is text: `\`, `[`, `]`, `<` and `>` are escaped, as the PR body escapes plan text.
+
 ## Enforced by
+
+- §4 amendment 2026-11-09 (#2508: the questions design could not settle are shown) → `tests/unit/unclear-questions-shown-test.sh` Q1 (the reader), Q2 (the comment, while running), Q5 (no question, no section)
 
 - §4 amendment 2026-11-06 (#2480: a stage's words are text; every loop's round; each finding once; fail, not unusable; a running member's name) → `tests/unit/status-row-text-test.sh` X1–X3, R1, R2, L1; `tests/unit/status-row-findings-test.sh` W1, W5–W7; `tests/unit/gwt-judges-test.sh` T3, T4; `tests/unit/test-author-correspondence-test.sh` SPEC-3; `tests/unit/judge-feedback-test.sh` F5; `tests/unit/run-status-comment-render-test.sh` SPEC-3, SPEC-9
 

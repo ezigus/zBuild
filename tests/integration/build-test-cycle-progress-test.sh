@@ -37,10 +37,12 @@ export ZBUILD_SCOPE_OVERRIDE=1
 
 REPO="$(setup_git_temp_repo build602cycrepo)"
 [[ -d "$REPO" ]] || { echo "setup_git_temp_repo failed" >&2; exit 1; }
-mkdir -p "$REPO/tests/fixtures"
+# #2508: the build mock writes outside the test folders — a build change
+# inside them is put back (ADR-030 §8).
+mkdir -p "$REPO/fixtures"
 ( cd "$REPO" \
-    && echo "seed" > tests/fixtures/seed.txt \
-    && git add tests/fixtures/seed.txt \
+    && echo "seed" > fixtures/seed.txt \
+    && git add fixtures/seed.txt \
     && git commit -q -m "seed" ) >/dev/null
 
 # Stub claude: 2 iters, each appends a line to the in-scope fixture.
@@ -57,8 +59,8 @@ mark="$MARK_FILE"
 n=\$(wc -l < "\$mark" 2>/dev/null | tr -d ' ' || echo 0)
 n=\$(( n + 1 ))
 echo "MARK_iter_\${n}" >> "\$mark"
-mkdir -p "\$PWD/tests/fixtures"
-printf 'progress-iter-%d\n' "\$n" >> "\$PWD/tests/fixtures/cycle-602.txt"
+mkdir -p "\$PWD/fixtures"
+printf 'progress-iter-%d\n' "\$n" >> "\$PWD/fixtures/cycle-602.txt"
 if [[ "\$n" -ge 2 ]]; then
     jq -n --arg r \$'done\nLOOP_COMPLETE' \
         '{result:\$r, usage:{input_tokens:7, output_tokens:4}}'
@@ -101,15 +103,15 @@ cat > "$STATE_DIR/artifacts/plan.json" <<'EOF'
 {
   "schema_version": 1,
   "goal": "Cycle progress fixture (#602)",
-  "files": ["tests/fixtures/cycle-602.txt"],
+  "files": ["fixtures/cycle-602.txt"],
   "steps": [
     {"id": "s1", "description": "append progress lines",
-     "files": ["tests/fixtures/cycle-602.txt"], "estimated_lines": 2}
+     "files": ["fixtures/cycle-602.txt"], "estimated_lines": 2}
   ]
 }
 EOF
 cat > "$STATE_DIR/scope-manifest.md" <<'EOF'
-+ tests/
++ fixtures/
 + plugins/
 + core/
 EOF

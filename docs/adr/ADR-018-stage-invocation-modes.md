@@ -1061,3 +1061,7 @@ The compile-time default for `router.max_turns` was 25. It silently capped every
 (#1805 run 41489923219). The default is now 0 — no `--max-turns` — so a stage has a turn limit only when its
 template, the environment or its plugin sets one. Precedence is unchanged: template > `ZBUILD_ROUTER_MAX_TURNS`
 > the plugin's `router.max_turns` > none. Enforced by `tests/unit/turn-limit-default-test.sh` M1–M2.
+
+## Amendment 2026-11-09 (#2508) — build declares no scope
+
+Build no longer declares a scope from `plan.files[]` or design's scope block, and the pipeline's post-validation of its diff checks one thing: no file in the repository's test folders changed (ADR-030 §8).

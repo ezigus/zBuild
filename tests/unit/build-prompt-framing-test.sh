@@ -164,34 +164,16 @@ fi
 # builder to edit the testfiles #2022 forbids it to touch. Their presence is
 # what misled the #1841 diagnosis into "feedback was never delivered".
 print_test_section "#2124: retired feedback readers"
-for _fn in _build_read_prior_review _build_read_prior_acceptance; do
+# #2508: _build_read_prior_assessment is retired too — it fed only the
+# mechanical out-of-scope detection (scope expansion), and build has no file
+# list left to widen (ADR-030 §8).
+for _fn in _build_read_prior_review _build_read_prior_acceptance _build_read_prior_assessment; do
     if declare -F "$_fn" >/dev/null 2>&1; then
         assert_fail "[#2124] $_fn is retired" "still defined"
     else
         assert_pass "[#2124] $_fn is retired"
     fi
 done
-# The test-summary reader stays — it feeds the mechanical out-of-scope
-# detection (scope expansion) — but reads the DECLARED input, not a feedback
-# dir no template writes.
-_si="$TEST_TEMP_DIR/si-2124.json"; _tfs="$TEST_TEMP_DIR/tfs-2124.md"
-# #2364: the report as the test stage writes it (its own writer), found by what it is.
-( source "$REPO_ROOT/plugins/tool/test/plugin.sh" >/dev/null 2>&1
-  _test_emit_failures_summary "$_tfs" fail 1 1 \
-      $'unit: FAIL tests/unit/x-test.sh\n  \xe2\x9c\x97 plugins/tool/x/plugin.sh pins 8 stages\n' ) >/dev/null 2>&1
-printf '{"inputs":{"any_name":"%s"}}\n' "$_tfs" > "$_si"
-# #2132: only a PRIOR ITERATION of this run may feed it. On iteration 1 the
-# declared input resolves to whatever hydrate restored from a previous run —
-# run 35337145412 read a stale TIMEOUT line, named an out-of-scope file, and
-# halted the cycle blocked_on_scope before iteration 2 could happen.
-assert_contains "[#2124] _build_read_prior_assessment reads the test report among the earlier outputs (iter 2)" \
-    "$(ZBUILD_STAGE_INPUTS="$_si" ZBUILD_CYCLE_ITER=2 _build_read_prior_assessment 2>/dev/null)" "pins 8 stages"
-assert_eq "[#2132] …but not on iteration 1 (a restored previous-run artifact)" "" \
-    "$(ZBUILD_STAGE_INPUTS="$_si" ZBUILD_CYCLE_ITER=1 _build_read_prior_assessment 2>/dev/null)"
-assert_eq "[#2132] …nor outside a cycle" "" \
-    "$(ZBUILD_STAGE_INPUTS="$_si" ZBUILD_CYCLE_ITER="" _build_read_prior_assessment 2>/dev/null)"
-assert_eq "[#2124] …and nothing from the feedback dir" "" \
-    "$(ZBUILD_STAGE_INPUTS="" ZBUILD_CYCLE_ITER=2 ZBUILD_CYCLE_FEEDBACK_DIR="$TEST_TEMP_DIR" _build_read_prior_assessment 2>/dev/null)"
 # Declared inputs are retired (ADR-055 §1, amended 2026-10-12): build reads
 # test_failures_summary from the index of every stage's latest output.
 assert_eq "[#2124] build declares no inputs: — test_failures_summary comes from the index" "" \

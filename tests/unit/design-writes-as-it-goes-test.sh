@@ -8,12 +8,12 @@
 # end to end hunting an "exhaustive" scope. Its prompt never said to write early,
 # and told it the ONLY file it may write is design.md — so not even its notes.
 #
-#   D1 [change] What you own opens with design's job: the decisions, the
-#               acceptance contract and the scope, saved as it goes; a finding
+#   D1 [change] What you own opens with design's job: the decisions and the
+#               acceptance contract, saved as it goes; a finding
 #               that a design change would fix is answered in the design;
 #               design does not debug code
-#   D2 [change] the scope is found by searching for what the change alters,
-#               not by an exhaustive read
+#   D2 [change] design is not sent on an exhaustive read; since #2508 it lists
+#               no files at all, so there is no scope to hunt for
 #   D3 [change] design may write its notes file as well as its design (the
 #               working copy, ADR-068 §8)
 #   D4 [guard]  a design the call wrote before it timed out is kept
@@ -62,13 +62,17 @@ assert_contains "[D1] ...a design on disk counts" "$FLAT" "a design on disk when
 assert_contains "[D1] a finding a design change would fix is answered in the design" "$FLAT" "Answer each of those in the design"
 assert_contains "[D1] design does not debug code" "$FLAT" "You do not debug code or work out why a test fails"
 
-print_test_section "D2: the scope is searched for, not read exhaustively"
+print_test_section "D2: no exhaustive read, and no file list to hunt for"
 if grep -qiE "EXHAUSTIVE" <<< "$P"; then
     assert_fail "[D2] no exhaustive-enumeration instruction" "found"
 else
     assert_pass "[D2] no exhaustive-enumeration instruction"
 fi
-assert_contains "[D2] find the scope by searching for what changes" "$FLAT" "search for the names, values and lists the change alters"
+if grep -qF '```scope' <<< "$FLAT"; then
+    assert_fail "[D2] design is asked for no scope block (#2508)" "it still is"
+else
+    assert_pass "[D2] design is asked for no scope block (#2508)"
+fi
 
 print_test_section "D3: design may write its notes"
 if grep -qF "The ONLY file you write is the design.md" <<< "$FLAT"; then

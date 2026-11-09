@@ -19,8 +19,9 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 GIT="$(command -v git)"
 
 # ── Working-tree grammar: copy the real grammar libs, then EXTEND acceptance-
-# block.sh to recognize a NEW testfiles sentinel token `TESTS:` that the installed
-# reader does not. Models a #956-style grammar extension living only in the
+# block.sh to recognize a NEW fence, ```acceptance-v2, that the installed reader
+# does not (#2508: the old example, a `TESTS:` alias of the retired TESTFILES:
+# list, has nothing left to extend). Models a #956-style grammar extension living only in the
 # working tree. Every top-level lib is copied, as the production snapshot does
 # (_runner_snapshot_contract_libs, #1752): a hand-picked list here once left out
 # env-scrub.sh, and the gate graded without it unnoticed until the gate began
@@ -28,15 +29,15 @@ GIT="$(command -v git)"
 OVERRIDE_LIB="$TEST_TEMP_DIR/wt-lib"
 mkdir -p "$OVERRIDE_LIB"
 cp "$REPO_ROOT"/scripts/lib/*.sh "$OVERRIDE_LIB/"
-# Grammar extension: accept `TESTS:` as an alias of the `TESTFILES:` section start
-# inside extract_acceptance_block (its normalized output still emits `TESTFILES:`,
-# so the sibling parsers need no change).
-sed -i.bak "s/\"\$line\" == 'TESTFILES:' \]\]; then/\"\$line\" == 'TESTFILES:' || \"\$line\" == 'TESTS:' ]]; then/" \
-    "$OVERRIDE_LIB/acceptance-block.sh"
-rm -f "$OVERRIDE_LIB/acceptance-block.sh.bak"
-# Guard: the sed actually changed the file (else the test would silently be inert).
-if ! grep -q "TESTS:" "$OVERRIDE_LIB/acceptance-block.sh"; then
-    echo "FATAL: grammar-extension sed did not patch acceptance-block.sh" >&2
+# Grammar extension: accept ```acceptance-v2 as a block fence wherever
+# acceptance-block.sh reads one.
+_fence="'\`\`\`acceptance'"
+_lib="$(cat "$OVERRIDE_LIB/acceptance-block.sh")"
+printf '%s\n' "${_lib//\"\$line\" == $_fence ]]/\"\$line\" == $_fence || \"\$line\" == '\`\`\`acceptance-v2' ]]}" \
+    > "$OVERRIDE_LIB/acceptance-block.sh"
+# Guard: the edit actually changed the file (else the test would silently be inert).
+if ! grep -q "acceptance-v2" "$OVERRIDE_LIB/acceptance-block.sh"; then
+    echo "FATAL: grammar-extension edit did not patch acceptance-block.sh" >&2
     exit 2
 fi
 
@@ -59,13 +60,11 @@ source "$impl"; my_feature' > tests/feature-test.sh
     printf '%s' "$repo"
 }
 
-# design.md declaring TESTFILES via the NEW `TESTS:` token (not `TESTFILES:`).
+# design.md whose block opens with the NEW fence.
 _write_design() {
     cat > "$1/design.md" <<'EOF'
-```acceptance
+```acceptance-v2
 SPEC-1: feature is implemented
-TESTS:
-tests/feature-test.sh
 ```
 EOF
 }
@@ -97,17 +96,17 @@ print_test_section "1. override honors working-tree grammar extension"
 REPO_W="$(_build_repo wt-redirect)"
 _write_design "$REPO_W"
 set +e; _run_gate "$REPO_W" "$OVERRIDE_LIB"; set -e
-assert_eq "[SPEC-3] gate parses the new TESTS: token via override → rc=0" "0" "$RC"
+assert_eq "[SPEC-3] gate parses the new fence via override → rc=0" "0" "$RC"
 assert_eq "[SPEC-3] gate outcome=pass with working-tree grammar" \
     "pass" "$(jq -r .outcome <<<"$RESULT")"
 
-# ── CONTROL without override: the new token is NOT recognized → malformed fail ─
-print_test_section "2. control — without override the new token is unrecognized"
+# ── CONTROL without override: the new fence is NOT recognized → malformed fail ─
+print_test_section "2. control — without override the new fence is unrecognized"
 REPO_C="$(_build_repo wt-control)"
 _write_design "$REPO_C"
 set +e; _run_gate "$REPO_C" ""; set -e
-assert_eq "[SPEC-3] control: installed grammar rejects TESTS: token → rc=1" "1" "$RC"
-assert_eq "[SPEC-3] control: outcome=fail (malformed, token unrecognized)" \
+assert_eq "[SPEC-3] control: installed grammar rejects the new fence → rc=1" "1" "$RC"
+assert_eq "[SPEC-3] control: outcome=fail (malformed, fence unrecognized)" \
     "fail" "$(jq -r .outcome <<<"$RESULT")"
 assert_contains "[SPEC-3] control: failure is malformed_acceptance_block" \
     "$(jq -r '.failures[]?, .reason // empty' <<<"$RESULT")" "malformed_acceptance_block"

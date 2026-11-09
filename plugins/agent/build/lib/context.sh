@@ -6,14 +6,10 @@
 _ZBUILD_BUILD_CONTEXT_LOADED=1
 
 # _build_read_acceptance_testfiles <design_md_path> (ADR-031 / #866)
-# Returns only the TESTFILES paths from the ```acceptance block in design.md,
-# one per line. Empty when design.md is absent, has no acceptance block, or
-# the block has no TESTFILES section.
+# The acceptance tests, one per line: the files in the test folders holding a
+# SPEC's tag (#2508 — design names none). Empty when there are none yet.
 _build_read_acceptance_testfiles() {
-    # #2460: one path per line, however the design binds them — a binding that
-    # names two files is two files, and a wrapped binding is read whole. The
-    # shared reader drops absolute and ".." paths (ADR-031).
-    acceptance_list_testfiles "${1:-}"
+    acceptance_list_testfiles "${1:-}" "${ZBUILD_REPO_ROOT:-}"
 }
 
 # _build_read_design_decisions <design_md_path> (ISSUE-E / #916, ADR-020)
@@ -26,30 +22,6 @@ _build_read_design_decisions() {
     design_decisions_prose "${1:-}" "$_BUILD_DESIGN_DECISIONS_MAX_LINES"
 }
 
-
-# _build_read_prior_assessment — a test run's report, found among the earlier
-# outputs by what it is (#2364, ADR-055 §1). Empty on iteration 1, when no test
-# has run in this cycle yet. It is NOT rendered into the prompt — the router's
-# STAGE SUMMARIES block already carries it (§9) — it feeds the mechanical
-# out-of-scope detection (_build_detect_out_of_scope_files → scope expansion).
-# #2124: until now this read a per-iteration feedback copy (prior_test_assessment.txt),
-# a file no shipped template has written since #1979, so that detection had
-# been starved in production while its tests fed it through a stub.
-_build_read_prior_assessment() {
-    # #2132: a PRIOR ITERATION of this run only. On iteration 1 the declared
-    # input resolves to whatever hydrate restored from a previous run — run
-    # 35337145412 read a stale TIMEOUT line, named an out-of-scope file and
-    # halted the cycle blocked_on_scope before iteration 2 could run. The
-    # previous run's findings reach the builder through STAGE SUMMARIES once
-    # this run's test stage has produced them (ADR-050 §1).
-    [[ "${ZBUILD_CYCLE_ITER:-1}" -ge 2 ]] || return 0
-    [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS}" ]] || return 0
-    local f
-    # #2364: a test run's report, found by what it is.
-    f="$(earlier_test_report "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
-    [[ -n "$f" && -s "$f" ]] || return 0
-    cat "$f" 2>/dev/null || true
-}
 
 # _build_read_prior_review / _build_read_prior_acceptance — RETIRED (#2124).
 # No shipped template wired the feedback edges they read since #1979; what a
@@ -66,8 +38,6 @@ _build_read_prior_assessment() {
 # path carries it there. Removed rather than left unused so no future prompt
 # builder finds it and re-wires the defect.
 
-# _build_load_context — extracted context-loading block from _build_stage_run_inner.
-# Uses dynamic scoping: reads plan_json + artifact_dir from caller's locals; writes
 # _build_gather_acceptance_specs <design_md>  (#1978)
 # One line per SPEC: "SPEC-n<TAB>what it requires". A SPEC whose text cannot be
 # resolved emits the bare id, so the prompt degrades to the id-only form rather
@@ -96,25 +66,18 @@ _build_gather_acceptance_specs() {
     done < <(acceptance_list_spec_ids "$design_md" 2>/dev/null || true)
 }
 
-# plan_files_csv, _acceptance_testfiles, _acceptance_spec_ids, _design_decisions
-# back into caller's scope (no `local` on those names here — bash dynamic scope).
+# _build_load_context — extracted context-loading block from _build_stage_run_inner.
+# Uses dynamic scoping: reads artifact_dir from the caller's locals; writes
+# _acceptance_testfiles, _acceptance_spec_ids, _design_decisions back into the
+# caller's scope (no `local` on those names here — bash dynamic scope).
+# #2508 (ADR-030 §8): build has no file list — no scope block, no plan files,
+# no grant. It may change any file outside the test folders.
 _build_load_context() {
-    # shellcheck disable=SC2154  # artifact_dir and plan_json injected via dynamic scope from caller
+    # shellcheck disable=SC2154  # artifact_dir injected via dynamic scope from caller
     # #2364: the acceptance contract, found by what it contains.
     local _ctx_design_md_path; _ctx_design_md_path="$(earlier_acceptance_contract "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
-    local _ctx_scope_source="plan"
-    local _ctx_design_csv="" _ctx_scope_file_count=0 _ctx_granted="" _ctx_candidate=""
-    local _ctx_state_dir_for_design
 
-    # Extract plan.files[] and the work items' areas (#2363) — the scope when
-    # design gives none.
-    # shellcheck disable=SC2154  # plan_json injected via dynamic scope from caller
-    plan_files_csv="$(printf '%s' "$plan_json" | \
-        jq -r '[(.files // []), ([.steps[]?.files[]?] // []), ([.steps[]?.areas[]?] // [])] | flatten | unique | join(",")' \
-        2>/dev/null || echo "")"
-
-
-    # ADR-031 (#866): acceptance test file paths for charter injection.
+    # ADR-031 (#866): the acceptance tests, for the prompt.
     _acceptance_testfiles=""
     if [[ -f "$_ctx_design_md_path" ]]; then
         _acceptance_testfiles="$(_build_read_acceptance_testfiles "$_ctx_design_md_path" 2>/dev/null || true)"
@@ -133,56 +96,5 @@ _build_load_context() {
     _design_decisions=""
     if [[ -f "$_ctx_design_md_path" ]]; then
         _design_decisions="$(_build_read_design_decisions "$_ctx_design_md_path" 2>/dev/null || true)"
-    fi
-
-    # #754: if design.md has a ```scope block, use it as the authoritative scope source.
-    if [[ -f "$_ctx_design_md_path" ]] && grep -q '^```scope' "$_ctx_design_md_path" 2>/dev/null; then
-        _ctx_design_csv="$(_extract_scope_from_design "$_ctx_design_md_path" 2>/dev/null || echo "")"
-        if [[ -n "$_ctx_design_csv" ]]; then
-            plan_files_csv="$_ctx_design_csv"
-            _ctx_scope_source="design"
-        fi
-    fi
-    if [[ "$_ctx_scope_source" == "design" ]]; then
-        _ctx_scope_file_count=0
-        if [[ -n "$plan_files_csv" ]]; then
-            # `|| true`, never `|| echo 0`: grep -c already prints its count, so
-            # the echo would append a second line and yield "0\n0" (#1751).
-            _ctx_scope_file_count="$(printf '%s' "$plan_files_csv" | tr ',' '\n' | grep -c '.' 2>/dev/null || true)"
-            _ctx_scope_file_count="${_ctx_scope_file_count//[^0-9]/}"
-            _ctx_scope_file_count="${_ctx_scope_file_count:-0}"
-        fi
-        emit_event "build.scope_injected" "plugin=build" \
-            "source=$_ctx_scope_source" "file_count=$_ctx_scope_file_count" \
-            >/dev/null 2>&1 || true
-    fi
-
-    # #1874: the engine's scope list (plan ∪ design, plus the shape floor a
-    # shape change owes) is the one build works to — the same list redaction and
-    # shape-floor read, so build is never refused a file the gate then demands.
-    if [[ -n "${ZBUILD_SCOPE_ALLOWLIST:-}" ]]; then
-        local _ctx_eng_f
-        local -a _ctx_eng=()
-        IFS=',' read -r -a _ctx_eng <<< "$ZBUILD_SCOPE_ALLOWLIST"
-        for _ctx_eng_f in "${_ctx_eng[@]}"; do
-            [[ -n "$_ctx_eng_f" ]] || continue
-            case ",$plan_files_csv," in
-                *",$_ctx_eng_f,"*) ;;
-                *) plan_files_csv="${plan_files_csv:+$plan_files_csv,}$_ctx_eng_f" ;;
-            esac
-        done
-    fi
-
-    # #840 (ADR-030): consume scope grant from cycle orchestrator.
-    if [[ -n "${ZBUILD_SCOPE_EXPANSION_GRANT:-}" && -f "$ZBUILD_SCOPE_EXPANSION_GRANT" ]]; then
-        while IFS= read -r _ctx_granted; do
-            [[ -z "$_ctx_granted" ]] && continue
-            case ",$plan_files_csv," in
-                *",$_ctx_granted,"*) ;;
-                *) plan_files_csv="${plan_files_csv:+$plan_files_csv,}$_ctx_granted" ;;
-            esac
-        done < "$ZBUILD_SCOPE_EXPANSION_GRANT"
-        emit_event "build.scope_grant_applied" "plugin=build" \
-            "grant_file=$ZBUILD_SCOPE_EXPANSION_GRANT" >/dev/null 2>&1 || true
     fi
 }

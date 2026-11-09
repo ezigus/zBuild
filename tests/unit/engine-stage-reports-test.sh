@@ -2,19 +2,20 @@
 # Tests (#2189 part C): engine setup reads what stages REPORTED, never plan.json
 # or design.md by path, and never a role name (ADR-055 §1, ADR-050 §1).
 #
-# SPEC-1 [change]: the member report carries scope_files, owned_files and
-#   wiring_files when the result declares them.
+# SPEC-1 [change]: the member report carries owned_files and wiring_files when
+#   the result declares them. #2508: never scope_files — no stage widens a file
+#   list for build (ADR-030 §8).
 # SPEC-2 [change]: each dispatch's report is merged into the run's record
-#   (artifacts/stage-reports.json): scope/wiring files unioned, owned files kept
-#   per reporting stage.
-# SPEC-3 [change]: the redaction allowlist is the reported scope files — a stale
-#   plan.json on disk is not read.
+#   (artifacts/stage-reports.json): wiring files unioned, owned files kept per
+#   reporting stage; a scope_files field is not recorded (#2508).
+# SPEC-3: retired (#2508) — there is no per-run scope allowlist to export.
 # SPEC-4 [change]: "this run changes its own grader" is decided from the reported
 #   wiring files — design.md is not read.
 # SPEC-5 [change]: a stage is denied edits to files ANOTHER stage reported owning,
 #   and never its own — no role name is consulted.
 # SPEC-6 [change]: the stages report them — design its WIRING files, test-author
-#   the testfiles it owns. (Plan reported scope files until #2363.)
+#   the testfiles it owns, found by their tags (#2508). (Plan reported scope
+#   files until #2363.)
 # SPEC-7 [change]: reports recorded concurrently (parallel members) all land —
 #   none is lost to a sibling's read-modify-write.
 # SPEC-8 [change]: both group dispatch boundaries record their report — cycle
@@ -52,7 +53,7 @@ print_test_section "SPEC-1: the report carries the setup fields"
 source "$REPO_ROOT/scripts/lib/stage-result.sh"
 stage_result_write "$ART/r.json" pass r '{"scope_files":["a.sh"],"owned_files":["tests/t.sh"],"wiring_files":["scripts/lib/x.sh"]}'
 _r="$(_verdict_report_from_file "$ART/r.json")"
-assert_eq "[SPEC-1] scope_files" '["a.sh"]' "$(jq -c '.scope_files' <<< "$_r")"
+assert_eq "[SPEC-1] scope_files is not carried (#2508)" 'null' "$(jq -c '.scope_files' <<< "$_r")"
 assert_eq "[SPEC-1] owned_files" '["tests/t.sh"]' "$(jq -c '.owned_files' <<< "$_r")"
 assert_eq "[SPEC-1] wiring_files" '["scripts/lib/x.sh"]' "$(jq -c '.wiring_files' <<< "$_r")"
 
@@ -61,15 +62,9 @@ _runner_record_report "$STATE" plan '{"scope_files":["a.sh","b.sh"]}'
 _runner_record_report "$STATE" design '{"scope_files":["b.sh","c.sh"],"wiring_files":["scripts/lib/x.sh"]}'
 _runner_record_report "$STATE" author '{"owned_files":["tests/t.sh"]}'
 _rec="$ART/stage-reports.json"
-assert_eq "[SPEC-2] scope files unioned" '["a.sh","b.sh","c.sh"]' "$(jq -c '.scope_files' "$_rec" 2>/dev/null)"
+assert_eq "[SPEC-2] scope files are not recorded (#2508)" 'null' "$(jq -c '.scope_files' "$_rec" 2>/dev/null)"
 assert_eq "[SPEC-2] owned files kept per stage" '["tests/t.sh"]' "$(jq -c '.owned_files.author' "$_rec" 2>/dev/null)"
 assert_eq "[SPEC-2] wiring files unioned" '["scripts/lib/x.sh"]' "$(jq -c '.wiring_files' "$_rec" 2>/dev/null)"
-
-print_test_section "SPEC-3: the redaction allowlist is the reported scope"
-printf '%s' '{"files":["stale.sh"],"steps":[]}' > "$ART/plan.json"
-unset ZBUILD_SCOPE_ALLOWLIST
-_runner_export_scope_allowlist "$STATE"
-assert_eq "[SPEC-3] allowlist = reported scope files, plan.json not read" "a.sh,b.sh,c.sh" "${ZBUILD_SCOPE_ALLOWLIST:-}"
 
 print_test_section "SPEC-4: self-grade detection from reported wiring"
 LIB="$TEST_TEMP_DIR/lib"; mkdir -p "$LIB"; : > "$LIB/x.sh"
@@ -88,13 +83,17 @@ assert_eq "[SPEC-5] the owner is not denied its own file" "" \
 
 print_test_section "SPEC-6: the stages report the fields"
 S6="$TEST_TEMP_DIR/s6"; mkdir -p "$S6"
-printf '%s\n' '# D' '```acceptance' 'SPEC-1[change]: x' 'TESTFILES:' 'SPEC-1: tests/acc-test.sh' 'WIRING: scripts/lib/wired.sh' '```' > "$S6/design.md"
+printf '%s\n' '# D' '```acceptance' 'SPEC-1[change]: x' 'WIRING: scripts/lib/wired.sh' '```' > "$S6/design.md"
+R6="$TEST_TEMP_DIR/r6"; mkdir -p "$R6/tests"
+printf 'assert "[SPEC-1] x" 1 1\n' > "$R6/tests/acc-test.sh"
+git -C "$R6" init -q >/dev/null 2>&1
 _d6="$( source "$REPO_ROOT/plugins/agent/design/plugin.sh" >/dev/null 2>&1
         declare -F _design_write_outcome >/dev/null || { echo "design plugin.sh did not load"; exit; }
         _design_write_outcome "$S6" pass "ok" >/dev/null 2>&1
         jq -c '.data.wiring_files' "$S6/design-verdict.json" 2>/dev/null )"
 assert_eq "[SPEC-6] design reports its WIRING files" '["scripts/lib/wired.sh"]' "$_d6"
-_t6="$( source "$REPO_ROOT/plugins/agent/test-author/plugin.sh" >/dev/null 2>&1
+_t6="$( export ZBUILD_REPO_ROOT="$R6"; unset ZBUILD_ISSUE
+        source "$REPO_ROOT/plugins/agent/test-author/plugin.sh" >/dev/null 2>&1
         declare -F _ta_write_result >/dev/null || { echo "test-author plugin.sh did not load"; exit; }
         _ta_write_result "$S6" pass "ok" 1 >/dev/null 2>&1
         jq -c '.data.owned_files' "$S6/test-author-result.json" 2>/dev/null )"
@@ -105,13 +104,13 @@ assert_eq "[SPEC-6] test-author reports the testfiles it owns" '["tests/acc-test
 print_test_section "SPEC-7: concurrent records all land"
 S7="$TEST_TEMP_DIR/s7"; mkdir -p "$S7/artifacts"
 for _i in 1 2 3 4 5 6 7 8 9 10 11 12; do
-    _runner_record_report "$S7" "m$_i" "{\"owned_files\":[\"t$_i.sh\"],\"scope_files\":[\"s$_i.sh\"]}" &
+    _runner_record_report "$S7" "m$_i" "{\"owned_files\":[\"t$_i.sh\"],\"wiring_files\":[\"s$_i.sh\"]}" &
 done
 wait
 assert_eq "[SPEC-7] every member's owned files are kept" "12" \
     "$(jq '.owned_files | length' "$S7/artifacts/stage-reports.json" 2>/dev/null)"
-assert_eq "[SPEC-7] every member's scope files are unioned" "12" \
-    "$(jq '.scope_files | length' "$S7/artifacts/stage-reports.json" 2>/dev/null)"
+assert_eq "[SPEC-7] every member's wiring files are unioned" "12" \
+    "$(jq '.wiring_files | length' "$S7/artifacts/stage-reports.json" 2>/dev/null)"
 
 print_test_section "SPEC-8: both group dispatch boundaries record their report"
 _rn="$REPO_ROOT/core/pipeline/runner.sh"

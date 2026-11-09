@@ -49,7 +49,9 @@ apply_scope_redaction() { local in="$1" out="$2"; [[ -f "$in" ]] && cp "$in" "$o
 _FLOW_REPO="$TEST_TEMP_DIR/flow-repo"
 mkdir -p "$_FLOW_REPO"
 ( cd "$_FLOW_REPO" && git init -q && git config user.email t@t && git config user.name t \
-    && echo seed > seed.txt && git add seed.txt && git commit -q -m seed ) >/dev/null
+    && echo seed > seed.txt && mkdir -p tests/unit \
+    && printf 'assert "[BUFLOW-1] registers" 1 1\n' > tests/unit/build-design-decisions-test.sh \
+    && git add -A && git commit -q -m seed ) >/dev/null
 export ZBUILD_REPO_ROOT="$_FLOW_REPO"
 
 ARTIFACT_DIR="$ZBUILD_STATE_DIR/artifacts"
@@ -64,21 +66,17 @@ JSON
 touch "$SCOPE_MANIFEST"
 unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR
 
-# A design.md as the design stage emits it: prose decision + scope + acceptance.
+# A design.md as the design stage emits it: prose decision + acceptance (#2508:
+# no scope block, no test files — the acceptance test is found by its tag).
 cat > "$ARTIFACT_DIR/design.md" <<'DESIGN'
 # Design
 
 ## Decision
 Build MUST register the new event in config/event-schema.json — a UNIQUE_FLOW_MARKER directive.
 
-```scope
-plugins/agent/build/plugin.sh
-```
-
 ```acceptance
-SPEC: build registers the event
-TESTFILES:
-tests/unit/build-design-decisions-test.sh
+BUFLOW-1[code]: build registers the event
+WIRING: none
 ```
 DESIGN
 
@@ -112,8 +110,8 @@ else
     assert_fail "IT4: DESIGN DECISIONS must precede ACCEPTANCE TESTS" "dd=$dd_line at=$at_line"
 fi
 
-# The scope-block path must NOT be duplicated into the decisions section (it is
-# already the build scope); assert the in-fence content is excluded from prose.
+# Fenced content (the acceptance block) must NOT be duplicated into the
+# decisions section; assert the in-fence content is excluded from prose.
 # Boundary: slice between the DESIGN DECISIONS and ACCEPTANCE TESTS section lines
 # (computed above) — NOT the next '## ', because the design prose itself carries
 # '## Decision'/'## Context' headings that would truncate the slice early and

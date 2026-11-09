@@ -1,6 +1,6 @@
 # ADR-036 — Acceptance-contract teeth (mechanical SPEC↔assertion gate)
 
-**Status:** Accepted (2026-06-17); amended 2026-07-01 (role/strategy split + preconditions);; amended 2026-11-04 (#2467: build and a test that leaves something behind)
+**Status:** Accepted (2026-06-17); amended 2026-07-01 (role/strategy split + preconditions);; amended 2026-11-04 (#2467: build and a test that leaves something behind); amended 2026-11-09 (#2508: every level reads a requirement's tests from its tag in the test folders, never from a list design wrote)
 amended 2026-07-03 (#1218, ADR-046 — Level-1 SPEC-tag-presence shifts LEFT to a PRE-build
 `design-gate`; this post-build acceptance-gate retains Level-2 negative-control/tautology +
 Level-3 reachability, which cannot shift left — they need a built assertion + baseline-vs-HEAD);
@@ -1035,12 +1035,17 @@ bracketed word.
 
 build still never edits an acceptance test. When a test leaves something behind that breaks the tests after it, build's prompt names three cases: its code leaks, and it changes the code to write where it is told; the code is meant to leave it, and it answers `the test is wrong: <test file>: needs cleanup of <what>`, which reaches test-author (#2441); or every test needs the same guard, and it changes the shared test helpers (ADR-073 §7).
 
+## Amendment 2026-11-09 (#2508) — the tests are found by their tags
+
+Design names no files (ADR-069 §11), so no level reads "the declared TESTFILES". Level 1 asks whether a file in the repository's test folders holds the SPEC's tag; Level 2 runs, for each code SPEC, the test-folder files that hold its tag (at HEAD, and overlaid on the merge-base worktree); Level 3 runs every file that holds any of the design's tags. The tags are found once per check (`acceptance_spec_files_v`). A WIRING file is never a test: one in a test folder is refused at design's checks (`WIRING_IS_TEST`, now by the test folders rather than a list). Build stays read-only on every file in the test folders (ADR-030 §8).
+
 ## Enforced by
 
+- Amendment 2026-11-09 (#2508: tests found by their tags) → `tests/unit/design-names-no-files-test.sh` N2–N6; `tests/unit/acceptance-negctl-test.sh` (the negative control runs the files holding a SPEC's tag)
 - Amendment 2026-11-04 (#2467: a test that leaves something behind) → `tests/unit/gwt-format-test.sh` B1
 - Amendment (2026-11-03, #2462) → `tests/unit/descriptive-id-readers-test.sh` R1–R11
 - §1 → `tests/unit/acceptance-block-test.sh` TC-7 (`acceptance_list_spec_ids` returns the ids); `tests/unit/acceptance-coverage-test.sh` C6 (bare legacy `SPEC:` lines carry no id and are not checked)
-- §2 → `tests/unit/acceptance-coverage-test.sh` C1–C5 (an untagged SPEC is named; zero or missing TESTFILES count as untagged); `tests/integration/acceptance-gate-test.sh` S3 (`acceptance.gate.untagged_spec`)
+- §2 → `tests/unit/acceptance-coverage-test.sh` C1–C5 (an untagged SPEC is named; no test file holding its tag, or one only outside the test folders, counts as untagged — #2508); `tests/integration/acceptance-gate-test.sh` S3 (`acceptance.gate.untagged_spec`)
 - §3 → `tests/unit/acceptance-negctl-test.sh` NC-A (load-bearing passes), NC-B and NC-D (tautology, the #844 shape), NC-C (`not_passing_at_head`), NC-E (merge-base equals HEAD gives a per-SPEC `no_impl_delta` skip); `tests/integration/acceptance-gate-test.sh` S1, S2, S7; `tests/unit/merge-base-default-branch-test.sh` MB-1–MB-5
 - §4 → `tests/integration/acceptance-gate-test.sh` S4 (no block gives `precondition_unmet`), S9 (placeholder block), S5 (malformed block fails closed); `tests/integration/acceptance-gate-v2-reader-test.sh` SPEC-3
 - §5 → `tests/unit/template-simple-yaml-test.sh` SPEC-2 (acceptance-gate after shape-floor), SPEC-14 (member of `build_test_cycle`)

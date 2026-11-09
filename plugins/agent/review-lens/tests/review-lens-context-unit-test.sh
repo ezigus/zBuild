@@ -13,7 +13,8 @@
 #
 # C1 [change] the prompt carries the ISSUE (what was asked)
 # C2 [change] ...the SPECs (the acceptance contract)
-# C3 [change] ...and the planned SCOPE (#1654: kills "not in planned scope" misses)
+# C3 [change] ...and no planned scope (#2508: design names no files; was the
+#             planned SCOPE, #1654) — not even an old design's scope block
 # C4 [change] it tells the lens to read the surrounding code, and no longer
 #             confines it to the diff (#1654)
 # C5 [change] each finding says whether the change INTRODUCED it
@@ -28,10 +29,10 @@
 # C10 [change] end to end: a lens that says introduced:false produces a result
 #              file that still says so (review on #2215: the lens's own
 #              normalization dropped the field)
-# C12 [change] the planned scope is the design's ```scope block, not the
-#              redaction allow-list the engine passes as scope_manifest (#2302:
-#              on #2035 the section read "+ ./", so the scope lens had no file
-#              list to compare the change against); no scope block, no section
+# C12 [change] no planned-scope section is shown, from an old design's ```scope
+#              block or from the redaction allow-list the engine passes as
+#              scope_manifest (#2508; #2302 had made it the scope block); a
+#              design with no scope block shows none either
 # C13 [change] every lens in the default template is told to name any part of
 #              the issue the change does not deliver, in its own terms (#2307:
 #              no lens flagged that PR #2298 skipped parts of its issue)
@@ -71,8 +72,6 @@ DECISION-MARKER: validate reads its input from the engine's index, never a path.
 
 ```acceptance
 SPEC-3[change]: SPEC-TEXT-MARKER validate writes a v2 result
-TESTFILES:
-tests/x-test.sh
 ```
 
 ```scope
@@ -99,7 +98,11 @@ P="$(cat "$PROMPT_F" 2>/dev/null || true)"
 print_test_section "C1–C4: what the lens is given"
 assert_contains "[C1] the issue text" "$P" "ISSUE-BODY-MARKER"
 assert_contains "[C2] the SPECs" "$P" "SPEC-TEXT-MARKER"
-assert_contains "[C3] the planned scope" "$P" "SCOPE-MARKER"
+if grep -qF 'SCOPE-MARKER' <<< "$P"; then
+    assert_fail "[C3] an old design's scope block is not shown (#2508)" "found SCOPE-MARKER"
+else
+    assert_pass "[C3] an old design's scope block is not shown (#2508)"
+fi
 assert_contains "[C11] the design's decisions" "$P" "DECISION-MARKER"
 # Line breaks flattened: the prompt wraps this sentence across two lines.
 if grep -qF "Report only issues you can point to in the change below" <<< "$(tr '\n' ' ' <<< "$P" | tr -s ' ')"; then
@@ -131,7 +134,7 @@ else
     assert_contains "[C9] it still reports unplanned edits" "$_scope" "did not list"
 fi
 
-print_test_section "C12: the planned scope comes from the design's scope block (#2302)"
+print_test_section "C12: no planned-scope section (#2508)"
 # _rl_planned_section <prompt> — the planned-scope section, up to the next heading.
 _rl_planned_section() {
     awk '/^## THE PLANNED SCOPE/{on=1; print; next} on && /^## /{exit} on{print}' <<< "$1"
@@ -141,8 +144,6 @@ cat > "$ART/design.md" <<'EOF'
 
 ```acceptance
 SPEC-1[change]: alpha is planned
-TESTFILES:
-tests/unit/beta-planned-test.sh
 ```
 
 ```scope
@@ -151,16 +152,21 @@ tests/unit/beta-planned-test.sh
 ```
 EOF
 _review_lens_run_inner scope "$TEST_TEMP_DIR/scope-manifest.md" "$ART/diff.patch" "$ART/lens-scope.json" "$ART" >/dev/null 2>&1 || true
-_sec="$(_rl_planned_section "$(cat "$PROMPT_F" 2>/dev/null || true)")"
-assert_contains "[C12] the section lists the design's first scoped file" "$_sec" "scripts/lib/alpha-planned.sh"
-assert_contains "[C12] the section lists the design's second scoped file" "$_sec" "tests/unit/beta-planned-test.sh"
-if grep -qF -- '+ ./' <<< "$_sec"; then
-    assert_fail "[C12] the section does not carry the redaction allow-list" "found '+ ./' in: $_sec"
+_P12a="$(cat "$PROMPT_F" 2>/dev/null || true)"
+if [[ -z "$_P12a" ]]; then
+    assert_fail "[C12] the lens ran on an old design with a scope block" "no prompt captured"
+elif grep -qF 'THE PLANNED SCOPE' <<< "$_P12a" || grep -qF 'alpha-planned.sh' <<< "$_P12a"; then
+    assert_fail "[C12] an old design's scope block gives no planned-scope section" "$(_rl_planned_section "$_P12a")"
 else
-    assert_pass "[C12] the section does not carry the redaction allow-list"
+    assert_pass "[C12] an old design's scope block gives no planned-scope section"
+fi
+if grep -qF -- '+ ./' <<< "$_P12a"; then
+    assert_fail "[C12] nor is the redaction allow-list shown" "found '+ ./'"
+else
+    assert_pass "[C12] nor is the redaction allow-list shown"
 fi
 # A design (it has its acceptance block, so it is found) with no scope block.
-printf '# Design\n\nno scope block here\n\n```acceptance\nSPEC-1[change]: x\nTESTFILES:\ntests/x-test.sh\n```\n' > "$ART/design.md"
+printf '# Design\n\nno scope block here\n\n```acceptance\nSPEC-1[change]: x\n```\n' > "$ART/design.md"
 : > "$PROMPT_F"
 _review_lens_run_inner scope "$TEST_TEMP_DIR/scope-manifest.md" "$ART/diff.patch" "$ART/lens-scope.json" "$ART" >/dev/null 2>&1 || true
 _P12="$(cat "$PROMPT_F" 2>/dev/null || true)"

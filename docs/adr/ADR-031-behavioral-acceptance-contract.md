@@ -1,6 +1,6 @@
 # ADR-031 — Behavioral acceptance contract
 
-**Status:** Implemented (2026-06-17); amended 2026-11-04 (#2467: a SPEC is written as Given/When/Then, ADR-073)
+**Status:** Implemented (2026-06-17); amended 2026-11-04 (#2467: a SPEC is written as Given/When/Then, ADR-073); amended 2026-11-09 (#2508: the block names no files — no `TESTFILES:` list; a requirement's test is found by its tag in the test folders, ADR-069 §11)
 **Related:** ADR-007 (test strategy), ADR-022 (test-assessment stage), ADR-027 (recursive-flow template format), ADR-030 (scope governance), ADR-036 (acceptance-contract teeth)
 **Issue:** #864
 
@@ -110,6 +110,11 @@ The downgrade event taxonomy added to ADR-022 Amendment v5 covers these two down
 
 A SPEC in the acceptance block keeps its first line (id, status, title, `covers:`, `evidence:`) and says its behaviour on indented lines under it: `Given:` (optional), exactly one `When:`, one or more `Then:`, `And:` to continue a part, and `Cleanup:` for what outlives the test (ADR-073 §1). A `[code]` or `[done]` SPEC needs them; design's check C10 refuses one without them, or with no When, two Whens or no Then (ADR-073 §3).
 
+## Amendment 2026-11-09 (#2508) — the block names no files
+
+The `TESTFILES:` sentinel is no longer part of the block, and the block is never a scope declaration because there is no scope block either (ADR-030 §8). A requirement's test is found from its tag — the files in the repository's test folders that hold it (ADR-069 §11) — so a test is checked wherever test-author wrote it, together with any helper file it needs. A block is read without a `TESTFILES:` line; an old design's `TESTFILES:` list is skipped, and its lines are not read as SPECs. The rules above that name `TESTFILES:` (the sentinel is required; each listed file must exist) are superseded by this.
+
 ## Enforced by
 
+- Amendment 2026-11-09 (#2508: no `TESTFILES:`; a test is found by its tag) → `tests/unit/design-names-no-files-test.sh` N1–N7
 - Amendment 2026-11-04 (#2467: Given/When/Then SPECs) → `tests/unit/gwt-format-test.sh` P1–P5, C1–C5

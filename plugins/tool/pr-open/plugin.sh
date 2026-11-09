@@ -338,7 +338,7 @@ _pr_open_run_inner() {
     [[ ${#_lens_files[@]} -gt 0 ]] && _review_lines="$(_pr_open_review_findings "${_lens_files[@]}")"
     local pr_body
     pr_body="$(_pr_open_compose_body "$issue_num" "$plan_json" "$test_verdict" "$files_changed" \
-        "$_unsettled_block" "$_forced_draft" "$_review_lines")"
+        "$_unsettled_block" "$_forced_draft" "$_review_lines" "$(_pr_open_questions)")"
 
     local -a _gh_args=()
     [[ "${_draft_bool}" == "true" ]] && _gh_args+=("--draft")

@@ -14,7 +14,8 @@
 # L1 [change] each requirement appears with what its tag means
 # L2 [change] the WIRING file is named as "the existing file that calls the new code"
 # L3 [change] no raw keys (`[change]:`, `WIRING:`, `TESTFILES:`) reach the lens
-# L4 [guard]  each requirement's test files are still named
+# L4 [guard]  each requirement's test files are still named (#2508: the files in
+#             the repo's test folders that hold its tag)
 # L5 [change] (#2304, ADR-069) each status in plain words; a done one's evidence
 set -uo pipefail
 
@@ -29,6 +30,12 @@ setup_test_env "review-lens-requirements-plain"
 # shellcheck source=../../plugins/agent/review-lens/plugin.sh
 source "$REPO_ROOT/plugins/agent/review-lens/plugin.sh" >/dev/null 2>&1
 
+# #2508: a requirement's test files are found by its tag in the repo's test
+# folders — a git repo of its own, so the engine's tests are not searched.
+R="$TEST_TEMP_DIR/repo"; mkdir -p "$R/tests/unit"; git -C "$R" init -q
+printf 'assert "[SPEC-1] it writes" 1 1\n' > "$R/tests/unit/x-test.sh"
+printf 'assert "[SPEC-2] the docs say" 1 1\n' > "$R/tests/unit/y-test.sh"
+export ZBUILD_REPO_ROOT="$R"
 D="$TEST_TEMP_DIR/design.md"
 cat > "$D" <<'EOF'
 # Design
@@ -38,9 +45,6 @@ SPEC-1[code]: the stage writes its result on every exit
 SPEC-2[no-code]: the docs describe the result file
 SPEC-3[done]: the dry run opens no PR evidence: plugins/agent/x/plugin.sh:12 tests/unit/z-test.sh
 WIRING: plugins/agent/x/plugin.sh
-TESTFILES:
-SPEC-1: tests/unit/x-test.sh
-SPEC-2: tests/unit/y-test.sh
 ```
 EOF
 printf '{"inputs":{"design":"%s"}}\n' "$D" > "$TEST_TEMP_DIR/si.json"

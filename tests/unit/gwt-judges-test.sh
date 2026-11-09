@@ -66,8 +66,6 @@ FRSH-1[code]: a new run starts from the first stage covers: RQST-1
   When: it is started again
   Then: every stage is dispatched
   And: the test file contains both cases
-TESTFILES:
-FRSH-1: tests/a-test.sh
 WIRING: none
 ```
 MD
@@ -127,7 +125,7 @@ print_test_section "T1-T9: test-author's check"
         local n; n=$(( $(cat "$_N") + 1 )); printf '%s' "$n" > "$_N"; printf '%s' "$2" > "$_P.$n"
         if [[ $n -eq 1 ]]; then printf '%s' "$_R1"; elif [[ $n -eq 2 ]]; then printf '%s' "${_R2:-$_R1}"; else printf '%s' "${_R3:-${_R2:-$_R1}}"; fi
     }
-    R="$TEST_TEMP_DIR/t-repo"; mkdir -p "$R/tests"; D="$TEST_TEMP_DIR/t.md"
+    R="$TEST_TEMP_DIR/t-repo"; mkdir -p "$R/tests"; git -C "$R" init -q; D="$TEST_TEMP_DIR/t.md"
     cat > "$D" <<'MD'
 # Design
 ```acceptance
@@ -139,9 +137,6 @@ LOOP-1[code]: a nested loop starts at round 1
   Cleanup: ZB_ROUND is unset
 DOCS-1[no-code]: the README says how to resume
 WIRING: none
-TESTFILES:
-LOOP-1: tests/loop-test.sh
-DOCS-1: tests/loop-test.sh
 ```
 MD
     printf '# Given\nexport ZB_ROUND=2\n# When\nenter_inner\n# Then\nassert_eq "[LOOP-1] inner at 1" "1" "$inner"\nassert_eq "[DOCS-1] readme" "1" "$r"\n# Cleanup\nunset ZB_ROUND\n' > "$R/tests/loop-test.sh"
@@ -209,7 +204,7 @@ print_test_section "T8: a SPEC no test can prove ends the round"
     ( cd "$R" && git init -q -b main . && git config user.email t@e.st && git config user.name t \
         && : > tests/acc-test.sh && git add -A && git commit -q -m seed ) >/dev/null 2>&1
     printf '{"schema_version":1}' > "$d/state/pipeline-state.json"
-    printf '# Design\n```acceptance\nLOOP-1[code]: a nested loop starts at round 1\n  When: the inner loop is entered again\n  Then: the inner loop is at round 1\nWIRING: none\nTESTFILES:\nLOOP-1: tests/acc-test.sh\n```\n' > "$A/design.md"
+    printf '# Design\n```acceptance\nLOOP-1[code]: a nested loop starts at round 1\n  When: the inner loop is entered again\n  Then: the inner loop is at round 1\nWIRING: none\n```\n' > "$A/design.md"
     route_to_model_loop() {
         {
             printf '#!/usr/bin/env bash\n'

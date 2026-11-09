@@ -28,7 +28,7 @@ The complete set. A template is a composition of these; there are no others.
 |---|---|
 | [[mechanics/redaction-chokepoint]] | The single path all model-bound text passes through (ADR-004). |
 | [[mechanics/admission-gate]] | Fail-closed preconditions before a run starts. |
-| [[mechanics/scope-governance]] | Read/write scope, security floor, governed expansion (ADR-030). |
+| [[mechanics/scope-governance]] | Read scope, security floor, the test folders build may not change (ADR-030). |
 | [[mechanics/state-and-resume]] | Atomic, crash-safe state; resume where a run stopped (ADR-006). |
 | [[mechanics/event-bus]] | Schema-validated events (JSONL). |
 | [[mechanics/router-models-as-data]] | Tiered model routing from config, no model names in code (ADR-003). |

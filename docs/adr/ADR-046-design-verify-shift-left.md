@@ -1,6 +1,6 @@
 # ADR-046 — Design-verify shift-left: a mechanical structural gate PRE-build
 
-**Status:** Accepted (2026-07-03, issue #1218, EPIC #1216)
+**Status:** Accepted (2026-07-03, issue #1218, EPIC #1216); amended 2026-11-09 (#2508: C1 SCOPE and C4 CHANGE-HAS-TESTFILE are removed — design names no files, ADR-069 §11)
 
 **Amended:** 2026-08-12 (#1768, ADR-055 §1) — the `source: artifacts` prescription for `prior_gate_feedback` is retired. The cross-cycle feedback edge is now an ordinary name-matched input, made legal by ADR-055 §1.3 (a declared `route_back` edge legalises a backwards data edge) rather than by an untyped read of the shared artifact directory. The *reasoning* below stands unchanged and was correct — this edge genuinely is not `cycle_feedback`; only the mechanism changes. ADR-055 did not enumerate `source: artifacts` at all, so this ADR was its sole specification and the two documents disagreed until now.
 
@@ -163,3 +163,7 @@ design-gate is no longer a stage, and `design_verify_cycle` is retired. Its chec
 unchanged into the design stage (`plugins/agent/design/lib/checks.sh`), which runs them on its own
 design.md and goes back to its model with what failed, within its own rounds (ADR-040 amendment of the
 same date; ADR-068 §1–§3). The checks still run no model and execute nothing.
+
+## Amendment 2026-11-09 (#2508) — C1 and C4 are removed
+
+Design names no files (ADR-069 §11, ADR-030 §8). C1 SCOPE (a ```scope block) and C4 CHANGE-HAS-TESTFILE (a test file for a code SPEC) are gone, with the later C8 (each listed test file in a test folder). C5 WIRING keeps its rule that a WIRING file is no test, now read from the test folders. Design's checks add one: an `UNCLEAR:` line must be `UNCLEAR: <id> | <the question> | <what it assumed>` (ADR-069 §12).

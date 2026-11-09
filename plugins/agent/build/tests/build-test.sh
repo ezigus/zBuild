@@ -39,7 +39,7 @@ source "$PLUGIN_DIR/plugin.sh"
 SCOPE_MANIFEST="$TEST_TEMP_DIR/scope-manifest.md"
 cat > "$SCOPE_MANIFEST" <<'EOF'
 + core/
-+ tests/
++ fixtures/
 + plugins/
 EOF
 
@@ -48,13 +48,13 @@ EOF
 setup_build_repo() {
     local name="$1"
     local repo="$TEST_TEMP_DIR/$name"
-    mkdir -p "$repo/tests/fixtures"
+    mkdir -p "$repo/fixtures"
     ( cd "$repo" \
       && git init -q \
       && git config user.email "test@zbuild" \
       && git config user.name  "zbuild-test" \
-      && echo "seed" > tests/fixtures/seed.txt \
-      && git add tests/fixtures/seed.txt \
+      && echo "seed" > fixtures/seed.txt \
+      && git add fixtures/seed.txt \
       && git commit -q -m "seed" )
     printf '%s\n' "$repo"
 }
@@ -118,7 +118,7 @@ cat > "$PLAN_JSON_PROMPT" <<'EOF'
   "schema_version": 1,
   "goal": "Add dummy fixture file for build-stage prompt tests",
   "steps": [
-    {"id": "step-1", "description": "create fixture", "files": ["tests/fixtures/build-test-dummy.txt"], "estimated_lines": 1}
+    {"id": "step-1", "description": "create fixture", "files": ["fixtures/build-test-dummy.txt"], "estimated_lines": 1}
   ]
 }
 EOF
@@ -126,7 +126,7 @@ EOF
 OUT_DIFF_PROMPT="$ARTIFACT_DIR_PROMPT/diff.patch"
 OUT_SUMMARY_PROMPT="$ARTIFACT_DIR_PROMPT/build-summary.json"
 
-# Configure mock to edit tests/fixtures/build-test-dummy.txt inside the repo.
+# Configure mock to edit fixtures/build-test-dummy.txt inside the repo.
 REPO_PROMPT="$(setup_build_repo "repo_prompt")"
 export ZBUILD_REPO_ROOT="$REPO_PROMPT"
 # #661 / ADR-020 amendment: build's diff.patch is now the cumulative
@@ -136,7 +136,7 @@ export ZBUILD_REPO_ROOT="$REPO_PROMPT"
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state_prompt"
 mkdir -p "$ZBUILD_STATE_DIR"
 ZBUILD_RUN_START_COMMIT="$(git -C "$REPO_PROMPT" rev-parse HEAD)"; export ZBUILD_RUN_START_COMMIT
-MOCK_LOOP_EDIT_FILE="tests/fixtures/build-test-dummy.txt"
+MOCK_LOOP_EDIT_FILE="fixtures/build-test-dummy.txt"
 MOCK_LOOP_EDIT_CONTENT="dummy"
 MOCK_LOOP_ITERATIONS=2
 MOCK_LOOP_REASON="done_sentinel"
@@ -159,10 +159,12 @@ print_test_section "T_PROMPT_1: prompt invites tools and declares scope + sentin
 assert_exit_code "T_PROMPT_1 inner run returns rc=0" "0" "$rc_prompt"
 assert_contains "prompt mentions Read/Edit/Write/Bash tools"  "$_captured_prompt" "Read, Edit, Write, and"
 assert_contains "prompt mentions LOOP_COMPLETE sentinel"      "$_captured_prompt" "LOOP_COMPLETE"
-assert_contains "prompt mentions scope (plan.files[])"        "$_captured_prompt" "plan.files[]"
-assert_contains "prompt lists the in-scope file"              "$_captured_prompt" "build-test-dummy.txt"
-assert_contains "prompt forbids out-of-scope edits"           "$_captured_prompt" "out-of-scope"
-assert_contains "prompt includes BLOCKED escape-hatch rule"   "$_captured_prompt" "BLOCKED:"
+# #2508 (ADR-030 §8): build has no file list — it may change any file outside
+# the test folders, and none inside them; a test that should change is "not mine".
+assert_contains "prompt says which files build may change"    "$_captured_prompt" "You may change any file outside the test folders"
+assert_contains "prompt lists the plan's step file"           "$_captured_prompt" "build-test-dummy.txt"
+assert_contains "prompt forbids edits in the test folders"    "$_captured_prompt" "and none inside them"
+assert_contains "prompt says how to answer a test that should change" "$_captured_prompt" "not mine — the test must change:"
 
 # ─── T_PROMPT_2: Real edit produces non-empty diff.patch ─────────────────────
 print_test_section "T_PROMPT_2: agent edit → non-empty diff.patch"
@@ -267,9 +269,9 @@ cat > "$PLAN_JSON_T3" <<'EOF'
 {
   "schema_version": 1,
   "goal": "Add dummy fixture file for build-stage test",
-  "files": ["tests/fixtures/build-test-dummy.txt"],
+  "files": ["fixtures/build-test-dummy.txt"],
   "steps": [
-    {"id": 1, "action": "create", "path": "tests/fixtures/build-test-dummy.txt", "content": "dummy"}
+    {"id": 1, "action": "create", "path": "fixtures/build-test-dummy.txt", "content": "dummy"}
   ]
 }
 EOF
@@ -283,7 +285,7 @@ export ZBUILD_REPO_ROOT="$REPO_T3"
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state_t3"
 mkdir -p "$ZBUILD_STATE_DIR"
 ZBUILD_RUN_START_COMMIT="$(git -C "$REPO_T3" rev-parse HEAD)"; export ZBUILD_RUN_START_COMMIT
-MOCK_LOOP_EDIT_FILE="tests/fixtures/build-test-dummy.txt"
+MOCK_LOOP_EDIT_FILE="fixtures/build-test-dummy.txt"
 MOCK_LOOP_EDIT_CONTENT="dummy content"
 MOCK_LOOP_ITERATIONS=3
 MOCK_LOOP_REASON="done_sentinel"
@@ -344,8 +346,10 @@ notes_val="$(printf '%s' "$summary_json_t3" | jq -r '.notes // empty' 2>/dev/nul
 scope_violations_type="$(printf '%s' "$summary_json_t3" | jq -r '.scope_violations | type' 2>/dev/null || echo "missing")"
 assert_eq "scope_violations is an array" "array" "$scope_violations_type"
 
-# ─── Test 6: Out-of-scope edit → build.scope.violation + empty diff.patch ────
-print_test_section "T6: out-of-scope edit → scope_violation=true, empty diff.patch, rc=0"
+# ─── Test 6: an edit in the test folders → build.scope.violation + empty diff ─
+# #2508 (ADR-030 §8): build may change no file in the test folders; the change
+# is put back and reported.
+print_test_section "T6: test-folder edit → scope_violation=true, empty diff.patch, rc=0"
 
 ARTIFACT_DIR_T6="$TEST_TEMP_DIR/artifacts_t6"
 mkdir -p "$ARTIFACT_DIR_T6"
@@ -362,7 +366,7 @@ OUT_SUMMARY_T6="$ARTIFACT_DIR_T6/build-summary.json"
 
 REPO_T6="$(setup_build_repo "repo_t6")"
 export ZBUILD_REPO_ROOT="$REPO_T6"
-MOCK_LOOP_EDIT_FILE="dangerous/secrets.txt"
+MOCK_LOOP_EDIT_FILE="tests/weakened-test.sh"
 MOCK_LOOP_EDIT_CONTENT="leaked"
 MOCK_LOOP_ITERATIONS=1
 MOCK_LOOP_REASON="done_sentinel"
@@ -386,7 +390,7 @@ assert_eq "diff.patch is empty on scope violation (0 bytes)" "0" "$t6_size"
 summary_t6="$(cat "$OUT_SUMMARY_T6")"
 assert_json_key "scope_violation == true" "$summary_t6" ".scope_violation" "true"
 assert_json_key "[SPEC-3] result_contract:3 on scope_violation branch" "$summary_t6" ".result_contract" "3"
-assert_json_key "[SPEC-4] outcome:fail on scope_violation branch — scope_violation and the scope request carry it (#2187, #2366)" "$summary_t6" ".outcome" "fail"
+assert_json_key "[SPEC-4] outcome:fail on scope_violation branch — scope_violation and its finding carry it (#2187, #2366, #2508)" "$summary_t6" ".outcome" "fail"
 
 t6_violation_count="$(printf '%s' "$summary_t6" | jq '.scope_violations | length' 2>/dev/null || echo 0)"
 if [[ "$t6_violation_count" -ge 1 ]]; then
@@ -395,6 +399,7 @@ else
     assert_fail "scope_violations array is empty"
 fi
 assert_event_emitted "build.scope.violation event fired" "$ZBUILD_EVENTS_JSONL" "build.scope.violation"
+assert_eq "the test-folder file build created is removed" "no" "$([[ -e "$REPO_T6/tests/weakened-test.sh" ]] && echo yes || echo no)"
 
 # ─── #498: _build_format_numstat unit tests ─────────────────────────────────
 print_test_section "T7: _build_format_numstat — single-file rendering"
@@ -469,7 +474,7 @@ PLAN_JSON_T13="$ARTIFACT_DIR_T13/plan.json"
 cat > "$PLAN_JSON_T13" <<'EOF'
 {
   "schema_version": 1,
-  "files": ["tests/fixtures/build-test-dummy.txt"],
+  "files": ["fixtures/build-test-dummy.txt"],
   "steps": []
 }
 EOF
@@ -478,7 +483,7 @@ OUT_SUMMARY_T13="$ARTIFACT_DIR_T13/build-summary.json"
 
 REPO_T13="$(setup_build_repo "repo_t13")"
 export ZBUILD_REPO_ROOT="$REPO_T13"
-MOCK_LOOP_EDIT_FILE="tests/fixtures/build-test-dummy.txt"
+MOCK_LOOP_EDIT_FILE="fixtures/build-test-dummy.txt"
 MOCK_LOOP_EDIT_CONTENT="hello-498"
 MOCK_LOOP_ITERATIONS=2
 MOCK_LOOP_REASON="done_sentinel"
@@ -603,7 +608,7 @@ cat > "$PLAN_JSON_TS" <<'EOF'
 {
   "schema_version": 1,
   "goal": "Edit in-scope file (scratch siblings stranded by timeout)",
-  "files": ["tests/fixtures/scratch-target.txt"],
+  "files": ["fixtures/scratch-target.txt"],
   "steps": []
 }
 EOF
@@ -618,9 +623,9 @@ mkdir -p "$ZBUILD_STATE_DIR"
 ZBUILD_RUN_START_COMMIT="$(git -C "$REPO_TS" rev-parse HEAD)"; export ZBUILD_RUN_START_COMMIT
 
 # Mock: a turn that writes an in-scope edit AND strands two scratch siblings.
-MOCK_LOOP_EDIT_FILE="tests/fixtures/scratch-target.txt"
+MOCK_LOOP_EDIT_FILE="fixtures/scratch-target.txt"
 MOCK_LOOP_EDIT_CONTENT="scratch-test-content"
-MOCK_LOOP_EXTRA_FILES="tests/fixtures/scratch-target.txt.bak tests/fixtures/scratch-target.txt.head tests/fixtures/scratch-target.txt.rej tests/fixtures/scratch-target.txt.tmp tests/fixtures/scratch-target.txt~"
+MOCK_LOOP_EXTRA_FILES="fixtures/scratch-target.txt.bak fixtures/scratch-target.txt.head fixtures/scratch-target.txt.rej fixtures/scratch-target.txt.tmp fixtures/scratch-target.txt~"
 # rc=0, NOT rc=2: #827 already preserves in-scope work on the timeout path, so a
 # rc=2 mock would exercise a branch this change does not touch. #1789's loss came
 # from the CLEAN-run branch, where an OOS path zeroes diff.patch outright.
@@ -678,26 +683,27 @@ assert_eq "[SPEC-16] build-summary lines_added counts only the in-scope edit" \
     "1" "$(jq -r '.lines_added' "$OUT_SUMMARY_TS" 2>/dev/null || echo X)"
 
 # SPEC-13 (CHANGE): .bak file absent from working tree after the run.
-if [[ ! -f "$REPO_TS/tests/fixtures/scratch-target.txt.bak" ]]; then
+if [[ ! -f "$REPO_TS/fixtures/scratch-target.txt.bak" ]]; then
     assert_pass "[SPEC-13] .bak scratch file absent from working tree after run"
 else
     assert_fail "[SPEC-13] .bak scratch file absent from working tree after run" \
-        "file still present: $REPO_TS/tests/fixtures/scratch-target.txt.bak"
+        "file still present: $REPO_TS/fixtures/scratch-target.txt.bak"
 fi
 
 # SPEC-14 (CHANGE): .head file absent from working tree after the run.
-if [[ ! -f "$REPO_TS/tests/fixtures/scratch-target.txt.head" ]]; then
+if [[ ! -f "$REPO_TS/fixtures/scratch-target.txt.head" ]]; then
     assert_pass "[SPEC-14] .head scratch file absent from working tree after run"
 else
     assert_fail "[SPEC-14] .head scratch file absent from working tree after run" \
-        "file still present: $REPO_TS/tests/fixtures/scratch-target.txt.head"
+        "file still present: $REPO_TS/fixtures/scratch-target.txt.head"
 fi
 
 # ─── T_SCRATCH2: the suffix narrowing does not swallow legitimate files ───────
 # Guards on T_SCRATCH's narrowing. Cleanup keys off the suffix, but only for a
-# path ALREADY out of scope and not present at HEAD — so an in-scope file that
-# happens to end in .bak is real work, and a tracked one is real content.
-print_test_section "T_SCRATCH2: in-scope and tracked scratch-suffix files are not swallowed"
+# file build CREATED (not present at HEAD) — #2508: build has no file list, so a
+# tracked file that happens to end in .bak or .orig is real work, and build's
+# edit to it is kept.
+print_test_section "T_SCRATCH2: tracked scratch-suffix files are not swallowed"
 
 ARTIFACT_DIR_T2="$TEST_TEMP_DIR/artifacts_ts2"
 mkdir -p "$ARTIFACT_DIR_T2"
@@ -706,8 +712,8 @@ PLAN_JSON_T2="$ARTIFACT_DIR_T2/plan.json"
 cat > "$PLAN_JSON_T2" <<'EOF'
 {
   "schema_version": 1,
-  "goal": "In-scope file carrying a scratch suffix is legitimate work",
-  "files": ["tests/fixtures/in-scope.bak"],
+  "goal": "A tracked file carrying a scratch suffix is legitimate work",
+  "files": ["fixtures/in-scope.bak"],
   "steps": []
 }
 EOF
@@ -716,19 +722,20 @@ OUT_DIFF_T2="$ARTIFACT_DIR_T2/diff.patch"
 OUT_SUMMARY_T2="$ARTIFACT_DIR_T2/build-summary.json"
 
 REPO_T2="$(setup_build_repo "repo_ts2")"
-# A TRACKED .orig file, out of scope — content, not residue.
+# TRACKED .bak and .orig files — content, not residue.
 ( cd "$REPO_T2" \
-  && printf 'tracked-original\n' > tests/fixtures/tracked.orig \
-  && git add tests/fixtures/tracked.orig \
+  && printf 'tracked-original\n' > fixtures/tracked.orig \
+  && printf 'tracked-bak\n' > fixtures/in-scope.bak \
+  && git add fixtures/tracked.orig fixtures/in-scope.bak \
   && git commit -q -m "tracked scratch-suffix file" )
 export ZBUILD_REPO_ROOT="$REPO_T2"
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state_ts2"
 mkdir -p "$ZBUILD_STATE_DIR"
 ZBUILD_RUN_START_COMMIT="$(git -C "$REPO_T2" rev-parse HEAD)"; export ZBUILD_RUN_START_COMMIT
 
-MOCK_LOOP_EDIT_FILE="tests/fixtures/in-scope.bak"
+MOCK_LOOP_EDIT_FILE="fixtures/in-scope.bak"
 MOCK_LOOP_EDIT_CONTENT="legitimate-in-scope-work"
-MOCK_LOOP_EXTRA_FILES="tests/fixtures/tracked.orig"
+MOCK_LOOP_EXTRA_FILES="fixtures/tracked.orig"
 MOCK_LOOP_RC=0
 MOCK_LOOP_REASON="done_sentinel"
 MOCK_LOOP_ITERATIONS=1
@@ -745,20 +752,23 @@ rc_t2=$?
 set -e
 assert_exit_code "T_SCRATCH2 inner run rc=0" "0" "$rc_t2"
 
-# An in-scope path is legitimate work whatever its suffix: never deleted.
-if [[ -f "$REPO_T2/tests/fixtures/in-scope.bak" ]]; then
-    assert_pass "in-scope .bak file survives the scratch filter"
+# A tracked path is legitimate work whatever its suffix: never deleted.
+if [[ -f "$REPO_T2/fixtures/in-scope.bak" ]]; then
+    assert_pass "tracked .bak file survives the scratch filter"
 else
-    assert_fail "in-scope .bak file survives the scratch filter" "file was deleted"
+    assert_fail "tracked .bak file survives the scratch filter" "file was deleted"
 fi
 
-# Tracked content is restored to its HEAD state, never removed from the tree.
-t2_tracked="$(cat "$REPO_T2/tests/fixtures/tracked.orig" 2>/dev/null || echo MISSING)"
-assert_eq "tracked out-of-scope .orig is restored, not deleted" \
-    "tracked-original" "$t2_tracked"
+# Build's edit to a tracked .orig is its change: kept, never removed.
+t2_tracked="$(cat "$REPO_T2/fixtures/tracked.orig" 2>/dev/null || echo MISSING)"
+if [[ "$t2_tracked" != MISSING && "$t2_tracked" != "tracked-original" ]]; then
+    assert_pass "build's edit to a tracked .orig is kept, not deleted"
+else
+    assert_fail "build's edit to a tracked .orig is kept, not deleted" "got: $t2_tracked"
+fi
 
-# The in-scope edit still reaches diff.patch.
-assert_contains "diff.patch carries the in-scope .bak edit" \
+# The edit to the tracked .bak still reaches diff.patch.
+assert_contains "diff.patch carries the tracked .bak edit" \
     "$(cat "$OUT_DIFF_T2" 2>/dev/null || true)" "in-scope.bak"
 
 # SPEC-17/18/19 (CHANGE): every suffix _build_path_is_scratch claims is pruned.
@@ -769,8 +779,8 @@ for _sfx_spec in "rej:SPEC-17" "tmp:SPEC-18" "~:SPEC-19"; do
     _sfx="${_sfx_spec%%:*}"
     _spec="${_sfx_spec#*:}"
     case "$_sfx" in
-        '~') _sf="$REPO_TS/tests/fixtures/scratch-target.txt~" ;;
-        *)   _sf="$REPO_TS/tests/fixtures/scratch-target.txt.$_sfx" ;;
+        '~') _sf="$REPO_TS/fixtures/scratch-target.txt~" ;;
+        *)   _sf="$REPO_TS/fixtures/scratch-target.txt.$_sfx" ;;
     esac
     if [[ ! -f "$_sf" ]]; then
         assert_pass "[$_spec] scratch suffix '$_sfx' pruned from working tree"
@@ -828,13 +838,13 @@ mkdir -p "$TEST_TEMP_DIR/custom"
 CUSTOM_SCOPE_SI="$TEST_TEMP_DIR/custom/scope-manifest.md"
 CUSTOM_PLAN_SI="$TEST_TEMP_DIR/custom/plan.json"
 cat > "$CUSTOM_SCOPE_SI" <<'EOF'
-+ tests/fixtures/
++ fixtures/
 EOF
 cat > "$CUSTOM_PLAN_SI" <<'EOF'
 {
   "schema_version": 1,
   "goal": "ZBUILD_STAGE_INPUTS test",
-  "files": ["tests/fixtures/si-test.txt"],
+  "files": ["fixtures/si-test.txt"],
   "steps": []
 }
 EOF
@@ -856,7 +866,7 @@ REPO_SI="$(setup_build_repo "repo_si")"
 export ZBUILD_REPO_ROOT="$REPO_SI"
 export ZBUILD_STATE_DIR="$STATE_DIR_SI"
 ZBUILD_RUN_START_COMMIT="$(git -C "$REPO_SI" rev-parse HEAD)"; export ZBUILD_RUN_START_COMMIT
-MOCK_LOOP_EDIT_FILE="tests/fixtures/si-test.txt"
+MOCK_LOOP_EDIT_FILE="fixtures/si-test.txt"
 MOCK_LOOP_EDIT_CONTENT="si-content"
 MOCK_LOOP_ITERATIONS=1
 MOCK_LOOP_REASON="done_sentinel"
@@ -973,7 +983,7 @@ cat > "$PLAN_JSON_S16" <<'EOF'
 {
   "schema_version": 1,
   "goal": "SPEC-16 design path test",
-  "files": ["tests/fixtures/s16-test.txt"],
+  "files": ["fixtures/s16-test.txt"],
   "steps": []
 }
 EOF
@@ -990,7 +1000,7 @@ This is a custom design.md injected via ZBUILD_STAGE_INPUTS.
 
 ```acceptance
 SPEC-1: the s16 fixture exists
-TESTFILES: tests/fixtures/s16-test.sh
+TESTFILES: fixtures/s16-test.sh
 ```
 EOF
 

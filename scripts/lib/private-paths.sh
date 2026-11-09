@@ -83,3 +83,20 @@ private_paths_deny_rules_v() {
         _pdrv+="Read(/$target)"$'\n'"Edit(/$target)"$'\n'
     done <<< "$_pdr_list"
 }
+
+# private_path_match <path> <pattern...> — rc 0 when the repo-relative path is
+# on the list: a pattern ending in / is a folder from the root and everything in
+# it; one holding / is a path from the root; any other is a file name matched
+# in any folder (* and ? are wildcards).
+# shellcheck disable=SC2053  # each pattern is meant to match as a glob
+private_path_match() {
+    local _p="$1" _g _base="${1##*/}"; shift
+    for _g in "$@"; do
+        case "$_g" in
+            */) [[ "$_p" == "$_g"* ]] && return 0 ;;
+            */*) [[ "$_p" == $_g ]] && return 0 ;;
+            *)  [[ "$_base" == $_g ]] && return 0 ;;
+        esac
+    done
+    return 1
+}

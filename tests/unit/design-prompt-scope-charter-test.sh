@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Unit: design's prompt charters EXHAUSTIVE scope discovery and invites
-# Read/Grep tools (#841). Pre-#841 design reasoned blind from plan.json and
-# emitted a scope block identical to the seed — it must instead enumerate
-# every repo file the change touches (tests/configs/docs/goldens/constants).
+# Unit: design's prompt invites Read/Grep tools (#841), so design checks the
+# code before it decides. Pre-#841 design reasoned blind from plan.json.
+# #2508 (ADR-069 §11): design names no files — T2 now checks it is asked for no
+# file list (it used to be told to search out a scope block, #2376).
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -61,12 +61,16 @@ else
     assert_fail "T1: prompt must invite Read/Grep" "got (head): $(head -40 "$PROMPT" | tr '\n' ' ' | cut -c1-200)"
 fi
 
-# T2 (#2376): the scope is found by searching for what the change alters —
-# an "exhaustive" read sent design through every file and out of time.
-if grep -qi 'search for the names, values and lists the change alters' "$PROMPT"; then
-    assert_pass "T2: prompt says to find the scope by searching for what changes"
+# T2 (#2508): design names no files — no scope block to write, and it is told so.
+if grep -qF '```scope' "$PROMPT"; then
+    assert_fail "T2: prompt asks for no scope block" "it still does"
 else
-    assert_fail "T2: prompt says to find the scope by searching for what changes"
+    assert_pass "T2: prompt asks for no scope block"
+fi
+if grep -qF 'You name no files' "$PROMPT"; then
+    assert_pass "T2: prompt says design names no files"
+else
+    assert_fail "T2: prompt says design names no files"
 fi
 
 # T3: old-value-pinning instruction (grep repo for files pinning old values).

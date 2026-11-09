@@ -240,7 +240,8 @@ _C7b="$(
     # shellcheck source=../../plugins/agent/test-author/plugin.sh
     source "$REPO_ROOT/plugins/agent/test-author/plugin.sh"
     route_to_model() { cat >/dev/null; printf '%s' "${ZBUILD_ROUTE_CALL:-main}" > "$TEST_TEMP_DIR/c7-ta"; printf 'WORK-1: VERDICT: corresponds | REASON: fine\n'; }
-    R="$TEST_TEMP_DIR/c7-repo"; mkdir -p "$R/tests"
+    # A SPEC's test is found by its tag in the repository's files (#2508).
+    R="$TEST_TEMP_DIR/c7-repo"; mkdir -p "$R/tests"; git -C "$R" init -q
     D="$TEST_TEMP_DIR/c7-ta.md"
     printf '# Design\n```acceptance\nWORK-1[code]: thing holds\nWIRING: none\nTESTFILES:\nWORK-1: tests/acc-test.sh\n```\n' > "$D"
     printf 'assert_eq "[WORK-1] thing holds" "1" "$got"\n' > "$R/tests/acc-test.sh"

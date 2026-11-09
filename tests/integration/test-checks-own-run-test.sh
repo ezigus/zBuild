@@ -42,7 +42,7 @@ _run() {
     local d="$TEST_TEMP_DIR/$1"; R="$d/repo"; S="$d/state"; A="$S/artifacts"
     mkdir -p "$A" "$R/tests"
     ( cd "$R" && git init -q -b main . && git config user.email t@e.st && git config user.name t \
-        && printf 'assert_eq "x" 1 1\n' > tests/a-test.sh && git add -A && git commit -q -m seed \
+        && printf '%s\n' "${A_TEST_BODY:-assert_eq \"x\" 1 1}" > tests/a-test.sh && git add -A && git commit -q -m seed \
         && git checkout -q -b zbuild/issue-1 && printf 'echo hi\n' > app.sh && git add -A && git commit -q -m change ) >/dev/null 2>&1
     printf '{"schema_version":1}' > "$S/pipeline-state.json"
     git -C "$R" diff main HEAD > "$A/diff.patch"
@@ -81,8 +81,6 @@ _run r4 '# Design
 ```acceptance
 SPEC-1[code]: the app says hi
 WIRING: none
-TESTFILES:
-SPEC-1: tests/a-test.sh
 ```
 ' ""
 assert_eq "[R4] an untagged requirement fails test" "fail" "$OUTCOME"
@@ -136,15 +134,15 @@ assert_contains "[R5] ...and the shape-floor check's" "$_out" "shape-floor-resul
 # The suite fails in the design's test file and in another test file.
 _r8_cmd='printf "unit: FAIL %s/tests/a-test.sh\n  ✗ A-CHECK\n    expected: 1, got: 2\nunit: FAIL %s/tests/other-test.sh\n  ✗ OTHER-CHECK\n    expected: 1, got: 3\nunit: 0/2 passed\n" "$PWD" "$PWD"; exit 1'
 _r8_saved="$ZBUILD_TEST_CMD"; export ZBUILD_TEST_CMD="$_r8_cmd"
+# #2508: the design's test file is the test-folder file holding its SPEC's tag.
+A_TEST_BODY="assert_eq \"$(acceptance_spec_tag SPEC-1) hi\" 1 1"
 _run r8 '# Design
 ```acceptance
 SPEC-1[code]: the app says hi
 WIRING: none
-TESTFILES:
-SPEC-1: tests/a-test.sh
 ```
 ' ""
-export ZBUILD_TEST_CMD="$_r8_saved"
+export ZBUILD_TEST_CMD="$_r8_saved"; unset A_TEST_BODY
 _r8() { jq -r --arg k "$1" '[.data.findings[]? | select(.text | contains($k)) | (.topic // "none")][0] // "MISSING"' "$A/test-results.json" 2>/dev/null; }
 assert_eq "[R8] the design's test file keeps test's topic" "none" "$(_r8 'tests/a-test.sh fails')"
 assert_eq "[R8] another test file is change-findings" "change-findings" "$(_r8 'tests/other-test.sh fails')"

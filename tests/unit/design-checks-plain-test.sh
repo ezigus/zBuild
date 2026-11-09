@@ -38,13 +38,13 @@ _gate() {   # _gate <design.md> → $FB (what the model is told), $VIOL (the cod
 
 _gate $'# Design\n\nNo blocks at all.\n'
 _fb1="$FB"; _v1="$VIOL"
-_gate $'# Design\n\n```scope\nlib/a.sh\n```\n\n```acceptance\nSPEC-1[code]: a\nSPEC-2: b\nTESTFILES:\n```\n'
+_gate $'# Design\n\n```acceptance\nSPEC-1[code]: a\nSPEC-2: b\n```\n\nUNCLEAR: R-1 does it need a flag\n'
 _fb2="$FB"; _v2="$VIOL"
-_gate $'# Design\n\n```scope\nlib/a.sh\n```\n\n```acceptance\nSPEC-1[done]: a evidence: lib/gone.sh\nWIRING: lib/gone.sh\nTESTFILES:\nSPEC-1: tests/a-test.sh\n```\n'
+_gate $'# Design\n\n```acceptance\nSPEC-1[done]: a evidence: lib/gone.sh\nWIRING: lib/gone.sh\n```\n'
 _fb3="$FB"; _v3="$VIOL"
 _all_fb="$_fb1"$'\n'"$_fb2"$'\n'"$_fb3"
 
-for _c in SCOPE_MISSING ACCEPTANCE_MISSING NO_STATUS UNKNOWN_STATUS DONE_NO_EVIDENCE DONE_BAD_EVIDENCE MISSING_TESTFILE_FOR_SPEC WIRING_MISSING WIRING_IS_TEST merge-base classifier; do
+for _c in ACCEPTANCE_MISSING NO_STATUS UNKNOWN_STATUS DONE_NO_EVIDENCE DONE_BAD_EVIDENCE UNCLEAR_MALFORMED WIRING_MISSING WIRING_IS_TEST merge-base classifier; do
     if grep -qF -- "$_c" <<< "$_all_fb"; then
         assert_fail "[D1] the feedback does not say '$_c'" "found in what the model is told"
     else
@@ -52,33 +52,36 @@ for _c in SCOPE_MISSING ACCEPTANCE_MISSING NO_STATUS UNKNOWN_STATUS DONE_NO_EVID
     fi
 done
 
-assert_contains "[D2] a missing scope block is said plainly" "$_fb1" "has no scope block"
+assert_contains "[D2] a missing acceptance block is said plainly" "$_fb1" "has no readable \`\`\`acceptance block"
 assert_contains "[D2] a requirement with no status is said plainly" "$_fb2" "SPEC-2 has no status"
-assert_contains "[D2] a [code] requirement with no test file is said plainly" "$_fb2" "SPEC-1 has no test file listed"
+assert_contains "[D2] an UNCLEAR line not in its form is said plainly, with the form (#2508)" "$_fb2" \
+    "write it as UNCLEAR: <id> | <the question> | <what you assumed>"
 assert_contains "[D2] a missing WIRING line asks the question" "$_fb2" "which existing file calls the new code"
 assert_contains "[D2] a WIRING file that does not exist is said plainly" "$_fb3" "lib/gone.sh does not exist"
 assert_contains "[D2] evidence that does not exist is said plainly (#2304)" "$_fb3" \
     "the evidence lib/gone.sh for SPEC-1 does not point at the repository"
 
-assert_contains "[D3] the codes still carry SCOPE_MISSING" "$_v1" "SCOPE_MISSING"
+assert_contains "[D3] the codes still carry ACCEPTANCE_MISSING" "$_v1" "ACCEPTANCE_MISSING"
+assert_contains "[D3] the codes still carry UNCLEAR_MALFORMED" "$_v2" "UNCLEAR_MALFORMED"
 assert_contains "[D3] the codes still carry NO_STATUS" "$_v2" "NO_STATUS SPEC-2"
 assert_contains "[D3] the codes still carry WIRING_MISSING" "$_v3" "WIRING_MISSING lib/gone.sh"
 
-# ── #2429: a WIRING file that is one of the design's own TESTFILES ───────────
+# ── #2429: a WIRING file that is a test ──────────────────────────────────────
 # A test checks the change; it is not what runs it. The reachability check
 # cannot prove a test file is load-bearing (#1951), so design is told at once.
+# #2508: a test is any file in the test folders — design lists none.
 mkdir -p "$ROOT/lib"; : > "$ROOT/tests/w-test.sh"; : > "$ROOT/lib/w.sh"
-_gate $'# Design\n\n```scope\nlib/w.sh\ntests/w-test.sh\n```\n\n```acceptance\nSPEC-1[code]: w works\nWIRING: tests/w-test.sh\nTESTFILES:\nSPEC-1: tests/w-test.sh\n```\n'
-assert_contains "[#2429-R1] a WIRING file listed under TESTFILES is a violation" "$VIOL" "WIRING_IS_TEST tests/w-test.sh"
+_gate $'# Design\n\n```acceptance\nSPEC-1[code]: w works\nWIRING: tests/w-test.sh\n```\n'
+assert_contains "[#2429-R1] a WIRING file in a test folder is a violation" "$VIOL" "WIRING_IS_TEST tests/w-test.sh"
 assert_contains "[#2429-R1] the words name the file and say a test is not what runs the change" "$FB" \
-    "the WIRING file tests/w-test.sh is one of your test files — a test is not what runs the change"
+    "the WIRING file tests/w-test.sh is in a test folder — a test is not what runs the change"
 assert_contains "[#2429-R1] the words say what to write instead" "$FB" "or write WIRING: none"
-_gate $'# Design\n\n```scope\nlib/w.sh\ntests/w-test.sh\n```\n\n```acceptance\nSPEC-1[code]: w works\nWIRING: lib/w.sh\nTESTFILES:\nSPEC-1: tests/w-test.sh\n```\n'
-assert_eq "[#2429-R2] a WIRING file that is not a TESTFILE passes as before" "" "$(grep 'WIRING' <<<"$VIOL" || true)"
-_gate $'# Design\n\n```scope\nlib/w.sh\ntests/w-test.sh\n```\n\n```acceptance\nSPEC-1[code]: w works\nWIRING: none\nTESTFILES:\nSPEC-1: tests/w-test.sh\n```\n'
+_gate $'# Design\n\n```acceptance\nSPEC-1[code]: w works\nWIRING: lib/w.sh\n```\n'
+assert_eq "[#2429-R2] a WIRING file outside the test folders passes as before" "" "$(grep 'WIRING' <<<"$VIOL" || true)"
+_gate $'# Design\n\n```acceptance\nSPEC-1[code]: w works\nWIRING: none\n```\n'
 assert_eq "[#2429-R2] WIRING: none passes as before" "" "$(grep 'WIRING' <<<"$VIOL" || true)"
-_gate $'# Design\n\n```scope\nlib/w.sh\n```\n\n```acceptance\nSPEC-1[code]: w works\nWIRING: tests/gone-test.sh\nTESTFILES:\nSPEC-1: tests/gone-test.sh\n```\n'
-assert_eq "[#2429-R1] a missing WIRING file that is also a TESTFILE gets one message, not two" \
+_gate $'# Design\n\n```acceptance\nSPEC-1[code]: w works\nWIRING: tests/gone-test.sh\n```\n'
+assert_eq "[#2429-R1] a missing WIRING file in a test folder gets one message, not two" \
     "WIRING_MISSING tests/gone-test.sh (declared wiring path absent on disk)" "$(grep 'WIRING' <<<"$VIOL" || true)"
 
 cleanup_test_env

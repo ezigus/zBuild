@@ -34,10 +34,12 @@ printf '%s' "bootstrap" > "$HOME/.zbuild/scope-override-token"
 export ZBUILD_SCOPE_OVERRIDE=1
 
 REPO="$(setup_git_temp_repo build608mi)"
-mkdir -p "$REPO/tests/fixtures"
+# #2508: the build mock writes outside the test folders — a build change
+# inside them is put back (ADR-030 §8).
+mkdir -p "$REPO/fixtures"
 ( cd "$REPO" \
-    && echo "seed" > tests/fixtures/seed.txt \
-    && git add tests/fixtures/seed.txt \
+    && echo "seed" > fixtures/seed.txt \
+    && git add fixtures/seed.txt \
     && git commit -q -m "seed" ) >/dev/null
 
 PRE_HEAD="$(cd "$REPO" && git rev-parse HEAD)"
@@ -51,8 +53,8 @@ cat > "$TEST_TEMP_DIR/bin/claude" <<MOCK
 n=\$(cat "$ITER_FILE")
 n=\$(( n + 1 ))
 echo "\$n" > "$ITER_FILE"
-mkdir -p "\$PWD/tests/fixtures"
-printf 'iter-%d\n' "\$n" >> "\$PWD/tests/fixtures/build-608-mi.txt"
+mkdir -p "\$PWD/fixtures"
+printf 'iter-%d\n' "\$n" >> "\$PWD/fixtures/build-608-mi.txt"
 jq -n --arg r "iter \$n wrote
 COMMIT_SUMMARY: iter \$n change
 LOOP_COMPLETE" '{result:\$r, usage:{input_tokens:5, output_tokens:5}}'
@@ -82,12 +84,12 @@ cat > "$STATE_DIR/artifacts/plan.json" <<'EOF'
   "schema_version": 1,
   "title": "multi-iter plan",
   "goal": "multi iter",
-  "files": ["tests/fixtures/build-608-mi.txt"],
-  "steps": [{"id":"s1","description":"d","files":["tests/fixtures/build-608-mi.txt"],"estimated_lines":1}]
+  "files": ["fixtures/build-608-mi.txt"],
+  "steps": [{"id":"s1","description":"d","files":["fixtures/build-608-mi.txt"],"estimated_lines":1}]
 }
 EOF
 cat > "$STATE_DIR/scope-manifest.md" <<'EOF'
-+ tests/
++ fixtures/
 EOF
 STATE_FILE="$STATE_DIR/state.json"
 printf '{"issue":$_ZB_ID,"branch":"feat/608"}' > "$STATE_FILE"

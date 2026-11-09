@@ -6,7 +6,7 @@
 #   - Create a detached git worktree at the merge-base.
 #   - Overlay ALL files changed between merge-base and HEAD from HEAD, EXCEPT
 #     the WIRING target (which stays at merge-base).
-#   - Run the declared TESTFILES.
+#   - Run the test files (found by their SPEC tags, #2508).
 #   - If ≥1 test flips pass→fail (rc_reverted!=0, rc_head==0), the wiring is
 #     load-bearing: REACHABILITY PASS <target>.
 #   - If no test flips: REACHABILITY FAIL inert_wiring <target> — gate hard-fails.
@@ -118,7 +118,7 @@ _reachability_code_changed() {
 }
 
 # _reachability_revert_one <target> — put <target> back to the merge-base with
-# every other changed file at HEAD, run the TESTFILES, and print one word:
+# every other changed file at HEAD, run the test files, and print one word:
 #   flip | no_testfiles | timeout | harness <tf> | red <tf> | none | worktree_failed
 # Reads the caller's repo_root, base_sha, design_md, changed_files[], testfiles[].
 _reachability_revert_one() {
@@ -309,12 +309,13 @@ acceptance_reachability_check() {
         wiring_targets=()
     fi
 
-    # Collect declared TESTFILES (existing on disk).
+    # The test files: every SPEC's, found by its tag in the test folders
+    # (#2508, ADR-069 §11).
     local -a testfiles=()
     local tf
     while IFS= read -r tf; do
         [[ -n "$tf" && -f "$repo_root/$tf" ]] && testfiles+=("$tf")
-    done < <(acceptance_list_testfiles "$design_md")
+    done < <(acceptance_list_testfiles "$design_md" "$repo_root")
 
     # Every file changed between merge-base and HEAD. --no-renames lists a moved
     # file as its old path (deleted) and its new one (added).

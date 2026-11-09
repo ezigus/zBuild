@@ -1,6 +1,6 @@
 # ADR-030 — Scope model (read/write split, security floor, governed expansion)
 
-**Status:** Proposed (2026-06-13)
+**Status:** Proposed (2026-06-13); amended 2026-11-09 (#2508, §8: build never touches the test folders and has no other file list — Layers 2 and 3, Amendments v1–v3 and the v2 discovery contract are superseded)
 **Related:** ADR-002 (legacy freeze), ADR-004 (redaction chokepoint), ADR-021 (cycle semantics), ADR-026 (review-remediation cycle), ADR-027 (recursive-flow template)
 **Issue:** #840
 
@@ -122,3 +122,25 @@ Layer 3 already said build emits its request "alongside its in-scope diff". The 
 - **Every scope violation** reverts only the out-of-scope paths (restored from HEAD, or removed with their intent-to-add entry when build created them), keeps the in-scope diff, and **commits it** — `commit.sh` stages plan files only. Build no longer reads the router's rc for this.
 - **The violation stays reported**: verdict `scope_violation`, `scope_violations[]`, and the `scope_expansion_request` the cycle resolves as before.
 - Event `build.timeout.partial_work_preserved` is replaced by `build.scope.inscope_preserved`.
+
+## Amendment v6 (2026-11-09, #2508) — §8: build never touches the test folders, and has no other file list
+
+#1805 run 42556446368 ended on a scope violation build did not commit. Test-author's new test needed a template nobody listed; its commit took only design's listed test files, the template was left in the tree, and build's scope check counted it as build's (`build.scope.violation … status=A`, then `cycle.scope.denied`, `blocked_on_scope`) with three hours left. In the same run build removed a guard to answer a lens and rewrote `pipeline-resume-test.sh` to match, because its scope list allowed both. The list this ADR governs was the Context's "prediction made before the implementation exists" — it failed both ways at once.
+
+**§8.** Who may change what is decided by one line, the repository's test folders (`scripts/lib/test-paths.sh`: the engine's `config/test-paths.txt`, replaced by a repository's `.zbuild/test-paths.txt`), never by a list a stage wrote:
+
+- **Test-author owns the test folders.** It writes the tests, and any helper file they need (a fixture, a template, a test helper), wherever they belong in them. Its commit takes every file it changed inside the test folders — new, changed or deleted — and nothing outside them (ADR-069 §11).
+- **Build may change any file outside the test folders, and none inside them.** It has no other file list: no design scope block, no `plan.files[]`, no grant. A change build makes inside the test folders is put back after its call — a tracked file restored from HEAD, a file it created removed — and reported (`build.scope.violation`, `scope_violations[]`, a finding its next try is shown); everything else it changed is kept and committed (v5). A scratch file it created (`*.bak`, `*.orig`, …) is removed, as before (#1789).
+- **A test that should change is a finding for test-author.** Build answers its finding `not mine — the test must change: <test file>: <why>`; like `wrong — the test is wrong: …` (#2441), that answer becomes a finding on `build-tests-result.json` for the stage that owns the tests.
+- **What build changes is checked by issue-acceptance, not a list.** Issue-acceptance names each part of the change that no requirement asks for, as a finding for build (ADR-072 §3, amended by #2508).
+- **Build asks for no more files.** There is nothing to widen: Layer 2 (`scope_policy` on a cycle), Layer 3 (`scope_expansion_request`, the collateral classes, the evidence check, the resolver, `blocked_on_scope`), Amendments v1–v3 (created, edited and pending collateral requests) and v2's discovery contract (design enumerates the write scope) are superseded. A template's cycle no longer reads `scope_policy`. The engine reports and exports no per-run file list (`scope_files`, `ZBUILD_SCOPE_ALLOWLIST`).
+- **What the repository defines as off limits is put back too.** A file build changes or creates that is outside the repository, inside `.git/`, or on the repository's own list (`.zbuild/private-paths`), is put back exactly as a change inside the test folders is (a file moved into them is put back whole — the file it moved from is restored): restored or removed, reported in `scope_violations[]`, and shown to its next try as a finding. Nothing else is: not the engine's default private files (ADR-043's list decides what a stage is shown, not what build may change — a tracked `.npmrc` is build's to change; a gitignored file is never committed), and never a file for its name alone (ordinary code whose name holds "secret" or "credential"). A secret value in what build commits is caught by build's own scan. `legacy-DoNotUse/` needs no rule: a run's worktree leaves it out (ADR-059 §2).
+- **Layer 1, the security floor (`scope_floor_denied`), stays for per-repo prompt overrides** (ADR-032). Build does not use it: its name rules would put ordinary code off limits. v4 (pre-existing untracked files are not build's) stays.
+
+## Enforced by
+
+- Layer 1 (the security floor) → `tests/unit/scope-governance-test.sh` (legacy, secrets and out-of-repo paths are on the floor; ordinary paths are not)
+- v4 (#1265: a file untracked before the run is not build's) → `tests/integration/build-preexisting-untracked-not-violation-test.sh`
+- v5 (#2185: the rest of build's change is kept and committed) and §8 (build never touches the test folders) → `tests/integration/build-never-touches-tests-test.sh` B1 (a changed test file is put back), B2 (a created one is removed), B3 (each is reported), B4 (build's changes outside the test folders are committed, with no file list), B5 (build's prompt has no scope list, and says it may change any file outside the test folders and none inside), B6 (a "not mine — the test must change" answer is a finding for the stage that owns the tests), B7 (no request for more files; its next try is told the change was put back), B8 (a path on the repository's own list, inside `.git/` or outside the repository is put back, reported, named in a finding and never committed; the engine's default private files and ordinary code whose name holds "secret" are kept and committed), B9 (a file moved into the test folders is put back whole: the moved copy goes and its source is restored, never committed as deleted)
+- §8 (test-author owns the test folders) → `tests/unit/test-author-owns-test-folders-test.sh` O1–O4
+- §8 (issue-acceptance checks what build changed) → `tests/unit/issue-acceptance-unasked-test.sh` U1–U4
