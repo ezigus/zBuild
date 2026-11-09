@@ -1,5 +1,24 @@
 # Design notes: #1805 — resume and --from-stage trust-and-rehydrate
 
+## Status: Forty-ninth pass — DSFSTG-3 added for post-target stage skip in combined mode
+
+### Changes this pass (forty-ninth)
+
+**lens-correctness-design finding 1** (combined --resume --from-stage <cycle>: stages after target skipped):
+- After target unit is found and `skip_until_stage` is cleared (runner.sh:3653, 3977), `resume_mode` stays true
+- Resume skip guard `$resume_mode && [[ -z "$skip_until_stage" ]]` fires for all subsequent units
+- Any subsequent unit marked complete in the interrupted run's state is silently skipped
+- RQFROM-1 says "the run starts at <s>" — all stages from <s> onward must dispatch
+- Fix: add `resume_mode=false` immediately after clearing `skip_until_stage` in both arms
+- Added Gap 11 to architectural decision
+- Added `resume_mode=false` to the Decision paragraph
+- Added DSFSTG-3[code] covers RQFROM-1
+- Updated from-stage-rehydrate-test.sh step to add DSFSTG-3 assertion (3-unit fixture)
+- Added DSFSTG-3 to TESTFILES
+- Updated Finding 1 (DSFSTG-3), Finding 3 (RQFROM-1: DSFSTG-1 + DSFSTG-3), Finding 30
+
+---
+
 ## Status: Forty-eighth pass — DSFRSH-2 Then corrected for cycle event semantics
 
 ### Changes this pass (forty-eighth)
