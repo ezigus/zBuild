@@ -22,7 +22,7 @@ printf -v now '%(%s)T' -1
 
 tool="$(jq -r '.tool_name // ""' <<< "$input" 2>/dev/null)"
 path="$(jq -r '.tool_input.file_path // ""' <<< "$input" 2>/dev/null)"
-if [[ -n "$notes" && "$path" == "$notes" && ( "$tool" == Write || "$tool" == Edit ) ]]; then
+if [[ -n "$notes" && "$path" == "$notes" && ( "$tool" == "Write" || "$tool" == "Edit" ) ]]; then
     exit 0
 fi
 

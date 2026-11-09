@@ -46,14 +46,16 @@ HOOK="$REPO_ROOT/core/router/time-up-hook.sh"
 
 # ── H1 / H2 ──────────────────────────────────────────────────────────────────
 print_test_section "H1/H2: the settings file holds the hook"
-_now=$(date +%s)
+_before=$(date +%s)
 _zbuild_build_permissions_settings 900 >/dev/null 2>&1
+_after=$(date +%s); _now="$_after"
 _cmd="$(jq -r '.hooks.PreToolUse[0].hooks[0].command // empty' "$_ZBUILD_PERMISSIONS_SETTINGS_FILE")"
 assert_contains "[H1] the hook is the router's time-up hook" "$_cmd" "core/router/time-up-hook.sh"
 assert_contains "[H1] ...given the stage's notes file" "$_cmd" "$NOTES"
 _dl="$(awk '{print $(NF-1)}' <<< "$_cmd")"
-_off=$(( _dl - _now ))
-assert_eq "[H1] ...and a deadline a minute before the call's limit" "1" "$(( _off >= 838 && _off <= 842 ? 1 : 0 ))"
+# Bracketed by the clock read just before and just after: no window to tune.
+assert_eq "[H1] ...and a deadline a minute before the call's limit" "1" \
+    "$(( _dl >= _before + 840 && _dl <= _after + 840 ? 1 : 0 ))"
 assert_eq "[H1] it matches every tool" "*" "$(jq -r '.hooks.PreToolUse[0].matcher' "$_ZBUILD_PERMISSIONS_SETTINGS_FILE")"
 assert_eq "[H1] the deny rules are kept" "array" "$(jq -r '.permissions.deny | type' "$_ZBUILD_PERMISSIONS_SETTINGS_FILE")"
 _zbuild_build_permissions_settings 60 >/dev/null 2>&1
