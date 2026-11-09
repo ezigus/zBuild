@@ -1343,10 +1343,14 @@ _cycle_iter_dispatch() {
     # means cardinal fallback (back-compat).
     local _cyc_pos=0
     # DSCMBR-1 edge case (#1805): if _resume_first_iter is true but ALL members
-    # show "complete" in stage_statuses, they completed in a PRIOR iteration — no
-    # member ran in the current (interrupted) iteration yet. Treat as a fresh
-    # iteration start: run all members but still emit stage.start for the first
-    # (since this is a resume starting the interrupted iteration at its beginning).
+    # show "complete" in stage_statuses, there are two distinct scenarios:
+    # (A) This iteration FULLY COMPLETED before the interruption (iter entry exists
+    #     in cycle_iterations[$id].iter). Keep _resume_first_iter=true so the
+    #     DSCMBR-1 guard skips every member and populates the blob from persisted
+    #     verdicts. The function returns 0 and the outer loop advances to iter+1.
+    # (B) This iteration was NOT yet started (all statuses are from the prior
+    #     iteration). Treat as a fresh iteration start: run all members with
+    #     stage.start for the first.
     if [[ "$_resume_first_iter" == "true" ]]; then
         local _cid_nc=0 _cid_s
         for _cid_s in "${_CYCLE_STAGES[@]}"; do
@@ -1356,9 +1360,23 @@ _cycle_iter_dispatch() {
             [[ "$_cid_st" != "complete" ]] && _cid_nc=$(( _cid_nc + 1 ))
         done
         if [[ "$_cid_nc" -eq 0 ]]; then
-            # All complete from prior iter; run all members fresh, emit stage.start for first.
-            _resume_first_iter=false
-            _from_stage_start=true
+            # All members complete — distinguish scenarios A and B by checking
+            # whether this iteration has an entry in the state's iter array.
+            local _cid_iter_done
+            _cid_iter_done="$(jq -r \
+                --arg id "${_CYCLE_TRAP_CYCLE_ID:-}" \
+                --argjson n "$iter" \
+                '(.cycle_iterations[$id].iter // []) | map(select(.n == $n)) | length' \
+                "$state_file" 2>/dev/null || echo 0)"
+            if [[ "$_cid_iter_done" -eq 0 ]]; then
+                # Scenario B: iteration not started yet (statuses from prior iter).
+                # Run all members fresh, emit stage.start for the first.
+                _resume_first_iter=false
+                _from_stage_start=true
+            fi
+            # else: Scenario A — iteration completed. Keep _resume_first_iter=true;
+            # DSCMBR-1 guard will skip each member, populate blob from persisted
+            # verdicts, and return 0 for the outer loop to advance to iter+1.
         fi
     fi
     # ADR-027 (Wave 17-B #703): cycle-as-member support. For each cycle
@@ -1452,7 +1470,15 @@ _cycle_iter_dispatch() {
                 _cmbr_new_blob="$(jq -c --arg s "$s" --argjson e "$_cmbr_blob_entry" \
                     '. + {($s): $e}' <<< "$blob" 2>/dev/null)" \
                     && blob="$_cmbr_new_blob" \
-                    || warn "cycle-orchestrator: failed to update verdict blob for skipped member '$s'; cycle predicates (exit_when/abort_when/until) may evaluate incorrectly"
+                    || {
+                        warn "cycle-orchestrator: failed to update verdict blob for skipped member '$s'; cycle predicates (exit_when/abort_when/until) may evaluate incorrectly"
+                        # Emit machine-readable event so monitoring can observe the blob
+                        # update failure and correlate it with a predicate that uses a
+                        # stale/missing entry for this member (#1805 sre-2).
+                        eb_emit_event "cycle.history.lost" \
+                            "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-}" "member=$s" \
+                            "reason=blob_update_failed" 2>/dev/null || true
+                    }
                 continue
             fi
             # Non-complete (interrupted) member: emit stage.start before dispatch.
@@ -2471,7 +2497,14 @@ _cycle_orchestrator_run_body() {
         # current_iter; this start write is what makes the resume formula correct for
         # a run interrupted before the first iter completes (#1805, correctness).
         _cycle_state_write_iter_start "$state_file" "$cycle_id" "$iter" \
-            || warn "cycle-orchestrator: failed to write iter-start state for cycle=$cycle_id iter=$iter (a resume may start at the wrong iteration)"
+            || {
+                warn "cycle-orchestrator: failed to write iter-start state for cycle=$cycle_id iter=$iter (a resume may start at the wrong iteration)"
+                # Emit machine-readable event so monitoring can observe the write failure
+                # and correlate it with a resume that starts at the wrong iteration (#1805 sre-1).
+                eb_emit_event "state.write" \
+                    "op=iter_start" "cycle_id=$cycle_id" "iter=$iter" \
+                    "reason=write_failed" 2>/dev/null || true
+            }
 
         # Dispatch the cycle's stages in order.
         # DSCMBR-1 (#1805): signal resume_first_iter for the first resumed iteration
