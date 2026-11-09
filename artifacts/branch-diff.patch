@@ -214,7 +214,7 @@ index 85c4e892..80247d87 100644
          [[ $_ORCH_HAD_E -eq 1 ]] && set -e
          # The round stopped before every member ran (#1850: the word, not an rc).
 diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
-index ee069d8d..ca174960 100755
+index ee069d8d..38c3fe73 100755
 --- a/core/pipeline/runner.sh
 +++ b/core/pipeline/runner.sh
 @@ -1704,6 +1704,95 @@ _runner_rearm_traps() {
@@ -546,7 +546,21 @@ index ee069d8d..ca174960 100755
      # ADR-021 (#512 + #511 F2): cycle-aware dispatch.
      # #511 Pin 4 — detect-and-enable with env override:
      #   ZBUILD_CYCLES_ENABLED=0  → disabled (force off, even if template asks)
-@@ -3074,6 +3312,10 @@ main() {
+@@ -3041,6 +3279,13 @@ main() {
+         # ADR-042: resolve role-then-id (uniform with leaf + parallel paths) so a
+         # role-bound cycle member whose plugin id ≠ stage name resolves correctly.
+         _cd_plugin_dir="$(resolve_stage_plugin "$_cd_stage" "$plugins_root" 2>/dev/null || true)"
++        # no_plugin fallback: when resolve_stage_plugin found no matching provider for
++        # any declared role, fall back to ID-based lookup to match the legacy linear
++        # path's backward-compat behaviour (runner.sh no_plugin branch, ~line 4256).
++        # ADR-042 role-then-id: this is the id part of that chain when roles go unresolved.
++        if [[ -z "$_cd_plugin_dir" ]]; then
++            _cd_plugin_dir="$(_find_plugin_for_stage "$_cd_stage" "$plugins_root" 2>/dev/null || true)"
++        fi
+         if [[ -z "$_cd_plugin_dir" ]]; then
+             _CYCLE_DISPATCH_VERDICT="error"
+             _CYCLE_DISPATCH_VERDICT_RAW="error"
+@@ -3074,6 +3319,10 @@ main() {
              _CYCLE_DISPATCH_STATUS="failed"
              return 1
          fi
@@ -557,7 +571,7 @@ index ee069d8d..ca174960 100755
          set +e; plugin_hook_call "$_cd_plugin_dir" run "$_cd_stage" "$_cd_state"; _cd_rc=$?
          [[ $_cd_had_e -eq 1 ]] && set -e
          _cd_manifest="$_cd_plugin_dir/manifest.yaml"
-@@ -3341,6 +3583,67 @@ main() {
+@@ -3341,6 +3590,67 @@ main() {
              case "$_unit" in
                  cycle:*)
                      local _cyc_id="${_unit#cycle:}"
@@ -625,7 +639,7 @@ index ee069d8d..ca174960 100755
                      # #524: replace bare `info` with operator-visible cycle
                      # entry banner (heavy ═ + ▸ Entering + DIM trailer).
                      local _cyc_stages_csv=""
-@@ -3483,6 +3786,12 @@ main() {
+@@ -3483,6 +3793,12 @@ main() {
                          esac
                          warn "$(_runner_unconverged_msg "$_cyc_id" "$_rc" "$_CYCLE_LAST_TERMINATED_REASON" "$_RUNNER_CYCLE_UNCONVERGED_ON_MAX")"
                      fi
@@ -638,7 +652,7 @@ index ee069d8d..ca174960 100755
                      # #2368: every stage is told whether every loop that ran
                      # passed — "yes" only then; unset until a loop has run, so a
                      # stage that acts on it (merge, deploy) fails closed.
-@@ -3609,6 +3918,56 @@ main() {
+@@ -3609,6 +3925,56 @@ main() {
                      ;;
                  stage:*)
                      local _ust="${_unit#stage:}"
@@ -695,7 +709,7 @@ index ee069d8d..ca174960 100755
                      # Re-enter the legacy loop for a single stage by re-using
                      # active_stages — simplest correct path: run that stage's
                      # body inline via cycle_dispatch_stage (gives same plugin
-@@ -3755,9 +4114,12 @@ main() {
+@@ -3755,9 +4121,12 @@ main() {
                              eb_emit_event "stage.verdict.stale_artifact" \
                                  "stage=$stage" "path=$_sk_resolved" \
                                  "run_id=$_runner_run_id"
@@ -2553,10 +2567,10 @@ index 00000000..2ebaf465
 +exit $((FAIL > 0))
 diff --git a/tests/integration/resume-rehydrate-test.sh b/tests/integration/resume-rehydrate-test.sh
 new file mode 100644
-index 00000000..1a3c998b
+index 00000000..e45cccb5
 --- /dev/null
 +++ b/tests/integration/resume-rehydrate-test.sh
-@@ -0,0 +1,1046 @@
+@@ -0,0 +1,1044 @@
 +#!/usr/bin/env bash
 +# Tests: resume rehydrates completed-stage artifacts from the git state branch
 +# before the dispatch loop. (issue #1805, ADR-006 §3.5)
@@ -3370,7 +3384,6 @@ index 00000000..1a3c998b
 +    ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
 +    ZBUILD_CONTRACT_VALIDATOR=warn \
 +    ZBUILD_VISION_GATE=off \
-+    ZBUILD_CYCLES_ENABLED=1 \
 +    PATH="$PATH" HOME="$HOME" \
 +    bash "$RUNNER" --template artifact-snapshot-coverage --no-resume --issue "$_S12_ID" ) \
 +    >"$TEST_TEMP_DIR/s12-stdout.txt" 2>"$TEST_TEMP_DIR/s12-stderr.txt"
@@ -3522,7 +3535,6 @@ index 00000000..1a3c998b
 +#   (not interrupted), so no auto-resume triggers.
 +set +e
 +( cd "$_S_FRSH2_WORK_REPO" && env \
-+    ZBUILD_CYCLES_ENABLED=1 \
 +    ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
 +    ZBUILD_STATE_DIR="$_S_FRSH2_STATE_DIR" \
 +    ZBUILD_STATE_FILE="$_S_FRSH2_STATE_FILE" \
