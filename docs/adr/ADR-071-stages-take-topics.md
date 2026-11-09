@@ -1,6 +1,6 @@
 # ADR-071 — Each output names its topic; each stage takes only the topics it needs
 
-**Status:** Accepted (2026-10-27); amended 2026-11-08 (#2491, §1 §3: a lens finding goes by what fixes it, and reaches a stage once; test-author's check findings are requirement-findings); amended 2026-11-06 (#2480, §2: a map group's outputs are read member by member); amended 2026-10-28 (§3: test-author takes requirement-findings); amended 2026-10-30 (#2428, §1 §2: each stage states its contract; every finding a stage takes reaches it); amended 2026-10-31 (#2441, §1: build writes its answers that a test is wrong to its own code-findings output); amended 2026-11-02 (#2452, §1 §2: each finding can carry its own topic); amended 2026-11-02 (#2454, §1 §2: every stage result declares where its findings may go; the test stage labels by whose test it is)
+**Status:** Accepted (2026-10-27); amended 2026-11-08 (#2503, §1 §3: one topic, one kind of item — change-findings and test-findings); amended 2026-11-08 (#2491, §1 §3: a lens finding goes by what fixes it, and reaches a stage once; test-author's check findings are requirement-findings); amended 2026-11-06 (#2480, §2: a map group's outputs are read member by member); amended 2026-10-28 (§3: test-author takes requirement-findings); amended 2026-10-30 (#2428, §1 §2: each stage states its contract; every finding a stage takes reaches it); amended 2026-10-31 (#2441, §1: build writes its answers that a test is wrong to its own code-findings output); amended 2026-11-02 (#2452, §1 §2: each finding can carry its own topic); amended 2026-11-02 (#2454, §1 §2: every stage result declares where its findings may go; the test stage labels by whose test it is)
 **Issue:** #1944 (run 40393999128)
 **Amends:** ADR-067 §8 (Previous work), ADR-068 §6 and §8 (every stage's latest output goes to every later stage)
 **Related:** ADR-055 (inter-stage data contract), ADR-060 (stages return structure), ADR-066 (every ADR statement has a test)
@@ -19,6 +19,9 @@ The prompt was not enough. A stage should not be handed what its job does not us
    - `change` — the code the change made, and its summary;
    - `requirement-findings` — what checks found against the requirements and the design: issue-acceptance, design's own checks, the acceptance check on each requirement's test;
    - `code-findings` — what checks found in the code and the tests: the test suite, the test checker, the review lenses.
+   *Amended 2026-11-08 (#2503):* and two that only findings carry, so that no topic holds two kinds of item:
+   - `change-findings` — what only the code can fix: a lens's finding the code must fix, a failing file that is not one of the design's tests;
+   - `test-findings` — what test-author's own check found wrong in a test against its requirement.
    A finding takes the topic of the output it is in, and lives in one output: a stage does not copy one output's findings into another. *Amended 2026-11-02 (#2452):* a finding may name its own topic, and then goes by it; one that names none goes by its output's (see the amendment below). The words are checked at load: a manifest naming any other topic is refused, naming the word.
 
    *Amended 2026-10-30 (#2428):* every output that names a topic also has a one-line `description:` saying what it holds, including the kinds of findings it can carry. The description sits on the output entry in the producing stage's manifest; two stages may produce the same type, and each describes its own output. A template author reads these, with each take's `for:` (§2), to see whether a finding reaches a stage that can act on it; the engine does not judge them. `validate_manifest` refuses an output with a topic and no description.
@@ -137,8 +140,27 @@ On #1805 run 42439063480 every lens finding about code reached test-author, whic
 - **Test-author's result is `requirement-findings`** (§1's list: what checks found against the requirements and the design). Its check's findings say a test does not do what its SPEC says; design is shown them, so a Given no test can meet reaches the one stage that can rewrite it. Build still takes them.
 - **§3's table is unchanged:** each stage takes what it took; what changes is the topic the findings carry.
 
+## Amendment 2026-11-08 (#2503) — §1 §3: one topic, one kind of item
+
+On #1805 run 42523805245 two topics each carried two kinds of item, so findings reached stages that could not fix them:
+- **`change`** was both the diff and the findings the code must fix (#2491 tagged a lens's `fix: code` findings, and the test stage's failing files outside the design's tests, `change`). Issue-acceptance takes `change` for the diff. It was shown all 12 lens findings and told to answer each; in round 1 it answered 16 of them "done", quoting build's fixes, and in round 2 its reasoning spent its time checking them in the code ("to verify the correctness findings") until both calls ran out of time.
+- **`requirement-findings`** was both what the code does not meet (issue-acceptance's `[fix-code]` lines, build's to fix) and what test-author's check found wrong in a test (#2491). Build takes `requirement-findings`, so it was shown "DSFRSH-2's test never asserts no stage.skip", a test only test-author may edit.
+
+- **§1: two more topics, carried only by findings.** `change-findings`: what only the code can fix. `test-findings`: what test-author's own check found wrong in a test. `change` is the code the change made, and names no finding.
+- **The findings that named `change` name `change-findings`:** a lens's `fix: code` finding (its code output's `finding_topics: change-findings`), and the test stage's failing file that is not one of the design's tests (test's result and the shape check, `finding_topics: change-findings`).
+- **Test-author's result is `test-findings`,** not `requirement-findings` (amends #2491's bullet).
+- **§3, amended:**
+
+  | Stage | Takes |
+  |---|---|
+  | design | ask, requirement-findings, test-findings |
+  | test-author | ask, tests, requirement-findings, code-findings, test-findings |
+  | build | ask, tests, change, requirement-findings, code-findings, change-findings |
+  | issue-acceptance, review lenses, monitor | unchanged: none of them takes either new topic |
+
 ## Enforced by
 
+- §1 §3 amendment 2026-11-08 (#2503: change-findings and test-findings; one topic, one kind of item) → `tests/unit/finding-goes-to-fixer-test.sh` F5 (a finding the code must fix reaches build, not issue-acceptance), F6 (test-author's check finding reaches design and test-author, not build); `tests/unit/stage-takes-topics-test.sh` T7
 - §1 §3 amendment 2026-11-08 (#2491: a lens finding by what fixes it, once; test-author's check findings reach design) → `tests/unit/finding-goes-to-fixer-test.sh` F1–F4; `tests/unit/map-findings-reach-stages-test.sh` M4; `tests/unit/stage-takes-topics-test.sh` T7
 
 - §5 amendment 2026-11-07 (a finding that does not block still travels, marked) → `tests/unit/finding-answers-test.sh` C1, C2; `plugins/agent/review-lens/tests/review-lens-loop-test.sh` R3

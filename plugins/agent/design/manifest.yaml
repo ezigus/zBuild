@@ -10,6 +10,8 @@ takes:
     for: "the issue and its requirements, to design against"
   - topic: requirement-findings
     for: "findings against the requirements or the design: what its acceptance contract, scope or WIRING gets wrong"
+  - topic: test-findings
+    for: "what test-author's check found wrong in a test: a Given or Then no test can meet is the design's to rewrite"
 description: |
   Design stage agent. Invokes the LLM (T2) to produce an ADR-style design.md
   with a fenced ```scope block (the authoritative scope the build stage works

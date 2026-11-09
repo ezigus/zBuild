@@ -363,3 +363,14 @@ Enforced by `tests/unit/cut-off-hand-off-test.sh` H1–H4; `tests/integration/cu
 A stage whose calls have no tools (ADR-017 §11, `tools: none`) cannot write a notes file, so its rules do not ask for one, or name one. They say instead that it has no tools, that everything it needs is in the prompt, and that its answer is its reply. Told to keep notes, intake's one-turn call on #1805 (run 41352202870) wrote them with a tool and had no turn left to answer.
 
 Enforced by: Amendment 2026-11-01 (#2448: a stage with no tools keeps no notes file) → `tests/unit/intake-no-tools-test.sh` T3
+
+## Amendment (2026-11-08, #2503): a call is told its time is up a minute before it is cut off
+
+On #1805 run 42523805245 eight calls were killed at their time limit: four of build's, four of issue-acceptance's. Twice build had found why a test failed ("the mock doesn't have `role: intake`") and was cut off before it wrote that down or answered. A killed call writes no reply, so it answers no finding, and it reports no cost: Claude gives a call's cost only in its last message (`router.cost.unknown`).
+
+- **Each call's settings file holds a Claude Code `PreToolUse` hook** (`core/router/time-up-hook.sh`), given the call's deadline, its time limit less one minute, and the stage's notes file. The deadline and the path ride in the hook's command, since the spawn scrubs `ZBUILD_*`. A call of a minute or less gets no hook.
+- **Before the deadline the hook allows every tool.** After it, it refuses every tool but `Write` or `Edit` on the notes file, and says why: time is up; write what you found to your notes file now, in one step; then give your final reply, with your answer to every finding.
+- **The call then ends with its own last message:** its answers are written and its cost is reported. The time limit stays, and still stops a call that does not end.
+- **Measured on CLI 2.1.319:** under `--permission-mode bypassPermissions` a `PreToolUse` deny is honoured and its reason reaches the model as the tool's result. A model refused that way wrote its notes file and ended with a `result` message carrying its cost.
+
+Enforced by `tests/unit/call-time-up-hook-test.sh` H1–H6.

@@ -17,6 +17,18 @@
 # F3 [change] test-author and build are shown each lens finding once: the
 #             lens's summary, verdict file and replies reach no stage
 # F4 [change] design is shown what test-author's check found
+#
+# #1805 run 42523805245: two topics each carried two kinds of item, so a finding
+# reached a stage that could not fix it.
+# - `change` was the diff and the lens findings the code must fix: issue-acceptance
+#   takes `change` for the diff, was shown all 12 lens findings, and answered them;
+# - `requirement-findings` was what the code does not meet and what test-author's
+#   check found wrong in a test: build was shown "DSFRSH-2's test never asserts no
+#   stage.skip", a test only test-author may edit.
+# F5 [change] a finding the code must fix (lens, or a failing file that is not
+#             the design's test) reaches build only: not issue-acceptance
+# F6 [change] test-author's check finding is not shown to build; [guard] it still
+#             reaches design and test-author
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -97,6 +109,24 @@ stage_result_write "$ART/test-author-result.json" unusable "1 finding about its 
 _update_stage_status "$STATE/pipeline-state.json" test-author complete
 assert_contains "[F4] design is shown test-author's check finding" "$(_pw design)" \
     "test-author finding 1 (opened by test-author): DSCMBR-1: the Given says in-progress"
+
+# ── F5 ───────────────────────────────────────────────────────────────────────
+print_test_section "F5: a finding the code must fix reaches build only (#1805 run 42523805245)"
+IA="$(_pw issue-acceptance)"
+assert_not_contains "[F5] issue-acceptance is not shown the lens finding the code must fix" "$IA" "CODE-FIX"
+# shellcheck source=../../plugins/tool/test/lib/findings.sh
+source "$REPO_ROOT/plugins/tool/test/lib/findings.sh"
+_tf="$(printf 'lib/other.sh\tOTHER-FILE fails: not one of the design test files\n' | _test_findings_by_owner "" | stage_findings_json)"
+stage_result_write "$ART/test-results.json" fail "1 file failed" "{\"findings\":$_tf}" >/dev/null
+_update_stage_status "$STATE/pipeline-state.json" test complete
+assert_contains "[F5] build is shown a failing file that is not the design's test" "$(_pw build)" "OTHER-FILE fails"
+assert_not_contains "[F5] ...and issue-acceptance is not" "$(_pw issue-acceptance)" "OTHER-FILE fails"
+
+# ── F6 ───────────────────────────────────────────────────────────────────────
+print_test_section "F6: test-author's check finding goes to design and test-author, not build"
+assert_not_contains "[F6] build is not shown test-author's check finding" "$(_pw build)" "DSCMBR-1: the Given says in-progress"
+assert_contains "[F6] test-author is shown it" "$(_pw test-author)" "test-author finding 1"
+assert_contains "[F6] ...and design" "$(_pw design)" "DSCMBR-1: the Given says in-progress"
 
 cleanup_test_env
 print_test_results

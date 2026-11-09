@@ -97,13 +97,14 @@ outputs:
     summary: true
   # #2433 (ADR-071 §1): one output per topic the lens writes findings to —
   # those that send the run back, numbered; each passes when it holds none.
-  # #2491: a finding the code must fix names `change`, so it reaches build and
-  # not test-author; one a test must fix keeps code-findings.
+  # #2491: a finding the code must fix names change-findings, so it reaches
+  # build only, not test-author or issue-acceptance; one a test must fix keeps
+  # code-findings.
   - id: review_lens_code
     topic: code-findings
-    description: "the lens's findings that send the run back and that the code or a test must fix; one the code must fix goes to change"
+    description: "the lens's findings that send the run back and that the code or a test must fix; one the code must fix goes to change-findings"
     path: "${artifact_dir}/lens-${ZBUILD_REVIEW_LENS_ID}-code-result.json"
-    finding_topics: change
+    finding_topics: change-findings
     type: review-lens-routed.json@1
     format: json
     required: false

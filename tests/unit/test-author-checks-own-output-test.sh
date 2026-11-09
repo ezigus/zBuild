@@ -40,6 +40,11 @@
 # A13 [change] a finding it is shown and does not answer is asked for, and
 #             every answer, with how many findings it was shown, is recorded
 #             (ADR-068 §6)
+# A14 [change] (#2503) told a test of its fails, it runs that test file and
+#             finds why before changing it, and never deletes an assertion to
+#             make it pass. #1805 run 42523805245: told "expected >0, got 0", it
+#             guessed the engine lacked the behaviour and deleted the
+#             assertion; the cause was its own mock, missing a role.
 # A12 [change] what it did about each finding — its latest answer to each (#2460) — is recorded in its result and
 #             summary (ADR-068 §6)
 set -uo pipefail
@@ -196,6 +201,12 @@ assert_eq "[A11] it is not told its assertions fail on the code as it is today" 
     "$(grep -c 'expected to fail on the code as it is today' <<< "$_AP" || true)"
 assert_contains "[A11] ...but on the code from before this change" "$_AP" \
     "are run on the code from before this change"
+
+# ── A14 ──────────────────────────────────────────────────────────────────────
+assert_contains "[A14] told a test of its fails, it runs it and finds why first" "$_AP" \
+    "When you are told a test of yours fails, run that test file and find out why before you change it"
+assert_contains "[A14] ...and never deletes an assertion to make it pass" "$_AP" \
+    "never delete an assertion to make a test pass"
 
 # ── A12 ──────────────────────────────────────────────────────────────────────
 JUDGE=("$CORRESP"); JUDGE_RC=0

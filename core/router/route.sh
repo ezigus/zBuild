@@ -650,7 +650,7 @@ _route_call_claude() {
     # (same value permissions.sh would fall back to, without emitting the event).
     : "${ZBUILD_STAGE_SCRATCH:="$(zbuild_engine_tmpdir)"}"
     # #1919 (C10): abort spawn on settings build failure (SPEC-3).
-    _zbuild_build_permissions_settings || return 2
+    _zbuild_build_permissions_settings "$secs" || return 2
     # mapfile, not $( ) word-splitting: --add-dir IS the grant now, and a scratch
     # path containing a space would split into two tokens, silently granting a
     # directory nobody named. A visible failure would be safer than that; a
@@ -1406,7 +1406,7 @@ route_to_model_loop() {
     _claude_args+=("${_ROUTE_PERSONA_ARGS[@]+"${_ROUTE_PERSONA_ARGS[@]}"}")
     : "${ZBUILD_STAGE_SCRATCH:="$_rt_tmp"}"
     # #1919 (C10): abort iteration on settings build failure (SPEC-3).
-    _zbuild_build_permissions_settings || {
+    _zbuild_build_permissions_settings "$secs" || {
         _ROUTE_LOOP_TERMINATED_REASON="router_config_error"
         rm -f "$stderr_file" "$json_file"
         _route_loop_clear_traps; return 1; }

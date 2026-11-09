@@ -77,8 +77,23 @@ _zbuild_permissions_artifact_dir() {
     printf '%s' "${ZBUILD_ARTIFACT_DIR:-${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}/artifacts}"
 }
 
+# _zbuild_time_up_hook_cmd_v <var> <secs> — #2503 (ADR-063): the command of the
+# call's PreToolUse hook, told the call's deadline (its time limit less a
+# minute) and the stage's notes file; empty for a call of a minute or less. The
+# deadline and the path ride in the command: the spawn scrubs ZBUILD_*.
+_ZB_TIME_UP_WINDOW=60
+_zbuild_time_up_hook_cmd_v() {
+    local -n _tuh="$1"; local secs="${2:-}" now notes=""
+    _tuh=""
+    [[ "$secs" =~ ^[0-9]+$ ]] && (( secs > _ZB_TIME_UP_WINDOW )) || return 0
+    printf -v now '%(%s)T' -1
+    [[ -n "${ZBUILD_STATE_DIR:-}" && -n "${ZBUILD_CURRENT_STAGE:-}" ]] && declare -F stage_notes_path_v >/dev/null 2>&1 \
+        && stage_notes_path_v notes "$ZBUILD_STATE_DIR" "$ZBUILD_CURRENT_STAGE"
+    printf -v _tuh 'bash %q %q %q' "${_ROUTER_DIR:-${BASH_SOURCE[0]%/*}}/time-up-hook.sh" "$(( now + secs - _ZB_TIME_UP_WINDOW ))" "$notes"
+}
+
 _zbuild_build_permissions_settings() {
-    local _scratch_dir
+    local _secs="${1:-}" _scratch_dir
     if [[ -n "${ZBUILD_STAGE_SCRATCH:-}" ]]; then
         _scratch_dir="$ZBUILD_STAGE_SCRATCH"
     else
@@ -127,7 +142,9 @@ _zbuild_build_permissions_settings() {
         || { error "router: permissions: jq failed to build private-path rules"; return 1; }
     _deny_json="$(jq -cn --argjson a "$_deny_json" --argjson b "${_priv_json:-[]}" '$a + $b')" \
         || { error "router: permissions: jq failed to merge deny rules"; return 1; }
-    _json="$(jq -cn --argjson d "$_deny_json" '{permissions: {deny: $d}}')" \
+    local _hook_cmd; _zbuild_time_up_hook_cmd_v _hook_cmd "$_secs"
+    _json="$(jq -cn --argjson d "$_deny_json" --arg c "$_hook_cmd" '{permissions: {deny: $d}}
+        + (if $c == "" then {} else {hooks: {PreToolUse: [{matcher: "*", hooks: [{type: "command", command: $c}]}]}} end)')" \
         || { error "router: permissions: jq failed to build settings JSON"; return 1; }
 
     printf '%s\n' "$_json" > "$_settings_file" \
