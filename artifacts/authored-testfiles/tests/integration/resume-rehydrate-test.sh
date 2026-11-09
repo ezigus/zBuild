@@ -856,6 +856,22 @@ fi
 assert_eq "[#1805/DSFRSH-1] fresh run (--no-resume) emits no stage.skip events (no stage skipped due to prior state)" \
     "0" "$_s12_stage_skips"
 
+# [#1805/DSFRSH-1]: the cycle stage (cyc) must have been dispatched on a fresh run.
+# This catches a bug where the skip guard erroneously suppresses the cycle stage
+# without emitting stage.skip — a scenario the stage.skip==0 assertion above cannot
+# detect. cycle.start is emitted by the cycle orchestrator when cyc is dispatched;
+# a buggy skip guard that suppresses cyc would yield cycle.start==0 and fail here.
+# Passes on current code: cycle stages emit cycle.start normally (confirmed by
+# core-pipeline-cycle-orchestrator-test.sh). Would fail after this change if the
+# skip guard activates for the cycle stage on a fresh run.
+_s12_cyc_cycle_starts=0
+if [[ -f "$S12_EVENTS_JSONL" ]]; then
+    _s12_cyc_cycle_starts="$(jq -r 'select(.type=="cycle.start" and .data.cycle_id=="cyc") | .type' \
+        "$S12_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_gt "[#1805/DSFRSH-1] fresh run dispatches cycle stage (cyc) — cycle.start emitted (cycle stage not erroneously suppressed by skip guard)" \
+    "$_s12_cyc_cycle_starts" "0"
+
 # [#1805/DSFRSH-1]: no artifact from a prior run must appear in ZBUILD_ARTIFACT_DIR.
 # The setup placed prior-run intake-result.json content on the state branch only
 # (the disk copy was removed before the runner was invoked). A fresh run must NOT
@@ -992,6 +1008,24 @@ fi
 assert_eq \
     "[#1805/DSFRSH-2] fresh run (no --resume) emits no stage.skip events (dispatch-unit skip guard does not activate for fresh runs)" \
     "0" "$_frsh2_stage_skips"
+
+# [#1805/DSFRSH-2]: the cycle stage (cyc) must have been dispatched on a fresh run
+# even with prior-run artifacts present on the git state branch.
+# This catches a bug where the skip guard reads prior artifacts and erroneously
+# suppresses cyc without emitting stage.skip — a gap the assertion above cannot detect.
+# cycle.start is emitted when the cycle stage is dispatched; a buggy guard that
+# activates on a fresh run would yield cycle.start==0 and fail here.
+# Passes on current code: cycle stages emit cycle.start normally.
+# Would fail after this change if the skip guard (conditional on resume_mode) is
+# incorrectly applied to fresh runs.
+_frsh2_cyc_cycle_starts=0
+if [[ -f "$_S_FRSH2_EVENTS_JSONL" ]]; then
+    _frsh2_cyc_cycle_starts="$(jq -r 'select(.type=="cycle.start" and .data.cycle_id=="cyc") | .type' \
+        "$_S_FRSH2_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_gt \
+    "[#1805/DSFRSH-2] fresh run dispatches cycle stage (cyc) — cycle.start emitted (skip guard conditional on resume_mode does not suppress cycle stage on fresh run)" \
+    "$_frsh2_cyc_cycle_starts" "0"
 
 # ── DSCYCL-1: test uses a fixture containing a cyclic stage ────────────────────
 print_test_section "resume-rehydrate test uses a fixture containing a cyclic stage"
