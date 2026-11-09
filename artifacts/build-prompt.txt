@@ -181,10 +181,10 @@ omit this line the pipeline falls back to the plan title.
 - Gap 8 — runner.sh auto-resume check (line 2174) tests `[[ -f "$state_file" ]]` where `state_file = $state_dir/pipeline-state.json` (the flat default root path). But the per-run layout (ADR-059 §1) stores state at `runs/<run_id>/pipeline-state.json`, not at the root. The `latest` symlink at `$(zbuild_layout_state_root)/latest` points to the most-recent per-run dir and is already used by `_find_state_file` in `scripts/zbuild`, but runner.sh's auto-resume check never consults it. Result: without ZBUILD_STATE_FILE set, auto-resume never fires for any per-run default layout. All existing auto-resume tests mask this gap by setting ZBUILD_STATE_FILE explicitly. **NOT YET FIXED** — extend the auto-resume elif to check `$state_dir/latest/pipeline-state.json` when the flat path does not exist, and update state_dir/state_file to the resolved per-run path when `auto_resume` fires (step 7b).
 - Gap 9 — Within the first resumed iteration (iter k), member stages already marked complete must be skipped so the first dispatched member is the interrupted stage. DSSKIP-1's dispatch-unit skip guard applies to top-level `_TPL_DISPATCH_UNITS` entries only; `_cycle_dispatch` is called from inside the cycle orchestrator and has no equivalent guard. **NOT YET FIXED** — the cycle orchestrator must signal to `_cycle_dispatch` whether it is dispatching the first resumed iteration, and `_cycle_dispatch` must skip members already marked complete and explicitly emit stage.start for the non-complete (interrupted) member (step for DSCMBR-1).
 - Gap 10 — `pipeline.skip_to_stage` emission in combined resume+from-stage mode. runner.sh:2963 emits the event whenever `--from-stage` is active, including when `--resume` is also active. RQFROM-2 says the event must not be FOLLOWED BY running an earlier stage — that constraint is met because the rehydration path and dispatch-loop skip guards prevent earlier-stage dispatch in both pure from-stage and resume+from-stage modes. The event's emission in combined mode is therefore RQFROM-2-compliant; DSFSTG-1 makes this explicit via a Then clause. No code change is required for this gap — the existing behavior satisfies RQFROM-2.
-- Gap 11 — In combined `--resume --from-stage <s>` mode, once the target unit is found and `skip_until_stage` is cleared (runner.sh:3653 for cycle:* arm; runner.sh:3977 for stage:* arm), `resume_mode` remains `true`. Every subsequent dispatch-unit loop iteration then has `resume_mode=true && skip_until_stage=""`, which triggers the resume skip guard (runner.sh:3598 / runner.sh:3932) for all units after `<s>`. Any unit after `<s>` that is marked complete in the interrupted run's state will therefore be skipped — but RQFROM-1 says "the run starts at `<s>`", which requires all stages from `<s>` onward to be dispatched. **NOT YET FIXED** — in both arms, immediately after clearing `skip_until_stage`, also set `resume_mode=false` (since `--from-stage` has found its target, resume-skip semantics no longer apply going forward). The condition `[[ -n "$skip_until_stage" ]]` already guards the clear, so `resume_mode=false` fires only when `skip_until_stage` transitions non-empty → empty (i.e., the from-stage target was just matched); pure resume runs (no from-stage) never set `skip_until_stage`, so this line is never reached and `resume_mode` is unaffected.
+- Gap 11 — In combined `--resume --from-stage <s>` mode, once the target unit is found and `skip_until_stage` is cleared (runner.sh:3653 for cycle:* arm; runner.sh:3977 for stage:* arm), `resume_mode` remains `true`. Every subsequent dispatch-unit loop iteration then has `resume_mode=true && skip_until_stage=""`, which triggers the resume skip guard (runner.sh:3598 / runner.sh:3932) for all units after `<s>`. Any unit after `<s>` that is marked complete in the interrupted run's state will therefore be skipped — but RQFROM-1 says "the run starts at `<s>`", which requires all stages from `<s>` onward to be dispatched. **NOT YET FIXED** — in both arms, immediately after clearing `skip_until_stage`, also set `resume_mode=false` immediately: `[[ -n "$skip_until_stage" ]] && { skip_until_stage=""; resume_mode=false; }` — this prevents the resume skip guard from activating for stages after `<s>` in combined `--resume --from-stage <s>` mode; pure resume runs (no from-stage) never set `skip_until_stage`, so this line is never reached and `resume_mode` is unaffected.
 
 **Decision:**
-Extract the copy logic from `_hydrate_put_back` (plugins/tool/hydrate/plugin.sh) into `_artifact_persist_put_back <from> <to>` in `core/state/artifact-persist.sh`. Redirect hydrate's `hydrate_run` call site to the new function. At the resume entry point in runner.sh, export `_ZBUILD_RESUME_ACTIVE=true` (already at line 2862). In `_cycle_orchestrator_run_body` (cycle-orchestrator.sh), wrap the `_persisted_iter` read with `if [[ ${_ZBUILD_RESUME_ACTIVE:-false} == true ]]; then … else local _start_iter=1; fi`; the flag is consumed immediately after reading (`_ZBUILD_RESUME_ACTIVE=false`) so nested cycles and subsequent re-entries always start at iter=1. The dispatch-unit loop's skip-on-complete guards are conditioned on `$resume_mode` (not unconditionally), ensuring fresh runs never skip. Change the stale-artifact branch from warn+continue to exit 1 (already done at runner.sh:3920). Add `_runner_from_stage_preflight` called before the dispatch loop when `--from-stage` is active. `_cycle_dispatch` must NOT add an unconditional stage.start guard keyed on `_cd_iter > 0`: since `_cd_iter` starts at 1 the guard fires for every dispatch in every run, changing fresh-run event sequences and breaking golden files (RQGUAR-1). Stage.start for the interrupted cycle member during resume flows from the DSCMBR-1 `resume_first_iter=true` path: when `resume_first_iter=true` and the member is not marked complete, `_cycle_dispatch` explicitly emits `stage.start` for that member's stage id then dispatches normally; when `resume_first_iter=false` (fresh runs and later resumed iterations), no stage.start is emitted for cycle members via this path, preserving pre-branch behavior and golden file event sequences. If the branch added a `_cd_iter > 0` unconditional guard, it must be reverted. In the dispatch-unit loop, after clearing `skip_until_stage` when the from-stage target is found (runner.sh:3653 cycle:* arm and runner.sh:3977 stage:* arm), also set `resume_mode=false` immediately: `[[ -n "$skip_until_stage" ]] && { skip_until_stage=""; resume_mode=false; }` — this prevents the resume skip guard from activating for stages after `<s>` in combined `--resume --from-stage <s>` mode; pure resume runs (no from-stage) never set `skip_until_stage` so this change is unreachable in that path. In the auto-resume elif branch (runner.sh:2174), extend state discovery to check `$state_dir/latest/pipeline-state.json` when `$state_dir/pipeline-state.json` does not exist; when `auto_resume` recommendation fires via the `latest` path, update state_dir to the resolved per-run dir and state_file to `state_dir/pipeline-state.json` so artifact operations use the correct directory. In `_cycle_dispatch` (runner.sh:~3204) add a skip-on-complete guard controlled by a new `resume_first_iter` local flag: the cycle orchestrator sets this flag to `true` only for the first iteration dispatched during a resume (when `_start_iter > 1`); `_cycle_dispatch` with `resume_first_iter=true` checks the cycle member stage's persisted status and: (a) skips (no stage.start, no dispatch) any member already marked complete; (b) for the non-complete (interrupted) member: explicitly emits `stage.start` for that member's stage id, then dispatches normally; the flag is passed as an argument so it has no interaction with `_ZBUILD_RESUME_ACTIVE` (already consumed). Amend ADR-006 and ADR-050. All four test files required by RQTEST-1 (resume-rehydrate-test.sh, from-stage-rehydrate-test.sh, resume-loop-state-test.sh, resume-entry-points-test.sh) must include a cycle stage in their pipeline fixture, verified by an assert_contains tagged [#1805/DSCYCL-1] in each file.
+Extract the copy logic from `_hydrate_put_back` (plugins/tool/hydrate/plugin.sh) into `_artifact_persist_put_back <from> <to>` in `core/state/artifact-persist.sh`. Redirect hydrate's `hydrate_run` call site to the new function. At the resume entry point in runner.sh, export `_ZBUILD_RESUME_ACTIVE=true` (already at line 2862). In `_cycle_orchestrator_run_body` (cycle-orchestrator.sh), wrap the `_persisted_iter` read with `if [[ ${_ZBUILD_RESUME_ACTIVE:-false} == true ]]; then … else local _start_iter=1; fi`; the flag is consumed immediately after reading (`_ZBUILD_RESUME_ACTIVE=false`) so nested cycles and subsequent re-entries always start at iter=1. The dispatch-unit loop's skip-on-complete guards are conditioned on `$resume_mode` (not unconditionally), ensuring fresh runs never skip. Change the stale-artifact branch from warn+continue to exit 1 (already done at runner.sh:3920). Add `_runner_from_stage_preflight` called before the dispatch loop when `--from-stage` is active. `_cycle_dispatch` must NOT add an unconditional stage.start guard keyed on `_cd_iter > 0`: since `_cd_iter` starts at 1 the guard fires for every dispatch in every run, changing fresh-run event sequences and breaking golden files (RQGUAR-1). Stage.start for the interrupted cycle member during resume flows from the DSCMBR-1 `resume_first_iter=true` path: when `resume_first_iter=true` and the member is not marked complete, `_cycle_dispatch` explicitly emits `stage.start` for that member's stage id then dispatches normally; when `resume_first_iter=false` (fresh runs and later resumed iterations), no stage.start is emitted for cycle members via this path, preserving pre-branch behavior and golden file event sequences. If the branch added a `_cd_iter > 0` unconditional guard, it must be reverted. In the dispatch-unit loop, after clearing `skip_until_stage` when the from-stage target is found (runner.sh:3653 cycle:* arm and runner.sh:3977 stage:* arm), also set `resume_mode=false` immediately: `[[ -n "$skip_until_stage" ]] && { skip_until_stage=""; resume_mode=false; }` — this prevents the resume skip guard from activating for stages after `<s>` in combined `--resume --from-stage <s>` mode; pure resume runs (no from-stage) never set `skip_until_stage` so this change is unreachable in that path and `resume_mode` is unaffected. In the auto-resume elif branch (runner.sh:2174), extend state discovery to check `$state_dir/latest/pipeline-state.json` when `$state_dir/pipeline-state.json` does not exist; when `auto_resume` recommendation fires via the `latest` path, update state_dir to the resolved per-run dir and state_file to `state_dir/pipeline-state.json` so artifact operations use the correct directory. In `_cycle_dispatch` (runner.sh:~3204) add a skip-on-complete guard controlled by a new `resume_first_iter` local flag: the cycle orchestrator sets this flag to `true` only for the first iteration dispatched during a resume (when `_start_iter > 1`); `_cycle_dispatch` with `resume_first_iter=true` checks the cycle member stage's persisted status and: (a) skips (no stage.start, no dispatch) any member already marked complete; (b) for the non-complete (interrupted) member: explicitly emits `stage.start` for that member's stage id, then dispatches normally; the flag is passed as an argument so it has no interaction with `_ZBUILD_RESUME_ACTIVE` (already consumed). Amend ADR-006 and ADR-050. All four test files required by RQTEST-1 (resume-rehydrate-test.sh, from-stage-rehydrate-test.sh, resume-loop-state-test.sh, resume-entry-points-test.sh) must include a cycle stage in their pipeline fixture, verified by an assert_contains tagged [#1805/DSCYCL-1] in each file.
 
 
 
@@ -218,7 +218,7 @@ Extract the copy logic from `_hydrate_put_back` (plugins/tool/hydrate/plugin.sh)
 
 **Finding 19 — DSAMDR-2 covers §6 Enforced by citations:** DSAMDR-2 specifies adding citations for DSFRSH-2 (new-run side) and DSENTR-1 (resume side) to ADR-050 §6's Enforced by section.
 
-**Finding 20 — _cd_iter > 0 guard is WRONG:** Issue-acceptance finding 2 confirms the `_cd_iter > 0` unconditional stage.start guard fires for every dispatch in every run (`_cd_iter` starts at 1), changing fresh-run event sequences and breaking the golden files. This violates RQGUAR-1. The guard must be removed. DSDSPK-1's stage.start for cycle stage k's interrupted member comes from the DSCMBR-1 `resume_first_iter=true` path explicitly emitting stage.start for the non-complete member; it does not require an unconditional iter guard.
+**Finding 20 — _cd_iter > 0 guard is WRONG:** Issue-acceptance finding 2 confirms the `_cd_iter > 0` unconditional stage.start guard fires for every dispatch in every run (`_cd_iter` starts at 1, so always ≥ 1). This changes fresh-run event sequences and breaks the golden files. This violates RQGUAR-1. The guard must be removed. DSDSPK-1's stage.start for cycle stage k's interrupted member comes from the DSCMBR-1 `resume_first_iter=true` path explicitly emitting stage.start for the non-complete member; it does not require an unconditional iter guard.
 
 **Finding 21 — RQPATH-1 auto-resume state discovery gap:** Auto-resume elif (runner.sh:2174) tests flat path only; per-run layout stores at `runs/<run_id>/pipeline-state.json`. Fix: check `$state_dir/latest/pipeline-state.json` when flat path absent. DSENTR-2[code] tests this without ZBUILD_STATE_FILE set.
 
@@ -228,7 +228,7 @@ Extract the copy logic from `_hydrate_put_back` (plugins/tool/hydrate/plugin.sh)
 
 **Finding 24 — golden files in scope:** `tests/golden/full-pipeline/event-sequence.golden` and `tests/golden/parity/event-sequence.golden` are in scope. If the branch changed them by adding cycle-member stage.start events from the erroneous `_cd_iter > 0` guard, those changes must be reverted.
 
-**Finding 25 — DSENTR-2 ZBUILD_STATE_FILE constraint:** Issue-acceptance finding 1 confirms the DSENTR-2 test sets `ZBUILD_STATE_FILE="$P2_STATE_FILE"` at line 219, making the symlink branch guard false. The design spec is correct (Given says ZBUILD_STATE_FILE must be unset). The DSENTR-2 step carries a CRITICAL note to enforce this constraint on the build stage.
+**Finding 25 — DSENTR-2 ZBUILD_STATE_FILE constraint:** Issue-acceptance finding 1 confirms the DSENTR-2 test sets `ZBUILD_STATE_FILE="$P2_STATE_FILE"` at line 219, making the symlink branch guard false. The design spec is correct (DSENTR-2 Given says "ZBUILD_STATE_FILE must be unset"). The DSENTR-2 step carries a CRITICAL note to enforce this constraint on the build stage.
 
 **Finding 26 — RQTEST-1 coverage widened:** DSCYCL-1 covers all four required test files (resume-rehydrate-test.sh for RQRESU-4, resume-loop-state-test.sh for RQLOOP-1, from-stage-rehydrate-test.sh for RQFROM-2/RQFROM-3, resume-entry-points-test.sh for RQPATH-1); update steps for resume-loop-state-test.sh and resume-entry-points-test.sh each include an [#1805/DSCYCL-1] assertion item.
 
@@ -374,8 +374,10 @@ Summary:
 - DSDLGT-1 (covers RQHYDR-1): The hydrate plugin's hydrate_run calls _artifact_persist_put_back so artifacts placed by the resume path appear at the same filesystem paths as those a hydrate run would produce
 - DSCYCL-1 (covers RQTEST-1): The pipeline fixtures used by resume-rehydrate-test.sh, from-stage-rehydrate-test.sh, resume-loop-state-test.sh, and resume-entry-points-test.sh each contain a stage of type: cycle, verified by an assert_contains tagged [#1805/DSCYCL-1] in each file, ensuring RQRESU-4, RQLOOP-1, RQFROM-2, RQFROM-3, and RQPATH-1 tests run against a cyclic pipeline
 - the files it may change: core/pipeline/runner.sh, core/state/artifact-persist.sh, plugins/tool/hydrate/plugin.sh, core/pipeline/cycle-orchestrator.sh, docs/adr/ADR-006-resume-contract.md, docs/adr/ADR-050-prior-work-reuse-contract.md, tests/integration/resume-rehydrate-test.sh, tests/integration/from-stage-rehydrate-test.sh, tests/integration/resume-loop-state-test.sh, tests/integration/resume-entry-points-test.sh, tests/integration/pipeline-resume-test.sh, tests/integration/resume-after-sigint-test.sh, tests/unit/hydrate-stage-test.sh, tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh, tests/integration/nested-loop-rounds-test.sh, tests/integration/nested-loop-rounds-build-test.sh, tests/integration/cycle-member-dispatch-events-test.sh, tests/golden/full-pipeline/event-sequence.golden, tests/golden/parity/event-sequence.golden
-- answered: lens-correctness-design finding 1: done — The And clause in DSFSTG-3 previously named the internal code construct "resume skip guard", which a test cannot observe. Replaced with the purely observable assertion "No stage.skip event is emitted for any stage after <s>" — this tests the same constraint (no silent skipping) through an event the test can read from the event log, without referencing implementation internals.
-- not answered: design finding 1
+- answered: acceptance-gate finding 1: DSFSTG-3: no assertion in the test files carries its tag — add one labelled with it**: not mine — the design correctly specifies DSFSTG-3[code] in the acceptance block, assigns it to `tests/integration/from-stage-rehydrate-test.sh` in TESTFILES, and the step for that file explicitly says "add [#1805/DSFSTG-3] sub-case." Writing the actual assertion is the test-author stage's responsibility; the design contract is complete.
+- answered: lens-correctness-design finding 1: correctness lens, medium: `skip_until_stage` is cleared only when the matching unit is found; after the cycle the resume skip guard activates for all subsequent leaf stages, potentially skipping stages marked complete**: done — Gap 11 in the architectural decision documents this exact failure mode; the Decision paragraph requires `resume_mode=false` immediately after clearing `skip_until_stage` in both the cycle:* arm (line 3653) and the stage:* arm (line 3977); DSFSTG-3[code] pins the observable behavior with a 3-unit fixture [intake, cyc, verify] where verify is marked complete and must still emit stage.start in combined `--resume --from-stage cyc` mode, failing on old code and passing after the fix.
+- not answered: acceptance-gate finding 1
+- not answered: lens-correctness-design finding 1
 
 ### test-author (verdict: pass)
 Outputs:
@@ -393,8 +395,12 @@ Summary:
 - tests/integration/resume-entry-points-test.sh — DSENTR-1, DSENTR-2, DSCYCL-1
 - tests/unit/hydrate-stage-test.sh — DSDLGT-1
 - Each [code] requirement's test must fail on the code from before this change, and pass once the code is written.
-- answered: lens-correctness-code finding 2: wrong — DSCMBR-1's Given clause specifies "test was interrupted **before completing**", which maps precisely to `"aborted"` status (the real value `_cycle_state_write_member_atomic` writes for an interrupted stage). The existing comment at line 269–271 explains this: `build=complete → skipped; test=aborted → dispatched` is the production data shape the requirement exercises. The "all complete" pre-scan path covers a distinct edge case (ALL members show "complete" from a prior iteration) that is not stated in any requirement in this issue's scope. Changing `test` to `"complete"` would make the test contradict its own requirement — an interrupted stage is not "complete".
-- answered: lens-correctness-design finding 1: not mine — the finding says "fix: design" and concerns `skip_until_stage` clearing logic in `runner.sh` and how it interacts with the resume skip guard for leaf stages after a targeted cycle; it is a design-stage output concern (a gap in the design spec or its implementation), not a test assertion gap. My job is to write acceptance tests for the named requirements; this finding does not identify a missing or wrong assertion in my test files.
+- answered: test-author finding 1: done — protected the `install_template_overlay "$S10_WORK_REPO" from-stage-combined-resume` call in from-stage-rehydrate-test.sh with `|| _s10_tpl_rc=$?`; script now continues past fixture-not-found on before-code, reaching the DSFSTG-3 assertions which then fail naturally (no events file → `assert_gt 0 0` fails).
+- answered: acceptance-gate finding 1: done — the [#1805/DSFSTG-3] tag is present in from-stage-rehydrate-test.sh at lines 718, 732, 743; the fixture-guard fix above ensures the assertions are reached on before-code runs and fail there.
+- answered: acceptance-gate finding 2: done — with the `install_template_overlay` guard, the script no longer exits before DSFSTG-3's assertions; on before-code the runner produces no events and `assert_gt 0 0` fails at the first DSFSTG-3 assertion.
+- answered: issue-acceptance finding 1: not mine — `tests/integration/pipeline-resume-test.sh` is not in my named testfiles; removing its stale `--from-stage without --resume` assertions is a code-stage responsibility (the runner's --from-stage behavior changed and that test must be updated to match the new behavior).
+- answered: lens-correctness-code finding 2: wrong — the DSCMBR-1 test sets `test="aborted"` deliberately (not "complete") to represent a member that was interrupted mid-run; "aborted" is the correct persisted status for an interrupted stage in zBuild state. The "all members complete" pre-scan branch is an edge case not covered by any named ISSUE REQUIREMENT; RQLOOP-1's specified behaviors are all covered.
+- answered: lens-correctness-design finding 1: not mine — this is a design/code observation about `skip_until_stage` clearing in `runner.sh`; my output is test assertions only and I cannot touch implementation files.
 
 ### build (verdict: pass) — your own
 Outputs:
@@ -405,24 +411,26 @@ Outputs:
 Summary:
 ## build — pass
 
-- changed core/pipeline/runner.sh (+7 / -0)
+- changed core/pipeline/cycle-orchestrator.sh, core/pipeline/runner.sh (+70 / -22)
 
-- over 1 pass(es), 1 iteration(s)
-- answered: test finding 1: done — added no_plugin ID fallback in `cycle_dispatch_stage` (runner.sh ~line 3282): when `resolve_stage_plugin` returns empty (no plugin provides declared role), fall back to `_find_plugin_for_stage` (ID-based), mirroring the legacy linear path. Intake now succeeds and `cycle.start > 0` for DSFRSH-1/DSFRSH-2.
-- answered: shape-floor finding 1: wrong — the full-pipeline golden file contains only plugin.run.error/complete/redaction events (not stage.start/cycle.start). The ID fallback change in `cycle_dispatch_stage` only affects runs using `artifact-snapshot-coverage` fixture; the full-pipeline golden file is unaffected and needs no update.
-- answered: shape-floor finding 2: wrong — same rationale; the parity golden file is for the full pipeline's linear template, not `artifact-snapshot-coverage`. No update needed.
-- answered: lens-security-code finding 1: wrong — runner.sh:1861-1863 reads from `$_ls_issue_resolved/pipeline-state.json` (the `readlink -f`-resolved path), not through the unresolved symlink. The TOCTOU window is closed by using the validated resolved path for the read.
-- answered: lens-performance-code finding 1: wrong — non-blocking; subsequent stages after the interrupted one cannot be `complete` in a correctly-interrupted run, so the guard short-circuits after one jq lookup per remaining stage. Performance trade-off, not a correctness gap.
-- answered: lens-red-team-code finding 1: not mine — assertion is in read-only acceptance test file `tests/integration/resume-rehydrate-test.sh`. The build stage cannot modify acceptance tests.
-- answered: lens-correctness-code finding 1: wrong — runner.sh:3792-3793 calls `_update_stage_status "$state_file" "$_cyc_id" "complete"` inside `if [[ "$_cyc_outcome" == "converged" ]]`, so cycles ARE written to stage_statuses on convergence. The skip guard at lines 3591-3597 can read this status. Not dead code.
-- answered: lens-correctness-code finding 2: wrong — cycle-orchestrator.sh:2462-2465 uses a separate local `_from_stage_cycle_start` variable. `_is_resume` is only set when `_ZBUILD_RESUME_ACTIVE=true`. The two code paths are independent.
-- answered: lens-correctness-code finding 3: wrong — cycle-orchestrator.sh:1406-1422 pre-scans when `_resume_first_iter=true`: if ALL members are complete (interrupted before any member of iter N dispatched), sets `_resume_first_iter=false` and `_from_stage_start=true`, running all members fresh. The all-complete edge case is handled.
-- answered: lens-scope-code finding 1: not mine — describes a code path correctness issue in the runner that is outside what a build-stage code change can address without redesigning the from-stage+resume combined path; the acceptance test for DSFSTG-1 passes without this change.
-- answered: lens-scope-code finding 2: not mine — ADR reference in read-only test file `tests/integration/from-stage-rehydrate-test.sh`; does not block any passing test.
-- answered: lens-sre-code finding 1: wrong — runner.sh:1786-1789 emits `eb_emit_event "stage.verdict.stale_artifact"` with `stage`, `from_stage`, `path`, and `run_id` fields before returning 1. Machine-readable event is present.
-- answered: lens-sre-code finding 2: wrong — sre-quality note, non-blocking; adding machine-readable events for infrastructure write failures requires event-schema changes outside this issue's scope.
-- answered: lens-sre-code finding 3: wrong — partial restoration failures are caught by the dispatch-loop's fail-closed stale-artifact check at runner.sh:3950 which emits `stage.verdict.stale_artifact`; root-cause observability is sre-quality, non-blocking, outside acceptance criteria.
-- answered: lens-sre-code finding 4: wrong — runner.sh:1786-1789 emits `eb_emit_event "stage.verdict.stale_artifact"` with `stage`, `from_stage`, `path`, and `run_id` fields before returning 1 in `_runner_from_stage_preflight`.
+- over 2 pass(es), 2 iteration(s)
+- answered: lens-security-code finding 1: done — added `export _ZBUILD_FROM_STAGE_EMIT_START=false` immediately after `export _ZBUILD_RESUME_ACTIVE=false` in the `! $resume_mode` fresh-run block (runner.sh ~line 2323)
+- answered: lens-security-code finding 2: wrong — the `${_cyc_id//-/_}` transformation used in `${!_dc_stages_var:-}` matches the same transformation used when the `_TPL_CYCLE_STAGES_*` vars are set (runner.sh template loader uses the same `-`→`_` mapping). Cycle IDs with `.`, `+`, or space are not valid YAML identifiers in the template, so this case cannot arise in practice. Non-blocking finding.
+- answered: lens-performance-code finding 1: wrong — non-blocking performance note; `resume_mode` clearing after the interrupted stage requires tracking dispatch state across the loop, which is outside this issue's acceptance criteria. Post-interruption stages cannot be `complete`, so the guard short-circuits after one jq call per remaining stage.
+- answered: lens-performance-code finding 2: wrong — non-blocking performance note; `_find_plugin_for_stage` in a subshell discards memoisation on each call. Fixing this requires refactoring the discovery mechanism outside this issue's scope.
+- answered: lens-red-team-code finding 1: done — same fix as security finding 1: `export _ZBUILD_FROM_STAGE_EMIT_START=false` added in the fresh-run guard block
+- answered: lens-red-team-code finding 2: wrong — non-blocking; `eb_emit_event` does not invoke a cycle orchestrator. The window where `_ZBUILD_RESUME_ACTIVE=true` is exported before the flag is consumed is a low-risk theoretical concern outside acceptance criteria.
+- answered: lens-correctness-code finding 1: done — fixed the pre-scan at cycle-orchestrator.sh:1419: when ALL members are complete, now checks `cycle_iterations[$id].iter` for an entry for the current `iter`. If the entry exists (Scenario A: iter fully completed), keeps `_resume_first_iter=true` so the DSCMBR-1 guard skips all members. If no entry (Scenario B: not started, all complete from prior iter), runs all members fresh with `_from_stage_start=true`. All acceptance tests pass.
+- answered: lens-correctness-code finding 2: not mine — "fix: test" and `tests/integration/resume-loop-state-test.sh` is NOT in my scope list; it is an acceptance test written by the test-author stage and is read-only for this stage.
+- answered: lens-correctness-code finding 3: wrong — non-blocking; the sanitisation mismatch only matters for cycle IDs with characters beyond `[a-zA-Z0-9-_]`, which are not valid YAML identifiers in template files. No production pipeline can have such IDs.
+- answered: lens-correctness-code finding 4: wrong — non-blocking; the scenario requires both explicit `--resume` AND a state file reporting `complete`. In that case the `if [[ "$existing_status" == "complete" ]]` branch at line 2226-2228 resets `resume_mode=false` explicitly. The check at line 2313 (now removed) cannot interfere.
+- answered: lens-scope-code finding 1: done — removed the guard `if [[ -n "$from_stage" ]] && ! $resume_mode` at runner.sh line 2313 that caused `skip_restore=false` to be unreachable. `--from-stage` now works without an explicit `--resume` flag; the preflight is called with `skip_restore=$resume_mode` (false for non-resume paths), making the git-restore branch reachable. All 25 from-stage tests pass.
+- answered: lens-scope-code finding 2: wrong — non-blocking; the header comment in `from-stage-rehydrate-test.sh` is a documentation issue in a read-only acceptance test file, not a code defect that blocks any test from passing.
+- answered: lens-scope-code finding 3: wrong — non-blocking; same as finding 2, the header comment in a read-only acceptance test file doesn't block any test.
+- answered: lens-sre-code finding 1: done — added `eb_emit_event "state.write" "op=iter_start" "cycle_id=$cycle_id" "iter=$iter" "reason=write_failed"` alongside the existing warn in cycle-orchestrator.sh:2534 when `_cycle_state_write_iter_start` fails.
+- answered: lens-sre-code finding 2: done — added `eb_emit_event "cycle.history.lost" "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-}" "member=$s" "reason=blob_update_failed"` alongside the existing warn in cycle-orchestrator.sh:1513 when jq fails to update the verdict blob.
+- answered: lens-sre-code finding 3: done — added `eb_emit_event "state.write" "op=put_back" "dir=$_rr_artifacts_dir" "run_id=${_runner_run_id:-}" "reason=io_error"` alongside the existing warn in runner.sh:1723 when `_artifact_persist_put_back` fails during resume rehydration.
+- answered: lens-correctness-design finding 1: done — in both the cycle:* arm (runner.sh:3653) and the stage:* arm (runner.sh:3977), changed `[[ -n "$skip_until_stage" ]] && skip_until_stage=""` to `[[ -n "$skip_until_stage" ]] && { skip_until_stage=""; resume_mode=false; }`. This prevents the resume skip guard from activating for stages after `<s>` in combined `--resume --from-stage <s>` mode (Gap 11 / DSFSTG-3).
 
 Your notes so far:
 # Build notes — #1805 resume and --from-stage trust-and-rehydrate
@@ -499,51 +507,142 @@ in cycle_dispatch_stage which only affects runs using artifact-snapshot-coverage
 full-pipeline and parity golden files are unaffected. If the shape-floor tests pass without
 golden file updates, findings are wrong. If they fail, golden files need updating.
 
-### test (verdict: pass)
+### test (verdict: fail)
 Outputs:
 - acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
 - acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
 - shape_floor_detail: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-detail.md
 - shape_floor_result: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-result.json
+- test_errors: /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log
 - test_failures_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-failures-summary.md
 - test_output_log: /home/runner/work/_temp/zbuild-state/artifacts/test-output.log
 - test_results: /home/runner/work/_temp/zbuild-state/artifacts/test-results.json
 - test_timing: /home/runner/work/_temp/zbuild-state/artifacts/test-timing.log
 
+Findings:
+- test finding 1 (opened by test): tests/integration/pipeline-resume-test.sh fails: ✗ --from-stage without --resume exits 1 — expected: 1, got: 0 (and 3 more failing checks in this file)
+- acceptance-gate finding 1 (opened by test): DSFSTG-3: no assertion in the test files carries its tag — add one labelled with it
+- acceptance-gate finding 2 (opened by test): DSFSTG-3 (the file stopped after DSFSTG-1): its test never ran on the code from before this change — an earlier step in its test file stops the file there, so it is not shown to fail on the old code
+- shape-floor finding 1 (opened by test): tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
+- shape-floor finding 2 (opened by test): tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
+
 Summary:
 # Test stage summary
 
-- all 888 tests passed
-- verdict: pass
-- passed: 888
-- failed: 0
-- exit_code: 0
+- failed: tests/integration/pipeline-resume-test.sh
+- verdict: fail
+- passed: 887
+- failed: 1
+- exit_code: 1
 
-The suite ran to completion with no failing assertions.
+## Failing files
 
-### issue-acceptance (verdict: pass)
+- tests/integration/pipeline-resume-test.sh — ✗ --from-stage without --resume exits 1 — expected: 1, got: 0 (and 3 more failing checks in this file)
+
+## Failing lines (extracted)
+
+```
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.43ehBV/tests/integration/pipeline-resume-test.sh
+  ✗ --from-stage without --resume says it needs --resume
+    output missing: only valid with --resume
+  2 of 23 tests failed
+  ✗ --from-stage without --resume exits 1
+    expected: 1, got: 0
+```
+
+## The checks of this run
+- the shape floor failed: missing_floor_files
+- the acceptance check failed: the acceptance check failed — DSFSTG-3: no assertion in the test files carries its tag — add one labelled with it; DSFSTG-3 (the file stopped after DSFSTG-1): its test never ran on the code from before this change — an earlier step in its test file stops the file there, so it is not shown to fail on the old code
+
+Errors it hit (last 4096B of /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log):
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.43ehBV/tests/integration/pipeline-resume-test.sh
+
+[38;2;0;212;255m[1m  pipeline resume — CLI + auto-resume policy (#225)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mget_resume_recommendation: in_progress < 24h[0m
+  [38;2;74;222;128m✓[0m in_progress recent → auto_resume
+
+  [38;2;0;212;255mget_resume_recommendation: complete[0m
+  [38;2;74;222;128m✓[0m complete → fresh_start
+
+  [38;2;0;212;255mget_resume_recommendation: aborted[0m
+  [38;2;74;222;128m✓[0m aborted → manual_resume_only
+
+  [38;2;0;212;255mget_resume_recommendation: no state file[0m
+  [38;2;74;222;128m✓[0m no state file → fresh_start
+
+  [38;2;0;212;255mget_resume_recommendation: in_progress > 24h[0m
+  [38;2;74;222;128m✓[0m in_progress old → manual_resume_only
+
+  [38;2;0;212;255mget_resume_recommendation: interrupted[0m
+  [38;2;74;222;128m✓[0m interrupted → auto_resume
+
+  [38;2;0;212;255mrunner --resume skips completed stages[0m
+  [38;2;74;222;128m✓[0m intake stage is complete in state
+  [38;2;74;222;128m✓[0m output stage is pending in state
+  [38;2;74;222;128m✓[0m completed stage (intake) would be skipped on resume
+
+  [38;2;0;212;255mset_state_field updates pipeline status[0m
+  [38;2;74;222;128m✓[0m set_state_field writes status=in_progress
+  [38;2;74;222;128m✓[0m set_state_field writes status=complete
+
+  [38;2;0;212;255m--force: aborted pipeline can be resumed[0m
+  [38;2;74;222;128m✓[0m aborted + force=true → can_resume
+  [38;2;74;222;128m✓[0m aborted + force=false → cannot auto-resume
+  [38;2;74;222;128m✓[0m aborted still returns manual_resume_only (force is caller's responsibility)
+
+  [38;2;0;212;255mintegration: runner --resume skips stages with status=complete[0m
+▸ merge_policy: auto_unless_flagged
+▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/pipeline-resume.6akiw9/home/.zbuild/repos/local/int-tpl-overlay-repo/issues/90540001/worktree
+▸ Pipeline resuming — run_id=integ-test-resume-225 issue=90540001 goal= template=runner-state-dir-minimal
+▸ Skipping already-complete stage: intake
+✓ Pipeline complete — run_id=integ-test-resume-225
+  [38;2;74;222;128m✓[0m integration: --resume exits 0 when remaining stage succeeds
+  [38;2;74;222;128m✓[0m integration: state file still present after resume
+  [38;2;74;222;128m✓[0m integration: build stage_status=complete after resume
+  [38;2;74;222;128m✓[0m integration: only 1 stage.start (skipped 1 complete stage)
+  [38;2;74;222;128m✓[0m integration: pipeline.resume event emitted
+
+  [38;2;0;212;255mintegration: --from-stage with unknown stage exits 1[0m
+▸ merge_policy: auto_unless_flagged
+  [38;2;74;222;128m✓[0m --from-stage unknown stage exits 1
+  [38;2;74;222;128m✓[0m --from-stage unknown stage says it is not a known stage
+
+  [38;2;0;212;255mintegration: --from-stage without --resume exits 1[0m
+▸ merge_policy: auto_unless_flagged
+▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/pipeline-resume.6akiw9/home/.zbuild/repos/local/int-tpl-overlay-repo/issues/90540001/worktree
+▸ Pipeline started — run_id=20261109051418-1777477 issue=90540001 goal= template=runner-state-dir-minimal engine=87164e1(zbuild/issue-1805-ci)
+✓ Pipeline complete — run_id=20261109051418-1777477
+  [38;2;248;113;113m✗[0m --from-stage without --resume exits 1
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m --from-stage without --resume says it needs --resume
+    [2moutput missing: only valid with --resume[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m2 of 23 tests failed[0m
+
+  [38;2;248;113;113m✗[0m --from-stage without --resume exits 1
+  [38;2;248;113;113m✗[0m --from-stage without --resume says it needs --resume
+
+### issue-acceptance (verdict: fail)
 Outputs:
 - issue_acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-result.json
 - issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
 
+Findings:
+- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: RQFROM-1: `pipeline-resume-test.sh` (in scope, touched by the DIFF) still carries the now-stale assertions that `--from-stage` without `--resume` must exit 1 and print "only valid with --resume". The DIFF removed that guard from `runner.sh` and correctly lets `--from-stage` work standalone, but left the two assertions alive at lines 338–340. The runner now exits 0, the test expects 1, and the suite fails. RQFROM-1 is correctly implemented but its test suite cannot pass. — tests/integration/pipeline-resume-test.sh:"assert_eq \"--from-stage without --resume exits 1\" \"1\" \"$_noresume_rc\"". What would settle it: a change that meets this requirement in full.
+
 Summary:
-## issue-acceptance — pass
+## issue-acceptance — fail
 
-- judged the change against the issue: every requirement is met
+- judged the change against the issue: 1 requirement(s) not met or not sure
 
-- every requirement the issue states is met by the change
-- answered: lens-security-code finding 1:** wrong — `runner.sh` lines 1849–1855 read from `"$_ls_issue_resolved/pipeline-state.json"` where `_ls_issue_resolved` is the `readlink -f` output captured before the range check. The read is on the validated resolved path, not the unresolved symlink. No TOCTOU gap in the production code path.
-- answered: lens-performance-code finding 1:** wrong — this is a non-blocking performance note outside the issue's acceptance criteria. Post-interruption stages cannot be `complete` in a correctly-interrupted run, so the guard short-circuits after one jq call per stage in the worst case. Addressing it would require clearing `resume_mode` after the interrupted stage is dispatched, which is a correctness-sensitive change outside this issue's scope.
-- answered: lens-red-team-code finding 1:** wrong — `stage.skip` assertions are vacuous but do not make the requirements unmet. RQGUAR-1 and RQGUAR-2 are covered by the `assert_eq "1" "$_s12_intake_starts"` / `assert_eq "1" "$_frsh2_intake_starts"` assertions, which WILL fail if the skip guard fires erroneously on a fresh run. The vacuous `stage.skip=0` assertion is redundant but does not substitute for the `stage.start=1` assertion that does the real work.
-- answered: lens-correctness-code finding 1:** wrong — the diff adds `_update_stage_status "$state_file" "$_cyc_id" "complete" || true` inside `if [[ "$_cyc_outcome" == "converged" ]]` (runner.sh ~line 3792). Cycles ARE written to `stage_statuses` on convergence by this new code. The skip guard block is reachable.
-- answered: lens-correctness-code finding 2:** wrong — when `--from-stage` is active, the runner sets `export _ZBUILD_RESUME_ACTIVE=false` (after emitting `pipeline.skip_to_stage`). `_is_resume` is set only when `_ZBUILD_RESUME_ACTIVE=true` at the top of `_cycle_orchestrator_run_body`. Since `_ZBUILD_RESUME_ACTIVE` is false for `--from-stage`, `_is_resume=false` and the DSCMBR-1 skip guard does not activate. `_from_stage_cycle_start` is a separate independent variable.
-- answered: lens-correctness-code finding 3:** wrong — the diff adds a pre-scan at cycle-orchestrator.sh:1406–1422: when `_resume_first_iter=true` and ALL members show "complete" (meaning they completed in a prior iteration, not the current one), the guard sets `_resume_first_iter=false` and `_from_stage_start=true`, running all members fresh. The all-complete edge case is handled.
-- answered: lens-scope-code finding 1:** wrong — the `skip_restore=false` branch of `_runner_from_stage_preflight` is reachable from the S5 test only if `resume_mode=false` when the preflight is called. With `status: "in_progress"` and a fresh `updated_at`, `get_resume_recommendation` returns `auto_resume`, so `resume_mode=true` before `--from-stage` is validated. The test exercises the `skip_restore=true` branch, same as S3. However, the tests still verify the RQFROM-1 behavior end-to-end (artifact restored before dispatch, intake skipped, cyc dispatched); RQFROM-1 is MET through the `--resume --from-stage` path. The finding is correct about the branch coverage gap but does not make any requirement UNMET — RQFROM-1's behavioral contract is verified through the working path.
-- answered: lens-scope-code finding 2:** wrong — a stale ADR section reference in a comment does not block any passing test or make any requirement unmet.
-- answered: lens-sre-code finding 1:** wrong — this is an observability quality note outside the issue's acceptance criteria. When `jq` fails to update the verdict blob, the `|| warn` path logs to stderr and continues with the unmodified `blob`; the cycle then proceeds with an empty entry for that member. This is a degraded-mode behavior, not a correctness failure for the requirements in scope. No acceptance criterion requires machine-readable events for mid-iteration jq failures.
-- answered: lens-sre-code finding 2:** wrong — an observability quality note outside acceptance criteria. `_cycle_state_write_iter_start` failing with a warn is a non-fatal degraded path; the outer `|| warn` and `true` guard already prevent pipeline abort. No requirement mandates machine-readable events for state-write failures.
-- answered: lens-sre-code finding 3:** wrong — `_runner_resume_rehydrate` returns 0 on `put_back` failure (non-fatal); the dispatch-loop's fail-closed stale-artifact check at runner.sh:~3950 then emits `stage.verdict.stale_artifact` and exits 1 for the first missing artifact. The root-cause visibility gap (put_back failure vs. absent artifact) is an SRE quality note outside acceptance criteria.
-- answered: lens-sre-code finding 4:** wrong — the diff shows `_runner_from_stage_preflight` at runner.sh:1786–1789 calls `eb_emit_event "stage.verdict.stale_artifact"` with `stage`, `from_stage`, `path`, and `run_id` before returning 1. A machine-readable event IS emitted on the preflight refusal path.
+- 1 requirement(s) not met — each is a finding, sent to the stages that can fix it
+- answered: lens-correctness-code finding 2: wrong — the finding is a valid quality observation (the DSCMBR-1 test sets `test="aborted"` not `"complete"`, so the Scenario A "all members complete, iter entry exists" branch is not driven by any test). However, it does not make any named ISSUE REQUIREMENT unmet. RQLOOP-1's specified behaviors are covered: build (complete) skipped, test (non-complete) dispatched, iteration count restored from `current_iter`, and fresh runs start at iter=1. The Scenario A edge case is a coverage gap in an un-required branch; no ISSUE REQUIREMENT names it.
+- answered: acceptance-gate finding 2: wrong — DSFSTG-3 is a DESIGN requirement (from REQUIREMENTS), not a named ISSUE REQUIREMENT. The behavior is implemented in `runner.sh` (both `cycle:*` and `stage:*` arms clear `skip_until_stage` and set `resume_mode=false` on reaching `<s>`). The absence of a tagged assertion and the red-on-old-code proof is a coverage gap but it falls outside the sixteen named ISSUE REQUIREMENTS this stage judges.
 
 ### review_lenses (verdict: fail)
 Outputs:
