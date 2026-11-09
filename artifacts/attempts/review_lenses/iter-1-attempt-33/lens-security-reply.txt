@@ -1,0 +1,26 @@
+--- reply 1 ---
+{
+  "score": 7,
+  "findings": [
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "injection",
+      "severity": "medium",
+      "line": 2323,
+      "message": "The new env var `_ZBUILD_FROM_STAGE_EMIT_START` is never cleared in the non-from-stage startup path: `_ZBUILD_RESUME_ACTIVE` gets `export _ZBUILD_RESUME_ACTIVE=false` in the `if ! $resume_mode` block, but there is no equivalent `export _ZBUILD_FROM_STAGE_EMIT_START=false` alongside it; a process that inherits `_ZBUILD_FROM_STAGE_EMIT_START=true` (stale parent-run export, or adversarial environment injection) causes the first cycle orchestrator entry of any fresh run to set `_from_stage_cycle_start=true` and emit an extra `stage.start` for the first cycle member, corrupting the event sequence and violating RQGUAR-1.",
+      "quote": "export _ZBUILD_RESUME_ACTIVE=false\n        # Sanitize ZBUILD_RUN_ID: strip characters unsafe in filenames",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "injection",
+      "severity": "low",
+      "line": 3608,
+      "message": "Within the cycle:* complete-skip arm, the variable name for the cycle stage list uses `${_cyc_id//-/_}` (only maps `-`→`_`), while the jq sanitisation one line above uses `${_cyc_id//[^a-zA-Z0-9_-]/}` (strips all non-alphanum); if a template cycle ID contains characters such as `.`, `+`, or space, the indirect expansion `${!_dc_stages_var:-}` resolves an invalid bash identifier, returns empty, and the code errors-out with 'stage list is empty — aborting', masking the real cause and making the resume abort confusingly rather than verifying the cycle's artifacts.",
+      "quote": "local _dc_safe=\"${_cyc_id//-/_}\"\n                            local _dc_stages_var=\"_TPL_CYCLE_STAGES_${_dc_safe}\"",
+      "introduced": true,
+      "fix": "code"
+    }
+  ]
+}

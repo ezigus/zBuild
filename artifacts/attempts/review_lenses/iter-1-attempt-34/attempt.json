@@ -1,0 +1,18 @@
+{
+  "stage": "review_lenses",
+  "cycle_iter": 1,
+  "attempt": 34,
+  "rc": "0",
+  "generated_at": "2026-11-09T04:33:02Z",
+  "files": 5,
+  "outputs": {
+    "lens-scope.json": "changed",
+    "lens-scope-summary.md": "changed",
+    "lens-scope-code-result.json": "changed",
+    "lens-scope-design-result.json": "unchanged",
+    "lens-scope-reply.txt": "changed",
+    "__notes__": "absent",
+    "__cutoff__": "absent"
+  },
+  "progress": true
+}

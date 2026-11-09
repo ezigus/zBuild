@@ -4,27 +4,21 @@
   "findings": [
     {
       "file": "core/pipeline/runner.sh",
-      "category": "hot-path inefficiency",
+      "category": "hot-path subprocess",
       "severity": "low",
-      "line": 3911,
-      "message": "In resume mode, `get_state_field` (which internally calls `validate_json` → jq, then a second jq for the field read = 2 subprocesses) fires for every dispatch unit in the loop, including stages that have never run, because `resume_mode` is never cleared after the interrupted stage is encountered; for a pipeline with n units, this spawns O(2n) unnecessary jq processes for the non-complete units.",
-      "quote": "if $resume_mode && [[ -z \"$skip_until_stage\" ]]; then\n                        local _du_stage_status\n                        local _safe_ust=\"${_ust//[^a-zA-Z0-9_-]/}\"\n                        _du_stage_status=\"$(get_state_field \"$state_file\" \\\n                            \".stage_statuses[\\\"$_safe_ust\\\"]\" '' 2>/dev/null || true)\"",
+      "line": 3936,
+      "message": "`resume_mode` is never cleared after the interrupted stage is dispatched, so `get_state_field` (spawning a subshell + `validate_json` jq call + a second jq field read = 3 processes) fires for every remaining dispatch unit in the loop, even though none of those post-interruption stages can be `complete`.",
+      "quote": "_du_stage_status=\"$(get_state_field \"$state_file\" \\\n                            \".stage_statuses[\\\"$_safe_ust\\\"]\" '' 2>/dev/null || true)\"",
       "introduced": true,
       "fix": "code"
-    }
-  ]
-}
---- reply 2 ---
-{
-  "score": 8,
-  "findings": [
+    },
     {
       "file": "core/pipeline/runner.sh",
-      "category": "hot-path inefficiency",
+      "category": "repeated subprocess in startup loop",
       "severity": "low",
-      "line": 3911,
-      "message": "In the dispatch-unit loop, `resume_mode` is never cleared after the interrupted stage is found and dispatched, so `get_state_field` (which calls `validate_json` → jq + a second jq field read = 2 subprocesses) fires for every remaining dispatch unit in the loop, even though those subsequent stages cannot be `complete`; for a pipeline with n stages after the interruption point this spawns O(2n) unnecessary jq processes on the hot path.",
-      "quote": "if $resume_mode && [[ -z \"$skip_until_stage\" ]]; then\n                        local _du_stage_status\n                        # Sanitize stage id to prevent jq injection via template-sourced values.\n                        local _safe_ust=\"${_ust//[^a-zA-Z0-9_-]/}\"\n                        _du_stage_status=\"$(get_state_field \"$state_file\" \\\n                            \".stage_statuses[\\\"$_safe_ust\\\"]\" '' 2>/dev/null || true)\"",
+      "line": 1773,
+      "message": "In `_runner_from_stage_preflight`, `_find_plugin_for_stage` is called inside `$()` for each stage before `<s>`; because each call is in a subshell, the in-shell plugin-discovery memo populated by `discover_plugins_into` is discarded after every call, so each iteration re-runs `_discovery_tree_shape_v` (one `find -maxdepth 3` over the plugins tree, ~20 ms per the discovery.sh comment) even though the tree is static throughout the preflight.",
+      "quote": "_fsp_plugin_dir=\"$(_find_plugin_for_stage \"$_fsp_s\" \"$_fsp_plugins_root\" 2>/dev/null || true)\"",
       "introduced": true,
       "fix": "code"
     }

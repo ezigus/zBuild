@@ -1,0 +1,7 @@
+## review-lens-performance — pass
+
+- found: low: `resume_mode` is never cleared after the interrupted stage is dispatched, so `get_state_field` (spawning a subshell + `validate_json` jq call + a second jq field read = 3 processes) fires for every remaining dispatch unit in the loop, even though none of those post-interruption stages can be `complete`. (core/pipeline/runner.sh:3936) (and 1 more)
+
+- low: `resume_mode` is never cleared after the interrupted stage is dispatched, so `get_state_field` (spawning a subshell + `validate_json` jq call + a second jq field read = 3 processes) fires for every remaining dispatch unit in the loop, even though none of those post-interruption stages can be `complete`. (core/pipeline/runner.sh:3936)
+- low: In `_runner_from_stage_preflight`, `_find_plugin_for_stage` is called inside `$()` for each stage before `<s>`; because each call is in a subshell, the in-shell plugin-discovery memo populated by `discover_plugins_into` is discarded after every call, so each iteration re-runs `_discovery_tree_shape_v` (one `find -maxdepth 3` over the plugins tree, ~20 ms per the discovery.sh comment) even though the tree is static throughout the preflight. (core/pipeline/runner.sh:1773)
+- score: 8

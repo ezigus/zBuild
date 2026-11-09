@@ -1,0 +1,26 @@
+--- reply 1 ---
+{
+  "score": 7,
+  "findings": [
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "logic",
+      "severity": "medium",
+      "line": 2319,
+      "message": "The fresh-run guard explicitly clears `_ZBUILD_RESUME_ACTIVE` to prevent stale inheritance from a parent process, but the analogous new flag `_ZBUILD_FROM_STAGE_EMIT_START` is never cleared in the same block; a child runner spawned fresh after a parent that ran `--from-stage <cycle>` inherits `_ZBUILD_FROM_STAGE_EMIT_START=true` and the cycle orchestrator's first-entry check at cycle-orchestrator.sh:2463–2465 sets `_from_stage_cycle_start=true`, causing the first cycle member to emit a spurious `stage.start` on every fresh run — violating RQGUAR-1.",
+      "quote": "if ! $resume_mode; then\n        # Guard: clear _ZBUILD_RESUME_ACTIVE so a subprocess runner that inherits a\n        # stale `true` value from a parent resume run does not enter cycle-resume mode\n        # on a fresh start, violating RQGUAR-1 (#1805).\n        export _ZBUILD_RESUME_ACTIVE=false",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "core/pipeline/runner.sh",
+      "category": "logic",
+      "severity": "low",
+      "line": 2994,
+      "message": "In the resume + `--from-stage` path, `export _ZBUILD_RESUME_ACTIVE=true` is set at line 2994 and `eb_emit_event \"pipeline.resume\"` is called at line 2995 before the flag is cleared at line 3003; any subprocess spawned inside `eb_emit_event` during this window inherits `_ZBUILD_RESUME_ACTIVE=true`, meaning if `eb_emit_event` ever acquires a cycle-orchestrator code path (or is replaced with a richer implementation), those subprocesses would enter resume-iteration-restore logic rather than a fresh start.",
+      "quote": "export _ZBUILD_RESUME_ACTIVE=true\n        eb_emit_event \"pipeline.resume\" \"run_id=$_runner_run_id\" \"issue=$_runner_issue\"\n        info \"Pipeline resuming — run_id=$_runner_run_id issue=${issue:-} goal=${goal:-} template=$template\"\n        if [[ -n \"$from_stage\" ]]; then\n            warn \"Skipping ahead to stage '$from_stage' as requested (--from-stage)\"\n            eb_emit_event \"pipeline.skip_to_stage\" \"stage=$from_stage\" \"run_id=$_runner_run_id\"\n            # DSFSTG-1 (#1805): --from-stage restarts the target cycle from iter=1.\n            # Clear the resume flag so the cycle orchestrator does not restore the\n            # persisted iteration count — from-stage always starts the cycle fresh.\n            export _ZBUILD_RESUME_ACTIVE=false",
+      "introduced": true,
+      "fix": "code"
+    }
+  ]
+}
