@@ -1,5 +1,5 @@
 diff --git a/core/pipeline/cycle-orchestrator.sh b/core/pipeline/cycle-orchestrator.sh
-index 85c4e892..80247d87 100644
+index 85c4e892..ca49c10d 100644
 --- a/core/pipeline/cycle-orchestrator.sh
 +++ b/core/pipeline/cycle-orchestrator.sh
 @@ -1222,6 +1222,28 @@ _cycle_state_write_iter_atomic() {
@@ -40,15 +40,19 @@ index 85c4e892..80247d87 100644
      _CYCLE_LAST_VERDICTS_BLOB="{}"
      _CYCLE_LAST_FAILURE_COUNT=0
      _CYCLE_ITER_OUTCOME="error"
-@@ -1381,6 +1403,25 @@ _cycle_iter_dispatch() {
+@@ -1381,6 +1403,43 @@ _cycle_iter_dispatch() {
      # renders e.g. `seq=1.2` instead of the per-stage cardinal. Empty label
      # means cardinal fallback (back-compat).
      local _cyc_pos=0
 +    # DSCMBR-1 edge case (#1805): if _resume_first_iter is true but ALL members
-+    # show "complete" in stage_statuses, they completed in a PRIOR iteration — no
-+    # member ran in the current (interrupted) iteration yet. Treat as a fresh
-+    # iteration start: run all members but still emit stage.start for the first
-+    # (since this is a resume starting the interrupted iteration at its beginning).
++    # show "complete" in stage_statuses, there are two distinct scenarios:
++    # (A) This iteration FULLY COMPLETED before the interruption (iter entry exists
++    #     in cycle_iterations[$id].iter). Keep _resume_first_iter=true so the
++    #     DSCMBR-1 guard skips every member and populates the blob from persisted
++    #     verdicts. The function returns 0 and the outer loop advances to iter+1.
++    # (B) This iteration was NOT yet started (all statuses are from the prior
++    #     iteration). Treat as a fresh iteration start: run all members with
++    #     stage.start for the first.
 +    if [[ "$_resume_first_iter" == "true" ]]; then
 +        local _cid_nc=0 _cid_s
 +        for _cid_s in "${_CYCLE_STAGES[@]}"; do
@@ -58,15 +62,29 @@ index 85c4e892..80247d87 100644
 +            [[ "$_cid_st" != "complete" ]] && _cid_nc=$(( _cid_nc + 1 ))
 +        done
 +        if [[ "$_cid_nc" -eq 0 ]]; then
-+            # All complete from prior iter; run all members fresh, emit stage.start for first.
-+            _resume_first_iter=false
-+            _from_stage_start=true
++            # All members complete — distinguish scenarios A and B by checking
++            # whether this iteration has an entry in the state's iter array.
++            local _cid_iter_done
++            _cid_iter_done="$(jq -r \
++                --arg id "${_CYCLE_TRAP_CYCLE_ID:-}" \
++                --argjson n "$iter" \
++                '(.cycle_iterations[$id].iter // []) | map(select(.n == $n)) | length' \
++                "$state_file" 2>/dev/null || echo 0)"
++            if [[ "$_cid_iter_done" -eq 0 ]]; then
++                # Scenario B: iteration not started yet (statuses from prior iter).
++                # Run all members fresh, emit stage.start for the first.
++                _resume_first_iter=false
++                _from_stage_start=true
++            fi
++            # else: Scenario A — iteration completed. Keep _resume_first_iter=true;
++            # DSCMBR-1 guard will skip each member, populate blob from persisted
++            # verdicts, and return 0 for the outer loop to advance to iter+1.
 +        fi
 +    fi
      # ADR-027 (Wave 17-B #703): cycle-as-member support. For each cycle
      # member, check `_TPL_STAGE_TYPE_<member>` — if it's `cycle`, recurse
      # into cycle_orchestrator_run for that nested cycle and map how it ended
-@@ -1446,6 +1487,49 @@ _cycle_iter_dispatch() {
+@@ -1446,6 +1505,57 @@ _cycle_iter_dispatch() {
                  "$(jq -r '.status // "complete"' <<< "$_ru_entry")" "$(jq -r '.verdict // "pass"' <<< "$_ru_entry")" || true
              continue
          fi
@@ -96,7 +114,15 @@ index 85c4e892..80247d87 100644
 +                _cmbr_new_blob="$(jq -c --arg s "$s" --argjson e "$_cmbr_blob_entry" \
 +                    '. + {($s): $e}' <<< "$blob" 2>/dev/null)" \
 +                    && blob="$_cmbr_new_blob" \
-+                    || warn "cycle-orchestrator: failed to update verdict blob for skipped member '$s'; cycle predicates (exit_when/abort_when/until) may evaluate incorrectly"
++                    || {
++                        warn "cycle-orchestrator: failed to update verdict blob for skipped member '$s'; cycle predicates (exit_when/abort_when/until) may evaluate incorrectly"
++                        # Emit machine-readable event so monitoring can observe the blob
++                        # update failure and correlate it with a predicate that uses a
++                        # stale/missing entry for this member (#1805 sre-2).
++                        eb_emit_event "cycle.history.lost" \
++                            "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-}" "member=$s" \
++                            "reason=blob_update_failed" 2>/dev/null || true
++                    }
 +                continue
 +            fi
 +            # Non-complete (interrupted) member: emit stage.start before dispatch.
@@ -116,7 +142,7 @@ index 85c4e892..80247d87 100644
          _cycle_emit_member_dispatch_start "$_cyc_pos" "$s" "$_member_kind_pre"
          export ZBUILD_CYCLE_ITER="$iter"
          export ZBUILD_CYCLE_ID="${_CYCLE_TRAP_CYCLE_ID}"
-@@ -2337,15 +2421,59 @@ _cycle_orchestrator_run_body() {
+@@ -2337,15 +2447,59 @@ _cycle_orchestrator_run_body() {
          { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 1; }
      }
  
@@ -178,7 +204,7 @@ index 85c4e892..80247d87 100644
          _CYCLE_TRAP_ITER="$iter"
          _CYCLE_LAST_ITERATIONS="$iter"
  
-@@ -2398,9 +2526,33 @@ _cycle_orchestrator_run_body() {
+@@ -2398,9 +2552,40 @@ _cycle_orchestrator_run_body() {
              { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 1; }
          fi
  
@@ -188,7 +214,14 @@ index 85c4e892..80247d87 100644
 +        # current_iter; this start write is what makes the resume formula correct for
 +        # a run interrupted before the first iter completes (#1805, correctness).
 +        _cycle_state_write_iter_start "$state_file" "$cycle_id" "$iter" \
-+            || warn "cycle-orchestrator: failed to write iter-start state for cycle=$cycle_id iter=$iter (a resume may start at the wrong iteration)"
++            || {
++                warn "cycle-orchestrator: failed to write iter-start state for cycle=$cycle_id iter=$iter (a resume may start at the wrong iteration)"
++                # Emit machine-readable event so monitoring can observe the write failure
++                # and correlate it with a resume that starts at the wrong iteration (#1805 sre-1).
++                eb_emit_event "state.write" \
++                    "op=iter_start" "cycle_id=$cycle_id" "iter=$iter" \
++                    "reason=write_failed" 2>/dev/null || true
++            }
 +
          # Dispatch the cycle's stages in order.
 +        # DSCMBR-1 (#1805): signal resume_first_iter for the first resumed iteration
@@ -214,10 +247,10 @@ index 85c4e892..80247d87 100644
          [[ $_ORCH_HAD_E -eq 1 ]] && set -e
          # The round stopped before every member ran (#1850: the word, not an rc).
 diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
-index ee069d8d..38c3fe73 100755
+index ee069d8d..bebc11b7 100755
 --- a/core/pipeline/runner.sh
 +++ b/core/pipeline/runner.sh
-@@ -1704,6 +1704,95 @@ _runner_rearm_traps() {
+@@ -1704,6 +1704,102 @@ _runner_rearm_traps() {
      trap '_runner_signal_trap TERM' TERM
  }
  
@@ -238,7 +271,14 @@ index ee069d8d..38c3fe73 100755
 +    }
 +    if [[ -d "$_rr_staging/artifacts" ]]; then
 +        _artifact_persist_put_back "$_rr_staging/artifacts" "$_rr_artifacts_dir" \
-+            || warn "resume-rehydrate: put_back failed for $_rr_artifacts_dir — partial restoration; dispatch loop will exit 1 for any missing primary artifact"
++            || {
++                warn "resume-rehydrate: put_back failed for $_rr_artifacts_dir — partial restoration; dispatch loop will exit 1 for any missing primary artifact"
++                # Emit machine-readable event so monitoring can distinguish a put_back
++                # I/O failure from an artifact that was never persisted (#1805 sre-3).
++                eb_emit_event "state.write" \
++                    "op=put_back" "dir=$_rr_artifacts_dir" "run_id=${_runner_run_id:-}" \
++                    "reason=io_error" 2>/dev/null || true
++            }
 +    fi
 +    rm -rf "${_rr_staging:?}" 2>/dev/null || true
 +    return 0
@@ -313,7 +353,7 @@ index ee069d8d..38c3fe73 100755
  main() {
      local issue="" goal="" dry_run=false template="simple"
      local resume_mode=false from_stage="" no_resume=false force=false
-@@ -1745,19 +1834,47 @@ main() {
+@@ -1745,19 +1841,47 @@ main() {
      export ZBUILD_RESUME
      [[ "$ZBUILD_RESUME" == "0" ]] && no_resume=true
  
@@ -368,7 +408,7 @@ index ee069d8d..38c3fe73 100755
      local plugins_root="${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}"
      # #1614: fill the manifest cache HERE, in main()'s own shell. yaml_get was
      # 6,338 awk spawns per run (~13s of 27s); most call sites read it inside $( ),
-@@ -1901,6 +2018,12 @@ main() {
+@@ -1901,6 +2025,12 @@ main() {
      # ADR-051 §warn-first (#1318): startup preflight — persona bindings + requires.plugins.
      # Routed through _runner_startup_preflight_gate (defined above) so the dry-run/resume
      # exemption logic is testable independently of the full pipeline startup sequence.
@@ -381,7 +421,7 @@ index ee069d8d..38c3fe73 100755
      if ! _runner_startup_preflight_gate "$dry_run" "$resume_mode"; then
          error "Startup preflight validation failed (ZBUILD_CONTRACT_VALIDATOR=${ZBUILD_CONTRACT_VALIDATOR:-warn}). See above."
          _runner_run_id="${_runner_run_id:-${ZBUILD_RUN_ID:-preflight}}"
-@@ -1911,6 +2034,9 @@ main() {
+@@ -1911,6 +2041,9 @@ main() {
          _render_pipeline_end "preflight_failed"
          return 1
      fi
@@ -391,7 +431,7 @@ index ee069d8d..38c3fe73 100755
  
      # ADR-049 §Phase-1.1 (#1360): vision-document admission gate.
      # Runs BEFORE the --dry-run branch so dry-run also enforces vision conformance.
-@@ -2008,12 +2134,21 @@ main() {
+@@ -2008,12 +2141,21 @@ main() {
      fi
      _runner_state_file="$state_file"
  
@@ -414,7 +454,7 @@ index ee069d8d..38c3fe73 100755
          if ! $_fs_valid; then
              error "--from-stage '$from_stage' is not a known stage (active stages: ${active_stages[*]})"
              return 1
-@@ -2115,9 +2250,77 @@ main() {
+@@ -2115,9 +2257,72 @@ main() {
                  resume_mode=false
                  ;;
          esac
@@ -472,16 +512,6 @@ index ee069d8d..38c3fe73 100755
 +                    ;;
 +            esac
 +        fi
-+    fi
-+
-+    # --from-stage is only valid in resume mode — checked AFTER auto-resume so
-+    # a run that qualifies for auto-resume (status=in_progress, fresh timestamp)
-+    # does not need an explicit --resume flag when --from-stage is also given
-+    # (DSFSTG-1 / lens-scope-code finding 1, #1805).
-+    if [[ -n "$from_stage" ]] && ! $resume_mode; then
-+        error "--from-stage is only valid with --resume"
-+        _usage
-+        return 1
      fi
  
      if ! $resume_mode; then
@@ -489,10 +519,15 @@ index ee069d8d..38c3fe73 100755
 +        # stale `true` value from a parent resume run does not enter cycle-resume mode
 +        # on a fresh start, violating RQGUAR-1 (#1805).
 +        export _ZBUILD_RESUME_ACTIVE=false
++        # Guard: clear _ZBUILD_FROM_STAGE_EMIT_START so a subprocess runner that
++        # inherits a stale `true` value from a parent --from-stage run does not
++        # spuriously emit stage.start for the first cycle member of every fresh run,
++        # corrupting the event sequence and violating RQGUAR-1 (#1805).
++        export _ZBUILD_FROM_STAGE_EMIT_START=false
          # Sanitize ZBUILD_RUN_ID: strip characters unsafe in filenames (/, .., spaces, etc.)
          # to prevent path traversal when run_id is used in report-${run_id}.md filenames
          # AND in the per-run state dir below (#887). Generated BEFORE the re-root.
-@@ -2781,11 +2984,36 @@ main() {
+@@ -2781,11 +2986,36 @@ main() {
          # resumed run immediately. Resume must always start from a clean
          # signal channel.
          _zbuild_disarm_abort_sentinel
@@ -529,7 +564,7 @@ index ee069d8d..38c3fe73 100755
          fi
      else
          # #1791: the engine sha rides on pipeline.start and the banner so an
-@@ -2864,6 +3092,16 @@ main() {
+@@ -2864,6 +3094,16 @@ main() {
      local skip_until_stage=""
      [[ -n "$from_stage" ]] && skip_until_stage="$from_stage"
  
@@ -546,7 +581,7 @@ index ee069d8d..38c3fe73 100755
      # ADR-021 (#512 + #511 F2): cycle-aware dispatch.
      # #511 Pin 4 — detect-and-enable with env override:
      #   ZBUILD_CYCLES_ENABLED=0  → disabled (force off, even if template asks)
-@@ -3041,6 +3279,13 @@ main() {
+@@ -3041,6 +3281,13 @@ main() {
          # ADR-042: resolve role-then-id (uniform with leaf + parallel paths) so a
          # role-bound cycle member whose plugin id ≠ stage name resolves correctly.
          _cd_plugin_dir="$(resolve_stage_plugin "$_cd_stage" "$plugins_root" 2>/dev/null || true)"
@@ -560,7 +595,7 @@ index ee069d8d..38c3fe73 100755
          if [[ -z "$_cd_plugin_dir" ]]; then
              _CYCLE_DISPATCH_VERDICT="error"
              _CYCLE_DISPATCH_VERDICT_RAW="error"
-@@ -3074,6 +3319,10 @@ main() {
+@@ -3074,6 +3321,10 @@ main() {
              _CYCLE_DISPATCH_STATUS="failed"
              return 1
          fi
@@ -571,7 +606,7 @@ index ee069d8d..38c3fe73 100755
          set +e; plugin_hook_call "$_cd_plugin_dir" run "$_cd_stage" "$_cd_state"; _cd_rc=$?
          [[ $_cd_had_e -eq 1 ]] && set -e
          _cd_manifest="$_cd_plugin_dir/manifest.yaml"
-@@ -3341,6 +3590,67 @@ main() {
+@@ -3341,6 +3592,70 @@ main() {
              case "$_unit" in
                  cycle:*)
                      local _cyc_id="${_unit#cycle:}"
@@ -635,11 +670,14 @@ index ee069d8d..38c3fe73 100755
 +                        info "Skipping cycle: $_cyc_id (awaiting $skip_until_stage)"
 +                        continue
 +                    fi
-+                    [[ -n "$skip_until_stage" ]] && skip_until_stage=""
++                    # ADR-006 / #1805 (DSFSTG-3): when --from-stage targets this cycle,
++                    # clear skip_until_stage AND resume_mode so the resume skip guard does
++                    # not activate for stages after <s> in combined --resume --from-stage mode.
++                    [[ -n "$skip_until_stage" ]] && { skip_until_stage=""; resume_mode=false; }
                      # #524: replace bare `info` with operator-visible cycle
                      # entry banner (heavy ═ + ▸ Entering + DIM trailer).
                      local _cyc_stages_csv=""
-@@ -3483,6 +3793,12 @@ main() {
+@@ -3483,6 +3798,12 @@ main() {
                          esac
                          warn "$(_runner_unconverged_msg "$_cyc_id" "$_rc" "$_CYCLE_LAST_TERMINATED_REASON" "$_RUNNER_CYCLE_UNCONVERGED_ON_MAX")"
                      fi
@@ -652,7 +690,7 @@ index ee069d8d..38c3fe73 100755
                      # #2368: every stage is told whether every loop that ran
                      # passed — "yes" only then; unset until a loop has run, so a
                      # stage that acts on it (merge, deploy) fails closed.
-@@ -3609,6 +3925,56 @@ main() {
+@@ -3609,6 +3930,59 @@ main() {
                      ;;
                  stage:*)
                      local _ust="${_unit#stage:}"
@@ -705,11 +743,14 @@ index ee069d8d..38c3fe73 100755
 +                        info "Skipping stage: $_ust (awaiting $skip_until_stage)"
 +                        continue
 +                    fi
-+                    [[ -n "$skip_until_stage" ]] && skip_until_stage=""
++                    # ADR-006 / #1805 (DSFSTG-3): clear skip_until_stage AND resume_mode
++                    # so the resume skip guard does not activate for stages after <s> in
++                    # combined --resume --from-stage mode.
++                    [[ -n "$skip_until_stage" ]] && { skip_until_stage=""; resume_mode=false; }
                      # Re-enter the legacy loop for a single stage by re-using
                      # active_stages — simplest correct path: run that stage's
                      # body inline via cycle_dispatch_stage (gives same plugin
-@@ -3755,9 +4121,12 @@ main() {
+@@ -3755,9 +4129,12 @@ main() {
                              eb_emit_event "stage.verdict.stale_artifact" \
                                  "stage=$stage" "path=$_sk_resolved" \
                                  "run_id=$_runner_run_id"
