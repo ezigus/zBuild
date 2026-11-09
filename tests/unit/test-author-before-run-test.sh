@@ -26,6 +26,10 @@
 #             and no finding is open, it confirms them and finishes
 # B8 [change] a test path that leaves the repository (absolute, or with ..) is
 #             never copied or run, nor listed in the prompt (review on #2446)
+# B10 [change] the list names each requirement that needs a test and has none
+#             found yet: "Not written yet: <ids>" (#2506; #1805 run 42556446368:
+#             design added DSFSTG-3, the list showed it missing only by leaving it
+#             out, and test-author's notes said all 16 were done)
 # B9 [guard]  a changed [no-code] test that passes on the old code is no
 #             finding: it need not fail there (review on #2446)
 set -uo pipefail
@@ -98,13 +102,18 @@ MD
 # ── B1 / B6 / B7 ─────────────────────────────────────────────────────────────
 WRITE=(fails); _run
 _AP="$(tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/author-prompt-1" 2>/dev/null)"
-assert_contains "[B1] the model is told to run nothing; its new and changed test files are run afterwards on the old code" "$_AP" \
-    "Run nothing: when you finish, the test files you create or change are run on the code from before this change"
+assert_contains "[B1] the model runs nothing else (#2506); its new and changed test files are run afterwards on the old code" "$_AP" \
+    "Run nothing else: run only a test file of yours that you are told fails"
+assert_contains "[B1] ...its new and changed test files are run afterwards on the old code" "$_AP" \
+    "When you finish, the test files you create or change are run on the code from before this change"
 assert_eq "[B1] it is no longer told to run its test files itself" "0" \
     "$(grep -c 'Run the test files you write' <<< "$_AP" || true)"
 assert_contains "[B6] the prompt lists what is already written" "$_AP" "Already written (found by script"
 assert_contains "[B6] ...each test file with the requirements whose tag it holds" "$_AP" "tests/b-test.sh: SPEC-2"
 assert_contains "[B6] ...and a file that holds none yet" "$_AP" "tests/a-test.sh: none yet"
+assert_contains "[B10] the list names the requirement with no test yet" "$_AP" "Not written yet: SPEC-1"
+_nwy="$(grep -o 'Not written yet: [^.]*' "$TEST_TEMP_DIR/author-prompt-1" 2>/dev/null || true)"
+assert_eq "[B10] ...and only it: SPEC-2's test is written" "Not written yet: SPEC-1" "$_nwy"
 assert_contains "[B7] with every test written and nothing open, it confirms and finishes" "$_AP" \
     "confirm they test what their requirement demands and end with LOOP_COMPLETE"
 

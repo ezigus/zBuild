@@ -373,3 +373,12 @@ On #1805 run 42523805245 eight calls were killed at their time limit: four of bu
 - **Measured on CLI 2.1.319:** under `--permission-mode bypassPermissions` a `PreToolUse` deny is honoured and its reason reaches the model as the tool's result. A model refused that way wrote its notes file and ended with a `result` message carrying its cost.
 
 Enforced by `tests/unit/call-time-up-hook-test.sh` H1–H6.
+
+## Amendment (2026-11-09, #2506): notes hold only what is true now
+
+On #1805 run 42556446368 notes that said "done" were trusted over facts. Test-author's notes said "Status: COMPLETE, all 16 SPECs" after design had added a 17th; it wrote nothing and passed, and the gap cost about 45 minutes before the test stage caught it. The notes are one file per stage, but the model kept a history inside it: design's held "forty-ninth pass" back to "forty-second".
+
+- **Every stage's notes rule says the notes hold only what is true now:** rewrite the file each time, and keep no history of earlier passes.
+- **The line above a stage's notes in its Previous work says** that where they disagree with a list or a result elsewhere in the prompt, the list or the result is right.
+
+Enforced by `tests/unit/cut-off-hand-off-test.sh` H5, H6.

@@ -48,7 +48,6 @@ OUTPUT CONTRACT (obey absolutely):
         "file": "<path>",
         "category": "<short category, e.g. logic, injection, coverage>",
         "severity": "<one of: low, medium, high, critical>",
-        "line": <integer line number or null>,
         "message": "<one-sentence description>",
         "quote": "<the exact text that shows it, copied from the file as it is now, or a line the change removed>",
         "introduced": <true if this change introduced or worsened it; false if the code before the change already did this>,

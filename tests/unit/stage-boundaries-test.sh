@@ -84,7 +84,8 @@ if declare -F _build_compose_prompt_body >/dev/null 2>&1; then
     assert_contains "[SPEC-2] the prompt states the paths are read-only for this stage" "$_pt" "read-only for this stage"
     if grep -qi 'author stage' <<< "$_pt"; then assert_fail "[SPEC-2] the prompt names no other stage" "mentions the author stage"; else assert_pass "[SPEC-2] the prompt names no other stage"; fi
     assert_contains "[SPEC-2] the listed paths are there" "$_pt" "tests/unit/b-test.sh"
-    assert_contains "[SPEC-2] a failing assertion still means the code is wrong" "$_pt" "YOUR CODE is wrong"
+    # #2506: fix the code — unless the test fails the same way without the change.
+    assert_contains "[SPEC-2] a failing assertion still means fix the code" "$_pt" "When an assertion fails, fix your code."
 else
     assert_fail "[SPEC-2] _build_compose_prompt_body is defined" "missing"
 fi

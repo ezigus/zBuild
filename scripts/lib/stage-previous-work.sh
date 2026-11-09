@@ -389,7 +389,7 @@ _stage_block_previous_work() {
         # fresh one (a judging call, a stage with no tools).
         [[ -n "$own" && -n "${_ZB_SP_MARK_OWN:-}" ]] && printf '%s' "$_ZB_SP_OWN_BEGIN"
         if [[ -n "$own" && -n "$notes" ]]; then
-            printf '\nYour notes so far:\n%s\n' "$(_sp_read "$notes" "$_ZB_SP_NOTES_MAX_BYTES")"
+            printf '\nYour notes so far (where they disagree with a list or a result elsewhere in this prompt, the list or the result is right):\n%s\n' "$(_sp_read "$notes" "$_ZB_SP_NOTES_MAX_BYTES")"
         fi
         if [[ -n "$own" && -n "$cutoff" ]]; then
             printf '\nYour last call was cut off at its time limit before it finished. What it did, step by step, up to the cut-off:\n%s\n' \

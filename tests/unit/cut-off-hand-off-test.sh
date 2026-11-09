@@ -14,6 +14,14 @@
 # H3 [guard]  another stage's Previous work does not show them
 # H4 [change] a long call's list keeps its newest steps and fits what the
 #             prompt shows of it, so nothing is cut silently (review on #2444)
+#
+# #1805 run 42556446368: test-author's notes said "Status: COMPLETE, all 16
+# SPECs" after design had added a 17th, and it wrote nothing; design's notes
+# kept a history of passes, "forty-ninth pass" back to "forty-second".
+# H5 [change] (#2506) the notes rule says the notes hold only what is true now:
+#             rewrite them each time, and keep no history of passes
+# H6 [change] (#2506) the line above the notes says that where they disagree
+#             with a list or a result elsewhere in the prompt, those are right
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -49,6 +57,19 @@ printf '{"stage_statuses":{"cut":"failed"},"stage_verdicts":{"cut":"error"}}\n' 
 print_test_section "H1: the notes rule"
 _rules="$(_stage_block_rules cut "$S" "$P/agent/cut/manifest.yaml" 2>/dev/null)"
 assert_contains "[H1] notes are written for someone starting fresh" "$_rules" "starting fresh"
+
+_rules1="$(tr -s '[:space:]' ' ' <<< "$_rules")"
+assert_contains "[H5] the notes hold only what is true now" "$_rules1" \
+    "They hold only what is true now: rewrite the file each time, and keep no history of earlier passes."
+
+print_test_section "H6: the line above the notes"
+_n6="$(stage_notes_path "$S" cut)"; mkdir -p "${_n6%/*}"
+printf 'Status: COMPLETE, all SPECs\n' > "$_n6"
+_own6="$( _TPL_STAGES=(cut); zb_test_previous_work "$S/pipeline-state.json" "$P" cut )"
+assert_contains "[H6] the notes come back to the stage" "$_own6" "Status: COMPLETE, all SPECs"
+assert_contains "[H6] ...under a line saying the lists and results elsewhere in the prompt are right" "$_own6" \
+    "Your notes so far (where they disagree with a list or a result elsewhere in this prompt, the list or the result is right):"
+rm -f "$_n6"
 
 print_test_section "H2/H3: the steps of a cut-off call"
 _n="$(stage_notes_path "$S" cut)"; mkdir -p "${_n%/*}"
