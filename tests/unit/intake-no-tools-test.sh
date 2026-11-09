@@ -7,12 +7,13 @@
 # tool call used its one turn: stop_reason tool_use, num_turns 2, reported as
 # out_of_turns, and the retry cost another call.
 #
-# T1 [change] validate_manifest accepts config.router.tools: none, refuses any other value
-# T2 [change] a call from a plugin that declares tools: none passes
-#             --strict-mcp-config --tools "" to claude; one that does not, neither
+# T1 [change] a call its manifest lists with no tools (`main: []`, #2507,
+#             ADR-017 §12 — it replaced config.router.tools: none) is valid
+# T2 [change] such a call passes --strict-mcp-config --tools "" to claude; a
+#             call with tools gets them, and no MCP server either
 # T3 [change] the rules block of such a stage names no notes file; another
 #             stage's still does
-# T4 [change] intake declares tools: none and max_turns: 1
+# T4 [change] intake's two calls list no tools, and it has max_turns: 1
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -45,33 +46,26 @@ source "$REPO_ROOT/core/router/route.sh"
 # shellcheck source=../../scripts/lib/stage-prompt.sh
 source "$REPO_ROOT/scripts/lib/stage-prompt.sh"
 
-_mk_plugin() {  # <name> <router-block-body> → plugin dir
+_mk_plugin() {  # <name> <calls-block-body> → plugin dir
     local dir="$TEST_TEMP_DIR/plugins/agent/$1"
     mkdir -p "$dir"
     {
         printf 'id: %s\nname: Fixture\nkind: agent\nversion: 0.0.1\nsummary: fixture\n' "$1"
         printf 'hooks:\n  run: f_run\n'
         printf 'requires:\n  core:\n    - redaction\n'
-        printf 'config:\n  router:\n%s' "$2"
+        printf 'config:\n  router:\n    max_turns: 1\n'
+        printf 'calls:\n%s' "$2"
     } > "$dir/manifest.yaml"
     printf '%s' "$dir"
 }
 
-print_test_section "T1: validate_manifest and config.router.tools"
-_ok="$(_mk_plugin ok '    max_turns: 1
-    tools: none
-')"
-_bad="$(_mk_plugin bad '    tools: all
+print_test_section "T1: a call with no tools"
+_ok="$(_mk_plugin ok '  main: []
 ')"
 if validate_manifest "$_ok/manifest.yaml" >/dev/null 2>&1; then
-    assert_pass "[T1] tools: none is accepted"
+    assert_pass "[T1] main: [] is accepted"
 else
-    assert_fail "[T1] tools: none is accepted" "$(validate_manifest "$_ok/manifest.yaml" 2>&1)"
-fi
-if validate_manifest "$_bad/manifest.yaml" >/dev/null 2>&1; then
-    assert_fail "[T1] any other tools value is refused" "tools: all was accepted"
-else
-    assert_pass "[T1] any other tools value is refused"
+    assert_fail "[T1] main: [] is accepted" "$(validate_manifest "$_ok/manifest.yaml" 2>&1)"
 fi
 
 print_test_section "T2: the call's argv"
@@ -87,18 +81,19 @@ _argv_for() {  # <plugin dir> → argv, one per line
     cat "$TEST_TEMP_DIR/argv" 2>/dev/null
 }
 _none="$(_argv_for "$_ok")"
-_dflt="$(_argv_for "$(_mk_plugin dflt '    max_turns: 3
+_dflt="$(_argv_for "$(_mk_plugin dflt '  main: [read-files, edit-files]
 ')")"
 assert_contains "[T2] the call reached claude" "$_dflt" "--print"
 if grep -qx -- '--strict-mcp-config' <<< "$_none"; then
-    assert_pass "[T2] tools: none passes --strict-mcp-config"
+    assert_pass "[T2] a call with no tools passes --strict-mcp-config"
 else
-    assert_fail "[T2] tools: none passes --strict-mcp-config" "argv: $_none"
+    assert_fail "[T2] a call with no tools passes --strict-mcp-config" "argv: $_none"
 fi
-assert_eq "[T2] tools: none passes --tools with an empty value" "1" \
+assert_eq "[T2] ...and --tools with an empty value" "1" \
     "$(awk 'p { print ($0 == "" ? 1 : 0); exit } $0 == "--tools" { p = 1 }' <<< "$_none")"
-assert_eq "[T2] a plugin that declares nothing passes neither" "0" \
-    "$(grep -cxE -- '--strict-mcp-config|--tools' <<< "$_dflt")"
+assert_eq "[T2] a call with tools gets them" "Read,Grep,Glob,Edit,Write" \
+    "$(awk 'p { print; exit } $0 == "--tools" { p = 1 }' <<< "$_dflt")"
+assert_eq "[T2] ...and no MCP server either" "1" "$(grep -cx -- '--strict-mcp-config' <<< "$_dflt")"
 
 print_test_section "T3: the rules block"
 S="$TEST_TEMP_DIR/state"; mkdir -p "$S/artifacts"
@@ -113,7 +108,10 @@ assert_contains "[T3] another stage is still told its notes file" "$_r_dflt" "$(
 
 print_test_section "T4: intake declares it"
 _im="$REPO_ROOT/plugins/agent/intake/manifest.yaml"
-assert_eq "[T4] intake: tools none" "none" "$(manifest_router_knob "$_im" tools)"
+_iw="x"; manifest_call_words_v _iw "$_im" main
+assert_eq "[T4] intake's main call: no tools" "" "$_iw"
+_iw="x"; manifest_call_words_v _iw "$_im" check
+assert_eq "[T4] intake's check: no tools" "" "$_iw"
 assert_eq "[T4] intake: max_turns 1" "1" "$(manifest_router_knob "$_im" max_turns)"
 
 cleanup_test_env

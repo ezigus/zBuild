@@ -12,11 +12,11 @@
 [[ -n "${_ZBUILD_REVIEW_LENS_CHARTERS_LOADED:-}" ]] && return 0
 _ZBUILD_REVIEW_LENS_CHARTERS_LOADED=1
 
-# ─── _rl_build_lens_prompt <lens> <evidence_content> [context] ─────────────
+# ─── _rl_build_lens_prompt <lens> <change> [context] ───────────────────────
 # One prompt for ONE lens: its findings and a 0-10 score. The severity scale is
 # defined here, once, for every lens (#2433); each persona gives examples.
 # <context> is what the change was FOR — the issue, its SPECs, the planned
-# scope (#1654, #1845 PR #2213): a lens that sees only the diff reads engine-set
+# scope (#1654, #1845 PR #2213): a lens that sees only the change reads engine-set
 # values as attacker input and cannot tell a defect from what was asked for.
 # The "compare with the issue" paragraph is here, so every lens gets it from one
 # source (#2307).
@@ -73,15 +73,16 @@ FIX — say what would fix each finding:
 - \`issue\`: the issue itself is wrong: it contradicts an ADR, or asks for something that cannot be built as written. No stage can fix this.
 
 ## What you judge against
-The diff below shows WHAT CHANGED. Before you judge a line,
-read the surrounding code in the repository: the rest of the file, its callers,
-what produces its inputs, and comparable code elsewhere. A problem may be proven by unchanged code
+THE CHANGE below names the commit this branch started from and the files it
+changed: read each change with git diff, as it says there. Before you judge a
+line, read the surrounding code in the repository: the rest of the file, its
+callers, what produces its inputs, and comparable code elsewhere. A problem may be proven by unchanged code
 (the change disagrees with its neighbours) — cite it. Report problems in the
 change.
 ${context:+
 ${context}
 }
-CHANGE UNDER REVIEW:
+THE CHANGE:
 ${evidence}
 
 ## What you must not do

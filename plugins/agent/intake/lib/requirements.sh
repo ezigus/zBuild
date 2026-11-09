@@ -291,7 +291,10 @@ _intake_requirements_json_v() {
     prompt="$(stage_prompt_compose_text --fresh "$(_ireq_check_own)" \
         "ISSUE:"$'\n'"$issue"$'\n\n'"THE LIST:"$'\n'"$listed" "$(_ireq_limits)")" \
         || { _INTAKE_REQ_OUTCOME=misconfigured; return 1; }
+    # ADR-017 §12 (#2507): the call intake's manifest lists as `check`.
+    local -x ZBUILD_ROUTE_CALL=check
     _ireq_call_parsed "$prompt" MISSING "${ids[*]}" "$_removed_now" "$issue" "${ids[*]}" || return 1
+    unset ZBUILD_ROUTE_CALL
     ids+=("${_IREQ_IDS[@]+"${_IREQ_IDS[@]}"}"); texts+=("${_IREQ_TEXTS[@]+"${_IREQ_TEXTS[@]}"}")
     # #2476: what the check says is not a requirement leaves the list, kept as
     # removed with its words and why, so it never comes back.

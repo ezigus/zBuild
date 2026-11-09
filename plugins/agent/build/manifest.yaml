@@ -74,6 +74,11 @@ config:
     timeout_s: 900
     max_turns: 0
 
+# ADR-017 §12 (#2507): every model call this stage makes, by name, with its
+# tools in zbuild's words; the provider turns them into its own.
+calls:
+  main: [read-files, edit-files, run-commands, web-search, subagents, todo-list]
+
 outputs:
   - id: diff_patch
     topic: change

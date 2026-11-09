@@ -755,6 +755,25 @@ _runner_validate_startup_preflight() {
         done < <(_runner_template_personas "$_TPL_SOURCE_FILE")
     fi
 
+    # ADR-017 §12 (#2507): every tool word of every stage's calls — the
+    # install's and the repository's — is one its provider can supply. A call
+    # that would run without a tool it needs refuses the run, in warn mode too.
+    local _tools_bad=0 _tw _tl
+    declare -F route_calls_unsupported_v >/dev/null 2>&1 \
+        || source "$_ZBUILD_ROOT/core/router/call-tools.sh" 2>/dev/null || true
+    if declare -F route_calls_unsupported_v >/dev/null 2>&1; then
+        local -a _tmfs=("$_ZBUILD_ROOT"/plugins/*/*/manifest.yaml)
+        [[ -n "${ZBUILD_REPO_ROOT:-}" && -d "$ZBUILD_REPO_ROOT/.zbuild/plugins" ]] \
+            && _tmfs+=("$ZBUILD_REPO_ROOT"/.zbuild/plugins/*/*/manifest.yaml)
+        route_calls_unsupported_v _tw "${ZBUILD_MODELS_FILE:-$_ZBUILD_ROOT/config/models.json}" "${_tmfs[@]}"
+        while IFS= read -r _tl; do
+            [[ -n "$_tl" ]] || continue
+            local _tr="${_tl#* call }"
+            violations+=("${_tl%% *}|TOOLS_UNSUPPORTED|${_tr%%:*}|${_tl//|//}")
+            fail_count=$((fail_count + 1)); _tools_bad=1
+        done <<< "$_tw"
+    fi
+
     # No violations → clean
     [[ $fail_count -eq 0 ]] && return 0
 
@@ -763,9 +782,10 @@ _runner_validate_startup_preflight() {
     # pre-dispatch input presence check reuses it instead of being a third
     # aggregation loop; the rendered bytes are unchanged.
     _inputs_render_violations \
-        "Startup preflight: persona bindings or required plugins are unresolvable:" \
-        "Fix: ensure the declared persona id exists under plugins/persona/<id>/manifest.yaml
-     and that each requires.plugins entry names an installable plugin.
+        "Startup preflight: persona bindings, required plugins or call tools are unresolvable:" \
+        "Fix: ensure the declared persona id exists under plugins/persona/<id>/manifest.yaml,
+     that each requires.plugins entry names an installable plugin, and that each
+     call's tools (calls: in its manifest) are words its provider can supply.
      See docs/adr/ADR-051-engine-owned-stage-keyed-data-provision.md." \
         "${violations[@]}"
 
@@ -777,7 +797,7 @@ _runner_validate_startup_preflight() {
             "mode=$mode" 2>/dev/null || true
     fi
 
-    if [[ "$mode" == "warn" && "$_persona_missing" -eq 0 ]]; then
+    if [[ "$mode" == "warn" && "$_persona_missing" -eq 0 && "$_tools_bad" -eq 0 ]]; then
         printf '  ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite startup preflight violations. Set =enforce to fail-fast.\n\n' >&2
         return 0
     fi

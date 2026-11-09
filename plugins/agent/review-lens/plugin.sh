@@ -58,37 +58,6 @@ source "$_RL_ROOT/scripts/lib/acceptance-block.sh"
 source "$_RL_ROOT/core/plugin-registry/registry.sh"
 # shellcheck source=lib/charters.sh
 source "$_RL_DIR/lib/charters.sh"
-# zb_is_test_path: which changed files are tests (ADR-069 §10).
-# shellcheck source=../../../scripts/lib/test-paths.sh
-source "$_RL_ROOT/scripts/lib/test-paths.sh"
-
-# _rl_lens_evidence <diff_file> — what a lens is given of the change: every
-# file's diff in full except the tests', which are named with their lines added
-# and removed. On #1944 the test diffs were 68 KB of a 98 KB diff, read by
-# every lens before it could start; a test a lens wants, it opens itself.
-_rl_lens_evidence() {
-    local f="$1" line path="" block="" add=0 del=0 out="" tests=""
-    _rl_flush() {
-        [[ -n "$path" ]] || return 0
-        if zb_is_test_path "$path"; then tests+="- ${path} (+${add} -${del})"$'\n'
-        else out+="$block"; fi
-    }
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        if [[ "$line" == "diff --git a/"* ]]; then
-            _rl_flush
-            path="${line##* b/}"; block=""; add=0; del=0
-        elif [[ -n "$path" && "$line" != "+++ "* && "$line" != "--- "* ]]; then
-            [[ "$line" == +* ]] && add=$((add + 1))
-            [[ "$line" == -* ]] && del=$((del + 1))
-        fi
-        block+="$line"$'\n'
-    done < "$f"
-    _rl_flush
-    unset -f _rl_flush
-    printf '%s' "$out"
-    [[ -n "$tests" ]] && printf '\nCHANGED TEST FILES (not shown above; open any of them in the worktree when your lens needs it):\n%s' "$tests"
-    return 0
-}
 
 # ─── _review_lens_envelope_schema_ok <json> ──────────────────────────────────
 # Schema gate for _llm_envelope_parse: accepts an object with a .findings array.
@@ -118,12 +87,14 @@ _rl_reply_problem() {
     _rp_json=""
 }
 
-# _rl_quote_problem_v <var> <json> <evidence> <repo> — what is wrong with the
-# report's quotes (#2464, ADR-072 §3): a finding with none, or one that is in
-# neither its file nor the change. Empty when every quote is there. Sets
+# _rl_quote_problem_v <var> <json> <base> <repo> [patch] — what is wrong with
+# the report's quotes (#2464, ADR-072 §3): a finding with none, or one that is
+# in neither its file as it is now nor as it was at the commit the branch
+# started from (<base>: a line the change removed), nor — with no starting
+# commit known — the change's patch. Empty when every quote is there. Sets
 # _RL_QUOTE_FILES: the files the findings name, which a kept report depends on.
 _rl_quote_problem_v() {
-    local -n _rqp="$1"; local _rqp_n=0 _rqp_f _rqp_q _rqp_w
+    local -n _rqp="$1"; local _rqp_n=0 _rqp_f _rqp_q _rqp_w _rqp_old
     local -a _rqp_bad=()
     _rqp=""; _RL_QUOTE_FILES=()
     [[ "$2" == *'"file"'* || "$2" == *'"quote"'* || "$2" == *'"message"'* ]] || return 0
@@ -131,8 +102,13 @@ _rl_quote_problem_v() {
         _rqp_n=$(( _rqp_n + 1 ))
         [[ -n "$_rqp_f" && "$_rqp_f" != unknown ]] && _RL_QUOTE_FILES+=("$4/$_rqp_f")
         if [[ -z "${_rqp_q//[[:space:]]/}" ]]; then _rqp_bad+=("finding $_rqp_n has no quote"); continue; fi
-        judge_quote_check_v _rqp_w "$_rqp_f:\"$_rqp_q\"" "$3" "$4" && continue
-        _judge_holds "$3" "$_rqp_q" && continue
+        judge_quote_check_v _rqp_w "$_rqp_f:\"$_rqp_q\"" "" "$4" && continue
+        # #2507 (ADR-072 §7): a removed line is in the file as it was — one git
+        # call, only for a quote not found as the file is now.
+        if [[ -n "$3" && -n "$_rqp_f" && "$_rqp_f" != unknown ]]; then
+            _rqp_old="$(git -C "$4" show "$3:$_rqp_f" 2>/dev/null)" && _judge_holds "$_rqp_old" "$_rqp_q" && continue
+        fi
+        [[ -n "${5:-}" ]] && _judge_holds "$5" "$_rqp_q" && continue
         _rqp_bad+=("finding $_rqp_n's quote $_rqp_w")
     # One line per finding, its file and quote split by a unit separator: @tsv
     # would double a backslash in the quote.
@@ -308,20 +284,20 @@ review_lens_run() {
     fi
     [[ -n "$lens" ]] || lens="correctness"
 
-    # #896/#952: every lens judges the full-branch merge-base change bundle
-    # (the incremental diff.patch when no base resolves) — the same evidence
-    # for every lens, as for any stage.
-    local evidence; zbuild_change_bundle_v evidence "$artifact_dir"
+    # #896/#952: every lens judges the whole branch's change, from the commit
+    # it started from (the round's diff.patch when no base resolves) — the same
+    # change for every lens, as for any stage.
     _review_lens_run_inner \
         "$lens" \
         "$(earlier_scope_manifest "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)" \
-        "$evidence" \
+        "$(earlier_change_patch "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)" \
         "$artifact_dir/lens-$lens.json" \
         "$artifact_dir"
 }
 
 # Inner implementation — unit-testable with explicit paths.
-# Args: $1=lens  $2=scope_manifest  $3=evidence(file)  $4=out lens-<name>.json
+# Args: $1=lens  $2=scope_manifest  $3=the round's patch, read only when no
+#       starting commit is known  $4=out lens-<name>.json
 #       $5=(optional) artifact dir for the intermediate redacted prompt
 _review_lens_run_inner() {
     # $2 (the scope manifest) is the redaction allow-list, not the plan: the
@@ -343,21 +319,22 @@ _review_lens_run_inner() {
     # A round's routed findings are this round's only (#2433).
     rm -f "${out%.json}-code-result.json" "${out%.json}-design-result.json" 2>/dev/null || true
 
-    # Resolve evidence. ADR-043: the router redacts the assembled prompt by
-    # construction, so we pass RAW evidence and ALWAYS route (the former
-    # empty-evidence guard that skipped redaction — and thus tripped the router
-    # C6 precondition on an empty change bundle, #952 — is gone).
-    local evidence_content="(no change bundle available)"
-    if [[ -s "$evidence" ]]; then
-        # #721: strip OOS-marker tags + ANSI fragments from terminal capture.
-        evidence_content="$(printf '%s' "$(_rl_lens_evidence "$evidence")" | _zbuild_sanitize_for_llm)"
-    fi
+    # #2507 (ADR-072 §7): the lens is pointed at the change — the commit the
+    # branch started from and the files it changed — and reads it with git.
+    # ADR-043: the router redacts the assembled prompt by construction.
+    local _rl_change="" _rl_cfp="" _rl_patch=""
+    zbuild_change_files_v _rl_change _rl_cfp "$evidence" "${ZBUILD_REPO_ROOT:-$PWD}"
+    local _rl_base="$_ZB_CHANGE_BASE"
+    # The round's patch is part of the change: a quote of a line it removed is
+    # found there too.
+    [[ -n "$evidence" && -s "$evidence" ]] && { IFS= read -r -d '' _rl_patch < "$evidence" || true; }
 
     # ─── Build the single-lens prompt ──────────────────────────────────────
-    local prompt; prompt="$(_rl_build_lens_prompt "$lens" "$evidence_content" "$(_rl_context)")"
+    local prompt; prompt="$(_rl_build_lens_prompt "$lens" "$_rl_change" "$(_rl_context)")"
     # #2464: what the lens judges, before the engine's blocks (whose Previous
     # work names this run's paths) — its kept answer's fingerprint.
-    local _rl_judged="$prompt"
+    # The patch's path differs from run to run; what it holds is in _rl_cfp.
+    local _rl_judged="${prompt//"$evidence"/<the patch>}"$'\n'"$_rl_cfp"
 
     # ADR-067 §8: the lens's three parts and the engine's blocks — its budget
     # among the engine's rules — in the one prompt order.
@@ -403,7 +380,7 @@ _review_lens_run_inner() {
     local _rl_disputed=0; [[ -n "$_rl_ans" ]] && _rl_disputed=1
     judge_kept_get_v _rl_kept "$_rl_kf" lens "$_rl_fp" "$_rl_disputed"
     if [[ -n "$_rl_kept" ]]; then
-        _rl_quote_problem_v _rl_problem "$_rl_kept" "$evidence_content" "$_rl_repo"
+        _rl_quote_problem_v _rl_problem "$_rl_kept" "$_rl_base" "$_rl_repo" "$_rl_patch"
         [[ -z "$_rl_problem" ]] && { json="$_rl_kept"; raw_response="$_rl_kept"; }
         _rl_problem=""
     fi
@@ -422,7 +399,7 @@ _review_lens_run_inner() {
         [[ $router_rc -eq 0 && -n "$raw_response" && "${_rl_interrupted:-0}" != "1" ]] || break
         _rl_reply_problem "$raw_response" json _rl_problem
         # ADR-072 §3: every finding quotes the text that shows it.
-        [[ -z "$_rl_problem" ]] && _rl_quote_problem_v _rl_problem "$json" "$evidence_content" "$_rl_repo"
+        [[ -z "$_rl_problem" ]] && _rl_quote_problem_v _rl_problem "$json" "$_rl_base" "$_rl_repo" "$_rl_patch"
         if [[ -z "$_rl_problem" ]]; then
             local -a _rl_deps=()
             judge_opened_v _rl_deps "$_rl_opened"

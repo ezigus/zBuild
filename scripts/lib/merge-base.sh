@@ -58,35 +58,52 @@ zbuild_resolve_merge_base_v() {
     _zrmv="$_zrm_base"
 }
 
-# zbuild_change_bundle <artifact_dir> [<repo_root>]
-# Resolve the review "change bundle" as a FILE path, mirroring review/plugin.sh's
-# fallback chain (#896) so review and review-lens judge the
-# SAME basis — the full-branch merge-base diff, not the per-run intake-baseline
-# diff.patch (which is EMPTY on a resumed/green run or when the work was committed
-# before intake — the observed #952 lens failure).
-#   1. `git diff <merge-base> HEAD` written to <artifact_dir>/branch-diff.patch
-#   2. the incremental build <artifact_dir>/diff.patch (echoed as-is)
-#   3. when neither resolves, still echoes the diff.patch path so the caller's
-#      `-s` guard yields its "(no change bundle available)" sentinel.
-# Fail-soft: never propagates git errors.
-zbuild_change_bundle() {
-    local _zcb; zbuild_change_bundle_v _zcb "$1" "${2:-}"; printf '%s' "$_zcb"
-}
-
-# zbuild_change_bundle_v <var> <artifact_dir> [<repo_root>] — the same path,
-# into <var>, with no subshell around it: issue-acceptance and every lens read
-# it once a dispatch (#2482, ADR-065). The diff goes straight to its file.
-zbuild_change_bundle_v() {
-    local -n _zcbv="$1"
-    local artifact_dir="$2" repo_root="${3:-}"
+# zbuild_change_files_v <text_var> <fp_var> <patch_file> [<repo_root>] — what
+# a judge is told of the change (#2507, ADR-072 §7): the commit the branch
+# started from (the merge-base) and each file it changed since, one
+# "<status>\t<path>" line, and how to read each change with git. The judge
+# diffs for itself; no diff is pasted in. <fp_var> gets what the change is: the
+# raw diff lines (each file's blob ids), so it changes whenever a changed file's
+# content does. One git call. With no starting commit known, or no change
+# committed since it, the judge is pointed at <patch_file> (the round's
+# diff.patch) and the files in it.
+# Sets _ZB_CHANGE_BASE to the starting commit, empty when none is known.
+_ZB_CHANGE_BASE=""
+zbuild_change_files_v() {
+    local -n _zcfv="$1" _zcff="$2"
+    _ZB_CHANGE_BASE=""
+    local _zcf_patch="$3" repo_root="${4:-}"
+    _zcfv="" _zcff=""
     local -a git=(git)
     [[ -n "$repo_root" ]] && git=(git -C "$repo_root")
-    # Names of their own: a nameref is resolved in the callee's scope.
-    local _zcb_base
-    zbuild_resolve_merge_base_v _zcb_base "$repo_root"
-    _zcbv="$artifact_dir/diff.patch"
-    [[ -n "$_zcb_base" ]] || return 0
-    "${git[@]}" diff "$_zcb_base" HEAD > "$artifact_dir/branch-diff.patch" 2>/dev/null || true
-    [[ -s "$artifact_dir/branch-diff.patch" ]] && _zcbv="$artifact_dir/branch-diff.patch"
-    return 0
+    local _zcf_base _zcf_raw="" _zcf_l _zcf_list="" _zcf_st _zcf_p
+    zbuild_resolve_merge_base_v _zcf_base "$repo_root"
+    [[ -n "$_zcf_base" ]] && _zcf_raw="$("${git[@]}" diff --raw --no-abbrev --no-renames "$_zcf_base" HEAD 2>/dev/null || true)"
+    # The branch's committed change, or — when it has none yet (#952: the
+    # work not committed) and the round's patch has some — the patch.
+    if [[ -n "$_zcf_base" && ( -n "$_zcf_raw" || -z "$_zcf_patch" || ! -s "$_zcf_patch" ) ]]; then
+        _ZB_CHANGE_BASE="$_zcf_base"
+        while IFS= read -r _zcf_l; do
+            [[ "$_zcf_l" == :* && "$_zcf_l" == *$'\t'* ]] || continue
+            _zcf_st="${_zcf_l%%$'\t'*}"; _zcf_st="${_zcf_st##* }"; _zcf_p="${_zcf_l#*$'\t'}"
+            _zcf_list+="${_zcf_st:0:1}"$'\t'"$_zcf_p"$'\n'
+        done <<< "$_zcf_raw"
+        _zcff="$_zcf_base"$'\n'"$_zcf_raw"
+        printf -v _zcfv '%s\n%s%s\n' \
+            "The branch started at commit $_zcf_base. The files it changed since then (A added, M changed, D deleted):" \
+            "${_zcf_list:-(none)
+}" "Read each change yourself: git diff $_zcf_base HEAD -- <file> shows a file's change, git log $_zcf_base..HEAD the commits, and git show $_zcf_base:<file> the file as it was. Open the file in the repository to read it as it is now."
+        return 0
+    fi
+    local _zcf_body=""
+    [[ -n "$_zcf_patch" && -s "$_zcf_patch" ]] || { _zcfv="No commit the branch started from is known, and no patch of the change was found."; return 0; }
+    IFS= read -r -d '' _zcf_body < "$_zcf_patch" || true
+    while IFS= read -r _zcf_l; do
+        [[ "$_zcf_l" == "diff --git a/"* ]] && _zcf_list+="${_zcf_l##* b/}"$'\n'
+    done <<< "$_zcf_body"
+    _zcff="$_zcf_body"
+    printf -v _zcfv '%s\n%s%s\n' \
+        "The change, as a patch, is in $_zcf_patch: open it to read the change. The files in it:" \
+        "${_zcf_list:-(none)
+}" "Open each file in the repository to read it as it is now."
 }

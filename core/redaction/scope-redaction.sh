@@ -54,12 +54,12 @@ apply_scope_redaction() {
     # in the text, code fences included. <scope_manifest> and <allowlist> are
     # accepted and unused.
     : "$manifest" "$allowlist"
-    if ! declare -F private_paths_list >/dev/null 2>&1; then
+    if ! declare -F private_paths_list_v >/dev/null 2>&1; then
         # shellcheck source=../../scripts/lib/private-paths.sh
         source "$_ZBUILD_ROOT/scripts/lib/private-paths.sh" || return 2
     fi
     local repo="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || true)}" patterns
-    patterns="$(private_paths_list "$repo")"
+    private_paths_list_v patterns "$repo"
 
     local size_before; size_before=$(wc -c < "$input")
     ZBUILD_REDACTION_PRIVATE="$patterns" ZBUILD_REDACTION_REPO="$repo" awk '

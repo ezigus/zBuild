@@ -15,6 +15,11 @@
 #                                               as a persona; absent or rc 1 when
 #                                               the provider cannot, and the router
 #                                               then puts the persona in the prompt
+#   provider_<name>_tool_args <word>...       → the call's arguments that give it
+#                                               exactly the tools zbuild's words
+#                                               name (ADR-017 §12), MCP servers
+#                                               off; rc 1, saying why on stderr,
+#                                               for a word it cannot supply
 #
 # <response> is the raw output of the call.
 
@@ -58,4 +63,36 @@ provider_anthropic_persona_args() {
         '{($n): {description: $d, prompt: $p}}' 2>/dev/null)" || return 1
     [[ -n "$json" ]] || return 1
     printf '%s\n' --agents "$json" --agent "$name"
+}
+
+# provider_anthropic_tool_args <word>... — zbuild's tool words as the claude
+# CLI's flags (#2507, ADR-017 §12, ADR-003), one argument per line. --tools
+# lists the built-in tools the call has (none at all when given no word);
+# --strict-mcp-config loads no MCP server from the machine or the repository.
+# read-git without run-commands is the shell, allowed only git's reading
+# commands; the call's hook refuses any other (core/router/tool-hook.sh).
+provider_anthropic_tool_args() {
+    local w tools="" git=0 run=0
+    for w in "$@"; do
+        case "$w" in
+            read-files)   tools+=",Read,Grep,Glob" ;;
+            edit-files)   tools+=",Edit,Write" ;;
+            run-commands) run=1 ;;
+            read-git)     git=1 ;;
+            web-search)   tools+=",WebSearch,WebFetch" ;;
+            subagents)    tools+=",Task" ;;
+            todo-list)    tools+=",TodoWrite" ;;
+            mcp)  printf 'the anthropic provider cannot give a call mcp: no manifest names the MCP servers a call may use yet\n' >&2; return 1 ;;
+            *)    printf "the anthropic provider has no tools for the word '%s'\n" "$w" >&2; return 1 ;;
+        esac
+    done
+    # Bash where Edit,Write would put it, so the order reads as the words do.
+    if (( run || git )); then
+        if [[ "$tools" == *",Write"* ]]; then tools="${tools/,Write/,Write,Bash}"
+        elif [[ "$tools" == *",Glob"* ]]; then tools="${tools/,Glob/,Glob,Bash}"
+        else tools=",Bash$tools"; fi
+    fi
+    printf '%s\n' --tools "${tools#,}"
+    (( git && !run )) && printf '%s\n' --allowedTools 'Bash(git diff *),Bash(git log *),Bash(git show *),Bash(git status *)'
+    printf '%s\n' --strict-mcp-config
 }

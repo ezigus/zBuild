@@ -77,19 +77,36 @@ _zbuild_permissions_artifact_dir() {
     printf '%s' "${ZBUILD_ARTIFACT_DIR:-${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}/artifacts}"
 }
 
-# _zbuild_time_up_hook_cmd_v <var> <secs> — #2503 (ADR-063): the command of the
-# call's PreToolUse hook, told the call's deadline (its time limit less a
-# minute) and the stage's notes file; empty for a call of a minute or less. The
-# deadline and the path ride in the command: the spawn scrubs ZBUILD_*.
+# _zbuild_tool_hook_cmd_v <var> <secs> — the command of the call's PreToolUse
+# hook (core/router/tool-hook.sh): the guards its tools need (#2507, ADR-017
+# §12: _ROUTE_HOOK_FLAGS, from core/router/call-tools.sh), then its deadline —
+# its time limit less a minute, #2503 (ADR-063) — and the stage's notes file.
+# The deadline is 0 for a call of a minute or less. Empty when a call has no
+# deadline and no tools. Everything rides in the command: the spawn scrubs
+# ZBUILD_*.
 _ZB_TIME_UP_WINDOW=60
-_zbuild_time_up_hook_cmd_v() {
-    local -n _tuh="$1"; local secs="${2:-}" now notes=""
+_zbuild_tool_hook_cmd_v() {
+    local -n _tuh="$1"; local secs="${2:-}" now notes="" deadline=0 f
     _tuh=""
-    [[ "$secs" =~ ^[0-9]+$ ]] && (( secs > _ZB_TIME_UP_WINDOW )) || return 0
-    printf -v now '%(%s)T' -1
+    if [[ "$secs" =~ ^[0-9]+$ ]] && (( secs > _ZB_TIME_UP_WINDOW )); then
+        printf -v now '%(%s)T' -1
+        deadline=$(( now + secs - _ZB_TIME_UP_WINDOW ))
+    fi
+    (( deadline > 0 )) || [[ -n "${_ROUTE_CALL_WORDS:-}" ]] || return 0
     [[ -n "${ZBUILD_STATE_DIR:-}" && -n "${ZBUILD_CURRENT_STAGE:-}" ]] && declare -F stage_notes_path_v >/dev/null 2>&1 \
         && stage_notes_path_v notes "$ZBUILD_STATE_DIR" "$ZBUILD_CURRENT_STAGE"
-    printf -v _tuh 'bash %q %q %q' "${_ROUTER_DIR:-${BASH_SOURCE[0]%/*}}/time-up-hook.sh" "$(( now + secs - _ZB_TIME_UP_WINDOW ))" "$notes"
+    printf -v _tuh 'bash %q' "${_ROUTER_DIR:-${BASH_SOURCE[0]%/*}}/tool-hook.sh"
+    for f in ${_ROUTE_HOOK_FLAGS[@]+"${_ROUTE_HOOK_FLAGS[@]}"}; do printf -v _tuh '%s %q' "$_tuh" "$f"; done
+    printf -v _tuh '%s %q %q' "$_tuh" "$deadline" "$notes"
+}
+
+# _zbuild_json_str_v <var> <text> — <text> as a JSON string, by the shell.
+_zbuild_json_str_v() {
+    local -n _zjs="$1"; local LC_ALL=C _zjs_s="$2"
+    _zjs_s="${_zjs_s//\\/\\\\}"; _zjs_s="${_zjs_s//\"/\\\"}"
+    _zjs_s="${_zjs_s//$'\n'/\\n}"; _zjs_s="${_zjs_s//$'\r'/\\r}"; _zjs_s="${_zjs_s//$'\t'/\\t}"
+    _zjs_s="${_zjs_s//[$'\001'-$'\010'$'\013'$'\014'$'\016'-$'\037']/ }"
+    _zjs="\"$_zjs_s\""
 }
 
 _zbuild_build_permissions_settings() {
@@ -123,29 +140,38 @@ _zbuild_build_permissions_settings() {
     # WHICH paths is the engine's decision and arrives via the environment; this
     # renders them. Same discipline as the ADR-059 note on the grants below: a
     # permission decision spelled out in two places drifts in one of them.
-    local _deny_json='[]'
+    # Built by the shell, each rule a JSON string (#2507, ADR-065 §5: no
+    # program per rule on every model call); `jq empty` below still validates
+    # the file the spawn refuses on.
+    local _rules="" _r _j
     if [[ -n "${ZBUILD_PERMISSION_DENY_EDIT:-}" ]]; then
         # #2163: Claude Code's permission syntax reads a single leading `/` as
         # PROJECT-relative and `//` as absolute. Rendered as `Edit(/abs/…)` the
         # rule matched nothing — the builder edited the testfile on every #1840
         # run while the prompt said "the spawn denies it". Render `//`.
-        _deny_json="$(jq -R 'select(length > 0) | "Edit(" + (if startswith("/") then "/" + . else . end) + ")"' \
-                        <<< "${ZBUILD_PERMISSION_DENY_EDIT}" | jq -sc .)" \
-            || { error "router: permissions: jq failed to build deny rules"; return 1; }
+        while IFS= read -r _r; do
+            [[ -n "$_r" ]] || continue
+            [[ "$_r" == /* ]] && _r="/$_r"
+            _zbuild_json_str_v _j "Edit($_r)"; _rules+="${_rules:+,}$_j"
+        done <<< "$ZBUILD_PERMISSION_DENY_EDIT"
     fi
     # #2379: no stage reads or edits a private path (the engine's list plus the
     # template's and the repository's) — P10–P12 above.
-    declare -F private_paths_deny_rules >/dev/null 2>&1 \
+    declare -F private_paths_deny_rules_v >/dev/null 2>&1 \
         || source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/scripts/lib/private-paths.sh"
-    local _priv_json
-    _priv_json="$(private_paths_deny_rules "$_repo_root" | jq -R 'select(length > 0)' | jq -sc .)" \
-        || { error "router: permissions: jq failed to build private-path rules"; return 1; }
-    _deny_json="$(jq -cn --argjson a "$_deny_json" --argjson b "${_priv_json:-[]}" '$a + $b')" \
-        || { error "router: permissions: jq failed to merge deny rules"; return 1; }
-    local _hook_cmd; _zbuild_time_up_hook_cmd_v _hook_cmd "$_secs"
-    _json="$(jq -cn --argjson d "$_deny_json" --arg c "$_hook_cmd" '{permissions: {deny: $d}}
-        + (if $c == "" then {} else {hooks: {PreToolUse: [{matcher: "*", hooks: [{type: "command", command: $c}]}]}} end)')" \
-        || { error "router: permissions: jq failed to build settings JSON"; return 1; }
+    local _priv
+    private_paths_deny_rules_v _priv "$_repo_root"
+    while IFS= read -r _r; do
+        [[ -n "$_r" ]] || continue
+        _zbuild_json_str_v _j "$_r"; _rules+="${_rules:+,}$_j"
+    done <<< "$_priv"
+    local _hook_cmd; _zbuild_tool_hook_cmd_v _hook_cmd "$_secs"
+    _json="{\"permissions\":{\"deny\":[$_rules]}"
+    if [[ -n "$_hook_cmd" ]]; then
+        _zbuild_json_str_v _j "$_hook_cmd"
+        _json+=",\"hooks\":{\"PreToolUse\":[{\"matcher\":\"*\",\"hooks\":[{\"type\":\"command\",\"command\":$_j}]}]}"
+    fi
+    _json+="}"
 
     printf '%s\n' "$_json" > "$_settings_file" \
         || { error "router: permissions: failed to write $_settings_file"; return 1; }

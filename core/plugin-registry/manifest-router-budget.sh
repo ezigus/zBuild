@@ -24,10 +24,10 @@ _ZBUILD_MANIFEST_ROUTER_BUDGET_LOADED=1
 # wrong — so validate_manifest refuses it.
 # #2439 (ADR-054 §6a): `retries` and `retry_on_exhaustion` are gone — a stage
 # never repeats a model call; the template's per-stage `retry:` is the one retry.
-# #2448 (ADR-017 §11): `tools: none` — the plugin's calls get no tools at all.
-# #2464 (ADR-072 §1): `tools: read` — every call it makes judges: Read, Grep, Glob.
 # #2454 (ADR-017 §11): `effort` — how hard the model thinks (the CLI's --effort).
-_ZBUILD_MANIFEST_ROUTER_KNOBS="timeout_s max_turns tools effort"
+# #2507 (ADR-017 §12): `tools` is gone — each call's tools are listed under the
+# manifest's `calls:` (manifest-calls.sh).
+_ZBUILD_MANIFEST_ROUTER_KNOBS="timeout_s max_turns effort"
 
 # _manifest_router_range_v <var> <knob> → "<min> <max>", empty for an unknown
 # knob. The ranges are the template's ranges (_tpl_validate_io_knobs),
@@ -47,7 +47,6 @@ _manifest_router_range() { local _mrr; _manifest_router_range_v _mrr "$1"; echo 
 # empty for a numeric or unknown knob.
 _manifest_router_words_v() {
     case "$2" in
-        tools)  printf -v "$1" '%s' "none read" ;;    # #2448; #2464: read — a judge's Read, Grep and Glob
         effort) printf -v "$1" '%s' "low medium high xhigh max" ;;   # #2454
         *)      printf -v "$1" '%s' "" ;;
     esac

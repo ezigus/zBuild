@@ -60,6 +60,8 @@ prompt:
   repo_rules: true
 hooks:
   run: x_run
+calls:
+  main: [read-files, edit-files]
 outputs:
   - id: rc_agent_result
     path: ${artifact_dir}/rc-agent-result.json

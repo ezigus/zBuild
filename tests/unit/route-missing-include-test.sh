@@ -64,6 +64,8 @@ _INCLUDES=(
     scripts/lib/persona-resolve.sh
     # [SPEC-4] ADR-051 (amended 2026-10-12): the persona's delivery to the provider.
     core/router/persona-delivery.sh
+    # [SPEC-4] ADR-017 §12 (#2507): each call's tools, from its stage's manifest.
+    core/router/call-tools.sh
     # [SPEC-4] proc-group.sh is now a guarded include (issue #1748).
     scripts/lib/proc-group.sh
     # [SPEC-4] ADR-067 §8: the engine/stage prompt contract the router checks.

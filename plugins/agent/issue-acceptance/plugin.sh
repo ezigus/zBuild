@@ -34,7 +34,7 @@ source "$_IA_ROOT/scripts/lib/llm-agent.sh" 2>/dev/null || true
 # shellcheck source=../../../scripts/lib/judge.sh
 source "$_IA_ROOT/scripts/lib/judge.sh"
 # shellcheck source=../../../scripts/lib/merge-base.sh
-declare -F zbuild_change_bundle_v >/dev/null 2>&1 || source "$_IA_ROOT/scripts/lib/merge-base.sh"
+declare -F zbuild_change_files_v >/dev/null 2>&1 || source "$_IA_ROOT/scripts/lib/merge-base.sh"
 # shellcheck source=../../../scripts/lib/router-rc-classify.sh
 source "$_IA_ROOT/scripts/lib/router-rc-classify.sh" 2>/dev/null || true
 # shellcheck source=../../../scripts/lib/persona-resolve.sh
@@ -58,8 +58,8 @@ _ia_prompt() {
 You are checking whether a finished CHANGE does what an ISSUE asked for.
 
 ## What you own
-One verdict on the whole issue: does the DIFF meet every requirement the issue
-states, in full — including what its tests must catch?
+One verdict on the whole issue: does THE CHANGE meet every requirement the
+issue states, in full — including what its tests must catch?
 
 Answer with one line for every requirement in ISSUE REQUIREMENTS, by its id:
 
@@ -91,10 +91,11 @@ Five things, shown at the end of this part:
 ISSUE — what was asked for, in the requester's own words. This is the standard.
 ISSUE REQUIREMENTS — the issue's requirements, each with its id.
 REQUIREMENTS — what the design committed to, each with what was done about it.
-DIFF — the change as built.
+THE CHANGE — the commit the branch started from and the files it changed.
+Read each change yourself with git, as it says there.
 TEST VERDICT — whether the test suite passed.
 
-Judge every requirement in ISSUE REQUIREMENTS: decide whether the DIFF meets it
+Judge every requirement in ISSUE REQUIREMENTS: decide whether the change meets it
 IN FULL, and name an unmet one by its id and words (<its id>: <its words>). Read the
 ISSUE for what a requirement means. When none are listed under ISSUE REQUIREMENTS,
 judge every requirement the ISSUE states.
@@ -115,7 +116,7 @@ against the code. If you cannot
 tell whether such a requirement is met, say so rather than guess: the run then
 reports it as open, with what would settle it.
 
-A failing test you cannot trace to the DIFF within a few reads: mark the
+A failing test you cannot trace to the change within a few reads: mark the
 requirement it bears on UNSURE, naming the test and that you could not tell
 whether the change broke it. Do not
 work out why a test fails: that is the build's job, and your answer is lost if
@@ -130,7 +131,7 @@ ${5:-<none listed>}
 REQUIREMENTS:
 $2
 
-DIFF:
+THE CHANGE:
 $3
 
 TEST VERDICT: $4
@@ -138,7 +139,7 @@ ${6:-}
 ## What you must not do
 - Do not suggest code.
 - Do not guess whether a requirement is met: say you are unsure instead.
-- Do not work out why a test fails: a failure you cannot trace to the DIFF is UNSURE.
+- Do not work out why a test fails: a failure you cannot trace to the change is UNSURE.
 - Answer only, in the form above.
 EOF
 }
@@ -202,7 +203,7 @@ issue_acceptance_run() {
     mkdir -p "$art" 2>/dev/null || true
 
     # #2364: each piece of earlier work found by what it contains.
-    local design_f diff_f tests_f issue="" acc="" diff="" test_verdict=""
+    local design_f diff_f tests_f issue="" acc="" change="" test_verdict=""
     issue="$(earlier_issue_text "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
     design_f="$(earlier_acceptance_contract "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
     diff_f="$(earlier_change_patch "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
@@ -227,9 +228,11 @@ issue_acceptance_run() {
     # the lenses judge it. Build's diff.patch holds this round's work only: on
     # #1805 run 42293991602 the judge called code an earlier round added "not in
     # this incremental DIFF", and design took it for the code from before.
-    local _bd; zbuild_change_bundle_v _bd "$art" "$_root"
-    [[ "${_bd##*/}" == branch-* && -s "$_bd" ]] && diff_f="$_bd"
-    [[ -n "$diff_f" && -f "$diff_f" ]] && diff="$(cat "$diff_f" 2>/dev/null || true)"
+    # #2507 (ADR-072 §7): the judge is pointed at the change — its starting
+    # commit and the files it changed — and reads it with git; `_change_fp` is
+    # what the change is, for the kept answer.
+    local _change_fp=""
+    zbuild_change_files_v change _change_fp "$diff_f" "$_root"
     [[ -n "$tests_f" && -f "$tests_f" ]] && test_verdict="$(jq -r '.outcome // empty' "$tests_f" 2>/dev/null || true)"
 
     local tier="T2"
@@ -246,7 +249,7 @@ issue_acceptance_run() {
     local _ans=""; judge_answers_to_v _ans "$art" issue-acceptance
     local kf="${art%/}/issue-acceptance-judged.json" eng fp kept="" _root_q="$_root"
     judge_engine_v eng
-    judge_fp_v fp "$eng"$'\n'"$issue"$'\n'"$_reqs"$'\n'"$acc"$'\n'"$diff"$'\n'"$test_verdict"$'\n'"$_ans"
+    judge_fp_v fp "$eng"$'\n'"$issue"$'\n'"$_reqs"$'\n'"$acc"$'\n'"$_change_fp"$'\n'"$test_verdict"$'\n'"$_ans"
     judge_kept_get_v kept "$kf" issue "$fp" "${_ans:+1}"
     if [[ -n "$kept" ]]; then
         _ia_parse "$kept" "$_reqs" "$issue" "$_root_q"
@@ -258,7 +261,7 @@ issue_acceptance_run() {
         fi
     fi
 
-    _task="$(_ia_prompt "$issue" "${acc:-<none>}" "${diff:-<no diff>}" "${test_verdict:-unknown}" "$_reqs" "$(judge_disputes_block "$_ans")")"
+    _task="$(_ia_prompt "$issue" "${acc:-<none>}" "${change:-<no change found>}" "${test_verdict:-unknown}" "$_reqs" "$(judge_disputes_block "$_ans")")"
     _framed="$_task"
     # ADR-067 §8: the stage's three parts and the engine's blocks, in the one
     # prompt order. A prompt that cannot be composed is not sent.

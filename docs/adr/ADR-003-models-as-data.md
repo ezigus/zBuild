@@ -1,6 +1,6 @@
 # ADR-003: Models as Data
 
-**Status:** Accepted
+**Status:** Accepted; amended 2026-11-09 (#2507: the provider turns zbuild's tool words into its own; a subagent runs on its call's model)
 **Date:** 2026-05-24
 
 ## Context
@@ -221,3 +221,19 @@ run, including the build loop.
 **Consequences.** Model upgrades need no zbuild change for Anthropic. Ledger entries
 now include cached-token cost, so a capped run reaches its cap sooner, and correctly.
 Adding a provider is one module file plus a `models.json` entry.
+
+## Amendment 2026-11-09 (#2507) — the provider turns zbuild's tool words into its own; a subagent runs on its call's model
+
+**Context.** A stage's tools were named in Claude's words (`Read,Grep,Glob`) in manifests and in code, so another provider could not run them. And on #1805 run 42556446368 a call on the haiku tier started a subagent on sonnet: the Agent tool takes a `model`, which goes around the tiers in `models.json`.
+
+**Decision.**
+
+1. Each provider module also implements `provider_<p>_tool_args <word>...`: the call's arguments that give it exactly the tools zbuild's words name (ADR-017 §12), with no MCP server. It refuses a word it cannot supply (rc 1), saying why on stderr; a run whose stages name such a word is refused at start, with the reason.
+2. **anthropic:** `read-files` → `Read,Grep,Glob`; `edit-files` → `Edit,Write`; `run-commands` → `Bash`; `read-git` → `Bash`, allowed only `Bash(git diff *)`, `Bash(git log *)`, `Bash(git show *)` and `Bash(git status *)` (the call's hook refuses any other command); `web-search` → `WebSearch,WebFetch`; `subagents` → `Task`; `todo-list` → `TodoWrite`; always `--strict-mcp-config`. `mcp` is refused: no manifest names the servers a call may use yet.
+3. **A subagent runs on its call's model.** The call's hook (`core/router/tool-hook.sh`) refuses a subagent request that names a model, and tells the model to ask again without one.
+
+## Enforced by
+
+- Amendment 2026-11-09 (#2507: tool words translated by the provider; a subagent on its call's model) → `tests/unit/call-tools-test.sh` C2 (each word's flags, `--strict-mcp-config`, an unknown word and `mcp` refused with the reason), C5 (an unsupported word refuses the run at start); `tests/unit/call-hook-test.sh` G3 (a subagent naming a model is refused)
+- Amendment 2026-09-26 (provider modules) → `tests/unit/router-provider-modules-test.sh` SPEC-1–SPEC-9; `tests/integration/router-loop-emits-model-events-test.sh`
+- §Manifest `config.tier_default` is the single source of truth → `tests/unit/tier-resolve-test.sh`

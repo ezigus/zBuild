@@ -32,6 +32,13 @@ requires:
     - event-bus
     - state
 
+# ADR-017 §12 (#2507): every model call this stage makes, by name, with its
+# tools in zbuild's words; the provider turns them into its own.
+# Both its calls answer from the issue they are given: no tools (#2448).
+calls:
+  main: []
+  check: []
+
 outputs:
   # ADR-055 v2: JSON result file — verdict-bearing primary output.
   - id: intake_result
@@ -108,4 +115,3 @@ config:
   router:
     timeout_s: 120
     max_turns: 1
-    tools: none

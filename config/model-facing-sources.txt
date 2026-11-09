@@ -25,3 +25,5 @@ config/prompts/default-rules.md
 core/pipeline/input-resolve.sh printf
 core/router/route.sh
 plugins/agent/intake/prompts/intake.md
+scripts/lib/merge-base.sh printf
+core/router/tool-hook.sh printf

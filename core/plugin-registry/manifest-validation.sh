@@ -23,6 +23,8 @@ source "$_ZBUILD_MANIFEST_VALIDATION_DIR/../contract/version.sh"
 source "$_ZBUILD_MANIFEST_VALIDATION_DIR/manifest-router-budget.sh"
 # shellcheck source=./manifest-topics.sh
 source "$_ZBUILD_MANIFEST_VALIDATION_DIR/manifest-topics.sh"
+# shellcheck source=./manifest-calls.sh
+source "$_ZBUILD_MANIFEST_VALIDATION_DIR/manifest-calls.sh"
 # ADR-001 §"Declared events" (#1717): the ONE reader for `provides.events` + its
 # shape rule. The event-bus owns them (it composes the known set on a path that
 # cannot call back into this registry); borrowing them here keeps a manifest from
@@ -629,6 +631,11 @@ validate_manifest() {
             errors=$((errors + 1))
         fi
     done <<< "$_rblock"
+
+    # ─── ADR-017 §12 (#2507): each model call, by name, with its tool words ─
+    local _cerr=0
+    _manifest_validate_calls "$manifest" || _cerr=$?
+    errors=$((errors + _cerr))
 
     # ─── ADR-071: topics, takes: and finding_topics (manifest-topics.sh) ────
     local _terr=0

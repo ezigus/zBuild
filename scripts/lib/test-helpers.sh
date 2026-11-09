@@ -313,7 +313,7 @@ _ZB_TEST_ISOLATED_VARS=(
     ZBUILD_WORKTREE_ROOT ZBUILD_STAGE_INPUTS ZBUILD_STAGE_BLOCKS
     ZBUILD_CYCLE_FEEDBACK_DIR ZBUILD_NEGCTL_ARTIFACT_DIR
     ZBUILD_RUN_START_MARKER ZBUILD_EVENTS_DIR ZBUILD_EVENTS_JSONL
-    ZBUILD_MEMORY_DB ZBUILD_CACHE_DIR ZBUILD_COST_LEDGER ZBUILD_ROUTER_TOOL_USES_FILE ZBUILD_ROUTER_OPENED_FILE ZBUILD_ROUTE_TOOLS
+    ZBUILD_MEMORY_DB ZBUILD_CACHE_DIR ZBUILD_COST_LEDGER ZBUILD_ROUTER_TOOL_USES_FILE ZBUILD_ROUTER_OPENED_FILE ZBUILD_ROUTE_CALL ZBUILD_ROUTE_BASE_CODE
     ZBUILD_WIKI_ROOT ZBUILD_INSTALL_DIR ZBUILD_BIN_DIR
 )
 # Code, config and the test runner's own channels: read, or deliberately shared
@@ -966,6 +966,8 @@ EOF
     [[ -n "$platform" ]] && printf 'platform: %s\n' "$platform" >> "$dir/manifest.yaml"
     printf 'provides:\n  result_contract: 3\n' >> "$dir/manifest.yaml"
     [[ -n "$role" ]] && printf '  role: %s\n' "$role" >> "$dir/manifest.yaml"
+    # #2507 (ADR-017 §12): an agent's model call is listed, or the router refuses it.
+    [[ "$kind" == agent ]] && printf 'calls:\n  main: [read-files, edit-files, run-commands]\n' >> "$dir/manifest.yaml"
     cat >> "$dir/manifest.yaml" <<EOF
 outputs:
   - id: ${id//-/_}_result

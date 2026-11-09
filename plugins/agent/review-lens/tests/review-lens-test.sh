@@ -63,6 +63,9 @@ artifact_dir="$TEST_TEMP_DIR/artifacts"
 mkdir -p "$artifact_dir"
 scope_manifest="$TEST_TEMP_DIR/scope-manifest.md"; printf '+ core/\n' > "$scope_manifest"
 evidence="$artifact_dir/diff.patch"
+# No repository: the lens is pointed at the round's patch (#2507, ADR-072 §7),
+# whatever the checkout this test runs in holds.
+export ZBUILD_REPO_ROOT="$TEST_TEMP_DIR/no-repo"; mkdir -p "$ZBUILD_REPO_ROOT"
 cat > "$evidence" <<'EOF'
 diff --git a/core/y.sh b/core/y.sh
 + exec user input at line 10
@@ -86,7 +89,8 @@ assert_eq "[#1140-1] severity lowercased to enum" "critical" "$(jq -r '.findings
 
 # ─── SPEC-2: redaction reaches the model; raw text never sent without it ─────
 _p="$(cat "$_RL_PROMPT")"
-assert_contains "[#1140-2] redacted evidence reached the prompt" "$_p" "exec user input at line 10"
+assert_contains "[#1140-2] the change reached the prompt: the patch it is pointed at" "$_p" "$evidence"
+assert_contains "[#1140-2] ...and the file in it" "$_p" "core/y.sh"
 assert_contains "[#1140-2] prompt is the single-lens advisory contract" "$_p" '"security" lens'
 
 # ─── SPEC-3: parametrized — SAME plugin serves a different lens ──────────────

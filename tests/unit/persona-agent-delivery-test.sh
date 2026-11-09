@@ -89,6 +89,8 @@ kind: agent
 version: 0.1.0
 hooks:
   run: x_run
+calls:
+  main: [read-files, edit-files]
 outputs:
   - id: pa_agent_result
     path: ${artifact_dir}/pa-agent-result.json

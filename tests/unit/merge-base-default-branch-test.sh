@@ -24,7 +24,7 @@
 #   [MB-8] the run-branch code (the engine's since #2367) has no duplicate
 #          default-branch implementation
 #   [MB-9] the CI pipeline workflow checks out full history (fetch-depth: 0)
-#   [MB-10] zbuild_change_bundle degrades to diff.patch when no baseline resolves,
+#   [MB-10] the change a judge is pointed at degrades to diff.patch when no baseline resolves,
 #           and still spans the whole branch when one does
 set -uo pipefail
 
@@ -329,46 +329,31 @@ fi
 assert_contains "[MB-9] actions/checkout in zbuild-pipeline.yml sets fetch-depth: 0" \
     "$_CHECKOUT_BLOCK" "fetch-depth: 0"
 
-# ─── [MB-10] zbuild_change_bundle degrades to diff.patch, and only then ──────
-print_test_section "[MB-10] the change bundle falls back to diff.patch with no baseline"
+# ─── [MB-10] the change a judge is pointed at falls back to diff.patch, and only then
+print_test_section "[MB-10] the change falls back to diff.patch with no baseline"
 
-# zbuild_change_bundle is the OTHER caller of the resolver, and #1655 changed
-# what it sees: where an unresolvable baseline used to yield a HEAD~1 diff that
-# it happily wrote as branch-diff.patch, it now yields empty and the documented
-# fallback to the per-run diff.patch takes over. That fallback was reachable but
-# unexercised — the #2062 shape, a path that is only correct because nothing
-# ever ran it. Both directions are asserted so neither can pass for free.
+# zbuild_change_files_v (#2507, ADR-072 §7; it replaced the change bundle) is
+# the OTHER caller of the resolver, and #1655 changed what it sees: an
+# unresolvable baseline yields empty, and the documented fallback to the
+# per-run diff.patch takes over. Both directions are asserted so neither can
+# pass for free.
 
-# Negative: no baseline → the diff.patch path, and NO branch-diff.patch written.
+# Negative: no baseline → the judge is pointed at the diff.patch.
 ART_NB="$TEST_TEMP_DIR/artifacts-no-baseline"; mkdir -p "$ART_NB"
-printf 'INCREMENTAL_PATCH_SENTINEL\n' > "$ART_NB/diff.patch"
-BUNDLE_NB="$(zbuild_change_bundle "$ART_NB" "$R_SHALLOW")"
-assert_eq "[MB-10] unresolvable baseline → bundle is the incremental diff.patch" \
-    "$ART_NB/diff.patch" "$BUNDLE_NB"
-assert_file_not_exists "[MB-10] no branch-diff.patch is written without a baseline" \
-    "$ART_NB/branch-diff.patch"
-assert_contains "[MB-10] the fallback bundle still carries the per-run patch content" \
-    "$(cat "$BUNDLE_NB" 2>/dev/null)" "INCREMENTAL_PATCH_SENTINEL"
+printf 'diff --git a/inc.sh b/inc.sh\n+INCREMENTAL_PATCH_SENTINEL\n' > "$ART_NB/diff.patch"
+_cf=""; _cfp=""; zbuild_change_files_v _cf _cfp "$ART_NB/diff.patch" "$R_SHALLOW"
+assert_contains "[MB-10] unresolvable baseline → pointed at the incremental diff.patch" "$_cf" "$ART_NB/diff.patch"
+assert_contains "[MB-10] ...told the files in it" "$_cf" "inc.sh"
+assert_eq "[MB-10] ...and no starting commit is claimed" "" "$_ZB_CHANGE_BASE"
 
-# Positive control: a resolvable baseline must still produce the FULL-BRANCH
-# diff. Pinning the content (not just the path) is what makes this control real
-# — a HEAD~1 baseline also writes branch-diff.patch, but its diff omits the
-# branch's earlier commits, so "one" is present only for a true merge-base.
-ART_OK="$TEST_TEMP_DIR/artifacts-with-baseline"; mkdir -p "$ART_OK"
-: > "$ART_OK/diff.patch"
-BUNDLE_OK="$(zbuild_change_bundle "$ART_OK" "$R_MASTER")"
-assert_eq "[MB-10] resolvable baseline → bundle is branch-diff.patch" \
-    "$ART_OK/branch-diff.patch" "$BUNDLE_OK"
-_BUNDLE_OK_TEXT="$(cat "$BUNDLE_OK" 2>/dev/null)"
-assert_contains "[MB-10] bundle spans the WHOLE branch (first work commit present)" \
-    "$_BUNDLE_OK_TEXT" "+one"
-assert_contains "[MB-10] bundle spans the whole branch (last work commit present)" \
-    "$_BUNDLE_OK_TEXT" "+two"
-# #2482 (ADR-065): the same bundle into a variable, with no subshell around
-# it — issue-acceptance and every lens read it once a dispatch.
-_bv=""; zbuild_change_bundle_v _bv "$ART_OK" "$R_MASTER"
-assert_eq "[MB-10] the _v form gives the same bundle" "$BUNDLE_OK" "$_bv"
-_bv=""; zbuild_change_bundle_v _bv "$ART_NB" "$R_SHALLOW"
-assert_eq "[MB-10] ...and the same fallback" "$BUNDLE_NB" "$_bv"
+# Positive control: a resolvable baseline must still give the FULL branch: the
+# starting commit is the true merge-base, not HEAD~1 — a HEAD~1 basis would
+# omit the branch's earlier commit.
+: > "$ART_NB/empty.patch"
+_cf=""; _cfp=""; zbuild_change_files_v _cf _cfp "$ART_NB/empty.patch" "$R_MASTER"
+assert_eq "[MB-10] resolvable baseline → the starting commit is the merge-base" "$EXPECT_MASTER" "$_ZB_CHANGE_BASE"
+assert_contains "[MB-10] ...named to the judge" "$_cf" "started at commit $EXPECT_MASTER"
+assert_contains "[MB-10] ...with the file the branch changed" "$_cf" "file.txt"
+assert_contains "[MB-10] ...and what it is now, for a kept answer" "$_cfp" "$(git -C "$R_MASTER" rev-parse HEAD:file.txt)"
 
 print_test_results

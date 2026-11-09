@@ -49,8 +49,12 @@ config:
   router:
     timeout_s: 600
     max_turns: 45
-    # #2464 (ADR-072 §1): it judges — it reads and searches files, and changes none.
-    tools: read
+
+# ADR-017 §12 (#2507): every model call this stage makes, by name, with its
+# tools in zbuild's words; the provider turns them into its own.
+# It judges: it reads the change, and changes nothing.
+calls:
+  main: [read-files, read-git, web-search, subagents]
 
 outputs:
   - id: findings

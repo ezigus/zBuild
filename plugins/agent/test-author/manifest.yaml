@@ -66,6 +66,13 @@ config:
 capabilities:
   writes_repository: true
 
+# ADR-017 §12 (#2507): every model call this stage makes, by name, with its
+# tools in zbuild's words; the provider turns them into its own.
+# check: does each assertion test its SPEC (ADR-072), a judge.
+calls:
+  main: [read-files, edit-files, run-commands, web-search, subagents, todo-list]
+  check: [read-files, read-git, web-search, subagents]
+
 outputs:
   # #2491 (ADR-071 §1): its findings are about a test against its SPEC, so
   # design is shown them: only design can rewrite a Given no test can meet.
