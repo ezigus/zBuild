@@ -811,7 +811,6 @@ set +e
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_VISION_GATE=off \
-    ZBUILD_CYCLES_ENABLED=1 \
     PATH="$PATH" HOME="$HOME" \
     bash "$RUNNER" --template artifact-snapshot-coverage --no-resume --issue "$_S12_ID" ) \
     >"$TEST_TEMP_DIR/s12-stdout.txt" 2>"$TEST_TEMP_DIR/s12-stderr.txt"
@@ -963,7 +962,6 @@ jq -n \
 #   (not interrupted), so no auto-resume triggers.
 set +e
 ( cd "$_S_FRSH2_WORK_REPO" && env \
-    ZBUILD_CYCLES_ENABLED=1 \
     ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
     ZBUILD_STATE_DIR="$_S_FRSH2_STATE_DIR" \
     ZBUILD_STATE_FILE="$_S_FRSH2_STATE_FILE" \
