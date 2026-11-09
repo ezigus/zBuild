@@ -1703,7 +1703,14 @@ _runner_resume_rehydrate() {
     }
     if [[ -d "$_rr_staging/artifacts" ]]; then
         _artifact_persist_put_back "$_rr_staging/artifacts" "$_rr_artifacts_dir" \
-            || warn "resume-rehydrate: put_back failed for $_rr_artifacts_dir — partial restoration; dispatch loop will exit 1 for any missing primary artifact"
+            || {
+                warn "resume-rehydrate: put_back failed for $_rr_artifacts_dir — partial restoration; dispatch loop will exit 1 for any missing primary artifact"
+                # Emit machine-readable event so monitoring can distinguish a put_back
+                # I/O failure from an artifact that was never persisted (#1805 sre-3).
+                eb_emit_event "state.write" \
+                    "op=put_back" "dir=$_rr_artifacts_dir" "run_id=${_runner_run_id:-}" \
+                    "reason=io_error" 2>/dev/null || true
+            }
     fi
     rm -rf "${_rr_staging:?}" 2>/dev/null || true
     return 0
@@ -2288,21 +2295,16 @@ main() {
         fi
     fi
 
-    # --from-stage is only valid in resume mode — checked AFTER auto-resume so
-    # a run that qualifies for auto-resume (status=in_progress, fresh timestamp)
-    # does not need an explicit --resume flag when --from-stage is also given
-    # (DSFSTG-1 / lens-scope-code finding 1, #1805).
-    if [[ -n "$from_stage" ]] && ! $resume_mode; then
-        error "--from-stage is only valid with --resume"
-        _usage
-        return 1
-    fi
-
     if ! $resume_mode; then
         # Guard: clear _ZBUILD_RESUME_ACTIVE so a subprocess runner that inherits a
         # stale `true` value from a parent resume run does not enter cycle-resume mode
         # on a fresh start, violating RQGUAR-1 (#1805).
         export _ZBUILD_RESUME_ACTIVE=false
+        # Guard: clear _ZBUILD_FROM_STAGE_EMIT_START so a subprocess runner that
+        # inherits a stale `true` value from a parent --from-stage run does not
+        # spuriously emit stage.start for the first cycle member of every fresh run,
+        # corrupting the event sequence and violating RQGUAR-1 (#1805).
+        export _ZBUILD_FROM_STAGE_EMIT_START=false
         # Sanitize ZBUILD_RUN_ID: strip characters unsafe in filenames (/, .., spaces, etc.)
         # to prevent path traversal when run_id is used in report-${run_id}.md filenames
         # AND in the per-run state dir below (#887). Generated BEFORE the re-root.
@@ -3631,7 +3633,10 @@ main() {
                         info "Skipping cycle: $_cyc_id (awaiting $skip_until_stage)"
                         continue
                     fi
-                    [[ -n "$skip_until_stage" ]] && skip_until_stage=""
+                    # ADR-006 / #1805 (DSFSTG-3): when --from-stage targets this cycle,
+                    # clear skip_until_stage AND resume_mode so the resume skip guard does
+                    # not activate for stages after <s> in combined --resume --from-stage mode.
+                    [[ -n "$skip_until_stage" ]] && { skip_until_stage=""; resume_mode=false; }
                     # #524: replace bare `info` with operator-visible cycle
                     # entry banner (heavy ═ + ▸ Entering + DIM trailer).
                     local _cyc_stages_csv=""
@@ -3953,7 +3958,10 @@ main() {
                         info "Skipping stage: $_ust (awaiting $skip_until_stage)"
                         continue
                     fi
-                    [[ -n "$skip_until_stage" ]] && skip_until_stage=""
+                    # ADR-006 / #1805 (DSFSTG-3): clear skip_until_stage AND resume_mode
+                    # so the resume skip guard does not activate for stages after <s> in
+                    # combined --resume --from-stage mode.
+                    [[ -n "$skip_until_stage" ]] && { skip_until_stage=""; resume_mode=false; }
                     # Re-enter the legacy loop for a single stage by re-using
                     # active_stages — simplest correct path: run that stage's
                     # body inline via cycle_dispatch_stage (gives same plugin
