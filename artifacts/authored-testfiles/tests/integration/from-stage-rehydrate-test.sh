@@ -615,6 +615,134 @@ _s13_fs_intake_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="in
 assert_eq "cyclic fixture pipeline ran in from-stage-rehydrate test (intake dispatched)" \
     "1" "$_s13_fs_intake_starts"
 
+# ── SPEC-10: combined --resume --from-stage <s>: stages after <s> dispatched despite being marked complete ──
+print_test_section "[#1805/DSFSTG-3] combined --resume --from-stage <s>: stages after <s> dispatched despite being marked complete in interrupted run"
+
+# Given — a previous run was interrupted; stages before cyc (intake=complete) and
+#   stages after cyc (verify=complete) are both marked complete in persisted state;
+#   cyc (the target) is pending (the interrupted stage); the runner is invoked with
+#   --resume --from-stage cyc (auto-resume active).
+# This sub-case uses the from-stage-combined-resume fixture:
+#   [intake (leaf), cyc (cycle with cycled), verify (leaf)].
+
+S10_ID="$(zb_test_issue)"
+S10_STATE_DIR="$TEST_TEMP_DIR/s10-state"
+S10_EVENTS_DIR="$TEST_TEMP_DIR/s10-events"
+S10_EVENTS_JSONL="$S10_EVENTS_DIR/events.jsonl"
+S10_STATE_FILE="$S10_STATE_DIR/pipeline-state.json"
+mkdir -p "$S10_STATE_DIR/artifacts" "$S10_EVENTS_DIR"
+
+# Fresh git repo; _artifact_persist_snapshot writes the state branch here.
+S10_WORK_REPO="$(setup_git_temp_repo fs-rehydrate-s10)"
+# Protect fixture install: on before-code state from-stage-combined-resume may not
+# exist. With the guard, the script continues; the runner won't run; events stay
+# absent; the assert_gt assertions below FAIL naturally for the right reason.
+_s10_tpl_rc=0
+install_template_overlay "$S10_WORK_REPO" from-stage-combined-resume 2>/dev/null \
+    || _s10_tpl_rc=$?
+
+# Add mock for verify stage (intake and cycled mocks already in S3_PLUGINS_ROOT).
+mock_plugin_factory "verify" "agent" 0 >/dev/null
+
+# Create intake primary artifact so the --from-stage preflight can restore it.
+printf '{"result_contract":3,"outcome":"pass","reason":"s10-intake-complete"}' \
+    > "$S10_STATE_DIR/artifacts/intake-result.json"
+
+# Snapshot onto the state branch (places intake artifact on git state branch).
+_s10_snap_rc=0
+( export ZBUILD_STATE_DIR="$S10_STATE_DIR"
+  cd "$S10_WORK_REPO" && _artifact_persist_snapshot "$S10_STATE_DIR" "$S10_ID" ) \
+    >"$TEST_TEMP_DIR/s10-snap.log" 2>&1 || _s10_snap_rc=$?
+if [[ "$_s10_snap_rc" -ne 0 ]]; then
+    assert_fail "[#1805/DSFSTG-3] setup s10: snapshot failed" \
+        "rc=$_s10_snap_rc; $(cat "$TEST_TEMP_DIR/s10-snap.log" 2>/dev/null | tail -5)"
+else
+    assert_pass "[#1805/DSFSTG-3] setup s10: state branch populated (all-complete interrupted run)"
+fi
+
+# Remove from disk — the artifact lives only on the state branch.
+rm -f "$S10_STATE_DIR/artifacts/intake-result.json"
+
+# State: intake=complete (before <s>), cyc=pending (<s>, the interrupted stage),
+# verify=complete (after <s>). status=in_progress; --resume flag passed explicitly.
+jq -n \
+    --arg run_id "s10-combined-resume-1805" \
+    --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --argjson issue "$S10_ID" \
+    '{
+        schema_version: 1,
+        run_id: $run_id,
+        issue: $issue,
+        stage_statuses: {intake: "complete", cyc: "pending", verify: "complete"},
+        current_iteration: 0,
+        self_heal_count: {},
+        scope_manifest_hash: "",
+        cost_ledger_pointer: 0,
+        claim_lease_id: "",
+        plugin_state: {},
+        status: "in_progress",
+        updated_at: $now
+    }' > "$S10_STATE_FILE"
+
+# When — the runner is invoked with --resume --from-stage cyc.
+# This exercises the combined path where skip_until_stage="cyc" is set,
+# cleared when cyc is reached, and resume_mode must be cleared too (Gap 11 fix)
+# so the skip guard does not suppress verify despite verify=complete in state.
+set +e
+( cd "$S10_WORK_REPO" && env \
+    ZBUILD_CYCLES_ENABLED=1 \
+    ZBUILD_PLUGINS_ROOT="$S3_PLUGINS_ROOT" \
+    ZBUILD_STATE_DIR="$S10_STATE_DIR" \
+    ZBUILD_STATE_FILE="$S10_STATE_FILE" \
+    ZBUILD_EVENTS_DIR="$S10_EVENTS_DIR" \
+    ZBUILD_EVENTS_JSONL="$S10_EVENTS_JSONL" \
+    ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
+    ZBUILD_CONTRACT_VALIDATOR=warn \
+    ZBUILD_VISION_GATE=off \
+    PATH="$PATH" HOME="$HOME" \
+    bash "$RUNNER" --template from-stage-combined-resume \
+        --resume --from-stage cyc --issue "$S10_ID" ) \
+    >"$TEST_TEMP_DIR/s10-stdout.txt" 2>"$TEST_TEMP_DIR/s10-stderr.txt"
+_s10_rc=$?
+set -e
+
+# Then — cycle.start for cyc is emitted (cyc was dispatched as the --from-stage target).
+# Before the change: on old code, --from-stage may not exist or the cycle dispatch
+#   path may be incomplete → cycle.start absent → assertion FAILS.
+# After the change: skip_until_stage cleared at cyc → cyc dispatched → cycle.start → PASSES.
+_s10_cyc_starts=0
+if [[ -f "$S10_EVENTS_JSONL" ]]; then
+    _s10_cyc_starts="$(jq -r 'select(.type=="cycle.start" and .data.cycle_id=="cyc") | .type' \
+        "$S10_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_gt "[#1805/DSFSTG-3] cycle.start emitted for cyc (--from-stage target dispatched in combined --resume --from-stage mode)" \
+    "$_s10_cyc_starts" "0"
+
+# Then — stage.start for verify is emitted despite verify=complete in interrupted run state.
+# This is the Gap 11 assertion: on old code, skip_until_stage is cleared at cyc but
+# resume_mode remains true, so the resume skip guard fires for verify (complete) and
+# verify is SKIPPED → no stage.start → assertion FAILS on old code.
+# After the Gap 11 fix: resume_mode is set to false when skip_until_stage is cleared
+# at cyc → skip guard does not fire → verify dispatched → stage.start → PASSES.
+_s10_verify_starts=0
+if [[ -f "$S10_EVENTS_JSONL" ]]; then
+    _s10_verify_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="verify") | .type' \
+        "$S10_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_gt "[#1805/DSFSTG-3] stage.start emitted for verify despite verify=complete in interrupted state (Gap 11 fix: resume_mode=false clears skip guard after --from-stage target reached; fails on old code where verify is skipped)" \
+    "$_s10_verify_starts" "0"
+
+# Then — no stage.skip event emitted for verify (verify is dispatched, not skipped).
+# Before the change: verify is skipped → stage.skip might be emitted → verify_skips > 0.
+# After the change: resume_mode=false → no skip guard → no stage.skip for verify → PASSES.
+_s10_verify_skips=0
+if [[ -f "$S10_EVENTS_JSONL" ]]; then
+    _s10_verify_skips="$(jq -r 'select(.type=="stage.skip" and .data.stage=="verify") | .type' \
+        "$S10_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_eq "[#1805/DSFSTG-3] no stage.skip emitted for verify (stage after --from-stage target must be dispatched, not skipped, in combined --resume --from-stage mode)" \
+    "0" "$_s10_verify_skips"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

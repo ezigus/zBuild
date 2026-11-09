@@ -1,43 +1,47 @@
-# test-author notes — issue #1805 (round 53)
+# test-author notes — issue #1805 (round 55)
 
 ## Status: COMPLETE
 
-All 16 SPECs confirmed on disk with correct tags.
+All 17 SPECs confirmed on disk with correct tags.
 
-## Round 53 — fixed test finding 1
+## Round 55 — fixed DSFSTG-3 fixture-not-found crash on before-code
 
-**Problem**: `cycle.start > 0` assertions in DSFRSH-1 and DSFRSH-2 fail on current
-code (pre-change) with `ZBUILD_CYCLES_ENABLED=1` set explicitly.
+**Problem**: test-author finding 1: DSFSTG-3 test stopped early (before DSFSTG-3
+assertions ran) because `install_template_overlay "$S10_WORK_REPO" from-stage-combined-resume`
+failed on the before-code state — the fixture `from-stage-combined-resume.yaml` was added
+by this iteration and doesn't exist in the before-code worktree. With `set -euo pipefail`
+active, the error exited the script before DSFSTG-3 assertions could run.
 
-**Root cause**: With `ZBUILD_CYCLES_ENABLED=1` set explicitly, the runner uses a NEW
-dispatch code path introduced by this PR. That path is not fully implemented on
-pre-change code, so cycle stages don't dispatch (`cycle.start == 0`). Without
-explicit `ZBUILD_CYCLES_ENABLED=1`, cycles auto-detect (the template declares them),
-and the existing auto-detect path dispatches cycles correctly (`cycle.start > 0`).
+**Fix**: In `tests/integration/from-stage-rehydrate-test.sh` lines 636-642, changed
+the direct `install_template_overlay` call to a guarded form:
 
-**Evidence**: `artifact-snapshot-runner-test.sh` runs the same `artifact-snapshot-
-coverage` fixture WITHOUT `ZBUILD_CYCLES_ENABLED=1` and passes `SPEC-2: cycle member
-snapshotted`. This confirms cycles work via auto-detect on current code.
+```bash
+_s10_tpl_rc=0
+install_template_overlay "$S10_WORK_REPO" from-stage-combined-resume 2>/dev/null \
+    || _s10_tpl_rc=$?
+```
 
-**Fix**: Removed `ZBUILD_CYCLES_ENABLED=1` from the DSFRSH-1 and DSFRSH-2 runner
-invocations in `tests/integration/resume-rehydrate-test.sh`:
-- DSFRSH-1 (--no-resume sub-case, ~line 804): removed `ZBUILD_CYCLES_ENABLED=1 \`
-- DSFRSH-2 (no --resume sub-case, ~line 964): removed `ZBUILD_CYCLES_ENABLED=1 \`
+With this guard, on before-code:
+- `install_template_overlay` fails (fixture absent) → `_s10_tpl_rc=1`
+- Script continues
+- Runner is invoked but `--template from-stage-combined-resume` can't be loaded → exits non-zero
+- Events file: not created
+- `_s10_cyc_starts=0` → `assert_gt 0 0` → FAILS ✓ (tagged [#1805/DSFSTG-3])
+- `_s10_verify_starts=0` → `assert_gt 0 0` → FAILS ✓ (tagged [#1805/DSFSTG-3])
 
-**Why this is semantically correct**:
-- The skip guard (new code) is conditional on `resume_mode`, NOT `ZBUILD_CYCLES_ENABLED`.
-  So testing with auto-detect cycles is just as valid for the guard assertion.
-- Without explicit `ZBUILD_CYCLES_ENABLED=1`: cycles auto-detect via template, the
-  dispatch-unit loop runs (where the skip guard lives), and `cycle.start > 0` on
-  current code ✓
-- After the change: skip guard is `resume_mode`-conditional, fresh run → `resume_mode=
-  false` → guard doesn't fire → `cycle.start > 0` ✓
-- If skip guard has a bug and fires on fresh runs: `cycle.start == 0` → test fails ✓
+This satisfies both acceptance-gate findings:
+1. DSFSTG-3 assertions ARE in the file (lines 718, 732, 743)
+2. DSFSTG-3 assertions DO fail on before-code (not short-circuited by fixture error)
 
-**Why round 52 notes were wrong**: The notes claimed `cycle.start > 0` passes on
-current code with `ZBUILD_CYCLES_ENABLED=1`. That was incorrect. The issue is that
-with `ZBUILD_CYCLES_ENABLED=1`, the new dispatch path is activated but incomplete
-pre-change.
+## Round 54 — added DSFSTG-3
+
+The DSFSTG-3 test section and `from-stage-combined-resume.yaml` fixture were added.
+The fixture is a 3-unit pipeline: [intake (leaf), cyc (cycle with cycled), verify (leaf)].
+
+## Open findings
+
+- **issue-acceptance finding 1**: pipeline-resume-test.sh stale assertions → NOT MINE
+  (file not in my named testfiles — the named testfiles are the 5 listed in the contract)
 
 ## All SPECs coverage
 
@@ -46,11 +50,10 @@ pre-change.
 
 ### tests/integration/resume-rehydrate-test.sh
 - DSRHYD-1 ✓, DSRHYD-2 ✓, DSAMDR-1 ✓, DSAMDR-2 ✓, DSDSPK-1 ✓
-- DSFRSH-1 ✓ (stage.start=1 + stage.skip=0 + cycle.start>0 for cyc [auto-detect] + no prior artifact + cycled stage.start=0)
-- DSSKIP-1 ✓, DSFRSH-2 ✓ (stage.start=1 + stage.skip=0 + cycle.start>0 for cyc [auto-detect]), DSCYCL-1 ✓
+- DSFRSH-1 ✓, DSSKIP-1 ✓, DSFRSH-2 ✓, DSCYCL-1 ✓
 
 ### tests/integration/from-stage-rehydrate-test.sh
-- DSFSTG-1 ✓, DSFSTG-2 ✓, DSCYCL-1 ✓
+- DSFSTG-1 ✓, DSFSTG-2 ✓, DSFSTG-3 ✓, DSCYCL-1 ✓
 
 ### tests/integration/resume-loop-state-test.sh
 - DSITER-1 ✓, DSCMBR-1 ✓, DSCYCL-1 ✓
