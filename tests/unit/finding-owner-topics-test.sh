@@ -17,7 +17,7 @@
 #   O4 [change]: Previous work honours a finding's own topic only when its
 #                output lists it; otherwise the output's topic decides
 #   O5 [change]: _test_findings_by_owner labels a file that is not one of the
-#                design's test files `change`, and leaves the design's own
+#                design's test files `change-findings`, and leaves the design's own
 #                test files unlabelled
 set -uo pipefail
 
@@ -174,10 +174,10 @@ _o5="$(printf 'tests/a-test.sh\tA-FAILS\ntests/other-test.sh\tOTHER-FAILS\n' \
         | _test_findings_by_owner "$DESIGN" | stage_findings_json)"
 assert_eq "[O5] the design's own test file keeps the output's topic" "null" \
     "$(jq -r '.[] | select(.text == "A-FAILS") | .topic' <<< "$_o5")"
-assert_eq "[O5] any other test file is change" "change" \
+assert_eq "[O5] any other test file is change-findings" "change-findings" \
     "$(jq -r '.[] | select(.text == "OTHER-FAILS") | .topic' <<< "$_o5")"
 _o5b="$(printf 'tests/other-test.sh\tNO-DESIGN\n' | _test_findings_by_owner "" | stage_findings_json)"
-assert_eq "[O5] with no design, every file is change" "change" "$(jq -r '.[0].topic' <<< "$_o5b")"
+assert_eq "[O5] with no design, every file is change-findings" "change-findings" "$(jq -r '.[0].topic' <<< "$_o5b")"
 
 cleanup_test_env
 print_test_results

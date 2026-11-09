@@ -202,9 +202,9 @@ assert_contains "[T6] … naming it" "$out" "takes 'test-logs'"
 
 print_test_section "T7: the shipped stages"
 _takes_of() { local t; _sp_takes_v t "$REPO_ROOT/plugins/agent/$1/manifest.yaml"; t="${t# }"; t="${t% }"; printf '%s' "${t// /,}"; }
-assert_eq "[T7] design takes" "ask,requirement-findings" "$(_takes_of design)"
-assert_eq "[T7] test-author takes (never change; requirement findings, e.g. a test that misses a requirement)" "ask,tests,requirement-findings,code-findings" "$(_takes_of test-author)"
-assert_eq "[T7] build takes" "ask,tests,change,requirement-findings,code-findings" "$(_takes_of build)"
+assert_eq "[T7] design takes (test-findings: a Given no test can meet is its to rewrite)" "ask,requirement-findings,test-findings" "$(_takes_of design)"
+assert_eq "[T7] test-author takes (never change; requirement findings, e.g. a test that misses a requirement)" "ask,tests,requirement-findings,code-findings,test-findings" "$(_takes_of test-author)"
+assert_eq "[T7] build takes (change-findings: only the code can fix them; never test-findings)" "ask,tests,change,requirement-findings,code-findings,change-findings" "$(_takes_of build)"
 assert_eq "[T7] issue-acceptance takes" "ask,change,code-findings" "$(_takes_of issue-acceptance)"
 assert_eq "[T7] review-lens takes" "ask,change" "$(_takes_of review-lens)"
 assert_eq "[T7] security-lens takes" "ask,change" "$(_takes_of security-lens)"
@@ -223,9 +223,10 @@ assert_eq "[T7] intake: every output is ask" \
 assert_eq "[T7] design: the design is ask, its checks are requirement-findings" \
     "design=ask work_steps=ask design_draft=ask design_result=requirement-findings design_summary=requirement-findings " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/design/manifest.yaml")"
-# #2491: test-author's check is about a test against its SPEC — design is shown it.
-assert_eq "[T7] test-author: its checker is requirement-findings, its list of tests is tests" \
-    "test_author_result=requirement-findings test_author_summary=tests " \
+# #2491: test-author's check is about a test against its SPEC — design is shown
+# it; test-findings, so build, which may not edit a test, is not (#1805 run 42523805245).
+assert_eq "[T7] test-author: its checker is test-findings, its list of tests is tests" \
+    "test_author_result=test-findings test_author_summary=tests " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/test-author/manifest.yaml")"
 assert_eq "[T7] build: change; its answers that a test is wrong are code-findings (#2441)" "diff_patch=change build_summary=change build_tests=code-findings build_stage_summary=change " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/build/manifest.yaml")"

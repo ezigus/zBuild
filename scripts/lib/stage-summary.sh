@@ -25,7 +25,7 @@ _ZBUILD_STAGE_SUMMARY_SH_LOADED=1
 # topic words count; any other line is a finding with no topic, kept whole.
 # #2470: a finding of several lines (a SPEC shown whole) comes as one line with
 # its lines joined by a record separator (\x1e), and keeps them.
-_ZB_FINDING_TOPICS='^(ask|tests|change|requirement-findings|code-findings)\t'
+_ZB_FINDING_TOPICS='^(ask|tests|change|requirement-findings|code-findings|change-findings|test-findings)\t'
 stage_findings_json() {
     jq -R -s -c --arg re "$_ZB_FINDING_TOPICS" \
         '[ split("\n")[] | sub("^\\s+"; "") | sub("\\s+$"; "") | select(length > 0) ]

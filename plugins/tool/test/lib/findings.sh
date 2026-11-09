@@ -126,7 +126,8 @@ _test_findings_about() {
 # prints each as stage_findings_json takes it. #2454 (ADR-071 §1): a file that is
 # one of the design's test files is test-author's and build's to fix, so it keeps
 # the result's topic; any other file is the change's, so it is labelled
-# `change` — it reaches build, not test-author, which may not edit it. With no
+# `change-findings` — it reaches build only, not test-author, which may not edit
+# it, nor issue-acceptance (#1805 run 42523805245). With no
 # design every file is the change's.
 _test_findings_by_owner() {
     local design="${1:-}" f t
@@ -138,7 +139,7 @@ _test_findings_by_owner() {
     fi
     while IFS=$'\t' read -r f t; do
         [[ -n "$t" ]] || continue
-        if [[ -n "${mine[$f]:-}" ]]; then printf '%s\n' "$t"; else printf 'change\t%s\n' "$t"; fi
+        if [[ -n "${mine[$f]:-}" ]]; then printf '%s\n' "$t"; else printf 'change-findings\t%s\n' "$t"; fi
     done
 }
 

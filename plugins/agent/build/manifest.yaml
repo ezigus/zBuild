@@ -16,6 +16,8 @@ takes:
     for: "findings against the requirements the change must meet"
   - topic: code-findings
     for: "failing tests and problems found in the code"
+  - topic: change-findings
+    for: "findings only the code can fix: a lens's code finding, a failing file that is not the design's test"
 description: |
   Build stage agent. Reads the plan.json artifact produced by the plan stage
   and invokes the LLM (T2) to produce a diff.patch and build-summary.json.

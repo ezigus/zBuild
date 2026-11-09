@@ -21,6 +21,12 @@
 #             work on the test (#2443: #1754 build ran out of time first)
 # W5 [change] build writes its notes first, and each finding before its next
 #             step (#2443)
+# W6 [change] "the test is wrong" rests on a check, not on being sure (#2503): a
+#             test that fails the same way with build's change set aside was not
+#             broken by it; build says what in the test makes it fail, and
+#             stops. #1805 run 42523805245: build stashed its change, saw the
+#             test fail the same way, found the cause twice ("the mock doesn't
+#             have role: intake"), and ran out of time checking its own change.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -65,6 +71,11 @@ assert_contains "[W1] ...and to stop working on it" "$_instr" "stop working on t
 assert_contains "[W4] build answers as soon as it is sure" "$_instr" "as soon as you are sure"
 assert_contains "[W5] build writes its notes first" "$_instr" "Write your notes file first"
 assert_contains "[W5] ...and each finding before its next step" "$_instr" "before your next step"
+_instr1="$(tr -s '[:space:]' ' ' <<< "$_instr")"
+assert_contains "[W6] a test that fails the same way with the change set aside" "$_instr1" \
+    "If the test fails the same way with your change set aside (git stash), your change did not cause it"
+assert_contains "[W6] ...build says what in the test makes it fail, and stops" "$_instr1" \
+    "find what in the test makes it fail, give that answer, and stop"
 
 # ── W2 ───────────────────────────────────────────────────────────────────────
 BM="$REPO_ROOT/plugins/agent/build/manifest.yaml"

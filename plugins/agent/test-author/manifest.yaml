@@ -14,6 +14,8 @@ takes:
     for: "findings that a test misses or misstates a requirement"
   - topic: code-findings
     for: "failing tests and test checks, to fix the tests it owns"
+  - topic: test-findings
+    for: "what its own check found: an assertion that does not test what its requirement says"
 description: |
   Authors the acceptance assertions from the design's SPEC sentences, in the
   target's own language, BEFORE build implements against them.
@@ -67,8 +69,9 @@ capabilities:
 outputs:
   # #2491 (ADR-071 §1): its findings are about a test against its SPEC, so
   # design is shown them: only design can rewrite a Given no test can meet.
+  # test-findings, not requirement-findings: build may not edit a test.
   - id: test_author_result
-    topic: requirement-findings
+    topic: test-findings
     description: "the tests written for each requirement, with each file's fingerprint; findings: an assertion that does not test what its requirement says"
     path: "${artifact_dir}/test-author-result.json"
     finding_topics: none

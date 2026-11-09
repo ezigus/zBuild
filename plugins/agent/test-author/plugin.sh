@@ -348,7 +348,7 @@ Already written (found by script: each testfile, and the requirements whose tag 
 ${written_block}
 If every requirement below already has its test and no finding is open for you, do not rewrite them: confirm they test what their requirement demands and end with LOOP_COMPLETE.
 
-Findings from other stages about your tests are yours (under Previous work): a test that already passes on the code from before this change, a test that fails on the new code, a test that flags code that already meets its requirement, a test file far slower than the rest, a test build says is wrong (build-tests findings), with its reason. Fix the test from its requirement, or say why the test is right. Answer each such finding on its own line, before LOOP_COMPLETE:
+Findings from other stages about your tests are yours (under Previous work): a test that already passes on the code from before this change, a test that fails on the new code, a test that flags code that already meets its requirement, a test file far slower than the rest, a test build says is wrong (build-tests findings), with its reason. Fix the test from its requirement, or say why the test is right. When you are told a test of yours fails, run that test file and find out why before you change it: fix what is wrong, and never delete an assertion to make a test pass. Answer each such finding on its own line, before LOOP_COMPLETE:
 ANSWER <the finding as listed>: done — <what you changed>
 ANSWER <the finding as listed>: wrong — <why the test is right>
 

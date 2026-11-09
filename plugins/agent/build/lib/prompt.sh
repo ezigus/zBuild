@@ -80,6 +80,10 @@ sentinel, and stop working on that test:
 Say exactly why it cannot pass. The stage that owns the tests is given this
 answer, and fixes the test.
 
+You know a test is wrong by a check, not by a feeling. If the test fails the
+same way with your change set aside (git stash), your change did not cause it:
+find what in the test makes it fail, give that answer, and stop.
+
 ### When a test leaves something behind
 A test that leaves something behind — an exported variable, a file outside its
 own folder, a background process — breaks the tests after it. Which of three it

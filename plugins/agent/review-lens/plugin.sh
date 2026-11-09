@@ -567,7 +567,7 @@ _review_lens_run_inner() {
         def at_fail_on: .severity as $s | ($on | contains(" \($s) "));
         def line: "\($n) lens, \(.severity): \(.message) (\(.file)\(if .line then ":\(.line)" else "" end); fix: \(.fix))";
         # #2491 (ADR-071 §1): a finding the code must fix goes to `change`.
-        def routed: {text: line, blocking: at_fail_on} + (if .fix == "code" then {topic: "change"} else {} end);
+        def routed: {text: line, blocking: at_fail_on} + (if .fix == "code" then {topic: "change-findings"} else {} end);
         [.findings[] | select(.fix == "issue" and at_fail_on)] as $issue
         | [.findings[] | select(.fix != "issue" and .introduced)] as $sent
         | { outcome: (if ($issue | length) > 0 then "misconfigured" elif ([$sent[] | select(at_fail_on)] | length) > 0 then "fail" else "pass" end),

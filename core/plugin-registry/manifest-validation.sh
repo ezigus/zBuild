@@ -51,7 +51,7 @@ ZBUILD_PLUGIN_KINDS=(agent tool orchestrator claim-coordinator daemon persona)
 # Each output names one topic; a stage's `takes:` names the topics its prompt's
 # Previous work holds.
 # shellcheck disable=SC2034  # read by manifest-topics.sh and its callers
-ZBUILD_STAGE_TOPICS=(ask tests change requirement-findings code-findings)
+ZBUILD_STAGE_TOPICS=(ask tests change requirement-findings code-findings change-findings test-findings)
 
 # ─── yaml_get memoization (#1614) ───────────────────────────────────────────
 # yaml_get spawned one awk per lookup and was called 6,338 times per pipeline
