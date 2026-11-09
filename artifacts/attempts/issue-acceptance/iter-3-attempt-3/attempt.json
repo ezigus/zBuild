@@ -1,0 +1,15 @@
+{
+  "stage": "issue-acceptance",
+  "cycle_iter": 3,
+  "attempt": 3,
+  "rc": "1",
+  "generated_at": "2026-11-09T02:00:27Z",
+  "files": 2,
+  "outputs": {
+    "issue-acceptance-result.json": "unchanged",
+    "issue-acceptance-summary.md": "unchanged",
+    "__notes__": "unchanged",
+    "__cutoff__": "changed"
+  },
+  "progress": true
+}
