@@ -565,7 +565,8 @@ _review_lens_run_inner() {
     local _rl_route
     _rl_route="$(printf '%s' "$normalized" | jq -c --arg on " $_rl_fail_on " --arg n "$lens" '
         def at_fail_on: .severity as $s | ($on | contains(" \($s) "));
-        def line: "\($n) lens, \(.severity): \(.message) (\(.file)\(if .line then ":\(.line)" else "" end); fix: \(.fix))";
+        # #2506 (ADR-072 §3): shown with its quote, never a line — lines move.
+        def line: "\($n) lens, \(.severity): \(.message) (\(.file)\(if (.quote | tostring) != "" then ": \"\(.quote | tostring | gsub("[\r\n]+"; " "))\"" else "" end); fix: \(.fix))";
         # #2491 (ADR-071 §1): a finding the code must fix goes to `change`.
         def routed: {text: line, blocking: at_fail_on} + (if .fix == "code" then {topic: "change-findings"} else {} end);
         [.findings[] | select(.fix == "issue" and at_fail_on)] as $issue

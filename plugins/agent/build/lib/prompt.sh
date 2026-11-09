@@ -102,11 +102,12 @@ is decides what you do:
 - Do NOT run \`npm test\`, the full suite, or \`npm run lint\` — the pipeline
   runs them and their results are under Previous work.
 - Start from the test files listed under Previous work, and the requirements
-  each covers: they fail on the code as it is now; do not run them to find that
-  out. Run a test only after you change the code it checks, and only that test
-  file. A command that runs longer than ~2 minutes can cost you the whole call.
-- A failed stage under Previous work is red RIGHT NOW on this tree. Start from
-  the failing line it quotes.
+  each covers. Run a test file only to see whether a failure still holds
+  (below) or after you change the code it checks, and only that test file. A
+  command that runs longer than ~2 minutes can cost you the whole call.
+- A failed stage under Previous work shows what failed when that stage ran; the
+  code may have changed since, so run that one test file once, before you work
+  on it, to see whether it still fails, and start from the failing line it shows.
 
 ### Data another part of the code writes
 When your change reads data that another part of the code writes — a file, a
@@ -251,7 +252,7 @@ _build_compose_prompt_body() {
         if [[ -n "$_acceptance_testfiles" ]]; then
             # #2163: a fact about THIS stage's permissions — never a claim about
             # who else does what (ADR-061: stages do not name stages).
-            printf 'The acceptance testfiles listed above are read-only for this stage: the engine denies edits to them, and a mechanical check restores any change. They are the contract you implement against, written before your implementation existed. A failing assertion means YOUR CODE is wrong — fix the code. You MUST NOT weaken, delete, retag or re-author any assertion. If you believe an assertion genuinely does not test its SPEC, say so in your output and do not edit it.\n\n'
+            printf 'The acceptance testfiles listed above are read-only for this stage: the engine denies edits to them, and a mechanical check restores any change. They are the contract you implement against, written before your implementation existed. When an assertion fails, fix your code. If it fails the same way with your change set aside, the test is wrong: answer as "When a test is wrong" says, and do not edit it. You MUST NOT weaken, delete, retag or re-author any assertion.\n\n'
         fi
         [[ -n "$_limits" ]] && printf '%s\n' "$_limits"
     } > "$_prompt_input_file"

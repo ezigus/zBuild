@@ -242,7 +242,7 @@ test_author_run() {
     # ── The contract, and ONLY the contract ─────────────────────────────────
     # #1978: naming a SPEC by id while its requirement sits 130 lines away is
     # how an assertion comes to test something else. The text travels with the id.
-    local sid n=0 n_done=0 spec_block="" _ta_blk _ta_p
+    local sid n=0 n_done=0 spec_block="" _ta_blk _ta_p _ta_need=""
     # #2467: the block read once; each SPEC's status, words and parts from it.
     _ta_blk="$(extract_acceptance_block "$design" 2>/dev/null)" || _ta_blk=""
     while IFS= read -r sid; do
@@ -267,6 +267,7 @@ test_author_run() {
         fi
         spec_block="${spec_block}    tag: $(acceptance_spec_tag "$sid")"$'\n'
         spec_block="${spec_block}    testfile(s): ${_tfs}"$'\n'
+        _ta_need+="$sid "
         n=$(( n + 1 ))
     done < <(acceptance_list_spec_ids "$design" 2>/dev/null || true)
 
@@ -318,7 +319,7 @@ ${_tsteps}
 "
 
     # #2445: what is already written, found by script, not re-read by the model.
-    local written_block; written_block="$(_ta_written_list "$design" "$repo")"
+    local written_block; written_block="$(_ta_written_list "$design" "$repo" "$_ta_need")"
 
     # #2308: the stage's own text in three parts (ADR-067 §8).
     local _spec_tag1; _spec_tag1="$(acceptance_spec_tag SPEC-1)"
@@ -364,7 +365,7 @@ REQUIREMENTS:
 ${spec_block}${sup_section}${steps_section}
 ## What you must not do
 - You cannot see the implementation, and you must not guess at it. You may read the existing tests and the repository's test helpers; do not read the code this change is about.
-- Run nothing: when you finish, the test files you create or change are run on the code from before this change. A test for a requirement that needs code must fail there for the reason you intend, not because of a mistake in the test; one that passes there, or stops before its assertion runs, comes back to you.
+- Run nothing else: run only a test file of yours that you are told fails, and never the suite or lint. When you finish, the test files you create or change are run on the code from before this change. A test for a requirement that needs code must fail there for the reason you intend, not because of a mistake in the test; one that passes there, or stops before its assertion runs, comes back to you.
 - Write or amend only the testfile(s) named above${sup_block:+, and the existing checks listed above}. Do not write, modify or stub any implementation file.
 - A tag that does not carry this issue's number (a bare [SPEC-n], or one naming another issue) belongs to other work: leave it as it is${sup_block:+, except on the existing checks listed above}.
 EOF

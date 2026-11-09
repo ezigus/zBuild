@@ -1,6 +1,6 @@
 # ADR-069 — Requirement status: needs work (code), needs work (no code), already done
 
-**Status:** Accepted (2026-10-05); amended 2026-11-03 (#2464, §2: a [done] claim is read in the code from before the change, by file); amended 2026-11-04 (#2467, §1: a [code] or [done] SPEC has Given/When/Then parts); amended 2026-11-05 (#2474, §9: every SPEC, whatever its status, describes behaviour)
+**Status:** Accepted (2026-10-05); amended 2026-11-09 (#2506, §2: no line number anywhere in the design); amended 2026-11-03 (#2464, §2: a [done] claim is read in the code from before the change, by file); amended 2026-11-04 (#2467, §1: a [code] or [done] SPEC has Given/When/Then parts); amended 2026-11-05 (#2474, §9: every SPEC, whatever its status, describes behaviour)
 **Issue:** #2304; §9 #2305
 **Amends:** ADR-036 (the acceptance check: the #1670, #1777, #2234 and #2244 guard rules are superseded), ADR-046 (design-gate C3/C4 rewritten, C6 removed), ADR-021 and ADR-053 (historical notes) — amended in PR B of #2304
 **Carries out:** ADR-037's planned removal of the `[change]`/`[guard]` classification (ADR-037, the ADR-031 and ADR-036 rows of its retirement table)
@@ -117,7 +117,13 @@ A requirement marked `[code]` or `[done]` says its behaviour as parts under its 
 - **§2.** Design's prompt names the copy of the commit the branch started from, the same copy the judges read (ADR-072 §2). It says a `[done]` claim is checked there, and to open the file there, not in the working copy. The `[done]` rule now says "the commit this branch started from" rather than "the default branch": the merge-base, which other work landing on main does not move. In the run, design believed it could not look at older code ("Since I can't pull the git history here"). It took the judge's "not in this incremental DIFF" as proof that the code was old, and grepped only its working copy.
 - **§7.** issue-acceptance judges the change from where the branch started to now (`zbuild_change_bundle`, as the review lenses do), not build's `diff.patch` for this round alone. With no base commit it reads `diff.patch` as before. In the run it wrote of code an earlier round had added: "it is not in this incremental DIFF".
 
+## Amendment 2026-11-09 (#2506) — §2: no line number anywhere in the design
+
+#2462 refused a line number only in a `[done]` SPEC's evidence. On #1805 run 42556446368 design's decisions and findings still cited lines such as `runner.sh:3442` as verified facts, and later stages read them after the lines had moved. Design's check now refuses a line number anywhere in the design — `<file>:<digits>`, in a decision, a finding or any other text (`LINE_NUMBER`) — and says: name the file and the function, or quote the text. A quote, `<file>:"<text>"`, is no line number. A `[done]` evidence line number is reported once, as `DONE_LINE_EVIDENCE`. ADR-067 §8 (amended the same day) says no stage names a line number.
+
 ## Enforced by
+
+- §2 amendment 2026-11-09 (#2506: no line number anywhere in the design) → `tests/unit/no-line-numbers-test.sh` L4, L5
 
 - Amendment 2026-11-06 (#2482) §1 → `tests/unit/design-stable-ids-test.sh` D6 (no prefix, or another stage's, refused in plain words; a SPEC may share a requirement's code), D8 (ids from before the prefix need no REMOVED line), D15 (a REMOVED line may name a failed try's SPEC; a draft from before the run does not count); `tests/unit/design-prompt-scope-charter-test.sh` T9 (the prompt gives the prefix; every example id has it); `tests/unit/descriptive-id-readers-test.sh` R1–R12 (every reader reads a prefixed id); §2 → `tests/unit/design-prompt-scope-charter-test.sh` T8 (the prompt names the copy of the code from before, which holds the branch's starting code); §7 → `tests/unit/issue-acceptance-test.sh` SPEC-13 (a line an earlier round added is in the judged change)
 - §1 amendment 2026-11-04 (#2467: Given/When/Then parts) → `tests/unit/gwt-format-test.sh` C1–C5

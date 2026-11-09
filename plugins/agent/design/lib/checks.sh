@@ -184,6 +184,7 @@ _dck_plain() {
         DONE_BAD_EVIDENCE*)  printf 'the evidence %s for %s does not point at the repository — name a file that exists, by its path from the repository root (no leading / and no ..), with an exact piece of its text: scripts/x.sh:"run_guard()"' "$third" "$id" ;;
         # #2462: [done] is done on the code from before the change, shown by text.
         DONE_LINE_EVIDENCE*) printf 'the evidence %s for %s names a line number, and line numbers move as the change is made — name an exact piece of the file'"'"'s text instead: scripts/x.sh:"run_guard()"' "$third" "$id" ;;
+        LINE_NUMBER*)        printf 'design.md names a line number (%s), and line numbers move as the change is made — name the file and the function, or quote the text: scripts/x.sh:"run_guard()"' "$id" ;;
         DONE_NO_TEXT*)       printf 'the evidence %s for %s names a source file alone — add an exact piece of its text that shows the code already does it: %s:"run_guard()"' "$third" "$id" "$third" ;;
         DONE_TEXT_MISSING*)  printf 'the evidence %s for %s is not in that file — quote its text exactly' "$third" "$id" ;;
         DONE_NOT_BEFORE*)    printf '%s is marked [done], but its evidence %s is not in the code from before this change — this branch added or changed it, so it is not done yet: tag %s [code] and give it a test' "$id" "$third" "$id" ;;
@@ -216,7 +217,7 @@ _dck_plain() {
 }
 
 # _design_checks <design_md> <repo_root> <requirements_json> [last_design] [issue_text]
-# Fills _DESIGN_VIOLATIONS with one code per violation (C1..C5, C7, C9); empty
+# Fills _DESIGN_VIOLATIONS with one code per violation (C1..C5, C7, C9, C11); empty
 # when design.md passes. The requirements file is absent on a goal run;
 # [last_design] is the last design that passed, [issue_text] the issue's words
 # (the stage passes none: the requirement list carries the ids they write).
@@ -321,6 +322,24 @@ _design_checks() {
                     [[ $_ev_n -eq 0 ]] && violations+=("DONE_NO_EVIDENCE $_spec ([done] names no evidence)") ;;
                 *)       violations+=("UNKNOWN_STATUS $_spec [${_ACC_SPEC_TAG}] (not a status)") ;;
             esac
+        done
+    fi
+
+    # ── C11 LINE NUMBERS (#2506, ADR-069 §2): none anywhere in the design ──
+    # A [done] evidence line number is already DONE_LINE_EVIDENCE: not twice.
+    if [[ -f "$design_md" ]]; then
+        local _ln_all="" _ln_tok _ln_seen=" "
+        local _ln_re='(^|[^A-Za-z0-9_./-])([A-Za-z0-9_./-]*[A-Za-z0-9_][.][A-Za-z0-9]+):([0-9]+)'
+        IFS= read -r -d '' _ln_all < "$design_md" || true
+        local _ln_v; for _ln_v in "${violations[@]+"${violations[@]}"}"; do
+            [[ "$_ln_v" == DONE_LINE_EVIDENCE* ]] && { _ln_tok="${_ln_v#* * }"; _ln_seen+="${_ln_tok%% *} "; }
+        done
+        while [[ "$_ln_all" =~ $_ln_re ]]; do
+            _ln_tok="${BASH_REMATCH[2]}:${BASH_REMATCH[3]}"
+            _ln_all="${_ln_all#*"${BASH_REMATCH[0]}"}"
+            [[ "$_ln_seen" == *" $_ln_tok "* ]] && continue
+            _ln_seen+="$_ln_tok "
+            violations+=("LINE_NUMBER $_ln_tok (a line number in the design)")
         done
     fi
 

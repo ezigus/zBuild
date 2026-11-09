@@ -62,8 +62,10 @@ cleanup_test_env
 # the engine's to state, in the Rules for this stage (ADR-067 §8).
 _b_out="$(_build_compose_instructions "src/foo.sh")"
 assert_contains "[#2138] …forbidding the full suite" "$_b_out" "npm test"
-assert_contains "[#2138] …and making a failed stage under Previous work authoritative" \
-    "$_b_out" "A failed stage under Previous work is red RIGHT NOW"
+# #2506: a failed stage shows what failed when it ran, not what fails now
+# (build-test-is-wrong-test.sh W8).
+assert_contains "[#2138] …and naming a failed stage under Previous work as where to start" \
+    "$(tr -s '[:space:]' ' ' <<< "$_b_out")" "A failed stage under Previous work shows what failed when that stage ran"
 
 # ─── T1: build starts from the tests listed under Previous work (#1801 run 40390919951)
 # With no stage failed yet, its builder ran 4–13 test files per call to find
@@ -72,10 +74,11 @@ _t1="$(tr -s '[:space:]' ' ' <<< "$_b_out")"
 assert_contains "[T1] build starts from the test files listed under Previous work" "$_t1" \
     "Start from the test files listed under Previous work, and the requirements each covers"
 assert_eq "[T1] ...without naming another stage (ADR-067 §8)" "0" "$(grep -c 'test-author' <<< "$_t1" || true)"
-assert_contains "[T1] ...which fail now, so it does not run them to find that out" "$_t1" \
-    "they fail on the code as it is now; do not run them to find that out"
-assert_contains "[T1] a test is run only after changing the code it checks" "$_t1" \
-    "Run a test only after you change the code it checks, and only that test file"
+# #2506: whether they fail now is not known — the code may have changed since.
+assert_eq "[T1] ...without claiming they fail on the code as it is now" "0" \
+    "$(grep -c 'they fail on the code as it is now' <<< "$_t1" || true)"
+assert_contains "[T1] a test is run only to see a failure still holds, or after changing the code it checks" "$_t1" \
+    "Run a test file only to see whether a failure still holds (below) or after you change the code it checks, and only that test file"
 
 print_test_results
 exit $((FAIL > 0))

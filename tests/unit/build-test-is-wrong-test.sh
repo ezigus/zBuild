@@ -27,6 +27,16 @@
 #             stops. #1805 run 42523805245: build stashed its change, saw the
 #             test fail the same way, found the cause twice ("the mock doesn't
 #             have role: intake"), and ran out of time checking its own change.
+# W7 [change] (#2506) the "test is wrong" path wins over "fix your code": when
+#             an assertion fails build fixes its code, and if it fails the same
+#             way with its change set aside, it answers as "When a test is wrong"
+#             says; it still may not edit a test. #1805 run 42556446368: told
+#             also "A failing assertion means YOUR CODE is wrong", build saw the
+#             test's fake plugin had no role and changed the engine instead.
+# W8 [change] (#2506) a failed stage under Previous work shows what failed when
+#             that stage ran: build runs that one test file once, before working
+#             on it, to see whether it still fails. "Red RIGHT NOW" was false at
+#             the start of every rerun and after a test was changed.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -76,6 +86,26 @@ assert_contains "[W6] a test that fails the same way with the change set aside" 
     "If the test fails the same way with your change set aside (git stash), your change did not cause it"
 assert_contains "[W6] ...build says what in the test makes it fail, and stops" "$_instr1" \
     "find what in the test makes it fail, give that answer, and stop"
+
+# ── W7 ───────────────────────────────────────────────────────────────────────
+_w7p="$TEST_TEMP_DIR/w7-prompt.txt"
+_build_compose_prompt_body "$_w7p" "# task" "plan" "$_instr" "" "tests/x-test.sh" $'SPEC-1\tit works' 1 >/dev/null 2>&1
+_w7="$(tr -s '[:space:]' ' ' < "$_w7p" 2>/dev/null)"
+assert_contains "[W7] when an assertion fails, build fixes its code" "$_w7" "When an assertion fails, fix your code."
+assert_contains "[W7] ...unless it fails the same way with the change set aside: then the test is wrong" "$_w7" \
+    'If it fails the same way with your change set aside, the test is wrong: answer as "When a test is wrong" says'
+assert_not_contains "[W7] build is no longer told a failing assertion always means its code is wrong" "$_w7" \
+    "A failing assertion means YOUR CODE is wrong"
+assert_contains "[W7] ...and it still may not edit a test" "$_w7" "You MUST NOT weaken, delete, retag or re-author any assertion"
+
+# ── W8 ───────────────────────────────────────────────────────────────────────
+assert_contains "[W8] a failed stage shows what failed when it ran" "$_instr1" \
+    "A failed stage under Previous work shows what failed when that stage ran"
+assert_contains "[W8] ...so build runs that one test file once, first, to see whether it still fails" "$_instr1" \
+    "run that one test file once, before you work on it, to see whether it still fails"
+assert_not_contains "[W8] build is no longer told a failed stage is red right now" "$_instr1" "red RIGHT NOW"
+assert_not_contains "[W8] ...nor that the listed tests fail now and are not to be run" "$_instr1" \
+    "do not run them to find that out"
 
 # ── W2 ───────────────────────────────────────────────────────────────────────
 BM="$REPO_ROOT/plugins/agent/build/manifest.yaml"

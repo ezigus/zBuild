@@ -45,6 +45,10 @@
 #             make it pass. #1805 run 42523805245: told "expected >0, got 0", it
 #             guessed the engine lacked the behaviour and deleted the
 #             assertion; the cause was its own mock, missing a role.
+# A15 [change] (#2506) it may run a test file of its own that it is told
+#             fails, and nothing else: never the suite or lint. #1805 run
+#             42556446368: told both "run that test file" (A14) and "Run
+#             nothing", it ran no test in four calls and guessed.
 # A12 [change] what it did about each finding — its latest answer to each (#2460) — is recorded in its result and
 #             summary (ADR-068 §6)
 set -uo pipefail
@@ -164,8 +168,8 @@ assert_eq "[A6] ...and corresponding passes" "pass" "$OUTCOME"
 JUDGE=("$CORRESP"); JUDGE_RC=0
 _run
 _AP="$(tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/author-prompt-1" 2>/dev/null)"
-assert_contains "[A8] the author runs nothing; its test files are run for it on the old code" "$_AP" \
-    "Run nothing: when you finish, the test files you create or change are run on the code from before this change"
+assert_contains "[A8] its test files are run for it on the old code when it finishes (#2506: it runs nothing else)" "$_AP" \
+    "When you finish, the test files you create or change are run on the code from before this change"
 assert_contains "[A8] ...where each must fail for the reason it intends" "$_AP" "must fail there for the reason you intend"
 assert_eq "[A8] it is no longer told to run nothing" "0" "$(grep -c 'Do not run anything' <<< "$_AP" || true)"
 assert_contains "[A8] it may read the existing tests and test helpers" "$_AP" \
@@ -207,6 +211,11 @@ assert_contains "[A14] told a test of its fails, it runs it and finds why first"
     "When you are told a test of yours fails, run that test file and find out why before you change it"
 assert_contains "[A14] ...and never deletes an assertion to make it pass" "$_AP" \
     "never delete an assertion to make a test pass"
+
+# ── A15 ──────────────────────────────────────────────────────────────────────
+assert_contains "[A15] it runs only a test file of its own that it is told fails" "$_AP" \
+    "Run nothing else: run only a test file of yours that you are told fails, and never the suite or lint"
+assert_eq "[A15] ...and is no longer told to run nothing at all" "0" "$(grep -c 'Run nothing:' <<< "$_AP" || true)"
 
 # ── A12 ──────────────────────────────────────────────────────────────────────
 JUDGE=("$CORRESP"); JUDGE_RC=0

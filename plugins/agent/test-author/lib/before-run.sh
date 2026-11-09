@@ -4,8 +4,9 @@
 # change, and lists which requirements each test file already covers (#2445,
 # ADR-068 §6).
 #
-# The model writes tests and runs nothing; whether a test fails where it must is
-# measured here, never taken from the model. A [code] requirement's test must
+# The model writes tests and runs nothing but a test file of its own it is told
+# fails (#2506); whether a test fails where it must is measured here, never
+# taken from the model. A [code] requirement's test must
 # fail on that code; one that passes there, or a file that stops before its
 # assertion runs, is a finding — and only findings send the model round again.
 #
@@ -34,21 +35,27 @@ _ta_testfile_sums_v() {
     done < <(acceptance_list_testfiles "$2" 2>/dev/null || true)
 }
 
-# _ta_written_list <design_md> <repo> — for the prompt: each test file and the
-# requirements of this contract whose tag it already holds.
+# _ta_written_list <design_md> <repo> [needed ids] — for the prompt: each test
+# file and the requirements of this contract whose tag it already holds, then
+# the needed ones no file holds yet (#2506: a gap shown only by its absence
+# was missed).
 _ta_written_list() {
-    local design="$1" repo="$2" tf sid have
+    local design="$1" repo="$2" tf sid have found=" " missing=""
     while IFS= read -r tf; do
         [[ -n "$tf" && "$tf" != /* && "/$tf/" != *"/../"* ]] || continue
         have=""
         if [[ -f "$repo/$tf" ]]; then
             while IFS= read -r sid; do
                 [[ -n "$sid" ]] || continue
-                grep -qF -- "$(acceptance_spec_tag "$sid")" "$repo/$tf" 2>/dev/null && have+="${have:+, }$sid"
+                grep -qF -- "$(acceptance_spec_tag "$sid")" "$repo/$tf" 2>/dev/null && { have+="${have:+, }$sid"; found+="$sid "; }
             done < <(acceptance_list_spec_ids "$design" 2>/dev/null || true)
         fi
         printf -- '- %s: %s\n' "$tf" "${have:-none yet}"
     done < <(acceptance_list_testfiles "$design" 2>/dev/null || true)
+    for sid in ${3:-}; do
+        [[ "$found" == *" $sid "* ]] || missing+="${missing:+, }$sid"
+    done
+    printf 'Not written yet: %s\n' "${missing:-none}"
 }
 
 # _ta_before_run <design_md> <repo> <sums_before> — sets _TA_BEFORE_FINDINGS:

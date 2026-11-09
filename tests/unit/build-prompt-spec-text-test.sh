@@ -159,14 +159,15 @@ fi
 # not test its SPEC, else fix the code. Build was still the one judging which
 # branch applied, and still the one rewriting — self-certified correspondence,
 # and the defect two runs shipped (ADR-036:512, #1978). Assertion authorship now
-# belongs to test-author, so the branch is gone: a failing assertion means the
-# CODE is wrong, full stop.
+# belongs to test-author, so the branch is gone: build fixes its code, and when a
+# test fails the same way with its change set aside, it answers that the test is
+# wrong instead of editing it (ADR-068 §6, #2506).
 print_test_section "5. build does not author or modify assertions"
 
 assert_contains "[SPEC-5] build is told it does not author assertions" \
     "$PROMPT" "MUST NOT weaken, delete, retag or re-author any assertion"
-assert_contains "[SPEC-5] a failing assertion means the code is wrong" \
-    "$PROMPT" "fix the code"
+assert_contains "[SPEC-5] a failing assertion is fixed in the code" \
+    "$PROMPT" "When an assertion fails, fix your code."
 assert_contains "[SPEC-5] and the testfiles are off limits" \
     "$PROMPT" "read-only for this stage"
 

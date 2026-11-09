@@ -26,7 +26,7 @@ Return a JSON object matching the `findings.json` schema:
       "title": "...",
       "severity": "critical | high | medium | low",
       "category": "injection | secret | auth | owasp-* | other",
-      "file": "path/to/file:line",
+      "file": "path/to/file",
       "evidence": "the offending snippet",
       "suggestion": "what to fix"
     }
@@ -43,4 +43,4 @@ The change, shown below. Paths outside this change's scope are shown as `<out-of
 ## What you must not do
 
 - Do NOT report non-security issues.
-- Do not invent line numbers or contents for a file you cannot read.
+- Do not invent the contents of a file you cannot read.
