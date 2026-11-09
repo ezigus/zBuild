@@ -1,0 +1,18 @@
+{
+  "stage": "build",
+  "cycle_iter": 2,
+  "attempt": 14,
+  "rc": "0",
+  "generated_at": "2026-11-09T00:20:20Z",
+  "files": 3,
+  "outputs": {
+    "diff.patch": "changed",
+    "build-summary.json": "changed",
+    "build-tests-result.json": "absent",
+    "build-summary.md": "changed",
+    "__repository__": "unchanged",
+    "__notes__": "changed",
+    "__cutoff__": "absent"
+  },
+  "progress": true
+}

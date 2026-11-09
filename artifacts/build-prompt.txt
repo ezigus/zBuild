@@ -361,7 +361,7 @@ Summary:
 - DSDLGT-1 (covers RQHYDR-1): The hydrate plugin's hydrate_run calls _artifact_persist_put_back so artifacts placed by the resume path appear at the same filesystem paths as those a hydrate run would produce
 - DSCYCL-1 (covers RQTEST-1): The pipeline fixtures used by resume-rehydrate-test.sh, from-stage-rehydrate-test.sh, resume-loop-state-test.sh, and resume-entry-points-test.sh each contain a stage of type: cycle, verified by an assert_contains tagged [#1805/DSCYCL-1] in each file, ensuring RQRESU-4, RQLOOP-1, RQFROM-2, RQFROM-3, and RQPATH-1 tests run against a cyclic pipeline
 - the files it may change: core/pipeline/runner.sh, core/state/artifact-persist.sh, plugins/tool/hydrate/plugin.sh, core/pipeline/cycle-orchestrator.sh, docs/adr/ADR-006-resume-contract.md, docs/adr/ADR-050-prior-work-reuse-contract.md, tests/integration/resume-rehydrate-test.sh, tests/integration/from-stage-rehydrate-test.sh, tests/integration/resume-loop-state-test.sh, tests/integration/resume-entry-points-test.sh, tests/integration/pipeline-resume-test.sh, tests/integration/resume-after-sigint-test.sh, tests/unit/hydrate-stage-test.sh, tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh, tests/integration/nested-loop-rounds-test.sh, tests/integration/nested-loop-rounds-build-test.sh, tests/integration/cycle-member-dispatch-events-test.sh, tests/golden/full-pipeline/event-sequence.golden, tests/golden/parity/event-sequence.golden
-- no finding was open for it
+- answered: test-author finding 1: not mine — the finding is about a missing assertion in `tests/integration/resume-rehydrate-test.sh`, which is the test-author stage's output, not the design document. The design correctly specifies DSFRSH-2's observable behavior with `And: No stage.skip event is emitted for any stage`. That clause is an observable, testable condition. The test-author stage must add the corresponding assertion (`assert_eq 0 $(grep -c '"event":"stage.skip"' "$_S_FRSH2_EVENTS_JSONL")` or equivalent); the design's acceptance spec is correct as written and unchanged.
 
 ### test-author (verdict: fail)
 Outputs:
@@ -369,12 +369,12 @@ Outputs:
 - test_author_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-author-summary.md
 
 Findings:
-- test-author finding 1 (opened by test-author): DSFRSH-2 And: the `# Then` comment at line 966 reads "no stage.skip event is emitted for any stage" but there is no subsequent assertion that counts `stage.skip` events from `$_S_FRSH2_EVENTS_JSONL` and asserts the count is 0; the test cannot fail on this condition
+- test-author finding 1 (opened by test-author): DSFRSH-2 Then: the test does something else: asserts only that intake emits stage.start (count == 1), not that every stage does; if other stages in the template (e.g. cyc) never emit stage.start the tagged assertion still passes
     DSFRSH-2[no-code]: A new run of the same issue never skips a stage due to prior run output; the dispatch-unit skip guard is conditional on resume_mode so it does not activate for fresh runs covers: RQGUAR-2
       Given: An issue has prior completed runs with artifacts present in the git state branch; a new run is started with no --resume flag and no status=interrupted state file
       When: The dispatch loop runs
-      Then: Every stage emits a stage.start event
-      And: No stage.skip event is emitted for any stage [FIX IN TEST: the `# Then` comment at line 966 reads "no stage.skip event is emitted for any stage" but there is no subsequent assertion that counts `stage.skip` events from `$_S_FRSH2_EVENTS_JSONL` and asserts the count is 0; the test cannot fail on this condition — assert this, so the test fails when it is not so]
+      Then: Every stage emits a stage.start event [FIX IN TEST: the test does something else: asserts only that intake emits stage.start (count == 1), not that every stage does; if other stages in the template (e.g. cyc) never emit stage.start the tagged assertion still passes — make it do what this line says]
+      And: No stage.skip event is emitted for any stage
 
 Summary:
 ## test-author — unusable
@@ -388,8 +388,10 @@ Summary:
 - tests/integration/resume-entry-points-test.sh — DSENTR-1, DSENTR-2, DSCYCL-1
 - tests/unit/hydrate-stage-test.sh — DSDLGT-1
 - Each [code] requirement's test must fail on the code from before this change, and pass once the code is written.
-- answered: lens-red-team-code finding 1: done — The vacuous `stage.skip` count=0 assertions at DSFRSH-1 (lines ~844–855) and DSFRSH-2 (lines ~983–988) were replaced in Round 48 with non-vacuous `cycle.start > 0` assertions. The replacement is confirmed on disk: `grep -n "stage\.skip"` returns only a comment (line 966, the SPEC text); the actual assertions are `assert_gt` on `cycle.start` count. These CAN fail: if the dispatch-unit skip guard fires unconditionally, it skips intake → pipeline cannot proceed to dispatch `cyc` → `cycle.start` absent → count=0 → `assert_gt 0 > 0` → FAILS. After the code change (guard keyed on `resume_mode`), intake dispatches → `cyc` dispatched → PASSES.
-- not answered: test-author finding 1
+- answered: test finding 1: done — The `cycle.start > 0` assertions were replaced in the worktree with `stage.skip == 0` (DSFRSH-1 at lines 844–857, DSFRSH-2 at lines 980–994) in a prior round. The test stage finding came from running a stale scratch copy that predated those changes. The current worktree file has no `cycle.start > 0` assertions.
+- answered: test-author finding 1: wrong — DSFRSH-1 is `[no-code]`; "its test must pass after this change; it need not fail before." `cycle.start > 0` for cyc produces 0 on current code (the cycle stage does not emit cycle.start before the new code lands), making `assert_gt` fail on current code — which directly violates the no-code property. The requirement "dispatches all stages from stage 1 with no stage skipped" is fully covered by: (a) `stage.start == 1` for intake (dispatch did not jump past stage 1), (b) `stage.skip == 0` (no skip guard fired), and (c) no prior-run artifact in ZBUILD_ARTIFACT_DIR (no rehydration invoked on a fresh run). These three assertions pass on current code and catch the bugs the SPEC guards against.
+- answered: test-author finding 2: wrong — Same rationale as finding 1. DSFRSH-2 is `[no-code]`; asserting `cycle.start > 0` requires the new code to have run the cycle stage — a `[code]` behavior — so it fails on current code and violates the no-code property. The requirement is fully covered by `intake stage.start == 1` + `stage.skip == 0`.
+- answered: lens-red-team-code finding 1: wrong — `stage.skip` is registered in `config/event-schema.json` precisely because the new code (this change) will emit it when skipping stages on resume. The assertion `stage.skip == 0` (a) passes on current code satisfying the no-code property, (b) directly tests the SPEC's Then clause "No stage.skip event is emitted for any stage," and (c) after the new code lands, catches any bug where the skip guard emits `stage.skip` on a fresh run when it should not. That no existing `.sh` file currently emits it is correct — the new code adds the emission; the assertion pre-validates the guard on the fresh-run side.
 
 Its last good output, from an earlier attempt:
 - /home/runner/work/_temp/zbuild-state/artifacts/attempts/test-author/iter-3-attempt-2/test-author-result.json
@@ -412,7 +414,7 @@ Summary of that output:
 - answered: test-author finding 1: done — added `# Given —`, `# When —`, `# Then —` headings to the SKIP-1 section in `resume-rehydrate-test.sh`
 - answered: test-author finding 2: nothing to do — the cycled assertion is not required by FRSH-2 (the skip guard operates on dispatch units, not cycle-inner members), and adding it would cause the test to fail because cycled doesn't dispatch in fresh runs with the current code; the two existing assertions (intake dispatches, no stage.skip) fully cover the requirement
 
-### build (verdict: pass) — your own
+### build (verdict: error) — your own
 Outputs:
 - build_stage_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.md
 - build_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.json
@@ -423,7 +425,7 @@ Summary:
 
 - ran out of time; changed core/pipeline/cycle-orchestrator.sh, core/pipeline/runner.sh, tests/integration/resume-rehydrate-test.sh (+82 / -22) so far
 
-- over 3 pass(es), 3 iteration(s)
+- over 4 pass(es), 4 iteration(s)
 - not answered: test-author finding 1
 - not answered: lens-security-code finding 1
 - not answered: lens-performance-code finding 1
@@ -513,110 +515,163 @@ event when refusing. Fix: emit stage.verdict.stale_artifact (already registered)
 - tests/integration/nested-loop-rounds-test.sh
 
 Your last call was cut off at its time limit before it finished. What it did, step by step, up to the cut-off:
-- (… 40 earlier steps not shown)
-- Bash: git diff fe9fa0a8^ fe9fa0a8 -- tests/integration/resume-rehydrate-test.sh | head -60
-- Bash: git diff ce90947b^ ce90947b -- tests/integration/resume-rehydrate-test.sh | head -100
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh
-- Bash: grep -n "role-unresolved\|role_unresolved\|ROLE_UNRESOLVED\|role.*unresolved\|unresolved.*role" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh | head -15
-- Bash: grep -rn "role-unresolved\|role_unresolved" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/ | head -15
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/resolver.sh
+- (… 63 earlier steps not shown)
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/contract-validator.sh
+- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree TMPD=$(mktemp -d) source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh export TEST_TEMP_DIR="$TMPD" REPO_ROOT="$(pwd)" RUNNER="$REPO_ROOT/core/pipeline/runner.sh" WORK_REPO="$(setup_git_temp_repo s12-repro)" install_templat…
+- Bash: grep -n "hook_fn\|hook.*run\|run.*hook\|\"$hook\"\|hooks.*run" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh | head -15
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh
+- Bash: grep -n "manifest_graph_output_summary_v\|finding_topics\|summary" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/contract-validator.sh | head -20
+- Bash: grep -n "manifest_graph_output_summary_v" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/manifest-graph.sh 2>/dev/null | head -5 || grep -rn "manifest_graph_output_summary_v" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/ | head -5
+- Bash: grep -rn "manifest_graph_output_summary_v\|output_summary" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/ --include="*.sh" | grep -v "legacy\|\.git" | head -10
+- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree TMPD=$(mktemp -d) source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh export TEST_TEMP_DIR="$TMPD" REPO_ROOT="$(pwd)" RUNNER="$REPO_ROOT/core/pipeline/runner.sh" WORK_REPO="$(setup_git_temp_repo s12-repro)" install_templat…
+- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree TMPD=$(mktemp -d) source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh export TEST_TEMP_DIR="$TMPD" REPO_ROOT="$(pwd)" RUNNER="$REPO_ROOT/core/pipeline/runner.sh" WORK_REPO="$(setup_git_temp_repo s12-repro)" install_templat…
+- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree TMPD=$(mktemp -d) source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh export TEST_TEMP_DIR="$TMPD" REPO_ROOT="$(pwd)" RUNNER="$REPO_ROOT/core/pipeline/runner.sh" WORK_REPO="$(setup_git_temp_repo s12-repro)" install_templat…
+- Bash: git show 239ca069 -- tests/integration/resume-rehydrate-test.sh | grep -A5 "DSFRSH-1.*cycle\|DSFRSH-2.*cycle\|stage.skip\|stage\.skip\|_s12_stage" | head -40
+- Bash: git show 239ca069 --stat | head -5
+- Bash: git show 239ca069 -- tests/integration/resume-rehydrate-test.sh | grep -A5 "stage.skip\|stage_skip\|DSFRSH-1\|DSFRSH-2" | head -50
+- Bash: git show 239ca069:tests/integration/resume-rehydrate-test.sh | grep -n "DSFRSH\|stage.skip\|stage_skip\|cycle.start\|s12_cyc" | head -30
+- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree TMPD=$(mktemp -d) source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh export TEST_TEMP_DIR="$TMPD" REPO_ROOT="$(pwd)" RUNNER="$REPO_ROOT/core/pipeline/runner.sh" WORK_REPO="$(setup_git_temp_repo s12-repro)" install_templat…
+- Bash: grep -n "scan_plugin_outputs\|stage_result_is_current\|stage_errors\|_lc_missing" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh | grep -v "^#" | head -20
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh
+- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree TMPD=$(mktemp -d) source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh export TEST_TEMP_DIR="$TMPD" REPO_ROOT="$(pwd)" RUNNER="$REPO_ROOT/core/pipeline/runner.sh" WORK_REPO="$(setup_git_temp_repo s12-repro)" install_templat…
+- Bash: grep -n "registry.role-unresolved\|role-unresolved\|role_unresolved" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | head -15
+- Bash: grep -rn "registry.role-unresolved\|role-unresolved\|role_unresolved" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/ | grep -v ".git\|legacy" | head -15
 - Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/dispatch.sh
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh
-- Bash: find /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures -name "*.yaml" | xargs grep -l "stages:" | head -10
-- Bash: grep -n "_find_plugin_for_stage\|find_plugin_for_stage\|cycle_dispatch_stage" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/dispatch.sh | head -20
-- Bash: grep -n "cycle_dispatch_stage\|_find_plugin_for_stage\|resolve_stage_plugin" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | head -20
 - Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
-- Bash: grep -n "template_stage_roles\|stage_roles" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | head -15
-- Bash: grep -rn "template_stage_roles" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/ | head -15
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/template.sh
-- Bash: grep -n "mock_plugin_factory\|PLUGINS_ROOT\|roles.*intake\|intake.*roles\|template.*artifact" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/cycle-member-dispatch-events-test.sh | head -20
-- Bash: grep -n "mock_plugin_factory" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/from-stage-rehydrate-test.sh | head -15
-- Bash: bash tests/integration/from-stage-rehydrate-test.sh 2>&1 | tail -20
-- Bash: grep -n "_TPL_STAGE_ROLES\|stage_roles\|roles" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/template.sh | grep -i "ROLES\|roles" | head -20
-- Bash: grep -n "ROLES\|roles" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/template.sh | head -30
-- Bash:  cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree # Check what _TPL_STAGE_ROLES_intake is set to when using artifact-snapshot-coverage template TESTDIR=$(mktemp -d) source scripts/lib/test-helpers.sh export TEST_TEMP_DIR="$TESTDIR" WORK_REPO="$(setup_git_temp_repo test-roles-check)" …
-- Bash:  cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree TESTDIR=$(mktemp -d) source scripts/lib/test-helpers.sh export TEST_TEMP_DIR="$TESTDIR" WORK_REPO="$(setup_git_temp_repo test-roles-check)" install_template_overlay "$WORK_REPO" artifact-snapshot-coverage # Check what roles get set ( …
-- Bash: grep -n "_runner_leaf_contract_halt\|_runner_leaf_verdict_halt" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | head -10
+- Bash: grep -n "plugin_dir.*_find_plugin_for_stage\|roles_out\|fanout\|dispatch.*strategy" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | grep -v "^\|#" | head -20
+- Bash: grep -n "roles_out\|plugin_dir\|_find_plugin_for_stage" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | grep -v "^#\|dry.run\|preflight\|from.stage\|cycle\|always_run" | head -30
 - Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh
-- Bash: grep -n "scan_plugin_outputs" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh | head -5
-- Bash: grep -rn "scan_plugin_outputs\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/ | head -10
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh
-- Bash: grep -n "_ws_state_dir\|ws_state_dir" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh | head -15
-- said: Let me look more carefully at what happens during intake dispatch in a fresh run. Let me run the test and capture debugging information from the events file:
-- Bash:  cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree TESTDIR=$(mktemp -d) REPO_ROOT="$(pwd)" source scripts/lib/test-helpers.sh export TEST_TEMP_DIR="$TESTDIR" # Exactly replicate the test setup from resume-rehydrate-test.sh: WORK_REPO="$(setup_git_temp_repo resume-fresh-work)" install_…
-- Bash: grep -n "verify_plugin_for_source" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh | head -5
-- Bash: grep -rn "verify_plugin_for_source" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/ | head -10
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree TMPD=$(mktemp -d) source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh export TEST_TEMP_DIR="$TMPD" REPO_ROOT="$(pwd)" RUNNER="$REPO_ROOT/core/pipeline/runner.sh" WORK_REPO="$(setup_git_temp_repo s12-repro)" install_templat…
+- Bash: grep -n "_strategy_run_fanout\|_ZB_STRATEGY_OUTCOME\|no_plugin" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/strategies/fanout.sh | head -20
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/strategies/fanout.sh
+- Bash: grep -n "eb_emit_event.*stage.fail\|stage\.fail.*stage=\|emit.*stage.fail" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | head -20
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Bash: grep -n "plugins_root\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | grep -v "#\|_find_plugin\|resolve.*stage\|cycle\|from_stage\|_du_\|_dc_\|_sk_\|_pd_\|_cd_\|_fsp_\|_ar_" | head -20
+- Bash: grep -n "verify_plugin_for_source\|ZBUILD_STRICT_PLUGIN_LOCK\|lockfile" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/discovery.sh | head -15
+- Bash: grep -n "^verify_plugin_for_source\|^function verify_plugin_for_source" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/discovery.sh
 - Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/discovery.sh
 - Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh
-- Bash:  cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree TESTDIR=$(mktemp -d) REPO_ROOT="$(pwd)" source scripts/lib/test-helpers.sh export TEST_TEMP_DIR="$TESTDIR" WORK_REPO="$(setup_git_temp_repo resume-fresh-work)" install_template_overlay "$WORK_REPO" artifact-snapshot-coverage _ZB_ID="$…
-- Bash: grep -n "_lc_owned_by_others_deny_v\|_lc_other_outputs_deny\|_lc_artifacts_left_deny\|_lc_repo_entries_deny" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh | head -20
-- Bash: grep -rn "stage_retry_budget_v\|stage_retry_next\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/ | head -10
-- Bash: grep -rn "^stage_retry_budget_v\b\|^stage_retry_next\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/ | head -10
-- Bash: grep -rn "stage_retry_budget_v()\|function stage_retry_budget_v\|stage_retry_next()\|function stage_retry_next" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/ | grep -v ".git" | head -10
-- Bash: grep -rn "stage-retry\|stage_retry" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/plugin-registry/lifecycle.sh | head -10
-- Bash: grep -rn "stage-retry" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh | head -5
-- Bash: grep -n "mock_plugin_factory\|PLUGINS_ROOT\|--template\|artifact-snapshot" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/cycle-member-dispatch-events-test.sh | head -20
-- Bash: bash tests/integration/cycle-member-dispatch-events-test.sh 2>&1 | tail -10
-- Bash: head -80 /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/cycle-member-dispatch-events-test.sh | grep -E "mock_plugin|PLUGINS_ROOT|template|setup_git|install_template"
-- Bash: grep -n "mock_plugin_factory\|PLUGINS_ROOT\|--template\|setup_git\|install_template" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/cycle-member-dispatch-events-test.sh | head -20
-- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/cycle-member-dispatch-events-test.sh
-- Bash: bash tests/integration/resume-loop-state-test.sh 2>&1 | tail -10
-- Bash: bash tests/integration/resume-entry-points-test.sh 2>&1 | tail -10
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/runner.sh
+- Bash: cd /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree TMPD=$(mktemp -d) source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh export TEST_TEMP_DIR="$TMPD" REPO_ROOT="$(pwd)" mock_plugin_factory "intake" "agent" 0 >/dev/null PLUGINS_ROOT="$TMPD/plugins" # Test _find_plugin_for_s…
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/strategies/fanout.sh
+- Bash: git stash 2>/dev/null; git checkout 51762730 -- tests/integration/resume-rehydrate-test.sh 2>/dev/null bash tests/integration/resume-rehydrate-test.sh 2>&1 | tail -10 git checkout HEAD -- tests/integration/resume-rehydrate-test.sh 2>/dev/null
+- Bash: bash tests/integration/resume-rehydrate-test.sh 2>&1 | grep "DSFRSH\|stage.start\|cycle.start" | head -20
 
-### test (verdict: pass)
+### test (verdict: fail)
 Outputs:
 - acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
 - acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
 - shape_floor_detail: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-detail.md
 - shape_floor_result: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-result.json
+- test_errors: /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log
 - test_failures_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-failures-summary.md
 - test_output_log: /home/runner/work/_temp/zbuild-state/artifacts/test-output.log
 - test_results: /home/runner/work/_temp/zbuild-state/artifacts/test-results.json
 - test_timing: /home/runner/work/_temp/zbuild-state/artifacts/test-timing.log
 
+Findings:
+- test finding 1 (opened by test): tests/integration/resume-rehydrate-test.sh fails: ✗ [#1805/DSFRSH-1] fresh run (--no-resume) dispatches all stages: cycle stage cyc emits cycle.start (all stages dispatched from stage 1; none skipped due to prior state) — expected >0, got: 0 (and 3 more failing checks in this file)
+- shape-floor finding 1 (opened by test): tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
+- shape-floor finding 2 (opened by test): tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
+
 Summary:
 # Test stage summary
 
-- all 887 tests passed
-- verdict: pass
-- passed: 887
-- failed: 0
-- exit_code: 0
+- failed: tests/integration/resume-rehydrate-test.sh
+- verdict: fail
+- passed: 886
+- failed: 1
+- exit_code: 1
 
-The suite ran to completion with no failing assertions.
+## Failing files
 
-### issue-acceptance (verdict: pass)
+- tests/integration/resume-rehydrate-test.sh — ✗ [#1805/DSFRSH-1] fresh run (--no-resume) dispatches all stages: cycle stage cyc emits cycle.start (all stages dispatched from stage 1; none skipped due to prior state) — expected >0, got: 0 (and 3 more failing checks in this file)
+
+## Failing lines (extracted)
+
+```
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.sQ3HtM/tests/integration/resume-rehydrate-test.sh
+  ✓ [#1805/DSCYCL-1] resume-rehydrate (DSRHYD-1/RHYD-2/BNDY-1) fixture (artifact-snapshot-coverage) contains type: cycle
+  ✓ resume-rehydrate: pipeline with cyclic fixture was actually run (intake dispatched)
+  2 of 49 tests failed
+  ✗ [#1805/DSFRSH-1] fresh run (--no-resume) dispatches all stages: cycle stage cyc emits cycle.start (all stages dispatched from stage 1; none skipped due to prior state)
+  ✗ [#1805/DSFRSH-2] fresh run dispatches all stages: cycle stage cyc emits cycle.start (dispatch-unit skip guard conditional on resume_mode; does not activate for fresh runs)
+    expected >0, got: 0
+```
+
+## The checks of this run
+- the shape floor failed: missing_floor_files
+
+Errors it hit (last 4096B of /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log):
+patch loop[0m
+  [38;2;74;222;128m✓[0m [#1805/DSAMDR-1] ADR-006 step 3.6 added (step number present)
+  [38;2;74;222;128m✓[0m [#1805/DSAMDR-1] ADR-006 step 3.6 names _runner_resume_rehydrate
+  [38;2;74;222;128m✓[0m [#1805/DSAMDR-1] ADR-006 step 3.6 names resume-rehydrate-test.sh as enforcing test
+  [38;2;74;222;128m✓[0m [#1805/DSAMDR-1] ADR-006 step 3.6 names resume-entry-points-test.sh as enforcing test
+  [38;2;74;222;128m✓[0m [#1805/DSAMDR-1] ADR-006 step 3.6 documents still-absent artifact causes exit 1
+  [38;2;74;222;128m✓[0m [#1805/DSAMDR-1] ADR-006 step 3.6 documents restore happens before the dispatch loop
+  [38;2;74;222;128m✓[0m [#1805/DSAMDR-1] ADR-006 step 3.6 documents artifacts restored from the git state branch
+  [38;2;74;222;128m✓[0m [#1805/DSAMDR-1] ADR-006 step 3.6 documents ordering constraint (not to be combined with dispatch-loop changes)
+
+  [38;2;0;212;255m[#1805/DSAMDR-2] ADR-050 §6 amended: resume governed by ADR-006; new-run invariant governs new runs[0m
+  [38;2;74;222;128m✓[0m [#1805/DSAMDR-2] ADR-050 §6 boundary note says invariant applies to new runs
+  [38;2;74;222;128m✓[0m [#1805/DSAMDR-2] ADR-050 §6 boundary note names ADR-006 as governing resume
+  [38;2;74;222;128m✓[0m [#1805/DSAMDR-2] ADR-050 §6 boundary note says a resume continues the same run
+  [38;2;74;222;128m✓[0m [#1805/DSAMDR-2] ADR-050 §6 Enforced-by section cites resume-rehydrate-test.sh (DSFRSH-2 for new-run side)
+  [38;2;74;222;128m✓[0m [#1805/DSAMDR-2] ADR-050 §6 Enforced-by section cites resume-entry-points-test.sh (DSENTR-1 for resume side)
+
+  [38;2;0;212;255m[#1805/DSFRSH-1] fresh --no-resume run dispatches all stages (ADR-050 §6 new-run side)[0m
+  [38;2;74;222;128m✓[0m fresh run dispatches intake (not skipped; ADR-050 §6 new-run side)
+  [38;2;74;222;128m✓[0m [#1805/DSFRSH-1] fresh run (--no-resume) dispatches all stages from stage 1 (intake dispatched; did not skip to a later stage due to prior state)
+  [38;2;248;113;113m✗[0m [#1805/DSFRSH-1] fresh run (--no-resume) dispatches all stages: cycle stage cyc emits cycle.start (all stages dispatched from stage 1; none skipped due to prior state)
+    [2mexpected >0, got: 0[0m
+  [38;2;74;222;128m✓[0m [#1805/DSFRSH-1] no prior-run artifact content in ZBUILD_ARTIFACT_DIR (fresh --no-resume run does not restore prior-run artifacts from state branch)
+  [38;2;74;222;128m✓[0m cycle fixture used in fresh-run sub-case has type: cycle
+  [38;2;74;222;128m✓[0m [#1805/DSFRSH-1] no stage.start for cycle member (cycled) on fresh run (cycle members only emit stage.start via DSCMBR-1 resume path; iter>0 guard must not fire unconditionally on fresh runs)
+
+  [38;2;0;212;255m[#1805/DSFRSH-2] fresh run (no --resume, in_progress status) never skips stages due to prior-run artifacts in git state branch[0m
+  [38;2;74;222;128m✓[0m [#1805/DSFRSH-2] fresh run (no --resume, in_progress status) dispatches intake even with prior-run artifacts on git state branch (dispatch-unit skip guard conditional on resume_mode)
+  [38;2;248;113;113m✗[0m [#1805/DSFRSH-2] fresh run dispatches all stages: cycle stage cyc emits cycle.start (dispatch-unit skip guard conditional on resume_mode; does not activate for fresh runs)
+    [2mexpected >0, got: 0[0m
+
+  [38;2;0;212;255mresume-rehydrate test uses a fixture containing a cyclic stage[0m
+  [38;2;74;222;128m✓[0m [#1805/DSCYCL-1] resume-rehydrate (DSRHYD-1/RHYD-2/BNDY-1) fixture (artifact-snapshot-coverage) contains type: cycle
+  [38;2;74;222;128m✓[0m resume-rehydrate: pipeline with cyclic fixture was actually run (intake dispatched)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m2 of 49 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1805/DSFRSH-1] fresh run (--no-resume) dispatches all stages: cycle stage cyc emits cycle.start (all stages dispatched from stage 1; none skipped due to prior state)
+  [38;2;248;113;113m✗[0m [#1805/DSFRSH-2] fresh run dispatches all stages: cycle stage cyc emits cycle.start (dispatch-unit skip guard conditional on resume_mode; does not activate for fresh runs)
+
+### issue-acceptance (verdict: fail)
 Outputs:
 - issue_acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-result.json
 - issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
 
 Summary:
-## issue-acceptance — pass
+## issue-acceptance — timed_out
 
-- judged the change against the issue: every requirement is met
+- the model call failed (router_timeout) — the change was not judged
 
-- every requirement the issue states is met by the change
-- answered: lens-security-code finding 1: done — bounds check `[[ "$_fsp_resolved" == "${_fsp_artifacts_dir}"/* ]] || _fsp_resolved=""` added in `_runner_from_stage_preflight`; any path escaping artifact_dir is cleared and the `[[ ! -s ]]` guard exits 1.
-- answered: lens-security-code finding 2: done — bounds check `[[ "$_dc_resolved" == "${state_dir}/artifacts"/* ]] || _dc_resolved=""` added in the cycle-skip guard in runner.sh; out-of-bounds path treated as absent → stale-artifact exit-1.
-- answered: lens-security-code finding 3: done — bounds check `[[ "$_du_resolved" == "${state_dir}/artifacts"/* ]] || _du_resolved=""` added in the dispatch-unit stage-skip guard; same fail-closed behavior.
-- answered: lens-security-code finding 4: done — `_fsp_cycle_safe="${_fsp_from_stage//[^a-zA-Z0-9_]/_}"` strips all non-identifier characters (not only hyphens), closing the indirect expansion risk.
-- answered: lens-performance-code finding 1: wrong — `_cycle_state_write_iter_start` writes `current_iter=N` BEFORE dispatch so an interruption mid-iteration records the interrupted iteration number, not the last completed one; without it, resume would start one iteration too early (the correctness requirement DSITER-1). The two writes serve different purposes at different points and merging them reintroduces the resume-starts-at-wrong-iteration bug.
-- answered: lens-performance-code finding 2: not mine — eliminating `dirname` subprocesses in `_artifact_persist_put_back` is a micro-optimization on a non-blocking cold path; no acceptance requirement governs subshell count there.
-- answered: lens-performance-code finding 3: not mine — consolidating jq calls per skipped member in `_cycle_iter_dispatch` is a micro-optimization; no acceptance requirement governs jq call count on the resume skip path.
-- answered: lens-red-team-code finding 1: done — cap added: `(( _CYCLE_MAX_ITER > 0 && _start_iter > _CYCLE_MAX_ITER )) && _start_iter=$_CYCLE_MAX_ITER` ensures a corrupt persisted iter above max resumes at max rather than zero-iterating into the unconverged path.
-- answered: lens-red-team-code finding 2: not mine — verifying skipped cycle members' artifacts inside `_cycle_iter_dispatch` requires `_find_plugin_for_stage` from dispatch.sh, which is not sourced by cycle-orchestrator.sh; adding it is a structural dependency change outside this issue's scope; the outer dispatch-unit check in runner.sh (cycle:* arm) already catches fully-complete cycles before the orchestrator runs.
-- answered: lens-correctness-code finding 1: not mine — distinguishing "completed in iteration N" vs "iteration N-1" for the DSCMBR-1 skip guard requires per-iteration member status in the state schema, a data-model change outside this issue's scope; no acceptance test covers the interrupted-at-iter-start-before-first-dispatch edge case in this issue.
-- answered: lens-correctness-code finding 2: done — both read and write paths now use `jq --arg id "$cycle_id"` (unsanitised original value), so a cycle ID with dots or special characters keys consistently in both directions.
-- answered: lens-scope-code finding 1: wrong — the traversal guards in `_artifact_persist_put_back` are required by CLAUDE.md ("Sanitize file paths to prevent directory traversal"); the docstring phrase "identical semantics" means the same files at the same paths from the caller's perspective, which holds because git-archive-extracted content never has leading slashes or `..` components.
-- answered: lens-scope-code finding 2: wrong — the guards cannot fire for git-archive-extracted content; in practice the behavior is identical to the original `_hydrate_put_back`. RQHYDR-1 is satisfied: both hydrate and runner's resume path share the one implementation.
-- answered: lens-sre-code finding 1: not mine — adding a machine-readable event for the jq blob-update failure in `_cycle_iter_dispatch` requires registering a new event in `config/event-schema.json`; that is outside this issue's scope. Warn to stderr is emitted; fail-closed is provided by the dispatch-loop stale-artifact exit-1 path enforced by the passing test suite.
-- answered: lens-sre-code finding 2: not mine — adding a machine-readable event for `_cycle_state_write_iter_start` failure requires a schema addition outside this issue's scope. Warn to stderr is emitted; the DSITER-1 write-side test verifies the write succeeds in normal operation.
-- answered: lens-sre-code finding 3: not mine — adding a machine-readable event for `_artifact_persist_put_back` failure inside `_runner_resume_rehydrate` requires a schema addition outside this scope. The fail-closed guarantee is provided by the dispatch-loop stale-artifact exit-1 path (DSRHYD-2, enforced by passing tests).
+- the change was not judged against the issue
+
+Its last good output, from an earlier attempt:
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/issue-acceptance/iter-3-attempt-1/issue-acceptance-result.json
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/issue-acceptance/iter-3-attempt-1/issue-acceptance-summary.md
+
+Summary of that output:
+## issue-acceptance — fail
+
+- judged the change against the issue: 1 requirement(s) not met or not sure
+
+- NOT SURE: ORDE-1: This is a workflow/process constraint — "do not run this in parallel with #1714". Nothing in the diff enforces or records it. It cannot be verified from code, tests, or the diff alone. Settling it would require checking whether #1714 touched runner.sh's dispatch loop in the same merge window. — "Do not run this in parallel with another issue that edits the dispatch loop (#1714 touches the allow-list builder in runner.sh)." — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
 
 ### review_lenses (verdict: fail)
 Outputs:
