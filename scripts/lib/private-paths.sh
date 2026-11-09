@@ -14,28 +14,47 @@ _ZBUILD_PRIVATE_PATHS_LOADED=1
 
 _ZBUILD_PRIVATE_PATHS_ROOT="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)"
 
-# _private_paths_clean — one pattern per line: no comments, blanks or `!` lines.
-_private_paths_clean() {
-    sed -e 's/[[:space:]]*#.*$//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
-        | /usr/bin/grep -v -e '^$' -e '^!' || true
+# _private_paths_add <line> — one line of a list, cleaned (no comment, no
+# surrounding space; a blank or `!` line is nothing), added to _ZB_PP_OUT once.
+_private_paths_add() {
+    local l="${1%%#*}"
+    l="${l#"${l%%[![:space:]]*}"}"; l="${l%"${l##*[![:space:]]}"}"
+    [[ -n "$l" && "$l" != '!'* ]] || return 0
+    [[ $'\n'"$_ZB_PP_OUT" == *$'\n'"$l"$'\n'* ]] || _ZB_PP_OUT+="$l"$'\n'
 }
 
-# private_paths_list <repo_root> — every private pattern, one per line, the
-# engine's first, each once.
+# private_paths_list_v <var> <repo_root> — every private pattern, one per line,
+# the engine's first, each once. Read by the shell (#2507, ADR-065 §5): every
+# model call reads it twice, for its permission rules and its prompt's
+# redaction. Memoised per repository and template for the life of the shell.
+declare -gA _ZB_PP_MEMO=()
+private_paths_list_v() {
+    local -n _ppl="$1"; local repo="${2:-${ZBUILD_REPO_ROOT:-}}" tpl="${_TPL_SOURCE_FILE:-}" l inb=0
+    local key="$repo|$tpl"
+    if [[ -n "${_ZB_PP_MEMO[$key]+x}" ]]; then _ppl="${_ZB_PP_MEMO[$key]}"; return 0; fi
+    local _ZB_PP_OUT=""
+    while IFS= read -r l || [[ -n "$l" ]]; do _private_paths_add "$l"; done < "$_ZBUILD_PRIVATE_PATHS_ROOT/config/private-paths.txt"
+    if [[ -n "$tpl" && -f "$tpl" ]]; then
+        while IFS= read -r l || [[ -n "$l" ]]; do
+            if [[ "$l" =~ ^private_paths:[[:space:]]*$ ]]; then inb=1; continue; fi
+            (( inb )) || continue
+            [[ "$l" =~ ^[^[:space:]#] ]] && { inb=0; continue; }
+            [[ "$l" =~ ^[[:space:]]*-[[:space:]]+(.*)$ ]] || continue
+            l="${BASH_REMATCH[1]//\"/}"; _private_paths_add "${l//\'/}"
+        done < "$tpl"
+    fi
+    if [[ -n "$repo" && -f "$repo/.zbuild/private-paths" ]]; then
+        while IFS= read -r l || [[ -n "$l" ]]; do _private_paths_add "$l"; done < "$repo/.zbuild/private-paths"
+    fi
+    _ZB_PP_MEMO[$key]="$_ZB_PP_OUT"
+    _ppl="$_ZB_PP_OUT"
+    return 0
+}
+
+# private_paths_list <repo_root> — the same, printed.
 private_paths_list() {
-    local repo="${1:-${ZBUILD_REPO_ROOT:-}}" tpl="${_TPL_SOURCE_FILE:-}"
-    {
-        _private_paths_clean < "$_ZBUILD_PRIVATE_PATHS_ROOT/config/private-paths.txt"
-        if [[ -n "$tpl" && -f "$tpl" ]]; then
-            awk '/^private_paths:[[:space:]]*$/ { inb = 1; next }
-                 inb && /^[^[:space:]#]/ { inb = 0 }
-                 inb && /^[[:space:]]*-[[:space:]]+/ { l = $0; sub(/^[[:space:]]*-[[:space:]]+/, "", l); gsub(/["\047]/, "", l); print l }' \
-                "$tpl" | _private_paths_clean
-        fi
-        if [[ -n "$repo" && -f "$repo/.zbuild/private-paths" ]]; then
-            _private_paths_clean < "$repo/.zbuild/private-paths"
-        fi
-    } | awk '!seen[$0]++'
+    local _ppo; private_paths_list_v _ppo "${1:-${ZBUILD_REPO_ROOT:-}}"
+    printf '%s' "$_ppo"
     return 0
 }
 
@@ -45,8 +64,15 @@ private_paths_list() {
 # on CLI 2.1.296: `Read(//abs/...)` refuses the Read tool and a Bash `cat`, and
 # `**/*.pem` matches a file in any folder — see core/router/permissions.sh P10.)
 private_paths_deny_rules() {
-    local repo="${1:-${ZBUILD_REPO_ROOT:-}}" p target
+    local _pdr; private_paths_deny_rules_v _pdr "${1:-${ZBUILD_REPO_ROOT:-}}"
+    printf '%s' "$_pdr"
+}
+# private_paths_deny_rules_v <var> <repo_root> — the same, one per line, into <var>.
+private_paths_deny_rules_v() {
+    local -n _pdrv="$1"; local repo="${2:-${ZBUILD_REPO_ROOT:-}}" p target _pdr_list
+    _pdrv=""
     [[ -n "$repo" ]] || return 0
+    private_paths_list_v _pdr_list "$repo"
     while IFS= read -r p; do
         [[ -n "$p" ]] || continue
         case "$p" in
@@ -54,6 +80,6 @@ private_paths_deny_rules() {
             */*) target="$repo/$p" ;;
             *)  target="$repo/**/$p" ;;
         esac
-        printf 'Read(/%s)\nEdit(/%s)\n' "$target" "$target"
-    done < <(private_paths_list "$repo")
+        _pdrv+="Read(/$target)"$'\n'"Edit(/$target)"$'\n'
+    done <<< "$_pdr_list"
 }

@@ -34,6 +34,7 @@
     "plugin.error",
     "redaction.applied",
     "router.prompt.refused",
+    "router.call.refused",
     "stage.previous_work.written",
     "redaction.refused",
     "redaction.refused.overridden",

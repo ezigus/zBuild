@@ -8,8 +8,9 @@
 # interruption → `unavailable` rule was never built. Nothing compared the code
 # to the issue.
 #
-#   SPEC-1 [change]: the prompt carries the issue, the SPECs, the diff and the
-#                    test verdict — every piece the judgement needs
+#   SPEC-1 [change]: the prompt carries the issue, the SPECs, the change (what
+#                    it is pointed at: #2507, ADR-072 §7) and the test verdict
+#                    — every piece the judgement needs
 #   SPEC-2 [change]: a requirement the code does not meet → verdict=fail,
 #                    and each unmet requirement a numbered finding (#2271)
 #   SPEC-3 [change]: no fault class is asked for or written (#2271)
@@ -91,7 +92,8 @@ _run
 _p="$(cat "$_IA_PROMPT")"
 assert_contains "[SPEC-1] the issue text" "$_p" "an interrupted push reports unavailable"
 assert_contains "[SPEC-1] the SPEC text" "$_p" "the plugin reads its inputs from the index"
-assert_contains "[SPEC-1] the diff" "$_p" '+gate="$(jq -r .inputs.gate'
+assert_contains "[SPEC-1] the change: with no starting commit, the patch it is pointed at" "$_p" "$_S/inputs/diff.patch"
+assert_contains "[SPEC-1] ...and the file in it" "$_p" "p.sh"
 assert_contains "[SPEC-1] the test verdict" "$_p" "TEST VERDICT: pass"
 
 print_test_section "SPEC-2: unmet by the code → fail, a numbered finding"
@@ -184,7 +186,7 @@ assert_contains "[SPEC-9] the prompt asks whether the tests would catch a broken
     "$_p9" "if the change were broken, would its tests catch it?"
 assert_contains "[SPEC-9] the narrowed-SPEC rule is kept" "$_p9" "a SPEC that narrowed a"
 assert_contains "[SPEC-12] a failing test it cannot trace to the change is UNSURE, not investigated" \
-    "$_p9" "A failing test you cannot trace to the DIFF within a few reads: mark the requirement it bears on UNSURE"
+    "$_p9" "A failing test you cannot trace to the change within a few reads: mark the requirement it bears on UNSURE"
 assert_contains "[SPEC-12] ...and it does not work out why the test fails" "$_p9" "Do not work out why a test fails"
 
 print_test_section "SPEC-10: one finding per line, whole"
@@ -251,8 +253,11 @@ printf '%s\n' 'diff --git a/p.sh b/p.sh' '+round_three_line' > "$_S/inputs/diff.
 _IA_ANSWER=$'MET: no artifact paths in code\nMET: an interrupted push reports unavailable'
 ZBUILD_REPO_ROOT="$_R13" _run
 _p13="$(cat "$_IA_PROMPT")"
-assert_contains "[SPEC-13] a line an earlier round added is in the judged change" "$_p13" "+emit_from_round_one"
-assert_contains "[SPEC-13] ...and this round's line too" "$_p13" "+round_three_line"
+# #2507 (ADR-072 §7): the judge is pointed at the change from where the branch
+# started — not this round's — and reads it with git.
+assert_contains "[SPEC-13] the judged change starts where the branch did, before round one" "$_p13" \
+    "started at commit $(git -C "$_R13" rev-parse main)"
+assert_contains "[SPEC-13] ...and names the file the rounds changed" "$_p13" "p.sh"
 
 print_test_section "SPEC-14: the findings it is given are answered (ADR-068 §6)"
 # The engine's answer check (zb_answers_finish, finding-answers-test.sh B1-B3)

@@ -220,7 +220,13 @@ and removed. A lens that needs a test opens it in the worktree with its own tool
 are tests is the repository's list (`.zbuild/test-paths.txt`, else the engine's; ADR-069 §10).
 On #1944 the test diffs were 68 KB of a 98 KB diff, read by every lens before it could start;
 five of six then ran out of time. Enforced by
-`plugins/agent/review-lens/tests/review-lens-evidence-test.sh`.
+`plugins/agent/review-lens/tests/review-lens-evidence-test.sh` (removed by the amendment below).
+
+## Amendment (2026-11-09, #2507): a lens is pointed at the change, not given it
+
+The amendment above is replaced: a lens is given no diff at all. Every lens gets the same change, named the
+way ADR-072 §7 says — the commit the branch started from and each file it changed — and reads each change
+with git (its tools include read-git, ADR-017 §12). Enforced by `tests/unit/judge-change-list-test.sh` L3–L5.
 
 ## Amendment (2026-10-30, #2433): one severity scale; each finding says what would fix it
 

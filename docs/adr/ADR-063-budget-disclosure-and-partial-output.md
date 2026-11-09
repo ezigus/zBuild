@@ -367,7 +367,7 @@ Enforced by: Amendment 2026-11-01 (#2448: a stage with no tools keeps no notes f
 
 On #1805 run 42523805245 eight calls were killed at their time limit: four of build's, four of issue-acceptance's. Twice build had found why a test failed ("the mock doesn't have `role: intake`") and was cut off before it wrote that down or answered. A killed call writes no reply, so it answers no finding, and it reports no cost: Claude gives a call's cost only in its last message (`router.cost.unknown`).
 
-- **Each call's settings file holds a Claude Code `PreToolUse` hook** (`core/router/time-up-hook.sh`), given the call's deadline, its time limit less one minute, and the stage's notes file. The deadline and the path ride in the hook's command, since the spawn scrubs `ZBUILD_*`. A call of a minute or less gets no hook.
+- **Each call's settings file holds a Claude Code `PreToolUse` hook** (`core/router/time-up-hook.sh`; `core/router/tool-hook.sh` since #2507), given the call's deadline, its time limit less one minute, and the stage's notes file. The deadline and the path ride in the hook's command, since the spawn scrubs `ZBUILD_*`. A call of a minute or less gets no hook.
 - **Before the deadline the hook allows every tool.** After it, it refuses every tool but `Write` or `Edit` on the notes file, and says why: time is up; write what you found to your notes file now, in one step; then give your final reply, with your answer to every finding.
 - **The call then ends with its own last message:** its answers are written and its cost is reported. The time limit stays, and still stops a call that does not end.
 - **Measured on CLI 2.1.319:** under `--permission-mode bypassPermissions` a `PreToolUse` deny is honoured and its reason reaches the model as the tool's result. A model refused that way wrote its notes file and ended with a `result` message carrying its cost.
@@ -382,3 +382,9 @@ On #1805 run 42556446368 notes that said "done" were trusted over facts. Test-au
 - **The line above a stage's notes in its Previous work says** that where they disagree with a list or a result elsewhere in the prompt, the list or the result is right.
 
 Enforced by `tests/unit/cut-off-hand-off-test.sh` H5, H6.
+
+## Amendment (2026-11-09, #2507): the time-up hook is the call's tool hook
+
+The hook of the amendment above also holds the guards a call's tools need (ADR-017 §12), so it is now `core/router/tool-hook.sh`: its command gives the guards, then the deadline and the notes file. A call of a minute or less has deadline 0, which is none; it gets the hook only when it has tools, for its guards. After the deadline the hook behaves as above.
+
+Enforced by `tests/unit/call-time-up-hook-test.sh` H1–H6; `tests/unit/call-hook-test.sh` G1 (a short call with tools still gets its guards), G6 (deadline 0 is none).

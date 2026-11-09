@@ -103,6 +103,9 @@ source "$_ZBUILD_ROOT/scripts/lib/persona-resolve.sh" || _zbuild_route_broken "$
 # persona, delivered the way the provider takes it.
 # shellcheck source=persona-delivery.sh
 source "$_ZBUILD_ROOT/core/router/persona-delivery.sh" || _zbuild_route_broken "$_ZBUILD_ROOT/core/router/persona-delivery.sh"
+# ADR-017 §12 (#2507): each call's tools, as its stage's manifest lists them.
+# shellcheck source=call-tools.sh
+source "$_ZBUILD_ROOT/core/router/call-tools.sh" || _zbuild_route_broken "$_ZBUILD_ROOT/core/router/call-tools.sh"
 # ADR-067 §8: the engine/stage prompt contract — the router checks a stage
 # prompt's order with stage_prompt_check before every model call.
 # shellcheck source=../../scripts/lib/stage-prompt.sh
@@ -174,6 +177,7 @@ route_to_model() {
     # The model is looked up first: the provider it names decides how the
     # stage's persona reaches the model, which redaction must know (ADR-051).
     _route_lookup_model "$tier" "$model_override"          || return $?
+    _route_call_tools_prepare                              || return $?
     _route_ensure_redaction "$tier" "$skip_precondition" "$prompt" || return $?
     prompt="$_ROUTE_REDACTED_PROMPT"
 
@@ -631,13 +635,9 @@ _route_call_claude() {
             "resolved=0" "source=$(_route_classify_max_turns_source)" 2>/dev/null || true
     fi
     _claude_args+=(--disallowed-tools "EnterPlanMode,ExitPlanMode")
-    # #2448: a plugin whose calls need no tools gets none — built-in or MCP.
-    # #2464 (ADR-072 §1): a judging call reads and searches files, and nothing else.
-    if _route_manifest_no_tools; then
-        _claude_args+=(--strict-mcp-config --tools "")
-    elif _route_judge_tools; then
-        _claude_args+=(--strict-mcp-config --tools "$_ZB_JUDGE_TOOLS")
-    fi
+    # #2507 (ADR-017 §12): the tools the stage's manifest lists for this call,
+    # as the provider gives them; no MCP server.
+    _claude_args+=("${_ROUTE_TOOL_ARGS[@]+"${_ROUTE_TOOL_ARGS[@]}"}")
     # #2454 (ADR-017 §11): how hard the model thinks — the plugin's, else medium.
     local _rt_effort; _route_manifest_effort_v _rt_effort
     _claude_args+=(--effort "$_rt_effort")
@@ -1239,6 +1239,7 @@ route_to_model_loop() {
     fi
 
     _route_lookup_model "$tier" "$model_override" || return $?
+    _route_call_tools_prepare || return $?
 
     if ! command -v claude >/dev/null 2>&1; then
         error "route_to_model_loop: claude binary not found in PATH"
@@ -1398,6 +1399,8 @@ route_to_model_loop() {
             "resolved=0" "source=$(_route_classify_max_turns_source)" 2>/dev/null || true
     fi
     _claude_args+=(--disallowed-tools "EnterPlanMode,ExitPlanMode")
+    # #2507 (ADR-017 §12): the tools the manifest lists for this call.
+    _claude_args+=("${_ROUTE_TOOL_ARGS[@]+"${_ROUTE_TOOL_ARGS[@]}"}")
     # #2454 (ADR-017 §11): how hard the model thinks — the plugin's, else medium.
     local _rtl_effort; _route_manifest_effort_v _rtl_effort
     _claude_args+=(--effort "$_rtl_effort")

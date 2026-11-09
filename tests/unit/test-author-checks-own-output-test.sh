@@ -29,8 +29,8 @@
 # A8 [change] the author runs nothing — its new and changed test files are run
 #             by test-author's own script on the old code (#2445; was #2441's
 #             "run your own test files", a model judging its own tests) — and
-#             reads the existing tests and test helpers, not the code the change
-#             is about
+#             reads the files in the repository's test folders, and the existing code
+#             only in the copy from before the change (#2507, ADR-072 §2)
 # A10 [change] findings from other stages about its tests are its to fix or
 #             answer (ADR-068 §6; #1754 run: the test stage said two tests
 #             already passed on the old code and one failed on the new, and
@@ -172,9 +172,10 @@ assert_contains "[A8] its test files are run for it on the old code when it fini
     "When you finish, the test files you create or change are run on the code from before this change"
 assert_contains "[A8] ...where each must fail for the reason it intends" "$_AP" "must fail there for the reason you intend"
 assert_eq "[A8] it is no longer told to run nothing" "0" "$(grep -c 'Do not run anything' <<< "$_AP" || true)"
-assert_contains "[A8] it may read the existing tests and test helpers" "$_AP" \
-    "You may read the existing tests and the repository's test helpers"
-assert_contains "[A8] ...not the code the change is about" "$_AP" "do not read the code this change is about"
+assert_contains "[A8] it may read the files in the test folders" "$_AP" \
+    "Do not read code in the working copy, other than files in the repository's test folders"
+assert_contains "[A8] ...and reads the existing code only in the copy from before the change" "$_AP" \
+    "read the existing code in the copy of the code from before this change"
 assert_eq "[A8] it is no longer told to open the code that writes the data" "0" \
     "$(grep -c 'open the code that writes it' <<< "$_AP" || true)"
 

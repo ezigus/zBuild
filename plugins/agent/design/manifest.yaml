@@ -56,6 +56,13 @@ config:
     timeout_s: 600
     max_turns: 45
 
+# ADR-017 §12 (#2507): every model call this stage makes, by name, with its
+# tools in zbuild's words; the provider turns them into its own.
+# coverage: the check of the design against the issue (ADR-072), a judge.
+calls:
+  main: [read-files, edit-files, run-commands, web-search, subagents, todo-list]
+  coverage: [read-files, read-git, web-search, subagents]
+
 outputs:
   - id: design
     topic: ask

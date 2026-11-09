@@ -1,6 +1,6 @@
 # ADR-072 — A judge reads the code itself, quotes what it complains about, and keeps its answer while nothing changes
 
-**Status:** Accepted (2026-11-03); amended 2026-11-09 (#2506, §3: a lens names no line; its finding is shown with its quote); amended 2026-11-09 (#2505, §3: a file name in formatting marks is the file); amended 2026-11-08 (#2495, §3 §4: the scope is not judged — #2491's scope lines are removed); amended 2026-11-08 (#2491, §3 §4: each scope entry gets a line of its own, ok or outside, kept per entry); amended 2026-11-07 (#2487, §3: an escaped quote mark is the mark itself); amended 2026-11-04 (#2466, §2 §4: the old-code copy and every kept answer leave events); amended 2026-11-04 (#2467, §3: the checks answer one line per part of a SPEC); amended 2026-11-04 (#2470, §3 §4: one line per SPEC that is fine and one per failing part; design's check keeps its answer per SPEC, is given the draft by its path, and judges only the SPECs that changed); amended 2026-11-05 (#2472, §3 §4: quotes ignore formatting; a kept answer does not depend on the file its items come from; a bad line costs only its own item); amended 2026-11-05 (#2474, §3: every reply line is read with its formatting aside)
+**Status:** Accepted (2026-11-03); amended 2026-11-09 (#2507, §1 §2 §4 §7: a judge's tools are listed in its manifest and include git; test-author reads the existing code in the old-code copy; judges are pointed at the change, not given it); amended 2026-11-09 (#2506, §3: a lens names no line; its finding is shown with its quote); amended 2026-11-09 (#2505, §3: a file name in formatting marks is the file); amended 2026-11-08 (#2495, §3 §4: the scope is not judged — #2491's scope lines are removed); amended 2026-11-08 (#2491, §3 §4: each scope entry gets a line of its own, ok or outside, kept per entry); amended 2026-11-07 (#2487, §3: an escaped quote mark is the mark itself); amended 2026-11-04 (#2466, §2 §4: the old-code copy and every kept answer leave events); amended 2026-11-04 (#2467, §3: the checks answer one line per part of a SPEC); amended 2026-11-04 (#2470, §3 §4: one line per SPEC that is fine and one per failing part; design's check keeps its answer per SPEC, is given the draft by its path, and judges only the SPECs that changed); amended 2026-11-05 (#2472, §3 §4: quotes ignore formatting; a kept answer does not depend on the file its items come from; a bad line costs only its own item); amended 2026-11-05 (#2474, §3: every reply line is read with its formatting aside)
 **Issue:** #2464 (runs 41643063636 and 41679237388 on #1805)
 **Amends:** ADR-068 §6 §7 (answers are kept in a stage's result; a check keeps a verdict whose inputs have not changed), ADR-017 §11 (`tools: read`), ADR-069 §2 (a `[done]` claim is read in the code from before the change, by file), ADR-067 §8 (a judging call can read and search files, and nothing else)
 **Related:** ADR-060 §6 (one re-ask), ADR-054 §7 (teardown frees run resources), ADR-066 (every ADR statement has a test)
@@ -70,7 +70,7 @@ A judging call is a model call whose answer the engine acts on: design's coverag
   - quotes: `judge_quote_check_v`, `judge_quote_path_v`;
   - answers: `zb_answers_collect_v`, `judge_answers_to`, `judge_disputes_block`;
   - kept verdicts: `judge_engine_v`, `judge_fp_v`, `judge_kept_get_v`, `judge_kept_put`, `judge_opened_v`.
-- **The router and the rules** (`core/router/route.sh`, `scripts/lib/stage-limits.sh`, `scripts/lib/stage-prompt.sh`): `_route_judge_tools` picks the read-only tools, `_route_stream_opened` lists the files a call opened, and `_stage_block_rules_pair_v` writes the read-only rules.
+- **The router and the rules** (`core/router/route.sh`, `scripts/lib/stage-limits.sh`, `scripts/lib/stage-prompt.sh`): `_route_judge_tools` picked the read-only tools (since #2507, each call's tools come from its manifest's `calls:`, `core/router/call-tools.sh`), `_route_stream_opened` lists the files a call opened, and `_stage_block_rules_pair_v` writes the read-only rules.
 - **The judges and the stages that answer them**:
   - design: `plugins/agent/design/lib/coverage.sh` (`_dcov_parse`, `_design_coverage`), with `plugin.sh` collecting design's answers;
   - test-author: `plugins/agent/test-author/lib/correspondence.sh` (`_sc_disputes`, `_ta_correspondence`);
@@ -179,9 +179,21 @@ On #1805 run 42556446368 issue-acceptance quoted `` `tests/integration/pipeline-
 
 On #1805 run 42556446368 a lens was asked for a line and a quote, and the finding shown to the stages that fix it kept `file:line` and dropped the quote. Lines move as the change is made. A lens (review-lens and security-lens) is no longer asked for a line, and its finding reaches the stages that fix it as `(<file>: "<quote>"; fix: <what>)`. A line a model still sends is not passed on. ADR-067 §8 (amended the same day) says no stage names a line number.
 
+## Amendment 2026-11-09 (#2507) — §1 §2 §4 §7: judges read git and are pointed at the change; test-author reads the old code in the copy
+
+On #1805 run 42556446368 each issue-acceptance prompt was ~250 KB, 214 KB of it the diff (69% test files): judges had Read, Grep and Glob but no git, so the diff had to be pasted in. And test-author, told not to read the code, built a fake plugin without the role the engine requires.
+
+- **§1: a judge's tools are listed in its manifest** (ADR-017 §12): read-files, read-git, web-search, subagents. `config.router.tools: read` and `ZBUILD_ROUTE_TOOLS=read` are gone: design's coverage check is the call design's manifest lists as `coverage`, test-author's assertion check the one its manifest lists as `check`. The rules a judging call is given say what it can do and that it changes nothing.
+- **§2: test-author reads the existing code in the old-code copy.** The rule that it does not read the code exists so its tests are written to the requirement, not to the new code; on a rerun the working copy already holds the branch's new code, so the existing code is in the copy. Its prompt has the same "The code from before this change" block design's has, naming the copy, and says to read the existing code there. Its own call's hook refuses its Read and Grep of a working-copy file outside the test folders (the repository's list, ADR-069 §10, `zb_test_path_globs_v`), naming that file in the copy — whatever the file is called; files in the test folders, the copy and every file outside the working copy stay readable. A test helper outside the test folders is not readable in the working copy. The judge copy is made the first time test-author asks for it, if design has not.
+- **§7 (new): a judge is pointed at the change, not given it.** issue-acceptance's and every lens's prompt hold THE CHANGE: the commit the branch started from (the merge-base, as before) and each file it changed since, with its status, and how to read each change with git (`git diff <base> HEAD -- <file>`, `git log`, `git show <base>:<file>`). No diff is pasted in (`zbuild_change_files_v`, `scripts/lib/merge-base.sh`, one git call). With no starting commit known, the judge is pointed at the round's patch file and the files in it, and the patch is not pasted in.
+- **§4: a kept answer still changes when the change does.** Each judge's fingerprint holds the change's raw diff lines (each changed file's blob ids, from the same git call) in place of the diff text, so a change to a changed file's content is judged again, as before; with no starting commit, the patch.
+- **§3: a lens's quote of a line the change removed** is checked in the file as it was at the starting commit (`git show <base>:<file>`), only for a quote not found as the file is now.
+
 ## Enforced by
 
 - §3 amendment 2026-11-09 (#2506: a lens names no line; its finding is shown with its quote) → `tests/unit/no-line-numbers-test.sh` L2, L3
+
+- §1 §2 §4 §7 amendment 2026-11-09 (#2507) → `tests/unit/judge-change-list-test.sh` L1, L3 (the starting commit and the changed files, no diff), L2, L4 (a kept answer is judged again when a changed file's content changes), L5 (a removed line's quote is found), L6 (no starting commit: pointed at the patch); `tests/unit/call-tools-test.sh` C6, C7 (the judges' tools; each check names its call); `tests/unit/call-hook-test.sh` G5 (only the test folders and the copy are readable; a file named like a test outside them is not), G7 (test-author reads the old code in the copy); `tests/unit/judge-tools-test.sh` T5
 
 - §3 §4 amendment 2026-11-08 (#2495: the scope is not judged) → `tests/unit/design-coverage-test.sh` NS1–NS3, X3; `tests/unit/judge-quotes-test.sh` Q2 (a scope line is no finding, and needs no line)
 - §3 §4 amendment 2026-11-08 (#2491: a line per scope entry — removed by #2495) → `tests/unit/design-coverage-test.sh` NS1–NS3
@@ -199,7 +211,7 @@ On #1805 run 42556446368 a lens was asked for a line and a quote, and the findin
 
 - §3 amendment 2026-11-04 (#2467: one line per part) → `tests/unit/gwt-judges-test.sh` J1–J8, T1–T9
 - §2 §4 amendment 2026-11-04 (#2466: the copy and every kept answer leave events) → `tests/unit/judge-events-test.sh` V1–V5
-- §1 → `tests/unit/judge-tools-test.sh` T1–T6
+- §1 → `tests/unit/judge-tools-test.sh` T5, T6; `tests/unit/call-tools-test.sh` C6, C7 (T1–T4 moved there, #2507)
 - §2 → `tests/unit/judge-base-code-test.sh` B1–B6; `tests/unit/judge-quotes-test.sh` Q2 (a [done] claim read on the old code, by file; no window), Q4 (no window); `tests/unit/descriptive-id-readers-test.sh` R10
 - §3 → `tests/unit/judge-quotes-test.sh` Q1–Q5
 - §4 → `tests/unit/judge-kept-test.sh` K1, K2, K4, K7, K8, K9

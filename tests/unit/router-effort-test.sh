@@ -45,6 +45,8 @@ _mk_plugin() {  # <name> <router-block-body> → plugin dir
         printf 'id: %s\nname: Fixture\nkind: agent\nversion: 0.0.1\nsummary: fixture\n' "$1"
         printf 'hooks:\n  run: f_run\n'
         printf 'requires:\n  core:\n    - redaction\n'
+        # #2507 (ADR-017 §12): a stage's model call is listed, or refused.
+        printf 'calls:\n  main: [read-files, edit-files]\n'
         printf 'config:\n  router:\n%s' "$2"
     } > "$dir/manifest.yaml"
     printf '%s' "$dir"

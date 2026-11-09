@@ -109,6 +109,14 @@ config:
                         # no retries here: the template's per-stage retry:
                         # is the one retry (ADR-054 §6a, #2439)
 
+# Every model call I make, by name, with its tools in zbuild's words (ADR-017
+# §12): read-files, edit-files, run-commands, read-git, web-search, subagents,
+# todo-list, mcp. The provider module turns them into its own; [] is no tools;
+# a call not listed here is refused. A check inside a stage names its call
+# with ZBUILD_ROUTE_CALL; the stage's own call is main.
+calls:
+  main: [read-files, read-git, web-search, subagents]
+
 # I/O contract (ADR-055). A stage declares only what it writes; it declares no
 # inputs — every stage gets every stage's latest output, by id, in its index.
 outputs:

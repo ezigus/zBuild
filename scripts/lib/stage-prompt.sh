@@ -225,10 +225,11 @@ _stage_block_rules_pair_v() {
   is not an answer to repeat: check it against what this prompt shows now, and
   say what is true now.
 "
-    # #2464 (ADR-072 §1): a fresh call judges, and a judging call reads and
-    # searches files and nothing else — the router gives it only those tools.
-    local _sbr_tools; _route_manifest_tools_v _sbr_tools "$manifest"
-    if [[ "$_sbr_tools" == none ]]; then
+    # #2464 (ADR-072 §1), #2507 (ADR-017 §12): a fresh call judges, and a
+    # judging call has only its manifest's judging tools, which change nothing.
+    local _sbr_kind _sbr_jw _sbr_said
+    _route_stage_tools_v _sbr_kind _sbr_jw "$manifest"
+    if [[ "$_sbr_kind" == none ]]; then
         # #2448: no tools — nothing to write, and no file to keep notes in.
         _head_full="- You have no tools. Everything you need is in this prompt, and your
   answer is your reply.
@@ -236,14 +237,15 @@ _stage_block_rules_pair_v() {
         _head_fresh="$_head_full"
         _confirm="$_write"
     else
-        _head_fresh="- You can open and search files (Read, Grep, Glob), and nothing else:
-  you cannot change, create or delete any file, or run anything. Open
+        _route_tools_said_v _sbr_said "${_sbr_jw:-read-files}"
+        _head_fresh="- You can $_sbr_said, and nothing else: you cannot
+  change, create or delete any file, or run any other command. Open
   whatever you need to judge — the whole function, what calls it, the rest
   of the file — and judge the code itself, not what this prompt says about
   it. Your answer is your reply.
 "
-        if [[ "$_sbr_tools" == read ]]; then
-            # A stage whose every call judges has only the fresh set.
+        if [[ "$_sbr_kind" == judge ]]; then
+            # A stage whose own call judges has only the fresh set.
             _head_full="$_head_fresh"
         elif ! _sp_writes_repository "$manifest"; then
             _head_full="- You may not change the repository. Do not create, modify or delete any
@@ -252,9 +254,9 @@ _stage_block_rules_pair_v() {
 "
         fi
     fi
-    if [[ "$_sbr_tools" == read ]]; then
+    if [[ "$_sbr_kind" == judge ]]; then
         _confirm="$_write"
-    elif [[ "$_sbr_tools" != none ]]; then
+    elif [[ "$_sbr_kind" != none ]]; then
         stage_notes_path_v _sbr_np "$state_dir" "$stage"
         _head_full+="- Your notes file is $_sbr_np
   Write to it as you work, not at the end: what you read, what you
@@ -408,9 +410,9 @@ _stage_blocks_write_pw_rules() {
     # A stage with no tools reads the fresh set in every call; a stage whose
     # every call judges (#2464) reads the judge's (#2470). A fresh call — one
     # that judges — never sees its own stage's earlier output.
-    local _pwr_tools; _route_manifest_tools_v _pwr_tools "$manifest"
-    [[ "$_pwr_tools" == none ]] && _pw_full="$_pw_fresh"
-    [[ "$_pwr_tools" == read ]] && _pw_full="$_pw_judge"
+    local _pwr_kind _pwr_jw; _route_stage_tools_v _pwr_kind _pwr_jw "$manifest"
+    [[ "$_pwr_kind" == none ]] && _pw_full="$_pw_fresh"
+    [[ "$_pwr_kind" == judge ]] && _pw_full="$_pw_judge"
     _pw_fresh="$_pw_judge"
     _stage_block_rules_pair_v _r_full _r_fresh "$stage" "$state_dir" "$manifest" 2>/dev/null || return 1
     printf '%s' "$_pw_full"  > "$dir/previous-work.md" 2>/dev/null || return 1

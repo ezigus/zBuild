@@ -1,6 +1,6 @@
 # ADR-004: Redaction Chokepoint
 
-**Status:** Accepted
+**Status:** Accepted; amended 2026-11-09 (#2507: no secret leaves in a web search)
 **Date:** 2026-05-24
 
 ## Context
@@ -156,7 +156,13 @@ from `private_paths_deny_rules`, merged by `core/router/permissions.sh`).
 
 The scope manifest contract below is unchanged: the scope check still reads it.
 
+## Amendment — no secret leaves in a web search (2026-11-09, #2507)
+
+A call given `web-search` (ADR-017 §12) sends text off the machine that no prompt redaction sees: its own search queries and the addresses it fetches. Its PreToolUse hook (`core/router/tool-hook.sh`) refuses a `WebSearch` query or `WebFetch` address that holds text that looks like a secret value (`scripts/lib/secret-patterns.sh`, the one definition), and tells the model why, so it can search again without it. Naming a private file is not refused: a file name is not its content. Taking private paths out of prompts (above) is unchanged and separate.
+
 ## Enforced by
+
+- Amendment 2026-11-09 (#2507: no secret leaves in a web search) — `tests/unit/call-hook-test.sh` G4 (a secret is refused; a private file name alone is not), G1 (the hook is given no private paths).
 
 - §Chokepoint (one function emits LLM-bound text) — `tests/unit/redaction-chokepoint-test.sh`.
 - Amendment §1 (no manifest needed) — `tests/e2e/redaction-edge-cases-test.sh`,

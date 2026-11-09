@@ -39,35 +39,48 @@ _route_manifest_knob() {
     printf '%s' "$v"
 }
 
-# ─── _route_manifest_no_tools [manifest] — #2448 (ADR-017 §11) ─────────────
-# rc 0 when the plugin declares `config.router.tools: none`: its calls get no
-# tools, and its rules ask for none. The manifest is the dispatched plugin's
-# unless one is named.
-_route_manifest_no_tools() {
-    local _mnt; _route_manifest_tools_v _mnt "${1:-}"
-    [[ "$_mnt" == none ]]
-}
-
-# ─── _route_manifest_tools_v <var> [manifest] — #2448, #2464 (ADR-072 §1) ────
-# The plugin's `config.router.tools`: none, read, or empty (the full set).
-_ZB_JUDGE_TOOLS="Read,Grep,Glob"
-_route_manifest_tools_v() {
-    local -n _rmt="$1"
-    local mf="${2:-${ZBUILD_PLUGIN_DIR:+$ZBUILD_PLUGIN_DIR/manifest.yaml}}"
-    _rmt=""
+# ─── _route_stage_tools_v <kind_var> <judge_words_var> [manifest] — #2507 ───
+# What a stage's calls may do, from its manifest's `calls:` (ADR-017 §12), for
+# the rules it is given (ADR-067 §8): <kind> is `none` when its own call (main)
+# has no tools, `judge` when that call can change no file, else `build`; a
+# manifest that lists no calls is `build`. <judge_words> are the words of its
+# judging call — the first that can change no file — empty when it has none.
+_route_stage_tools_v() {
+    local -n _rstk="$1" _rstj="$2"
+    local mf="${3:-${ZBUILD_PLUGIN_DIR:+$ZBUILD_PLUGIN_DIR/manifest.yaml}}" _rst_all _rst_l _rst_main=""
+    _rstk=build _rstj=""
     [[ -n "$mf" && -f "$mf" ]] || return 0
-    declare -F _manifest_router_block_v >/dev/null 2>&1 || return 0
-    _manifest_router_block_v _rmt "$mf" tools
-    _rmt="${_rmt%$'\n'}"
+    declare -F manifest_calls_v >/dev/null 2>&1 \
+        || source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/core/plugin-registry/manifest-calls.sh"
+    manifest_calls_v _rst_all "$mf"
+    [[ -n "$_rst_all" ]] || return 0
+    local _rst_seen=0
+    while IFS= read -r _rst_l; do
+        [[ -n "$_rst_l" && "$_rst_l" != *" !"* ]] || continue
+        [[ "${_rst_l%% *}" == main ]] && { _rst_main=" ${_rst_l#main} "; _rst_seen=1; }
+        [[ " $_rst_l " == *" edit-files "* || -n "$_rstj" ]] && continue
+        [[ "$_rst_l" == *" "* ]] && _rstj="${_rst_l#* }"
+    done <<< "$_rst_all"
+    (( _rst_seen )) || return 0
+    if [[ -z "${_rst_main// /}" ]]; then _rstk=none
+    elif [[ "$_rst_main" != *" edit-files "* ]]; then _rstk=judge; fi
+    return 0
 }
 
-# _route_judge_tools — rc 0 when this call judges: its plugin declares
-# `tools: read`, or the caller asked for it (ZBUILD_ROUTE_TOOLS=read — the
-# design and test-author checks, whose stages need the full set for their own
-# call). `tools: none` wins over both.
-_route_judge_tools() {
-    local _rjt; _route_manifest_tools_v _rjt "${1:-}"
-    [[ "$_rjt" != none ]] && [[ "$_rjt" == read || "${ZBUILD_ROUTE_TOOLS:-}" == read ]]
+# _route_tools_said_v <var> <words> — what a judging call can do, in words.
+_route_tools_said_v() {
+    local -n _rts="$1"; local w=" $2 " _rts_l=()
+    _rts=""
+    [[ "$w" == *" read-files "* ]] && _rts_l+=("open and search files")
+    [[ "$w" == *" read-git "* ]] && _rts_l+=("run git diff, git log, git show and git status")
+    [[ "$w" == *" web-search "* ]] && _rts_l+=("search the web")
+    [[ "$w" == *" subagents "* ]] && _rts_l+=("hand part of the work to a subagent")
+    local n=${#_rts_l[@]} i
+    for (( i = 0; i < n; i++ )); do
+        if (( i == 0 )); then _rts="${_rts_l[i]}"
+        elif (( i == n - 1 )); then _rts+=" and ${_rts_l[i]}"
+        else _rts+=", ${_rts_l[i]}"; fi
+    done
 }
 
 # ─── _route_manifest_effort_v <var> [manifest] — #2454 (ADR-017 §11) ────────

@@ -314,8 +314,9 @@ _design_coverage() {
     fi
     local raw="" rc=0 rc_file ask="$framed" _try opened="" need="$want"
     local -A got=() gotq=()
-    # ADR-072 §1: this call reads and searches files, and nothing else.
-    local -x ZBUILD_ROUTE_TOOLS=read ZBUILD_ROUTER_OPENED_FILE=""
+    # ADR-017 §12 (#2507): the call design's manifest lists as `coverage`,
+    # with a judge's tools.
+    local -x ZBUILD_ROUTE_CALL=coverage ZBUILD_ROUTER_OPENED_FILE=""
     opened="$(mktemp 2>/dev/null)" && ZBUILD_ROUTER_OPENED_FILE="$opened"
     # ADR-060 §6: an answer that cannot be used is asked again once, at once,
     # with what was wrong and the answer. A failed call is not asked again.

@@ -321,6 +321,17 @@ ${_tsteps}
     # #2445: what is already written, found by script, not re-read by the model.
     local written_block; written_block="$(_ta_written_list "$design" "$repo" "$_ta_need")"
 
+    # #2507 (ADR-072 §2): the existing code is read in the copy of the code from
+    # before this change — on a rerun the working copy already holds the
+    # branch's new code, and a test written from it describes that code. The
+    # call's hook refuses its reads of code in the working copy.
+    local _ta_base="" base_section=""
+    judge_base_dir_v _ta_base "$repo" 2>/dev/null || _ta_base=""
+    [[ -n "$_ta_base" ]] && base_section="
+### The code from before this change
+The commit this branch started from is a copy at ${_ta_base}. When a test needs the existing code — what a function is called, what it takes, what a record it reads must hold — read the existing code there, not in the working copy: the working copy holds every change this branch made, and a test written from it describes that change, not the requirement.
+"
+
     # #2308: the stage's own text in three parts (ADR-067 §8).
     local _spec_tag1; _spec_tag1="$(acceptance_spec_tag SPEC-1)"
     local prompt
@@ -362,9 +373,9 @@ LOOP_COMPLETE
 The requirements below. Write what each requirement DEMANDS, not what some implementation might do.
 
 REQUIREMENTS:
-${spec_block}${sup_section}${steps_section}
+${spec_block}${sup_section}${steps_section}${base_section}
 ## What you must not do
-- You cannot see the implementation, and you must not guess at it. You may read the existing tests and the repository's test helpers; do not read the code this change is about.
+- Do not read code in the working copy, other than files in the repository's test folders: read the existing code in the copy of the code from before this change. Do not guess at code this change has not written yet; write what the requirement demands of it.
 - Run nothing else: run only a test file of yours that you are told fails, and never the suite or lint. When you finish, the test files you create or change are run on the code from before this change. A test for a requirement that needs code must fail there for the reason you intend, not because of a mistake in the test; one that passes there, or stops before its assertion runs, comes back to you.
 - Write or amend only the testfile(s) named above${sup_block:+, and the existing checks listed above}. Do not write, modify or stub any implementation file.
 - A tag that does not carry this issue's number (a bare [SPEC-n], or one naming another issue) belongs to other work: leave it as it is${sup_block:+, except on the existing checks listed above}.
@@ -401,7 +412,9 @@ EOF
         return 1
     }
     printf '%s' "$prompt" > "$prompt_file"
+    local -x ZBUILD_ROUTE_BASE_CODE="$_ta_base"
     route_to_model_loop "$tier" "$prompt_file" "$repo" || rc=$?
+    unset ZBUILD_ROUTE_BASE_CODE
     rm -f "$prompt_file"
     _ta_collect_answers "${_ROUTE_LOOP_LAST_RESPONSE:-}" "$prompt"
     local _end="${_ROUTE_LOOP_TERMINATED_REASON:-}"

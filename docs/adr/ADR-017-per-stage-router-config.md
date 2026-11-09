@@ -1,6 +1,6 @@
 # ADR-017: Per-Stage Router Configuration
 
-**Status:** Accepted (2026-05-29); amended 2026-11-03 (#2464, §11: `tools: read`)
+**Status:** Accepted (2026-05-29); amended 2026-11-03 (#2464, §11: `tools: read`); amended 2026-11-09 (#2507, §12: every model call is listed by name, with its tools in zbuild's words — `tools:` is removed)
 **Date:** 2026-05-29
 **Amended:** 2026-10-31 (#2439, ADR-054 §6a) — `router.retries`, `router.retry_on_exhaustion` and `router.max_iterations` are removed: a stage makes one model call per try, and the template's per-stage `retry:` is the only retry (amendment at the end).
 **Amended:** 2026-08-09 (#1820, ADR-054) — noting that #1816 inserts the manifest layer into ADR-017's resolution chain; per-stage router config is now resolved through the manifest-declared data path before falling through to the template/global config tiers documented here.
@@ -451,11 +451,44 @@ A plugin may declare `config.router.effort`: `low`, `medium`, `high`, `xhigh` or
 
 `config.router.tools` also takes `read`. Every one-shot call such a plugin makes judges, so the router passes `--strict-mcp-config --tools "Read,Grep,Glob"`: the call can open and search files and nothing else. A call from another plugin gets the same when its caller sets `ZBUILD_ROUTE_TOOLS=read` for it; the design coverage check and test-author's assertion check do this. `none` wins over both. `validate_manifest` accepts `none` and `read`, and refuses any other word. Why: on #1805's runs of 2026-11-03, every judge but intake's ran with every tool and write access to the repository (ADR-072 §1).
 
+## Amendment 2026-11-09 (#2507) — §12: every model call is listed by name, with its tools in zbuild's words
+
+On #1805 run 42556446368 tools were chosen in two places: a stage's main call from `config.router.tools` (`none`, `read`, or nothing — every tool the provider ships), and a check inside a stage in code (`ZBUILD_ROUTE_TOOLS=read`). Most calls got everything, and those also loaded every MCP server the machine had. The tool names were Claude's, so no other provider could run the manifests.
+
+1. **A stage's manifest lists every model call it makes, by name, with its tools** (`core/plugin-registry/manifest-calls.sh`):
+   ```yaml
+   calls:
+     main: [read-files, edit-files, run-commands, web-search, subagents, todo-list]
+     coverage: [read-files, read-git, web-search, subagents]
+   ```
+   - `main` is the stage's own call. A check inside the stage names its call with `ZBUILD_ROUTE_CALL` (design: `coverage`; test-author and intake: `check`).
+   - A call that lists no words (`[]`) has no tools.
+   - The router refuses a call its stage's manifest does not list (rc 2, event `router.call.refused`), before the model runs. A call made outside any stage has no tools.
+   - `validate_manifest` refuses a call that is not a list, and a word that is not one of the words below.
+   - `config.router.tools` and `ZBUILD_ROUTE_TOOLS` are removed. The §11 amendments of 2026-11-01 (`tools: none`) and 2026-11-03 (`tools: read`) no longer apply: those calls now list `[]` and the judging set.
+2. **The words are zbuild's:** `read-files`, `edit-files`, `run-commands`, `read-git` (git's reading commands: diff, log, show, status), `web-search`, `subagents`, `todo-list`, `mcp`. No word is a bundle of others. `mcp` is given to no call: how a manifest names the MCP servers a call may use is a later decision.
+3. **The provider turns the words into its own arguments** (`provider_<name>_tool_args`, ADR-003). A word a stage's provider cannot supply refuses the run at start, with the reason, in warn mode too (`_runner_validate_startup_preflight`, `TOOLS_UNSUPPORTED`).
+4. **Every call passes no MCP server** (`--strict-mcp-config` for Anthropic), whatever its words.
+5. **Who gets what:**
+   - build's, design's and test-author's own calls: read-files, edit-files, run-commands, web-search, subagents, todo-list;
+   - every judge — issue-acceptance, review-lens, security-lens, design's coverage check and test-author's assertion check: read-files, read-git, web-search, subagents;
+   - intake's two calls and monitor's: none.
+6. **The call's PreToolUse hook guards what the words let through** (`core/router/tool-hook.sh`, the hook of ADR-063's 2026-11-08 amendment; its guards ride in its command):
+   - **read-git** (without run-commands): the shell runs only `git diff`, `git log`, `git show` and `git status`. `--output`, anything chained or redirected (`;`, `&`, `|`, `$(`, backticks, `<`, `>`, a newline), and any other command are refused, saying what may run. A format string holding `<` or `>` (`git log --format='%an <%ae>'`) is refused with them: the check reads the command as text, and does not tell a quoted `<` from a redirect.
+   - **subagents:** a subagent asked for by its own model is refused; it runs on the call's model (ADR-003). Measured on CLI 2.1.319: a subagent gets only its parent's tools, the hook sees its tool calls, and its cost is in the call's total.
+   - **web-search:** a query or fetched address holding text that looks like a secret value is refused, and the model is told why (ADR-004). A private file's name alone is not refused. If the definitions of a secret cannot be read, the search is refused: the guard fails closed.
+   - **test-author's own call** reads the existing code in the copy of the code from before the change (ADR-072 §2).
+   - The hook is given to every call with tools, and to every call with a deadline. Its refusal is valid JSON whatever the refused command holds (tabs, carriage returns, other control characters), so a refusal is never lost to a parse error.
+   - **The provider module is loaded for the tools** when the model lookup has not loaded it.
+7. **The rules a stage is given say what its calls can do** (`_route_stage_tools_v`, `scripts/lib/stage-limits.sh`): a stage whose own call has no tools is told so; a judging call is told it can open and search files, read git, search the web and hand part of its work to a subagent, and nothing else.
+
 ## Enforced by
 
-- §11 amendment 2026-11-03 (#2464: `tools: read`) → `tests/unit/judge-tools-test.sh` T1–T4
+- §12 amendment 2026-11-09 (#2507: every call listed by name, with its tools in zbuild's words) → `tests/unit/call-tools-test.sh` C1 (the calls read; none means none; unknown words and `config.router.tools` refused), C2 (the provider translates; `--strict-mcp-config`), C3, C4 (a call gets its tools; an unlisted call is refused; outside a stage, none), C5 (an unsupported word refuses the run at start), C6 (who gets what), C7 (each check names its call); `tests/unit/call-hook-test.sh` G1–G6 (the guards), G8 (a refusal is valid JSON; the web guard fails closed); `tests/unit/call-tools-test.sh` C8 (the provider module is loaded for the tools); `tests/unit/judge-tools-test.sh` T5 (the rules say what a judge can do); `tests/unit/intake-no-tools-test.sh` T1, T2, T4
+
+- §11 amendment 2026-11-03 (#2464: `tools: read`; replaced by §12, #2507) → `tests/unit/call-tools-test.sh` C6, C7
 - §11 amendment 2026-11-02 (#2454: `effort`, medium by default) → `tests/unit/router-effort-test.sh` E1–E3
-- §11 amendment 2026-11-01 (#2448: `tools: none`) → `tests/unit/intake-no-tools-test.sh` T1, T2
+- §11 amendment 2026-11-01 (#2448: `tools: none`; replaced by §12, #2507) → `tests/unit/intake-no-tools-test.sh` T1, T2
 - Amendment 2026-10-31 (#2439: the call-retry and call-limit knobs are removed) → `tests/unit/retired-retry-settings-test.sh` T1–T4, T6; `tests/unit/route-one-call-per-try-test.sh` O4, O6
 - §Per-stage `timeout_s:` (top-level stage block) is used by fanout, map, and sequential strategies via `template_stage_time_limit`; `ZBUILD_ORCH_TIMEOUT` flat deadline removed — `tests/integration/orch-timeout-applies-test.sh` [#1801/SPEC-1].
 - §`_runner_dispatch_always_run` bounds each always-run stage with `template_stage_time_limit` (`timeout_s:` in the stage block); `ZBUILD_RELEASE_TIMEOUT` and `router.timeout_s` no longer read for this purpose — `tests/integration/runner-release-exit-paths-test.sh` [#1801/SPEC-5].

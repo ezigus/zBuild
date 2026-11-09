@@ -42,7 +42,7 @@ export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state" ZBUILD_CURRENT_STAGE=build
 export ZBUILD_ARTIFACT_DIR="$ZBUILD_STATE_DIR/artifacts"
 mkdir -p "$ZBUILD_STAGE_SCRATCH" "$ZBUILD_REPO_ROOT" "$ZBUILD_ARTIFACT_DIR"
 NOTES="$(stage_notes_path "$ZBUILD_STATE_DIR" build)"
-HOOK="$REPO_ROOT/core/router/time-up-hook.sh"
+HOOK="$REPO_ROOT/core/router/tool-hook.sh"
 
 # ── H1 / H2 ──────────────────────────────────────────────────────────────────
 print_test_section "H1/H2: the settings file holds the hook"
@@ -50,7 +50,7 @@ _before=$(date +%s)
 _zbuild_build_permissions_settings 900 >/dev/null 2>&1
 _after=$(date +%s); _now="$_after"
 _cmd="$(jq -r '.hooks.PreToolUse[0].hooks[0].command // empty' "$_ZBUILD_PERMISSIONS_SETTINGS_FILE")"
-assert_contains "[H1] the hook is the router's time-up hook" "$_cmd" "core/router/time-up-hook.sh"
+assert_contains "[H1] the hook is the router's time-up hook" "$_cmd" "core/router/tool-hook.sh"
 assert_contains "[H1] ...given the stage's notes file" "$_cmd" "$NOTES"
 _dl="$(awk '{print $(NF-1)}' <<< "$_cmd")"
 # Bracketed by the clock read just before and just after: no window to tune.

@@ -122,8 +122,9 @@ _sc_call() {
     # is /dev/null: a model that drains stdin must not eat a caller's stream (#2108).
     if declare -f route_to_model >/dev/null 2>&1; then
         local _call_rc=0
-        # ADR-072 §1: this call reads and searches files, and nothing else.
-        local -x ZBUILD_ROUTE_TOOLS=read
+        # ADR-017 §12 (#2507): the call test-author's manifest lists as
+        # `check`, with a judge's tools.
+        local -x ZBUILD_ROUTE_CALL=check
         _raw="$(route_to_model "$tier" "$_framed" </dev/null)" || _call_rc=$?
         # The batch call and every fallback call share one rc file. The FIRST
         # non-zero rc is kept: a later success must not hide an earlier failure
