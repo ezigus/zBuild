@@ -9,7 +9,7 @@ zBuild's architecture and migration plan live in:
 
 **If implementation drifts from spec, the spec wins.** PRs cite the relevant ADR or KEEPERS section in the description.
 
-### Every ADR statement has a test (#2268)
+### Every ADR statement has a test
 
 - **A rule that lives only in an ADR's prose is a missing test.** When a run passes something wrong, look first for the ADR statement nothing enforces, and write that test.
 - **Every live ADR has an `## Enforced by` section** naming, per statement (§), the test or lint that enforces it. A new or changed statement ships with its test in the same PR. `scripts/lib/lint-adr-enforced-by.sh` (in `npm run lint`) fails a live ADR without the section, or one naming a file that does not exist. ADRs written before this rule are listed in `config/adr-enforcement-baseline.txt`, which only shrinks.
@@ -66,16 +66,14 @@ npm run lint       # shellcheck + lint
   write (or amend) the test that expresses the required behavior, run it, and confirm it FAILS —
   and fails for the reason you intend, not on a typo or a missing fixture. Only then write the
   implementation. Then re-run and watch it go green.
-- **A test written after the implementation asserts what the code does, not what was required.**
-  This is not a style preference — it is the defect class that shipped #1919: its test asserted
-  the grant was "exactly the repo root + stage scratch", a faithful description of the code, which
-  therefore stayed green while every design stage died on a refused write (#1961). Order the work
-  so the test cannot be shaped by the implementation.
+- **A test written after the implementation asserts what the code does, not what was required,**
+  so it stays green while the code is wrong. Order the work so the test cannot be shaped by the
+  implementation.
 - **Reverting the implementation afterwards to check the test goes red is NOT test-first.** It
   produces the same two files and a weaker test, because the assertion was still authored while
   looking at the code. Use it to verify an inherited test, never as a substitute for the ordering.
 - **State the red step in the PR body**: the assertion, and how it failed before the fix.
-- **Data another part of the engine writes is checked against its writer** (#1799). When a change reads
+- **Data another part of the engine writes is checked against its writer.** When a change reads
   something another part of the code writes — pipeline-state.json, another stage's result, an event — open
   the writer and use the names it really writes, when it writes them. A test makes such data with the
   writer's own code (e.g. `zb_engine_loop_state` for loop state; `lint-test-engine-state.sh` refuses a
@@ -83,7 +81,7 @@ npm run lint       # shellcheck + lint
   review of such a change checks this too.
 - **Tests are deterministic** (ADR-012, amended 2026-11-08). Remote services (`gh`, `claude`, `curl`, the network) are mocked, never our own code; signals sent to the engine stay real. Never time a signal with a sleep: wait for a marker the process writes, with a timeout. `lint-test-determinism.sh` enforces it.
 - ALWAYS run tests after making code changes.
-- CI enforces a **29% statement coverage floor** on `core/` + `scripts/lib/` (issue #372, raised in Wave 4). Target is 70% — will be raised incrementally as test depth improves. If Coverage CI fails, run `bash scripts/check-coverage.sh` locally to see per-file coverage. The denominator counts every in-scope `.sh` file on disk, including ones no test ever sources (#1761) — a new untested file lowers the number rather than being invisible to it.
+- CI enforces a **29% statement coverage floor** on `core/` + `scripts/lib/`. Target is 70% — will be raised incrementally as test depth improves. If Coverage CI fails, run `bash scripts/check-coverage.sh` locally to see per-file coverage. The denominator counts every in-scope `.sh` file on disk, including ones no test ever sources — a new untested file lowers the number rather than being invisible to it.
 - ALWAYS verify the relevant test passes before opening a PR.
 
 ## Security rules

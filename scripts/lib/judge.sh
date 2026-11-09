@@ -96,6 +96,15 @@ _judge_holds() {
     [[ " $_jh_t " == *"$_jh_u"* ]]
 }
 
+# _judge_bare_path_v <var> — the file name of a quote without the backticks or
+# bold marks a model writes around it (#1805 run 42556446368): formatting is not
+# the judge's to get right (#2472).
+_judge_bare_path_v() {
+    local -n _jbp="$1"
+    while [[ "$_jbp" == [\`*]* ]]; do _jbp="${_jbp:1}"; done
+    while [[ "$_jbp" == *[\`*] ]]; do _jbp="${_jbp%?}"; done
+}
+
 # judge_quote_check_v <why_var> <quote> <own_words> <repo> [base_dir] — rc 0
 # when <quote> is really there: `"text"` in the item's own words, or
 # `file:"text"` in that file in the repository or in the code from before the
@@ -117,6 +126,7 @@ judge_quote_check_v() {
         return 1
     fi
     _judge__path="${BASH_REMATCH[1]}"; _judge__txt="${BASH_REMATCH[2]}"
+    _judge_bare_path_v _judge__path
     case "$_judge__path" in
         "$_judge__repo"/*) _judge__path="${_judge__path#"$_judge__repo"/}" ;;
         "${_judge__base:-/nonexistent}"/*) _judge__path="${_judge__path#"$_judge__base"/}" ;;
@@ -145,7 +155,7 @@ judge_quote_path_v() {
     local -n _jqp="$1"; local _judge__repo="${3:+${3%/}}" _judge__base="${4:+${4%/}}"
     _jqp=""
     [[ "$2" =~ ^[[:space:]]*([^\"[:space:]][^\"]*):\" ]] || return 0
-    _jqp="${BASH_REMATCH[1]}"
+    _jqp="${BASH_REMATCH[1]}"; _judge_bare_path_v _jqp
     _jqp="${_jqp#"$_judge__repo"/}"; [[ -n "$_judge__base" ]] && _jqp="${_jqp#"$_judge__base"/}"
     return 0
 }
