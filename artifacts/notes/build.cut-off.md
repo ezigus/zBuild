@@ -1,0 +1,61 @@
+- (… 64 earlier steps not shown)
+- Bash: bash -c ' source scripts/lib/test-helpers.sh source scripts/lib/helpers.sh source core/state/artifact-persist.sh REPO_ROOT="$(pwd)" RUNNER="$REPO_ROOT/core/pipeline/runner.sh" setup_test_env "s12-debug3" mock_plugin_factory "intake" "agent" 0 >/dev/null mock_plugin_factory "cycled" "agent" 0 "" "bui…
+- Bash: grep -n "resolve_stage_plugin\|role-unresolved" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/dispatch.sh | head -20
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/core/pipeline/dispatch.sh
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-rehydrate-test.sh
+- Bash: grep -A5 "intake\|roles" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/config/templates/simple.yaml | head -20
+- Bash: grep -B2 -A10 "^intake:" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/config/templates/simple.yaml | head -20
+- Bash: grep -r "mock_plugin_factory.*intake.*agent.*0\b" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/ 2>/dev/null | head -20
+- Bash: grep -n "mock_plugin_factory\|mock_plugin\|_mock_intake\|intake.*role\|role.*intake\|ZBUILD_CONTRACT_VALIDATOR\|provides" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/resume-entry-points-test.sh | head -20
+- Bash: bash tests/integration/resume-entry-points-test.sh 2>&1 | tail -20
+- Bash: grep -n "ZBUILD_CONTRACT_VALIDATOR\|template\|no-resume" /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/integration/full-pipeline-sigint-test.sh | head -15
+- Bash: find /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree -name "resume-minimal.yaml" 2>/dev/null | xargs grep -l "intake" 2>/dev/null | head -3
+- Bash: cat /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures/templates/resume-minimal.yaml
+- Read: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1805/worktree/tests/fixtures/templates/artifact-snapshot-coverage.yaml
+- said: Let me debug the actual fresh run to understand why `cycle.start` isn't being emitted:
+- Bash: source tests/lib/helpers.sh 2>/dev/null; source core/state/artifact-persist.sh 2>/dev/null; true
+- Bash: bash -c ' source tests/lib/helpers.sh TEST_TEMP_DIR="$(mktemp -d)" PLUGINS_ROOT="$TEST_TEMP_DIR/plugins" REPO_ROOT="$(pwd)" RUNNER="core/pipeline/runner.sh" setup_git_temp_repo() { local name="$1" local d d="$(mktemp -d)" git init -q "$d" git -C "$d" config user.email t@e.st git -C "$d" config user.…
+- Bash: find tests -name "helpers.sh" -type f 2>/dev/null | head -5
+- Bash: head -30 tests/integration/resume-rehydrate-test.sh
+- Bash: sed -n '30,60p' tests/integration/resume-rehydrate-test.sh
+- Bash: sed -n '918,1010p' tests/integration/resume-rehydrate-test.sh
+- Bash: sed -n '1010,1080p' tests/integration/resume-rehydrate-test.sh
+- Bash: grep -A 30 "^mock_plugin_factory" scripts/lib/test-helpers.sh | head -40
+- Bash: grep -A 60 "^mock_plugin_factory" scripts/lib/test-helpers.sh | tail -40
+- Bash: sed -n '3570,3630p' core/pipeline/runner.sh
+- Bash: sed -n '3630,3720p' core/pipeline/runner.sh
+- Bash: grep -n "ZBUILD_CYCLES_ENABLED\|cycles_enabled" core/pipeline/runner.sh | head -15
+- Bash: sed -n '3107,3160p' core/pipeline/runner.sh
+- Bash: sed -n '3160,3220p' core/pipeline/runner.sh
+- Bash: sed -n '793,828p' tests/integration/resume-rehydrate-test.sh
+- Bash: grep -n "cycle.start\|cycle\.start" core/pipeline/cycle-orchestrator.sh | head -20
+- Bash: sed -n '2425,2490p' core/pipeline/cycle-orchestrator.sh
+- Bash: grep -n "^cycle_orchestrator_run\|^_cycle_orchestrator_run" core/pipeline/cycle-orchestrator.sh | head -10
+- Bash: sed -n '2334,2360p' core/pipeline/cycle-orchestrator.sh
+- Bash: sed -n '2360,2430p' core/pipeline/cycle-orchestrator.sh
+- Bash: grep -n '"stage.start"\|stage\.start\|eb_emit_event.*stage.start' core/pipeline/runner.sh | head -20
+- Bash: sed -n '4120,4200p' core/pipeline/runner.sh
+- Bash: sed -n '4200,4280p' core/pipeline/runner.sh
+- Bash: grep -n "^_cycle_state_init" core/pipeline/cycle-orchestrator.sh | head -5
+- Bash: sed -n '1180,1230p' core/pipeline/cycle-orchestrator.sh
+- Bash: grep -n "_cycle_state_jq_init" core/pipeline/cycle-orchestrator.sh | head -5
+- Bash: sed -n '1163,1182p' core/pipeline/cycle-orchestrator.sh
+- Bash: ( cd "$(pwd)" export REPO_ROOT="$(pwd)" source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh source core/state/artifact-persist.sh # Setup similar to the test file export TEST_TEMP_DIR="$(mktemp -d)" trap 'rm -rf "$TEST_TEMP_DIR"' EXIT setup_test_env "debug-dsfrsh1-test" WORK_REPO="$(set…
+- Bash: ( cd "$(pwd)" export REPO_ROOT="$(pwd)" source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh source core/state/artifact-persist.sh export TEST_TEMP_DIR="$(mktemp -d)" trap 'rm -rf "$TEST_TEMP_DIR"' EXIT setup_test_env "debug-dsfrsh1-test-2" install_template_overlay "$(pwd)" artifact-snap…
+- Bash: grep -n "^_find_plugin_for_stage" core/plugin-registry/registry.sh 2>/dev/null || grep -rn "^_find_plugin_for_stage" core/ | head -5
+- Bash: sed -n '22,60p' core/pipeline/dispatch.sh
+- Bash: grep -n "_ZB_STRATEGY_OUTCOME\|no_plugin" core/pipeline/strategies/fanout.sh 2>/dev/null | head -20
+- Bash: sed -n '60,80p' core/pipeline/strategies/fanout.sh
+- Bash: grep -n "plugin_hook_call\|_zb_run_hook_in_subshell" core/plugin-registry/lifecycle.sh | head -20
+- Bash: sed -n '340,420p' core/plugin-registry/lifecycle.sh
+- Bash: sed -n '420,480p' core/plugin-registry/lifecycle.sh
+- Bash: sed -n '25,75p' core/pipeline/strategies/fanout.sh
+- Bash: ( cd "$(pwd)" export REPO_ROOT="$(pwd)" source scripts/lib/helpers.sh source scripts/lib/test-helpers.sh source core/state/artifact-persist.sh export TEST_TEMP_DIR="$(mktemp -d)" trap 'rm -rf "$TEST_TEMP_DIR"' EXIT setup_test_env "debug-intake-test" mock_plugin_factory "intake" "agent" 0 >/dev/null …
+- Bash: grep -n "scan_plugin_outputs" core/plugin-registry/lifecycle.sh | head -10
+- Bash: sed -n '57,130p' core/plugin-registry/lifecycle.sh
+- Bash: sed -n '480,560p' core/plugin-registry/lifecycle.sh
+- Bash: sed -n '580,660p' core/plugin-registry/lifecycle.sh
+- Bash: sed -n '660,720p' core/plugin-registry/lifecycle.sh
+- Bash: sed -n '4200,4210p' core/pipeline/runner.sh
+- Bash: sed -n '4170,4210p' core/pipeline/runner.sh
+- Bash: sed -n '4247,4280p' core/pipeline/runner.sh

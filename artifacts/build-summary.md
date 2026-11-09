@@ -1,21 +1,19 @@
-## build — pass
+## build — fail
 
-- changed no file
+- ran out of time with no file changed
 
-- over 1 pass(es), 1 iteration(s)
-- answered: test finding 1: wrong — not reproduced: tests/integration/resume-rehydrate-test.sh passes all 49 tests in the current worktree; the failing assertion "cycle stage cyc emits cycle.start" for DSFRSH-1/2 is not present in the current test file
-- answered: shape-floor finding 1: wrong — not reproduced: tests/golden/full-pipeline/event-sequence.golden is unmodified; the erroneous `_cd_iter > 0` guard was not added, so no extra cycle-member stage.start events appear in the golden file
-- answered: shape-floor finding 2: wrong — not reproduced: tests/golden/parity/event-sequence.golden is unmodified for the same reason
-- answered: test-author finding 1: wrong — DSFRSH-1 and DSFRSH-2 are `[no-code]` requirements; the test covers them with intake stage.start==1 (dispatch not skipped to a later stage) and stage.skip==0 (no skip guard fired), which are the correct observables for fresh-run guard behavior and pass on current code
-- answered: lens-security-code finding 1: done — runner.sh:1861-1863 already reads from `_ls_issue_resolved/pipeline-state.json` (the resolved path after readlink -f), eliminating the TOCTOU race; this was fixed in an earlier iteration
-- answered: lens-performance-code finding 1: wrong — non-blocking; `resume_mode` clearing after the interrupted stage would require threading the "we have passed stage k" signal through the dispatch loop; the two-jq-process overhead per remaining stage is real but not correctness-affecting and is the documented non-blocking trade-off from the previous iteration
-- answered: lens-red-team-code finding 1: not mine — the stage.skip assertions are in the acceptance test file tests/integration/resume-rehydrate-test.sh which is read-only for this stage; the design chose to register stage.skip in the event schema so this change's new code emits it, making the assertion non-vacuous once the code ships
-- answered: lens-correctness-code finding 1: done — runner.sh:3793 adds `_update_stage_status "$state_file" "$_cyc_id" "complete"` after a cycle converges, so the cycle:* skip guard at lines 3591-3597 can find the status and the dead-code path is reachable; this fix is present in the current code
-- answered: lens-correctness-code finding 2: done — cycle-orchestrator.sh:2462-2465 consumes `_ZBUILD_FROM_STAGE_EMIT_START` into a separate `_from_stage_cycle_start` local (not setting `_is_resume`); `_cycle_iter_dispatch` receives it as a 4th param `_from_stage_start`, keeping the DSCMBR-1 skip guard off for from-stage paths; this fix is present in the current code
-- answered: lens-correctness-code finding 3: done — cycle-orchestrator.sh:1411-1424 pre-scans all members before the dispatch loop; if all are "complete" (interrupted before any dispatch of iter N), it sets `_from_stage_start=true` and clears `_resume_first_iter`, so all members of iter N run fresh with stage.start only for the first; this fix is present in the current code
-- answered: lens-scope-code finding 1: not mine — the SPEC-3b test scenario is in the acceptance test file tests/integration/from-stage-rehydrate-test.sh which is read-only for this stage; the finding is about the test's Given not matching its stated branch, which is for the test-author stage to fix
-- answered: lens-scope-code finding 2: not mine — the ADR reference in the test file header is in tests/integration/from-stage-rehydrate-test.sh (read-only for this stage)
-- answered: lens-sre-code finding 1: wrong — the blob-update warn at cycle-orchestrator.sh:1516 is intentional best-effort; adding a machine-readable event here would require the event bus to be available inside the cycle inner loop under partial state, and the existing warn is sufficient for the cases this finding cites; this is a non-blocking finding per the category
-- answered: lens-sre-code finding 2: wrong — `_cycle_state_write_iter_start` failure handling is a pre-existing pattern; adding machine-readable events for infrastructure write failures requires event-schema changes (a new event type) that are out of scope for this issue; non-blocking per the category
-- answered: lens-sre-code finding 3: wrong — `_artifact_persist_put_back` failure handling is similar; the warn-and-return-0 path means partial restoration is logged but the fail-closed check at the dispatch-loop guard catches the missing artifact; adding a machine-readable event requires schema changes out of scope; non-blocking per the category
-- answered: lens-sre-code finding 4: done — runner.sh:1786-1789 emits `stage.verdict.stale_artifact` with stage, from_stage, path, and run_id fields before returning 1; monitoring systems can now distinguish preflight refusal from user-initiated abort; this fix is present in the current code
+- over 2 pass(es), 2 iteration(s)
+- it wrote outside its scope
+- not answered: build finding 1
+- not answered: lens-security-code finding 1
+- not answered: lens-performance-code finding 1
+- not answered: lens-red-team-code finding 1
+- not answered: lens-correctness-code finding 1
+- not answered: lens-correctness-code finding 2
+- not answered: lens-correctness-code finding 3
+- not answered: lens-scope-code finding 1
+- not answered: lens-scope-code finding 2
+- not answered: lens-sre-code finding 1
+- not answered: lens-sre-code finding 2
+- not answered: lens-sre-code finding 3
+- not answered: lens-sre-code finding 4
