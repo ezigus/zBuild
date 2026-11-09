@@ -463,6 +463,104 @@ fi
 assert_eq "[#1805/DSFSTG-2] no stage.start emitted before exit 1" \
     "0" "$_s4_any_starts"
 
+# ── SPEC-3c: --from-stage with a leaf stage as target ─────────────────────────
+# DSFSTG-1 Then clause: "when <s> is a leaf stage, a stage.start event is emitted for <s>".
+# S3 and S5 both pass a cycle stage (cyc) to --from-stage; the leaf-stage branch of the
+# Then clause is never exercised there. This sub-case uses resume-minimal
+# (intake → build → test; all leaf stages) and targets build as <s>.
+print_test_section "[#1805/DSFSTG-1] --from-stage with leaf <s>=build: stage.start emitted for leaf <s>"
+
+# Given — a previous run completed intake (a leaf stage); its artifact is present in
+#   the git state branch; a new invocation uses --from-stage build (also a leaf stage).
+S6_ID="$(zb_test_issue)"
+S6_STATE_DIR="$TEST_TEMP_DIR/s6-state"
+S6_EVENTS_DIR="$TEST_TEMP_DIR/s6-events"
+S6_EVENTS_JSONL="$S6_EVENTS_DIR/events.jsonl"
+S6_STATE_FILE="$S6_STATE_DIR/pipeline-state.json"
+mkdir -p "$S6_STATE_DIR/artifacts" "$S6_EVENTS_DIR"
+
+S6_WORK_REPO="$(setup_git_temp_repo fs-rehydrate-s6)"
+install_template_overlay "$S6_WORK_REPO" resume-minimal
+
+# Add mock for test stage (intake and build mocks already exist in S3_PLUGINS_ROOT).
+mock_plugin_factory "test" "agent" 0 >/dev/null
+
+# Create intake primary artifact so the snapshot picks it up.
+printf '{"result_contract":3,"outcome":"pass","reason":"prior-run-leaf-intake"}' \
+    > "$S6_STATE_DIR/artifacts/intake-result.json"
+
+# Snapshot onto the state branch.
+_s6_snap_rc=0
+( export ZBUILD_STATE_DIR="$S6_STATE_DIR"
+  cd "$S6_WORK_REPO" && _artifact_persist_snapshot "$S6_STATE_DIR" "$S6_ID" ) \
+    >"$TEST_TEMP_DIR/s6-snap.log" 2>&1 || _s6_snap_rc=$?
+if [[ "$_s6_snap_rc" -ne 0 ]]; then
+    assert_fail "[#1805/DSFSTG-1] setup s6: snapshot failed" \
+        "rc=$_s6_snap_rc; $(cat "$TEST_TEMP_DIR/s6-snap.log" 2>/dev/null | tail -5)"
+else
+    assert_pass "[#1805/DSFSTG-1] setup s6: state branch populated (leaf-stage --from-stage path)"
+fi
+
+# Remove from disk — the artifact lives only on the state branch.
+rm -f "$S6_STATE_DIR/artifacts/intake-result.json"
+
+# State: intake=complete, build=pending, test=pending.
+jq -n \
+    --arg run_id "s6-fs-leaf-1805" \
+    --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --argjson issue "$S6_ID" \
+    '{
+        schema_version: 1, run_id: $run_id, issue: $issue,
+        stage_statuses: {intake: "complete", build: "pending", test: "pending"},
+        current_iteration: 0, self_heal_count: {}, scope_manifest_hash: "",
+        cost_ledger_pointer: 0, claim_lease_id: "", plugin_state: {},
+        status: "in_progress", updated_at: $now
+    }' > "$S6_STATE_FILE"
+
+# When — the runner starts with --from-stage build (a leaf stage, not a cycle stage).
+set +e
+( cd "$S6_WORK_REPO" && env \
+    ZBUILD_PLUGINS_ROOT="$S3_PLUGINS_ROOT" \
+    ZBUILD_STATE_DIR="$S6_STATE_DIR" \
+    ZBUILD_STATE_FILE="$S6_STATE_FILE" \
+    ZBUILD_EVENTS_DIR="$S6_EVENTS_DIR" \
+    ZBUILD_EVENTS_JSONL="$S6_EVENTS_JSONL" \
+    ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
+    ZBUILD_CONTRACT_VALIDATOR=warn \
+    ZBUILD_VISION_GATE=off \
+    PATH="$PATH" HOME="$HOME" \
+    bash "$RUNNER" --template resume-minimal \
+        --from-stage build --issue "$S6_ID" ) \
+    >"$TEST_TEMP_DIR/s6-stdout.txt" 2>"$TEST_TEMP_DIR/s6-stderr.txt"
+_s6_rc=$?
+set -e
+
+# Then — when <s>=build is a leaf stage, a stage.start event is emitted for <s>.
+# This covers the "when <s> is a leaf stage, a stage.start event is emitted for <s>"
+# sub-clause of DSFSTG-1 (not covered by S3/S5 which only test cycle-stage targets).
+# Before the change: no --from-stage leaf-stage support, or runner dispatches intake
+#   first → no stage.start for build, OR intake dispatched before build → assertion fails.
+# After the change: preflight rehydrates intake; build is dispatched as the first unit
+#   → stage.start emitted for build (leaf stage) → PASSES.
+_s6_build_starts=0
+if [[ -f "$S6_EVENTS_JSONL" ]]; then
+    _s6_build_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="build") | .type' \
+        "$S6_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_gt "[#1805/DSFSTG-1] stage.start emitted for leaf <s>=build (leaf-stage dispatch branch; covers DSFSTG-1 Then: when <s> is a leaf stage, stage.start is emitted for <s>)" \
+    "$_s6_build_starts" "0"
+
+# [#1805/DSFSTG-1]: no stage.start for intake (stage before leaf <s>=build).
+# Before the change: intake dispatched → stage.start emitted for intake → count=1 → assert 0==1 → FAILS.
+# After the change: intake is rehydrated (not dispatched) → no stage.start for intake → PASSES.
+_s6_intake_starts=0
+if [[ -f "$S6_EVENTS_JSONL" ]]; then
+    _s6_intake_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="intake") | .type' \
+        "$S6_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_eq "[#1805/DSFSTG-1] no stage.start for intake when skipped via --from-stage leaf <s>=build" \
+    "0" "$_s6_intake_starts"
+
 # ── SPEC-13: test uses a fixture containing a cyclic stage ────────────────────
 print_test_section "from-stage-rehydrate test uses a fixture containing a cyclic stage"
 
