@@ -306,12 +306,14 @@ assert_eq "--from-stage unknown stage exits 1" "1" "$_fs_rc"
 assert_contains "--from-stage unknown stage says it is not a known stage" \
     "$(cat "$TEST_TEMP_DIR/fs-unknown.err" 2>/dev/null)" "is not a known stage"
 
-# ─── Integration: --from-stage without --resume works standalone ───────────────
-print_test_section "integration: --from-stage without --resume works standalone"
+# ─── Integration: --from-stage without --resume exits 1 ───────────────────────
+print_test_section "integration: --from-stage without --resume exits 1"
 
-# #1805 (RQFROM-1): --from-stage now works standalone without --resume; it
-# rehydrates all stages before <s> and starts the run at <s>. Use status
-# "complete" so auto-resume returns fresh_start and does not interfere.
+# Reset state: use status "complete" and issue=$_ZB_ID (matching --issue) so
+# auto-resume returns fresh_start (not auto_resume) and the --from-stage check
+# fires correctly. Using in_progress would auto-resume instead, changing the
+# expected error (DSFSTG-1 / lens-scope-code finding 1, #1805 moved the check
+# after auto-resume so in_progress state auto-resumes and bypasses the check).
 jq -n \
     --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --argjson _ZB_ID "$_ZB_ID" \
@@ -333,7 +335,9 @@ set +e
 _noresume_rc=$?
 set -e
 
-assert_eq "--from-stage without --resume exits 0 (standalone mode)" "0" "$_noresume_rc"
+assert_eq "--from-stage without --resume exits 1" "1" "$_noresume_rc"
+assert_contains "--from-stage without --resume says it needs --resume" \
+    "$(cat "$TEST_TEMP_DIR/fs-noresume.err" 2>/dev/null)" "only valid with --resume"
 
 cleanup_test_env
 print_test_results
