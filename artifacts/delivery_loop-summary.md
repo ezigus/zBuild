@@ -1,4 +1,4 @@
-## delivery_loop — round 1
+## delivery_loop — round 2
 
-- build_test_cycle: pass
-- review_lenses: fail
+- build_test_cycle: fail
+- review_lenses: missing
