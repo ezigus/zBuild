@@ -634,7 +634,12 @@ mkdir -p "$S10_STATE_DIR/artifacts" "$S10_EVENTS_DIR"
 
 # Fresh git repo; _artifact_persist_snapshot writes the state branch here.
 S10_WORK_REPO="$(setup_git_temp_repo fs-rehydrate-s10)"
-install_template_overlay "$S10_WORK_REPO" from-stage-combined-resume
+# Protect fixture install: on before-code state from-stage-combined-resume may not
+# exist. With the guard, the script continues; the runner won't run; events stay
+# absent; the assert_gt assertions below FAIL naturally for the right reason.
+_s10_tpl_rc=0
+install_template_overlay "$S10_WORK_REPO" from-stage-combined-resume 2>/dev/null \
+    || _s10_tpl_rc=$?
 
 # Add mock for verify stage (intake and cycled mocks already in S3_PLUGINS_ROOT).
 mock_plugin_factory "verify" "agent" 0 >/dev/null
