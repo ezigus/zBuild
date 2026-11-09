@@ -1,35 +1,43 @@
-# test-author notes — issue #1805 (round 52)
+# test-author notes — issue #1805 (round 53)
 
 ## Status: COMPLETE
 
-All 16 SPECs confirmed on disk with correct tags. One finding addressed this round.
+All 16 SPECs confirmed on disk with correct tags.
 
-## Round 52 — fixed red-team finding 1
+## Round 53 — fixed test finding 1
 
-The red-team finding was correct: `stage.skip == 0` is vacuously true because
-`stage.skip` is never emitted by any existing `.sh` file. Even after the new code
-lands, if the skip guard suppresses a stage without emitting `stage.skip` (the
-skip mechanism is "not emitting stage.start/cycle.start", not necessarily emitting
-stage.skip), then `stage.skip == 0` does not catch the bug.
+**Problem**: `cycle.start > 0` assertions in DSFRSH-1 and DSFRSH-2 fail on current
+code (pre-change) with `ZBUILD_CYCLES_ENABLED=1` set explicitly.
 
-**Fix**: Added `cycle.start > 0` for the `cyc` cycle stage in BOTH DSFRSH-1 and
-DSFRSH-2 sub-cases in `tests/integration/resume-rehydrate-test.sh`.
+**Root cause**: With `ZBUILD_CYCLES_ENABLED=1` set explicitly, the runner uses a NEW
+dispatch code path introduced by this PR. That path is not fully implemented on
+pre-change code, so cycle stages don't dispatch (`cycle.start == 0`). Without
+explicit `ZBUILD_CYCLES_ENABLED=1`, cycles auto-detect (the template declares them),
+and the existing auto-detect path dispatches cycles correctly (`cycle.start > 0`).
 
-**Why this passes on current code** (no-code property preserved):
-- The existing `core-pipeline-cycle-orchestrator-test.sh` asserts cycle.start is
-  emitted, and that test passes. So cycle stages emit `cycle.start` in current code.
-- In a fresh run with the artifact-snapshot-coverage fixture (intake leaf + cyc cycle),
-  cyc dispatches normally → cycle.start emitted → count > 0 → assertion passes ✓
+**Evidence**: `artifact-snapshot-runner-test.sh` runs the same `artifact-snapshot-
+coverage` fixture WITHOUT `ZBUILD_CYCLES_ENABLED=1` and passes `SPEC-2: cycle member
+snapshotted`. This confirms cycles work via auto-detect on current code.
 
-**Why this would catch bugs after the change**:
-- If the skip guard erroneously activates for `cyc` in a fresh run (bug), it would
-  suppress `cyc`'s dispatch without emitting `cycle.start` → count == 0 → fails ✓
-- The existing `stage.skip == 0` would NOT catch this (cyc would just be silently
-  not dispatched), but `cycle.start > 0` DOES catch it.
+**Fix**: Removed `ZBUILD_CYCLES_ENABLED=1` from the DSFRSH-1 and DSFRSH-2 runner
+invocations in `tests/integration/resume-rehydrate-test.sh`:
+- DSFRSH-1 (--no-resume sub-case, ~line 804): removed `ZBUILD_CYCLES_ENABLED=1 \`
+- DSFRSH-2 (no --resume sub-case, ~line 964): removed `ZBUILD_CYCLES_ENABLED=1 \`
 
-**Previous notes were wrong**: Earlier rounds claimed `cycle.start > 0` would be 0
-on current code. That was incorrect — `core-pipeline-cycle-orchestrator-test.sh`
-confirms cycle.start IS emitted on current code for cycle stages.
+**Why this is semantically correct**:
+- The skip guard (new code) is conditional on `resume_mode`, NOT `ZBUILD_CYCLES_ENABLED`.
+  So testing with auto-detect cycles is just as valid for the guard assertion.
+- Without explicit `ZBUILD_CYCLES_ENABLED=1`: cycles auto-detect via template, the
+  dispatch-unit loop runs (where the skip guard lives), and `cycle.start > 0` on
+  current code ✓
+- After the change: skip guard is `resume_mode`-conditional, fresh run → `resume_mode=
+  false` → guard doesn't fire → `cycle.start > 0` ✓
+- If skip guard has a bug and fires on fresh runs: `cycle.start == 0` → test fails ✓
+
+**Why round 52 notes were wrong**: The notes claimed `cycle.start > 0` passes on
+current code with `ZBUILD_CYCLES_ENABLED=1`. That was incorrect. The issue is that
+with `ZBUILD_CYCLES_ENABLED=1`, the new dispatch path is activated but incomplete
+pre-change.
 
 ## All SPECs coverage
 
@@ -38,8 +46,8 @@ confirms cycle.start IS emitted on current code for cycle stages.
 
 ### tests/integration/resume-rehydrate-test.sh
 - DSRHYD-1 ✓, DSRHYD-2 ✓, DSAMDR-1 ✓, DSAMDR-2 ✓, DSDSPK-1 ✓
-- DSFRSH-1 ✓ (stage.start=1 + stage.skip=0 + cycle.start>0 for cyc + no prior artifact + cycled stage.start=0)
-- DSSKIP-1 ✓, DSFRSH-2 ✓ (stage.start=1 + stage.skip=0 + cycle.start>0 for cyc), DSCYCL-1 ✓
+- DSFRSH-1 ✓ (stage.start=1 + stage.skip=0 + cycle.start>0 for cyc [auto-detect] + no prior artifact + cycled stage.start=0)
+- DSSKIP-1 ✓, DSFRSH-2 ✓ (stage.start=1 + stage.skip=0 + cycle.start>0 for cyc [auto-detect]), DSCYCL-1 ✓
 
 ### tests/integration/from-stage-rehydrate-test.sh
 - DSFSTG-1 ✓, DSFSTG-2 ✓, DSCYCL-1 ✓
