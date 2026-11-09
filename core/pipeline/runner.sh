@@ -3260,6 +3260,13 @@ main() {
         # ADR-042: resolve role-then-id (uniform with leaf + parallel paths) so a
         # role-bound cycle member whose plugin id ≠ stage name resolves correctly.
         _cd_plugin_dir="$(resolve_stage_plugin "$_cd_stage" "$plugins_root" 2>/dev/null || true)"
+        # no_plugin fallback: when resolve_stage_plugin found no matching provider for
+        # any declared role, fall back to ID-based lookup to match the legacy linear
+        # path's backward-compat behaviour (runner.sh no_plugin branch, ~line 4256).
+        # ADR-042 role-then-id: this is the id part of that chain when roles go unresolved.
+        if [[ -z "$_cd_plugin_dir" ]]; then
+            _cd_plugin_dir="$(_find_plugin_for_stage "$_cd_stage" "$plugins_root" 2>/dev/null || true)"
+        fi
         if [[ -z "$_cd_plugin_dir" ]]; then
             _CYCLE_DISPATCH_VERDICT="error"
             _CYCLE_DISPATCH_VERDICT_RAW="error"
