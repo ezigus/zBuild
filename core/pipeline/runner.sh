@@ -2295,6 +2295,16 @@ main() {
         fi
     fi
 
+    # --from-stage is only valid in resume mode — checked AFTER auto-resume so
+    # a run that qualifies for auto-resume (status=in_progress, fresh timestamp)
+    # does not need an explicit --resume flag when --from-stage is also given
+    # (DSFSTG-1, #1805).
+    if [[ -n "$from_stage" ]] && ! $resume_mode; then
+        error "--from-stage is only valid with --resume"
+        _usage
+        return 1
+    fi
+
     if ! $resume_mode; then
         # Guard: clear _ZBUILD_RESUME_ACTIVE so a subprocess runner that inherits a
         # stale `true` value from a parent resume run does not enter cycle-resume mode
