@@ -1,6 +1,6 @@
 # ADR-072 — A judge reads the code itself, quotes what it complains about, and keeps its answer while nothing changes
 
-**Status:** Accepted (2026-11-03); amended 2026-11-08 (#2495, §3 §4: the scope is not judged — #2491's scope lines are removed); amended 2026-11-08 (#2491, §3 §4: each scope entry gets a line of its own, ok or outside, kept per entry); amended 2026-11-07 (#2487, §3: an escaped quote mark is the mark itself); amended 2026-11-04 (#2466, §2 §4: the old-code copy and every kept answer leave events); amended 2026-11-04 (#2467, §3: the checks answer one line per part of a SPEC); amended 2026-11-04 (#2470, §3 §4: one line per SPEC that is fine and one per failing part; design's check keeps its answer per SPEC, is given the draft by its path, and judges only the SPECs that changed); amended 2026-11-05 (#2472, §3 §4: quotes ignore formatting; a kept answer does not depend on the file its items come from; a bad line costs only its own item); amended 2026-11-05 (#2474, §3: every reply line is read with its formatting aside)
+**Status:** Accepted (2026-11-03); amended 2026-11-09 (#2505, §3: a file name in formatting marks is the file); amended 2026-11-08 (#2495, §3 §4: the scope is not judged — #2491's scope lines are removed); amended 2026-11-08 (#2491, §3 §4: each scope entry gets a line of its own, ok or outside, kept per entry); amended 2026-11-07 (#2487, §3: an escaped quote mark is the mark itself); amended 2026-11-04 (#2466, §2 §4: the old-code copy and every kept answer leave events); amended 2026-11-04 (#2467, §3: the checks answer one line per part of a SPEC); amended 2026-11-04 (#2470, §3 §4: one line per SPEC that is fine and one per failing part; design's check keeps its answer per SPEC, is given the draft by its path, and judges only the SPECs that changed); amended 2026-11-05 (#2472, §3 §4: quotes ignore formatting; a kept answer does not depend on the file its items come from; a bad line costs only its own item); amended 2026-11-05 (#2474, §3: every reply line is read with its formatting aside)
 **Issue:** #2464 (runs 41643063636 and 41679237388 on #1805)
 **Amends:** ADR-068 §6 §7 (answers are kept in a stage's result; a check keeps a verdict whose inputs have not changed), ADR-017 §11 (`tools: read`), ADR-069 §2 (a `[done]` claim is read in the code from before the change, by file), ADR-067 §8 (a judging call can read and search files, and nothing else)
 **Related:** ADR-060 §6 (one re-ask), ADR-054 §7 (teardown frees run resources), ADR-066 (every ADR statement has a test)
@@ -169,10 +169,18 @@ On #1805 run 42439063480 design's first try ($2.26) failed on a line that said n
 
 The coverage check no longer judges the design's scope (ADR-070 §4 amendment, #2495). This removes the `SCOPE:` line from §3, and its entry kept per scope entry from §4, which #2491 added. A `SCOPE:` line in a reply is ignored. A design that goes beyond the issue is judged by its SPECs' `outside`. The `requirements` item's fingerprint and disputes are as #2491 left them: they do not depend on the scope.
 
+## Amendment 2026-11-09 (#2505) — §3: a file name in formatting marks is the file
+
+On #1805 run 42556446368 issue-acceptance quoted `` `tests/integration/pipeline-resume-test.sh`:"…" ``, with the file name in backticks. The check took the backticks as part of the name and answered "not a file of the repository"; asked again with that reason, the judge wrote the same, and its answer was thrown away.
+
+- **The backticks and `*` marks around a quote's file name are left out** before the file is looked up, as formatting is left out of the text (#2472). A file that is not there is still refused, and named without the marks.
+
 ## Enforced by
 
 - §3 §4 amendment 2026-11-08 (#2495: the scope is not judged) → `tests/unit/design-coverage-test.sh` NS1–NS3, X3; `tests/unit/judge-quotes-test.sh` Q2 (a scope line is no finding, and needs no line)
 - §3 §4 amendment 2026-11-08 (#2491: a line per scope entry — removed by #2495) → `tests/unit/design-coverage-test.sh` NS1–NS3
+
+- §3 amendment 2026-11-09 (#2505: a file name in formatting marks is the file) → `tests/unit/judge-quotes-test.sh` Q8
 
 - §3 amendment 2026-11-07 (#2487: an escaped quote mark is the mark itself) → `tests/unit/judge-quotes-test.sh` Q7
 

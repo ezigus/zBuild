@@ -24,6 +24,7 @@
 #    characters themselves (#2487): on #1805 run 42397891946 issue-acceptance
 #    quoted a line holding `"$dry_run"` as \"$dry_run\", and the check refused
 #    both its quotes
+# Q8 a file name in backticks or bold marks is the file (#1805 run 42556446368)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -336,6 +337,16 @@ assert_eq "[Q7] ...and a backslash that is really in the file still holds" "ok" 
 assert_eq "[Q7] ...as does \\\\ written for it" "ok" "$(_q 'scripts/cfg.sh:"_gate \"\\$dry_run\""')"
 assert_eq "[Q7] \\\" in the item's own words is a quote mark" "ok" "$(_q '"run \"zbuild\" now"' 'please run "zbuild" now')"
 assert_contains "[Q7] words that are not there are still refused" "$(_q 'scripts/cfg.sh:"if ! _gate \"$wet_run\""')" "bad:"
+
+print_test_section "Q8: a file name in formatting marks is the file"
+# On #1805 run 42556446368 issue-acceptance wrote `tests/...-test.sh`:"…" and
+# the check took the backticks as part of the name: "not a file of the repository".
+assert_eq "[Q8] a file name in backticks" "ok" "$(_q '`scripts/cfg.sh`:"line one"')"
+assert_eq "[Q8] ...or in bold marks" "ok" "$(_q '**scripts/cfg.sh**:"line one"')"
+assert_contains "[Q8] a missing file in backticks is still refused" "$(_q '`scripts/nope.sh`:"line one"')" "bad:"
+assert_contains "[Q8] ...and named without the marks" "$(_q '`scripts/nope.sh`:"line one"')" "names scripts/nope.sh,"
+_Q8P=""; judge_quote_path_v _Q8P '`scripts/cfg.sh`:"line one"' "$XR" "$BASE"
+assert_eq "[Q8] the file a kept answer depends on is named without the marks" "scripts/cfg.sh" "$_Q8P"
 
 cleanup_test_env
 print_test_results

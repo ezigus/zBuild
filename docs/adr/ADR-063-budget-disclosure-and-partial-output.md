@@ -3,6 +3,7 @@
 **Status:** Accepted, amended 2026-10-05 by #2032
 **Issue:** #2032
 **Amends:** ADR-054 §6 (vocabulary updated to `timed_out`/`out_of_turns` per #2187)
+**Amended:** 2026-11-09 (#2505) — the 2026-10-06 (#2325) earlier-round notes label is withdrawn.
 **Amended:** 2026-10-05 (#2032) — vocabulary updated per #2187: the stale disposition word and the stale §4 engine action word are retired; `timed_out`/`out_of_turns` replace the former, and the engine's timeout-retry path (ADR-029) replaces the latter; §1 per-stage `_<stage>_budget_guidance` helpers replace the single shared helper.
 **Related:** ADR-029 (budget escalation), ADR-060 (structure to the engine, prose to humans), #1986 (summary ingestion)
 
@@ -227,6 +228,7 @@ element, and the name cannot leave the artifacts folder), and by
 `scripts/lib/lint-stage-checkpoint.sh` (every declared path resolves).
 
 **Amended 2026-10-06 (#2325): notes from an earlier outer round are labelled.**
+**Withdrawn 2026-11-09 (#2505).** The prompt contract (ADR-067 §8, #2358) removed this label, and ADR-050 §9 shows an earlier run's notes as the stage's own. Nothing below is in force; it is kept as the record of what was decided.
 The notes file is kept across the rounds of the outer loop (ADR-068), because
 what a stage explored is still useful. But a new outer round only starts because
 the checks rejected the last one, so those notes do not describe the current
@@ -238,11 +240,8 @@ reference only. The notes are not changed or deleted. Outer round 1, and a retry
 inside the same round, read as before. The outermost loop publishes its round as
 `ZBUILD_OUTER_ROUND` (an inner loop does not change it); when a round's first
 prompt is built, the engine records in `<notes>.rounds` how long the notes file
-was, and everything before that point belongs to earlier rounds. Enforced by
-`tests/unit/checkpoint-outer-round-test.sh` O1 (each stage knows its outer round,
-nested loops included), O2 (round 2 labels round 1's notes), O3 (round 1 and its
-retries are unchanged), O4 (a retry inside round 2 reads its own notes as before)
-and O5 (the notes file is kept).
+was, and everything before that point belongs to earlier rounds. (Its test was
+removed with the label.)
 
 **Amended 2026-10-12 (ADR-067 §8): every stage's notes file is the engine's.**
 No manifest declares a `role: checkpoint` output any more, and the separate notes
