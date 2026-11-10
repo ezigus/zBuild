@@ -8,7 +8,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 RESOLVER_SH="$REPO_ROOT/core/pipeline/template-resolver.sh"
 
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "core/pipeline/template-resolver — search path and extends validation (ADR-016)"
 setup_test_env "template-resolver-search-path"

@@ -20,7 +20,7 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-for _dep in scripts/lib/helpers.sh scripts/lib/test-helpers.sh; do
+for _dep in scripts/lib/helpers.sh tests/lib/test-helpers.sh; do
     if [[ ! -f "$REPO_ROOT/$_dep" ]]; then
         printf 'run-branch-held-diagnostic-test: required dependency missing: %s\n' \
             "$REPO_ROOT/$_dep" >&2
@@ -29,8 +29,8 @@ for _dep in scripts/lib/helpers.sh scripts/lib/test-helpers.sh; do
 done
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 # shellcheck source=../../scripts/lib/worktree.sh
 source "$REPO_ROOT/scripts/lib/worktree.sh"
 

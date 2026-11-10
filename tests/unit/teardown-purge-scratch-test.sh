@@ -18,7 +18,7 @@
 # nothing else. A failed run keeps its complete evidence.
 set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "purge deletes the scratch tree, and only that (#2024)"
 setup_test_env "teardown-purge-scratch"

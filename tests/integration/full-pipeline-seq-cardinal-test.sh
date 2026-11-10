@@ -24,7 +24,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
 
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "full pipeline cardinal seq labels (#682)"
 setup_test_env "full-pipeline-seq-cardinal"

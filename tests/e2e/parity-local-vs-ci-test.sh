@@ -6,8 +6,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
-source "$REPO_ROOT/scripts/lib/golden.sh"
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
+source "$REPO_ROOT/tests/lib/golden.sh"
 
 print_test_header "CI/CLI parity — engine behavior is environmentally agnostic (ADR-010)"
 setup_test_env "parity-local-vs-ci"

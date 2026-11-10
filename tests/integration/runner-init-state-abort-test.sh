@@ -22,8 +22,8 @@ RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "runner — init_state write failure aborts the run (#1773)"
 setup_test_env "runner-init-state-abort"

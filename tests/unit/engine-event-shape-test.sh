@@ -9,10 +9,10 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
-# shellcheck source=../../scripts/lib/golden.sh
-source "$REPO_ROOT/scripts/lib/golden.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/golden.sh
+source "$REPO_ROOT/tests/lib/golden.sh"
 
 print_test_header "engine event shapes (#385) — model.route, model.outcome, bus envelope, scope-manifest fence"
 

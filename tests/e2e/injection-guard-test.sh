@@ -8,7 +8,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ZBUILD_CLI="$REPO_ROOT/scripts/zbuild"
 
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "injection-guard — shell metacharacter safety in goal (E2E)"
 setup_test_env "e2e-injection-guard"

@@ -220,7 +220,7 @@ per manifest per walk. Each is a later ratchet; this ADR does not schedule them.
 
 > **Amended 2026-10-24: more of the named sites are one pass.** The budget's run is one mocked
 > pipeline (4,808 programs), but a single test file started up to 22,701, because tests run the same
-> engine paths many times. `scripts/lib/fork-census.sh <cmd...>` now counts any command, with the
+> engine paths many times. `tests/lib/fork-census.sh <cmd...>` now counts any command, with the
 > same counter the budget uses. Measured on the ten slowest files, these were the largest sites, and
 > each now reads its input once:
 > - `manifest_graph_collect` read every manifest's `id:` with its own `awk` on a miss, and a stage
@@ -303,7 +303,7 @@ The mocked run's cost is therefore also measured in the two parts that drive it:
 
 - A fork regression fails CI with its call site named, instead of surfacing months later as a
   slower daemon.
-- Test authors get the harness for free: `bash scripts/lib/fork-census.sh <cmd...>` prints the
+- Test authors get the harness for free: `bash tests/lib/fork-census.sh <cmd...>` prints the
   count, the top call sites and the per-file totals of any command; `fork_census_traced` and
   `fork_census_count` are the same two functions the budget test uses.
 - The number is platform-sensitive at the margin (`gtimeout` vs `timeout`, `stat` flavours);
@@ -312,7 +312,7 @@ The mocked run's cost is therefore also measured in the two parts that drive it:
 
 ## Implementation Notes (#2151, #2152)
 
-- `scripts/lib/fork-census.sh` — `fork_census_traced` (the harness), `fork_census_count` (the
+- `tests/lib/fork-census.sh` — `fork_census_traced` (the harness), `fork_census_count` (the
   classifier and tally), and a command-line census; `tests/e2e/fork-budget-test.sh` sources it and
   holds `FORK_BUDGET` with its ratchet history in the comment above it.
 - `core/plugin-registry/manifest-index.sh` (#2152) — the first §4 application: one find + one awk

@@ -42,8 +42,8 @@ _PRISTINE_HOME="$HOME"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 # Both canaries live outside TEST_TEMP_DIR so the master trap does not remove
 # them; hook into the standard cleanup point so they go on exit/signal.
@@ -155,7 +155,7 @@ fi
 # which the #971 re-entrancy guard deliberately exempts.
 _empty_probe="$(ZBUILD_STATE_DIR="" ZB_ROOT="$REPO_ROOT" bash -c '
     source "$ZB_ROOT/scripts/lib/helpers.sh"
-    source "$ZB_ROOT/scripts/lib/test-helpers.sh"
+    source "$ZB_ROOT/tests/lib/test-helpers.sh"
     setup_test_env "empty-state-dir-probe" >/dev/null 2>&1
     cleanup_test_env >/dev/null 2>&1
     printf "%s" "${ZBUILD_STATE_DIR+set}"

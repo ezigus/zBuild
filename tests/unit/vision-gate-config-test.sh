@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 source "$REPO_ROOT/core/plugin-registry/manifest-validation.sh"   # yaml_get
 source "$REPO_ROOT/core/config/config.sh"                          # zbuild_config_get
 source "$REPO_ROOT/scripts/lib/vision.sh"                          # vision_gate_mode

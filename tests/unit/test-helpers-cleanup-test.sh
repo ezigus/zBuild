@@ -18,8 +18,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 print_test_header "setup_test_env: master trap cleans named TEST_TEMP_DIR (Wave 19-L, #749)"
 
 # Spawn a child shell that (a) sources test-helpers.sh, (b) calls
@@ -34,7 +34,7 @@ CHILD_OUT="$WITNESS_DIR/child-tempdir.txt"
 bash -c "
     set -euo pipefail
     source '$REPO_ROOT/scripts/lib/helpers.sh'
-    source '$REPO_ROOT/scripts/lib/test-helpers.sh'
+    source '$REPO_ROOT/tests/lib/test-helpers.sh'
     setup_test_env 'wave-19-l-child'
     # Surface the temp dir path so we can check it from the parent.
     printf '%s' \"\$TEST_TEMP_DIR\" > '$CHILD_OUT'
@@ -69,7 +69,7 @@ CHILD_AUTO_OUT="$WITNESS_DIR/child-auto-tempdir.txt"
 bash -c "
     set -euo pipefail
     source '$REPO_ROOT/scripts/lib/helpers.sh'
-    source '$REPO_ROOT/scripts/lib/test-helpers.sh'
+    source '$REPO_ROOT/tests/lib/test-helpers.sh'
     printf '%s' \"\$AUTO_TEST_TEMP_DIR\" > '$CHILD_AUTO_OUT'
 " 2>/dev/null || true
 

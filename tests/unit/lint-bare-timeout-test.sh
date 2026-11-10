@@ -10,7 +10,7 @@
 #   L3  text that only mentions the word (comments, strings, variable names)
 #   L4  a line carrying `# lint-bare-timeout:allow: <reason>`; an allow with no
 #       reason is itself a failure
-#   L5  scripts/lib/test-helpers.sh (a test-only mock) and anything under legacy-DoNotUse/
+#   L5  tests/ (test-helpers.sh holds a test-only mock) and anything under legacy-DoNotUse/
 #   L6  the real tree — and `npm run lint` runs the lint
 #   L7  scripts/release.sh's `pr checks` call is exempted with a reason
 set -euo pipefail
@@ -19,8 +19,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "lint-bare-timeout — one helper for every timeout bound (#1752)"
 setup_test_env "lint-bare-timeout"
@@ -84,13 +84,11 @@ assert_eq "[L4] an allow with no reason fails" "rc=1" \
     "$(_rc scripts 'timeout 5 x  # lint-bare-timeout:allow')"
 
 print_test_section "L5: exemptions"
-_root="$(mktemp -d "$TEST_TEMP_DIR/root.XXXXXX")"; mkdir -p "$_root/scripts/lib" "$_root/legacy-DoNotUse/scripts"
-printf 'command -v timeout >/dev/null || x=1\ntimeout 5 y\n' > "$_root/scripts/lib/test-helpers.sh"
+_root="$(mktemp -d "$TEST_TEMP_DIR/root.XXXXXX")"; mkdir -p "$_root/tests/lib" "$_root/legacy-DoNotUse/scripts"
+printf 'command -v timeout >/dev/null || x=1\ntimeout 5 y\n' > "$_root/tests/lib/test-helpers.sh"
 printf 'timeout 5 y\n' > "$_root/legacy-DoNotUse/scripts/old.sh"
 _rc_e=0; bash "$LINT" "$_root" >/dev/null 2>&1 || _rc_e=$?
-assert_eq "[L5] scripts/lib/test-helpers.sh and legacy-DoNotUse/ are not scanned" "0" "$_rc_e"
-assert_contains "[L5] the test-helpers exemption states its reason" \
-    "$(/usr/bin/grep -F 'test-helpers.sh' "$LINT" 2>/dev/null || true)" "mock"
+assert_eq "[L5] tests/lib/test-helpers.sh and legacy-DoNotUse/ are not scanned" "0" "$_rc_e"
 
 print_test_section "L6: the real tree"
 _rc_t=0; _out_t="$(bash "$LINT" "$REPO_ROOT" 2>&1)" || _rc_t=$?

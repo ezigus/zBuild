@@ -52,7 +52,7 @@
 18	tests/unit/persona-agent-delivery-test.sh
 18	tests/unit/test-author-loop-test.sh
 18	tests/unit/test-timing-cpu-record-test.sh
-17	core/router/tests/route-loop-unit-test.sh
+17	tests/unit/route-loop-unit-test.sh
 17	tests/integration/acceptance-gate-fails-closed-test.sh
 17	tests/integration/artifact-contract-test.sh
 17	tests/integration/dispatch-rc-signal-boundary-test.sh
@@ -68,7 +68,7 @@
 16	tests/unit/persist-push-entrypoint-test.sh
 16	tests/unit/stage-prompt-contract-test.sh
 16	tests/unit/vision-admission-gate-test.sh
-15	core/pipeline/tests/runner-unit-test.sh
+15	tests/unit/runner-unit-test.sh
 15	plugins/agent/review-lens/tests/review-lens-context-unit-test.sh
 15	tests/integration/core-pipeline-verdict-indicators-test.sh
 15	tests/integration/core-plugin-registry-test.sh
@@ -256,7 +256,7 @@
 5	tests/unit/test-author-correspondence-test.sh
 5	tests/unit/test-plugin-empty-diff-test.sh
 5	tests/unit/write-boundary-diagnostic-wired-test.sh
-4	core/router/tests/route-unit-test.sh
+4	tests/unit/route-unit-test.sh
 4	plugins/tool/output-github-comment/tests/output-stdout-test.sh
 4	plugins/tool/pr-open/tests/pr-open-unsettled-test.sh
 4	plugins/tool/test/tests/findings-unit-test.sh
@@ -295,7 +295,7 @@
 4	tests/unit/shape-floor-detail-output-test.sh
 4	tests/unit/summary-mandatory-test.sh
 4	tests/unit/test-stage-timing-history-test.sh
-3	core/state/tests/state_helpers-unit-test.sh
+3	tests/unit/state_helpers-unit-test.sh
 3	plugins/agent/monitor/tests/monitor-test.sh
 3	plugins/agent/review-lens/tests/review-lens-v2-result-test.sh
 3	tests/integration/core-state-resume-exec-test.sh
@@ -457,7 +457,7 @@
 2	tests/unit/worktree-reclaim-test.sh
 2	tests/unit/worktree-sparse-hardening-test.sh
 2	tests/unit/write-boundary-window-test.sh
-1	core/state/tests/resume-unit-test.sh
+1	tests/unit/resume-unit-test.sh
 1	plugins/agent/deploy/tests/deploy-release-interface-test.sh
 1	plugins/agent/deploy/tests/deploy-test.sh
 1	plugins/agent/review-lens/tests/review-lens-partial-notes-test.sh
@@ -586,7 +586,7 @@
 1	tests/unit/write-boundary-allow-and-guards-test.sh
 1	tests/unit/write-boundary-git-internals-test.sh
 1	tests/unit/yaml-get-cache-test.sh
-0	core/cache/tests/cache-contract-unit-test.sh
+0	tests/unit/cache-contract-unit-test.sh
 0	plugins/agent/intake/tests/intake-lib-extraction-test.sh
 0	plugins/tool/cache-gh-actions/tests/cache-gh-actions-test.sh
 0	plugins/tool/cache-gh-actions/tests/cache-gh-actions-unit-test.sh
@@ -663,7 +663,6 @@
 0	tests/unit/deferred-tracker-sanitize-test.sh
 0	tests/unit/design-checks-plain-test.sh
 0	tests/unit/design-cycle-on-max-abort-test.sh
-0	tests/unit/diff-stat-test.sh
 0	tests/unit/dispatch-disposition-wiring-test.sh
 0	tests/unit/dispatch-rc-guard-test.sh
 0	tests/unit/dispatched-stage-plugins-v2-test.sh

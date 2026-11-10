@@ -12,12 +12,12 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # Source test-helpers in the OUTER process so we have working asserts for the
 # meta-test. The behaviors we exercise must be tested in CLEAN subshells (so
 # the env var and counter mutations cannot leak between cases).
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "ZBUILD_TEST_QUIET mode (#600)"
 
-HELPERS_PATH="$REPO_ROOT/scripts/lib/test-helpers.sh"
+HELPERS_PATH="$REPO_ROOT/tests/lib/test-helpers.sh"
 
 # Run a snippet in a fresh bash subshell that sources test-helpers.sh, then
 # captures all stdout. Stderr is dropped to keep assertions on stdout content.

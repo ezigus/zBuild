@@ -3,12 +3,12 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# shellcheck source=../../../scripts/lib/helpers.sh
+# shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "core/cache/contract.sh — co-located unit tests"
 setup_test_env "cache-contract-colocated"
@@ -21,11 +21,11 @@ export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 mkdir -p "$ZBUILD_CACHE_DIR" "$TEST_TEMP_DIR/events"
 
-# shellcheck source=../../../core/plugin-registry/registry.sh
+# shellcheck source=../../core/plugin-registry/registry.sh
 source "$REPO_ROOT/core/plugin-registry/registry.sh"
-# shellcheck source=../../../core/config/config.sh
+# shellcheck source=../../core/config/config.sh
 source "$REPO_ROOT/core/config/config.sh"
-# shellcheck source=../../../core/cache/contract.sh
+# shellcheck source=../../core/cache/contract.sh
 source "$REPO_ROOT/core/cache/contract.sh"
 
 # ── cache_pull miss → CACHE_MISS + exit 0 ────────────────────────────────────

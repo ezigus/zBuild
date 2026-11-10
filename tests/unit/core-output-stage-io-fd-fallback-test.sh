@@ -11,8 +11,8 @@ STAGE_IO_SH="$REPO_ROOT/core/output/stage-io.sh"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "stage-io fd-fallback (#586): warn once + set fd=2 + emit event"
 setup_test_env "stage-io-fd-fallback"

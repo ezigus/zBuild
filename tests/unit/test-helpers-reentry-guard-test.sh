@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests: scripts/lib/test-helpers.sh re-entrancy guard (#971)
+# Tests: tests/lib/test-helpers.sh re-entrancy guard (#971)
 # A test invoked from inside another test run must abort fast (exit 2) instead of
 # fork-bombing the pipeline test stage (the #929/#983/#971 recursion class). A
 # fixture-isolated nested run (ZBUILD_TESTS_DIR set) is exempt, and a clean
@@ -11,12 +11,12 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
+# shellcheck source=../../tests/lib/test-helpers.sh
 # Sourcing this sets ZBUILD_TEST_EXEC_ACTIVE=1 in THIS process, so any child test
 # we spawn below inherits it — exactly the nested-invocation condition under test.
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
-print_test_header "scripts/lib/test-helpers.sh — re-entrancy guard (#971)"
+print_test_header "tests/lib/test-helpers.sh — re-entrancy guard (#971)"
 setup_test_env "reentry-guard"
 _test_cleanup_hook() { cleanup_test_env; }
 
@@ -26,7 +26,7 @@ _fixture="$TEST_TEMP_DIR/nested-fixture-test.sh"
 cat > "$_fixture" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 echo "FIXTURE_RAN"
 exit 0
 EOF

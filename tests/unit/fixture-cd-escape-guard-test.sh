@@ -34,8 +34,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "git fixtures never escape into the caller's checkout (#2103)"
 setup_test_env "fixture-cd-escape-guard"
@@ -127,7 +127,7 @@ assert_eq "[SPEC-2] plain subshell under file-level set -e is not flagged" "" "$
 # ── SPEC-1: the real tree ────────────────────────────────────────────────────
 _files=()
 while IFS= read -r f; do _files+=("$f"); done < <(
-    { printf '%s\n' "$REPO_ROOT/scripts/lib/test-helpers.sh"
+    { printf '%s\n' "$REPO_ROOT/tests/lib/test-helpers.sh"
       find "$REPO_ROOT/tests" "$REPO_ROOT/plugins" "$REPO_ROOT/core" -name '*-test.sh' -not -path '*/legacy-DoNotUse/*' 2>/dev/null
     } | grep -v '/fixture-cd-escape-guard-test.sh$' | sort -u)
 _hits="$(_scan_cd_escapes "${_files[@]}")"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/lib/lint-test-engine-state.sh — #1799: a test makes the engine's loop
 # state (`cycle_iterations` in pipeline-state.json) with the engine's own
-# writers — zb_engine_loop_state in scripts/lib/test-helpers.sh — never by hand.
+# writers — zb_engine_loop_state in tests/lib/test-helpers.sh — never by hand.
 #
 # A hand-written `cycle_iterations` holds whatever its author assumed. #1799's
 # first attempt read an `iterations_used` field the engine never writes (it

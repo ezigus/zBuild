@@ -25,8 +25,8 @@ _SOURCE_VERSION_BEFORE="$(cat "$REPO_ROOT/VERSION")"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "release path is repo-agnostic — targets ZBUILD_REPO_ROOT, not the install dir (#1487)"
 setup_test_env "release-repo-agnostic"

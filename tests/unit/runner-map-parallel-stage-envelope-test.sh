@@ -27,8 +27,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 RUNNER_SH="$REPO_ROOT/core/pipeline/runner.sh"
 
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "runner — parallel:/map: stage envelope (ADR-039, ADR-047 §2)"
 setup_test_env "runner-map-parallel-stage-envelope"

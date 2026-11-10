@@ -547,7 +547,7 @@ facts made that possible, and both are general, not specific to that test:
    and has zero unguarded `cd`s; `tests/` is not shellchecked, and the shape
    that escaped is the one SC2164 misses anyway.
 
-The same helper in `scripts/lib/test-helpers.sh` (`setup_git_temp_repo`) had
+The same helper in `tests/lib/test-helpers.sh` (`setup_git_temp_repo`) had
 the identical shape minus the push: with an unreachable `TEST_TEMP_DIR` it
 committed `seed.txt` into the caller's checkout and renamed the caller's branch
 to `main`, returning 0.

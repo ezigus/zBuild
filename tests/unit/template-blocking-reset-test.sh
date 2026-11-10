@@ -17,8 +17,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "load_template: stale _TPL_STAGE_BLOCKING_<id> cleared between loads"
 setup_test_env "template-blocking-reset"
@@ -81,7 +81,7 @@ cold_out="$(
     export ZBUILD_PLUGINS_ROOT ZBUILD_STATE_DIR
     bash -c '
         source "$1/scripts/lib/helpers.sh"
-        source "$1/scripts/lib/test-helpers.sh"
+        source "$1/tests/lib/test-helpers.sh"
         source "$1/core/pipeline/template.sh"
         load_template "$2" >/dev/null 2>&1
         printf "%s" "${_TPL_STAGE_BLOCKING_secret_scan:-}"

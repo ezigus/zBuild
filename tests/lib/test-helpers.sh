@@ -319,7 +319,7 @@ _ZB_TEST_ISOLATED_VARS=(
 # Code, config and the test runner's own channels: read, or deliberately shared
 # by run-tests.sh across files (the timing file).
 _ZB_TEST_INHERITED_VARS=(
-    ZBUILD_PLUGINS_ROOT ZBUILD_PLUGINS_DIR ZBUILD_PLUGIN_DIR ZBUILD_CORE_DIR
+    ZBUILD_PLUGINS_ROOT ZBUILD_PLUGINS_DIR ZBUILD_PLUGIN_DIR
     ZBUILD_CONTRACT_LIB_DIR ZBUILD_REPO_ROOT ZBUILD_MAIN_REPO_ROOT ZBUILD_PROJECT_ROOT
     ZBUILD_CONFIG_FILE ZBUILD_MODELS_FILE ZBUILD_DISABLED_FILE
     ZBUILD_SECRET_SCAN_ALLOWLIST_FILE ZBUILD_TESTS_DIR ZBUILD_MUTATION_DIR
@@ -332,8 +332,8 @@ _ZB_TEST_INHERITED_VARS=(
 _zb_test_stage_blocks() {
     local dir="$1"
     (
-        # shellcheck source=./stage-prompt.sh
-        source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/stage-prompt.sh" || exit 1
+        # shellcheck source=../../scripts/lib/stage-prompt.sh
+        source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/scripts/lib/stage-prompt.sh" || exit 1
         mkdir -p "$dir" "$dir/repo" "$dir/state" || exit 1
         _stage_block_from_repo test-stage "$dir/repo" > "$dir/from-repo.md"
         _stage_blocks_write_pw_rules "$dir" test-stage "$dir/state" "$dir/no-manifest.yaml" \
@@ -348,8 +348,8 @@ zb_test_previous_work() {
     local state_file="$1" proot="$2" consumer="${3:-later}" sd
     sd="$(dirname "$state_file")"
     (
-        # shellcheck source=./stage-prompt.sh
-        source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/stage-prompt.sh" || exit 1
+        # shellcheck source=../../scripts/lib/stage-prompt.sh
+        source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/scripts/lib/stage-prompt.sh" || exit 1
         declare -F _inputs_resolve_stage >/dev/null 2>&1 \
             || source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/core/pipeline/input-resolve.sh" || exit 1
         _stage_block_previous_work "$consumer" "$sd" "$proot" \
@@ -980,7 +980,7 @@ outputs:
 EOF
     local _outcome=pass _srl
     [[ "$exit_code" -ne 0 ]] && _outcome=broken
-    _srl="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/stage-result.sh"
+    _srl="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/scripts/lib/stage-result.sh"
     cat > "$dir/plugin.sh" <<EOF
 ${fn}() {
     local _art; _art="\${ZBUILD_ARTIFACT_DIR:-\$(dirname "\$2")/artifacts}"
@@ -1025,7 +1025,7 @@ zb_engine_loop_state() {
 # Usage: mock_result_line <id> [outcome=pass]
 mock_result_line() {
     local id="$1" outcome="${2:-pass}" srl
-    srl="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/stage-result.sh"
+    srl="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/scripts/lib/stage-result.sh"
     # shellcheck disable=SC2016  # the $-expressions are for the stub, not here
     printf '%s' 'local _art; _art="${ZBUILD_ARTIFACT_DIR:-$(dirname "$2")/artifacts}"; mkdir -p "$_art"; '
     printf 'source "%s"; stage_result_write "$_art/%s-result.json" %s "mock %s"' "$srl" "$id" "$outcome" "$id"
@@ -1311,7 +1311,7 @@ install_template_overlay() {
     if [[ -d "$_repo/.git/info" ]] && ! grep -qxF '/.zbuild/' "$_repo/.git/info/exclude" 2>/dev/null; then
         printf '/.zbuild/\n' >> "$_repo/.git/info/exclude"
     fi
-    # Repo root derived from THIS helper's location (…/scripts/lib → repo root),
+    # Repo root derived from THIS helper's location (…/tests/lib → repo root),
     # not the caller's cwd, so it resolves regardless of where the test runs.
     local _hdir _src_root
     _hdir="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
@@ -1443,7 +1443,7 @@ zb_expected_run_state_dir() {
         cd "$repo" 2>/dev/null || exit 1
         # shellcheck source=../../core/state/layout.sh
         source "$root/core/state/layout.sh" || exit 1
-        # shellcheck source=./identity.sh
+        # shellcheck source=../../scripts/lib/identity.sh
         source "$root/scripts/lib/identity.sh" || exit 1
         local key=""
         key="$(zbuild_run_key "$issue" "$goal" 2>/dev/null || true)"
@@ -1458,7 +1458,7 @@ zb_test_issue_output() {
     local dir="$1" text="$2"
     mkdir -p "$dir"
     declare -F stage_result_write >/dev/null 2>&1 \
-        || source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/stage-result.sh"
+        || source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../.." && pwd)/scripts/lib/stage-result.sh"
     stage_result_write "$dir/intake-result.json" pass "took in the goal" \
         "$(jq -nc --arg t "$text" '{goal_len: ($t | length), platform_count: 1, issue_text: $t}')" >/dev/null
     printf '%s\n' "$dir/intake-result.json"

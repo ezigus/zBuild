@@ -34,8 +34,8 @@ RUN_TESTS="$REPO_ROOT/scripts/run-tests.sh"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "run-tests.sh cross-tier concurrency (#997)"
 setup_test_env "run-tests-tier-concurrency"
@@ -91,7 +91,6 @@ _all() {
       -u ZBUILD_TIER_CONCURRENCY -u ZBUILD_TIER_BUDGET -u ZBUILD_TEST_MAX_JOBS -u UPDATE_GOLDEN \
       ZBUILD_TESTS_DIR="$td" \
       ZBUILD_PLUGINS_DIR="$EMPTY_DIR" \
-      ZBUILD_CORE_DIR="$EMPTY_DIR" \
       ZBUILD_MUTATION_DIR="$EMPTY_MUT" \
       ZBUILD_LINT_CMD=true \
       ZBUILD_PARALLEL_SAFE_TIERS="unit integration e2e golden" \
@@ -225,7 +224,6 @@ env -u ZBUILD_TEST_PARALLEL_JOBS -u ZBUILD_PARALLEL_SAFE_TIERS \
     -u ZBUILD_TIER_CONCURRENCY -u ZBUILD_TIER_BUDGET -u UPDATE_GOLDEN \
     ZBUILD_TESTS_DIR="$FAST" \
     ZBUILD_PLUGINS_DIR="$EMPTY_DIR" \
-    ZBUILD_CORE_DIR="$EMPTY_DIR" \
     ZBUILD_MUTATION_DIR="$EMPTY_MUT" \
     ZBUILD_LINT_CMD=true \
     ZBUILD_PARALLEL_SAFE_TIERS="unit integration e2e golden" \
@@ -250,7 +248,7 @@ assert_eq "[SPEC-7] CONCURRENCY=0 stdout identical to concurrent" "$_conc_out" "
 
 # ─── [SPEC-8] GUARD: single-tier + --files unaffected ────────────────────────
 _st_out="$(env -u ZBUILD_TEST_PARALLEL_JOBS ZBUILD_TESTS_DIR="$FAST" \
-  ZBUILD_PLUGINS_DIR="$EMPTY_DIR" ZBUILD_CORE_DIR="$EMPTY_DIR" \
+  ZBUILD_PLUGINS_DIR="$EMPTY_DIR" \
   bash "$RUN_TESTS" --tier unit 2>/dev/null)"; _st_rc=$?
 assert_eq "[SPEC-8] --tier unit summary unchanged" "unit: 1/1 passed" "$_st_out"
 assert_eq "[SPEC-8b] --tier unit exit 0" "0" "$_st_rc"

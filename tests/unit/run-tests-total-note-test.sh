@@ -25,8 +25,8 @@ RUN_TESTS="$REPO_ROOT/scripts/run-tests.sh"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "run-tests.sh total: note aggregation (#1663)"
 setup_test_env "run-tests-total-note"
@@ -74,7 +74,6 @@ _all_fix() {
         -u ZBUILD_TIER_CONCURRENCY -u ZBUILD_TIER_BUDGET -u UPDATE_GOLDEN \
         ZBUILD_TESTS_DIR="$fix_dir" \
         ZBUILD_PLUGINS_DIR="$EMPTY_DIR" \
-        ZBUILD_CORE_DIR="$EMPTY_DIR" \
         ZBUILD_MUTATION_DIR="$EMPTY_MUT" \
         ZBUILD_LINT_CMD=true \
         ZBUILD_PARALLEL_SAFE_TIERS="unit integration e2e golden" \

@@ -17,7 +17,7 @@
 # plugins/tool/test/plugin.sh:387, and three integration tests.
 set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 source "$REPO_ROOT/scripts/lib/proc-group.sh"
 
 print_test_header "a spawned child's descendants die with it, on every platform (#2056)"

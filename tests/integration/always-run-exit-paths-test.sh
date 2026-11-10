@@ -18,8 +18,8 @@ RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "always_run dispatches on every exit path (#1831)"
 setup_test_env "zb-always-run-exit"
@@ -210,28 +210,19 @@ assert_file_exists "[SPEC-4] release ran after SIGTERM to the runner" "$RELEASE_
 # ─── [SPEC-5][guard] a hanging release cannot hang the exit ────────────────
 # The stage declares timeout_s: 2. A hook that blocks past it must be killed and
 # the exit must continue — otherwise Ctrl-C becomes a lockup, which is the exact
-# class of bug an EXIT-trap dispatch exists to avoid. Asserting the WALL CLOCK
-# rather than the marker: the marker would also be absent if release never ran
-# at all, so it cannot distinguish "bounded" from "broken".
+# class of bug an EXIT-trap dispatch exists to avoid. The hook marks its entry
+# and, after 60s, its end: entered and not ended is "bounded", and an unbounded
+# hook would end and mark it. No wall clock is read: a busy machine slows the run
+# but cannot change which marker is there (#2510).
 print_test_section "[SPEC-5][guard] a release hook that hangs is bounded by its timeout_s"
 _arm_release "sleep 60"; _arm_outcome "" 0
 rm -f "$RELEASE_MARKER" "$RELEASE_ENTERED"
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state-hang"
 mkdir -p "$ZBUILD_STATE_DIR"
-_t0=$(date +%s)
 set +e
 ( cd "$OVERLAY_REPO" && bash "$RUNNER" --template always-run-minimal \
     --goal "always-run hang" ) >"$TEST_TEMP_DIR/hang.out" 2>&1
 set -e
-_elapsed=$(( $(date +%s) - _t0 ))
-# 45s is generous against a 2s bound plus runner startup; the assertion is
-# "bounded at all", not a tight budget — a tight one would flake under a loaded
-# parallel pool (the #991 lesson).
-if [[ "$_elapsed" -lt 45 ]]; then
-    assert_pass "[SPEC-5] a 60s release hook did not hold the exit (${_elapsed}s)"
-else
-    assert_fail "[SPEC-5] a 60s release hook held the exit" "elapsed=${_elapsed}s"
-fi
 # These two together are what make the case meaningful: the hook WAS entered
 # (so the bound is what stopped it) and did NOT complete (so it was actually
 # killed). Either alone is satisfied by a dispatch that never happened.
@@ -244,7 +235,8 @@ assert_file_not_exists "[SPEC-5] the hanging hook was killed before completing" 
 # The fixture template sets persist.timeout_s: 4 (new code reads) and
 # persist.router.timeout_s: 120 (old code reads ZBUILD_RELEASE_TIMEOUT / router.timeout_s).
 # A blocking persist hook must be killed in ~4s, NOT ~120s.
-# FAILS on old code (elapsed ~120s > 20), PASSES on new code (elapsed ~4s < 20).
+# Old code (router.timeout_s: 120) lets the hook's sleep 60 end and write its done
+# marker; new code (timeout_s: 4) kills it first, so the marker is never written.
 print_test_section "[#1801/SPEC-5] persist always_run watchdog uses timeout_s: not router.timeout_s: 120"
 mkdir -p "$PLUGINS_ROOT/tool/persist"
 cat > "$PLUGINS_ROOT/tool/persist/manifest.yaml" <<'MF'
@@ -265,7 +257,7 @@ _SPEC5P_DONE="$TEST_TEMP_DIR/spec5p-done"
 cat > "$PLUGINS_ROOT/tool/persist/plugin.sh" <<PLUG
 persist_run() {
     : > "${_SPEC5P_ENTERED}"
-    sleep 120
+    sleep 60
     : > "${_SPEC5P_DONE}"
     return 0
 }
@@ -301,18 +293,12 @@ rm -f "$_SPEC5P_ENTERED" "$_SPEC5P_DONE"
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state-spec5p"
 export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/spec5p-events.jsonl"
 mkdir -p "$ZBUILD_STATE_DIR"
-_spec5p_t0=$(date +%s)
+# The hook holds 60s: past timeout_s: 4, short of router.timeout_s: 120. Bounded
+# by the right one, it never ends; by the wrong one, it ends and marks it.
 set +e
 ( cd "$_spec5p_repo" && bash "$RUNNER" --template always-run-spec5p \
     --goal "spec5-persist" ) >"$TEST_TEMP_DIR/spec5p.out" 2>&1
 set -e
-_spec5p_elapsed=$(( $(date +%s) - _spec5p_t0 ))
-if [[ "$_spec5p_elapsed" -lt 20 ]]; then
-    assert_pass "[#1801/SPEC-5] persist always_run watchdog bounds at timeout_s: 4 (exited in ${_spec5p_elapsed}s; old code: router.timeout_s: 120)"
-else
-    assert_fail "[#1801/SPEC-5] persist always_run watchdog must use timeout_s: 4" \
-        "runner took ${_spec5p_elapsed}s; expected < 20s (timeout_s: 4); old code reads router.timeout_s: 120 → ~120s"
-fi
 assert_file_exists "[#1801/SPEC-5] persist hook was entered (always_run persist stage dispatched)" "$_SPEC5P_ENTERED"
 assert_file_not_exists "[#1801/SPEC-5] persist hook killed before completing (bounded by timeout_s: 4, not 120s)" "$_SPEC5P_DONE"
 

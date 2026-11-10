@@ -14,7 +14,7 @@
 # The direction reverses here: whoever makes a group registers it.
 set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 source "$REPO_ROOT/scripts/lib/proc-group.sh"
 
 print_test_header "process groups are registered by their creator (#2024)"

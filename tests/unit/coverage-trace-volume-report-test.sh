@@ -26,8 +26,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "a coverage run reports per-file trace volume"
 setup_test_env "coverage-trace-volume-report"
@@ -49,7 +49,7 @@ printf '#!/usr/bin/env bash\nfor i in $(seq 1 200); do :; done\nexit 0\n' > "$_p
 _timing="$TEST_TEMP_DIR/timing.txt"
 _trace="$TEST_TEMP_DIR/trace.out"
 
-( cd "$REPO_ROOT" && ZBUILD_TESTS_DIR="$_TDIR" ZBUILD_CORE_DIR="$_EMPTY" ZBUILD_PLUGINS_DIR="$_EMPTY" ZBUILD_TEST_TIMING_FILE="$_timing" \
+( cd "$REPO_ROOT" && ZBUILD_TESTS_DIR="$_TDIR" ZBUILD_PLUGINS_DIR="$_EMPTY" ZBUILD_TEST_TIMING_FILE="$_timing" \
     bash scripts/run-tests.sh --tier unit --coverage-trace "$_trace" \
     >/dev/null 2>&1 ) || true
 
@@ -76,7 +76,7 @@ assert_gt "[SPEC-1] the recorded volume is a real byte count" "${_vol_bytes:-0}"
 # Instrumentation must not change the untraced path: the parallel tier's
 # byte-identical-output guarantee depends on it (#1058).
 _timing2="$TEST_TEMP_DIR/timing-plain.txt"
-( cd "$REPO_ROOT" && ZBUILD_TESTS_DIR="$_TDIR" ZBUILD_CORE_DIR="$_EMPTY" ZBUILD_PLUGINS_DIR="$_EMPTY" ZBUILD_TEST_TIMING_FILE="$_timing2" \
+( cd "$REPO_ROOT" && ZBUILD_TESTS_DIR="$_TDIR" ZBUILD_PLUGINS_DIR="$_EMPTY" ZBUILD_TEST_TIMING_FILE="$_timing2" \
     bash scripts/run-tests.sh --tier unit >/dev/null 2>&1 ) || true
 assert_eq "[SPEC-2] GUARD: an untraced run records no trace-volume line" \
     "0" "$(grep -cE '^trace ' "$_timing2" 2>/dev/null || true)"

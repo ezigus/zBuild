@@ -27,8 +27,8 @@ RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "runner dispatches cleanup(release) on every exit path (#1829)"
 setup_test_env "runner-release-exit-paths"
@@ -101,7 +101,7 @@ cat > "$PLUGINS_ROOT/agent/build/plugin.sh" <<'PLUG'
 build_run() {
     printf '%s\n' "$BASHPID" > "${BUILD_STARTED:-/dev/null}"
     if [[ "${BUILD_SLEEP:-0}" == "1" ]]; then
-        local _i; for _i in $(seq 1 300); do sleep 0.1; done
+        local _i; for _i in $(seq 1 6000); do sleep 0.1; done
     fi
     local _art; _art="${ZBUILD_ARTIFACT_DIR:-$(dirname "$2")/artifacts}"; mkdir -p "$_art"
     [[ "${BUILD_ARM_ABORT:-0}" == "1" ]] && : > "${ZBUILD_STATE_DIR}/.abort.signal"
@@ -118,7 +118,7 @@ build_cleanup() {
     # records its own pid so SPEC-6 can check it does not outlive the run (#2287).
     if [[ "${BLOCK_CLEANUP:-0}" == "1" ]]; then
         printf '%s\n' "$BASHPID" >> "${RELEASE_MARKER%/*}/hook.pid"
-        sleep 120
+        sleep 600
     fi
     if [[ "${BLOCK_CLEANUP_IGNORE_TERM:-0}" == "1" ]]; then
         # #2333: a child that ignores TERM, under a hook shell that does not.
@@ -209,10 +209,8 @@ _start_blocking() {   # <case name> <hook switch>
     (
         _prep "$1"
         export BUILD_RC=0 "$2"=1
-        _t0=$(date +%s)
         ( cd "$_repo" && bash "$RUNNER" --template resume-minimal --goal "release-$1" ) \
             >"$CASE_DIR/out" 2>&1 || true
-        printf '%s\n' "$(( $(date +%s) - _t0 ))" > "$CASE_DIR/elapsed"
     ) &
 }
 _start_blocking blocking BLOCK_CLEANUP;                   _SPEC6_PID=$!
@@ -277,17 +275,15 @@ RUNNER_PID=$!
 set +m
 for _ in $(seq 1 300); do [[ -s "$BUILD_STARTED" ]] && break; sleep 0.1; done
 _build_pid="$(head -n 1 "$BUILD_STARTED" 2>/dev/null || true)"
-_t0=$(date +%s)
 kill -TERM "$RUNNER_PID" 2>/dev/null || true
-wait "$RUNNER_PID" 2>/dev/null || true
-_elapsed=$(( $(date +%s) - _t0 ))
 # ADR-054 §7: the runner acts on the signal while the stage is still running.
-# Build holds for 30s; a runner that waits for it to return took 30s+ here.
-if [[ "$_elapsed" -lt 15 ]]; then
-    assert_pass "[SPEC-4] the runner stops without waiting for the stage (${_elapsed}s)"
-else
-    assert_fail "[SPEC-4] the runner stops without waiting for the stage" "took ${_elapsed}s; build holds 30s"
-fi
+# Build holds 600s and the runner's exit is waited for up to 120s: a runner that
+# waits for the stage is told apart by an order, not by a machine's speed (#2510).
+_returned=0
+for _ in $(seq 1 1200); do kill -0 "$RUNNER_PID" 2>/dev/null || { _returned=1; break; }; sleep 0.1; done
+[[ "$_returned" == 1 ]] || kill -KILL -- "-$RUNNER_PID" 2>/dev/null
+wait "$RUNNER_PID" 2>/dev/null || true
+assert_eq "[SPEC-4] the runner stops without waiting for the stage (which holds 600s)" "1" "$_returned"
 if [[ -n "$_build_pid" ]] && kill -0 "$_build_pid" 2>/dev/null; then
     assert_fail "[SPEC-4] the stage does not outlive the run" "build pid $_build_pid still alive"
     kill -KILL "$_build_pid" 2>/dev/null || true
@@ -369,18 +365,15 @@ fi
 # normal exit into a hang — the same class of bug (a process that outlives the
 # run) that this mechanism exists to prevent.
 print_test_section "SPEC-6: a cleanup hook that blocks cannot hang the runner"
-wait "$_SPEC6_PID" 2>/dev/null || true
+# The blocking hook sleeps 600s. The bound is the release stage's own
+# `timeout_s:` (30s in simple.yaml), so the runner returns long before the hook
+# would end; it is waited for up to 150s, an order a busy machine cannot flip.
 CASE_DIR="$_SPEC6_DIR"
-_elapsed="$(cat "$CASE_DIR/elapsed" 2>/dev/null || echo 999)"
-# The blocking hook sleeps 120s. The bound is the release stage's own
-# `timeout_s:` at the top-level stage block (read by template_stage_time_limit
-# after #1801 — 30s in simple.yaml), so the runner returns in about 30s.
-# Allow generous headroom for a loaded host while still failing an unbounded wait.
-if [[ "$_elapsed" -lt 60 ]]; then
-    assert_pass "[SPEC-6] blocking cleanup is bounded (runner exited in ${_elapsed}s)"
-else
-    assert_fail "[SPEC-6] blocking cleanup is bounded" "runner took ${_elapsed}s"
-fi
+_returned=0
+for _ in $(seq 1 1500); do kill -0 "$_SPEC6_PID" 2>/dev/null || { _returned=1; break; }; sleep 0.1; done
+[[ "$_returned" == 1 ]] || kill -KILL "$_SPEC6_PID" 2>/dev/null
+wait "$_SPEC6_PID" 2>/dev/null || true
+assert_eq "[SPEC-6] blocking cleanup is bounded: the runner returns while the hook (600s) still holds" "1" "$_returned"
 # #2287: the bound must stop the hook, not just stop waiting for it. Before,
 # the hook lived on after the run, finished its sleep ~2 min later, and wrote
 # into a state folder the run no longer owned. The kills are sent before the

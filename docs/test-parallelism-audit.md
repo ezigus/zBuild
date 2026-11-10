@@ -8,7 +8,7 @@ git/worktree/global-config/process), every finding then re-verified by direct gr
 
 ## Method + baseline
 
-`scripts/lib/test-helpers.sh` `setup_test_env()` (line ~224) gives **each test** a unique per-test
+`tests/lib/test-helpers.sh` `setup_test_env()` (line ~224) gives **each test** a unique per-test
 `TEST_TEMP_DIR` — created via `mktemp -d "${TMPDIR:-/tmp}/<name>.XXXXXX"` — and exports
 `HOME="$TEST_TEMP_DIR/home"` and `PATH="$TEST_TEMP_DIR/bin:$PATH"`. **146 of 148**
 `tests/integration/*.sh` call it.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lib/fork-census.sh — count the external programs a command starts
+# tests/lib/fork-census.sh — count the external programs a command starts
 # (ADR-065 §1).
 #
 # The suite is slow because it starts programs, not because it computes: one
@@ -8,7 +8,7 @@
 # routes it to one file — fd 3 is stage-io, 8 is coverage, 9 is flock) and
 # counts every command word that resolves to a program on PATH.
 #
-#   bash scripts/lib/fork-census.sh <cmd...>   → the count, top call sites, per-file totals
+#   bash tests/lib/fork-census.sh <cmd...>   → the count, top call sites, per-file totals
 #   source it → fork_census_traced <trace> <cmd...>; fork_census_count <trace> <sites_out>
 #
 # tests/e2e/fork-budget-test.sh holds the engine to FORK_BUDGET with these same

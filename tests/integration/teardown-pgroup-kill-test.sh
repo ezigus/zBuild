@@ -11,7 +11,7 @@
 # So this asserts the outcome — the process is gone — not that a function ran.
 set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "teardown(release) frees recorded process groups (#2018)"
 setup_test_env "teardown-pgroup-kill"

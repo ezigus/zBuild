@@ -6,7 +6,7 @@
 # engine writes `current_iter`. Its test passed anyway, because it wrote the
 # state file by hand with the field the code expected. A hand-written
 # `cycle_iterations` holds whatever its author assumed. The helper
-# zb_engine_loop_state (scripts/lib/test-helpers.sh) runs the engine's writers
+# zb_engine_loop_state (tests/lib/test-helpers.sh) runs the engine's writers
 # instead, and scripts/lib/lint-test-engine-state.sh refuses a hand-written one.
 #
 # E1 [code] a test writing a `"cycle_iterations":{` JSON literal is refused, by name
@@ -21,8 +21,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "lint: tests make engine loop state with the engine's writers (#1799)"
 setup_test_env "lint-test-engine-state"

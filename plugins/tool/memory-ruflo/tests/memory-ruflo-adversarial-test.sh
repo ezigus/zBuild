@@ -14,7 +14,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 PLUGIN_DIR="$REPO_ROOT/plugins/tool/memory-ruflo"
 
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "plugins/tool/memory-ruflo — integration: adversarial edge cases (issue #217)"
 
@@ -209,7 +209,7 @@ _subshell_plugin() {
         unset _ZBUILD_MEMORY_RUFLO_LOADED 2>/dev/null || true
         # shellcheck disable=SC1090
         source "$REPO_ROOT/scripts/lib/helpers.sh"
-        source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+        source "$REPO_ROOT/tests/lib/test-helpers.sh"
         source "$PLUGIN_DIR/plugin.sh"
         "$@"
     )

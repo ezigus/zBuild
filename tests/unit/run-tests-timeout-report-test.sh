@@ -7,7 +7,7 @@
 # only a timeout, one of them filing a bogus durability bug against
 # core/state/atomic.sh.
 #
-# Hermetic: ZBUILD_TESTS_DIR + ZBUILD_PLUGINS_DIR + ZBUILD_CORE_DIR + an empty
+# Hermetic: ZBUILD_TESTS_DIR + ZBUILD_PLUGINS_DIR + an empty
 # ZBUILD_MUTATION_DIR point every discovery root at fixtures, so the real suite
 # is never executed (and this file can therefore run inside the real suite).
 set -euo pipefail
@@ -18,8 +18,8 @@ RUN_TESTS="$REPO_ROOT/scripts/run-tests.sh"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 # Capture the real timeout command before setup_test_env may prepend a stub.
 _REAL_TIMEOUT=""
@@ -47,7 +47,6 @@ _run_unit_tier() {
     set +e
     OUT="$(ZBUILD_TESTS_DIR="$FIX" \
            ZBUILD_PLUGINS_DIR="$EMPTY" \
-           ZBUILD_CORE_DIR="$EMPTY" \
            ZBUILD_MUTATION_DIR="$EMPTY" \
            ZBUILD_TEST_FILE_TIMEOUT="$bound" \
            ZBUILD_TEST_PARALLEL_JOBS=0 \
@@ -147,7 +146,6 @@ TRAPFIX
     _trap_out="$("$_REAL_TIMEOUT" 30 \
         env ZBUILD_TESTS_DIR="$FIX_TRAP" \
             ZBUILD_PLUGINS_DIR="$EMPTY" \
-            ZBUILD_CORE_DIR="$EMPTY" \
             ZBUILD_TEST_FILE_TIMEOUT=1 \
             ZBUILD_TEST_KILL_GRACE=1 \
             ZBUILD_TEST_PARALLEL_JOBS=0 \

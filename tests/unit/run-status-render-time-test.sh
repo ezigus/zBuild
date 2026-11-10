@@ -15,8 +15,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "run-status comment — time first, Eastern, ceiling (#2145)"
 setup_test_env "run-status-render-time"
@@ -142,8 +142,8 @@ source '$REPO_ROOT/scripts/lib/run-status-render.sh'
 rsc_render_row '$STATE' '$_row_done' >/dev/null
 EOF
 _p6="$(
-    # shellcheck source=../../scripts/lib/fork-census.sh
-    source "$REPO_ROOT/scripts/lib/fork-census.sh"
+    # shellcheck source=../../tests/lib/fork-census.sh
+    source "$REPO_ROOT/tests/lib/fork-census.sh"
     fork_census_traced "$TEST_TEMP_DIR/row6.trace" bash "$TEST_TEMP_DIR/row6.sh"
     _base="$(fork_census_processes "$TEST_TEMP_DIR/row6.trace")"
     printf 'source %s/scripts/lib/helpers.sh 2>/dev/null\nsource %s/scripts/lib/run-status-render.sh\n' "$REPO_ROOT" "$REPO_ROOT" > "$TEST_TEMP_DIR/row0.sh"

@@ -1,6 +1,6 @@
 # ADR-012 — Test Tiering and CI Gating
 
-**Status:** Accepted; amended 2026-11-08 (tests are deterministic)  
+**Status:** Accepted; amended 2026-11-08 (tests are deterministic); amended 2026-11-09 (#2510: a test signals only the processes it started)  
 **Date:** 2026-05-25  
 **Deciders:** zbuild core team  
 
@@ -50,7 +50,7 @@ Output format: `<tier>: N/M passed` — parseable by CI summary step.
 ### Golden convention
 
 - Snapshot files in `tests/golden/<name>.golden`
-- Helper `assert_golden` in `scripts/lib/golden.sh`
+- Helper `assert_golden` in `tests/lib/golden.sh`
 - `UPDATE_GOLDEN=1 bash scripts/run-tests.sh --tier golden` regenerates
 
 ### Mutation convention
@@ -167,8 +167,15 @@ A test depends on no remote service and on no clock. The cache-gh-actions "inter
 
 References: Martin Fowler, "Eradicating Non-Determinism in Tests" (martinfowler.com/articles/nonDeterminism.html); Google, hermetic tests and *Software Engineering at Google* ch. 13, "Test Doubles" (abseil.io/resources/swe-book/html/ch13.html).
 
+## Amendment 2026-11-09 (#2510) — a test signals only the processes it started
+
+`stage-stop-on-signal-test.sh` looked for its watchdog's `sleep 987` across the whole machine, then KILLed that sleep's parent and every child of it. With suites running side by side it found other suites' sleeps; when a sleep's parent had already exited, the parent was launchd, and `pkill -KILL -P 1` reached every process of the user whose parent is launchd.
+
+6. **A test signals only what it started.** It never kills a pid it read from `ps` (a parent), and never looks across the machine for a fixed command line: a process it must find by its command line carries a value made for the run (the watchdog's limit), so another run's process never matches.
+
 ## Enforced by
 
+- Amendment 2026-11-09 (#2510: a test signals only the processes it started) → `tests/unit/tests-signal-only-their-own-test.sh` P1, P2
 - Amendment 2026-11-08 (tests are deterministic) → `tests/unit/lint-test-determinism-test.sh` T1–T10 (the lint, its marks and its shrink-only baseline); `scripts/lib/lint-test-determinism.sh` runs in `npm run lint`; it reads code through `scripts/lib/shell-join.sh` (`tests/unit/shell-join-test.sh` S5–S6).
 - Per-tier runner: the `total:` summary line → `tests/unit/run-tests-total-note-test.sh`; only `*-test.sh` files are run (the filename rule) → `tests/unit/run-tests-files-guard-test.sh`.
 - Coverage denominator (#1761) → `tests/unit/coverage-untraced-file-test.sh`.

@@ -3,12 +3,12 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# shellcheck source=../../../scripts/lib/helpers.sh
+# shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "core/router/route — unit: precondition + model lookup + error paths"
 setup_test_env "router-unit"
@@ -37,7 +37,7 @@ printf '#!/usr/bin/env bash\nwhile [[ $# -gt 0 ]]; do\n    [[ "$1" == "--model" 
 chmod +x "$TEST_TEMP_DIR/bin/claude"
 export PATH="$TEST_TEMP_DIR/bin:$PATH"
 
-# shellcheck source=../route.sh
+# shellcheck source=../../core/router/route.sh
 source "$REPO_ROOT/core/router/route.sh"
 
 # ── Invalid tier → rc=2 ─────────────────────────────────────────────────────

@@ -23,7 +23,7 @@
 # DERIVED from the budget it is protecting, so the two cannot drift apart again.
 set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "exit-path tests do not undercut the engine's teardown budget (#2029)"
 setup_test_env "exit-path-teardown-budget"

@@ -18,9 +18,9 @@
 #   # lint-bare-timeout:allow: <reason>
 # and the reason is required.
 #
-# Not scanned: scripts/lib/test-helpers.sh — its `timeout` is a test-only mock
-# (a fake binary written for tests, probed with `command -v timeout`), not a
-# bound on engine work.
+# Not scanned: tests/, where tests/lib/test-helpers.sh holds a test-only
+# `timeout` mock (a fake binary written for tests, probed with `command -v
+# timeout`), not a bound on engine work.
 #
 # Usage: bash scripts/lib/lint-bare-timeout.sh [repo_root]
 # Exit:  0 clean; 1 one or more findings (each printed as file:line: text).
@@ -32,9 +32,6 @@ files=()
 for d in core scripts plugins; do
     [[ -d "$ROOT/$d" ]] || continue
     while IFS= read -r -d '' f; do
-        case "${f#"$ROOT"/}" in
-            scripts/lib/test-helpers.sh) continue ;;  # test-only mock, see header
-        esac
         files+=("$f")
     done < <(find "$ROOT/$d" -name '*.sh' -not -path '*/legacy-DoNotUse/*' -print0)
 done

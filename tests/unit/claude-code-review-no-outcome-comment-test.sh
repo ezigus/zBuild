@@ -5,8 +5,8 @@
 # itself does not. Nothing may reintroduce a post-review summary poster.
 set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 print_test_header "claude-code-review has no outcome summary comment (#1719)"
 
 WF="$REPO_ROOT/.github/workflows/claude-code-review.yml"

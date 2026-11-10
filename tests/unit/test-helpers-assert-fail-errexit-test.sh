@@ -20,8 +20,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "assert_fail never stops the test file (#2234)"
 setup_test_env "assert-fail-errexit"
@@ -29,7 +29,7 @@ setup_test_env "assert-fail-errexit"
 _child="$(bash -c '
     set -uo pipefail
     source "$1/scripts/lib/helpers.sh"
-    source "$1/scripts/lib/test-helpers.sh"
+    source "$1/tests/lib/test-helpers.sh"
     if false; then assert_pass "x"; else assert_fail "a failure with no detail"; fi
     echo "REACHED-AFTER-BARE"
     assert_fail "a failure with a detail" "the detail"
@@ -42,7 +42,7 @@ assert_contains "[F3] both failures are recorded" "$_child" "FAIL=2"
 
 _rc="$(bash -c '
     source "$1/scripts/lib/helpers.sh"
-    source "$1/scripts/lib/test-helpers.sh"
+    source "$1/tests/lib/test-helpers.sh"
     assert_fail "no detail" >/dev/null; a=$?
     assert_fail "with detail" "d" >/dev/null; b=$?
     printf "%s %s" "$a" "$b"

@@ -18,8 +18,8 @@ VERDICT_SH="$REPO_ROOT/core/pipeline/verdict.sh"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "verdict reader is stage-agnostic — fictitious-stage harness (#1280)"
 setup_test_env "verdict-stage-agnostic"

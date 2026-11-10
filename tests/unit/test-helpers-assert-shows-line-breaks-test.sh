@@ -17,8 +17,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "a failing assert_eq shows line breaks (#2454)"
 setup_test_env "assert-shows-line-breaks"
@@ -27,7 +27,7 @@ setup_test_env "assert-shows-line-breaks"
 _child() {
     bash -c '
         source "$1/scripts/lib/helpers.sh"
-        source "$1/scripts/lib/test-helpers.sh"
+        source "$1/tests/lib/test-helpers.sh"
         assert_eq "a check" "$2" "$3"
     ' _ "$REPO_ROOT" "$1" "$2" 2>&1 | sed $'s/\x1b\\[[0-9;]*m//g'
 }
