@@ -1,61 +1,42 @@
-skip non-test: tests/golden/parity/run-fixture.sh
-skip non-test: tests/lib/cycle-stall-break-fixture.sh
-skip non-test: tests/lib/nested-loop-rounds-fixture.sh
-skip non-test: tests/mutation/pipeline-contracts.md
-skip non-test: tests/mutation/run-status-comment.md
-skip non-test: tests/mutation/runner-fail-closed-mutations.md
-unit: FAIL tests/integration/from-stage-rehydrate-test.sh
 
-  from-stage-rehydrate — artifact restore on --from-stage (#1805)
+> zbuild@0.1.0 test
+> bash tests/run-all.sh
 
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Q07SJe/tests/unit/status-row-findings-test.sh
 
-  [#1805/DSFSTG-1] --from-stage rehydrates stages before <s> and dispatches <s> first
-  ✓ [#1805/DSFSTG-1] setup: state branch populated
-  ✓ [#1805/DSFSTG-1] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR via --from-stage
-  ✓ [#1805/DSFSTG-1] restored artifact contains original payload (proves _artifact_persist_restore + _artifact_persist_put_back used git state branch)
-  ✓ [#1805/DSFSTG-1] pipeline.resume event emitted (from-stage preflight ran before dispatch loop)
-  ✓ [#1805/DSFSTG-1] pipeline.resume precedes first dispatch event (artifact restored before dispatch loop started)
-  ✓ [#1805/DSFSTG-1] intake emits no stage.start when skipped via --from-stage
-  ✓ [#1805/DSFSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage target cyc was dispatched as first stage)
-  ✓ [#1805/DSFSTG-1] pipeline.skip_to_stage emitted when --from-stage is active (--resume path)
-  ✓ [#1805/DSFSTG-1] no stage before <s>=cyc dispatched after pipeline.skip_to_stage (--resume path; RQFROM-2)
+  a row for a try that did not pass says what failed (#2476)
 
-  [#1805/DSFSTG-1] --from-stage WITHOUT --resume rehydrates stages before <s> (skip_restore=false branch)
-  ✓ [#1805/DSFSTG-1] setup s5: state branch populated (no-resume path)
-  ✓ [#1805/DSFSTG-1] intake-result.json rehydrated via --from-stage without --resume (skip_restore=false branch)
-  ✓ [#1805/DSFSTG-1] restored artifact contains prior-run payload (--from-stage without --resume; skip_restore=false used git state branch)
-  ✓ [#1805/DSFSTG-1] intake emits no stage.start when skipped via --from-stage without --resume
-  ✓ [#1805/DSFSTG-1] pipeline.skip_to_stage emitted when --from-stage active without --resume (skip_restore=false branch; RQFROM-2)
-  ✓ [#1805/DSFSTG-1] no stage before <s>=cyc dispatched after pipeline.skip_to_stage (no --resume path; RQFROM-2)
-  ✓ [#1805/DSFSTG-1] cycle.start emitted for <s>=cyc (first dispatch unit on plain --from-stage path)
-  ✓ [#1805/DSFSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage dispatches <s> as first unit on plain path)
-
-  [#1805/DSFSTG-2] --from-stage with no restorable artifact emits diagnostic and exits 1
-  ✓ [#1805/DSFSTG-2] --from-stage exits 1 when prior stage has no restorable artifact
-  ✓ [#1805/DSFSTG-2] stderr contains preflight diagnostic phrase (has no restorable primary artifact)
-  ✓ [#1805/DSFSTG-2] no stage.start emitted before exit 1
-
-  [#1805/DSFSTG-1] --from-stage with leaf <s>=build: stage.start emitted for leaf <s>
-  ✓ [#1805/DSFSTG-1] setup s6: state branch populated (leaf-stage --from-stage path)
-  ✓ [#1805/DSFSTG-1] stage.start emitted for leaf <s>=build (leaf-stage dispatch branch; covers DSFSTG-1 Then: when <s> is a leaf stage, stage.start is emitted for <s>)
-  ✓ [#1805/DSFSTG-1] no stage.start for intake when skipped via --from-stage leaf <s>=build
-
-  from-stage-rehydrate test uses a fixture containing a cyclic stage
-  ✓ [#1805/DSCYCL-1] from-stage-rehydrate test uses a cyclic fixture (type: cycle)
-  ✓ cyclic fixture pipeline ran in from-stage-rehydrate test (intake dispatched)
-
-  [#1805/DSFSTG-3] combined --resume --from-stage <s>: stages after <s> dispatched despite being marked complete in interrupted run
-  ✓ [#1805/DSFSTG-3] setup s10: state branch populated (all-complete interrupted run)
-  ✗ [#1805/DSFSTG-3] cycle.start emitted for cyc (--from-stage target dispatched in combined --resume --from-stage mode)
-    expected >0, got: 0
-  ✗ [#1805/DSFSTG-3] stage.start emitted for verify despite verify=complete in interrupted state (Gap 11 fix: resume_mode=false clears skip guard after --from-stage target reached; fails on old code where verify is skipped)
-    expected >0, got: 0
-  ✓ [#1805/DSFSTG-3] no stage.skip emitted for verify (stage after --from-stage target must be dispatched, not skipped, in combined --resume --from-stage mode)
+  ✓ [W1] the row's line names what failed
+  ✓ [W1] the folded part lists every finding
+  ✓ [W1] …each once
+  ✓ [W1] nothing of the summary is shown
+  ✓ [W2] a lens row says what it found, and where
+  ✓ [W3] no findings: the summary as before
+  ✓ [W4] a pass row shows its summary
+  ✓ [W4] …and never says what failed
+  ✓ [W8] the line names each requirement not met
+  ✗ [W8] …and the SPEC each failing test is for
+    expected: what failed: `CMBR-1`, `FRSH-2`, got: what failed: 2 findings
+  ✓ [W8] findings naming no id are counted
+  ✓ [W8] …a prefixed id is named whole
+  ✓ [W5] findings are counted by severity, highest first
+  ✓ [W5] …and each is listed once
+  ✓ [W6] one finding: its first line heads the row
+  ✓ [W6] …the rest is folded
+  ✓ [W6] …and the first line is said once
+  ✓ [W7] a try run again for its findings shows as failed
+  ✓ [W7] …one with no findings stays unusable
 
 
-  2 of 29 tests failed
+  1 of 19 tests failed
 
-  ✗ [#1805/DSFSTG-3] cycle.start emitted for cyc (--from-stage target dispatched in combined --resume --from-stage mode)
-  ✗ [#1805/DSFSTG-3] stage.start emitted for verify despite verify=complete in interrupted state (Gap 11 fix: resume_mode=false clears skip guard after --from-stage target reached; fails on old code where verify is skipped)
+  ✗ [W8] …and the SPEC each failing test is for
 
-unit: 191/192 passed
+unit: 591/592 passed (4 skipped)
+integration: 258/258 passed
+e2e: 10/10 passed
+golden: 1/1 passed
+mutation: 25/25 passed
+lint: 1/1 passed
+
+total: 886/887 passed (4 skipped)
