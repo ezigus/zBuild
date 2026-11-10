@@ -2199,6 +2199,24 @@ main() {
         fi
     fi
 
+    # DSFSTG-4/RQFROM-4 (#1805 Gap 12): when --from-stage is given without
+    # explicit --resume and the state file records status=interrupted, reject
+    # BEFORE auto-resume runs. Auto-resume would set resume_mode=true from an
+    # interrupted state file and mask the error (pipeline.resume would be
+    # emitted before the existing post-auto-resume guard fires). The check is
+    # narrowed to interrupted-status only: status=in_progress runs are allowed
+    # to reach auto-resume so the DSFSTG-1 without-resume path (skip_restore=false
+    # branch) continues to work.
+    if [[ -n "$from_stage" ]] && ! $resume_mode && [[ -f "$state_file" ]]; then
+        local _fsg_status
+        _fsg_status="$(get_state_field "$state_file" '.status' '')"
+        if [[ "$_fsg_status" == "interrupted" ]]; then
+            error "--from-stage is only valid with --resume"
+            _usage
+            return 1
+        fi
+    fi
+
     # ── Resume / fresh-start policy ────────────────────────────────────────────
     if $resume_mode; then
         # Explicit --resume: check state exists and honour --force for aborted
@@ -3272,6 +3290,12 @@ main() {
         # ADR-042: resolve role-then-id (uniform with leaf + parallel paths) so a
         # role-bound cycle member whose plugin id ≠ stage name resolves correctly.
         _cd_plugin_dir="$(resolve_stage_plugin "$_cd_stage" "$plugins_root" 2>/dev/null || true)"
+        # Backward-compat id fallback: when role-based resolution fails (e.g. mock
+        # plugins in test harnesses with no declared role), try direct id match so
+        # tests with id-only mock plugins work (#1805).
+        if [[ -z "$_cd_plugin_dir" ]]; then
+            _cd_plugin_dir="$(_find_plugin_for_stage "$_cd_stage" "$plugins_root" 2>/dev/null || true)"
+        fi
         if [[ -z "$_cd_plugin_dir" ]]; then
             _CYCLE_DISPATCH_VERDICT="error"
             _CYCLE_DISPATCH_VERDICT_RAW="error"
