@@ -49,14 +49,14 @@ RUN_TESTS="$REPO_ROOT/scripts/run-tests.sh"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "run-tests.sh bounded parallel execution (#983)"
 setup_test_env "run-tests-parallel"
 
 # ─── Hermetic fixture: a fake unit tier (4 pass, 2 fail) + a fake integration
-#     tier (2 pass, 1 fail). ZBUILD_TESTS_DIR/PLUGINS_DIR/CORE_DIR isolate them so
+#     tier (2 pass, 1 fail). ZBUILD_TESTS_DIR/PLUGINS_DIR isolate them so
 #     no real repo tests mix into the counts and no real tier is ever executed.
 FAKE_TESTS="$TEST_TEMP_DIR/fake-tests"
 EMPTY_DIR="$TEST_TEMP_DIR/empty"
@@ -95,7 +95,6 @@ _run_tier() {
   env -u ZBUILD_TEST_PARALLEL_JOBS -u ZBUILD_PARALLEL_SAFE_TIERS \
       ZBUILD_TESTS_DIR="$FAKE_TESTS" \
       ZBUILD_PLUGINS_DIR="$EMPTY_DIR" \
-      ZBUILD_CORE_DIR="$EMPTY_DIR" \
       _ZBUILD_PAR_ACTIVE_FILE="$ACT_FILE" \
       _ZBUILD_SERIAL_ACTIVE_FILE="$SER_FILE" \
       "$@" \

@@ -135,7 +135,7 @@ User-confirmed constraint: existing agents/personas are well-written and not exh
 
 All seven harness primitives confirmed. **Correction:** the earlier audit's claim of "60+ grep-for-function-name assertions" is wrong — re-audit found **zero** `grep -qE "^funcname\(\)"` patterns across the 160 test files. Tests invoke functions directly and assert outputs/side-effects. That's a major asset, not a liability.
 
-Test inventory in legacy: 160 test files (158 bash + 2 vitest), naming convention `sw-*-test.sh`, flat layout in `legacy-DoNotUse/scripts/`. Split: ~80 unit, ~40 integration, ~9 E2E, plus 2 dashboard JS. `legacy-DoNotUse/scripts/lib/test-helpers.sh` is generic and reusable — already lifted into zBuild's `scripts/lib/test-helpers.sh`.
+Test inventory in legacy: 160 test files (158 bash + 2 vitest), naming convention `sw-*-test.sh`, flat layout in `legacy-DoNotUse/scripts/`. Split: ~80 unit, ~40 integration, ~9 E2E, plus 2 dashboard JS. `legacy-DoNotUse/scripts/lib/test-helpers.sh` is generic and reusable — already lifted into zBuild's `tests/lib/test-helpers.sh`.
 
 Migration math:
 - **~50 migrate near-unchanged:** all 25 lib tests, 9 E2E, core feature tests for pipeline/ci/loop/replay/daemon/init/cleanup/cost/db.

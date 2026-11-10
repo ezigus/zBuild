@@ -6,8 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
-source "$REPO_ROOT/scripts/lib/golden.sh"
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
+source "$REPO_ROOT/tests/lib/golden.sh"
 
 print_test_header "golden contracts — assert_golden harness (E.1 seed set)"
 

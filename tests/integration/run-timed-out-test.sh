@@ -11,11 +11,10 @@
 # Phases:
 #   P1 — basic timeout: slow stage hits the watchdog; status=timed_out, event
 #        fields correct; runner exits non-zero within the limit
-#   P2 — idle between dispatches: fast-one (5s) completes normally before
-#        max_run_s (6s); fast-two is in-flight when the watchdog fires; fast-one
-#        in "complete" state proves the timer tracks wall-clock time from run
-#        start (not a per-stage reset), i.e. fires even after an idle window;
-#        elapsed ≤ 20s (global: ~18s) vs per-stage: ~23s proves it is global
+#   P2 — one timer for the whole run: fast-one completes, fast-two is
+#        in-flight when the watchdog fires; both stages saw the same watchdog
+#        (the same process), so it is the run's timer from its start, not one
+#        reset per stage. No elapsed time is read (#2510)
 #   P3 — TERM-ignore: a stage that traps and ignores SIGTERM is dead within
 #        TERM + 10 s (KILL escalation)
 #   P4 — release and persist run: always_run release + persist stages execute
@@ -28,8 +27,8 @@ RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "run-timed-out: wall-clock limit watchdog fires and ends run correctly (#1944)"
 setup_test_env "run-timed-out"
@@ -212,38 +211,48 @@ rm -f "$STATE_FILE" "$EVENTS_JSONL"
 mock_plugin_factory "fast-one" "agent" 0 >/dev/null
 mock_plugin_factory "fast-two" "agent" 0 >/dev/null
 
-# fast-one sleeps 8s and returns; fast-two sleeps 60s. The limit is 12s.
-#
-# On TERM the runner stops the in-flight stage at once (plugin_stop_running),
-# so a timed-out run ends within about a second of its limit.
-#   Global timer (correct): fires at t=12s from run start; run ends ≈ 12-13s.
-#   Per-stage reset (wrong): fires at fast-two start + 12s ≈ 20s+.
-#   No watchdog (old code): the outer timeout ends it at 40s.
-# The 17s bound sits 4s+ from both, and fast-one (done ≈ 8-9s) has 3s+ before
-# the limit, so a loaded machine does not flip either check (#1944: the first
-# spacing — 5s stage, 6s limit — failed under a parallel suite run).
+# fast-one returns at once; fast-two holds until it is stopped. Each records the
+# watchdog it runs under: among the runner's own children (\$\$ in a stage is
+# the runner's pid), the one sleeping the run's limit — never a search of the
+# machine. One timer for the run: both
+# see the same process. A timer reset per stage would be a new one for fast-two.
+# The limit (20s) leaves a slow machine's start-up and fast-one far inside it.
+_P2_WD="$TEST_TEMP_DIR/p2-watchdog"
+cat > "$TEST_TEMP_DIR/p2-helper.sh" <<'HELP'
+_p2_watchdog() {
+    local c w a
+    for c in $(pgrep -P "$$" 2>/dev/null); do
+        for w in $(pgrep -P "$c" -x sleep 2>/dev/null); do
+            a="$(ps -o args= -p "$w" 2>/dev/null)"; a="${a%"${a##*[![:space:]]}"}"
+            [[ "$a" == "sleep 20" ]] && printf '%s\n' "$w"
+        done
+    done
+}
+HELP
 cat > "$PLUGINS_ROOT/agent/fast-one/plugin.sh" <<PLUG
 fast_one_run() {
-    sleep 8
+    source "$TEST_TEMP_DIR/p2-helper.sh"
+    _p2_watchdog > "${_P2_WD}.one"
     $(mock_result_line fast-one)
     return 0
 }
 PLUG
 cat > "$PLUGINS_ROOT/agent/fast-two/plugin.sh" <<PLUG
 fast_two_run() {
-    sleep 60
+    source "$TEST_TEMP_DIR/p2-helper.sh"
+    _p2_watchdog > "${_P2_WD}.two"
+    sleep 600
     $(mock_result_line fast-two)
     return 0
 }
 PLUG
+rm -f "${_P2_WD}.one" "${_P2_WD}.two"
 
-_p2_start="$(date +%s)"
 p2_rc=0
-( cd "$OVERLAY_REPO" && ZBUILD_MAX_RUN_S=12 timeout 40 bash "$RUNNER" \
+( cd "$OVERLAY_REPO" && ZBUILD_MAX_RUN_S=20 timeout 90 bash "$RUNNER" \
     --template timeout-two-stage --goal "run-timed-out test p2" ) \
     >"$TEST_TEMP_DIR/p2.stdout" 2>"$TEST_TEMP_DIR/p2.stderr" \
     || p2_rc=$?
-_p2_elapsed=$(( $(date +%s) - _p2_start ))
 
 assert_eq "[#1944/SPEC-1] P2: runner exits non-zero" "1" "$p2_rc"
 
@@ -267,20 +276,10 @@ else
     assert_fail "[#1944/SPEC-1] P2: pipeline-state.json written" "state file not found"
 fi
 
-# Ends near the limit (global timer), not 12s after fast-two started. Measured
-# from the run's own pipeline.start (the watchdog is armed right after it) to
-# its pipeline.end: the shell's clock also counts the runner's startup, which
-# took ~10s on a loaded CI runner (PR #2438 and main run 41133901321: 23-24s,
-# against 13s with ~0.3s startup locally).
-_p2_ev_s() { jq -r --arg t "$1" 'select(.type == $t) | .ts | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601' "$EVENTS_JSONL" 2>/dev/null | head -n1; }
-_p2_t0="$(_p2_ev_s pipeline.start)"; _p2_t1="$(_p2_ev_s pipeline.end)"
-[[ "$_p2_t0" =~ ^[0-9]+$ && "$_p2_t1" =~ ^[0-9]+$ ]] && _p2_elapsed=$(( _p2_t1 - _p2_t0 ))
-if [[ "$_p2_elapsed" -le 17 ]]; then
-    assert_pass "[#1944/SPEC-1] P2: run ended within max_run_s+buffer — watchdog is a global wall-clock timer not a per-stage reset (elapsed ${_p2_elapsed}s)"
-else
-    assert_fail "[#1944/SPEC-1] P2: run ended within max_run_s+buffer — watchdog is a global wall-clock timer not a per-stage reset" \
-        "elapsed ${_p2_elapsed}s > 17s — a global watchdog ends the run at ~12s; a per-stage reset at ~20s+"
-fi
+_p2_one="$(cat "${_P2_WD}.one" 2>/dev/null)"; _p2_two="$(cat "${_P2_WD}.two" 2>/dev/null)"
+assert_eq "[#1944/SPEC-1] P2: fast-one ran under the run's watchdog" "1" "$([[ "$_p2_one" =~ ^[0-9]+$ ]] && echo 1 || echo 0)"
+assert_eq "[#1944/SPEC-1] P2: fast-two ran under the same watchdog — one timer for the run, not one per stage" \
+    "$_p2_one" "$_p2_two"
 
 # ── P3: TERM-ignore → KILL within TERM + 10s ────────────────────────────────
 print_test_section "P3: stage that ignores SIGTERM is dead within TERM + 10s"
@@ -296,32 +295,25 @@ slow_stage_run() {
     printf '%s\n' "\$\$" > "${TERM_IGNORED_PID_FILE}"
     # Trap SIGTERM and ignore it (only SIGKILL can stop this)
     trap '' TERM
-    sleep 120
+    sleep 600
     $(mock_result_line slow-stage)
     return 0
 }
 PLUG
 
-_p3_start="$(date +%s)"
-# max_run_s=2 → watchdog fires at 2s, sends TERM; stage ignores it;
-# watchdog escalates to KILL at 2+10=12s. The runner must exit within ~15s.
+# max_run_s=2 → the watchdog TERMs at 2s; the stage ignores it; the watchdog
+# KILLs it at 2+10s. Without that KILL the stage holds 600s, the outer timeout
+# (90s) ends the runner with 124, and the stage outlives it: the rc and the
+# stage's pid say which, with no elapsed time read (#2510).
 p3_rc=0
-( cd "$OVERLAY_REPO" && ZBUILD_MAX_RUN_S=2 timeout 30 bash "$RUNNER" \
+( cd "$OVERLAY_REPO" && ZBUILD_MAX_RUN_S=2 timeout 90 bash "$RUNNER" \
     --template timeout-single --goal "run-timed-out test p3 term-ignore" ) \
     >"$TEST_TEMP_DIR/p3.stdout" 2>"$TEST_TEMP_DIR/p3.stderr" \
     || p3_rc=$?
-_p3_elapsed=$(( $(date +%s) - _p3_start ))
 
 # Runner must exit (not hang past 30s timeout)
 assert_eq "[#1944/SPEC-1] P3: runner exits non-zero (not still running)" "1" "$p3_rc"
 
-# Runner must exit within TERM + 10s + buffer = 2 + 10 + 5 = 17s
-if [[ "$_p3_elapsed" -le 17 ]]; then
-    assert_pass "[#1944/SPEC-1] P3: runner exits within TERM+10s+buffer (elapsed ${_p3_elapsed}s)"
-else
-    assert_fail "[#1944/SPEC-1] P3: runner exits within TERM+10s+buffer" \
-        "elapsed ${_p3_elapsed}s > 17s"
-fi
 
 # If stage PID was written, check the process is dead
 if [[ -f "$TERM_IGNORED_PID_FILE" ]]; then

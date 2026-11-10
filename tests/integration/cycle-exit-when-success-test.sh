@@ -20,7 +20,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 print_test_header "cycle exit_when on leaf-after-inner-cycle (Wave 19-A #717)"
 setup_test_env "cycle-exit-when-success"
 

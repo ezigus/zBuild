@@ -24,8 +24,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "leaf dispatch — a role-bound stage reports its real verdict (#1770)"
 setup_test_env "leaf-role-verdict"

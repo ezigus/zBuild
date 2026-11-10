@@ -36,8 +36,8 @@ RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
 ZBUILD_CLI="$REPO_ROOT/scripts/zbuild"
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 # Assertions must never abort the run: a sourced lib may leave errexit on, and
 # assert_fail returns nonzero when called without a detail arg. Keep -u/pipefail.
 set +e
@@ -127,7 +127,7 @@ fi
 # SHAPE, when what this file exists to prove is CONTAINMENT.
 _nested_sd() {   # <state_root> <home> <run_id> [<repo>]
     HOME="$2" ZBUILD_STATE_ROOT="$1" env -u ZBUILD_STATE_DIR -u ZBUILD_DATA_ROOT \
-        bash -c 'source "$1/scripts/lib/test-helpers.sh" >/dev/null 2>&1
+        bash -c 'source "$1/tests/lib/test-helpers.sh" >/dev/null 2>&1
                  zb_expected_run_state_dir "$2" "$3" "" "$4"' _ \
         "$REPO_ROOT" "${4:-$OVERLAY_REPO}" "$_ZB_ID" "$3"
 }

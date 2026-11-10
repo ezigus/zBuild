@@ -18,8 +18,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
-source "$REPO_ROOT/scripts/lib/golden.sh"
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
+source "$REPO_ROOT/tests/lib/golden.sh"
 
 print_test_header "test-stage banner — deterministic goldens (#497)"
 setup_test_env "test-stage-banner-golden"

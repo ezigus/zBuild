@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Tests: parity normalizer library (scripts/lib/parity.sh)
+# Tests: parity normalizer library (tests/lib/parity.sh)
 # Verifies each normalization function strips non-deterministic fields.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
-print_test_header "parity normalizer — scripts/lib/parity.sh"
+print_test_header "parity normalizer — tests/lib/parity.sh"
 setup_test_env "parity-normalizer"
 
 # Source the library under test (will fail if it does not exist)
-source "$REPO_ROOT/scripts/lib/parity.sh"
+source "$REPO_ROOT/tests/lib/parity.sh"
 
 # ── normalize_run_id ──────────────────────────────────────────────────────────
 actual="$(normalize_run_id "run_id: 20260525123456-99999 and another 20261231235959-1")"

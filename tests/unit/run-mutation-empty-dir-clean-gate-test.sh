@@ -13,8 +13,8 @@ REPO_ROOT="$TEST_REPO_ROOT"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "run-mutation.sh clean-tree gate gated on spec count (#1661)"
 setup_test_env "run-mutation-empty-dir-clean-gate"

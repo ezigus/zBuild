@@ -4,7 +4,7 @@
 #
 # The budget (tests/e2e/fork-budget-test.sh) counts one mocked pipeline run:
 # 4,808 programs. A single test file can start 20,000 because it runs the same
-# engine paths many times, and nothing showed that. `scripts/lib/fork-census.sh
+# engine paths many times, and nothing showed that. `tests/lib/fork-census.sh
 # <cmd...>` runs a command under the same trace and prints its count, its top
 # call sites and its per-file totals, so a slow test can be measured before and
 # after a fix.
@@ -24,13 +24,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "fork census: count the programs any command starts (ADR-065 §1)"
 setup_test_env "fork-census"
 
-CENSUS="$REPO_ROOT/scripts/lib/fork-census.sh"
+CENSUS="$REPO_ROOT/tests/lib/fork-census.sh"
 CANARY="$TEST_TEMP_DIR/canary.sh"
 cat > "$CANARY" <<'EOF'
 #!/usr/bin/env bash
@@ -46,7 +46,7 @@ assert_contains "[SPEC-1] …and its line is named" "$_out" "canary.sh:2"
 
 print_test_section "SPEC-2: the functions, sourced"
 _n="$(
-    # shellcheck source=../../scripts/lib/fork-census.sh
+    # shellcheck source=../../tests/lib/fork-census.sh
     source "$CENSUS"
     fork_census_traced "$TEST_TEMP_DIR/c.trace" bash "$CANARY"
     fork_census_count "$TEST_TEMP_DIR/c.trace" "$TEST_TEMP_DIR/c.sites"
@@ -55,7 +55,7 @@ assert_eq "[SPEC-2] fork_census_count of the canary" "1" "$_n"
 
 print_test_section "SPEC-3: one counter"
 _budget="$REPO_ROOT/tests/e2e/fork-budget-test.sh"
-if grep -q 'scripts/lib/fork-census.sh' "$_budget" && ! grep -qE '^_fb_count\(\)' "$_budget"; then
+if grep -q 'tests/lib/fork-census.sh' "$_budget" && ! grep -qE '^_fb_count\(\)' "$_budget"; then
     assert_pass "[SPEC-3] the budget test sources the census and keeps no copy of the counter"
 else
     assert_fail "[SPEC-3] the budget test sources the census and keeps no copy of the counter" "$_budget"
@@ -71,7 +71,7 @@ b="$(dirname /a/b)"
 c="${a}${b}"
 EOF
 _pr="$(
-    # shellcheck source=../../scripts/lib/fork-census.sh
+    # shellcheck source=../../tests/lib/fork-census.sh
     source "$CENSUS"
     fork_census_traced "$TEST_TEMP_DIR/s.trace" bash "$SUBSH"
     printf '%s|%s' "$(fork_census_count "$TEST_TEMP_DIR/s.trace" "$TEST_TEMP_DIR/s.sites")" \

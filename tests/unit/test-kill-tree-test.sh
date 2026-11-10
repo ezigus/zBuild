@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # tests/unit/test-kill-tree-test.sh — a test that has to KILL a runner kills
-# everything the runner started (zb_test_kill_tree, scripts/lib/test-helpers.sh).
+# everything the runner started (zb_test_kill_tree, tests/lib/test-helpers.sh).
 #
 # KILL cannot be caught, so a runner killed alone cleans up nothing: its forked
 # stage and the stage's time-limit watchdog — copies of the runner's shell, so
@@ -24,8 +24,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "zb_test_kill_tree: a killed runner leaves nothing behind"
 setup_test_env "test-kill-tree"
@@ -85,7 +85,7 @@ bash -c 'exit 0' & _gone=$!; wait "$_gone"
 zb_test_kill_tree "$_gone"; _rc=$?
 assert_eq "[K3] returns 0" "0" "$_rc"
 _k4="$(REPO_ROOT="$REPO_ROOT" G="$_gone" bash -c 'set -euo pipefail
-    source "$REPO_ROOT/scripts/lib/helpers.sh"; source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+    source "$REPO_ROOT/scripts/lib/helpers.sh"; source "$REPO_ROOT/tests/lib/test-helpers.sh"
     zb_test_kill_tree "$G"; echo carried-on' 2>/dev/null || true)"
 assert_eq "[K4] under set -e the caller carries on" "carried-on" "$_k4"
 

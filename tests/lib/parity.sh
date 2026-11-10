@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lib/parity.sh — Normalization helpers for CI/CLI parity tests
+# tests/lib/parity.sh — Normalization helpers for CI/CLI parity tests
 # Source this library in parity test files to strip non-deterministic fields
 # before comparing pipeline output across environments.
 #

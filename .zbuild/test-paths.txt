@@ -1,0 +1,6 @@
+# The folders that hold this repository's tests (ADR-069 §10). Every test and
+# test helper of zBuild lives in one of them; a plugin keeps its own tests/
+# folder. One glob per line, matched against a path from the repository root;
+# `*` also matches `/`. Lines starting with `#` are comments.
+tests/*
+plugins/*/*/tests/*

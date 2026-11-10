@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "template-resolver + load_template — extends wiring (ADR-016)"
 setup_test_env "template-resolver-extends"

@@ -40,8 +40,8 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 # assertions below silently pass over an empty file.
 # shellcheck source=../../core/event-bus/event-bus.sh
 source "$REPO_ROOT/core/event-bus/event-bus.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "artifact enforcement survives artifact_type retirement (#1906)"
 setup_test_env "artifact-enforcement-survives"

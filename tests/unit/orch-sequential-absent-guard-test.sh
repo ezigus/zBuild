@@ -15,7 +15,7 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "orch-sequential is absent from the installed tree (#1801 SPEC-3)"
 setup_test_env "orch-sequential-absent-guard"

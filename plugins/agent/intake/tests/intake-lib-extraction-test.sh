@@ -31,7 +31,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 # Explicit source guard (PR #1646 review): without -e a failed source would let
 # the file run on with every helper undefined, producing a cascade of
 # "command not found" instead of naming the missing dependency. Fail loudly here.
-for _dep in scripts/lib/helpers.sh scripts/lib/test-helpers.sh; do
+for _dep in scripts/lib/helpers.sh tests/lib/test-helpers.sh; do
     if [[ ! -f "$REPO_ROOT/$_dep" ]]; then
         printf 'intake-lib-extraction-test: required dependency missing: %s\n' \
             "$REPO_ROOT/$_dep" >&2
@@ -40,8 +40,8 @@ for _dep in scripts/lib/helpers.sh scripts/lib/test-helpers.sh; do
 done
 # shellcheck source=../../../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "plugin: intake — lib/ extraction (#1636)"
 setup_test_env "intake-lib-extraction"

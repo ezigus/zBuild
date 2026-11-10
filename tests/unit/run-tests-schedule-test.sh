@@ -28,8 +28,8 @@ RUN_TESTS="$REPO_ROOT/scripts/run-tests.sh"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "run-tests.sh pool order: longest first, pinned files in their own lane"
 setup_test_env "run-tests-schedule"
@@ -60,7 +60,7 @@ printf '10\t%s\n30\t%s\n20\t%s\n5\t%s\n' \
 _run() {   # [env assignments...]
     : > "$LOG"
     env -u ZBUILD_TEST_PARALLEL_JOBS -u ZBUILD_SERIAL_TESTS -u ZBUILD_TEST_DURATIONS_FILE -u ZBUILD_DISCOVERY_MEMO_DIR \
-        ZBUILD_TESTS_DIR="$FAKE" ZBUILD_PLUGINS_DIR="$EMPTY" ZBUILD_CORE_DIR="$EMPTY" \
+        ZBUILD_TESTS_DIR="$FAKE" ZBUILD_PLUGINS_DIR="$EMPTY" \
         ZBUILD_TEST_PARALLEL_JOBS=1 ZBUILD_SERIAL_TESTS='p1-test.sh p2-test.sh' \
         "$@" bash "$RUN_TESTS" --tier unit > "$TEST_TEMP_DIR/out" 2> "$TEST_TEMP_DIR/err" || true
 }

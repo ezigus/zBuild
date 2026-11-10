@@ -22,8 +22,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "timeout sites bound their command on a gtimeout-only host (#1752)"
 setup_test_env "timeout-cmd-sites"
@@ -67,7 +67,7 @@ FIX="$TEST_TEMP_DIR/fix"; mkdir -p "$FIX/unit"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$FIX/unit/a-test.sh"
 : > "$GT_LOG"
 env -u _ACCEPTANCE_TIMEOUT_KILL_OK PATH="$GT_ONLY" ZBUILD_TESTS_DIR="$FIX" \
-    ZBUILD_PLUGINS_DIR="$TEST_TEMP_DIR/empty" ZBUILD_CORE_DIR="$TEST_TEMP_DIR/empty" \
+    ZBUILD_PLUGINS_DIR="$TEST_TEMP_DIR/empty" \
     ZBUILD_TEST_FILE_TIMEOUT=17 ZBUILD_TEST_KILL_GRACE=3 ZBUILD_TEST_PARALLEL_JOBS=0 \
     bash "$REPO_ROOT/scripts/run-tests.sh" --tier unit >"$TEST_TEMP_DIR/s1.out" 2>&1 || true
 assert_eq "[S1] each test file runs under gtimeout -k <grace> <bound>" "1" \

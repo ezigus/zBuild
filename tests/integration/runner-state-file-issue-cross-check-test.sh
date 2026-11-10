@@ -11,8 +11,8 @@ RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
 
 # shellcheck source=../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "runner — ZBUILD_STATE_FILE vs --issue cross-check (#296 Δ-4)"
 setup_test_env "runner-state-file-issue-cross-check"

@@ -4,10 +4,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 # state_helpers.sh self-sources atomic.sh; source in correct order.
 source "$REPO_ROOT/core/state/resume.sh"
 source "$REPO_ROOT/core/pipeline/state_helpers.sh"

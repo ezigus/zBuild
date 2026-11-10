@@ -668,7 +668,7 @@ flight on branch `feat/467-build-agent-loop`:
   `loop.git_diff_failed`, `loop.terminated.signal`,
   `loop.diff_capture_warning`, `build.scope.violation`, `build.empty_diff`,
   `router.max_iterations.override_ignored`.
-- Test coverage: `core/router/tests/route-loop-unit-test.sh` (31
+- Test coverage: `tests/unit/route-loop-unit-test.sh` (31
   assertions — single-iter DONE, multi-iter DONE, max-iter cap, rc!=0
   recovery, sentinel parsing variants including whitespace/lowercase
   rejection, diff-cap fallback, argument validation).

@@ -18,8 +18,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 # shellcheck source=../../core/plugin-registry/registry.sh
 source "$REPO_ROOT/core/plugin-registry/registry.sh"
 
@@ -75,7 +75,7 @@ _seen() { /usr/bin/grep -m1 "^$1=" "$REPORT" 2>/dev/null | cut -d= -f2-; }
 # ── Pre-dispatch environment ────────────────────────────────────────────────
 # setup_test_env unsets ZBUILD_ARTIFACT_DIR and sandboxes the process; re-export
 # a canary so the restore assertions below have a value to come back to. This is
-# the shape of the real thing: scripts/lib/test-helpers.sh saves and restores
+# the shape of the real thing: tests/lib/test-helpers.sh saves and restores
 # ZBUILD_ARTIFACT_DIR around every test, and the new `local -x` layers over it.
 SANDBOX_ARTIFACTS="$TEST_TEMP_DIR/sandbox-artifacts"
 export ZBUILD_ARTIFACT_DIR="$SANDBOX_ARTIFACTS"

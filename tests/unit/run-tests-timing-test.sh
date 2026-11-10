@@ -26,8 +26,8 @@ RUN_TESTS="$REPO_ROOT/scripts/run-tests.sh"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "run-tests.sh timing instrumentation (#1058 Phase A)"
 setup_test_env "run-tests-timing"
@@ -54,7 +54,6 @@ _unit() {
   env -u ZBUILD_TEST_TIMING_FILE \
       ZBUILD_TESTS_DIR="$FIX" \
       ZBUILD_PLUGINS_DIR="$EMPTY_DIR" \
-      ZBUILD_CORE_DIR="$EMPTY_DIR" \
       ZBUILD_TEST_PARALLEL_JOBS=0 \
       "${_tf_env[@]}" \
       "$@" \

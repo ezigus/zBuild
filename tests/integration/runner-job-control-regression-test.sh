@@ -18,8 +18,8 @@ RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "runner job-control happy-path regression (Wave 15-H / #688)"
 setup_test_env "runner-job-control-regression"

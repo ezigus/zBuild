@@ -18,7 +18,7 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "orch kill sites use zbuild_pg_kill (not direct kill) (#1801 SPEC-6)"
 setup_test_env "orch-kill-uses-pg-kill-guard"

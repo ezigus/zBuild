@@ -383,7 +383,7 @@ _plugin_hook_call_once() {
     # this call is that script's last line), and `local -x` restores the prior
     # value AND the prior export attribute on return, so stage N's scratch
     # cannot bleed into stage N+1 and the test harness's sandboxed
-    # ZBUILD_ARTIFACT_DIR (scripts/lib/test-helpers.sh) comes back intact.
+    # ZBUILD_ARTIFACT_DIR (tests/lib/test-helpers.sh) comes back intact.
     #
     # Guarded on `$2` being an ABSOLUTE path — the state_file, post-shift, per
     # ADR-054 §2, the same argument scan_plugin_outputs reads below.

@@ -24,8 +24,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 print_test_header "every test runs in its own clean folders (#2252 F, #1910)"
 
 SHARED="/nonexistent/shared-by-every-test"
@@ -58,7 +58,7 @@ while IFS= read -r v; do
     if [[ " ${_written[*]} ${_inherited[*]} " == *" $v "* ]]; then
         assert_pass "[I2] $v is classified"
     else
-        assert_fail "[I2] $v is classified" "add it to _ZB_TEST_ISOLATED_VARS or _ZB_TEST_INHERITED_VARS (scripts/lib/test-helpers.sh)"
+        assert_fail "[I2] $v is classified" "add it to _ZB_TEST_ISOLATED_VARS or _ZB_TEST_INHERITED_VARS (tests/lib/test-helpers.sh)"
     fi
 done <<< "$_all"
 

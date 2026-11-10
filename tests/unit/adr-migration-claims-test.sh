@@ -22,7 +22,7 @@
 # quietly becoming fiction.
 set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "ADR migration claims are checkable (#2034)"
 setup_test_env "adr-migration-claims"

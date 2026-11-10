@@ -31,8 +31,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
 # shellcheck source=../../../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 # shellcheck source=../../../../scripts/lib/stage-result.sh
 source "$REPO_ROOT/scripts/lib/stage-result.sh"
 
@@ -61,7 +61,7 @@ printf '{"schema_version":1,"verdict":"pass","findings":[]}\n' > "$ART/review-re
 jq -n --arg a "$ART" '{inputs: {review_report: ($a + "/review-report.json")}}' > "$STATE_DIR/stage-inputs.json"
 export ZBUILD_STAGE_INPUTS="$STATE_DIR/stage-inputs.json"
 
-# The engine's own loop writers, via the shared helper (scripts/lib/test-helpers.sh).
+# The engine's own loop writers, via the shared helper (tests/lib/test-helpers.sh).
 _loop() { zb_engine_loop_state "$STATE_FILE" "$@" || assert_fail "[setup] the engine's loop writers ran for $1" "they failed"; }
 _fresh_state() {
     printf '{"schema_version":1,"run_id":"t","issue":"999","status":"running","stage_statuses":{}}\n' > "$STATE_FILE"

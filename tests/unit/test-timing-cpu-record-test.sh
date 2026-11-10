@@ -24,8 +24,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "the timing record carries CPU time"
 setup_test_env "test-timing-cpu-record"
@@ -42,7 +42,7 @@ for i in $(seq 1 120); do echo x | tr a-z A-Z >/dev/null; done
 exit 0
 PROBE
 _timing="$TEST_TEMP_DIR/timing.txt"
-( cd "$REPO_ROOT" && ZBUILD_TESTS_DIR="$_TDIR" ZBUILD_CORE_DIR="$_EMPTY" ZBUILD_PLUGINS_DIR="$_EMPTY" ZBUILD_TEST_TIMING_FILE="$_timing" \
+( cd "$REPO_ROOT" && ZBUILD_TESTS_DIR="$_TDIR" ZBUILD_PLUGINS_DIR="$_EMPTY" ZBUILD_TEST_TIMING_FILE="$_timing" \
     bash scripts/run-tests.sh --tier unit >/dev/null 2>&1 ) || true
 
 # The private tier runs its probe and nothing else: every figure below must be

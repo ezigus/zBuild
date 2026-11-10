@@ -31,7 +31,7 @@ zBuild's architecture and migration plan live in:
 - `/plugins` — plugin implementations, one directory per plugin
 - `/config` — config files (models.json, event-schema.json)
 - `/scripts` — CLI entry + shared libs
-- `/tests` — all tests; `/tests/golden` for snapshot diffs
+- `/tests` — all tests and test helpers (`/tests/lib`); `/tests/golden` for snapshot diffs. A plugin keeps its own `tests/` folder. The test folders are listed in `.zbuild/test-paths.txt` (ADR-069 §10)
 - `/docs` — KEEPERS, ARCHITECTURE, ADRs, plans
 - `/legacy-DoNotUse` — frozen upstream import; FROZEN, do not run, do not read as zBuild code
 - `/.github` — workflows, issue templates, `keepers-manifest.yaml`

@@ -7,8 +7,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "cleanup stash + tmpdir scanners (#594)"
 setup_test_env "cleanup-stashes"
@@ -199,16 +199,17 @@ fi
 # "Producer" means a line that actually CREATES the directory, not a line that
 # merely names it — cleanup.sh declares every stem, and `scripts/zbuild --help`
 # names two of them in prose. Requiring mktemp/mkdir is what separates the two.
+# tests/lib/ holds the test helpers, which make the zb-test* directories.
 # The file list comes from `find`, not `grep --include`: the grep on a dev box
 # may be ugrep, which takes --include/--exclude as file operands and warns
 # instead of filtering, so a --include-based scan silently searches everything.
-_prod_files="$(find "$REPO_ROOT/core" "$REPO_ROOT/scripts" "$REPO_ROOT/plugins" \
+_prod_files="$(find "$REPO_ROOT/core" "$REPO_ROOT/scripts" "$REPO_ROOT/plugins" "$REPO_ROOT/tests/lib" \
     -name '*.sh' -not -name 'cleanup.sh' -not -path '*/legacy-DoNotUse/*' 2>/dev/null)"
 # Stems whose producer builds the name from a variable, so no literal appears
 # on the mktemp line. Each entry names the producer, and the pointer is checked
 # below — so an exemption cannot outlive the thing it exempts.
 declare -A _INDIRECT_PRODUCERS=(
-    ["zb-test."]="scripts/lib/test-helpers.sh:local test_name=\"\${1:-zb-test}\""
+    ["zb-test."]="tests/lib/test-helpers.sh:local test_name=\"\${1:-zb-test}\""
 )
 _orphans=""
 _stale_exempt=""

@@ -24,8 +24,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "the engine owns the run's branch and starting commit (#2367)"
 setup_test_env "engine-run-branch"
@@ -70,7 +70,7 @@ run_pipeline() {
 _seen() { sed -n "s/^$1=//p" "$SEEN" 2>/dev/null; }
 _state_dir_for() {
     HOME="$HOME_DIR" env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT -u ZBUILD_DATA_ROOT \
-        bash -c 'source "$1/scripts/lib/test-helpers.sh" >/dev/null 2>&1
+        bash -c 'source "$1/tests/lib/test-helpers.sh" >/dev/null 2>&1
                  zb_expected_run_state_dir "$2" "$3" "" "$4"' _ \
         "$REPO_ROOT" "$1" "$_ZB_ID" "$2"
 }

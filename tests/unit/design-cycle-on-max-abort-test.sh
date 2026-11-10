@@ -21,8 +21,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 export REPO_ROOT
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 print_test_header "design cycle: no build from a design its gate rejected (#2176)"
 setup_test_env "design-cycle-on-max-abort"
 _on_max() { awk -v id="$1" '$0 ~ "^"id":" {f=1; next} /^[a-z_-]+:/ {f=0} f && /^[[:space:]]+on_max:/ {print $2}' "$REPO_ROOT/config/templates/simple.yaml"; }

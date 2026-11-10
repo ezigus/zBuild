@@ -15,8 +15,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "test-harness TERM trap: rc=143, no bogus failures, temp cleanup (#1611)"
 
@@ -35,7 +35,7 @@ CHILD_TEMPDIR_FILE="$WITNESS_DIR/child-tempdir.txt"
 # mid-test. $0 is 'bash' (not *-test.sh) so the re-entrancy guard is silent.
 bash -c "
     source '$REPO_ROOT/scripts/lib/helpers.sh'
-    source '$REPO_ROOT/scripts/lib/test-helpers.sh'
+    source '$REPO_ROOT/tests/lib/test-helpers.sh'
     printf '%s' \"\$AUTO_TEST_TEMP_DIR\" > '$CHILD_TEMPDIR_FILE'
     assert_pass 'T0: pre-signal assertion (expected in output)'
     while true; do sleep 0.05; done
@@ -144,7 +144,7 @@ else
     set +e
     bash -c "
         source '$REPO_ROOT/scripts/lib/helpers.sh'
-        source '$REPO_ROOT/scripts/lib/test-helpers.sh'
+        source '$REPO_ROOT/tests/lib/test-helpers.sh'
         assert_pass 'T0: pre-signal assertion (expected in output)'
         ( sleep 1; kill -INT \$\$ ) &
         sleep 5
@@ -166,7 +166,7 @@ CHILD2_TEMPDIR_FILE="$WITNESS_DIR/child2-tempdir.txt"
 
 bash -c "
     source '$REPO_ROOT/scripts/lib/helpers.sh'
-    source '$REPO_ROOT/scripts/lib/test-helpers.sh'
+    source '$REPO_ROOT/tests/lib/test-helpers.sh'
     setup_test_env 'harness-term-normal-exit'
     printf '%s' \"\$AUTO_TEST_TEMP_DIR\" > '$CHILD2_TEMPDIR_FILE'
     assert_pass 'T0: normal-exit assertion'

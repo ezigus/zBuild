@@ -9,8 +9,8 @@ RUN_TESTS="$REPO_ROOT/scripts/run-tests.sh"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "run-tests.sh killed-tier abort detection (#1662)"
 setup_test_env "run-tests-killed-tier"
@@ -36,7 +36,6 @@ _all_abort() {
       -u ZBUILD_TIER_CONCURRENCY -u ZBUILD_TIER_BUDGET -u UPDATE_GOLDEN \
       ZBUILD_TESTS_DIR="$FAST" \
       ZBUILD_PLUGINS_DIR="$EMPTY_DIR" \
-      ZBUILD_CORE_DIR="$EMPTY_DIR" \
       ZBUILD_MUTATION_DIR="$EMPTY_MUT" \
       ZBUILD_LINT_CMD=true \
       ZBUILD_PARALLEL_SAFE_TIERS="unit integration e2e golden" \
@@ -103,7 +102,7 @@ rm -f "$_ZB_SIG_MARKER"
 
 env -u ZBUILD_TEST_PARALLEL_JOBS -u ZBUILD_TIER_CONCURRENCY -u ZBUILD_TIER_BUDGET \
     -u UPDATE_GOLDEN \
-    ZBUILD_TESTS_DIR="$SLOW" ZBUILD_PLUGINS_DIR="$EMPTY_DIR" ZBUILD_CORE_DIR="$EMPTY_DIR" \
+    ZBUILD_TESTS_DIR="$SLOW" ZBUILD_PLUGINS_DIR="$EMPTY_DIR" \
     ZBUILD_MUTATION_DIR="$EMPTY_MUT" ZBUILD_LINT_CMD=true \
     ZBUILD_PARALLEL_SAFE_TIERS="unit integration e2e golden" \
     bash "$RUN_TESTS" --tier all >"$TEST_TEMP_DIR/sig.out" 2>"$TEST_TEMP_DIR/sig.err" &

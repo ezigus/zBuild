@@ -9,8 +9,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # shellcheck source=../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "redaction — chokepoint scanner (ARCHITECTURE.md §3, §4)"
 setup_test_env "redaction-chokepoint"
@@ -54,7 +54,7 @@ while IFS=: read -r file line content; do
     # Skip empty lines
     [[ -z "$file" ]] && continue
     # Skip full-comment lines — a documentation/comment mention is not a real
-    # invocation (e.g. scripts/lib/test-helpers.sh mock-installer docs).
+    # invocation (e.g. tests/lib/test-helpers.sh mock-installer docs).
     _trimmed="${content#"${content%%[![:space:]]*}"}"
     [[ "$_trimmed" == \#* ]] && continue
     # Skip allowed locations

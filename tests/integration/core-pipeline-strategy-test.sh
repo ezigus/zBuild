@@ -10,7 +10,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
 
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "core/pipeline/strategies — integration: runner delegates via orch contract"
 setup_test_env "core-pipeline-strategy-int"

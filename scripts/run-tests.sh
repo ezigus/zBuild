@@ -6,7 +6,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TESTS_DIR="${ZBUILD_TESTS_DIR:-$REPO_ROOT/tests}"
 PLUGINS_DIR="${ZBUILD_PLUGINS_DIR:-$REPO_ROOT/plugins}"
-CORE_DIR="${ZBUILD_CORE_DIR:-$REPO_ROOT/core}"
 
 # #929: per-file isolation so a non-test or hanging file can never wedge the run
 # (a markdown mutation spec executed as bash blocked on stdin for 3.5h in a
@@ -658,19 +657,6 @@ run_tier() {
       [[ "$f" == *-unit-test.sh ]] && continue
       files+=("$f")
     done < <(find "$PLUGINS_DIR" -path '*/tests/*-test.sh' -print0 2>/dev/null | sort -z)
-  fi
-
-  # Collect co-located core/ module tests from core/*/tests/
-  # Same tier convention: *-unit-test.sh => unit; other *-test.sh => integration
-  if [[ "$name" == "unit" ]]; then
-    while IFS= read -r -d '' f; do
-      files+=("$f")
-    done < <(find "$CORE_DIR" -path '*/tests/*-unit-test.sh' -print0 2>/dev/null | sort -z)
-  elif [[ "$name" == "integration" ]]; then
-    while IFS= read -r -d '' f; do
-      [[ "$f" == *-unit-test.sh ]] && continue
-      files+=("$f")
-    done < <(find "$CORE_DIR" -path '*/tests/*-test.sh' -print0 2>/dev/null | sort -z)
   fi
 
   if [[ ${#files[@]} -eq 0 ]]; then

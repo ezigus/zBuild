@@ -14,7 +14,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 PLUGIN_DIR="$REPO_ROOT/plugins/tool/memory-ruflo"
 
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "plugins/tool/memory-ruflo — unit: adversarial + injection Part B (tests 9-15)"
 

@@ -14,8 +14,8 @@ RUN_TESTS="$REPO_ROOT/scripts/run-tests.sh"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 # Resolve a REAL timeout command BEFORE setup_test_env prepends its mock bin to
 # PATH (the harness can install a stub `timeout` that ignores the duration —

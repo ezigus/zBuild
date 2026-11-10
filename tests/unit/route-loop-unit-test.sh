@@ -5,12 +5,12 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# shellcheck source=../../../scripts/lib/helpers.sh
+# shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "core/router/route_to_model_loop — unit (ADR-018 Pattern 2, #467)"
 setup_test_env "route-loop-unit"
@@ -77,7 +77,7 @@ MOCK
     chmod +x "$TEST_TEMP_DIR/bin/claude"
 }
 
-# shellcheck source=../route.sh
+# shellcheck source=../../core/router/route.sh
 source "$REPO_ROOT/core/router/route.sh"
 
 # Common prompt file
@@ -172,7 +172,7 @@ print_test_section "R8: route_to_model_loop emits stage_io begin/end for its cal
 # written per iteration.
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state-r8"
 mkdir -p "$ZBUILD_STATE_DIR/artifacts/stage-io"
-# shellcheck source=../../output/stage-io.sh
+# shellcheck source=../../core/output/stage-io.sh
 source "$REPO_ROOT/core/output/stage-io.sh"
 template_stage_io_dests() {
     local _stage="$1"

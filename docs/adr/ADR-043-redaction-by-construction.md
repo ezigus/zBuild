@@ -150,4 +150,4 @@ still refuses, and the `--skip-precondition` operator override is unchanged.
 - `core/router/route.sh`, `core/pipeline/runner.sh`, `core/redaction/scope-redaction.sh`.
 - Tests: `tests/integration/router-precondition-test.sh`,
   `tests/integration/router-precondition-parallel-test.sh`,
-  `tests/integration/core-router-route-test.sh`, `core/router/tests/route-unit-test.sh`.
+  `tests/integration/core-router-route-test.sh`, `tests/unit/route-unit-test.sh`.

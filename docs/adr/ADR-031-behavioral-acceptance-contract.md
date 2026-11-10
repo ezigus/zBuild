@@ -81,7 +81,7 @@ Once a `SPEC:` claim appears in a merged `design.md`, it may not be weakened or 
 Delivered in two artifacts under #864:
 
 - **`scripts/lib/acceptance-block.sh`** — pure parser; no side effects, no LLM calls. Exports `extract_acceptance_block <design_md>`. Mirrors `_extract_scope_from_design` guard-and-loop idiom from `plugins/agent/design/plugin.sh:351-374`.
-- **`tests/unit/acceptance-block-test.sh`** — five test cases covering absent block, well-formed single-entry, multi-entry, malformed (no closing fence / missing TESTFILES), and co-presence with a `\`\`\`scope` block. Sources `scripts/lib/test-helpers.sh`.
+- **`tests/unit/acceptance-block-test.sh`** — five test cases covering absent block, well-formed single-entry, multi-entry, malformed (no closing fence / missing TESTFILES), and co-presence with a `\`\`\`scope` block. Sources `tests/lib/test-helpers.sh`.
 
 Stage wiring (`test_assessment` consumption) is implemented in issue #867 (843-D) via `plugins/agent/test_assessment/plugin.sh` + manifest; see ADR-022 Amendment v5 for the full specification and downgrade event taxonomy.
 

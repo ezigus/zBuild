@@ -30,8 +30,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 print_test_header "every unit has its own name (#1706)"
 setup_test_env "unit-name"
 unset ZBUILD_CURRENT_STAGE ZBUILD_UNIT ZBUILD_MAP_ELEMENT ZBUILD_MAP_DIMENSION 2>/dev/null || true

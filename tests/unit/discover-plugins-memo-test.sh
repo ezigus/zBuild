@@ -19,8 +19,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 # discovery.sh reads _ZBUILD_ROOT at source time for its default root.
 _ZBUILD_ROOT="$REPO_ROOT"
 # shellcheck source=../../core/plugin-registry/manifest-validation.sh
@@ -141,8 +141,8 @@ EOF
 # The one-call script gets its own memo directory, so both scripts walk once.
 sed -e '$d' -e 's|warm-memo|warm-memo-1|' "$TEST_TEMP_DIR/warm.sh" > "$TEST_TEMP_DIR/warm1.sh"
 _w10="$(
-    # shellcheck source=../../scripts/lib/fork-census.sh
-    source "$REPO_ROOT/scripts/lib/fork-census.sh"
+    # shellcheck source=../../tests/lib/fork-census.sh
+    source "$REPO_ROOT/tests/lib/fork-census.sh"
     fork_census_traced "$TEST_TEMP_DIR/w2.trace" bash "$TEST_TEMP_DIR/warm.sh"
     fork_census_traced "$TEST_TEMP_DIR/w1.trace" bash "$TEST_TEMP_DIR/warm1.sh"
     printf '%s' $(( $(fork_census_processes "$TEST_TEMP_DIR/w2.trace") - $(fork_census_processes "$TEST_TEMP_DIR/w1.trace") ))

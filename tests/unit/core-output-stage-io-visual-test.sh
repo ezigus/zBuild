@@ -20,8 +20,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 export FORCE_COLOR=1
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "core/output/stage-io — visual hierarchy (ADR-015 §v5 #492)"
 setup_test_env "stage-io-visual"

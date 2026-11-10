@@ -22,8 +22,8 @@ RUN_TESTS="$REPO_ROOT/scripts/run-tests.sh"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "coverage trace parallel-safety (#993)"
 setup_test_env "coverage-parallel-safety"
@@ -56,7 +56,6 @@ _trace_set() {
   env -u ZBUILD_PARALLEL_SAFE_TIERS \
       ZBUILD_TESTS_DIR="$FAKE_TESTS" \
       ZBUILD_PLUGINS_DIR="$EMPTY_DIR" \
-      ZBUILD_CORE_DIR="$EMPTY_DIR" \
       ZBUILD_TEST_PARALLEL_JOBS="$jobs" \
       bash "$RUN_TESTS" --tier unit --coverage-trace "$tr" >/dev/null 2>&1 || true
   grep -oE '^TRACE:[^:]*/cov-[0-9]+-test\.sh:[0-9]+:' "$tr" 2>/dev/null | sort -u

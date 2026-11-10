@@ -26,8 +26,8 @@ COV_REPORT="$REPO_ROOT/scripts/lib/coverage-report.py"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "coverage denominator includes untraced files (#1761)"
 setup_test_env "coverage-untraced-file"

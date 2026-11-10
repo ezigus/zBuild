@@ -8,8 +8,8 @@ STAGE_IO_SH="$REPO_ROOT/core/output/stage-io.sh"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "scripts/lib/helpers — run_captured_command wrapper (ADR-015 v2, #439)"
 setup_test_env "run-captured-command"
