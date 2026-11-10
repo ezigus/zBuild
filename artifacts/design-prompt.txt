@@ -266,8 +266,6 @@ change this branch made, in this round and in earlier ones.
 - RQRESU-2: Each stage the interrupted run completed counts as done, and its outputs are put back (rehydrated) exactly as they were when the run stopped.
 - RQRESU-3: The run picks up at the stage that was interrupted, which runs again from its start.
 - RQFROM-1: `--from-stage <s>` works the same way: every stage before `<s>` is trusted and rehydrated, and the run starts at `<s>`.
-- RQTEST-1: Tests for RQRESU-4, RQLOOP-1, RQFROM-2, RQFROM-3, and RQPATH-1 must use a cycle.
-- RQDISP-1: No requirement may be marked done, and no change made, on the strength of the legacy loop.
 - RQADR-1: Amend ADR-006 (resume contract) with the decision above, with the amendment naming its enforcing tests inline.
 - RQADR-2: Amend ADR-050 §6 to draw the line explicitly, stating that the rule "never skip a stage on the basis of prior output" governs a **new** run reusing an **earlier run's** work and stays, while resume continues **the same run** and is governed by ADR-006, with a test pinning each side.
 - RQHYDR-1: Rehydration follows the same path the hydrate stage already uses (ADR-050, `plugins/tool/hydrate`), so "exactly as before" means the same files at the same paths.
@@ -275,7 +273,7 @@ change this branch made, in this round and in earlier ones.
 - RQLOOP-1: Inside a loop (e.g. build → test), a run interrupted mid-round resumes at the interrupted stage of that round. The loop's iteration count and state are restored, not reset.
 - RQFROM-2: `--from-stage <s>` dispatches `<s>` first, with every earlier stage's outputs rehydrated. It never emits `pipeline.skip_to_stage` and then runs an earlier stage.
 - RQFROM-3: `--from-stage <s>` naming a stage with no prior output to rehydrate refuses with a reason, and does not start.
-- RQFROM-4: `--from-stage <s>` without `--resume` (or a run that auto-resumes) refuses with a reason ("only valid with --resume") and does not start.
+- RQFROM-4: `--from-stage <s>` works only when `--resume` is given; without `--resume` the run refuses with a reason ("only valid with --resume") and does not start, even when the run would otherwise resume by itself.
 - RQPATH-1: Every way to resume (`--resume`, auto-resume on restart, and `zbuild pipeline resume --run-id`) finds the interrupted run's state in `runs/<run_id>/` and behaves as RQRESU-4. Each has its own test.
 - RQGUAR-1: A run with no prior state behaves exactly as today. This is a guard.
 - RQGUAR-2: A **new** run of the same issue still never skips a stage because of an earlier run's output (ADR-050 §6). This is a guard.
@@ -529,14 +527,12 @@ Outputs:
 Summary:
 ## intake — pass
 
-- 17 requirement(s): RQRESU-1, RQRESU-2, RQRESU-3, RQFROM-1, RQTEST-1, RQDISP-1, RQADR-1, RQADR-2, RQHYDR-1, RQRESU-4, RQLOOP-1, RQFROM-2, RQFROM-3, RQFROM-4, RQPATH-1, RQGUAR-1, RQGUAR-2
+- 15 requirement(s): RQRESU-1, RQRESU-2, RQRESU-3, RQFROM-1, RQADR-1, RQADR-2, RQHYDR-1, RQRESU-4, RQLOOP-1, RQFROM-2, RQFROM-3, RQFROM-4, RQPATH-1, RQGUAR-1, RQGUAR-2
 
 - RQRESU-1: A resume trusts every stage that already ran.
 - RQRESU-2: Each stage the interrupted run completed counts as done, and its outputs are put back (rehydrated) exactly as they were when the run stopped.
 - RQRESU-3: The run picks up at the stage that was interrupted, which runs again from its start.
 - RQFROM-1: `--from-stage <s>` works the same way: every stage before `<s>` is trusted and rehydrated, and the run starts at `<s>`.
-- RQTEST-1: Tests for RQRESU-4, RQLOOP-1, RQFROM-2, RQFROM-3, and RQPATH-1 must use a cycle.
-- RQDISP-1: No requirement may be marked done, and no change made, on the strength of the legacy loop.
 - RQADR-1: Amend ADR-006 (resume contract) with the decision above, with the amendment naming its enforcing tests inline.
 - RQADR-2: Amend ADR-050 §6 to draw the line explicitly, stating that the rule "never skip a stage on the basis of prior output" governs a **new** run reusing an **earlier run's** work and stays, while resume continues **the same run** and is governed by ADR-006, with a test pinning each side.
 - RQHYDR-1: Rehydration follows the same path the hydrate stage already uses (ADR-050, `plugins/tool/hydrate`), so "exactly as before" means the same files at the same paths.
@@ -544,12 +540,13 @@ Summary:
 - RQLOOP-1: Inside a loop (e.g. build → test), a run interrupted mid-round resumes at the interrupted stage of that round. The loop's iteration count and state are restored, not reset.
 - RQFROM-2: `--from-stage <s>` dispatches `<s>` first, with every earlier stage's outputs rehydrated. It never emits `pipeline.skip_to_stage` and then runs an earlier stage.
 - RQFROM-3: `--from-stage <s>` naming a stage with no prior output to rehydrate refuses with a reason, and does not start.
-- RQFROM-4: `--from-stage <s>` without `--resume` (or a run that auto-resumes) refuses with a reason ("only valid with --resume") and does not start.
+- RQFROM-4: `--from-stage <s>` works only when `--resume` is given; without `--resume` the run refuses with a reason ("only valid with --resume") and does not start, even when the run would otherwise resume by itself.
 - RQPATH-1: Every way to resume (`--resume`, auto-resume on restart, and `zbuild pipeline resume --run-id`) finds the interrupted run's state in `runs/<run_id>/` and behaves as RQRESU-4. Each has its own test.
 - RQGUAR-1: A run with no prior state behaves exactly as today. This is a guard.
 - RQGUAR-2: A **new** run of the same issue still never skips a stage because of an earlier run's output (ADR-050 §6). This is a guard.
 - the requirements changed since the last run:
-  - added: RQFROM-4 `--from-stage <s>` without `--resume` (or a run that auto-resumes) refuses with a reason ("only valid with --resume") and does not start.
+  - removed: RQTEST-1 Tests for RQRESU-4, RQLOOP-1, RQFROM-2, RQFROM-3, and RQPATH-1 must use a cycle. — This is a note about methodology: which test harnesses are valid to evaluate the other requirements. No change to the code can demonstrate it is met; it is a verification constraint, not a code requirement.
+  - removed: RQDISP-1 No requirement may be marked done, and no change made, on the strength of the legacy loop. — This is a note about acceptance criteria and what counts as valid evidence, not a requirement for what the code must do or deliver. No code change demonstrates it. By the same principle as RQORDE-1, it is a methodology note excluded from requirements.
 
 ### design (verdict: unusable) — your own
 Outputs:
@@ -560,7 +557,12 @@ Outputs:
 - work_steps: /home/runner/work/_temp/zbuild-state/artifacts/design-steps.json
 
 Findings:
-- design finding 1 (opened by design): DSFSTG-4 is marked [done], but its evidence core/pipeline/runner.sh:"--from-stage is not in the code from before this change — this branch added or changed it, so it is not done yet: tag DSFSTG-4 [code] and give it a test
+- design finding 1 (opened by design): DSFSTG-3: 1 part to fix
+    DSFSTG-3[code]: In combined --resume --from-stage <s> mode, stages after <s> that are marked complete in the interrupted run's state are still dispatched covers: RQFROM-1
+      Given: A previous run was interrupted; stages before <s> and stages after <s> are both marked complete; the runner is invoked with both auto-resume active and --from-stage <s> [FIX IN DESIGN: the Given says "the runner is invoked with both auto-resume active and --from-stage <s>" without mentioning explicit --resume; the design's Gap 12 fix moves the --from-stage validation guard to execute before the auto-resume check (see DSFSTG-4 And: "the guard fires before auto-resume runs, so auto-resume never processes state"), so any invocation with auto-resume conditions met, --from-stage given, and no explicit --resume hits that guard and exits 1 before the dispatch loop; the Then assertions ("stage.start is emitted for each stage after <s>") are unreachable when the Given is taken literally, because DSFSTG-4 fires first; for the scenario to reach the dispatch loop, explicit --resume must also be in the invocation, but the Given does not state it — it cannot be true together with that; make them agree]
+      When: The dispatch loop reaches units after <s>
+      Then: stage.start (or cycle.start) is emitted for each stage after <s>, even though those stages are marked complete in the interrupted run's state
+      And: No stage.skip event is emitted for any stage after <s>
 
 Summary:
 ## design — fail
@@ -568,24 +570,7 @@ Summary:
 - the design fails 1 check(s)
 
 The findings are in design's result. This try is kept as the working copy for the next run; design.md is unchanged.
-- answered: design finding 1: wrong — the evidence string `core/pipeline/runner.sh:"--from-stage is only valid with --resume"` IS present in the base code at `main()` in runner.sh (the guard `if [[ -n "$from_stage" ]] && ! $resume_mode; then error "--from-stage is only valid with --resume"` fires before argument parsing completes, before the event bus is initialised, and before any auto-resume check). DSFSTG-4[done] is correct.
-- answered: design finding 2: done — replaced "`_runner_resume_rehydrate` at runner.sh:1707, called at runner.sh:2859" with "`_runner_resume_rehydrate` (new function in runner.sh), called from `main()` in runner.sh at the resume entry point."
-- answered: design finding 3: done — replaced "called at runner.sh:2859" (covered in finding 2 fix above).
-- answered: design finding 4: done — replaced "exit 1 path at runner.sh:3920" with "exit 1 path in the dispatch-unit `stage:*` arm inside `main()` in runner.sh."
-- answered: design finding 5: done — replaced "`_runner_from_stage_preflight` at runner.sh:1733" with "`_runner_from_stage_preflight` (new function in runner.sh)."
-- answered: design finding 6: done — replaced "cycle-orchestrator.sh:2337 wraps" and "line 2343" with "`_cycle_orchestrator_run_body()` in cycle-orchestrator.sh wraps" and "immediately after reading."
-- answered: design finding 7: done — replaced "guards at runner.sh:3442 (cycle:*) and runner.sh:3724-3760 (stage:*)" with "guards in `main()` in runner.sh: dispatch-unit `cycle:*` arm and dispatch-unit `stage:*` arm."
-- answered: design finding 8: done — replaced "runner.sh:3724" (covered in finding 7 fix above).
-- answered: design finding 9: done — replaced "`_cycle_dispatch` (runner.sh:3213)" with "`_cycle_dispatch()` in runner.sh."
-- answered: design finding 10: done — replaced "runner.sh:2963 emits" with "The `pipeline.skip_to_stage` emission inside `main()` in runner.sh fires."
-- answered: design finding 11: done — replaced "runner.sh:3653 for cycle:* arm; runner.sh:3977 for stage:* arm" with "in the dispatch-unit `cycle:*` arm; in the dispatch-unit `stage:*` arm inside `main()`."
-- answered: design finding 12: done — replaced "runner.sh:3977" (covered in finding 11 fix above).
-- answered: design finding 13: done — replaced "runner.sh:3598" with "the `$resume_mode && [[ -z \"$skip_until_stage\" ]]` condition in both dispatch-unit arms."
-- answered: design finding 14: done — replaced "runner.sh:3932" (covered in finding 13 fix above).
-- answered: design finding 15: done — replaced "runner.sh:2174" with "auto-resume elif branch inside `main()` in runner.sh" in both the Context/gaps section and the Decision section.
-- answered: design finding 16: done — replaced "runner.sh:2862" with "inside `main()`, immediately after the `_runner_resume_rehydrate` call."
-- answered: design finding 17: done — replaced "runner.sh:3728" with descriptions using arm names; also fixed the remaining reference in Finding 4 and in REMOVED:DSLEGC-1.
-- not answered: lens-correctness-design finding 1
+- answered: lens-correctness-design finding 1: wrong — the scenario it describes (resume skip guard activating for leaf stages after the targeted cycle in combined `--resume --from-stage <s>` mode) is already addressed by Gap 11 in the architectural decision: immediately after clearing `skip_until_stage` in both the `cycle:*` and `stage:*` dispatch arms, `resume_mode` is also set to false (`[[ -n "$skip_until_stage" ]] && { skip_until_stage=""; resume_mode=false; }`). This prevents the resume skip guard from activating for stages after `<s>`. Pure resume runs (no from-stage) never set `skip_until_stage`, so this line is unreachable in that path. DSFSTG-3[code] provides the observable test: a 3-unit fixture [intake, cyc, verify] where all three are marked complete; in combined mode with `--from-stage cyc`, `verify` must still emit stage.start. The test fails on the unfixed code (verify silently skipped) and passes after the Gap 11 fix (Finding 30 and Finding 31 in the design document).
 
 Its last good output, from an earlier attempt:
 - /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-3-attempt-6/design-steps.json
@@ -621,79 +606,55 @@ Summary of that output:
 Your notes so far (where they disagree with a list or a result elsewhere in this prompt, the list or the result is right):
 # Design notes: #1805 — resume and --from-stage trust-and-rehydrate
 
-## Status: Fifty-first pass — fixed all line number references
+## Status: Fifty-fourth pass — fixing "unusable" caused by removed requirement IDs in covers fields
 
-### Changes this pass
+### What changed this pass
 
-Fixed all 17 checker findings from the previous rejected design:
+The design was "unusable" in the last run. Root cause: intake removed RQTEST-1 and RQDISP-1 from the requirements list (both are methodology notes, not code requirements), but the design still referenced them in `covers:` fields:
+- DSCYCL-1 had `covers: RQTEST-1`
+- DSSKIP-1 had `covers: RQRESU-3 RQRESU-4 RQDISP-1`
 
-**Finding 1 (DSFSTG-4[done] evidence):** The checker claimed the evidence string is not in the base code. Verified against base-code: the guard `"--from-stage is only valid with --resume"` IS present in `main()` in runner.sh (base code). Answering "wrong."
+The design checker validates that every requirement id in a `covers:` field exists in the issue's requirement list. Since RQTEST-1 and RQDISP-1 were removed, the checker couldn't run ("unusable").
 
-**Findings 2–17 (line numbers in design prose):** Replaced every `runner.sh:NNNN`, `cycle-orchestrator.sh:NNNN`, `line NNN` reference in the design document with function names or quoted text. See changes below.
+**Fixes applied:**
+1. DSCYCL-1 covers: changed from `RQTEST-1` to `RQRESU-4 RQLOOP-1 RQFROM-2 RQFROM-3 RQPATH-1` — the actual requirements whose test coverage DSCYCL-1 strengthens by ensuring cycle stages are in fixtures.
+2. DSSKIP-1 covers: removed `RQDISP-1`, keeping `RQRESU-3 RQRESU-4`.
+3. Finding 2: removed mentions of RQTEST-1 and RQDISP-1.
+4. Finding 3: updated requirement coverage to reflect 15 requirements (not 17), removing RQTEST-1 and RQDISP-1 entries.
+5. Finding 26: updated to document the RQTEST-1/RQDISP-1 removal and cover-field fix.
+6. REMOVED tombstone for DSDISP-1: updated reason to "former requirement code RQDISP-1" (since RQDISP-1 itself was removed by intake).
 
-### Line number replacements made
+The DSFSTG-4[code] addition from the fifty-third pass is preserved — it correctly covers RQFROM-4.
 
-- `_runner_resume_rehydrate at runner.sh:1707, called at runner.sh:2859` → `_runner_resume_rehydrate (new function in runner.sh), called from main() at the resume entry point`
-- `exit 1 path at runner.sh:3920` → `exit 1 path in the dispatch-unit stage:* arm inside main() in runner.sh`
-- `_runner_from_stage_preflight at runner.sh:1733` → `_runner_from_stage_preflight (new function in runner.sh)`
-- `cycle-orchestrator.sh:2337 wraps` → `_cycle_orchestrator_run_body() in cycle-orchestrator.sh wraps`
-- `flag is consumed immediately at line 2343` → `flag is consumed immediately after reading`
-- `guards at runner.sh:3442 (cycle:*) and runner.sh:3724-3760 (stage:*)` → `guards in main() in runner.sh: dispatch-unit cycle:* arm and dispatch-unit stage:* arm`
-- `_cycle_dispatch (runner.sh:3213)` → `_cycle_dispatch() in runner.sh`
-- `runner.sh auto-resume check (line 2174)` → `auto-resume elif branch inside main() in runner.sh`
-- `runner.sh:2963 emits` → `The pipeline.skip_to_stage emission inside main() in runner.sh fires`
-- `runner.sh:3653 for cycle:* arm; runner.sh:3977 for stage:* arm` → `in the dispatch-unit cycle:* arm; in the dispatch-unit stage:* arm inside main()`
-- `runner.sh:3598 / runner.sh:3932` → `the $resume_mode && [[ -z "$skip_until_stage" ]] condition in both dispatch-unit arms`
-- `already at line 2862` → `already set inside main(), immediately after the _runner_resume_rehydrate call`
-- `already done at runner.sh:3920` → `already done in the dispatch-unit stage:* arm inside main() in runner.sh`
-- `runner.sh:3653 cycle:* arm and runner.sh:3977 stage:* arm` (Decision) → `in the dispatch-unit cycle:* arm and dispatch-unit stage:* arm inside main() in runner.sh`
-- `In _cycle_dispatch (runner.sh:~3204)` → `In _cycle_dispatch() in runner.sh`
-- `(runner.sh:2862)` in steps → `(inside main(), immediately after the _runner_resume_rehydrate call)`
-- `auto-resume elif branch (line 2174)` in steps → `auto-resume elif branch inside main() in runner.sh`
-- `_cycle_dispatch (runner.sh:~3204)` in steps → `_cycle_dispatch() in runner.sh and _cycle_orchestrator_run_body() in cycle-orchestrator.sh`
-- `runner.sh:3442, 3724` in REMOVED:DSLEGC-1 → `in the dispatch-unit arms of main() in runner.sh`
-- Findings 4, 5, 16, 21, 25, 27, 30: all line numbers replaced
-- `hydrate_run call site (line 162)` → `hydrate_run call site (the _hydrate_put_back call inside hydrate_run)`
-- `at line 219` in Finding 25 → `in its Phase 2 setup block`
+### Open findings to address
 
-### SPEC count: 18 SPECs + 3 REMOVED
+**lens-correctness-design finding 1** (opened by review_lenses): About `skip_until_stage` not cleared by stage:* arm when --from-stage names a cycle, causing resume skip guard to activate for subsequent leaf stages.
 
-- [code] 12: DSRHYD-1, DSRHYD-2, DSFSTG-1, DSFSTG-2, DSFSTG-3, DSITER-1, DSCMBR-1, DSSKIP-1, DSDSPK-1, DSENTR-1, DSENTR-2, DSDLGT-1
+This is addressed by Gap 11 and DSFSTG-3[code]: `resume_mode=false` is set immediately when clearing `skip_until_stage` in both dispatch arms. The finding is answered: "wrong — already addressed by Gap 11 / DSFSTG-3".
+
+### SPEC count (after this pass)
+
+- [code] 13: DSRHYD-1, DSRHYD-2, DSFSTG-1, DSFSTG-2, DSFSTG-3, DSFSTG-4, DSITER-1, DSCMBR-1, DSSKIP-1, DSDSPK-1, DSENTR-1, DSENTR-2, DSDLGT-1
 - [no-code] 5: DSAMDR-1, DSAMDR-2, DSFRSH-1, DSFRSH-2, DSCYCL-1
-- [done] 1: DSFSTG-4
 - REMOVED 3: DSDISP-1, DSBNDY-1, DSLEGC-1
 
-All 17 requirements covered:
+### Requirement coverage (all 15 current requirements covered)
+
 - RQRESU-1: DSRHYD-1
 - RQRESU-2: DSRHYD-1, DSRHYD-2
 - RQRESU-3: DSSKIP-1, DSDSPK-1
-- RQRESU-4: DSRHYD-1, DSSKIP-1, DSDSPK-1
+- RQRESU-4: DSRHYD-1, DSSKIP-1, DSDSPK-1, DSCYCL-1
 - RQFROM-1: DSFSTG-1, DSFSTG-3
-- RQFROM-2: DSFSTG-1
-- RQFROM-3: DSFSTG-2
-- RQFROM-4: DSFSTG-4 [done]
-- RQTEST-1: DSCYCL-1
-- RQDISP-1: DSSKIP-1
+- RQFROM-2: DSFSTG-1, DSCYCL-1
+- RQFROM-3: DSFSTG-2, DSCYCL-1
+- RQFROM-4: DSFSTG-4[code]
+- RQLOOP-1: DSITER-1, DSCMBR-1, DSCYCL-1
+- RQPATH-1: DSENTR-1, DSENTR-2, DSCYCL-1
+- RQGUAR-1: DSFRSH-1
+- RQGUAR-2: DSFRSH-2
 - RQADR-1: DSAMDR-1
 - RQADR-2: DSAMDR-2
 - RQHYDR-1: DSRHYD-1, DSDLGT-1
-- RQLOOP-1: DSITER-1, DSCMBR-1
-- RQPATH-1: DSENTR-1, DSENTR-2
-- RQGUAR-1: DSFRSH-1
-- RQGUAR-2: DSFRSH-2
-
-### Key evidence for DSFSTG-4[done]
-
-Base code at `core/pipeline/runner.sh` has inside `main()`:
-```bash
-# --from-stage is only valid in resume mode
-if [[ -n "$from_stage" ]] && ! $resume_mode; then
-    error "--from-stage is only valid with --resume"
-    _usage
-    return 1
-fi
-```
-This fires at argument-parsing time, before the event bus is initialised, before auto-resume can fire (which is in a separate elif block later in main()), and before any stage.start event. RQFROM-4 is [done].
 
 ### test-author (verdict: pass)
 Outputs:
