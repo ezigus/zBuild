@@ -136,5 +136,7 @@ _rsc_code_labels_v() {
         if [[ "$_pre" == *'`' ]]; then _out+="$_pre$_lbl"; else _out+="$_pre\`$_lbl\`"; fi
         _in="${_in#*"$_lbl"}"
     done
-    _rcl="$_out$_in"
+    # Append an empty code span after the last label so the label's closing
+    # backtick is not misread as opening a new span by some renderers.
+    if [[ -n "$_out" ]]; then _rcl="$_out${_in}\`\`"; else _rcl="$_in"; fi
 }
