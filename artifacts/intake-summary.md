@@ -1,6 +1,6 @@
 ## intake — pass
 
-- 16 requirement(s): RQRESU-1, RQRESU-2, RQRESU-3, RQFROM-1, RQTEST-1, RQDISP-1, RQADR-1, RQADR-2, RQHYDR-1, RQRESU-4, RQLOOP-1, RQFROM-2, RQFROM-3, RQPATH-1, RQGUAR-1, RQGUAR-2
+- 17 requirement(s): RQRESU-1, RQRESU-2, RQRESU-3, RQFROM-1, RQTEST-1, RQDISP-1, RQADR-1, RQADR-2, RQHYDR-1, RQRESU-4, RQLOOP-1, RQFROM-2, RQFROM-3, RQFROM-4, RQPATH-1, RQGUAR-1, RQGUAR-2
 
 - RQRESU-1: A resume trusts every stage that already ran.
 - RQRESU-2: Each stage the interrupted run completed counts as done, and its outputs are put back (rehydrated) exactly as they were when the run stopped.
@@ -15,7 +15,9 @@
 - RQLOOP-1: Inside a loop (e.g. build → test), a run interrupted mid-round resumes at the interrupted stage of that round. The loop's iteration count and state are restored, not reset.
 - RQFROM-2: `--from-stage <s>` dispatches `<s>` first, with every earlier stage's outputs rehydrated. It never emits `pipeline.skip_to_stage` and then runs an earlier stage.
 - RQFROM-3: `--from-stage <s>` naming a stage with no prior output to rehydrate refuses with a reason, and does not start.
+- RQFROM-4: `--from-stage <s>` without `--resume` (or a run that auto-resumes) refuses with a reason ("only valid with --resume") and does not start.
 - RQPATH-1: Every way to resume (`--resume`, auto-resume on restart, and `zbuild pipeline resume --run-id`) finds the interrupted run's state in `runs/<run_id>/` and behaves as RQRESU-4. Each has its own test.
 - RQGUAR-1: A run with no prior state behaves exactly as today. This is a guard.
 - RQGUAR-2: A **new** run of the same issue still never skips a stage because of an earlier run's output (ADR-050 §6). This is a guard.
-- the requirements are the same as the last run's
+- the requirements changed since the last run:
+  - added: RQFROM-4 `--from-stage <s>` without `--resume` (or a run that auto-resumes) refuses with a reason ("only valid with --resume") and does not start.
