@@ -44,7 +44,8 @@ _dck_unclear_bad_v() {
 # no base commit (none resolves), the text in the file is all that is checked.
 #   LINE     a line number      BAD       not a file in the repository
 #   NO_TEXT  a source file named alone    MISSING   the text is not in it
-#   NOT_BEFORE  not on the base commit, or only in lines this branch changed
+#   NOT_BEFORE  not on the base commit
+#   MOVED       on the base commit, but now only on lines this branch moved or changed
 _dck_evidence_v() {
     local -n _dev="$1"; local root="$2" item="$3" base="$4" path txt n src occ ranges a c l ok=0
     _dev=""
@@ -75,7 +76,7 @@ _dck_evidence_v() {
         done <<< "$ranges"
         (( ok )) && return 0
     done <<< "$src"
-    _dev=NOT_BEFORE
+    _dev=MOVED
 }
 
 # _dck_block_ids_v <ids_var> <removed_var> <block> — the SPEC ids, and the ids
@@ -185,7 +186,9 @@ _dck_plain() {
         LINE_NUMBER*)        printf 'design.md names a line number (%s), and line numbers move as the change is made — name the file and the function, or quote the text: scripts/x.sh:"run_guard()"' "$id" ;;
         DONE_NO_TEXT*)       printf 'the evidence %s for %s names a source file alone — add an exact piece of its text that shows the code already does it: %s:"run_guard()"' "$third" "$id" "$third" ;;
         DONE_TEXT_MISSING*)  printf 'the evidence %s for %s is not in that file — quote its text exactly' "$third" "$id" ;;
-        DONE_NOT_BEFORE*)    printf '%s is marked [done], but its evidence %s is not in the code from before this change — this branch added or changed it, so it is not done yet: tag %s [code] and give it a test' "$id" "$third" "$id" ;;
+        DONE_NOT_BEFORE*)    printf '%s is marked [done], but its evidence %s is not in the code from before this change — this branch added it, so it is not done yet: tag %s [code] and give it a test' "$id" "$third" "$id" ;;
+        # #2515: the old code has the text, but what runs now is the branch's.
+        DONE_MOVED*)         printf '%s is marked [done], and its evidence %s is in the code from before this change, but this branch has since moved or changed every line that holds it. What runs now is this branch'"'"'s code, not the old one, so it is not done: tag %s [code] and give it a test' "$id" "$third" "$id" ;;
         ID_*)                zb_id_plain "$v" SPEC ;;
         CONTENTS_NOT_BEHAVIOUR*) printf '%s describes what a file contains, not what the code does — no test can prove that; describe the behaviour someone could observe (an input and what happens)' "$id" ;;
         "WIRING_MISSING ("*) printf 'the acceptance block does not say which existing file calls the new code — add a WIRING: line naming it, or WIRING: none if nothing calls it yet' ;;
@@ -303,6 +306,7 @@ _design_checks() {
                             NO_TEXT)    violations+=("DONE_NO_TEXT $_spec $_ev (a source file with no text)") ;;
                             MISSING)    violations+=("DONE_TEXT_MISSING $_spec $_ev (the text is not in the file)") ;;
                             NOT_BEFORE) violations+=("DONE_NOT_BEFORE $_spec $_ev (not in the code from before the change)") ;;
+                            MOVED)      violations+=("DONE_MOVED $_spec $_ev (in the code from before, but only on lines this branch moved or changed)") ;;
                             *)          violations+=("DONE_BAD_EVIDENCE $_spec $_ev (not a file in the repository)") ;;
                         esac
                     done < <(acceptance_spec_evidence "$design_md" "$_spec" 2>/dev/null || true)
