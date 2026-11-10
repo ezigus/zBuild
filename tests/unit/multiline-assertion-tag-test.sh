@@ -3,7 +3,7 @@
 # lines counts as tagged when its label is on any of them (#2460).
 #
 # Why: test-author writes long checks with a backslash, the label on the next
-# line (`assert_contains \` then `"[#1805/SPEC-3] …" …`). The checker only
+# line (`assert_contains \` then `"…" …`). The checker only
 # counted a check whose `assert…` and tag shared one line, called those checks
 # untagged, and raised "only part of the requirement" findings that were false
 # — 3 of 4 on #1805 run 41546214211.
