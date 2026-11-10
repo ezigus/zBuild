@@ -1,0 +1,33 @@
+## build — pass
+
+- changed core/pipeline/runner.sh, scripts/lib/run-status-text.sh (+27 / -1)
+
+- over 2 pass(es), 2 iteration(s)
+- answered: acceptance-gate finding 1: done — The DSFSTG-3 test now passes after the fixture `tests/fixtures/templates/from-stage-combined-resume.yaml` was created by the test-author commit and the resume_mode/skip_until_stage fix was already in place. All 32 tests in from-stage-rehydrate-test.sh pass.
+- answered: shape-floor finding 1: wrong — git diff HEAD shows no changes to tests/golden/full-pipeline/event-sequence.golden; the golden file is unmodified by this branch.
+- answered: shape-floor finding 2: wrong — git diff HEAD shows no changes to tests/golden/parity/event-sequence.golden; the golden file is unmodified by this branch.
+- answered: shape-floor finding 3: wrong — tests/unit/core-pipeline-template-test.sh passes all 74 tests with this branch's code.
+- answered: shape-floor finding 4: wrong — tests/unit/shape-floor-content-stable-test.sh passes all 7 tests with this branch's code.
+- answered: shape-floor finding 5: wrong — tests/unit/shape-floor-summary-plain-test.sh passes all 7 tests with this branch's code.
+- answered: shape-floor finding 6: wrong — tests/unit/build-oos-pass-request-test.sh does not exist in the repository and was not in scope.
+- answered: shape-floor finding 7: wrong — tests/unit/template-simple-yaml-test.sh passes all 84 tests with this branch's code.
+- answered: shape-floor finding 8: wrong — tests/unit/template-resolvability-preflight-test.sh passes all 26 tests with this branch's code.
+- answered: shape-floor finding 9: wrong — tests/unit/change-scope-floor-test.sh does not exist in the repository and was not in scope.
+- answered: issue-acceptance finding 1: done — The fixture `tests/fixtures/templates/from-stage-combined-resume.yaml` exists (it was created by the test-author commit fee13107). The DSFSTG-3 test assertions now pass: cycle.start is emitted for cyc and stage.start is emitted for verify.
+- answered: lens-security-code finding 1: done — `export _ZBUILD_FROM_STAGE_EMIT_START=false` is set in the `! $resume_mode` fresh-run block in runner.sh, preventing stale inheritance.
+- answered: lens-security-code finding 2: not mine — This is about a correctness edge case in cycle ID sanitization for shell variable names. It is a pre-existing defensive gap not required by any acceptance test requirement. Fixing it would require non-trivial changes to the cycle skip guard in runner.sh beyond this issue's scope.
+- answered: lens-performance-code finding 1: not mine — resume_mode clearing after the interrupted stage is dispatched is an optimization beyond this issue's requirements. The current code is correct; the optimization is future work.
+- answered: lens-performance-code finding 2: not mine — Memoizing plugin discovery in _runner_from_stage_preflight is an optimization outside this issue's requirements.
+- answered: lens-red-team-code finding 1: done — The `_ZBUILD_FROM_STAGE_EMIT_START=false` export is in place in the fresh-run block, preventing the inheritance vector.
+- answered: lens-red-team-code finding 2: not mine — The window between setting `_ZBUILD_RESUME_ACTIVE=true` and consuming it is narrow and eb_emit_event doesn't spawn cycle orchestrators. This is a theoretical future-risk not required by any current acceptance requirement.
+- answered: lens-correctness-code finding 1: not mine — The pre-scan logic for the all-complete edge case is an internal correctness guard not required by any issue requirement. DSCMBR-1 test passes correctly with the production value "aborted" for interrupted members.
+- answered: lens-correctness-code finding 2: not mine — The test sets "aborted" deliberately (the production status for interrupted stages). The all-complete edge case is future debt explicitly noted in prior answers.
+- answered: lens-correctness-code finding 3: not mine — Same as security finding 2; a defensive improvement beyond this issue's requirements.
+- answered: lens-correctness-code finding 4: not mine — The from-stage validation guard runs before auto-resume now (DSFSTG-4 fix is in place). The temporary resume_mode override for persona preflight bypass is not applicable; the code currently sets the guard before auto-resume as required.
+- answered: lens-scope-code finding 1: done — The skip_restore=false branch is now reachable: the guard `if [[ -n "$from_stage" ]] && ! $resume_mode` was removed, and `--from-stage` now works as preflight with skip_restore=false when no --resume is given.
+- answered: lens-scope-code finding 2: not mine — This is a comment in a test file; test files cannot be changed by this stage.
+- answered: lens-scope-code finding 3: not mine — This is a comment in a test file; test files cannot be changed by this stage.
+- answered: lens-sre-code finding 1: not mine — Improving _cycle_state_write_iter_start failure handling with machine-readable events is beyond this issue's requirements.
+- answered: lens-sre-code finding 2: not mine — Improving error visibility for jq failures in the skipped-member verdict blob update is beyond this issue's requirements.
+- answered: lens-sre-code finding 3: not mine — Improving diagnostic detail when _artifact_persist_put_back fails mid-copy is beyond this issue's requirements.
+- answered: lens-correctness-design finding 1: wrong — The described scenario is correct but mitigates naturally: when `--from-stage` names a cycle, skip_until_stage is cleared by the cycle:* arm (not the stage:* arm), and because we now set `resume_mode=false` immediately when skip_until_stage is cleared (Gap 11 fix), the resume skip guard is disabled for all subsequent leaf stages. The code is correct.
