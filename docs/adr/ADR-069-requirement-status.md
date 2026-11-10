@@ -1,6 +1,6 @@
 # ADR-069 — Requirement status: needs work (code), needs work (no code), already done
 
-**Status:** Accepted (2026-10-05); amended 2026-11-09 (#2510, §10: every test and test helper of this repository lives in its test folders); amended 2026-11-09 (#2508, §3 §10: no test file is named; §11: a SPEC's test is found by its tag; §12: a requirement design does not understand is asked); amended 2026-11-09 (#2506, §2: no line number anywhere in the design); amended 2026-11-03 (#2464, §2: a [done] claim is read in the code from before the change, by file); amended 2026-11-04 (#2467, §1: a [code] or [done] SPEC has Given/When/Then parts); amended 2026-11-05 (#2474, §9: every SPEC, whatever its status, describes behaviour)
+**Status:** Accepted (2026-10-05); amended 2026-11-10 (#2515, §2: a [done] whose evidence the branch moved is told so); amended 2026-11-09 (#2510, §10: every test and test helper of this repository lives in its test folders); amended 2026-11-09 (#2508, §3 §10: no test file is named; §11: a SPEC's test is found by its tag; §12: a requirement design does not understand is asked); amended 2026-11-09 (#2506, §2: no line number anywhere in the design); amended 2026-11-03 (#2464, §2: a [done] claim is read in the code from before the change, by file); amended 2026-11-04 (#2467, §1: a [code] or [done] SPEC has Given/When/Then parts); amended 2026-11-05 (#2474, §9: every SPEC, whatever its status, describes behaviour)
 **Issue:** #2304; §9 #2305
 **Amends:** ADR-036 (the acceptance check: the #1670, #1777, #2234 and #2244 guard rules are superseded), ADR-046 (design-gate C3/C4 rewritten, C6 removed), ADR-021 and ADR-053 (historical notes) — amended in PR B of #2304
 **Carries out:** ADR-037's planned removal of the `[change]`/`[guard]` classification (ADR-037, the ADR-031 and ADR-036 rows of its retirement table)
@@ -136,7 +136,15 @@ The test folders decide who may do what (#2507, #2508): test-author owns them, b
 - **A script outside the test folders that tests source and no production file sources or runs is refused**: it is a test helper beside production code. `scripts/lib/lint-test-helper-place.sh` (in `npm run lint`) reads the repository's own list.
 - **This repository declares its test folders in `.zbuild/test-paths.txt`.** The engine's `config/test-paths.txt` stays the default for a repository that declares none; the two say the same today only because this repository is also the engine.
 
+## Amendment 2026-11-10 (#2515) — §2: a [done] whose evidence the branch moved is told so
+
+On #1805 run 42732752714 design marked RQFROM-4 `[done]`, quoting a line the code from before the change has. The branch had moved that line, so every place it appears now is a line the branch changed, and the check rightly refused it: what runs now is the branch's code. But its words said the text was not in the code from before the change. Design found it there, answered `wrong` twice, and ran out of tries.
+
+- **The two cases have their own words.** Text not on the base commit is `DONE_NOT_BEFORE`: "not in the code from before this change — this branch added it". Text on the base commit, but now only on lines the branch moved or changed, is `DONE_MOVED`: "is in the code from before this change, but this branch has since moved or changed every line that holds it. What runs now is this branch's code, not the old one, so it is not done". Both tell design to tag it `[code]` and give it a test.
+
 ## Enforced by
+
+- §2 amendment 2026-11-10 (#2515: a [done] whose evidence the branch moved is told so) → `tests/unit/design-stable-ids-test.sh` D11 (text not in the old code keeps its words), D16 (text the old code has, on a line the branch moved, gets the moved words and never "not in the code from before")
 
 - §2 amendment 2026-11-09 (#2506: no line number anywhere in the design) → `tests/unit/no-line-numbers-test.sh` L4, L5
 
