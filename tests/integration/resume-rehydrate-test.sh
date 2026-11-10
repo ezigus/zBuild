@@ -36,8 +36,8 @@ ADR_050="$REPO_ROOT/docs/adr/ADR-050-prior-work-reuse-contract.md"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 # shellcheck source=../../core/state/artifact-persist.sh
 source "$REPO_ROOT/core/state/artifact-persist.sh"
 
