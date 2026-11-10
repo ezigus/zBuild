@@ -1,0 +1,23 @@
+## design — fail
+
+- the design fails 1 check(s)
+
+The findings are in design's result. This try is kept as the working copy for the next run; design.md is unchanged.
+- answered: design finding 1: wrong — the evidence string `core/pipeline/runner.sh:"--from-stage is only valid with --resume"` IS present in the base code at `main()` in runner.sh (the guard `if [[ -n "$from_stage" ]] && ! $resume_mode; then error "--from-stage is only valid with --resume"` fires before argument parsing completes, before the event bus is initialised, and before any auto-resume check). DSFSTG-4[done] is correct.
+- answered: design finding 2: done — replaced "`_runner_resume_rehydrate` at runner.sh:1707, called at runner.sh:2859" with "`_runner_resume_rehydrate` (new function in runner.sh), called from `main()` in runner.sh at the resume entry point."
+- answered: design finding 3: done — replaced "called at runner.sh:2859" (covered in finding 2 fix above).
+- answered: design finding 4: done — replaced "exit 1 path at runner.sh:3920" with "exit 1 path in the dispatch-unit `stage:*` arm inside `main()` in runner.sh."
+- answered: design finding 5: done — replaced "`_runner_from_stage_preflight` at runner.sh:1733" with "`_runner_from_stage_preflight` (new function in runner.sh)."
+- answered: design finding 6: done — replaced "cycle-orchestrator.sh:2337 wraps" and "line 2343" with "`_cycle_orchestrator_run_body()` in cycle-orchestrator.sh wraps" and "immediately after reading."
+- answered: design finding 7: done — replaced "guards at runner.sh:3442 (cycle:*) and runner.sh:3724-3760 (stage:*)" with "guards in `main()` in runner.sh: dispatch-unit `cycle:*` arm and dispatch-unit `stage:*` arm."
+- answered: design finding 8: done — replaced "runner.sh:3724" (covered in finding 7 fix above).
+- answered: design finding 9: done — replaced "`_cycle_dispatch` (runner.sh:3213)" with "`_cycle_dispatch()` in runner.sh."
+- answered: design finding 10: done — replaced "runner.sh:2963 emits" with "The `pipeline.skip_to_stage` emission inside `main()` in runner.sh fires."
+- answered: design finding 11: done — replaced "runner.sh:3653 for cycle:* arm; runner.sh:3977 for stage:* arm" with "in the dispatch-unit `cycle:*` arm; in the dispatch-unit `stage:*` arm inside `main()`."
+- answered: design finding 12: done — replaced "runner.sh:3977" (covered in finding 11 fix above).
+- answered: design finding 13: done — replaced "runner.sh:3598" with "the `$resume_mode && [[ -z \"$skip_until_stage\" ]]` condition in both dispatch-unit arms."
+- answered: design finding 14: done — replaced "runner.sh:3932" (covered in finding 13 fix above).
+- answered: design finding 15: done — replaced "runner.sh:2174" with "auto-resume elif branch inside `main()` in runner.sh" in both the Context/gaps section and the Decision section.
+- answered: design finding 16: done — replaced "runner.sh:2862" with "inside `main()`, immediately after the `_runner_resume_rehydrate` call."
+- answered: design finding 17: done — replaced "runner.sh:3728" with descriptions using arm names; also fixed the remaining reference in Finding 4 and in REMOVED:DSLEGC-1.
+- not answered: lens-correctness-design finding 1
