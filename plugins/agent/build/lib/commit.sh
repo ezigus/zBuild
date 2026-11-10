@@ -81,11 +81,14 @@ _build_parse_commit_summary() {
 }
 
 # _build_commit_iteration — post-loop commit logic (#608).
-# Args: $1=repo_root $2=plan_files_csv $3=scope_violation $4=build_verdict
+# Args: $1=repo_root $2=unused $3=scope_violation $4=build_verdict
 #   $5=response_text $6=plan_title $7=iter $8=iter_summaries $9=iter_count
+# #2508 (ADR-030 §8): build has no file list. What it commits is every file it
+# changed — the harvest marked the new ones intent-to-add, and left out the
+# untracked files that were there before the run — except anything in the
+# test folders, which it may not change (those were already put back).
 _build_commit_iteration() {
     local repo_root="$1"
-    local plan_files_csv="$2"
     local scope_violation="$3"
     local build_verdict="$4"
     local response_text="$5"
@@ -94,31 +97,21 @@ _build_commit_iteration() {
     local iter_summaries="${8:-}"
     local iter_count="${9:-1}"
 
-    # A scope violation does not skip the commit (ADR-030 Layer 3, #2185): the
-    # out-of-scope paths were already reverted and only plan files are staged
-    # below, so what lands is the in-scope work alone.
+    # A test-folder change does not skip the commit (#2185): it was already put
+    # back, so what lands is the rest of build's work.
     : "$scope_violation" "$build_verdict"
 
+    local -a add_args=() _gl=()
+    local f _globs
+    zb_test_path_globs_v _globs "$repo_root"
+    read -ra _gl <<< "$_globs"
+    while IFS= read -r -d '' f; do
+        [[ -n "$f" ]] || continue
+        [[ ${#_gl[@]} -gt 0 ]] && _zb_test_globs_match "$f" "${_gl[@]}" && continue
+        add_args+=("$f")
+    done < <(git -C "$repo_root" diff --name-only -z HEAD 2>/dev/null)
+
     git -C "$repo_root" reset -q 2>/dev/null || true
-
-    local -a files_arr=()
-    if [[ -n "$plan_files_csv" ]]; then
-        local IFS_save="$IFS"
-        IFS=','
-        # shellcheck disable=SC2206
-        files_arr=( $plan_files_csv )
-        IFS="$IFS_save"
-    fi
-
-    local -a add_args=()
-    local f
-    for f in "${files_arr[@]}"; do
-        [[ -z "$f" ]] && continue
-        if [[ -e "$repo_root/$f" ]] || \
-           git -C "$repo_root" ls-files --error-unmatch -- "$f" >/dev/null 2>&1; then
-            add_args+=("$f")
-        fi
-    done
 
     if [[ ${#add_args[@]} -eq 0 ]]; then
         emit_event "build.commit.skipped" "plugin=build" \
@@ -126,7 +119,7 @@ _build_commit_iteration() {
         return 0
     fi
 
-    git -C "$repo_root" add -- "${add_args[@]}" 2>/dev/null || {
+    git -C "$repo_root" add -A -- "${add_args[@]}" 2>/dev/null || {
         emit_event "build.commit.skipped" "plugin=build" \
             "reason=empty_diff" "iter=$iter"
         return 0

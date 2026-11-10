@@ -159,7 +159,6 @@ EOF2
 _dcov_specs() {
     local _dsl _dsid _dsi _dslab
     while IFS= read -r _dsl; do
-        [[ "$_dsl" == "TESTFILES:" ]] && break
         [[ "$_dsl" =~ $_ACCEPTANCE_SPEC_RE ]] || continue
         _dsid="${BASH_REMATCH[1]}"
         _acceptance_spec_line "$_dsl" "$_dsid" || continue

@@ -522,11 +522,12 @@ runner_read_stage_verdict_raw_v() {
 # artifact by name (ADR-055 §1): it reads this report off the member it just
 # dispatched, so a cycle only ever sees what ITS members reported THIS iteration.
 # Prints compact JSON:
-#   {changes:{files:[…],added:N,removed:N}?, scope_request:{…}?, not_reproduced:[…]?,
+#   {changes:{files:[…],added:N,removed:N}?, not_reproduced:[…]?,
 #    tests:{failed:N}? (a numeric failed count), failed_items:[…]? (a failed list),
-#    reason:"…"?, scope_files:[…]?, owned_files:[…]?, wiring_files:[…]?}
+#    reason:"…"?, owned_files:[…]?, wiring_files:[…]?}
 # Fields are read from `data.*` first, then the legacy top-level names
-# (files_changed / lines_added / lines_removed / scope_expansion_request).
+# (files_changed / lines_added / lines_removed). #2508: no stage reports a file
+# list to widen build's (scope_files, scope_request): build has none.
 runner_read_stage_report() { local _rsp; runner_read_stage_report_v _rsp "$@"; printf '%s' "$_rsp"; }
 runner_read_stage_report_v() {
     local -n _rspo="$1"; shift
@@ -564,17 +565,14 @@ _verdict_report_from_file() {
         ( .data.changes // (if (.files_changed // null) != null
               then {files: .files_changed, added: num(.lines_added), removed: num(.lines_removed)}
               else null end) ) as $ch
-        | ( .data.scope_request // .scope_expansion_request // null ) as $sr
         | ( .data.not_reproduced // null ) as $nr
         | ( .data.failed // .failed // null ) as $fl
         | {} + (if ($fl|type) == "number" then {tests: {failed: $fl}} else {} end)
              + (if ($fl|type) == "array"  then {failed_items: $fl} else {} end)
              + (if ((.reason // null)|type) == "string" then {reason: .reason} else {} end)
              + (if $ch != null then {changes: $ch} else {} end)
-             + ((.data.scope_files  // .scope_files  // null) as $x | if ($x|type) == "array" then {scope_files: $x}  else {} end)
              + ((.data.owned_files  // .owned_files  // null) as $x | if ($x|type) == "array" then {owned_files: $x}  else {} end)
              + ((.data.wiring_files // .wiring_files // null) as $x | if ($x|type) == "array" then {wiring_files: $x} else {} end)
-             + (if $sr != null then {scope_request: $sr} else {} end)
              + (if $nr != null then {not_reproduced: $nr} else {} end)
              + (if (.data.ends_round // false) == true then {ends_round: true} else {} end)
     ' "$_p_path" 2>/dev/null || printf '{}'

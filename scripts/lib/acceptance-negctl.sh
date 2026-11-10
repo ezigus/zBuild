@@ -91,7 +91,6 @@ acceptance_unclaimed_code_check() {
     block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 0
     local line any_id=0
     while IFS= read -r line; do
-        [[ "$line" == "TESTFILES:" ]] && break
         [[ "$line" =~ $_ACCEPTANCE_SPEC_RE ]] || continue
         any_id=1
         case "${BASH_REMATCH[3]}" in
@@ -357,12 +356,17 @@ acceptance_negctl_check() {
         return 0
     fi
 
-    # Collect declared TESTFILES (existing on disk) once.
+    # #2508 (ADR-069 §11): each SPEC's test files, found once by its tag in the
+    # test folders at HEAD — design names none.
+    local -A _spec_files=()
+    acceptance_spec_files_v _spec_files "$design_md" "$repo_root"
     local -a testfiles=()
-    local tf
-    while IFS= read -r tf; do
-        [[ -n "$tf" && -f "$repo_root/$tf" ]] && testfiles+=("$tf")
-    done < <(acceptance_list_testfiles "$design_md")
+    local tf _tf_seen=" " _sf_id
+    for _sf_id in "${!_spec_files[@]}"; do
+        for tf in ${_spec_files[$_sf_id]}; do
+            [[ "$_tf_seen" == *" $tf "* ]] || { testfiles+=("$tf"); _tf_seen+="$tf "; }
+        done
+    done
 
     # Detached worktree at baseline; overlay each TESTFILE from HEAD.
     local wt_dir; wt_dir="$(mktemp -d "$(zbuild_engine_tmpdir)/zb-negctl.XXXXXX")"
@@ -403,24 +407,13 @@ acceptance_negctl_check() {
             logfile="$ZBUILD_NEGCTL_ARTIFACT_DIR/negctl-${spec_id}.log"
             : > "$logfile" 2>/dev/null || logfile=""
         fi
-        # Build the candidate testfile set for this SPEC.
-        # When per-SPEC binding is declared for this SPEC, use only its bound files
-        # directly (no tag-scan), eliminating the sibling-riding defect (#1480).
-        # When no per-SPEC binding exists for this SPEC, fall back to scanning all
-        # declared testfiles for the [SPEC-n] tag (backward-compat).
+        # The candidate testfile set for this SPEC: the files holding its tag
+        # (#1480: never a sibling's file).
         local -a _cand_tfs=()
         local _ctf
-        if acceptance_spec_has_binding "$design_md" "$spec_id"; then
-            while IFS= read -r _ctf; do
-                [[ -n "$_ctf" && -f "$repo_root/$_ctf" ]] && { _cand_tfs+=("$_ctf"); saw_tagged=1; }
-            done < <(acceptance_list_testfiles_for_spec "$design_md" "$spec_id")
-        else
-            for _ctf in "${testfiles[@]:-}"; do
-                [[ -z "$_ctf" ]] && continue
-                grep -qF "$(acceptance_spec_tag "$spec_id")" "$repo_root/$_ctf" 2>/dev/null || continue
-                saw_tagged=1; _cand_tfs+=("$_ctf")
-            done
-        fi
+        for _ctf in ${_spec_files[$spec_id]:-}; do
+            _cand_tfs+=("$_ctf"); saw_tagged=1
+        done
         for tf in "${_cand_tfs[@]:-}"; do
             [[ -z "$tf" ]] && continue
             # The baseline run is EXPECTED to fail; capture rc via `|| rc=$?`

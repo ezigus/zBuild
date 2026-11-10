@@ -66,7 +66,8 @@ _assert_fn "[SPEC-7] _build_load_context defined after sourcing plugin.sh"      
 _assert_fn "[SPEC-8] _build_harvest_diff defined after sourcing plugin.sh"                   "_build_harvest_diff"
 _assert_fn "[SPEC-9] _build_commit_iteration defined after sourcing plugin.sh"               "_build_commit_iteration"
 _assert_fn "[SPEC-10] _build_compose_prompt_body defined after sourcing plugin.sh"           "_build_compose_prompt_body"
-_assert_fn "[SPEC-11] _build_collect_scope_expansion_request defined after sourcing plugin.sh" "_build_collect_scope_expansion_request"
+# SPEC-11 (lib/scope.sh): #2508 retired the scope-expansion request; scope.sh holds the scratch rule.
+_assert_fn "[SPEC-11] _build_path_is_scratch defined after sourcing plugin.sh" "_build_path_is_scratch"
 
 cleanup_test_env
 print_test_results

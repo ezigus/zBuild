@@ -1,18 +1,15 @@
 #!/usr/bin/env bash
-# tests/unit/design-block-multiline-test.sh — a requirement, a test-file binding
-# or a work step that wraps onto the next line is read whole (#2460).
+# tests/unit/design-block-multiline-test.sh — a requirement or a work step that
+# wraps onto the next line is read whole (#2460).
 #
 # Why: the design's blocks were read one line at a time. A wrapped SPEC lost
 # its second line — so ` covers: R-3` or ` evidence: …` there was missed and the
-# design failed a check it met — a wrapped binding's second file was no longer
-# bound to its SPEC, and a wrapped step lost its areas, sending a test-file step
-# to build. A binding that names two files was kept as one path by build.
+# design failed a check it met — and a wrapped step lost its areas, sending a
+# test-file step to build. (#2508: design names no test files, so there are no
+# bindings to wrap — B2 and B3 went with them.)
 #
 # B1 [change] a SPEC whose words carry on to the next line is read whole: its
 #             text, its covers and its evidence
-# B2 [change] a binding whose files carry on to the next line binds them all
-# B3 [change] build reads a binding that names two files as two files: neither
-#             is in its list of files it may touch
 # B4 [change] a step whose words or areas carry on to the next line is read whole
 set -uo pipefail
 
@@ -37,10 +34,6 @@ SPEC-1[code]: the runner exits 2 when the state file is missing
   and names the file in its error covers: R-3
 SPEC-2[done]: results are written atomically
   evidence: scripts/lib/helpers.sh
-TESTFILES:
-SPEC-1: tests/a-test.sh
-    tests/b-test.sh
-SPEC-2: tests/c-test.sh tests/d-test.sh
 WIRING: none
 ```
 
@@ -56,19 +49,6 @@ assert_eq "[B1] a wrapped SPEC's text is read whole" "the runner exits 2 when th
     "$(acceptance_spec_text "$D" SPEC-1)"
 assert_eq "[B1] ...its covers on the next line count" "R-3" "$(acceptance_spec_covers "$D" SPEC-1 | xargs)"
 assert_eq "[B1] ...and its evidence on the next line" "scripts/lib/helpers.sh" "$(acceptance_spec_evidence "$D" SPEC-2 | xargs)"
-
-assert_eq "[B2] a wrapped binding binds all its files" $'tests/a-test.sh\ntests/b-test.sh' "$(acceptance_list_testfiles_for_spec "$D" SPEC-1)"
-_lacks "[B2] ...and no path keeps its indent" "$(acceptance_list_testfiles "$D")" "    tests/b-test.sh"
-
-(
-    source "$REPO_ROOT/plugins/agent/build/plugin.sh" >/dev/null 2>&1
-    _tf="$(_build_read_acceptance_testfiles "$D")"
-    _build_compose_limits "core/x.sh,tests/c-test.sh,tests/d-test.sh" "$_tf" > "$TEST_TEMP_DIR/b3.txt"
-)
-_b3="$(awk '/^### Scope/{f=1;next} /^### /{f=0} f' "$TEST_TEMP_DIR/b3.txt")"
-assert_contains "[B3] build may touch the code" "$_b3" "core/x.sh"
-_lacks "[B3] ...not the first of two files one binding names" "$_b3" "tests/c-test.sh"
-_lacks "[B3] ...nor the second" "$_b3" "tests/d-test.sh"
 
 (
     source "$REPO_ROOT/plugins/agent/design/plugin.sh" >/dev/null 2>&1

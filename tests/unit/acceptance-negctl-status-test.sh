@@ -75,11 +75,6 @@ SPEC-1[code]: the feature works
 SPEC-2[code]: something that is already true
 SPEC-3[done]: the old behaviour stays evidence: impl.sh
 SPEC-4[no-code]: the docs explain the feature
-TESTFILES:
-SPEC-1: tests/new-test.sh
-SPEC-2: tests/same-test.sh
-SPEC-3: tests/done-test.sh
-SPEC-4: tests/nocode-test.sh
 WIRING: none
 ```
 EOF
@@ -109,10 +104,6 @@ cat > "$DM" <<'EOF'
 SPEC-1[change]: the feature works
 SPEC-2: something that is already true
 SPEC-3[guard]: an old guard
-TESTFILES:
-SPEC-1: tests/new-test.sh
-SPEC-2: tests/same-test.sh
-SPEC-3: tests/done-test.sh
 WIRING: none
 ```
 EOF
@@ -130,7 +121,7 @@ assert_eq "[N4] no line says guard_spec any more" "" \
     "$(grep -F 'guard_spec' <<< "$OUT4" || true)"
 
 print_test_section "N3: tag coverage asks only code requirements for a tagged assertion"
-CV="$TEST_TEMP_DIR/cov"; mkdir -p "$CV/tests"
+CV="$TEST_TEMP_DIR/cov"; mkdir -p "$CV/tests"; "$GIT" -C "$CV" init -q
 printf 'echo "[SPEC-1] tagged"\n' > "$CV/tests/a-test.sh"
 cat > "$CV/design.md" <<'EOF'
 ```acceptance
@@ -138,8 +129,6 @@ SPEC-1[code]: tagged
 SPEC-2[code]: not tagged anywhere
 SPEC-3[done]: not tagged either evidence: tests/a-test.sh
 SPEC-4[no-code]: not tagged either
-TESTFILES:
-tests/a-test.sh
 ```
 EOF
 COV="$(acceptance_coverage_check "$CV/design.md" "$CV" 2>&1 || true)"
@@ -164,8 +153,6 @@ cat > "$R5/design.md" <<'EOF'
 SPEC-1[code]: the feature works
 SPEC-2[done]: the old flag still parses evidence: impl.sh
 SPEC-3[no-code]: the docs explain the feature
-TESTFILES:
-SPEC-1: tests/new-test.sh
 WIRING: none
 ```
 EOF

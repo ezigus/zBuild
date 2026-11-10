@@ -137,5 +137,5 @@ starts a unit of its own (a `KEY:`, an ANSWER, a list item, LOOP_COMPLETE); a li
 The same holds for the design's own blocks: a SPEC, a test-file binding or a step that carries on to the next
 line is read whole, and a binding naming two files is two files.
 
-Enforced by: `tests/unit/reply-multiline-test.sh` J1–J3, Q1–Q7; `tests/unit/design-block-multiline-test.sh` B1–B4;
+Enforced by: `tests/unit/reply-multiline-test.sh` J1–J3, Q1–Q7; `tests/unit/design-block-multiline-test.sh` B1, B4 (B2 and B3, wrapped test-file bindings and build's scope list, retired by #2508);
 `tests/unit/design-coverage-test.sh`.

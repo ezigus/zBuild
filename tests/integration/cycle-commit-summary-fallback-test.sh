@@ -33,10 +33,12 @@ printf '%s' "bootstrap" > "$HOME/.zbuild/scope-override-token"
 export ZBUILD_SCOPE_OVERRIDE=1
 
 REPO="$(setup_git_temp_repo build608fb)"
-mkdir -p "$REPO/tests/fixtures"
+# #2508: the build mock writes outside the test folders — a build change
+# inside them is put back (ADR-030 §8).
+mkdir -p "$REPO/fixtures"
 ( cd "$REPO" \
-    && echo "seed" > tests/fixtures/seed.txt \
-    && git add tests/fixtures/seed.txt \
+    && echo "seed" > fixtures/seed.txt \
+    && git add fixtures/seed.txt \
     && git commit -q -m "seed" ) >/dev/null
 
 PRE_HEAD="$(cd "$REPO" && git rev-parse HEAD)"
@@ -45,8 +47,8 @@ PRE_HEAD="$(cd "$REPO" && git rev-parse HEAD)"
 mkdir -p "$TEST_TEMP_DIR/bin"
 cat > "$TEST_TEMP_DIR/bin/claude" <<'MOCK'
 #!/usr/bin/env bash
-mkdir -p "$PWD/tests/fixtures"
-printf 'fb-content\n' > "$PWD/tests/fixtures/build-608-fb.txt"
+mkdir -p "$PWD/fixtures"
+printf 'fb-content\n' > "$PWD/fixtures/build-608-fb.txt"
 jq -n --arg r $'wrote file but forgot the marker\nLOOP_COMPLETE' \
     '{result:$r, usage:{input_tokens:5, output_tokens:5}}'
 exit 0
@@ -75,12 +77,12 @@ cat > "$STATE_DIR/artifacts/plan.json" <<'EOF'
   "schema_version": 1,
   "title": "wave7 608 plan title",
   "goal": "fallback test",
-  "files": ["tests/fixtures/build-608-fb.txt"],
-  "steps": [{"id":"s1","description":"d","files":["tests/fixtures/build-608-fb.txt"],"estimated_lines":1}]
+  "files": ["fixtures/build-608-fb.txt"],
+  "steps": [{"id":"s1","description":"d","files":["fixtures/build-608-fb.txt"],"estimated_lines":1}]
 }
 EOF
 cat > "$STATE_DIR/scope-manifest.md" <<'EOF'
-+ tests/
++ fixtures/
 EOF
 STATE_FILE="$STATE_DIR/state.json"
 printf '{"issue":$_ZB_ID,"branch":"feat/608"}' > "$STATE_FILE"

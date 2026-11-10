@@ -8,11 +8,9 @@
 # and ended the run blocked_on_scope with 2h15m left.
 #
 # SPEC-1 [change]: runner_read_stage_report reads a member's primary result into
-#   one report: changes {files, added, removed}, scope_request, not_reproduced.
-# SPEC-2 [change]: a scope request is resolved only when a member of THIS
-#   iteration reported one — a stale build-summary.json on disk is not read.
-# SPEC-3 [guard] : a member's reported request is still resolved (deny when the
-#   cycle is not expandable).
+#   one report: changes {files, added, removed}, not_reproduced. #2508: a scope
+#   request in the result is not read — build asks for no more files (ADR-030 §8).
+# SPEC-2/3: retired with the scope-expansion resolver (#2508).
 # SPEC-4 [change]: progress is the sum of the changes members reported this
 #   iteration; a stale file on disk counts for nothing.
 # SPEC-5 [change]: the changed-files list handed to the next test run comes from
@@ -75,7 +73,7 @@ _rep="$(runner_read_stage_report "$STATE" "$PD/manifest.yaml" rp 0 2>/dev/null)"
 assert_eq "[SPEC-1] changes.files" '["a.sh","b.sh"]' "$(jq -c '.changes.files' <<< "$_rep" 2>/dev/null)"
 assert_eq "[SPEC-1] changes.added" "7" "$(jq -r '.changes.added' <<< "$_rep" 2>/dev/null)"
 assert_eq "[SPEC-1] changes.removed" "2" "$(jq -r '.changes.removed' <<< "$_rep" 2>/dev/null)"
-assert_eq "[SPEC-1] scope_request" "docs/x.md" "$(jq -r '.scope_request.files[0].path' <<< "$_rep" 2>/dev/null)"
+assert_eq "[SPEC-1] a scope request is not read (#2508)" "null" "$(jq -c '.scope_request' <<< "$_rep" 2>/dev/null)"
 assert_eq "[SPEC-1] not_reproduced" '["test"]' "$(jq -c '.not_reproduced' <<< "$_rep" 2>/dev/null)"
 # The v2 shape — fields under data.* — takes precedence over the legacy names.
 jq -n '{result_contract:3, outcome:"pass", reason:"r",
@@ -84,18 +82,9 @@ jq -n '{result_contract:3, outcome:"pass", reason:"r",
               scope_request:{files:[{path:"docs/y.md",category:"collateral_docs"}]}}}' > "$ART/rp-result.json"
 _rep="$(runner_read_stage_report "$STATE" "$PD/manifest.yaml" rp 0 2>/dev/null)"
 assert_eq "[SPEC-1] data.changes wins over the legacy fields" '["new.sh"]' "$(jq -c '.changes.files' <<< "$_rep" 2>/dev/null)"
-assert_eq "[SPEC-1] data.scope_request is read" "docs/y.md" "$(jq -r '.scope_request.files[0].path' <<< "$_rep" 2>/dev/null)"
+assert_eq "[SPEC-1] nor data.scope_request (#2508)" "null" "$(jq -c '.scope_request' <<< "$_rep" 2>/dev/null)"
 
-# ─── SPEC-2/3 ────────────────────────────────────────────────────────────────
-print_test_section "SPEC-2/3: only a request reported this iteration is resolved"
-jq -n '{scope_expansion_request:{files:[{path:"docs/adr/x.md",category:"collateral_docs",evidence:"",reason:"r"}]}}' \
-    > "$ART/build-summary.json"
 _blob_none='{"design":{"verdict":"pass","report":{}},"design-gate":{"verdict":"fail","report":{}}}'
-assert_eq "[SPEC-2] a stale build-summary.json request is not read (the #1849 halt)" "none" \
-    "$(_cycle_resolve_scope_expansion design_verify_cycle "$STATE" "$_blob_none" 2>/dev/null)"
-_blob_req='{"build":{"verdict":"scope_violation","report":{"scope_request":{"files":[{"path":"docs/adr/x.md","category":"collateral_docs","evidence":"","reason":"r"}]}}}}'
-assert_eq "[SPEC-3] a request a member reported is resolved (not expandable → deny)" "deny" \
-    "$(_cycle_resolve_scope_expansion build_test_cycle "$STATE" "$_blob_req" 2>/dev/null)"
 
 # ─── SPEC-4 ──────────────────────────────────────────────────────────────────
 print_test_section "SPEC-4: progress is what members reported"

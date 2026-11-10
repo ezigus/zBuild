@@ -131,8 +131,6 @@
     "backend.degraded",
     "backend.missing",
     "cost.budget_exceeded",
-    "cycle.scope.denied",
-    "cycle.scope.granted",
     "memory.backend.init",
     "orch.contract.not_implemented",
     "pipeline.aborted",

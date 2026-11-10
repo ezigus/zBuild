@@ -39,8 +39,8 @@ route_to_model() {
         if [[ -n "$_MOCK_DESIGN_TEXT" ]]; then
             printf '%s' "$_MOCK_DESIGN_TEXT" > "$_t"
         else
-            printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nDSWORK-1[no-code]: works\nWIRING: none\nTESTFILES:\n%s\n' \
-                "$_bt" "$_bt" "$_bt" "$_bt" > "$_t"
+            printf '# Design\n\n## Decision\nMinimal.\n\n%sacceptance\nDSWORK-1[no-code]: works\nWIRING: none\n%s\n' \
+                "$_bt" "$_bt" > "$_t"
         fi
     fi
     return "$_MOCK_ROUTER_RC"
@@ -251,22 +251,22 @@ _rc=$?
 set +e
 _assert_error_path "SPEC-6" "no design.md produced" "missing_design_md"
 
-# SPEC-7 — a design.md with no ```scope block.
+# SPEC-7 — a design.md whose UNCLEAR line is not in its form (#2508; this was
+# a design with no scope block, which design no longer writes).
 _setup_fixture t7
 _MOCK_ROUTER_RC=0
-_MOCK_DESIGN_WRITE_PATH=""
 _MOCK_DESIGN_WRITE_PATH=1
-_MOCK_DESIGN_TEXT="$(printf '# Design\n\n## Decision\nNo scope block here.\n')"
+_MOCK_DESIGN_TEXT="$(printf '# Design\n\n## Decision\nMinimal.\n\n%sacceptance\nDSWORK-1[no-code]: works\nWIRING: none\n%s\n\nUNCLEAR: R-1 is the flag needed?\n' '```' '```')"
 set +e
 _design_stage_run_inner "$_F_SCOPE" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
 set +e
-_assert_checks_fail "SPEC-7" "design.md without a scope block" "has no scope block"
+_assert_checks_fail "SPEC-7" "design.md with a malformed UNCLEAR line" "an UNCLEAR line is not in its form"
 
-# SPEC-8 — a design.md with a scope block but no ```acceptance block.
+# SPEC-8 — a design.md with no ```acceptance block.
 _setup_fixture t8
 _MOCK_DESIGN_WRITE_PATH=1
-_MOCK_DESIGN_TEXT="$(printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\nfoo.sh\n%s\n' '```' '```')"
+_MOCK_DESIGN_TEXT="$(printf '# Design\n\n## Decision\nMinimal.\n')"
 set +e
 _design_stage_run_inner "$_F_SCOPE" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?

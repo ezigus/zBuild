@@ -423,7 +423,8 @@ _plugin_hook_call_once() {
         local -x ZBUILD_ARTIFACT_DIR="${_ws_state_dir}/artifacts"
         [[ "$hook_name" == "run" ]] && stage_errors_clear "${1:-}"
 
-        # #2022: the acceptance TESTFILES belong to the stage that AUTHORS them.
+        # #2022: the acceptance test files belong to the stage that AUTHORS them
+        # (#2508: found by tag in the test folders, which are that stage's).
         # Every other spawn is denied Edit() on them, so build cannot rewrite an
         # assertion to agree with its own implementation. Derived from the role
         # the plugin declares, never from a stage id: naming `build` here would

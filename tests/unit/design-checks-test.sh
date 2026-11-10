@@ -2,8 +2,11 @@
 # Tests: design's scripted checks of its own design.md (plugins/agent/design/
 # lib/checks.sh; #2369 moved them out of the design-gate stage, ADR-046, #1218).
 # No model, nothing executed; pure reads of design.md and the files it names.
-# Runs the structural checks (C1..C5, C7), reports ALL violations in ONE pass.
-# G8 (ADR-069 §10): every test file is in one of the repo's test folders.
+# Runs the structural checks (C2, C3, C5, C7, C9–C11), reports ALL violations in
+# ONE pass. #2508 (ADR-069 §11): design names no files — no scope block (C1) and
+# no test file per SPEC (C4, C8) are asked for or checked.
+# G8 (ADR-069 §10, #2508): a WIRING file in one of the repo's test folders is no
+# WIRING file; the repo's own list decides which folders those are.
 # C3 is the requirement status (#2304, ADR-069): G1–G6 below; G7 (#2305) reads a
 # [code] requirement's words.
 set -euo pipefail
@@ -26,7 +29,7 @@ source "$REPO_ROOT/scripts/lib/acceptance-block.sh"
 # shellcheck source=../../plugins/agent/design/lib/checks.sh
 source "$REPO_ROOT/plugins/agent/design/lib/checks.sh"
 
-# repo_root for the checks = a temp tree where declared TESTFILES/WIRING live.
+# repo_root for the checks = a temp tree where the WIRING and evidence files live.
 ROOT="$TEST_TEMP_DIR/repo"
 mkdir -p "$ROOT/tests" "$ROOT/scripts"
 export ZBUILD_REPO_ROOT="$ROOT"
@@ -55,9 +58,8 @@ _run_gate_with_md() {
     fi
 }
 
-# A well-formed, clean design (scope non-empty; every SPEC classified; [change]
-# SPEC has an existing tagged TESTFILE; WIRING present + path exists; Level-1
-# tags present). Baseline for the pass case.
+# A well-formed, clean design (every SPEC classified; WIRING present + path
+# exists; no file list, #2508). Baseline for the pass case.
 printf 'assert "[DSWORK-1] ok" 1 1\n'  > "$ROOT/tests/a-test.sh"
 : > "$ROOT/scripts/wire.sh"
 
@@ -66,54 +68,37 @@ _clean_md='# Design
 ## Decision
 Do the thing.
 
-```scope
-scripts/wire.sh
-```
-
 ```acceptance
 DSWORK-1[change]: the thing works
   When: it runs
   Then: it is done
-TESTFILES:
-tests/a-test.sh
 WIRING: scripts/wire.sh
 ```
 '
 
-# ─── SPEC-1 (C6 removed): an UNTAGGED TESTFILE no longer fails the gate ───────
-# C6 tag-presence check is deleted (ADR-046 demotion, issue #1477). A [change]
-# SPEC whose existing TESTFILE carries no [SPEC-1] tag now passes C1..C5.
+# ─── SPEC-1 (C6 removed): a SPEC with no tagged test yet passes the gate ──────
+# C6 tag-presence check is deleted (ADR-046 demotion, issue #1477): design runs
+# before any test exists, so a [change] SPEC no test file holds the tag of yet
+# passes. Its test is checked downstream, where it becomes answerable.
 printf 'assert "unrelated" 1 1\n' > "$ROOT/tests/untagged-test.sh"
 _run_gate_with_md '# Design
 
-```scope
-scripts/wire.sh
-```
-
 ```acceptance
 DSWORK-1[change]: the thing works
   When: it runs
   Then: it is done
-TESTFILES:
-tests/untagged-test.sh
 WIRING: scripts/wire.sh
 ```
 '
-assert_eq "[DSWORK-1] untagged TESTFILE → verdict=pass (C6 removed)" "pass" "$VERDICT"
-assert_eq "[DSWORK-1] untagged TESTFILE → zero violations" \
+assert_eq "[DSWORK-1] no tagged test yet → verdict=pass (C6 removed)" "pass" "$VERDICT"
+assert_eq "[DSWORK-1] no tagged test yet → zero violations" \
     "0" "$(jq -r '.data.violations|length' "$RESULT_JSON")"
 
 # ─── SPEC-2 (C3 status): a requirement with no status → verdict=fail ─────────
 _run_gate_with_md '# Design
 
-```scope
-scripts/wire.sh
-```
-
 ```acceptance
 DSWORK-1: no status here
-TESTFILES:
-tests/a-test.sh
 WIRING: scripts/wire.sh
 ```
 '
@@ -125,66 +110,15 @@ assert_contains "[DSWORK-2] violation names NO_STATUS DSWORK-1" \
 # WIRING section entirely absent from the acceptance block.
 _run_gate_with_md '# Design
 
-```scope
-scripts/wire.sh
-```
-
 ```acceptance
 DSWORK-1[change]: the thing works
   When: it runs
   Then: it is done
-TESTFILES:
-tests/a-test.sh
 ```
 '
 assert_eq "[DSWORK-3] missing-WIRING design → verdict=fail" "fail" "$VERDICT"
 assert_contains "[DSWORK-3] violation names WIRING_MISSING" \
     "$(jq -r '.data.violations|join(" ")' "$RESULT_JSON")" "WIRING_MISSING"
-
-# ─── SPEC-4 (C1 scope): an INCOMPLETE-SCOPE design → verdict=fail ─────────────
-# scope fence present but empty (no entries).
-_run_gate_with_md '# Design
-
-```scope
-```
-
-```acceptance
-DSWORK-1[change]: the thing works
-  When: it runs
-  Then: it is done
-TESTFILES:
-tests/a-test.sh
-WIRING: scripts/wire.sh
-```
-'
-assert_eq "[DSWORK-4] incomplete-scope design → verdict=fail" "fail" "$VERDICT"
-assert_contains "[DSWORK-4] violation names SCOPE_MISSING" \
-    "$(jq -r '.data.violations|join(" ")' "$RESULT_JSON")" "SCOPE_MISSING"
-
-# ─── SPEC-5 (#1649): a [change] SPEC may declare a testfile that does not ────
-# exist YET — design runs before anything is built, so proposing a new dedicated
-# test file must NOT be a violation. The promise is verified downstream, where it
-# becomes answerable: acceptance-negctl fails `no_testfile` if the file is still
-# absent at gate time. Requiring it here forced every design to abandon its own
-# proposal and attach to a pre-existing file (#1624, #1636, #1532).
-_run_gate_with_md '# Design
-
-```scope
-scripts/wire.sh
-```
-
-```acceptance
-DSWORK-1[change]: the thing works
-  When: it runs
-  Then: it is done
-TESTFILES:
-tests/does-not-exist-test.sh
-WIRING: scripts/wire.sh
-```
-'
-assert_eq "[DSWORK-5] a not-yet-created testfile is NOT a design-time violation" "pass" "$VERDICT"
-assert_eq "[DSWORK-5] declaring a future testfile yields zero violations" \
-    "0" "$(jq -r '.data.violations|length' "$RESULT_JSON")"
 
 # ─── SPEC-6 (happy path): a CLEAN design → verdict=pass, proceeds to build ────
 _run_gate_with_md "$_clean_md"
@@ -193,34 +127,24 @@ assert_eq "[DSWORK-6] clean design → zero violations" \
     "0" "$(jq -r '.data.violations|length' "$RESULT_JSON")"
 
 # ─── SPEC-7 (report-all): MANY violations reported in ONE pass ───────────────
-# scope empty (C1) + a [change] SPEC that declares NO testfile at all (C4) +
-# an unclassified SPEC (C3) + no WIRING (C5) all at once → all four classes
-# named in a single run (no whack-a-mole).
-# #1649: the C4 arm is now "declared nothing", not "declared something absent" —
-# a not-yet-created path is legitimate and no longer a violation.
+# an unclassified SPEC (C3) + no WIRING (C5) + a malformed UNCLEAR line (C12)
+# all at once → all three named in a single run (no whack-a-mole).
 _run_gate_with_md '# Design
 
-```scope
-```
-
 ```acceptance
-DSWORK-1[change]: has a per-SPEC binding
+DSWORK-1[change]: a behaviour
   When: it runs
   Then: it is done
 DSWORK-2: unclassified
-DSWORK-3[change]: declares no testfile of its own
-  When: it runs
-  Then: it is done
-TESTFILES:
-DSWORK-1: tests/does-not-exist-test.sh
 ```
+
+UNCLEAR: R-1 is the flag needed?
 '
 _all="$(jq -r '.data.violations|join(" ")' "$RESULT_JSON")"
 assert_eq "[DSWORK-7] multi-violation design → verdict=fail" "fail" "$VERDICT"
-assert_contains "[DSWORK-7] reports SCOPE_MISSING in one pass"    "$_all" "SCOPE_MISSING"
 assert_contains "[DSWORK-7] reports NO_STATUS in one pass"        "$_all" "NO_STATUS"
 assert_contains "[DSWORK-7] reports WIRING_MISSING in one pass"   "$_all" "WIRING_MISSING"
-assert_contains "[DSWORK-7] reports MISSING_TESTFILE_FOR_SPEC in one pass" "$_all" "MISSING_TESTFILE_FOR_SPEC"
+assert_contains "[DSWORK-7] reports UNCLEAR_MALFORMED in one pass" "$_all" "UNCLEAR_MALFORMED"
 
 # ─── SPEC-8: _design_checks ALWAYS returns rc=0 ────────
 # Even on a failing verdict the plugin returns 0 — the verdict lives in the
@@ -237,13 +161,8 @@ assert_eq "[DSWORK-4][DSWORK-9] feedback file written on a passing verdict" "pre
     "$([[ -f "$FEEDBACK_PATH" ]] && echo present || echo absent)"
 _run_gate_with_md '# Design
 
-```scope
-```
-
 ```acceptance
 DSWORK-1: broken
-TESTFILES:
-tests/a-test.sh
 ```
 '
 assert_eq "[DSWORK-9] feedback file written on a failing verdict" "present" \
@@ -251,14 +170,14 @@ assert_eq "[DSWORK-9] feedback file written on a failing verdict" "present" \
 
 # ─── G1–G6: requirement status (#2304, ADR-069 §1–§3) ───────────────────────
 # Each requirement carries one status: [code], [no-code] or [done]. A [done]
-# one names evidence that exists in the repository. Only [code] (and the old
-# [change]) needs a test file. Nothing here runs a test (C6 is gone).
+# one names evidence that exists in the repository. No status names a test
+# file (#2508). Nothing here runs a test (C6 is gone).
 printf 'line one\nline two\nline three\n' > "$ROOT/scripts/three.sh"
 # _g_md <spec line>... — a clean design around the given requirement lines.
 _g_md() {
-    printf '# Design\n\n```scope\nscripts/wire.sh\n```\n\n```acceptance\n'
+    printf '# Design\n\n```acceptance\n'
     printf '%s\n' "$@"
-    printf 'WIRING: scripts/wire.sh\nTESTFILES:\nDSWORK-1: tests/a-test.sh\n```\n'
+    printf 'WIRING: scripts/wire.sh\n```\n'
 }
 _viol() { jq -r '.data.violations|join(" ")' "$RESULT_JSON"; }
 
@@ -306,11 +225,6 @@ done
 
 _run_gate_with_md "$(_g_md 'DSWORK-1[code]: x' '  When: it runs' '  Then: it is done' 'DSWORK-2[no-code]: docs' 'DSWORK-3[done]: there evidence: scripts/three.sh:"line one"' '  When: it runs' '  Then: it is done')"
 assert_eq "[G5] [no-code] and [done] need no test file of their own" "pass" "$VERDICT"
-_run_gate_with_md "$(_g_md 'DSWORK-1[code]: x' '  When: it runs' '  Then: it is done' 'DSWORK-2[code]: y' '  When: it runs' '  Then: it is done')"
-assert_contains "[G5] a [code] requirement with no test file is still caught" "$(_viol)" \
-    "MISSING_TESTFILE_FOR_SPEC DSWORK-2"
-_run_gate_with_md "$(_g_md 'DSWORK-1[code]: x' '  When: it runs' '  Then: it is done' 'DSWORK-2[change]: y' '  When: it runs' '  Then: it is done')"
-assert_contains "[G5] ...and so is an old [change] one" "$(_viol)" "MISSING_TESTFILE_FOR_SPEC DSWORK-2"
 
 _run_gate_with_md "$(_g_md 'DSWORK-1[code]: x' '  When: it runs' '  Then: it is done' 'DSWORK-2[guard]: old' '  When: it runs' '  Then: it is done')"
 assert_eq "[G6] the result carries no guard pre-check block" "absent" \
@@ -359,172 +273,34 @@ _run_gate_with_md "$(_g_md 'DSWORK-1[code]: an empty input returns rc 1' '  When
 assert_contains "[G7] ...as is #1805's DSBNDY-1, word for word" "$(_viol)" "CONTENTS_NOT_BEHAVIOUR DSBNDY-1"
 _run_gate_with_md "$(_g_md 'DSWORK-1[code]: an empty input returns rc 1' '  When: it runs' '  Then: it is done' 'DSWORK-2[no-code]: the README tells a user how to resume a run')"
 assert_eq "[G7] guard: a [no-code] requirement about what a reader is told passes" "pass" "$VERDICT"
-# One bad [code] requirement with no test file draws both violations in the
-# same pass (review #2319): the gate reports everything at once (SPEC-7).
+# A contents-only requirement is named even beside a sound one (review #2319):
+# the gate reports everything at once (SPEC-7).
 _run_gate_with_md "$(_g_md 'DSWORK-1[code]: an empty input returns rc 1' '  When: it runs' '  Then: it is done' 'DSWORK-2[code]: plugin.sh contains `_bar`' '  When: it runs' '  Then: it is done')"
-assert_contains "[G7] a contents-only requirement with no test file is named for the missing test file" "$(_viol)" "MISSING_TESTFILE_FOR_SPEC DSWORK-2"
-assert_contains "[G7] ...and, in the same pass, for describing contents" "$(_viol)" "CONTENTS_NOT_BEHAVIOUR DSWORK-2"
+assert_contains "[G7] a contents-only requirement beside a sound one is named for describing contents" "$(_viol)" "CONTENTS_NOT_BEHAVIOUR DSWORK-2"
 
-# ─── SPEC-11 (#1227 fix 1): C1 fence tolerates trailing whitespace ───────────
-# The design stage asserts the scope block with `grep -q '^```scope'`, which
-# accepts a fence line carrying trailing whitespace. C1's fence check must
-# mirror that tolerance so a trailing-space fence does NOT falsely trip
-# SCOPE_MISSING. Build a clean design whose scope fence has a trailing space.
-_ws_md="$(printf '# Design\n\n```scope \nscripts/wire.sh\n```\n\n```acceptance\nDSWORK-1[change]: the thing works\n  When: it runs\n  Then: it is done\nTESTFILES:\ntests/a-test.sh\nWIRING: scripts/wire.sh\n```\n')"
-_run_gate_with_md "$_ws_md"
-_ws_viol="$(jq -r '.data.violations|join(" ")' "$RESULT_JSON")"
-assert_eq "[DSWORK-11] trailing-ws scope fence → no false SCOPE_MISSING" "absent" \
-    "$([[ "$_ws_viol" == *SCOPE_MISSING* ]] && echo present || echo absent)"
-assert_eq "[DSWORK-11] trailing-ws scope fence → verdict=pass" "pass" "$VERDICT"
-
-# ─── SPEC-12 (C4 per-SPEC binding upgrade): per-SPEC binding present → pass ───
-# Each [change] SPEC declares its own TESTFILE binding; both files exist.
-printf 'assert "[DSWORK-1] b" 1 1\n' > "$ROOT/tests/b-test.sh"
-_run_gate_with_md '# Design
-
-```scope
-scripts/wire.sh
-```
-
-```acceptance
-DSWORK-1[change]: first new behavior
-  When: it runs
-  Then: it is done
-DSWORK-2[change]: second new behavior
-  When: it runs
-  Then: it is done
-WIRING: scripts/wire.sh
-TESTFILES:
-DSWORK-1: tests/a-test.sh
-DSWORK-2: tests/b-test.sh
-```
-'
-assert_eq "[DSWORK-4] DSWORK-12: per-SPEC binding, all files exist → verdict=pass" "pass" "$VERDICT"
-assert_eq "[DSWORK-4] DSWORK-12: per-SPEC binding → zero violations" \
-    "0" "$(jq -r '.data.violations|length' "$RESULT_JSON")"
-
-# ─── SPEC-13 (C4 per-SPEC binding upgrade): per-SPEC path missing → fail ─────
-# SPEC-1 has a per-SPEC binding but the declared file does not exist on disk.
-_run_gate_with_md '# Design
-
-```scope
-scripts/wire.sh
-```
-
-```acceptance
-DSWORK-1[change]: new behavior
-  When: it runs
-  Then: it is done
-WIRING: scripts/wire.sh
-TESTFILES:
-DSWORK-1: tests/does-not-exist-per-spec-test.sh
-```
-'
-assert_eq "[DSWORK-4] DSWORK-13: per-SPEC binding to a future file → verdict=pass (#1649)" "pass" "$VERDICT"
-assert_eq "[DSWORK-4] DSWORK-13: per-SPEC binding to a future file → zero violations" \
-    "0" "$(jq -r '.data.violations|length' "$RESULT_JSON")"
-
-# ─── SPEC-14 (C4 per-SPEC binding upgrade): a [change] SPEC with NO binding ───
-# and no global bare-path fallback must be caught. This is the case the OLD
-# pooled C4 structurally could NOT see: it counted the global pool (1 file,
-# present) and passed, letting SPEC-2 satisfy C4 via SPEC-1's file. Only the
-# per-SPEC loop attributes the gap to SPEC-2. SPEC-13 above does not
-# discriminate (old C4 emits MISSING_TESTFILE for a missing path too), so this
-# is the assertion that makes the design-gate C4 wiring load-bearing.
-_run_gate_with_md '# Design
-
-```scope
-scripts/wire.sh
-```
-
-```acceptance
-DSWORK-1[change]: first new behavior
-  When: it runs
-  Then: it is done
-DSWORK-2[change]: second new behavior, deliberately given no testfile of its own
-  When: it runs
-  Then: it is done
-WIRING: scripts/wire.sh
-TESTFILES:
-DSWORK-1: tests/a-test.sh
-```
-'
-assert_eq "[DSWORK-4] DSWORK-14: [change] SPEC with no binding of its own → verdict=fail" \
-    "fail" "$VERDICT"
-assert_contains "[DSWORK-4] DSWORK-14: violation attributes the gap to DSWORK-2" \
-    "$(jq -r '.data.violations|join(" ")' "$RESULT_JSON")" "MISSING_TESTFILE_FOR_SPEC DSWORK-2"
-
-# ─── SPEC-15 (#1649): dropping the existence check opens no traversal hole ───
-# acceptance-block.sh already refuses absolute and ".."-containing paths while
-# parsing, so such a declaration never reaches C4 as a path. A duplicate guard in
-# the gate would be unreachable; this pins the real, end-to-end behaviour instead.
-_run_gate_with_md '# Design
-
-```scope
-scripts/wire.sh
-```
-
-```acceptance
-DSWORK-1[change]: the thing works
-  When: it runs
-  Then: it is done
-WIRING: scripts/wire.sh
-TESTFILES:
-DSWORK-1: ../outside-the-repo-test.sh
-```
-'
-assert_eq "[DSWORK-15] a traversing testfile path → verdict=fail" "fail" "$VERDICT"
-# The parser drops it while reading the block, so it reaches C4 as NO path at
-# all — hence MISSING_TESTFILE_FOR_SPEC rather than a dedicated path violation.
-# Pinning it here proves dropping the existence check opened no traversal hole.
-assert_contains "[DSWORK-15] a dropped traversing path surfaces as MISSING_TESTFILE_FOR_SPEC" \
-    "$(jq -r '.data.violations|join(" ")' "$RESULT_JSON")" "MISSING_TESTFILE_FOR_SPEC"
-
-_run_gate_with_md '# Design
-
-```scope
-scripts/wire.sh
-```
-
-```acceptance
-DSWORK-1[change]: the thing works
-  When: it runs
-  Then: it is done
-WIRING: scripts/wire.sh
-TESTFILES:
-DSWORK-1: /etc/passwd-test.sh
-```
-'
-assert_eq "[DSWORK-15] an absolute testfile path → verdict=fail" "fail" "$VERDICT"
-assert_contains "[DSWORK-15] a dropped absolute path also surfaces as MISSING_TESTFILE_FOR_SPEC" \
-    "$(jq -r '.data.violations|join(" ")' "$RESULT_JSON")" "MISSING_TESTFILE_FOR_SPEC"
-
-# ─── G8 (ADR-069 §10): a test file is in one of the repo's test folders ─────
-# #1801 run 40390919951 named two ADR documents as a requirement's tests; the
-# test stage ran them with bash, and their markdown quote lines ("> word")
-# created files in the worktree.
-_g8_md() {   # _g8_md <DSWORK-2 test file>
-    printf '# Design\n\n```scope\nscripts/wire.sh\n```\n\n```acceptance\n'
-    printf 'DSWORK-1[code]: x\n  When: it runs\n  Then: it is done\nDSWORK-2[no-code]: the ADR says so\n'
-    printf 'WIRING: scripts/wire.sh\nTESTFILES:\nDSWORK-1: tests/a-test.sh\nDSWORK-2: %s\n```\n' "$1"
+# ─── G8 (ADR-069 §10, #2508): a WIRING file in a test folder is refused ─────
+# #2429: reachability cannot prove a test load-bearing. With no test-file list
+# (#2508) a test is any file in the repository's test folders.
+mkdir -p "$ROOT/tests/unit" "$ROOT/spec"
+printf 'x\n' > "$ROOT/tests/unit/b-test.sh"; printf 'x\n' > "$ROOT/spec/thing_spec.rb"
+_g8_md() {   # _g8_md <WIRING file>
+    printf '# Design\n\n```acceptance\nDSWORK-1[code]: x\n  When: it runs\n  Then: it is done\nWIRING: %s\n```\n' "$1"
 }
-_run_gate_with_md "$(_g8_md docs/adr/ADR-011-pluggable-backends.md)"
-assert_eq "[G8] a document named as a test → verdict=fail" "fail" "$VERDICT"
-assert_contains "[G8] the violation names the file" "$(_viol)" "TESTFILE_NOT_A_TEST docs/adr/ADR-011-pluggable-backends.md"
-assert_contains "[G8] the feedback says it in plain words" "$(cat "$FEEDBACK_PATH")" \
-    "docs/adr/ADR-011-pluggable-backends.md is named as a test, but it is not in a test folder"
-assert_contains "[G8] ...naming the test folders" "$(cat "$FEEDBACK_PATH")" "tests/*"
 _run_gate_with_md "$(_g8_md tests/unit/b-test.sh)"
-assert_eq "[G8] a file under tests/ passes" "pass" "$VERDICT"
-_run_gate_with_md "$(_g8_md plugins/tool/x/tests/x-test.sh)"
-assert_eq "[G8] a file in a plugin's own tests folder passes" "pass" "$VERDICT"
-_run_gate_with_md "$(_g8_md scripts/lib/thing.sh)"
-assert_contains "[G8] a source file is not a test either" "$(_viol)" "TESTFILE_NOT_A_TEST scripts/lib/thing.sh"
+assert_eq "[G8] a WIRING file under tests/ → verdict=fail" "fail" "$VERDICT"
+assert_contains "[G8] the violation names the file" "$(_viol)" "WIRING_IS_TEST tests/unit/b-test.sh"
+assert_contains "[G8] the feedback says it in plain words" "$(cat "$FEEDBACK_PATH")" \
+    "the WIRING file tests/unit/b-test.sh is in a test folder"
+_run_gate_with_md "$(_g8_md scripts/wire.sh)"
+assert_eq "[G8] a source file as WIRING passes" "pass" "$VERDICT"
+_run_gate_with_md "$(_g8_md spec/thing_spec.rb)"
+assert_eq "[G8] spec/ is not a test folder by default" "pass" "$VERDICT"
 # The folders are the repository's data: its own list replaces the default.
 mkdir -p "$ROOT/.zbuild"; printf '# this repo keeps its tests in spec/\nspec/*\n' > "$ROOT/.zbuild/test-paths.txt"
 _run_gate_with_md "$(_g8_md spec/thing_spec.rb)"
-assert_contains "[G8] a repo's own list decides: tests/ is not one of its folders" "$(_viol)" "TESTFILE_NOT_A_TEST tests/a-test.sh"
-assert_eq "[G8] ...and spec/ is" "0" "$(grep -c 'TESTFILE_NOT_A_TEST spec/' <<< "$(_viol)" || true)"
+assert_contains "[G8] a repo's own list decides: spec/ is one of its folders" "$(_viol)" "WIRING_IS_TEST spec/thing_spec.rb"
+_run_gate_with_md "$(_g8_md tests/unit/b-test.sh)"
+assert_eq "[G8] ...and tests/ is not" "pass" "$VERDICT"
 rm -f "$ROOT/.zbuild/test-paths.txt"
 
 print_test_results

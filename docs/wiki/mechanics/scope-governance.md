@@ -6,7 +6,7 @@ Controls **which files a run may read and write**, so autonomous work can't wand
 
 - **Read/write split:** scope is declared (e.g. `--scope <path>`, repeatable); writes are constrained more tightly than reads.
 - **Security floor:** certain paths/patterns are always protected regardless of the requested scope.
-- **Governed expansion (ADR-030):** when work legitimately needs more scope, expansion is explicit and recorded — build-created collateral is auto-granted under controlled rules rather than silently.
+- **The test folders (ADR-030 §8, #2508):** the repository's test folders (`config/test-paths.txt`, or a repo's `.zbuild/test-paths.txt`) belong to test-author, which commits every file it changes there. Build may change any file outside them and none inside them: a change it makes there is put back. There is no other write list to widen.
 - **Input validation:** scope paths are validated at the CLI boundary (no absolute paths, no `..` traversal).
 
 See [[mechanics/admission-gate]], [[mechanics/redaction-chokepoint]], [[CLI-Reference]].

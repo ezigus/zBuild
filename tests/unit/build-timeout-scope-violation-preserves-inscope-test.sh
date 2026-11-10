@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
-# Unit test (#827, #2185): a scope violation never costs build its in-scope work.
+# Unit test (#827, #2185, #2508): a change build may not make never costs it the
+# rest of its work.
 #
-# ADR-030 Layer 3: build emits a scope_expansion_request "alongside its in-scope
-# diff, and does NOT touch the out-of-scope file". #827 kept the in-scope work
-# only when the router returned rc>=2; since #1208 the router returns 0 on a
-# timeout and says so in _ROUTE_LOOP_TERMINATED_REASON=router_timeout, so that
-# branch could never fire (#1849 run 35949629759 lost a whole build attempt).
-# The mocks below use the router's REAL shapes: rc=0 + a reason word.
+# #2185: whatever stopped the router, build kept only the in-scope work when it
+# also wrote out of scope — the router returns 0 on a timeout and says so in
+# _ROUTE_LOOP_TERMINATED_REASON=router_timeout, so a branch keyed on rc>=2 never
+# fired (#1849 run 35949629759 lost a whole build attempt). #2508 (ADR-030 §8):
+# the only change build may not make is one inside the test folders; it is put
+# back, and everything else is kept and committed. Build asks for nothing.
+# The mocks use the router's REAL shapes: rc=0 + a reason word.
 #
-#   T1 timeout (rc=0, router_timeout) + OOS edit → OOS reverted, in-scope diff
-#      kept AND committed, scope request emitted.
-#   T2 clean finish (rc=0, done_sentinel) + OOS edit → the same.
-#   T3 clean finish, edited existing OOS collateral only → request + revert.
+#   T1 timeout (rc=0, router_timeout) + a file written in a test folder → it is
+#      removed; the rest kept AND committed; reported; no request.
+#   T2 clean finish (rc=0, done_sentinel) + the same → the same.
+#   T3 clean finish, an EXISTING test file edited → restored to HEAD; reported.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -43,19 +45,19 @@ source "$REPO_ROOT/plugins/agent/build/plugin.sh"
 
 # Mocks. MOCK_ROUTER_RC drives the simulated router exit code and
 # MOCK_TERMINATED_REASON its reason word; the loop body
-# always writes BOTH an in-scope file (in_scope.txt) AND an out-of-scope
-# file (docs/oos.md — collateral, so it can be asked for) to mimic the partial-work scenario.
+# always writes BOTH a file outside the test folders (in_scope.txt) AND one
+# inside them (tests/oos-test.sh) to mimic the partial-work scenario.
 MOCK_ROUTER_RC=0
 # shellcheck disable=SC2317
 route_to_model_loop() {
     local _repo="$3"
     if [[ -n "${MOCK_EDIT_TARGET:-}" ]]; then
-        # REC-2: edit an EXISTING out-of-scope file (no in-scope work).
+        # Edit an EXISTING test file (no other work).
         printf 'NEW value (build edit)\n' > "$_repo/$MOCK_EDIT_TARGET"
     else
         echo "in-scope work from LLM" > "$_repo/in_scope.txt"
-        mkdir -p "$_repo/docs"
-        echo "OOS work from LLM"      > "$_repo/docs/oos.md"
+        mkdir -p "$_repo/tests"
+        echo "OOS work from LLM"      > "$_repo/tests/oos-test.sh"
     fi
     _ROUTE_LOOP_ITERATIONS=1
     _ROUTE_LOOP_TERMINATED_REASON="${MOCK_TERMINATED_REASON:-done_sentinel}"
@@ -74,7 +76,8 @@ apply_scope_redaction() {
     return 0
 }
 
-# Per-test fixture: fresh git repo, plan with only in_scope.txt in scope.
+# Per-test fixture: fresh git repo. The plan names in_scope.txt, but build has no
+# file list (#2508): only the test folders are not its.
 _setup_fixture() {
     local test_id="$1"
     REPO="$TEST_TEMP_DIR/$test_id-repo"
@@ -106,7 +109,8 @@ JSON
     : > "$ZBUILD_EVENTS_JSONL"
 }
 
-# Asserts shared by T1/T2: in-scope work kept + committed, OOS reverted, asked for.
+# Asserts shared by T1/T2: the work outside the test folders kept + committed,
+# the test-folder file removed and reported, nothing asked for.
 _assert_inscope_kept() {
     local tag="$1"
     if grep -q 'in_scope.txt' "$DIFF_PATCH" 2>/dev/null; then
@@ -115,12 +119,12 @@ _assert_inscope_kept() {
         assert_fail "$tag: in-scope work dropped from diff.patch" \
             "size=$(wc -c < "$DIFF_PATCH" 2>/dev/null || echo 0)"
     fi
-    if grep -q 'docs/oos.md' "$DIFF_PATCH" 2>/dev/null; then
+    if grep -q 'tests/oos-test.sh' "$DIFF_PATCH" 2>/dev/null; then
         assert_fail "$tag: diff.patch leaked the out-of-scope file"
     else
         assert_pass "$tag: diff.patch does not contain the out-of-scope file"
     fi
-    if [[ -e "$REPO/docs/oos.md" ]]; then
+    if [[ -e "$REPO/tests/oos-test.sh" ]]; then
         assert_fail "$tag: out-of-scope file left in the tree"
     else
         assert_pass "$tag: out-of-scope file reverted"
@@ -128,9 +132,10 @@ _assert_inscope_kept() {
     local committed
     committed="$(git -C "$REPO" diff --name-only "$BASELINE" HEAD 2>/dev/null || true)"
     assert_eq "$tag: in-scope work is committed (and nothing else)" "in_scope.txt" "$committed"
-    local req
-    req="$(jq -r '.scope_expansion_request.files[]?.path // empty' "$SUMMARY_JSON" 2>/dev/null || true)"
-    assert_eq "$tag: scope request names the out-of-scope file" "docs/oos.md" "$req"
+    assert_eq "$tag: the summary names the file it put back" "tests/oos-test.sh" \
+        "$(jq -r '(.scope_violations // []) | join(",")' "$SUMMARY_JSON" 2>/dev/null || true)"
+    assert_eq "$tag: no request for more files" "false" \
+        "$(jq 'has("scope_expansion_request")' "$SUMMARY_JSON" 2>/dev/null || true)"
     local fc
     fc="$(jq -r '(.files_changed // []) | join(",")' "$SUMMARY_JSON" 2>/dev/null || true)"
     assert_eq "$tag: build-summary reports the in-scope file it changed" "in_scope.txt" "$fc"
@@ -168,10 +173,7 @@ set -e
 assert_eq "T2: clean run rc=0" "0" "$rc"
 _assert_inscope_kept "T2" || true
 
-# ─── T3 (REC-2 #880): clean run + EDITED existing OOS collateral → request + revert ─
-# build edits an existing out-of-scope test file (no in-scope work). Instead of
-# silently reverting with no record, build emits a governed scope_expansion_request
-# for it AND reverts the file to HEAD (old value restored for the evidence check).
+# ─── T3: clean run + an EDITED existing test file → restored to HEAD ──────────
 _setup_fixture t3
 OOS_REL="tests/oos-pin-test.sh"
 mkdir -p "$REPO/tests"
@@ -180,9 +182,6 @@ git -C "$REPO" add "$OOS_REL"
 git -C "$REPO" -c commit.gpgsign=false commit -q -m "add oos test"
 BASELINE="$(git -C "$REPO" rev-parse HEAD)"
 export ZBUILD_RUN_START_COMMIT="$BASELINE"
-# Feedback names the OOS file with the old value → evidence for the grant.
-# shellcheck disable=SC2317
-_build_read_prior_assessment() { printf "test failed: %s pins '8 stages'\n" "$OOS_REL"; }
 MOCK_ROUTER_RC=0
 MOCK_TERMINATED_REASON="done_sentinel"
 MOCK_EDIT_TARGET="$OOS_REL"
@@ -191,21 +190,15 @@ _build_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$DIFF_PATCH" "$SUMMARY_JS
 rc=$?
 set -e
 unset MOCK_EDIT_TARGET
-unset -f _build_read_prior_assessment
 assert_eq "T3: clean run rc=0" "0" "$rc"
-# A scope_expansion_request for the edited OOS collateral is emitted.
-req_path="$(jq -r '.scope_expansion_request.files[]?.path // empty' "$SUMMARY_JSON" 2>/dev/null | head -1)"
-assert_eq "T3: request emitted for edited OOS file" "$OOS_REL" "$req_path"
-req_cat="$(jq -r '.scope_expansion_request.files[]? | select(.path=="'"$OOS_REL"'") | .category' "$SUMMARY_JSON" 2>/dev/null)"
-assert_eq "T3: classified collateral_tests" "collateral_tests" "$req_cat"
-req_ev="$(jq -r '.scope_expansion_request.files[]? | select(.path=="'"$OOS_REL"'") | .evidence' "$SUMMARY_JSON" 2>/dev/null)"
-assert_eq "T3: evidence = old value (file reverted, token present)" "8 stages" "$req_ev"
-# The OOS file was reverted to HEAD (old value restored, not build's new value).
+assert_eq "T3: the edited test file is reported" "$OOS_REL" \
+    "$(jq -r '(.scope_violations // []) | join(",")' "$SUMMARY_JSON" 2>/dev/null)"
 if grep -q '8 stages' "$REPO/$OOS_REL" 2>/dev/null && ! grep -q 'NEW value' "$REPO/$OOS_REL" 2>/dev/null; then
-    assert_pass "T3: edited OOS file reverted to HEAD (old value restored)"
+    assert_pass "T3: edited test file restored to HEAD (old value back)"
 else
-    assert_fail "T3: OOS file not reverted" "content: $(cat "$REPO/$OOS_REL" 2>/dev/null)"
+    assert_fail "T3: test file not restored" "content: $(cat "$REPO/$OOS_REL" 2>/dev/null)"
 fi
+assert_eq "T3: nothing is committed" "$BASELINE" "$(git -C "$REPO" rev-parse HEAD)"
 
 cleanup_test_env
 print_test_results

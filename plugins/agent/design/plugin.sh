@@ -5,7 +5,8 @@
 #
 # Stage: design (ADR-013 T2, single-file artifact). One model call per run
 # (ADR-068 §8): the engine re-runs the stage, never the stage itself.
-# Produces: state/artifacts/design.md with embedded ```scope fenced block
+# Produces: state/artifacts/design.md — its decisions and acceptance contract;
+# it names no files (#2508, ADR-069 §11)
 #
 # Lifecycle:
 #   design_stage_run         — derive paths, delegate to _design_stage_run_inner
@@ -14,7 +15,6 @@
 #   design_stage_cleanup     — no-op (the engine brackets the hook, #1705)
 #
 # legacy-citation: pipeline-stages-intake.sh:1004 (stage_design function)
-# legacy-citation: pipeline-stages.sh:38-71 (_extract_scope_from_design helper)
 
 [[ -n "${_ZBUILD_DESIGN_LOADED:-}" ]] && return 0
 _ZBUILD_DESIGN_LOADED=1
@@ -92,24 +92,15 @@ _design_write_outcome() {
         _wiring="$(jq -Rnc '[inputs | select(length > 0 and . != "none")] | unique' <<< "$_wl" 2>/dev/null || true)"
         [[ -n "$_wiring" ]] || _wiring="[]"
     fi
-    # #1874: and the files it scoped the change to — the engine's one scope
-    # list, the one build works to.
-    local _scope="[]"
-    if [[ "$outcome" == pass && -s "$design" ]] && declare -F acceptance_list_scope >/dev/null 2>&1; then
-        local _sl; _sl="$(acceptance_list_scope "$design" 2>/dev/null || true)"
-        _scope="$(jq -Rnc '[inputs | select(length > 0)]' <<< "$_sl" 2>/dev/null || true)"
-        [[ -n "$_scope" ]] || _scope="[]"
-    fi
     # #2464 (ADR-068 §6): what design did about each finding it received.
     local _ans="[]"
     [[ ${#_DESIGN_ANSWERS[@]} -gt 0 ]] \
         && _ans="$(printf '%s\n' "${_DESIGN_ANSWERS[@]}" | jq -Rnc '[inputs | select(length > 0)]' 2>/dev/null || printf '[]')"
     local _data
     _data="$(jq -nc --arg at "$_at" --arg sha "$_sha" \
-        --argjson w "${_wiring:-[]}" --argjson sc "${_scope:-[]}" --argjson f "$findings" --argjson a "${_ans:-[]}" \
+        --argjson w "${_wiring:-[]}" --argjson f "$findings" --argjson a "${_ans:-[]}" \
         --argjson fs "${_ZB_ANS_SHOWN:-0}" --arg un "${_ZB_ANS_MISSING:-}" \
         '{authored_at: $at, authored_at_commit: $sha, wiring_files: $w}
-         + (if ($sc | length) > 0 then {scope_files: $sc} else {} end)
          + (if ($f | length) > 0 then {findings: $f} else {} end)
          + (if ($a | length) > 0 then {answers: $a} else {} end)
          + {findings_shown: $fs}
@@ -167,7 +158,7 @@ _design_one_line_specs_v() {
     _dol=""
     while IFS= read -r _dol_l; do
         if (( ! _dol_in )); then [[ "$_dol_l" == '```acceptance'* ]] && _dol_in=1; continue; fi
-        [[ "$_dol_l" == '```'* || "$_dol_l" == TESTFILES:* ]] && break
+        [[ "$_dol_l" == '```'* ]] && break
         [[ -n "$_dol_id" && "$_dol_l" =~ ^[[:space:]]+(Given|When|Then|And|Cleanup): ]] && { _dol_id=""; continue; }
         [[ -n "$_dol_id" ]] && _dol+="- $_dol_id"$'\n'
         _dol_id=""
@@ -218,7 +209,7 @@ _design_stage_run_inner() {
 
     # The persona (ADR-051) reaches the model through the provider, not this
     # text: the stage writes only its own job.
-    local _framing="Your job: write the design — the change's decisions, its acceptance contract and its scope — in the working copy at the path below. When it passes design's checks it becomes design.md. Save it as you go: a design on disk when your time runs out still counts."
+    local _framing="Your job: write the design — the change's decisions and its acceptance contract — in the working copy at the path below. When it passes design's checks it becomes design.md. Save it as you go: a design on disk when your time runs out still counts."
     local _start
     if (( _draft_rejected )); then
         _start="The working copy holds your last try, which was rejected: Previous work says why. Fix what it names. If YOUR LATEST DESIGN below is closer to right, start from that instead."
@@ -227,7 +218,7 @@ _design_stage_run_inner() {
     else
         _start="There is no design yet. Write a first version in your first few turns, then improve it."
     fi
-    local _triage="Previous work may hold findings from later stages. A finding is yours only if changing the design would fix it: its acceptance contract or its scope. Answer each of those in the design. Leave the others — a bug in the code, a test that does not run, a lint failure — and do not investigate them. In a Findings section of the design, list every finding: what you changed for it, or why you left it. You do not debug code or work out why a test fails."
+    local _triage="Previous work may hold findings from later stages. A finding is yours only if changing the design would fix it: its acceptance contract. Answer each of those in the design. Leave the others — a bug in the code, a test that does not run, a lint failure — and do not investigate them. In a Findings section of the design, list every finding: what you changed for it, or why you left it. You do not debug code or work out why a test fails."
 
     cat > "$prompt_input_file" <<DESIGN_PROMPT
 ## What you own
@@ -242,33 +233,14 @@ Write the design document to this EXACT absolute path:
 
 The design document MUST include:
 1. A brief architectural decision summary (goal, context, decision).
-2. A \`\`\`scope fenced block listing every file this change touches, and every
-   file that pins what it changes. Find them by searching: search for the names, values and lists the change alters (Grep and Glob), rather than reading
-   files end to end. Include:
-     - the tests that assert a behaviour you change, or pin a value, count,
-       name list or order you change (search for the old value);
-     - when the change adds a member to a set (a case, entry, route, stage),
-       the files that list every current member — a table, a registry, a
-       fixture or an assertion pinning the set's size or its roster;
-     - the config, schema and golden files that encode a shape you change;
-     - the docs and ADRs that describe the contract you change;
-     - the source files that use a name you add, remove or rename.
-   The files you list are the files the change may touch.
-
-The \`\`\`scope block format (one repo-relative path per line):
-\`\`\`scope
-path/to/file1
-path/to/file2
-\`\`\`
-
-3. A \`\`\`steps block: the ordered work items that deliver the change, one per
-   line, each with the files it touches (all of them in the scope block):
+2. A \`\`\`steps block: the ordered work items that deliver the change, one per
+   line, each with the areas of the code it is about:
 \`\`\`steps
 - <what to do, in one sentence> | areas: path/to/file1, path/to/file2
 \`\`\`
    The build follows them in order.
 
-4. A \`\`\`acceptance block listing what this change must deliver. Each line is
+3. A \`\`\`acceptance block listing what this change must deliver. Each line is
    one requirement: an id, a status, and ONE behaviour someone could observe and test.
    The id describes the SPEC. Every SPEC id starts with ${_DCK_ID_PREFIX}, then a code of 3 or 4
    capital letters or digits, starting with a letter, that says what it is about,
@@ -313,14 +285,15 @@ path/to/file2
      changed: code this work added is not done yet, so it is [code], with a test. No test is written for a [done] SPEC.
    Every requirement carries one of the three. A change that edits code needs at least one [code] requirement.
 
-   Test labels: each test file under TESTFILES holds at least one assertion
-   whose label carries the requirement's tag, which includes this issue's
-   number — for ${_DCK_ID_PREFIX}LOOP-1 of this issue:
-   $(acceptance_spec_tag ${_DCK_ID_PREFIX}LOOP-1 2>/dev/null || printf '[%sLOOP-1]' "$_DCK_ID_PREFIX"). A shared test
-   may already hold other issues' tags; leave them alone. Each [code]
-   assertion is also run against the code from before your change and must
-   fail there, so write ONE requirement per assertion — then each behaviour is
-   checked on its own.
+   You name no files: no test file, and no list of the files the change
+   touches. The tests are written after the design, in the repository's test
+   folders, wherever they belong. Each assertion's label carries its
+   requirement's tag, which includes this issue's number — for
+   ${_DCK_ID_PREFIX}LOOP-1 of this issue:
+   $(acceptance_spec_tag ${_DCK_ID_PREFIX}LOOP-1 2>/dev/null || printf '[%sLOOP-1]' "$_DCK_ID_PREFIX") — and that tag is how a requirement's test is
+   found. Each [code] assertion is also run against the code from before your
+   change and must fail there, so write ONE requirement per assertion — then
+   each behaviour is checked on its own.
 
 The \`\`\`acceptance block format:
 \`\`\`acceptance
@@ -336,26 +309,15 @@ ${_DCK_ID_PREFIX}GARD-1[done]: <something the code already does> evidence: scrip
   Then: <what the code from before this change already does>
 REMOVED: ${_DCK_ID_PREFIX}LOOP-3 — <why this SPEC was dropped>
 WIRING: <the existing file that calls the new code>
-TESTFILES:
-${_DCK_ID_PREFIX}LOOP-1: tests/unit/some-test.sh
-${_DCK_ID_PREFIX}LOOP-2: tests/integration/other-test.sh
 \`\`\`
 
-Bind each test file to its requirement:
-- Prefix the path with the SPEC's id, e.g. \`${_DCK_ID_PREFIX}LOOP-1: tests/unit/foo-test.sh\`.
-- Several paths for one requirement: \`${_DCK_ID_PREFIX}LOOP-1: tests/unit/a-test.sh tests/unit/b-test.sh\`
-- Write one \`<id>: path\` line per [code] requirement, so each requirement
-  is proven by its own test file. A [done] requirement needs none. A path with
-  no id prefix applies to every requirement.
-
 WIRING: Which existing file calls the new code?
-- Name the file in your scope whose code calls (or loads) the new behaviour:
+- Name the existing file whose code calls (or loads) the new behaviour:
   the place a running program reaches it from. It is not the file that
-  implements the behaviour. If that file were put back to how it is today, at
-  least one of your test files would fail.
+  implements the behaviour, and it is not a test. If that file were put back
+  to how it is today, at least one test of this change would fail.
 - A list, schema or config entry is never this file: adding a name to an event
-  list, a schema or a config list changes no behaviour on its own. A list entry
-  your change needs belongs in the scope block.
+  list, a schema or a config list changes no behaviour on its own.
 - One path per line; several lines are allowed:
     WIRING:
     plugins/agent/build/plugin.sh
@@ -376,13 +338,21 @@ tests/unit/foo-test.sh [SPEC-3]: \`verdict\` is now the v2 result's status key, 
 Updating those checks to the new behaviour is part of writing the tests. Omit
 the block when no existing check changes meaning.
 
-Keep the prose focused and under 200 lines (the scope block and acceptance
-block may be as long as completeness requires).
+A requirement you do not understand — the issue could mean either of two
+things — is not guessed in silence. Write one line for it in the design,
+outside the fenced blocks:
+UNCLEAR: <id> | <the question> | <what you assumed>
+where <id> is the requirement's id. Then carry on with that assumption: design
+the change as if it were the answer. The question and your assumption are
+shown to the people who can answer it.
+
+Keep the prose focused and under 200 lines (the acceptance block may be as
+long as completeness requires).
 
 ## What you judge against
 The issue may describe a solution as well as the
 problem. A section that records a decision (for example "Decision:") is binding: follow it.
-Anything else it proposes — an approach, a file list, a scope, a claim that
+Anything else it proposes — an approach, a file list, a claim that
 some files or tests are unaffected — is a starting point, not the answer: check
 it against the code yourself and come up with your own design. Where yours
 differs, say why.
@@ -436,7 +406,7 @@ DESIGN_PROMPT
         local _one_line=""
         _design_one_line_specs_v _one_line "$_prior_design_body"
         [[ -n "$_one_line" ]] && printf '\nThese [code] and [done] SPECs of YOUR LATEST DESIGN are still written on one line. Each one you keep is rewritten with its parts on the lines under it — Given, When, Then, And, Cleanup:\n%s' "$_one_line" >> "$prompt_input_file"
-        printf '\nRefine YOUR LATEST DESIGN. Preserve all existing scope entries unless one is clearly wrong.\n' \
+        printf '\nRefine YOUR LATEST DESIGN.\n' \
             >> "$prompt_input_file"
     fi
 
@@ -448,7 +418,7 @@ DESIGN_PROMPT
     # says"), never in another stage's verdict.
     if [[ -n "$_prior_design_body" ]]; then
         # #2269: plain words; no other stage named (ADR-061), no ADR number.
-        printf '\nIf Previous work says a [code] requirement'"'"'s test already passes on the code from before this change, rewrite that requirement so its test fails on the old code and passes after — or, if the code already does it, mark it [done] and name the evidence (a file with an exact piece of its text, or an existing test file) after " evidence: ". The evidence is checked. The tests cannot be changed later in this run, so this is where it is fixed. Check the other scope and acceptance entries against the feedback too, and fix any it shows is wrong.\n' \
+        printf '\nIf Previous work says a [code] requirement'"'"'s test already passes on the code from before this change, rewrite that requirement so its test fails on the old code and passes after — or, if the code already does it, mark it [done] and name the evidence (a file with an exact piece of its text, or an existing test file) after " evidence: ". The evidence is checked. The tests cannot be changed later in this run, so this is where it is fixed. Check the other acceptance entries against the feedback too, and fix any it shows is wrong.\n' \
             >> "$prompt_input_file"
     fi
 
@@ -625,8 +595,8 @@ ${_dp_limits}")"; then
 # {title, steps:[{id, description, areas, topic}]}. A design with no steps writes none
 # (and removes an earlier one, so a stale list is never read as this design's).
 # #2458 (ADR-071): each step's topic comes from its files — `tests` when they are
-# the design's own test files (TESTFILES), which only the stage that writes the
-# tests may change; `change` otherwise. A step with both is split, so each part
+# in the repository's test folders, which only the stage that writes the tests
+# may change (#2508); `change` otherwise. A step with both is split, so each part
 # reaches the stage that may do it.
 _design_write_steps() {
     local design="$1" out="$2" line in_block=0 title tfs
@@ -645,7 +615,17 @@ _design_write_steps() {
     done < "$design"
     if [[ ${#lines[@]} -eq 0 ]]; then rm -f "$out" 2>/dev/null; return 0; fi
     title="$(grep -m1 -E '^# ' "$design" 2>/dev/null || true)"; title="${title#\# }"
-    tfs="$(acceptance_list_testfiles "$design" 2>/dev/null | jq -Rsc 'split("\n") | map(select(length > 0))' 2>/dev/null)"
+    # #2508 (ADR-071): an area in the test folders is the test author's.
+    local _l _a _ar; tfs=""
+    for _l in "${lines[@]}"; do
+        [[ "$_l" == *" | areas:"* ]] || continue
+        IFS=',' read -ra _ar <<< "${_l#* | areas:}"
+        for _a in ${_ar[@]+"${_ar[@]}"}; do
+            _a="${_a#"${_a%%[![:space:]]*}"}"; _a="${_a%"${_a##*[![:space:]]}"}"
+            [[ -n "$_a" ]] && zb_is_test_path "$_a" && tfs+="$_a"$'\n'
+        done
+    done
+    tfs="$(jq -Rsc 'split("\n") | map(select(length > 0))' <<< "$tfs" 2>/dev/null)"
     [[ -n "$tfs" ]] || tfs='[]'
     printf '%s\n' "${lines[@]}" | jq -Rsc --arg t "$title" --argjson tf "$tfs" '
         split("\n") | map(select(length > 0))
@@ -698,41 +678,6 @@ _design_no_design() {
     stage_summary_write "$artifact_dir/design-summary.md" "design" "error" "$head" \
         "$(if [[ -s "$design_md" ]]; then printf 'design.md is unchanged: it stays the last good design.'; else printf 'There is no design yet.'; fi)"
     emit_event "plugin.result" "outcome=$disp" "plugin=design" "reason=$reason" "rc=$rc"
-}
-
-# _extract_scope_from_design <design_md_path>
-# Parses the ```scope fenced block from design.md and returns a CSV of file
-# paths on stdout. Strips blank lines. Returns empty string when no block found.
-# legacy-citation: pipeline-stages.sh:38-71 (_extract_scope_from_design)
-_extract_scope_from_design() {
-    local design_md="${1:-}"
-    [[ -z "$design_md" || ! -f "$design_md" ]] && return 0
-
-    local in_block=0
-    local -a files=()
-    while IFS= read -r line; do
-        # Tolerate trailing whitespace on the fence lines — legacy used
-        # /^```scope[[:space:]]*$/, and build's guard (grep -q '^```scope')
-        # matches a whitespace-padded fence, so an exact match here would
-        # silently drop the scope (#25 review).
-        if [[ "$line" =~ ^'```scope'[[:space:]]*$ ]]; then
-            in_block=1
-            continue
-        fi
-        if [[ $in_block -eq 1 && "$line" =~ ^'```'[[:space:]]*$ ]]; then
-            break
-        fi
-        # Keep lines with any non-whitespace; drop whitespace-only lines
-        # (faithful to legacy `grep -v '^[[:space:]]*$'`).
-        if [[ $in_block -eq 1 && -n "${line//[[:space:]]/}" ]]; then
-            files+=("$line")
-        fi
-    done < "$design_md"
-
-    if [[ ${#files[@]} -gt 0 ]]; then
-        local IFS=','
-        printf '%s' "${files[*]}"
-    fi
 }
 
 # ─── cleanup ────────────────────────────────────────────────────────────────

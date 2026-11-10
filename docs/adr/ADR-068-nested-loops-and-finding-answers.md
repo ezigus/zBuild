@@ -192,9 +192,15 @@ On #1805 run 42556446368 two stages were each told two opposite things, and one 
 - **Build** was told it may answer "the test is wrong" after setting its change aside (#2441, #2503), and, in What you must not do, "A failing assertion means YOUR CODE is wrong — fix the code" (#2022). It saw the test's fake plugin had no role, and changed the engine instead. Now that sentence says: when an assertion fails, fix your code; if it fails the same way with your change set aside, the test is wrong — answer as "When a test is wrong" says, and do not edit it. Build still may not edit a test.
 - **Build** was told "A failed stage under Previous work is red RIGHT NOW on this tree", and that the listed tests "fail on the code as it is now; do not run them to find that out". That is false whenever the code changed after the test stage ran: at the start of every rerun, and after test-author changes a test. Now a failed stage under Previous work shows what failed when that stage ran; build runs that one test file once, before it works on it, to see whether it still fails.
 
+## Amendment 2026-11-09 (#2508) — §8: a failed run's report shows the questions design could not settle
+
+A run that fails ends by naming each open item (§8, #2330). It now also shows each question design wrote and could not settle, with the assumption it went on with (ADR-069, amended 2026-11-09): the end-of-run banner and the issue's completion comment, which reads the same list through `open_items_outbound` and so is cleaned by the scope redactor the same way. The question is part of why the run may have gone wrong, and the reader of the report is the one who can answer it. The words are those of the run-status comment (ADR-064, amended 2026-11-09), from the one reader.
+
 ## Enforced by
 
 - §6 amendment 2026-11-09 (#2506: test-author runs only a failing test of its own; build's "the test is wrong" wins; a failed stage shows what failed when it ran) → `tests/unit/test-author-checks-own-output-test.sh` A8, A15; `tests/unit/test-author-before-run-test.sh` B1; `tests/unit/build-test-is-wrong-test.sh` W7, W8; `tests/unit/build-prompt-loop-complete-rule-test.sh` T1; `tests/unit/stage-boundaries-test.sh` SPEC-2
+
+- §8 amendment 2026-11-09 (#2508: a failed run's report shows the questions design could not settle) → `tests/unit/unclear-questions-shown-test.sh` Q3 (the end-of-run banner and the completion comment), Q5
 
 - §6 amendment 2026-11-08 (#2503: test-author runs a failing test before changing it; build says a test is wrong on a check) → `tests/unit/test-author-checks-own-output-test.sh` A14; `tests/unit/build-test-is-wrong-test.sh` W6
 - §6 amendment 2026-11-08 (#2501: only this reply's answers count; what each answer means; a finding about your own output is yours) → `tests/unit/finding-answers-test.sh` A4, A5

@@ -56,9 +56,6 @@ DSFRSH-1[code]: a new run starts from the first stage covers: RQRQST-1
 DSWORK-2[code]: the flag is read covers: RQRQST-2
   When: the flag is given
   Then: the run uses it
-TESTFILES:
-DSFRSH-1: tests/a-test.sh
-DSWORK-2: tests/a-test.sh
 WIRING: none
 \`\`\`
 MD
@@ -160,7 +157,7 @@ print_test_section "F5-F6: test-author's check"
         local n; n=$(( $(cat "$_N") + 1 )); printf '%s' "$n" > "$_N"; printf '%s' "$2" > "$_P.$n"
         if [[ $n -eq 1 ]]; then printf '%s' "$_R1"; else printf '%s' "${_R2:-$_R1}"; fi
     }
-    R="$TEST_TEMP_DIR/t-repo"; mkdir -p "$R/tests"; D="$TEST_TEMP_DIR/t.md"; _spec_design "$D"
+    R="$TEST_TEMP_DIR/t-repo"; mkdir -p "$R/tests"; git -C "$R" init -q; D="$TEST_TEMP_DIR/t.md"; _spec_design "$D"
     printf '# Given\nrun=done\n# When\nstart\n# Then\nassert_eq "[DSFRSH-1] first" "1" "$s"\nassert_eq "[DSWORK-2] flag" "1" "$f"\n' > "$R/tests/a-test.sh"
     A="$TEST_TEMP_DIR/t-art"; mkdir -p "$A"
     _j() { printf 0 > "$_N"; rm -f "$A/test-author-judged.json"; _ta_correspondence "$D" "$R" T2 "$A" >/dev/null 2>&1; }
@@ -240,8 +237,6 @@ DSLEGC-1[code]: an old one-line requirement covers: RQDOCS-1
   Then: the page says so
 DSDOCW-1[no-code]: the docs say so covers: RQDOCS-1
 WIRING: none
-TESTFILES:
-DSLEGC-1: tests/x-test.sh
 ${BT}
 "
     route_to_model() {
@@ -254,7 +249,7 @@ ${BT}
     A="$d/state/artifacts"; printf 'scope: all\n' > "$d/state/scope-manifest.md"
     jq -nc '{requirements: [{id: "RQDOCS-1", text: "the docs say so"}]}' > "$A/requirements.json"
     jq -nc '{result_contract: 3, outcome: "pass", reason: "r", data: {issue_text: "Write the docs."}}' > "$A/intake-result.json"
-    printf '# Design\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nDSLEGC-1[code]: an old one-line requirement covers: RQDOCS-1\nDSDOCW-1[no-code]: the docs say so covers: RQDOCS-1\nWIRING: none\nTESTFILES:\nDSLEGC-1: tests/x-test.sh\n%s\n' "$BT" "$BT" "$BT" "$BT" > "$A/design.md"
+    printf '# Design\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nDSLEGC-1[code]: an old one-line requirement covers: RQDOCS-1\nDSDOCW-1[no-code]: the docs say so covers: RQDOCS-1\nWIRING: none\n%s\n' "$BT" "$BT" "$BT" "$BT" > "$A/design.md"
     _design_stage_run_inner "$d/state/scope-manifest.md" "$A/design.md" "$A" >/dev/null 2>&1
     p="$(tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/f1-design-prompt")"
     echo "F1a|$([[ "$p" == *"still written on one line"* ]] && echo told)|$([[ "$p" == *"- DSLEGC-1"* ]] && echo legc)|$([[ "$p" == *"- DSDOCW-1"* ]] && echo docw)"

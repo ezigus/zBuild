@@ -207,6 +207,9 @@ _rl_requirements_readable() {
     local design="$1" sid txt st kind tfs ev w blk _p
     # #2467: the block read once; each SPEC's words, status and parts from it.
     blk="$(extract_acceptance_block "$design" 2>/dev/null)" || blk=""
+    # #2508: each SPEC's test files, found by tag, once.
+    local -A _rl_files=()
+    acceptance_spec_files_v _rl_files "$design"
     while IFS= read -r sid; do
         [[ -n "$sid" ]] || continue
         txt="" st=""
@@ -216,7 +219,7 @@ _rl_requirements_readable() {
             done)    kind="already done — the code already does this" ;;
             *)       kind="new behaviour" ;;
         esac
-        tfs="$(acceptance_list_testfiles_for_spec "$design" "$sid" 2>/dev/null | tr '\n' ' ')"
+        tfs="${_rl_files[$sid]:-}"
         printf -- '- %s (%s): %s\n' "$sid" "$kind" "${txt:-<no text>}"
         local -a _rl_parts=()
         acceptance_parts_shown_v _rl_parts "$_ACC_SPEC_PARTS"
@@ -252,13 +255,7 @@ _rl_context() {
         _txt="$(printf '%s' "${_txt:0:6000}" | _zbuild_sanitize_for_llm)"
         [[ -n "${_txt//[[:space:]]/}" ]] && out+=$'## THE DESIGN DECISIONS (what the design chose, and why)\n'"$_txt"$'\n\n'
     fi
-    # #2302: the files design planned to change — its ```scope block. Not the
-    # scope_manifest input: that is the redaction allow-list ("+ ./" on #2035).
-    if [[ -n "$f" && -s "$f" ]]; then
-        _txt="$(acceptance_list_scope "$f" 2>/dev/null || true)"
-        _txt="$(printf '%s' "${_txt:0:4000}" | _zbuild_sanitize_for_llm)"
-        [[ -n "${_txt//[[:space:]]/}" ]] && out+=$'## THE PLANNED SCOPE (files the plan expected to change)\n'"$_txt"$'\n'
-    fi
+    # #2302's planned scope is gone: design names no files (#2508, ADR-069 §11).
     printf '%s' "$out"
 }
 
@@ -300,8 +297,8 @@ review_lens_run() {
 #       starting commit is known  $4=out lens-<name>.json
 #       $5=(optional) artifact dir for the intermediate redacted prompt
 _review_lens_run_inner() {
-    # $2 (the scope manifest) is the redaction allow-list, not the plan: the
-    # planned scope comes from design's ```scope block (_rl_context, #2302).
+    # $2 (the scope manifest) is the redaction allow-list, not the plan; there
+    # is no planned scope since #2508 (design names no files).
     # Redaction of the assembled prompt is the router's, by construction (ADR-043).
     local lens="$1" evidence="$3" out="$4"
     local artifact_dir="${5:-$(dirname "$out")}"

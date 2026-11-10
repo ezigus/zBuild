@@ -9,7 +9,8 @@
 # let a finding carry its own topic, but only two stages used it, and nothing
 # made a stage decide.
 #
-#   O1 [change]: acceptance_list_testfiles prints each test file once
+#   O1 [change]: acceptance_list_testfiles prints each test file once (#2508:
+#                the files holding a SPEC's tag, sorted)
 #   O2 [change]: validate_manifest refuses a stage result with no
 #                finding_topics:, or with a word outside the five; accepts
 #                `none` and a list of topics
@@ -18,7 +19,7 @@
 #                output lists it; otherwise the output's topic decides
 #   O5 [change]: _test_findings_by_owner labels a file that is not one of the
 #                design's test files `change-findings`, and leaves the design's own
-#                test files unlabelled
+#                test files (#2508: test-folder files holding its tags) unlabelled
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -59,12 +60,18 @@ unset ZBUILD_STAGE_INPUTS ZBUILD_STAGE_BLOCKS ZBUILD_INPUTS_FLOW ZBUILD_MAP_ELEM
 
 DESIGN="$TEST_TEMP_DIR/design.md"
 printf '%s\n' '# Design' '```acceptance' 'SPEC-1[code]: a' 'SPEC-2[code]: b' 'SPEC-3[code]: c' \
-    'TESTFILES:' 'SPEC-1: tests/a-test.sh' 'SPEC-2: tests/a-test.sh tests/b-test.sh' 'SPEC-3: tests/a-test.sh' \
     'WIRING: none' '```' > "$DESIGN"
+# #2508: the design's test files are those in the test folders holding its tags.
+TREPO="$TEST_TEMP_DIR/repo"; mkdir -p "$TREPO/tests"; git -C "$TREPO" init -q
+printf 'assert "%s" ; assert "%s" ; assert "%s"\n' "$(acceptance_spec_tag SPEC-1)" "$(acceptance_spec_tag SPEC-2)" \
+    "$(acceptance_spec_tag SPEC-3)" > "$TREPO/tests/a-test.sh"
+printf 'assert "%s"\n' "$(acceptance_spec_tag SPEC-2)" > "$TREPO/tests/b-test.sh"
+printf 'assert "unrelated"\n' > "$TREPO/tests/other-test.sh"
+export ZBUILD_REPO_ROOT="$TREPO"
 
 # ── O1 ───────────────────────────────────────────────────────────────────────
 print_test_section "O1: each test file once"
-assert_eq "[O1] each test file is listed once, in first-seen order" \
+assert_eq "[O1] each test file is listed once, sorted" \
     $'tests/a-test.sh\ntests/b-test.sh' "$(acceptance_list_testfiles "$DESIGN")"
 
 # ── O2 ───────────────────────────────────────────────────────────────────────

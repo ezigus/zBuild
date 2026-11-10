@@ -29,14 +29,26 @@ _pr_open_review_findings() {
     done
 }
 
+# The questions design could not settle (#2508, ADR-040): read from the design,
+# found among the earlier outputs by what it contains (#2364).
+# shellcheck source=../../../../scripts/lib/unclear.sh
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/../../../../scripts/lib/unclear.sh"
+# _pr_open_questions — the questions section, or nothing.
+_pr_open_questions() {
+    local d
+    declare -F earlier_acceptance_contract >/dev/null 2>&1 || return 0
+    d="$(earlier_acceptance_contract "${artifact_dir:-${artifacts_dir:-}}" "${state_dir:-}" 2>/dev/null)" || return 0
+    zb_unclear_markdown "$d"
+}
+
 # _pr_open_compose_body <issue> <plan_json> <test_outcome> <files_changed>
-#   [unsettled_block] [forced_draft] [review_findings]
+#   [unsettled_block] [forced_draft] [review_findings] [questions]
 # #1799: when the run did not settle, its warning block comes first, right after
 # the separator, and a forced draft carries zBuild's hidden marker at the end
 # (lib/unsettled.sh). <files_changed> is one path per line.
 _pr_open_compose_body() {
     local issue_num="$1" plan_json="$2" test_outcome="$3" files="$4"
-    local unsettled="${5:-}" forced="${6:-false}" review="${7:-}" others=""
+    local unsettled="${5:-}" forced="${6:-false}" review="${7:-}" questions="${8:-}" others=""
     local goal="" items="" changed="" lead="---" tail="" f n=0
     if [[ -n "$plan_json" && -f "$plan_json" ]]; then
         goal="$(jq -r "${_PR_OPEN_FINDING_JQ_DEFS}"'(.goal // .title // "") | esc' "$plan_json" 2>/dev/null || true)"
@@ -51,6 +63,7 @@ _pr_open_compose_body() {
     [[ -n "$unsettled" ]] && lead+=$'\n'"${unsettled}"$'\n'
     [[ "$forced" == "true" ]] && tail=$'\n'"$(_pr_open_forced_draft_marker)"
     [[ -n "$review" ]] && others="**Other review findings** (none of them sends the change back):"$'\n'"${review}"$'\n\n'
+    [[ -n "$questions" ]] && others="${questions}"$'\n'"${others}"
     printf '%s\n\n%s\n**What this PR is for:** %s\n\n**Work items:**\n%s\n\n**Files changed:**\n%s\n**Tests:** %s\n\n%s%s%s' \
         "${issue_num:+Closes #${issue_num}}" "$lead" "${goal:-N/A}" \
         "${items:-- (none recorded)}" "${changed:-- (none)$'\n'}" "${test_outcome:-N/A}" \

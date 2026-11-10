@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 # Tests: scripts/lib/acceptance-block.sh — extract_acceptance_block (ADR-031 / issue #864)
+# #2508 (ADR-069 §11): design names no files. A block needs no TESTFILES: line,
+# and an old design's TESTFILES: list is skipped, never read (TC-2, TC-3,
+# TC-4b, TC-12); a SPEC's test files are the test-folder files holding its tag
+# (TC-14, TC-17). The per-SPEC binding readers (old TC-15, TC-16, TC-18) are gone.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -36,7 +40,7 @@ set -e
 assert_eq "TC-1: absent block returns non-zero" "1" "$tc1_rc"
 assert_eq "TC-1: absent block produces empty stdout" "" "$tc1_out"
 
-# ── TC-2: well-formed single-entry block emits spec + TESTFILES + path ────────
+# ── TC-2: a block emits its SPEC; an old TESTFILES list is not emitted ───────
 tc2_file="$WORK_DIR/tc2_design.md"
 cat > "$tc2_file" <<'EOF'
 # Design
@@ -56,8 +60,8 @@ tc2_rc=$?
 set -e
 assert_eq "TC-2: well-formed block returns 0" "0" "$tc2_rc"
 assert_contains "TC-2: output contains SPEC line" "$tc2_out" "SPEC: extract_acceptance_block returns 0 when block is present"
-assert_contains "TC-2: output contains TESTFILES sentinel" "$tc2_out" "TESTFILES:"
-assert_contains "TC-2: output contains test file path" "$tc2_out" "tests/unit/acceptance-block-test.sh"
+assert_eq "TC-2: an old TESTFILES sentinel is not emitted" "0" "$(grep -c '^TESTFILES:$' <<< "$tc2_out" || true)"
+assert_eq "TC-2: nor the path listed under it" "0" "$(grep -c 'tests/unit/acceptance-block-test.sh' <<< "$tc2_out" || true)"
 
 # ── TC-3: multi-entry block emits all specs and all test files ────────────────
 tc3_file="$WORK_DIR/tc3_design.md"
@@ -82,8 +86,7 @@ assert_eq "TC-3: multi-entry block returns 0" "0" "$tc3_rc"
 assert_contains "TC-3: first SPEC present" "$tc3_out" "SPEC: function emits SPEC lines in order"
 assert_contains "TC-3: second SPEC present" "$tc3_out" "SPEC: function emits TESTFILES sentinel after specs"
 assert_contains "TC-3: third SPEC present" "$tc3_out" "SPEC: function lists all test file paths"
-assert_contains "TC-3: first test file present" "$tc3_out" "tests/unit/acceptance-block-test.sh"
-assert_contains "TC-3: second test file present" "$tc3_out" "tests/integration/pipeline-test.sh"
+assert_eq "TC-3: the listed test files are not emitted" "0" "$(grep -c '^tests/' <<< "$tc3_out" || true)"
 
 # ── TC-4: malformed block (no closing fence) returns non-zero without crash ───
 tc4_file="$WORK_DIR/tc4_design.md"
@@ -104,7 +107,7 @@ set -e
 # No closing fence: block is treated as found but malformed; should not crash
 assert_eq "TC-4: no closing fence does not crash (rc 0 or 1)" "$(( tc4_rc == 0 || tc4_rc == 1 ? 0 : 1 ))" "0"
 
-# Variant: block with no TESTFILES section — should return non-zero
+# Variant: block with no TESTFILES section — a whole block (#2508)
 tc4b_file="$WORK_DIR/tc4b_design.md"
 cat > "$tc4b_file" <<'EOF'
 # Design
@@ -118,7 +121,7 @@ set +e
 tc4b_out="$(extract_acceptance_block "$tc4b_file")"
 tc4b_rc=$?
 set -e
-assert_eq "TC-4b: missing TESTFILES returns non-zero" "1" "$tc4b_rc"
+assert_eq "TC-4b: a block with no TESTFILES returns 0" "0" "$tc4b_rc"
 assert_contains "TC-4b: SPEC line still emitted" "$tc4b_out" "SPEC: some spec with no testfiles section"
 
 # ── TC-5: design.md with both ```scope and ```acceptance extracts only acceptance
@@ -257,9 +260,9 @@ set -e
 assert_eq "[SPEC-4] TC-11: absent WIRING section returns non-zero" "1" "$tc11_rc"
 assert_eq "[SPEC-4] TC-11: absent WIRING produces empty output" "" "$tc11_out"
 
-# ── TC-12: WIRING: after TESTFILES: is not collected as a testfile ────────────
-# Defensive: design.md may have TESTFILES: before WIRING: — parser must not
-# include WIRING: or wiring paths in the testfile list.
+# ── TC-12: an old TESTFILES: list before WIRING: is not read as test files ────
+# #2508: the paths listed under TESTFILES: are not test files (none holds a
+# tag); WIRING: after the old list is still read.
 tc12_file="$WORK_DIR/tc12_design.md"
 cat > "$tc12_file" <<'EOF'
 ```acceptance
@@ -273,17 +276,15 @@ plugins/agent/acceptance-gate/plugin.sh
 EOF
 
 set +e
-tc12_tf="$(acceptance_list_testfiles "$tc12_file")"
+tc12_tf="$(acceptance_list_testfiles "$tc12_file" "$WORK_DIR")"
 tc12_wiring="$(acceptance_list_wiring "$tc12_file")"; tc12_wiring_rc=$?
 set -e
 assert_eq "TC-12: TESTFILES list excludes WIRING: sentinel" "0" \
     "$(echo "$tc12_tf" | grep -c '^WIRING:$' || true)"
 assert_eq "TC-12: TESTFILES list excludes wiring path" "0" \
     "$(echo "$tc12_tf" | grep -c 'acceptance-gate/plugin.sh' || true)"
-assert_eq "TC-12: TESTFILES list contains first testfile" "1" \
-    "$(echo "$tc12_tf" | grep -c 'foo-test.sh')"
-assert_eq "TC-12: TESTFILES list contains second testfile" "1" \
-    "$(echo "$tc12_tf" | grep -c 'bar-test.sh')"
+assert_eq "TC-12: a path listed under TESTFILES is not a test file" "0" \
+    "$(echo "$tc12_tf" | grep -c 'foo-test.sh' || true)"
 assert_eq "[SPEC-2] TC-12: acceptance_list_wiring still parses WIRING after TESTFILES" "0" \
     "$tc12_wiring_rc"
 assert_eq "[SPEC-2] TC-12: wiring path returned when WIRING after TESTFILES" \
@@ -316,8 +317,16 @@ assert_eq "TC-13: absolute path dropped" "0" \
 assert_eq "TC-13: safe wiring path retained" "1" \
     "$(printf '%s\n' "$tc13_out" | grep -c '^config/templates/simple.yaml$' || true)"
 
-# ── TC-14: [SPEC-1] acceptance_list_testfiles_for_spec — per-SPEC binding ────────
-# When SPEC-1: prefix lines exist, only those paths are returned for SPEC-1.
+# ── TC-14: [SPEC-1] acceptance_list_testfiles_for_spec — found by tag (#2508) ──
+# A SPEC's test files are the files in the repository's test folders that hold
+# its tag; a sibling SPEC's file is not its (#1480).
+TAGREPO="$WORK_DIR/tagrepo"
+mkdir -p "$TAGREPO/tests/unit" "$TAGREPO/tests/integration" "$TAGREPO/docs"
+git -C "$TAGREPO" init -q
+printf 'assert "[SPEC-1] a"\n' > "$TAGREPO/tests/unit/foo-test.sh"
+printf 'assert "[SPEC-2] b"\n' > "$TAGREPO/tests/integration/bar-test.sh"
+printf 'assert "[SPEC-1] a" ; assert "[SPEC-2] b"\n' > "$TAGREPO/tests/unit/both-test.sh"
+printf '[SPEC-1] in a document\n' > "$TAGREPO/docs/notes.md"
 tc14_file="$WORK_DIR/tc14_design.md"
 cat > "$tc14_file" <<'EOF'
 ```acceptance
@@ -325,123 +334,31 @@ SPEC-1[change]: per-SPEC feature
 SPEC-2[change]: other feature
 WIRING: none
 TESTFILES:
-SPEC-1: tests/unit/foo-test.sh
-SPEC-2: tests/integration/bar-test.sh
+SPEC-1: tests/unit/listed-test.sh
 ```
 EOF
 
 set +e
-tc14_s1="$(acceptance_list_testfiles_for_spec "$tc14_file" "SPEC-1")"
-tc14_s2="$(acceptance_list_testfiles_for_spec "$tc14_file" "SPEC-2")"
+tc14_s1="$(ZBUILD_ISSUE='' acceptance_list_testfiles_for_spec "$tc14_file" "SPEC-1" "$TAGREPO" | tr '\n' ' ')"
+tc14_s2="$(ZBUILD_ISSUE='' acceptance_list_testfiles_for_spec "$tc14_file" "SPEC-2" "$TAGREPO" | tr '\n' ' ')"
 set -e
-assert_eq "[SPEC-1] TC-14: per-SPEC returns SPEC-1 bound path only" \
-    "tests/unit/foo-test.sh" "$tc14_s1"
-assert_eq "[SPEC-1] TC-14: SPEC-2 does not appear in SPEC-1 result" \
+assert_eq "[SPEC-1] TC-14: SPEC-1's test files are those holding its tag, sorted" \
+    "tests/unit/both-test.sh tests/unit/foo-test.sh " "$tc14_s1"
+assert_eq "[SPEC-1] TC-14: SPEC-2's file is not in SPEC-1's" \
     "0" "$(echo "$tc14_s1" | grep -c 'bar-test.sh' || true)"
-assert_eq "[SPEC-1] TC-14: per-SPEC returns SPEC-2 bound path only" \
-    "tests/integration/bar-test.sh" "$tc14_s2"
+assert_eq "[SPEC-1] TC-14: SPEC-2's test files" \
+    "tests/integration/bar-test.sh tests/unit/both-test.sh " "$tc14_s2"
 
-# ── TC-15: [SPEC-2] acceptance_list_testfiles_for_spec — global fallback ──────────
-# When no per-SPEC prefix for the requested SPEC, return the global bare-path pool.
-tc15_file="$WORK_DIR/tc15_design.md"
-cat > "$tc15_file" <<'EOF'
-```acceptance
-SPEC-1[change]: feature
-WIRING: none
-TESTFILES:
-tests/unit/global-test.sh
-tests/integration/global2-test.sh
-```
-EOF
-
+# ── TC-17: [SPEC-4] acceptance_list_testfiles — every SPEC's files, once ──────
 set +e
-tc15_out="$(acceptance_list_testfiles_for_spec "$tc15_file" "SPEC-1")"
+tc17_out="$(ZBUILD_ISSUE='' acceptance_list_testfiles "$tc14_file" "$TAGREPO")"
 set -e
-assert_eq "[SPEC-2] TC-15: fallback to global pool for SPEC-1" \
-    "1" "$(echo "$tc15_out" | grep -c 'global-test.sh')"
-assert_eq "[SPEC-2] TC-15: fallback includes second global path" \
-    "1" "$(echo "$tc15_out" | grep -c 'global2-test.sh')"
-
-# ── TC-16: [SPEC-3] acceptance_has_per_spec_binding — true/false detection ────────
-tc16_bound_file="$WORK_DIR/tc16_bound.md"
-cat > "$tc16_bound_file" <<'EOF'
-```acceptance
-SPEC-1[change]: feature
-WIRING: none
-TESTFILES:
-SPEC-1: tests/unit/a-test.sh
-```
-EOF
-
-tc16_global_file="$WORK_DIR/tc16_global.md"
-cat > "$tc16_global_file" <<'EOF'
-```acceptance
-SPEC-1[change]: feature
-WIRING: none
-TESTFILES:
-tests/unit/a-test.sh
-```
-EOF
-
-set +e
-acceptance_has_per_spec_binding "$tc16_bound_file"; tc16_bound_rc=$?
-acceptance_has_per_spec_binding "$tc16_global_file"; tc16_global_rc=$?
-set -e
-assert_eq "[SPEC-3] TC-16: has_per_spec_binding returns 0 when SPEC-n: present" \
-    "0" "$tc16_bound_rc"
-assert_eq "[SPEC-3] TC-16: has_per_spec_binding returns 1 when only bare paths" \
-    "1" "$tc16_global_rc"
-
-# ── TC-17: [SPEC-4] acceptance_list_testfiles strips SPEC-n: prefix (union) ──────
-# The union function must return bare paths even when per-SPEC prefixes are used.
-tc17_file="$WORK_DIR/tc17_design.md"
-cat > "$tc17_file" <<'EOF'
-```acceptance
-SPEC-1[change]: feature a
-SPEC-2[change]: feature b
-WIRING: none
-TESTFILES:
-SPEC-1: tests/unit/alpha-test.sh
-SPEC-2: tests/integration/beta-test.sh
-tests/unit/global-test.sh
-```
-EOF
-
-set +e
-tc17_out="$(acceptance_list_testfiles "$tc17_file")"
-set -e
-assert_eq "[SPEC-4] TC-17: union includes SPEC-1 bound path (stripped)" \
-    "1" "$(echo "$tc17_out" | grep -c '^tests/unit/alpha-test.sh$')"
-assert_eq "[SPEC-4] TC-17: union includes SPEC-2 bound path (stripped)" \
-    "1" "$(echo "$tc17_out" | grep -c '^tests/integration/beta-test.sh$')"
-assert_eq "[SPEC-4] TC-17: union includes global bare path" \
-    "1" "$(echo "$tc17_out" | grep -c '^tests/unit/global-test.sh$')"
-assert_eq "[SPEC-4] TC-17: no SPEC-n: prefix leaks into union output" \
-    "0" "$(echo "$tc17_out" | grep -c '^SPEC-' || true)"
-
-# ── TC-18: [SPEC-5] backward-compat — global bare-path form unaffected ────────────
-# Designs with no per-SPEC prefix must continue to work identically with the union.
-tc18_file="$WORK_DIR/tc18_design.md"
-cat > "$tc18_file" <<'EOF'
-```acceptance
-SPEC-1[change]: existing feature
-WIRING: none
-TESTFILES:
-tests/unit/classic-test.sh
-tests/integration/classic2-test.sh
-```
-EOF
-
-set +e
-tc18_out="$(acceptance_list_testfiles "$tc18_file")"
-tc18_spec="$(acceptance_list_testfiles_for_spec "$tc18_file" "SPEC-1")"
-set -e
-assert_eq "[SPEC-5] TC-18: global-only design: union lists first path" \
-    "1" "$(echo "$tc18_out" | grep -c 'classic-test.sh')"
-assert_eq "[SPEC-5] TC-18: global-only design: union lists second path" \
-    "1" "$(echo "$tc18_out" | grep -c 'classic2-test.sh')"
-assert_eq "[SPEC-5] TC-18: for_spec fallback equals global pool (first path)" \
-    "1" "$(echo "$tc18_spec" | grep -c 'classic-test.sh')"
+assert_eq "[SPEC-4] TC-17: the union lists each tagged test file once" \
+    "tests/integration/bar-test.sh tests/unit/both-test.sh tests/unit/foo-test.sh" "$(echo $tc17_out)"
+assert_eq "[SPEC-4] TC-17: a file outside the test folders is not a test" \
+    "0" "$(echo "$tc17_out" | grep -c 'notes.md' || true)"
+assert_eq "[SPEC-4] TC-17: an old listed path is not read" \
+    "0" "$(echo "$tc17_out" | grep -c 'listed-test.sh' || true)"
 
 # ── TC-19: [SPEC-1] acceptance_spec_desc — plain SPEC text extracted ──────────
 tc19_file="$WORK_DIR/tc19_design.md"

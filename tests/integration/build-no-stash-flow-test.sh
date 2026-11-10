@@ -36,10 +36,12 @@ export ZBUILD_SCOPE_OVERRIDE=1
 # ── Real git repo so `git diff HEAD` returns real output ───────────────────
 REPO="$(setup_git_temp_repo build602repo)"
 [[ -d "$REPO" ]] || { echo "setup_git_temp_repo failed" >&2; exit 1; }
-mkdir -p "$REPO/tests/fixtures"
+# #2508: the build mock writes outside the test folders — a build change
+# inside them is put back (ADR-030 §8).
+mkdir -p "$REPO/fixtures"
 ( cd "$REPO" \
-    && echo "seed" > tests/fixtures/seed.txt \
-    && git add tests/fixtures/seed.txt \
+    && echo "seed" > fixtures/seed.txt \
+    && git add fixtures/seed.txt \
     && git commit -q -m "seed" ) >/dev/null
 
 # ── Snapshot pre-existing stashes (other test runs may have left some) ─────
@@ -59,8 +61,8 @@ mark="$MARK_FILE"
 n=\$(wc -l < "\$mark" 2>/dev/null | tr -d ' ' || echo 0)
 n=\$(( n + 1 ))
 echo "MARK_iter_\${n}" >> "\$mark"
-mkdir -p "\$PWD/tests/fixtures"
-printf 'iter-%d-content\n' "\$n" >> "\$PWD/tests/fixtures/build-602-newfile.txt"
+mkdir -p "\$PWD/fixtures"
+printf 'iter-%d-content\n' "\$n" >> "\$PWD/fixtures/build-602-newfile.txt"
 jq -n --arg r \$'wrote file\nLOOP_COMPLETE' \
     '{result:\$r, usage:{input_tokens:7, output_tokens:4}}'
 exit 0
@@ -98,15 +100,15 @@ cat > "$STATE_DIR/artifacts/plan.json" <<'EOF'
 {
   "schema_version": 1,
   "goal": "Create fixture (#602)",
-  "files": ["tests/fixtures/build-602-newfile.txt"],
+  "files": ["fixtures/build-602-newfile.txt"],
   "steps": [
     {"id": "s1", "description": "create file",
-     "files": ["tests/fixtures/build-602-newfile.txt"], "estimated_lines": 1}
+     "files": ["fixtures/build-602-newfile.txt"], "estimated_lines": 1}
   ]
 }
 EOF
 cat > "$STATE_DIR/scope-manifest.md" <<'EOF'
-+ tests/
++ fixtures/
 + plugins/
 + core/
 EOF
@@ -170,7 +172,7 @@ else
 fi
 
 # ── (2) New file present in working tree (proof: not hidden in stash) ──────
-if [[ -f "$REPO/tests/fixtures/build-602-newfile.txt" ]]; then
+if [[ -f "$REPO/fixtures/build-602-newfile.txt" ]]; then
     assert_pass "newfile exists in working tree (not stashed)"
 else
     assert_fail "newfile exists in working tree (not stashed)" \

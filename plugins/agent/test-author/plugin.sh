@@ -73,6 +73,11 @@ _ta_drop_stale_tags() {
     else
         re='\[SPEC-[0-9]+\]'
     fi
+    # #2508: in any file of the test folders — a stale tag may sit in a file
+    # that holds no current one.
+    local -a _tff=()
+    zb_test_folder_files_v _tff "$repo"
+    [[ ${#_tff[@]} -gt 0 ]] || return 0
     while IFS= read -r tf; do
         [[ -n "$tf" && -f "$repo/$tf" ]] || continue
         before="$(grep -cE "$re" "$repo/$tf" 2>/dev/null || true)"
@@ -92,7 +97,7 @@ _ta_drop_stale_tags() {
             && replace_keep_mode "$repo/$tf.zb-tags" "$repo/$tf" || rm -f "$repo/$tf.zb-tags"
         after="$(grep -cE "$re" "$repo/$tf" 2>/dev/null || true)"
         [[ "$before" =~ ^[0-9]+$ && "$after" =~ ^[0-9]+$ ]] && n=$(( n + before - after ))
-    done < <(acceptance_list_testfiles "$design" 2>/dev/null || true)
+    done < <(cd "$repo" && grep -lE "$re" -- "${_tff[@]}" 2>/dev/null)
     (( n > 0 )) && _ta_emit "test_author.stale_tags_dropped" "count=$n"
     return 0
 }
@@ -106,10 +111,10 @@ _ta_write_result() {
     mkdir -p "$dir" 2>/dev/null || true
     # #2189: the author REPORTS the testfiles it owns; the engine denies every
     # other stage edits to them from this report (never from design.md by path).
-    local _owned="[]" _design
+    local _owned="[]" _design _repo="${ZBUILD_REPO_ROOT:-$_TA_ROOT}"
     _design="$(earlier_acceptance_contract "$dir" 2>/dev/null || true)"
     if [[ -s "$_design" ]] && declare -F acceptance_list_testfiles >/dev/null 2>&1; then
-        local _ol; _ol="$(acceptance_list_testfiles "$_design" 2>/dev/null || true)"
+        local _ol; _ol="$(acceptance_list_testfiles "$_design" "$_repo" 2>/dev/null || true)"
         _owned="$(jq -Rnc '[inputs | select(length > 0)] | unique' <<< "$_ol" 2>/dev/null || true)"
         [[ -n "$_owned" ]] || _owned="[]"
     fi
@@ -117,7 +122,7 @@ _ta_write_result() {
     # carries each testfile's content hash as it stands now. An attempt that
     # wrote changes this artifact; one that wrote nothing leaves it identical,
     # which is what the engine's per-attempt progress check compares (#2186).
-    local _tfh="{}" _repo="${ZBUILD_REPO_ROOT:-$_TA_ROOT}" _tf _h
+    local _tfh="{}" _tf _h
     if [[ "$_owned" != "[]" ]]; then
         local _tf_pairs=""
         while IFS= read -r _tf; do
@@ -148,17 +153,17 @@ _ta_write_result() {
     # starts from them instead of running them to find them (#1801 run 40390919951).
     local _tf_lines="" _tf_ids=""
     if [[ -s "$_design" ]] && declare -F acceptance_list_spec_ids >/dev/null 2>&1; then
-        local -A _tf_specs=()
+        local -A _tf_specs=() _tf_by=()
         local -a _tf_order=()
         local _sid _f
+        acceptance_spec_files_v _tf_by "$_design" "$_repo"
         while IFS= read -r _sid; do
             [[ -n "$_sid" ]] || continue
             _tf_ids+="${_tf_ids:+, }$_sid"
-            while IFS= read -r _f; do
-                [[ -n "$_f" ]] || continue
+            for _f in ${_tf_by[$_sid]:-}; do
                 [[ -n "${_tf_specs[$_f]+x}" ]] || _tf_order+=("$_f")
                 _tf_specs[$_f]+="${_tf_specs[$_f]:+, }$_sid"
-            done < <(acceptance_list_testfiles_for_spec "$_design" "$_sid" 2>/dev/null || true)
+            done
         done < <(acceptance_list_spec_ids "$_design" 2>/dev/null || true)
         for _f in ${_tf_order[@]+"${_tf_order[@]}"}; do _tf_lines+=$'\n'"- ${_f} — ${_tf_specs[$_f]}"; done
     fi
@@ -189,8 +194,9 @@ _ta_collect_answers() { zb_answers_finish _TA_ANSWERS "${2:-}" "${1:-}"; }
 # _ta_commit_testfiles <design.md> <repo_root> <message>
 # #2188: the author's testfiles are committed — after a pass AND after a call
 # that stopped mid-write — so the next attempt, or a new session restoring the
-# work branch, continues from them instead of from nothing. Only the testfiles
-# the contract names are staged. Best-effort: a commit failure never fails the
+# work branch, continues from them instead of from nothing. #2508 (ADR-069 §11):
+# every file it changed inside the test folders is staged — a test, a helper
+# file it needs — and nothing outside them. Best-effort: a commit failure never fails the
 # stage, it only leaves the work uncommitted as before. Sets _TA_CHANGED to how
 # many testfiles this attempt changed, for a pass's or fail's reason (as build's
 # says). Never in a retryable outcome's: the engine retries only while an attempt
@@ -198,18 +204,15 @@ _ta_collect_answers() { zb_answers_finish _TA_ANSWERS "${2:-}" "${1:-}"; }
 # one that wrote (#2186).
 _TA_CHANGED=0
 _ta_commit_testfiles() {
-    local design="$1" repo="$2" msg="$3" tf _changed
+    local repo="$2" msg="$3"; : "$1"
     local -a files=()
     _TA_CHANGED=0
     git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 || return 0
-    while IFS= read -r tf; do
-        [[ -n "$tf" && -e "$repo/$tf" ]] && files+=("$tf")
-    done < <(acceptance_list_testfiles "$design" 2>/dev/null || true)
+    zb_test_folder_changes_v files "$repo"
     [[ ${#files[@]} -gt 0 ]] || return 0
-    git -C "$repo" add -- "${files[@]}" 2>/dev/null || return 0
-    _changed="$(git -C "$repo" diff --cached --name-only -- "${files[@]}" 2>/dev/null || true)"
-    [[ -n "$_changed" ]] || return 0
-    _TA_CHANGED="$(grep -c . <<< "$_changed" || true)"
+    # -A: a test file it deleted is part of its change too.
+    git -C "$repo" add -A -- "${files[@]}" 2>/dev/null || return 0
+    _TA_CHANGED=${#files[@]}
     git -C "$repo" commit -q --no-verify --author "zbuild-pipeline <pipeline@local>" \
         -m "$msg" -- "${files[@]}" >/dev/null 2>&1 || return 0
     _ta_emit "test_author.committed" "files=${#files[@]}"
@@ -245,6 +248,9 @@ test_author_run() {
     local sid n=0 n_done=0 spec_block="" _ta_blk _ta_p _ta_need=""
     # #2467: the block read once; each SPEC's status, words and parts from it.
     _ta_blk="$(extract_acceptance_block "$design" 2>/dev/null)" || _ta_blk=""
+    # #2508: the test files already holding each SPEC's tag, found once.
+    local -A _ta_files=()
+    acceptance_spec_files_v _ta_files "$design" "$repo"
     while IFS= read -r sid; do
         [[ -n "$sid" ]] || continue
         local _st="" _txt="" _tfs
@@ -254,7 +260,7 @@ test_author_run() {
         _txt="$_ACC_SPEC_TEXT"
         local -a _ta_parts=()
         acceptance_parts_shown_v _ta_parts "$_ACC_SPEC_PARTS"
-        _tfs="$(acceptance_list_testfiles_for_spec "$design" "$sid" 2>/dev/null | tr '\n' ' ')"
+        _tfs="${_ta_files[$sid]:-}"
         spec_block="${spec_block}- ${sid} [${_st:-code}] ${_txt}"$'\n'
         for _ta_p in ${_ta_parts[@]+"${_ta_parts[@]}"}; do
             spec_block="${spec_block}    ${_ta_p%%$'\t'*}: ${_ta_p#*$'\t'}"$'\n'
@@ -266,7 +272,7 @@ test_author_run() {
             spec_block="${spec_block}    its test must FAIL on the code as it was before this change, and pass after"$'\n'
         fi
         spec_block="${spec_block}    tag: $(acceptance_spec_tag "$sid")"$'\n'
-        spec_block="${spec_block}    testfile(s): ${_tfs}"$'\n'
+        [[ -n "$_tfs" ]] && spec_block="${spec_block}    already in: ${_tfs}"$'\n'
         _ta_need+="$sid "
         n=$(( n + 1 ))
     done < <(acceptance_list_spec_ids "$design" 2>/dev/null || true)
@@ -334,12 +340,13 @@ The commit this branch started from is a copy at ${_ta_base}. When a test needs 
 
     # #2308: the stage's own text in three parts (ADR-067 §8).
     local _spec_tag1; _spec_tag1="$(acceptance_spec_tag SPEC-1)"
+    local _ta_globs; zb_test_path_globs_v _ta_globs "$repo"
     local prompt
     prompt="$(cat <<EOF
 Your job: write the acceptance assertions for the requirements below, in the language and idiom the target repository already uses.
 
 ## What you own
-An assertion for every requirement below, written to its testfile(s)${sup_block:+, and the existing checks listed below brought up to the new behaviour}.
+An assertion for every requirement below${sup_block:+, and the existing checks listed below brought up to the new behaviour}. Write the tests, and any file they need, in the repository's test folders (${_ta_globs// /, }): put each test where it belongs — beside the tests of the same code, in an existing test file or a new one. The test folders are yours; every file you change in them is kept for you.
 
 Each assertion must be able to FAIL: if the requirement were not met, your assertion must not pass. Check the new value or file itself — the output, the field, the file's content — not only that the step finished without an error: a test that only checks that something ran passes on the old code too.
 
@@ -354,7 +361,7 @@ A test that needs data another part of the code writes — a file, a record, a f
 
 Tag each assertion with the tag shown for its SPEC, exactly as shown, in the assertion's label — e.g. ${_spec_tag1}. Tags that carry THIS issue's number are yours: one already there whose SPEC is not in this contract is stale from an earlier design — remove the tag and keep the assertion.
 
-Some of these testfile(s) may already hold assertions from an earlier attempt at this contract: keep what is right, finish what is missing, fix what is wrong.
+Some test files may already hold assertions from an earlier attempt at this contract: keep what is right, finish what is missing, fix what is wrong.
 
 Already written (found by script: each testfile, and the requirements whose tag it already holds):
 ${written_block}
@@ -377,7 +384,7 @@ ${spec_block}${sup_section}${steps_section}${base_section}
 ## What you must not do
 - Do not read code in the working copy, other than files in the repository's test folders: read the existing code in the copy of the code from before this change. Do not guess at code this change has not written yet; write what the requirement demands of it.
 - Run nothing else: run only a test file of yours that you are told fails, and never the suite or lint. When you finish, the test files you create or change are run on the code from before this change. A test for a requirement that needs code must fail there for the reason you intend, not because of a mistake in the test; one that passes there, or stops before its assertion runs, comes back to you.
-- Write or amend only the testfile(s) named above${sup_block:+, and the existing checks listed above}. Do not write, modify or stub any implementation file.
+- Change no file outside the test folders: do not write, modify or stub any implementation file.
 - A tag that does not carry this issue's number (a bare [SPEC-n], or one naming another issue) belongs to other work: leave it as it is${sup_block:+, except on the existing checks listed above}.
 EOF
 )"

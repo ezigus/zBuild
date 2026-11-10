@@ -34,14 +34,15 @@ _ACCEPTANCE_SPEC_RE="^(${_ACCEPTANCE_ID_ERE})(\\[([a-z-]+)\\])?:"
 # When, Then, And (continues the Given, Then or Cleanup above it) or Cleanup.
 # Group 2 = the part, 3 = its words.
 _ACCEPTANCE_PART_RE='^(-[[:space:]]+)?(Given|When|Then|And|Cleanup)[[:space:]]*:[[:space:]]*(.*)$'
-# A test-file binding line under TESTFILES: `<id>: <path> …`. Group 1 = the id.
-_ACCEPTANCE_BIND_RE="^(${_ACCEPTANCE_ID_ERE}):[[:space:]]"
 
 # The shared timeout helper (#1752), loaded as a same-directory
 # `source "$DIR/<file>.sh"` line so _runner_contract_lib_closure lists it too.
 _ACCEPTANCE_BLOCK_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 # shellcheck source=./timeout-cmd.sh
 source "$_ACCEPTANCE_BLOCK_DIR/timeout-cmd.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" timeout-cmd.sh"
+# The repository's test folders, where a SPEC's test is found by its tag (#2508).
+# shellcheck source=./test-paths.sh
+source "$_ACCEPTANCE_BLOCK_DIR/test-paths.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" test-paths.sh"
 
 # #2010: zbuild_engine_tmpdir names where engine code writes temp files (the
 # run memo, #2110). Lazy-sourced, same pattern acceptance-reachability.sh uses:
@@ -53,13 +54,11 @@ if ! declare -F zbuild_engine_tmpdir >/dev/null 2>&1; then
 fi
 
 # extract_acceptance_block <design_md>
-# Parses the ```acceptance fenced block from the given file and prints:
-#   - One "SPEC: <text>" line per behavioral claim (in order)
-#   - A "TESTFILES:" sentinel line
-#   - One test-file path per line (non-blank lines after TESTFILES: sentinel)
-# Returns 0 on success (block found and parsed), 1 when no block is present.
-# Produces empty stdout on return 1. A malformed block (no closing fence or
-# missing TESTFILES section) returns 1 with whatever partial output was emitted.
+# Parses the ```acceptance fenced block from the given file and prints one line
+# per entry — a SPEC (its parts joined to it), a REMOVED line — in order.
+# Returns 0 when the block is found, 1 when there is none (empty stdout).
+# #2508 (ADR-069 §11): design names no files. An old design's TESTFILES list is
+# skipped, never read: its `<id>: <path>` lines would otherwise read as SPECs.
 extract_acceptance_block() {
     local design_md="${1:-}"
     [[ -z "$design_md" || ! -f "$design_md" ]] && return 1
@@ -67,9 +66,7 @@ extract_acceptance_block() {
     local in_block=0
     local in_testfiles=0
     local found_block=0
-    local found_testfiles=0
     local -a specs=()
-    local -a testfiles=()
 
     while IFS= read -r line; do
         if [[ "$line" == '```acceptance' ]]; then
@@ -84,25 +81,15 @@ extract_acceptance_block() {
         if [[ $in_block -eq 1 ]]; then
             if [[ "$line" == 'TESTFILES:' ]]; then
                 in_testfiles=1
-                found_testfiles=1
                 continue
             fi
             # #2460: a line that carries on from the one before it is part of
-            # it — a SPEC's words, or a binding's files, wrapped onto the next
-            # line. Every line is trimmed; none keeps its indent.
+            # it — a SPEC's words wrapped onto the next line. Every line is
+            # trimmed; none keeps its indent.
             local _t="${line%$'\r'}"; _t="${_t#"${_t%%[![:space:]]*}"}"; _t="${_t%"${_t##*[![:space:]]}"}"
             if [[ $in_testfiles -eq 1 ]]; then
-                # Stop testfile collection at WIRING: sentinel (may appear after TESTFILES:)
-                if [[ "$_t" == 'WIRING:'* ]]; then
-                    in_testfiles=0
-                elif [[ -n "$_t" ]]; then
-                    if [[ "$line" =~ ^[[:space:]] && ${#testfiles[@]} -gt 0 \
-                          && "${testfiles[-1]}" =~ $_ACCEPTANCE_BIND_RE ]]; then
-                        testfiles[-1]+=" $_t"
-                    else
-                        testfiles+=("$_t")
-                    fi
-                fi
+                # An old design's list ends at WIRING: or the fence.
+                [[ "$_t" == 'WIRING:'* ]] && in_testfiles=0
             elif [[ "$_t" == SPEC:* || "$_t" == REMOVED:* || "$_t" =~ $_ACCEPTANCE_SPEC_RE ]]; then
                 # #2462: a REMOVED line is its own entry — never part of the SPEC
                 # before it — and its own wrapped words carry on to it.
@@ -127,15 +114,6 @@ extract_acceptance_block() {
     for spec in "${specs[@]+"${specs[@]}"}"; do
         printf '%s\n' "$spec"
     done
-
-    if [[ $found_testfiles -eq 1 ]]; then
-        printf 'TESTFILES:\n'
-        for tf in "${testfiles[@]+"${testfiles[@]}"}"; do
-            printf '%s\n' "$tf"
-        done
-    fi
-
-    [[ $found_testfiles -eq 1 ]] || return 1
     return 0
 }
 
@@ -160,17 +138,12 @@ acceptance_spec_tag() {
 # block, one per line, in declaration order. Only `SPEC-<n>:` lines carry an
 # id; bare legacy `SPEC:` lines are intentionally ignored (they have no id to
 # map to a [SPEC-n]-tagged assertion). Returns 0 when ≥1 id is found, else 1.
-# Stops at the TESTFILES: sentinel so per-SPEC binding lines (SPEC-n: path)
-# in the TESTFILES section are not misidentified as spec-id declarations.
 acceptance_list_spec_ids() {
     local design_md="${1:-}"
     local block_output line ids_found=0
     block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 1
     [[ -z "$block_output" ]] && return 1
     while IFS= read -r line; do
-        # Stop scanning once we enter the TESTFILES section — per-SPEC binding
-        # lines (SPEC-n: path) share the SPEC id regex and must not be emitted.
-        [[ "$line" == "TESTFILES:" ]] && break
         if [[ "$line" =~ $_ACCEPTANCE_SPEC_RE ]]; then
             printf '%s\n' "${BASH_REMATCH[1]}"
             ids_found=1
@@ -195,14 +168,12 @@ acceptance_list_spec_ids() {
 #                    to any ` evidence: ` — space separated (#2306, ADR-070 §3)
 #   _ACC_SPEC_PARTS  its Given/When/Then/And/Cleanup lines as written, each
 #                    "<Part>: <words>", joined by a unit separator (#2467)
-# Returns 1 when the block has no such line. Stops at TESTFILES: — the per-SPEC
-# binding lines there share the `SPEC-n:` shape, and a path is not a requirement.
+# Returns 1 when the block has no such line.
 _acceptance_spec_line() {
     local _block="${1:-}" _sid="${2:-}" _l
     _ACC_SPEC_TAG="" _ACC_SPEC_STATUS="" _ACC_SPEC_REST="" _ACC_SPEC_TEXT="" _ACC_SPEC_COVERS="" _ACC_SPEC_PARTS=""
     [[ -n "$_block" && -n "$_sid" ]] || return 1
     while IFS= read -r _l; do
-        [[ "$_l" == "TESTFILES:" ]] && break
         if [[ "$_l" =~ $_ACCEPTANCE_SPEC_RE && "${BASH_REMATCH[1]}" == "$_sid" ]]; then
             # #2467: its parts follow its first line, each after a unit separator.
             if [[ "$_l" == *$'\x1f'* ]]; then _ACC_SPEC_PARTS="${_l#*$'\x1f'}"; _l="${_l%%$'\x1f'*}"; fi
@@ -403,7 +374,6 @@ acceptance_list_removed_ids() {
     re="^REMOVED:[[:space:]]*(${_ACCEPTANCE_ID_ERE})[[:space:]]*(—|–|-|:)?[[:space:]]*(.*)$"
     blk="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 0
     while IFS= read -r l; do
-        [[ "$l" == "TESTFILES:" ]] && break
         [[ "$l" =~ $re ]] && printf '%s\t%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[3]%%$'\x1f'*}"
     done <<< "$blk"
     return 0
@@ -631,36 +601,13 @@ _acceptance_run_cache_begin() {
     return 0
 }
 
-# acceptance_list_testfiles <design_md>  (ADR-036 / #922)
-# Prints the repo-relative TESTFILES paths from the ```acceptance block, one
-# per line. Includes both bare paths AND paths declared with a SPEC-n: prefix
-# (stripping the prefix to expose the bare path). Mirrors the path-traversal
-# guard used by build (never surfaces an absolute or ".."-containing path).
-# Empty when the block/TESTFILES is absent.
 # acceptance_list_supersedes <design_md>  (#2243)
 # The existing checks this change makes wrong, from design.md's ```supersedes
 # block — a fact about the change, stated by design; updating them to the new
 # behaviour is test-author's (#1842: nobody could, so build evaded one). One line
 # per check:  <repo-relative-path> <tag>: <why>
 # Prints "<path>\t<tag>\t<why>" per valid line. Absolute and ../ paths are
-# refused, as for TESTFILES. No block → nothing.
-acceptance_list_scope() {
-    # #2252: the files design scoped the change to — its ```scope block, one per
-    # line, as build is given them (plugins/agent/build/lib/scope.sh). Lets a
-    # gate tell a file build could have edited from one only design can change.
-    local design_md="${1:-}" line in_block=0
-    [[ -n "$design_md" && -f "$design_md" ]] || return 0
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        if [[ "$line" =~ ^'```scope'[[:space:]]*$ ]]; then in_block=1; continue; fi
-        if [[ $in_block -eq 1 && "$line" =~ ^'```'[[:space:]]*$ ]]; then break; fi
-        [[ $in_block -eq 1 ]] || continue
-        line="${line#"${line%%[![:space:]]*}"}"; line="${line%"${line##*[![:space:]]}"}"
-        # The siblings' rule: only an in-repo relative path (review on #2253).
-        [[ -z "$line" || "$line" == /* || "/$line/" == *"/../"* ]] && continue
-        printf '%s\n' "${line#./}"
-    done < "$design_md"
-}
-
+# refused. No block → nothing.
 acceptance_list_supersedes() {
     local design_md="${1:-}" line in_block=0 path rest tag why
     [[ -z "$design_md" || ! -f "$design_md" ]] && return 0
@@ -678,85 +625,72 @@ acceptance_list_supersedes() {
     done < "$design_md"
 }
 
-# acceptance_list_testfiles <design_md> — each test file the block names, once,
-# in first-seen order (#2454: a file named by several requirements was listed
-# once per requirement, and every reader repeated it).
+# acceptance_spec_files_v <map_var> <design_md> [repo_root]  (#2508, ADR-069 §11)
+# Each SPEC's test files, found by its tag: map[<id>] = the files in the
+# repository's test folders (scripts/lib/test-paths.sh) that hold the tag
+# acceptance_spec_tag builds for it, space separated, sorted. Design names no
+# files; test-author writes the tests wherever they belong, committed or not.
+# Two forks for every SPEC at once: git lists the files, one grep reads them.
+acceptance_spec_files_v() {
+    local -n _asf="$1"; local design_md="${2:-}" root="${3:-${ZBUILD_REPO_ROOT:-$PWD}}"
+    _asf=()
+    [[ -n "$design_md" && -f "$design_md" && -d "$root" ]] || return 0
+    local blk l issue="${ZBUILD_ISSUE:-}" tag sid
+    local -A _by_tag=()
+    blk="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 0
+    [[ "$issue" =~ ^[1-9][0-9]*$ ]] || issue=""
+    while IFS= read -r l; do
+        [[ "$l" =~ $_ACCEPTANCE_SPEC_RE ]] || continue
+        sid="${BASH_REMATCH[1]}"
+        # acceptance_spec_tag's rule, inline: one subshell per SPEC otherwise.
+        if [[ -n "$issue" ]]; then tag="[#$issue/$sid]"; else tag="[$sid]"; fi
+        _by_tag[$tag]="$sid"
+    done <<< "$blk"
+    [[ ${#_by_tag[@]} -gt 0 ]] || return 0
+    local f
+    local -a files=() pats=()
+    zb_test_folder_files_v files "$root"
+    [[ ${#files[@]} -gt 0 ]] || return 0
+    for tag in "${!_by_tag[@]}"; do pats+=(-e "$tag"); done
+    local id cur
+    # -o prints each tag found, after its file and a NUL (--null).
+    while IFS= read -r -d '' f && IFS= read -r tag; do
+        id="${_by_tag[$tag]:-}"
+        [[ -n "$id" ]] || continue
+        cur=" ${_asf[$id]:-} "
+        [[ "$cur" == *" $f "* ]] || _asf[$id]="${_asf[$id]:+${_asf[$id]} }$f"
+    done < <(cd "$root" && grep -oHIF --null "${pats[@]}" -- "${files[@]}" 2>/dev/null)
+    for id in "${!_asf[@]}"; do _acceptance_sort_words_v "_asf[$id]" "${_asf[$id]}"; done
+    return 0
+}
+
+# _acceptance_sort_words_v <var> <words> — the words, sorted (byte order), in
+# the shell: a SPEC has a few test files, not enough to pay for a sort fork.
+_acceptance_sort_words_v() {
+    local -n _asw="$1"; local -a _in=() _out=(); local w i
+    read -ra _in <<< "$2"
+    for w in ${_in[@]+"${_in[@]}"}; do
+        i=${#_out[@]}
+        while (( i > 0 )) && [[ "${_out[i-1]}" > "$w" ]]; do _out[i]="${_out[i-1]}"; i=$((i - 1)); done
+        _out[i]="$w"
+    done
+    _asw="${_out[*]-}"
+}
+
+# acceptance_list_testfiles <design_md> [repo_root] — every SPEC's test files,
+# found by tag (acceptance_spec_files_v), each once, sorted, one per line.
 acceptance_list_testfiles() {
-    local design_md="${1:-}"
-    [[ -z "$design_md" || ! -f "$design_md" ]] && return 0
-    local block_output line in_testfiles=0
-    local -A _seen=()
-    block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 0
-    [[ -z "$block_output" ]] && return 0
-    while IFS= read -r line; do
-        if [[ "$line" == "TESTFILES:" ]]; then
-            in_testfiles=1
-            continue
-        fi
-        if [[ $in_testfiles -eq 1 && -n "$line" ]]; then
-            line="${line%$'\r'}"
-            [[ -z "$line" ]] && continue
-            # Stop at WIRING: sentinel (defensive: may appear after TESTFILES: in output)
-            [[ "$line" == 'WIRING:'* ]] && break
-            # Strip SPEC-n: prefix — emit the bare path(s) into the union
-            if [[ "$line" =~ $_ACCEPTANCE_BIND_RE ]]; then
-                local _bound_str="${line#*:}"
-                local -a _bound_parts
-                read -ra _bound_parts <<< "$_bound_str"
-                local _bp
-                for _bp in "${_bound_parts[@]}"; do
-                    [[ -z "$_bp" || "$_bp" == /* || "/$_bp/" == *"/../"* ]] && continue
-                    [[ -n "${_seen[$_bp]:-}" ]] && continue
-                    _seen[$_bp]=1
-                    printf '%s\n' "$_bp"
-                done
-                continue
-            fi
-            [[ "$line" == /* || "/$line/" == *"/../"* ]] && continue
-            [[ -n "${_seen[$line]:-}" ]] && continue
-            _seen[$line]=1
-            printf '%s\n' "$line"
-        fi
-    done <<< "$block_output"
-}
-
-# acceptance_has_per_spec_binding <design_md>  (#1480)
-# Returns 0 when the TESTFILES section contains ≥1 SPEC-n: prefixed binding line,
-# indicating that per-SPEC binding mode is active. Returns 1 otherwise.
-acceptance_has_per_spec_binding() {
-    local design_md="${1:-}"
-    [[ -z "$design_md" || ! -f "$design_md" ]] && return 1
-    local block_output
-    block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 1
-    local in_testfiles=0 line
-    while IFS= read -r line; do
-        if [[ "$line" == "TESTFILES:" ]]; then in_testfiles=1; continue; fi
-        if [[ $in_testfiles -eq 1 ]]; then
-            [[ "$line" == 'WIRING:'* ]] && break
-            [[ "$line" =~ $_ACCEPTANCE_BIND_RE ]] && return 0
-        fi
-    done <<< "$block_output"
-    return 1
-}
-
-# acceptance_spec_has_binding <design_md> <spec_id>  (#1480)
-# Returns 0 when the TESTFILES section has ≥1 SPEC-<id>: prefixed line for the
-# given spec_id. Returns 1 otherwise (caller should use tag-scan fallback in negctl).
-acceptance_spec_has_binding() {
-    local design_md="${1:-}" spec_id="${2:-}"
-    [[ -z "$design_md" || -z "$spec_id" || ! -f "$design_md" ]] && return 1
-    local block_output
-    block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 1
-    local in_testfiles=0 line
-    while IFS= read -r line; do
-        if [[ "$line" == "TESTFILES:" ]]; then in_testfiles=1; continue; fi
-        if [[ $in_testfiles -eq 1 ]]; then
-            [[ "$line" == 'WIRING:'* ]] && break
-            # Match SPEC-<id>: <path> (no classifier bracket in TESTFILES prefix syntax)
-            if [[ "$line" =~ ^${spec_id}:[[:space:]] ]]; then return 0; fi
-        fi
-    done <<< "$block_output"
-    return 1
+    local -A _alt=(); local _alt_all="" _alt_id _alt_f
+    acceptance_spec_files_v _alt "${1:-}" "${2:-}"
+    for _alt_id in "${!_alt[@]}"; do
+        for _alt_f in ${_alt[$_alt_id]}; do
+            [[ " $_alt_all " == *" $_alt_f "* ]] || _alt_all+="${_alt_all:+ }$_alt_f"
+        done
+    done
+    _acceptance_sort_words_v _alt_all "$_alt_all"
+    local -a _alt_w=(); read -ra _alt_w <<< "$_alt_all"
+    [[ ${#_alt_w[@]} -gt 0 ]] && printf '%s\n' "${_alt_w[@]}"
+    return 0
 }
 
 # acceptance_spec_desc <design_md> <spec_id>  (#1684)
@@ -765,8 +699,6 @@ acceptance_spec_has_binding() {
 # Truncates to 100 characters with '…' when longer — long enough that the
 # clause distinguishing one SPEC from another survives, which is the point of
 # showing it. Returns empty string (not an error) when the SPEC id is not found.
-# Stops scanning at TESTFILES: to avoid misidentifying per-SPEC binding lines
-# in the TESTFILES section.
 acceptance_spec_desc() {
     local design_md="${1:-}" spec_id="${2:-}"
     [[ -z "$design_md" || -z "$spec_id" || ! -f "$design_md" ]] && return 0
@@ -782,45 +714,15 @@ acceptance_spec_desc() {
     return 0
 }
 
-# acceptance_list_testfiles_for_spec <design_md> <spec_id>  (#1480)
-# Returns testfile paths for the given SPEC-id:
-#   - When SPEC-<id>: prefixed lines exist → returns those bound paths only.
-#   - When no SPEC-<id>: prefix → returns the unqualified global paths (backward-compat).
-# Multiple space-separated paths on a SPEC-n: line are emitted one per line.
-# Path-traversal guard applied (same as acceptance_list_testfiles).
+# acceptance_list_testfiles_for_spec <design_md> <spec_id> [repo_root] — the
+# SPEC's test files, found by its tag (acceptance_spec_files_v), one per line.
 acceptance_list_testfiles_for_spec() {
-    local design_md="${1:-}" spec_id="${2:-}"
-    [[ -z "$design_md" || -z "$spec_id" || ! -f "$design_md" ]] && return 0
-    local block_output
-    block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 0
-    local in_testfiles=0 line
-    local -a per_spec=() global=()
-    while IFS= read -r line; do
-        if [[ "$line" == "TESTFILES:" ]]; then in_testfiles=1; continue; fi
-        if [[ $in_testfiles -eq 1 && -n "$line" ]]; then
-            line="${line%$'\r'}"
-            [[ -z "$line" ]] && continue
-            [[ "$line" == 'WIRING:'* ]] && break
-            if [[ "$line" =~ $_ACCEPTANCE_BIND_RE ]]; then
-                local _bid="${BASH_REMATCH[1]}" _bpaths="${line#*:}"
-                if [[ "$_bid" == "$spec_id" ]]; then
-                    local -a _bparts; read -ra _bparts <<< "$_bpaths"
-                    local _bp
-                    for _bp in "${_bparts[@]}"; do
-                        [[ -z "$_bp" || "$_bp" == /* || "/$_bp/" == *"/../"* ]] || per_spec+=("$_bp")
-                    done
-                fi
-            else
-                [[ "$line" == /* || "/$line/" == *"/../"* ]] || global+=("$line")
-            fi
-        fi
-    done <<< "$block_output"
-    # Return per-SPEC paths when bound; else fall back to global unqualified pool.
-    if [[ ${#per_spec[@]} -gt 0 ]]; then
-        printf '%s\n' "${per_spec[@]}"
-    else
-        printf '%s\n' "${global[@]+"${global[@]}"}"
-    fi
+    local -A _altf=()
+    [[ -n "${2:-}" ]] || return 0
+    acceptance_spec_files_v _altf "${1:-}" "${3:-}"
+    local -a _altf_w=(); read -ra _altf_w <<< "${_altf[$2]:-}"
+    [[ ${#_altf_w[@]} -gt 0 ]] && printf '%s\n' "${_altf_w[@]}"
+    return 0
 }
 
 # design_decisions_prose <design_md> [max_lines] — the design's DECISION PROSE:
@@ -851,7 +753,6 @@ acceptance_requirements_for_judge() {
     local design_md="${1:-}" blk l sid ev
     blk="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 0
     while IFS= read -r l; do
-        [[ "$l" == "TESTFILES:" ]] && break
         [[ "$l" =~ $_ACCEPTANCE_SPEC_RE ]] || continue
         sid="${BASH_REMATCH[1]}"
         _acceptance_spec_line "$blk" "$sid" || continue

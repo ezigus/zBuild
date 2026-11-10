@@ -1,6 +1,6 @@
 # ADR-070 — One fixed list of requirements per issue
 
-**Status:** Accepted (2026-10-05); amended 2026-11-08 (#2495, §4: the check looks both ways through the SPECs only, and does not judge the scope)
+**Status:** Accepted (2026-10-05); amended 2026-11-08 (#2495, §4: the check looks both ways through the SPECs only, and does not judge the scope); amended 2026-11-09 (#2508, §4: design writes no scope block; what build changes is held to the requirements by issue-acceptance)
 **Issue:** #2306
 **Amends:** ADR-046 (design-gate gains C7), ADR-069 §2 (a requirement line may also carry ` covers: `)
 **Related:** ADR-055 (inter-stage data contract), ADR-040 §5 (spec-coverage judges against the issue), ADR-066 (every ADR statement has a test), ADR-067 (prompts speak plainly)
@@ -161,11 +161,16 @@ finds.
 - **The scope is a prediction** (ADR-030): it is written before any code exists, and build may widen it.
 - **A design that goes beyond the issue does so in a SPEC,** and every SPEC is already judged `outside` when the
   issue does not ask for it. So the check is no longer shown the scope to judge, and answers no line for it; a
-  `SCOPE:` line in its reply is ignored. Design still writes the scope block, and the design-gate still requires
-  it (C1).
+  `SCOPE:` line in its reply is ignored. *(#2508: design no longer writes a scope block, and C1 is gone — see
+  below.)*
+
+## Amendment 2026-11-09 (#2508) — §4: no scope block; the change is held to the requirements after it is made
+
+Design writes no scope block and names no test file (ADR-069 §11, ADR-030 §8): a list written before any code exists was wrong often enough to end runs. The other direction of §4 — something the change does that the issue does not ask for — is now judged on the change itself: issue-acceptance names each part of the change no requirement asks for, as a finding for build (ADR-072 §3). A requirement design does not understand is written as an `UNCLEAR:` line with the assumption it went on with (ADR-069 §12), so the requirement list stays the one list every stage reads, and its open questions are shown to the people who can answer them.
 
 ## Enforced by
 
+- Amendment 2026-11-09 (#2508) §4 → `tests/unit/design-names-no-files-test.sh` N1, N8 (no scope block is asked for or required), N9–N10 (UNCLEAR lines); `tests/unit/issue-acceptance-unasked-test.sh` U1–U4 (the change is held to the requirements)
 - Amendment 2026-11-08 (#2495) §4 → `tests/unit/design-coverage-test.sh` NS1 (the prompt asks for no scope verdict), NS2 (a reply with no scope lines is complete, in one call), NS3 (a scope line is no finding), X3 (the scope is not shown to judge)
 
 - Amendment 2026-11-07 §1 → `tests/unit/intake-stable-ids-test.sh` S13 (a requirement writing the issue's name R1 or R2 is asked again, naming each; a word the issue does not use as a name is not refused; the list is written with the ids); §4 → `tests/unit/design-coverage-test.sh` I1 (the prompt carries the issue's own words, found among the inputs; with no issue it claims none)

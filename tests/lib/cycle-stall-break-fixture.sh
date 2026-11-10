@@ -61,12 +61,6 @@ cycle_dispatch_stage() {
                     "$_art/build-summary.json" > "$_art/build-summary.json.tmp" \
                     && mv "$_art/build-summary.json.tmp" "$_art/build-summary.json"
             fi
-            # #2178: a build that asked for files outside the contract.
-            if [[ -n "${_BUILD_SCOPE_REQUEST:-}" ]]; then
-                jq --argjson r "$_BUILD_SCOPE_REQUEST" '. + {scope_expansion_request: $r}' \
-                    "$_art/build-summary.json" > "$_art/build-summary.json.tmp" \
-                    && mv "$_art/build-summary.json.tmp" "$_art/build-summary.json"
-            fi
             _CYCLE_DISPATCH_VERDICT="pass"
             _CYCLE_DISPATCH_VERDICT_RAW="pass"
             _CYCLE_DISPATCH_DISPOSITION="complete"

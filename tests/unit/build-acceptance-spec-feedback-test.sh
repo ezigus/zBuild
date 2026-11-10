@@ -50,7 +50,9 @@ apply_scope_redaction() { local in="$1" out="$2"; [[ -f "$in" ]] && cp "$in" "$o
 
 _REPO="$TEST_TEMP_DIR/repo"; mkdir -p "$_REPO"
 ( cd "$_REPO" && git init -q && git config user.email t@t && git config user.name t \
-    && echo seed > seed.txt && git add seed.txt && git commit -q -m seed ) >/dev/null
+    && echo seed > seed.txt && mkdir -p tests/unit \
+    && printf 'assert "[SPEC-1] behaviour A" 1 1\n' > tests/unit/build-acceptance-spec-feedback-test.sh \
+    && git add -A && git commit -q -m seed ) >/dev/null
 export ZBUILD_REPO_ROOT="$_REPO"
 
 ARTIFACT_DIR="$ZBUILD_STATE_DIR/artifacts"
@@ -77,8 +79,6 @@ cat > "$DESIGN_MD" <<'DESIGN'
 SPEC-1: change behavior A
 SPEC-2: change behavior B
 SPEC-3: guard behavior C stays the same
-TESTFILES:
-tests/unit/build-acceptance-spec-feedback-test.sh
 ```
 DESIGN
 unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR
@@ -103,8 +103,6 @@ cat > "$DESIGN_MD" <<'DESIGN'
 
 ```acceptance
 SPEC: a bare spec with no id
-TESTFILES:
-tests/unit/build-acceptance-spec-feedback-test.sh
 ```
 DESIGN
 p="$(_drive_build)"
@@ -140,8 +138,6 @@ cat > "$DESIGN_MD" <<'DESIGN'
 
 ```acceptance
 SPEC-1: change behavior A
-TESTFILES:
-tests/unit/build-acceptance-spec-feedback-test.sh
 ```
 DESIGN
 printf '%s' '{"verdict":"fail","failures":["tautology:SPEC-3"]}' \

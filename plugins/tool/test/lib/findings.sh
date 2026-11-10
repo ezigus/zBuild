@@ -124,7 +124,8 @@ _test_findings_about() {
 
 # _test_findings_by_owner <design_md> — reads "<file><TAB><text>" lines and
 # prints each as stage_findings_json takes it. #2454 (ADR-071 §1): a file that is
-# one of the design's test files is test-author's and build's to fix, so it keeps
+# one of the change's acceptance tests (#2508: a test-folder file holding one of
+# the design's SPEC tags) is test-author's and build's to fix, so it keeps
 # the result's topic; any other file is the change's, so it is labelled
 # `change-findings` — it reaches build only, not test-author, which may not edit
 # it, nor issue-acceptance (#1805 run 42523805245). With no

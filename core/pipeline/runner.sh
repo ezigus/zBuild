@@ -511,44 +511,10 @@ _runner_duration_token() {
     fi
 }
 
-# ─── _runner_export_scope_allowlist <state_dir> (ADR-043) ────────────────────
-# Redaction by construction: the per-run scope allowlist, exported as
-# ZBUILD_SCOPE_ALLOWLIST so route_to_model can redact without a plugin passing
-# it. Called per-stage because nothing is reported before plan runs (empty then —
-# harmless, the scope manifest is the base allowlist and this is purely ADDITIVE).
-_runner_export_scope_allowlist() {
-    local state_dir="$1"
-    local rec="$state_dir/artifacts/stage-reports.json" csv=""
-    # #2189: the scope files stages REPORTED (plan reports its files) — the
-    # engine no longer reads plan.json by path.
-    if [[ -s "$rec" ]]; then
-        csv="$(jq -r '(.scope_files // []) | unique | join(",")' "$rec" 2>/dev/null || echo "")"
-    fi
-    # #1874: the shape floor is part of the scope — computed here, mechanically,
-    # so build, redaction and shape-floor all read one list that already holds
-    # the files a shape change owes. Memoised per scope: this runs every stage.
-    if [[ -n "$csv" && "$csv" != "${_RUNNER_FLOOR_KEY:-}" ]]; then
-        _RUNNER_FLOOR_KEY="$csv"; _RUNNER_FLOOR_CSV="$csv"
-        if ! declare -F sf_scope_floor_files >/dev/null 2>&1; then
-            # shellcheck source=../../scripts/lib/shape-floor.sh
-            source "${_ZBUILD_CONTRACT_LIB_DIR:-$_ZBUILD_ROOT/scripts/lib}/shape-floor.sh" 2>/dev/null || true
-        fi
-        if declare -F sf_scope_floor_files >/dev/null 2>&1; then
-            local -a _scope_arr=() ; local _ff
-            IFS=',' read -r -a _scope_arr <<< "$csv"
-            while IFS= read -r _ff; do
-                [[ -n "$_ff" && ",$_RUNNER_FLOOR_CSV," != *",$_ff,"* ]] && _RUNNER_FLOOR_CSV+=",$_ff"
-            done < <(sf_scope_floor_files "${ZBUILD_REPO_ROOT:-$PWD}" "${_scope_arr[@]}" 2>/dev/null)
-        fi
-    fi
-    [[ -n "$csv" ]] && csv="${_RUNNER_FLOOR_CSV:-$csv}"
-    export ZBUILD_SCOPE_ALLOWLIST="$csv"
-}
-
 # ─── _runner_record_report <state_dir> <stage> <report-json> (#2189) ─────────
 # Merge one dispatch's report into the run's record, artifacts/stage-reports.json
-# (under artifacts/ so it is snapshotted and restored with the run): scope and
-# wiring files are unioned; owned files are kept per reporting stage, so the
+# (under artifacts/ so it is snapshotted and restored with the run): wiring
+# files are unioned; owned files are kept per reporting stage, so the
 # deny list can exempt the owner. Engine setup reads THIS record — never a
 # stage's artifact by name. Best-effort: a failed merge leaves the prior record.
 # Parallel members record concurrently, so the read-merge-write holds a mkdir
@@ -558,8 +524,7 @@ _runner_record_report() {
     local state_dir="$1" stage="$2" report="${3:-}"
     [[ -n "$state_dir" && -n "$stage" && -n "$report" && "$report" != "{}" ]] || return 0
     # Most stages report none of the setup fields — skip the lock and the jq fork.
-    [[ "$report" == *'"scope_files"'* || "$report" == *'"owned_files"'* \
-        || "$report" == *'"wiring_files"'* ]] || return 0
+    [[ "$report" == *'"owned_files"'* || "$report" == *'"wiring_files"'* ]] || return 0
     local rec="$state_dir/artifacts/stage-reports.json" tmp
     local lock="$state_dir/.stage-reports.lock" _tries=0
     [[ -d "$state_dir/artifacts" ]] || mkdir -p "$state_dir/artifacts" 2>/dev/null || return 0
@@ -571,8 +536,7 @@ _runner_record_report() {
     [[ -s "$rec" ]] || printf '{}' > "$rec"
     tmp="$rec.tmp.$BASHPID"
     if jq --arg s "$stage" --argjson r "$report" '
-            .scope_files  = ((.scope_files  // []) + ($r.scope_files  // []) | unique)
-          | .wiring_files = ((.wiring_files // []) + ($r.wiring_files // []) | unique)
+            .wiring_files = ((.wiring_files // []) + ($r.wiring_files // []) | unique)
           | if ($r.owned_files // null) != null
               then .owned_files = ((.owned_files // {}) + {($s): ($r.owned_files | unique)})
               else . end' "$rec" > "$tmp" 2>/dev/null; then
@@ -1028,6 +992,9 @@ _runner_render_open_items() {
     {
         printf 'The run %s.\n' "$(run_end_words "$reason" "$n")"
         [[ -n "$items" ]] && printf '%s\n' "$items"
+        # #2508: and the questions design could not settle.
+        local q; q="$(open_items_questions "$sd")" || q=""
+        [[ -n "$q" ]] && printf '\n%s\n' "$q"
     } >&2
 }
 
@@ -1287,11 +1254,6 @@ _render_cycle_exit() {
             glyph="✗"; color="${RED:-}"
             text="Cycle ${cycle_id} halted: blocked"
             ;;
-        blocked_on_scope)
-            # #840: build needs out-of-scope files the policy won't grant.
-            glyph="⚠"; color="${YELLOW:-}"
-            text="Cycle ${cycle_id} halted: blocked on scope (needs files outside write-scope)"
-            ;;
         error|config_invalid)
             glyph="✗"; color="${RED:-}"
             text="Cycle ${cycle_id} failed: ${reason}"
@@ -1371,7 +1333,7 @@ _runner_report_engine_drift() {
     # Only the failures a newer engine could plausibly have changed. A terminal
     # abort (signal, llm_unavailable) is not one of them.
     case "$reason" in
-        blocked_on_scope|max_iterations|blocked_on_gate) ;;
+        max_iterations|blocked_on_gate) ;;
         *) return 0 ;;
     esac
     [[ "${ZBUILD_ENGINE_DRIFT_CHECK:-1}" == "1" ]] || return 0
@@ -2269,9 +2231,8 @@ main() {
     # ADR-043 (redaction by construction): the router self-redacts when a stage
     # did not redact itself. Expose the fixed scope-manifest path to EVERY stage
     # (one place) so route_to_model can resolve the manifest without any plugin
-    # passing it. The companion per-run allowlist (ZBUILD_SCOPE_ALLOWLIST, from
-    # plan.files[]) is derived per-stage below via _runner_export_scope_allowlist,
-    # because plan.json only exists after the plan stage runs.
+    # passing it. #2508: there is no per-run file list beside it — build has
+    # none, and design names no files.
     export ZBUILD_SCOPE_MANIFEST="$state_dir/scope-manifest.md"
     # #887: events must follow the (possibly per-run) state dir, else two runs'
     # events interleave in one events.jsonl. event-bus.sh defaults all three
@@ -3421,9 +3382,7 @@ main() {
                     #               plateau, divergence). `on_max: halt` stops (#2241).
                     # interrupted → HALT; status=interrupted. Config invalid, blocked
                     #               (#528: upstream input structurally broken, review
-                    #               does NOT run), blocked_on_scope (#840, ADR-030:
-                    #               build needs out-of-scope files the policy won't
-                    #               grant; the operator widens scope).
+                    #               does NOT run).
                     # failed      → HALT; status=failed. ADR-013: a blocking member
                     #               failed, or the loop ran out with tests failing.
                     # aborted     → HALT on the recorded abort word (ADR-025):
@@ -3643,8 +3602,6 @@ main() {
                     export ZBUILD_CURRENT_STAGE="$_ust"
                     # #682: linear stage in cycle-aware dispatch — cardinal label.
                     export ZBUILD_STAGE_IO_SEQ_LABEL="$_runner_cardinal"
-                    # ADR-043: refresh the per-run scope allowlist for this stage.
-                    _runner_export_scope_allowlist "$state_dir"
                     set +e; cycle_dispatch_stage "$_ust" 0 "$state_file"; _rc=$?; set -e
                     unset ZBUILD_CURRENT_STAGE ZBUILD_STAGE_IO_SEQ_LABEL
                     if [[ $_rc -ne 0 ]]; then
@@ -3825,9 +3782,6 @@ main() {
         # instead of the per-stage retry counter. Banner reads this via
         # ZBUILD_STAGE_IO_SEQ_LABEL fallback inside stage_io_begin.
         export ZBUILD_STAGE_IO_SEQ_LABEL="$_runner_linear_cardinal"
-        # ADR-043: refresh the per-run scope allowlist for this stage so the
-        # router can self-redact (empty until plan.json exists — additive only).
-        _runner_export_scope_allowlist "$state_dir"
 
         # Intentional fail-open: missing/empty template roles = no-template path (handled below)
         local roles_out; roles_out="$(template_stage_roles "$stage" 2>/dev/null || true)"

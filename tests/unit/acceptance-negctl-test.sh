@@ -68,7 +68,7 @@ EOF
     "$GIT" commit -q -m "feat: impl + tagged tests"
 )
 
-# design.md naming the 4 SPECs + their TESTFILES
+# design.md naming the 4 SPECs (their tests are found by tag, #2508)
 DM="$REPO/design.md"
 cat > "$DM" <<'EOF'
 # Design
@@ -80,11 +80,6 @@ SPEC-1: feature is implemented
 SPEC-2: something is fine
 SPEC-3: not yet implemented
 SPEC-4: cross-run state persists
-TESTFILES:
-tests/nc-a-test.sh
-tests/nc-b-test.sh
-tests/nc-c-test.sh
-tests/nc-d-test.sh
 ```
 EOF
 
@@ -112,7 +107,7 @@ REPO2="$(setup_git_temp_repo negctl-repo2)"
     "$GIT" add -A; "$GIT" commit -q -m "on main"
 )
 DM2="$REPO2/design.md"
-printf '```acceptance\nSPEC-1: x\nTESTFILES:\ntests/x-test.sh\n```\n' > "$DM2"
+printf '```acceptance\nSPEC-1: x\n```\n' > "$DM2"
 set +e; OUT2="$(acceptance_negctl_check "$DM2" "$REPO2")"; RC2=$?; set -e
 assert_eq "[SPEC-2] NC-E: merge-base==HEAD → per-SPEC SKIP no_impl_delta" \
     "NEGCTL SKIP SPEC-1 no_impl_delta" "$(grep 'SPEC-1' <<<"$OUT2")"
@@ -140,8 +135,6 @@ if command -v timeout >/dev/null 2>&1; then
     cat > "$DM4" <<'EOF'
 ```acceptance
 SPEC-1: slow feature
-TESTFILES:
-tests/slow-test.sh
 ```
 EOF
     set +e
@@ -206,9 +199,6 @@ PYEOF
 ```acceptance
 SPEC-1: load-bearing python spec
 SPEC-2: tautological python spec
-TESTFILES:
-tests/py-lb-test.py
-tests/py-taut-test.py
 ```
 EOF
 
@@ -266,8 +256,6 @@ DM_K="$REPO_K/design.md"
 cat > "$DM_K" <<'EOF'
 ```acceptance
 SPEC-1: test-only change
-TESTFILES:
-tests/nc-k-test.sh
 ```
 EOF
 set +e; OUT_K="$(acceptance_negctl_check "$DM_K" "$REPO_K")"; RC_K=$?; set -e
@@ -299,9 +287,6 @@ cat > "$DM_K2" <<'EOF'
 ```acceptance
 SPEC-1: test-only spec one
 SPEC-2: test-only spec two
-TESTFILES:
-tests/nc-k2a-test.sh
-tests/nc-k2b-test.sh
 ```
 EOF
 set +e; OUT_K2="$(acceptance_negctl_check "$DM_K2" "$REPO_K2")"; RC_K2=$?; set -e
@@ -352,8 +337,6 @@ DM_L="$REPO_L/design.md"
 cat > "$DM_L" <<'EOF'
 ```acceptance
 SPEC-1: load-bearing test for impl_l
-TESTFILES:
-tests/nc-l-test.sh
 ```
 EOF
 set +e; OUT_L="$(acceptance_negctl_check "$DM_L" "$REPO_L")"; RC_L=$?; set -e
@@ -362,10 +345,11 @@ assert_eq "[SPEC-3] mixed diff does NOT emit no_prod_delta skip" \
 assert_eq "[SPEC-3] mixed diff runs full negctl → NEGCTL PASS SPEC-1" \
     "NEGCTL PASS SPEC-1" "$(grep 'SPEC-1' <<<"$OUT_L")"
 
-# ── NC-M: [SPEC-1][SPEC-2] per-SPEC binding restricts candidate testfiles ─────────
-# When per-SPEC binding is declared, negctl uses only the SPEC's own bound files.
-# SPEC-1 is bound to a load-bearing file; SPEC-2 is bound to a tautological file.
-# SPEC-2 must NOT be able to "ride" SPEC-1's passing control.
+# ── NC-M: [SPEC-1][SPEC-2] a SPEC's candidates are the files holding its tag ─────
+# #2508 (ADR-069 §11): design names no files; negctl runs, for each SPEC, only
+# the test-folder files that hold its tag (#1480: never a sibling's). SPEC-1's
+# tag is in a load-bearing file; SPEC-2's only in a tautological one. SPEC-2
+# must NOT be able to "ride" SPEC-1's passing control.
 REPO_M="$(setup_git_temp_repo negctl-repo-m)"
 (
     cd "$REPO_M"
@@ -373,17 +357,13 @@ REPO_M="$(setup_git_temp_repo negctl-repo-m)"
     mkdir -p tests
     printf '#!/usr/bin/env bash\nmy_m_feature() { return 0; }\n' > impl_m.sh
 
-    # SPEC-1's bound file: load-bearing — fails at baseline (impl_m.sh absent),
-    # passes at HEAD. It deliberately ALSO carries a [SPEC-2] tag: that is the
-    # sibling-riding VECTOR this issue fixes. Under the OLD tag-scan negctl,
-    # SPEC-2 matches this file, sees it flip, and wrongly reports PASS SPEC-2.
-    # Per-SPEC binding restricts SPEC-2 to its own tautological file. Without
-    # the dual tag the fixture cannot discriminate old from new (both attribute
-    # correctly), leaving the negctl wiring inert.
+    # SPEC-1's file: load-bearing — fails at baseline (impl_m.sh absent),
+    # passes at HEAD. It holds SPEC-1's tag only; were negctl to run every
+    # test file for every SPEC, SPEC-2 would see this file flip and wrongly
+    # report PASS SPEC-2.
     cat > tests/nc-m-lb-test.sh <<'EOF'
 #!/usr/bin/env bash
 # [SPEC-1] per-SPEC load-bearing
-# [SPEC-2] sibling-riding vector: the old tag-scan would match this file for SPEC-2
 impl="$(cd "$(dirname "$0")/.." && pwd)/impl_m.sh"
 [[ -f "$impl" ]] || exit 1
 # shellcheck disable=SC1090
@@ -405,19 +385,16 @@ cat > "$DM_M" <<'EOF'
 ```acceptance
 SPEC-1[change]: per-SPEC load-bearing
 SPEC-2[change]: per-SPEC tautological
-TESTFILES:
-SPEC-1: tests/nc-m-lb-test.sh
-SPEC-2: tests/nc-m-taut-test.sh
 ```
 EOF
 
 set +e; OUT_M="$(acceptance_negctl_check "$DM_M" "$REPO_M")"; RC_M=$?; set -e
-assert_eq "[SPEC-1] NC-M: per-SPEC bound load-bearing file → NEGCTL PASS SPEC-1" \
+assert_eq "[SPEC-1] NC-M: the load-bearing file holding SPEC-1's tag → NEGCTL PASS SPEC-1" \
     "NEGCTL PASS SPEC-1" "$(grep 'SPEC-1' <<<"$OUT_M")"
-assert_eq "[SPEC-2] NC-M: per-SPEC bound tautological file → NEGCTL FAIL SPEC-2 tautology" \
+assert_eq "[SPEC-2] NC-M: the tautological file holding SPEC-2's tag → NEGCTL FAIL SPEC-2 tautology" \
     "NEGCTL FAIL SPEC-2 tautology" "$(grep 'SPEC-2' <<<"$OUT_M")"
 # SPEC-2 must NOT ride SPEC-1's passing control (sibling isolation)
-assert_eq "[SPEC-2] NC-M: SPEC-2 does not emit PASS via sibling's binding" \
+assert_eq "[SPEC-2] NC-M: SPEC-2 does not emit PASS via a sibling's file" \
     "0" "$(grep -c 'NEGCTL PASS SPEC-2' <<<"$OUT_M" || true)"
 
 # ── NC-N: #1567 — _negctl_run scrubs inherited ZBUILD_STAGE_IO_* render steering ─
@@ -532,8 +509,6 @@ DM_Q="$REPO_Q/design.md"
 cat > "$DM_Q" <<'EOF'
 ```acceptance
 SPEC-1: sigkill-rc fixture
-TESTFILES:
-tests/sigkill-test.sh
 ```
 EOF
 set +e; OUT_Q="$(acceptance_negctl_check "$DM_Q" "$REPO_Q")"; RC_Q=$?; set -e

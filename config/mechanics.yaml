@@ -59,7 +59,7 @@ mechanics:
     adr: ADR-003
 
   - name: scope-governance
-    summary: Read/write scope, security floor, and governed expansion (ADR-030).
+    summary: Read scope, the security floor, and the test folders build may not change (ADR-030).
     defined_in: core/pipeline/contract-validator.sh
     adr: ADR-030
 

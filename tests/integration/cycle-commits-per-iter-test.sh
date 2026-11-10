@@ -41,10 +41,12 @@ export ZBUILD_SCOPE_OVERRIDE=1
 
 REPO="$(setup_git_temp_repo build608repo)"
 [[ -d "$REPO" ]] || { echo "setup_git_temp_repo failed" >&2; exit 1; }
-mkdir -p "$REPO/tests/fixtures"
+# #2508: the build mock writes outside the test folders — a build change
+# inside them is put back (ADR-030 §8).
+mkdir -p "$REPO/fixtures"
 ( cd "$REPO" \
-    && echo "seed" > tests/fixtures/seed.txt \
-    && git add tests/fixtures/seed.txt \
+    && echo "seed" > fixtures/seed.txt \
+    && git add fixtures/seed.txt \
     && git commit -q -m "seed" ) >/dev/null
 
 PRE_HEAD="$(cd "$REPO" && git rev-parse HEAD)"
@@ -52,8 +54,8 @@ PRE_HEAD="$(cd "$REPO" && git rev-parse HEAD)"
 # Stub claude: edit in scope, emit COMMIT_SUMMARY, then LOOP_COMPLETE.
 cat > "$TEST_TEMP_DIR/bin/claude" <<'MOCK'
 #!/usr/bin/env bash
-mkdir -p "$PWD/tests/fixtures"
-printf 'iter1\n' > "$PWD/tests/fixtures/build-608-newfile.txt"
+mkdir -p "$PWD/fixtures"
+printf 'iter1\n' > "$PWD/fixtures/build-608-newfile.txt"
 jq -n --arg r $'wrote file\nCOMMIT_SUMMARY: add 608 fixture file\nLOOP_COMPLETE' \
     '{result:$r, usage:{input_tokens:5, output_tokens:5}}'
 exit 0
@@ -63,8 +65,8 @@ chmod +x "$TEST_TEMP_DIR/bin/claude" || true
 # Fix: ensure file is executable even if mkdir reordered
 cat > "$TEST_TEMP_DIR/bin/claude" <<'MOCK'
 #!/usr/bin/env bash
-mkdir -p "$PWD/tests/fixtures"
-printf 'iter1\n' > "$PWD/tests/fixtures/build-608-newfile.txt"
+mkdir -p "$PWD/fixtures"
+printf 'iter1\n' > "$PWD/fixtures/build-608-newfile.txt"
 jq -n --arg r $'wrote file\nCOMMIT_SUMMARY: add 608 fixture file\nLOOP_COMPLETE' \
     '{result:$r, usage:{input_tokens:5, output_tokens:5}}'
 exit 0
@@ -94,15 +96,15 @@ cat > "$STATE_DIR/artifacts/plan.json" <<'EOF'
   "schema_version": 1,
   "title": "fallback plan title",
   "goal": "Create fixture (#608)",
-  "files": ["tests/fixtures/build-608-newfile.txt"],
+  "files": ["fixtures/build-608-newfile.txt"],
   "steps": [
     {"id": "s1", "description": "create file",
-     "files": ["tests/fixtures/build-608-newfile.txt"], "estimated_lines": 1}
+     "files": ["fixtures/build-608-newfile.txt"], "estimated_lines": 1}
   ]
 }
 EOF
 cat > "$STATE_DIR/scope-manifest.md" <<'EOF'
-+ tests/
++ fixtures/
 + plugins/
 + core/
 EOF

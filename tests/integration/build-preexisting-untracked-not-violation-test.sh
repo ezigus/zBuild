@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Integration test (#1265, SPEC-1): a PRE-EXISTING untracked stray (present at
-# intake, NOT created/touched by the build this run) does NOT trigger
-# build.scope.violation and is NOT in build-summary.scope_violations. The build
-# does only in-scope work; the leftover stray is out of judgment.
+# Integration test (#1265, SPEC-1; ADR-030 v4): a PRE-EXISTING untracked stray
+# (present at intake, NOT created/touched by the build this run) does NOT
+# trigger build.scope.violation, is NOT in build-summary.scope_violations, is
+# not put back (removed), and is not committed as build's. #2508: the stray sits
+# in a test folder, the one place a build-created file would count against
+# build (ADR-030 §8); build's own work is outside the test folders.
 #
 # RED at baseline: today `git add -N .` intent-adds the stray → status A → OOS →
 # scope_violation. GREEN after: selective `git add -N` + census skip reading
@@ -45,15 +47,16 @@ mkdir -p "$REPO/tests/fixtures"
     && git add tests/fixtures/seed.txt \
     && git commit -q -m "seed" ) >/dev/null
 
-# Pre-existing untracked stray, left over from a prior run (the #1214/#945 file).
-mkdir -p "$REPO/config/templates"
-printf 'stray perf fixture\n' > "$REPO/config/templates/runner-state-dir-minimal.yaml"
+# Pre-existing untracked stray, left over from a prior run (the #1214/#945 file),
+# in a test folder.
+printf 'stray perf fixture\n' > "$REPO/tests/fixtures/runner-state-dir-minimal.yaml"
 
-# Stub claude: does ONLY in-scope work (tests/fixtures/in-scope.txt).
+# Stub claude: does only its own work, outside the test folders (src/build-work.txt).
 mkdir -p "$TEST_TEMP_DIR/bin"
 cat > "$TEST_TEMP_DIR/bin/claude" <<'MOCK'
 #!/usr/bin/env bash
-printf 'in scope content\n' > "$PWD/tests/fixtures/in-scope.txt"
+mkdir -p "$PWD/src"
+printf 'build content\n' > "$PWD/src/build-work.txt"
 jq -n --arg r $'did in-scope work\nCOMMIT_SUMMARY: in-scope change\nLOOP_COMPLETE' \
     '{result:$r, usage:{input_tokens:5, output_tokens:5}}'
 exit 0
@@ -91,7 +94,7 @@ cat > "$STATE_DIR/scope-manifest.md" <<'EOF'
 EOF
 # The engine's list of untracked files already there when the run started
 # (#2367; intake wrote it before): the pre-existing stray was present.
-printf 'config/templates/runner-state-dir-minimal.yaml\0' \
+printf 'tests/fixtures/runner-state-dir-minimal.yaml\0' \
     > "$STATE_DIR/untracked-at-start"
 export ZBUILD_RUN_UNTRACKED_AT_START="$STATE_DIR/untracked-at-start"
 STATE_FILE="$STATE_DIR/state.json"
@@ -137,7 +140,7 @@ bash "$DRIVER" >/dev/null 2>/dev/null || true
 # ── (1) No build.scope.violation for the pre-existing stray ────────────────
 _sv_paths="$(jq -r 'select(.type=="build.scope.violation") | .data.path' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
 if [[ -f "$ZBUILD_EVENTS_JSONL" ]] \
-   && grep -Fxq 'config/templates/runner-state-dir-minimal.yaml' <<< "$_sv_paths"; then
+   && grep -Fxq 'tests/fixtures/runner-state-dir-minimal.yaml' <<< "$_sv_paths"; then
     assert_fail "no scope.violation for pre-existing stray" "stray was flagged"
 else
     assert_pass "no scope.violation for pre-existing stray"
@@ -152,7 +155,7 @@ if [[ -f "$SUMMARY" ]]; then
     else
         assert_pass "build reports no scope violation (got: ${verdict:-<empty>})"
     fi
-    if grep -Fxq 'config/templates/runner-state-dir-minimal.yaml' \
+    if grep -Fxq 'tests/fixtures/runner-state-dir-minimal.yaml' \
         <<< "$(jq -r '.scope_violations[]?' "$SUMMARY" 2>/dev/null)"; then
         assert_fail "stray absent from scope_violations" "stray present"
     else
@@ -160,6 +163,16 @@ if [[ -f "$SUMMARY" ]]; then
     fi
 else
     assert_fail "build-summary.json written" "missing"
+fi
+
+# ── (3) the stray is left as it was, and is not build's ────────────────────
+assert_file_exists "the stray is not put back (removed)" "$REPO/tests/fixtures/runner-state-dir-minimal.yaml"
+_committed="$(git -C "$REPO" show --name-only --format= HEAD 2>/dev/null)"
+assert_contains "build's own work is committed" "$_committed" "src/build-work.txt"
+if grep -Fxq 'tests/fixtures/runner-state-dir-minimal.yaml' <<< "$_committed"; then
+    assert_fail "the stray is not committed as build's" "stray in the commit"
+else
+    assert_pass "the stray is not committed as build's"
 fi
 
 cleanup_test_env

@@ -22,7 +22,8 @@ if ! declare -F zbuild_engine_tmpdir >/dev/null 2>&1; then
 fi
 
 # _ta_testfile_sums_v <var> <design_md> <repo> — "<file>\t<cksum|absent>" for
-# every test file the contract names, taken before and after the model call.
+# every test file holding a SPEC's tag (#2508: found by tag, never named by
+# design), taken before and after the model call.
 _ta_testfile_sums_v() {
     local -n _tts="$1"; _tts=""
     local tf sum
@@ -68,7 +69,9 @@ _ta_before_run() {
     _TA_BEFORE_FINDINGS=()
     local after tf sum was
     local -a changed=()
+    local -A _brf=()
     _ta_testfile_sums_v after "$design" "$repo"
+    acceptance_spec_files_v _brf "$design" "$repo"
     while IFS=$'\t' read -r tf sum; do
         [[ -n "$tf" && "$sum" != absent ]] || continue
         was=""
@@ -94,7 +97,7 @@ _ta_before_run() {
         rc=0; _negctl_run "$wt/$tf" "$wt" "$log" || rc=$?
         while IFS= read -r sid; do
             [[ -n "$sid" ]] || continue
-            grep -qxF -- "$tf" <<< "$(acceptance_list_testfiles_for_spec "$design" "$sid" 2>/dev/null)" || continue
+            [[ " ${_brf[$sid]:-} " == *" $tf "* ]] || continue
             st="$(acceptance_spec_status "$design" "$sid" 2>/dev/null || true)"
             [[ "$st" == "done" ]] && continue
             v=0; _negctl_spec_log_check "$log" "$sid" || v=$?

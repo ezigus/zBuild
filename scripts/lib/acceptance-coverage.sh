@@ -2,8 +2,8 @@
 # acceptance-coverage.sh — Level-1 of the acceptance-contract gate (ADR-036, #922).
 #
 # Verifies that every stable SPEC-n id declared in a design.md ```acceptance
-# block has at least one assertion in the declared TESTFILES whose label
-# contains the literal tag "[SPEC-n]". This is the cheap, mechanical
+# block has at least one assertion in the test folders whose label contains its
+# tag (#2508: the file is found by the tag — design names none). This is the cheap, mechanical
 # tag-presence check that runs before the (expensive) Level-2 negative control.
 #
 # Source-only (pure functions, no side effects). Like acceptance-block.sh it
@@ -18,28 +18,13 @@ _ACCEPTANCE_COVERAGE_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 source "$_ACCEPTANCE_COVERAGE_DIR/acceptance-block.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" acceptance-block.sh"
 
 # acceptance_coverage_spec_tagged <design_md> <repo_root> <spec_id>
-# Returns 0 if at least one declared TESTFILE that exists on disk contains the
-# literal "[<spec_id>]" tag; 1 otherwise.
+# Returns 0 if a file in the test folders holds the SPEC's tag; 1 otherwise.
 acceptance_coverage_spec_tagged() {
     local design_md="${1:-}" repo_root="${2:-}" spec_id="${3:-}"
     [[ -z "$design_md" || -z "$spec_id" ]] && return 1
-    # #2134: drain the producer BEFORE scanning. Returning from inside a
-    # `< <(…)` loop closes the pipe under a writer that is still printing the
-    # remaining bindings — under the daemon SIGPIPE is ignored, so each one
-    # became "printf: write error: Broken pipe" on the run's stderr.
-    local -a _tfs=()
-    mapfile -t _tfs < <(acceptance_list_testfiles "$design_md")
-    local tf abs
-    for tf in "${_tfs[@]+"${_tfs[@]}"}"; do
-        [[ -z "$tf" ]] && continue
-        abs="$repo_root/$tf"
-        [[ -f "$abs" ]] || continue
-        # Fixed-string match on this issue's exact tag (acceptance_spec_tag).
-        if grep -qF "$(acceptance_spec_tag "$spec_id")" "$abs" 2>/dev/null; then
-            return 0
-        fi
-    done
-    return 1
+    local -A _cst=()
+    acceptance_spec_files_v _cst "$design_md" "${repo_root:-}"
+    [[ -n "${_cst[$spec_id]:-}" ]]
 }
 
 # _acceptance_trim_label <line>  (#1684)
@@ -276,12 +261,15 @@ acceptance_find_assertion_label() {
 acceptance_coverage_check() {
     local design_md="${1:-}" repo_root="${2:-}"
     local spec_id rc=0
+    # #2508: every SPEC's test files, found by tag once.
+    local -A _acc_files=()
+    acceptance_spec_files_v _acc_files "$design_md" "${repo_root:-}"
     while IFS= read -r spec_id; do
         [[ -z "$spec_id" ]] && continue
         case "$(acceptance_spec_status "$design_md" "$spec_id")" in
             done|no-code) continue ;;
         esac
-        if ! acceptance_coverage_spec_tagged "$design_md" "$repo_root" "$spec_id"; then
+        if [[ -z "${_acc_files[$spec_id]:-}" ]]; then
             printf 'UNTAGGED %s\n' "$spec_id"
             rc=1
         fi

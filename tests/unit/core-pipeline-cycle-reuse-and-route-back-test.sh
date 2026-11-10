@@ -28,7 +28,7 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
-print_test_header "build_test_cycle: reuse on an unchanged tree, re-verify a non-reproduction, stop on a denied scope (#2170 #2183 #2178)"
+print_test_header "build_test_cycle: reuse on an unchanged tree, re-verify a non-reproduction (#2170 #2183)"
 setup_test_env "cycle-reuse-route-back"
 
 # shellcheck source=../lib/cycle-stall-break-fixture.sh
@@ -86,21 +86,9 @@ fi
 _BUILD_NOT_REPRODUCED=""
 _TEST_VERDICT="pass"; _AG_VERDICT="pass"
 
-# ─── SPEC-6 (#2178, #2271): a build blocked on scope ends this loop at once ─
-# Run 35674168348 ended `blocked_on_scope`: the builder needed files the
-# contract denies. Grinding cannot help, so the loop ends after that round; the
-# outer loop (delivery_loop) then goes round from design, which owns the scope.
-print_test_section "SPEC-6: a denied scope request ends the build loop after one round"
-_BUILD_SCOPE_REQUEST='{"files":[{"path":"tests/unit/other-test.sh","category":"collateral_tests","evidence":"","reason":"named in test feedback"}]}'
-_GATE_VERDICT="fail"
-_run_cycle "scope-rb"
-assert_eq "[SPEC-6] the loop ends blocked_on_scope (rc=1, outcome interrupted; was rc=7)" \
-    "1 interrupted" "$_RUN_RC ${_CYCLE_LAST_OUTCOME:-unset}"
-assert_eq "[SPEC-6] after ONE iteration — no grinding" "1" "${_CYCLE_LAST_ITERATIONS:-}"
-assert_eq "[SPEC-6] …with its reason" "blocked_on_scope" "${_CYCLE_LAST_TERMINATED_REASON:-}"
-assert_eq "[SPEC-6] the denial itself is still recorded" "1" \
-    "$(grep -c '"cycle.scope.denied"' "$ZBUILD_EVENTS_JSONL" || true)"
-_BUILD_SCOPE_REQUEST=""
+# SPEC-6 (#2178: a denied scope request ended the loop blocked_on_scope) is
+# retired with the scope request itself (#2508, ADR-030 §8): build has no file
+# list, so there is nothing to deny.
 
 cleanup_test_env
 print_test_results

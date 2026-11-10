@@ -33,8 +33,7 @@ The spec is organized as the original was, with deltas called out.
 **A.6 — Design stage migration (issue #754):**
 
 - `stage_design` (`legacy-DoNotUse/scripts/lib/pipeline-stages-intake.sh:1004`) → `plugins/agent/design/`
-- `_extract_scope_from_design` (`legacy-DoNotUse/scripts/lib/pipeline-stages.sh:38-71`) → `plugins/agent/design/plugin.sh` + `plugins/agent/build/plugin.sh`
-- Scope manifest as fenced markdown in design.md is now the primary authoritative scope source for the build stage (with plan.json as fallback). See `plugins/agent/design/manifest.yaml`.
+- `_extract_scope_from_design` (`legacy-DoNotUse/scripts/lib/pipeline-stages.sh:38-71`) → `plugins/agent/design/plugin.sh` + `plugins/agent/build/plugin.sh` — retired by #2508 (ADR-030 §8, ADR-069 §11): design names no files, and build may change any file outside the test folders.
 
 **New stages (zBuild-only, not carried from legacy):**
 
@@ -53,7 +52,7 @@ The original spec listed 11 items here. After re-verification, items split into 
 3. **Skill registry success-rate self-improvement** (`legacy-DoNotUse/scripts/lib/skill-memory.sh:144-176`, `legacy-DoNotUse/scripts/lib/pipeline-state.sh:325/608`) — verified: records successes/failures, sorts by success rate at `legacy-DoNotUse/scripts/lib/skill-memory.sh:173`, recommendations consumed at `legacy-DoNotUse/scripts/sw-pipeline.sh:1703` to steer retries. Real closed loop.
 4. **Two-phase complexity** (initial LLM + post-build reassessment, `legacy-DoNotUse/scripts/sw-intelligence.sh:533`, `legacy-DoNotUse/scripts/lib/pipeline-intelligence.sh:1238`) — carry forward.
 5. **Vitals composite as circuit-breaker input** — `legacy-DoNotUse/scripts/lib/loop-convergence.sh:101-132` (`check_circuit_breaker`) reads `pipeline_compute_vitals()` JSON at `:108`, branches on `verdict == "abort"` at `:111` to trip the breaker. This is real control, not just telemetry. Weights at `legacy-DoNotUse/scripts/lib/sw-pipeline-vitals.sh:56-59` are env-tunable but static defaults. Carry forward as core; treat weights as configuration, not learned parameters.
-6. **Scope manifest as fenced markdown in design.md** (`legacy-DoNotUse/scripts/lib/pipeline-stages.sh:42`) — artifact-as-contract pattern; carry forward.
+6. **Scope manifest as fenced markdown in design.md** (`legacy-DoNotUse/scripts/lib/pipeline-stages.sh:42`) — artifact-as-contract pattern. Retired by #2508: a list design guessed before any code or test existed was wrong often enough to end runs (#1805), so design names no files and build's only limit is the test folders (ADR-030 §8).
 7. **Three-tier memory recall cascade** (`legacy-DoNotUse/scripts/lib/pipeline-stages-build.sh:209`, `legacy-DoNotUse/scripts/lib/ruflo-adapter.sh:2383/2429/2443`) — goal-scoped → issue-scoped → repo-scoped. Verified plumbed. Legacy native memory has no embeddings (`legacy-DoNotUse/scripts/sw-memory.sh:197-206`, `_has_embeddings` returns false), but `legacy-DoNotUse/scripts/lib/ruflo-adapter.sh:2376-2440` provides HNSW vector recall via the ruflo MCP layer under per-repo / per-issue namespaces (legacy uses `shipwright-repo-{hash}` / `shipwright-{hash}-{ISSUE_NUMBER}`; zBuild will use its own `zbuild-repo-{hash}` / `zbuild-{hash}-{ISSUE_NUMBER}` namespaces to avoid cross-talk). Carry forward as side-service with the existing two-tier (native TF-IDF + ruflo HNSW) backing.
 8. **Adaptive cycle limits with convergence/divergence/plateau detection** (`legacy-DoNotUse/scripts/lib/pipeline-intelligence.sh:351/1604`) — carry forward; plateau predicate is already a pure testable function.
 9. **Cost ledger + baselines feeding routing** (`legacy-DoNotUse/scripts/sw-cost.sh`, `lib/cost/*`) — carry forward as side service; `--render-plain` markdown output is a keeper.
@@ -159,7 +158,7 @@ Still add golden-file diffing as a new capability (confirmed zero golden tests i
 | "Vitals composite" | Core engine subsystem (not "side service"); already wired into circuit breaker at `legacy-DoNotUse/scripts/lib/loop-convergence.sh:111`. |
 | "Memory recall (3-tier)" | Side service with two-backend split: native TF-IDF (`legacy-DoNotUse/scripts/sw-memory.sh`) + ruflo HNSW (`legacy-DoNotUse/scripts/lib/ruflo-adapter.sh:2376-2440`). |
 | "UCB1 + SPRT model router" | UCB1 + Thompson router (SPRT does not exist; see Section L wishlist). |
-| "Scope manifest as fenced markdown in design.md" (`legacy-DoNotUse/scripts/lib/pipeline-stages.sh:42`) | `plugins/agent/design/` — design stage produces design.md with ```scope block; build stage reads it as authoritative scope source (plan.json fallback). Migrated in issue #754. |
+| "Scope manifest as fenced markdown in design.md" (`legacy-DoNotUse/scripts/lib/pipeline-stages.sh:42`) | Retired by #2508 (ADR-030 §8, ADR-069 §11): design names no files; build may change any file outside the test folders. Was migrated in issue #754. |
 | "JSON corruption recovery (`legacy-DoNotUse/scripts/lib/helpers.sh:179`, `validate_json`)" | `core/state/atomic.sh` (`read_state`, `_zbuild_lsu_validate_and_copy`) + `scripts/lib/helpers.sh` (`validate_json` primitive); wired into every state read as of issue #38. |
 | "Scope redaction" | Single chokepoint helper (`_apply_scope_redaction`) replacing 9 direct call sites; core engine I/O wrapper. |
 | "Multi-tier locking" | Core engine for in-process / per-host; cross-machine claim mechanism is a decision point (Section M). |

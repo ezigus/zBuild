@@ -90,8 +90,6 @@ _mk_repo() {   # <name> <head-mark ✓|✗> → path  (the gate judges tagged �
     cat > "$repo/design.md" <<'EOF2'
 ```acceptance
 SPEC-1[change]: the implementation file exists
-TESTFILES:
-tests/feature-test.sh
 ```
 EOF2
     printf '%s' "$repo"
@@ -130,7 +128,10 @@ assert_eq "[SPEC-3] no design → precondition_unmet pass" "pass|precondition_un
 assert_eq "[SPEC-3] …reads as pass with no violation" "pass|0" "$(_read)|$(_violations)"
 assert_eq "[SPEC-3] …severity none" "none" "$(_field severity)"
 REPO_BAD="$(_mk_repo "gate-v2-bad" "✓")"
-printf '```acceptance\nthis is not a SPEC line\n```\n' > "$REPO_BAD/design.md"
+# #2508: a block needs no TESTFILES: line any more, so the block that cannot be
+# read is one whose fence line is not the block's: the fence is there, the
+# reader finds no block.
+printf '```acceptance (broken fence)\nSPEC-1[code]: x\n```\n' > "$REPO_BAD/design.md"
 set +e; _run_gate "$REPO_BAD"; set -e
 assert_eq "[SPEC-3] malformed block → fail/malformed_acceptance_block" "fail|malformed_acceptance_block" "$(_field outcome)|$(_field reason)"
 assert_eq "[SPEC-3] …no violation; severity terminal" "0|terminal" "$(_violations)|$(_field severity)"

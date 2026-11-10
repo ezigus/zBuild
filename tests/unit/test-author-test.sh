@@ -104,9 +104,6 @@ _setup() {
 SPEC-1[change]: plugin-specific fields live under data:{} not at the top level
 SPEC-2[no-code]: the top-level result keys are unchanged
 SPEC-3[done]: results already carry a schema_version evidence: tests/acc-test.sh
-TESTFILES:
-SPEC-1: tests/acc-test.sh
-SPEC-2: tests/acc-test.sh
 WIRING: scripts/thing.sh
 ```
 EOF
@@ -156,7 +153,6 @@ cat > "$_A/design.md" <<'EOF'
 # Design
 ```acceptance
 SPEC-1[done]: results already carry a schema_version evidence: tests/acc-test.sh
-TESTFILES:
 WIRING: none
 ```
 EOF

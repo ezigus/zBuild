@@ -126,15 +126,16 @@ print_test_section "SPEC-5: the authored copy is kept, and the build restores a 
 # shellcheck disable=SC1091
 source "$REPO_ROOT/plugins/agent/test-author/lib/record.sh" >/dev/null 2>&1 || true
 REPO5="$TEST_TEMP_DIR/repo5"; ART5="$TEST_TEMP_DIR/art5"; mkdir -p "$REPO5/tests" "$ART5"
-printf '```acceptance\nSPEC-1[change]: x\nTESTFILES:\nSPEC-1: tests/a-test.sh\n```\n' > "$ART5/design.md"
-printf '#!/usr/bin/env bash\n# authored\nexit 0\n' > "$REPO5/tests/a-test.sh"
+printf '```acceptance\nSPEC-1[change]: x\n```\n' > "$ART5/design.md"
+# #2508: the record finds the testfile by its tag, in the test folders of a repo.
+printf '#!/usr/bin/env bash\n# authored\n# [SPEC-1] x\nexit 0\n' > "$REPO5/tests/a-test.sh"
+( cd "$REPO5" && git init -q . 2>/dev/null )
 assertion_integrity_record "$ART5" "$REPO5" 2>/dev/null || true
 assert_file_exists "[SPEC-5] the record keeps a copy of the authored testfile" "$ART5/authored-testfiles/tests/a-test.sh"
 printf '#!/usr/bin/env bash\n# MODIFIED BY BUILD\nexit 0\n' > "$REPO5/tests/a-test.sh"
 export ZBUILD_REPO_ROOT="$REPO5"
 # #2372: test compares the testfiles against the fingerprints an earlier
 # output carries (test-author's data.testfiles), and says what happens next.
-( cd "$REPO5" && git init -q . 2>/dev/null )
 jq -nc '{result_contract:3, outcome:"pass", reason:"x", data:{testfiles:{"tests/a-test.sh":"0000000000000000000000000000000000000000"}}}' > "$ART5/author-result.json"
 jq -n --arg p "$ART5/author-result.json" '{inputs:{author_result:$p}}' > "$ART5/idx.json"
 _ai="$( source "$REPO_ROOT/plugins/tool/test/plugin.sh" >/dev/null 2>&1

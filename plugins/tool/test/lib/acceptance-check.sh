@@ -11,7 +11,7 @@
 # Level 0: a change that edits production code needs ≥1 [code] requirement
 #          (ADR-069 §5, #2304) — otherwise it fails as unclaimed_code.
 # Level 1: every SPEC-n id in the design ```acceptance block must have ≥1
-#          [SPEC-n]-tagged assertion across the declared TESTFILES.
+#          [SPEC-n]-tagged assertion in the test folders (#2508).
 # Level 2: each code SPEC-n's tagged test must fail at the merge-base baseline
 #          and pass at HEAD (negative control — rejects tautological "green but
 #          inert" tests, the #844 defect class). Done and no-code SPECs are not
@@ -103,7 +103,7 @@ acceptance_gate_run() {
         _timing_log="$(jq -r '.inputs.test_timing // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
     fi
     export ZBUILD_NEGCTL_TIMING_LOG="$_timing_log"
-    # One event per declared TESTFILE naming the bound each of its runs gets
+    # One event per acceptance test file naming the bound each of its runs gets
     # and where it came from — how a run proves the measured path fired.
     local _ft_tf _ft_s
     while IFS= read -r _ft_tf; do
@@ -162,9 +162,9 @@ acceptance_gate_run() {
     fi
 
     # ── Precondition 3: block declares a contract to check ───────────────────
-    # An empty/placeholder block (no SPEC ids AND no TESTFILES) is not adopted
-    # methodology → no-op. A block that declares SPEC ids but omits TESTFILES is
-    # a genuine misuse and falls through to Level 1 (untagged_spec fail) — teeth
+    # An empty/placeholder block (no SPEC ids AND no tagged test) is not adopted
+    # methodology → no-op. A block that declares SPEC ids with no test holding
+    # their tags falls through to Level 1 (untagged_spec fail) — teeth
     # preserved, NOT a no-op.
     if [[ -z "$(acceptance_list_spec_ids "$design_md" 2>/dev/null || true)" \
         && -z "$(acceptance_list_testfiles "$design_md" 2>/dev/null || true)" ]]; then
@@ -226,6 +226,9 @@ acceptance_gate_run() {
     # ── Level 2: baseline negative-control ───────────────────────────────────
     # #1220: runs REGARDLESS of Level 1's outcome so every violation class (e.g.
     # a tautological [code] SPEC) is reported in the SAME pass — no whack-a-mole.
+    # #2508: each SPEC's test files, found by tag once, for the readout below.
+    local -A _ag_files=()
+    acceptance_spec_files_v _ag_files "$design_md" "$repo_root"
     {
         while IFS= read -r line; do
             [[ -z "$line" ]] && continue
@@ -237,9 +240,7 @@ acceptance_gate_run() {
                 local _e_desc _e_label _e_tf_line
                 _e_desc="$(acceptance_spec_desc "$design_md" "$_e_eid")"
                 local -a _e_tf=()
-                while IFS= read -r _e_tf_line; do
-                    [[ -n "$_e_tf_line" ]] && _e_tf+=("$_e_tf_line")
-                done < <(acceptance_list_testfiles_for_spec "$design_md" "$_e_eid")
+                for _e_tf_line in ${_ag_files[$_e_eid]:-}; do _e_tf+=("$_e_tf_line"); done
                 [[ -z "$_e_desc" ]] && _e_desc="<no description>"
                 _e_label="$(acceptance_find_assertion_label "$repo_root" "$_e_eid" "${_e_tf[@]+"${_e_tf[@]}"}")"
                 [[ -z "$_e_label" ]] && _e_label="<none found>"
@@ -446,7 +447,7 @@ acceptance_gate_run() {
             summary_lines=("$reason_msg")
         fi
     fi
-    # #2124: ADR-055 §9 — written on EVERY path. A block with TESTFILES and no
+    # #2124: ADR-055 §9 — written on EVERY path. A block with no
     # SPEC ids yields no per-check line, and a `summary: true` output is not
     # cleared per iteration, so the previous iteration's file shipped as
     # this one's.

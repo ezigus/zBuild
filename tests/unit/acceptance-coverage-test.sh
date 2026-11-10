@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Tests: ADR-036 (#922) — Level-1 SPEC→assertion tag-presence coverage gate.
+# #2508 (ADR-069 §11): design names no test files — a SPEC is covered when a
+# file in the repository's test folders holds its tag. The designs below name
+# none; the root is a git repository, as the finder lists its files with git.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,13 +18,14 @@ source "$REPO_ROOT/scripts/lib/acceptance-coverage.sh"
 print_test_header "acceptance coverage — Level-1 SPEC tag-presence (#922)"
 setup_test_env "acceptance-coverage"
 
-ROOT="$TEST_TEMP_DIR"          # acts as repo_root for relative TESTFILES
+ROOT="$TEST_TEMP_DIR/repo"     # the repository whose test folders are searched
 mkdir -p "$ROOT/tests"
+git -C "$ROOT" init -q
 
 _design() {  # _design <acceptance-body>  → writes $ROOT/design.md, echoes path
     local body="$1"
     {
-        printf '# Design\n\n## Decision\nd.\n\n```scope\nfoo.sh\n```\n\n'
+        printf '# Design\n\n## Decision\nd.\n\n'
         printf '```acceptance\n%s\n```\n' "$body"
     } > "$ROOT/design.md"
     printf '%s' "$ROOT/design.md"
@@ -31,10 +35,7 @@ _design() {  # _design <acceptance-body>  → writes $ROOT/design.md, echoes pat
 printf 'assert_eq "[SPEC-1] foo" 1 1\n'  > "$ROOT/tests/a-test.sh"
 printf 'assert_eq "[SPEC-2] bar" 1 1\n'  > "$ROOT/tests/b-test.sh"
 dm="$(_design "SPEC-1: foo works
-SPEC-2: bar works
-TESTFILES:
-tests/a-test.sh
-tests/b-test.sh")"
+SPEC-2: bar works")"
 set +e; out="$(acceptance_coverage_check "$dm" "$ROOT")"; rc=$?; set -e
 assert_eq "C1: all-tagged → rc=0" "0" "$rc"
 assert_eq "C1: no UNTAGGED lines" "" "$out"
@@ -43,40 +44,34 @@ assert_eq "C1: no UNTAGGED lines" "" "$out"
 printf 'assert_eq "[SPEC-1] foo" 1 1\n'  > "$ROOT/tests/a-test.sh"
 printf 'assert_eq "unrelated label" 1 1\n' > "$ROOT/tests/b-test.sh"
 dm="$(_design "SPEC-1: foo works
-SPEC-2: bar works
-TESTFILES:
-tests/a-test.sh
-tests/b-test.sh")"
+SPEC-2: bar works")"
 set +e; out="$(acceptance_coverage_check "$dm" "$ROOT")"; rc=$?; set -e
 assert_eq "C2: one untagged → rc=1" "1" "$rc"
 assert_eq "C2: names the untagged spec" "UNTAGGED SPEC-2" "$out"
 
 # ── C3: no acceptance block → no SPEC-n ids → no-op pass ──────────────────────
-{ printf '# Design\n\n## Decision\nd.\n\n```scope\nfoo.sh\n```\n'; } > "$ROOT/design.md"
+{ printf '# Design\n\n## Decision\nd.\n'; } > "$ROOT/design.md"
 set +e; out="$(acceptance_coverage_check "$ROOT/design.md" "$ROOT")"; rc=$?; set -e
 assert_eq "C3: no block → rc=0" "0" "$rc"
 assert_eq "C3: no UNTAGGED lines" "" "$out"
 
-# ── C4: SPECs declared but zero TESTFILES → every SPEC untagged ───────────────
-dm="$(_design "SPEC-1: foo works
-TESTFILES:")"
+# ── C4: a SPEC no test file holds the tag of → untagged ───────────────────────
+rm -f "$ROOT/tests/a-test.sh" "$ROOT/tests/b-test.sh"
+dm="$(_design "SPEC-1: foo works")"
 set +e; out="$(acceptance_coverage_check "$dm" "$ROOT")"; rc=$?; set -e
-assert_eq "C4: SPEC with no TESTFILES → rc=1" "1" "$rc"
+assert_eq "C4: SPEC no test holds the tag of → rc=1" "1" "$rc"
 assert_eq "C4: names the untagged spec" "UNTAGGED SPEC-1" "$out"
 
-# ── C5: TESTFILE listed but missing on disk → untagged ────────────────────────
-rm -f "$ROOT/tests/missing-test.sh"
-dm="$(_design "SPEC-1: foo works
-TESTFILES:
-tests/missing-test.sh")"
+# ── C5: a tagged file outside the test folders does not cover it ──────────────
+printf '[SPEC-1] foo\n' > "$ROOT/notes.md"
+dm="$(_design "SPEC-1: foo works")"
 set +e; out="$(acceptance_coverage_check "$dm" "$ROOT")"; rc=$?; set -e
-assert_eq "C5: missing TESTFILE on disk → rc=1" "1" "$rc"
+rm -f "$ROOT/notes.md"
+assert_eq "C5: a tag outside the test folders → rc=1" "1" "$rc"
 assert_eq "C5: names the untagged spec" "UNTAGGED SPEC-1" "$out"
 
 # ── C6: legacy bare 'SPEC:' lines carry no id → not gated (no-op pass) ─────────
-dm="$(_design "SPEC: legacy untagged claim
-TESTFILES:
-tests/a-test.sh")"
+dm="$(_design "SPEC: legacy untagged claim")"
 set +e; out="$(acceptance_coverage_check "$dm" "$ROOT")"; rc=$?; set -e
 assert_eq "C6: bare SPEC: (no id) → rc=0 (not gated)" "0" "$rc"
 
@@ -84,17 +79,13 @@ assert_eq "C6: bare SPEC: (no id) → rc=0 (not gated)" "0" "$rc"
 # Neither is run against the old code, so neither needs a [SPEC-n]-tagged test.
 printf 'assert_eq "unrelated label" 1 1\n' > "$ROOT/tests/g-test.sh"
 dm="$(_design "SPEC-1[done]: already there evidence: tests/g-test.sh
-SPEC-2[no-code]: the docs say so
-TESTFILES:
-tests/g-test.sh")"
+SPEC-2[no-code]: the docs say so")"
 set +e; out="$(acceptance_coverage_check "$dm" "$ROOT")"; rc=$?; set -e
 assert_eq "C7: done and no-code only, no tagged test → rc=0 (exempt)" "0" "$rc"
 assert_eq "C7: no UNTAGGED lines for a done or no-code SPEC" "" "$out"
 
 # ── C8: a code SPEC ([change] is read as [code]) still REQUIRES a tagged test ─
-dm="$(_design "SPEC-1[change]: new behavior
-TESTFILES:
-tests/g-test.sh")"
+dm="$(_design "SPEC-1[change]: new behavior")"
 set +e; out="$(acceptance_coverage_check "$dm" "$ROOT")"; rc=$?; set -e
 assert_eq "C8: [change] with no tagged test → rc=1 (no regression)" "1" "$rc"
 assert_eq "C8: names the untagged change spec" "UNTAGGED SPEC-1" "$out"
@@ -103,9 +94,7 @@ assert_eq "C8: names the untagged change spec" "UNTAGGED SPEC-1" "$out"
 printf 'assert_eq "[SPEC-2] tagged" 1 1\n' > "$ROOT/tests/c-test.sh"
 dm="$(_design "SPEC-1[done]: an existing behaviour evidence: tests/c-test.sh
 SPEC-2[code]: new behavior with a tagged test
-SPEC-3[code]: new behavior WITHOUT a tagged test
-TESTFILES:
-tests/c-test.sh")"
+SPEC-3[code]: new behavior WITHOUT a tagged test")"
 set +e; out="$(acceptance_coverage_check "$dm" "$ROOT")"; rc=$?; set -e
 assert_eq "C9: mixed → rc=1 (only the untagged change flagged)" "1" "$rc"
 assert_eq "C9: flags only SPEC-3, not the done SPEC-1" "UNTAGGED SPEC-3" "$out"
@@ -194,16 +183,16 @@ set -e
 assert_eq "[SPEC-2] C16: falls back to the tagged line when no assertion exists" \
     "# [SPEC-1] fixture only, no assertion here" "$c16_label"
 
-# ── #2134: an early return must not leave the TESTFILES producer writing into a
+# ── #2134: an early return must not leave a producer writing into a
 # closed pipe. Under the daemon SIGPIPE is ignored, so every remaining line
 # became "printf: write error: Broken pipe" on the run's stderr (16× on run
 # 35355623656). Larger than the pipe buffer so the producer is guaranteed to
 # be mid-write when the reader used to return.
 print_test_section "#2134: the producer is drained before the early return"
-_bp_repo="$TEST_TEMP_DIR/bp"; mkdir -p "$_bp_repo/tests"
+_bp_repo="$TEST_TEMP_DIR/bp"; mkdir -p "$_bp_repo/tests"; git -C "$_bp_repo" init -q
 printf 'echo "✓ [SPEC-1] ok"\n' > "$_bp_repo/tests/x-test.sh"
 { printf '```acceptance\n'; for i in $(seq 1 4000); do printf 'SPEC-%s[change]: thing %s\n' "$i" "$i"; done
-  printf 'TESTFILES:\n'; for i in $(seq 1 4000); do printf 'SPEC-%s: tests/x-test.sh\n' "$i"; done; printf '```\n'; } > "$_bp_repo/design.md"
+  printf '```\n'; } > "$_bp_repo/design.md"
 _bp_err="$TEST_TEMP_DIR/bp.err"
 ( trap '' PIPE; acceptance_coverage_spec_tagged "$_bp_repo/design.md" "$_bp_repo" SPEC-1 2>"$_bp_err" ); _bp_rc=$?
 assert_eq "[#2134] the tagged SPEC is still found" "0" "$_bp_rc"

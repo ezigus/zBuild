@@ -21,7 +21,7 @@ _ai_digest_of() {
 }
 
 # ─── assertion_integrity_record <artifact_dir> <repo_root> ───────────────────
-# Records the digest of every declared TESTFILE. Called by the stage that
+# Records the digest of every acceptance test file (#2508: found by its tag). Called by the stage that
 # AUTHORS the assertions, immediately after it writes them — the recorded state
 # is by definition the author's, so any later difference is someone else's edit.
 # The acceptance contract is found among the earlier outputs by what it is (#2364).
@@ -43,7 +43,7 @@ assertion_integrity_record() {
             mkdir -p "$art/$_AI_COPIES/$(dirname "$tf")" 2>/dev/null || true
             cp -p "$repo/$tf" "$art/$_AI_COPIES/$tf" 2>/dev/null || true
         fi
-    done < <(acceptance_list_testfiles "$design" 2>/dev/null || true)
+    done < <(acceptance_list_testfiles "$design" "$repo" 2>/dev/null || true)
     [[ -n "$out" ]] || return 0
     # #2180: record WHICH stage authored these files. The engine resolves the
     # owner of a finding about one of them from this line, so a criticism of an

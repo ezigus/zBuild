@@ -488,6 +488,12 @@ complete event's verdict), R4 (every element passed → the group completes); `p
 B1–B3; `tests/unit/pr-delivery-v2-result-test.sh` SPEC-3; `tests/integration/merge-policy-auto-unless-flagged-test.sh`
 SPEC-1–SPEC-6; `tests/unit/retired-impact-review-report-inputs-test.sh` RT2.
 
+### Amendment (2026-11-09, #2508) — the PR body shows the questions design could not settle
+
+The PR body (#2368 part 2) also shows each question design wrote and could not settle, with the assumption it went on with (`UNCLEAR:` lines, ADR-069, amended 2026-11-09), under "Questions design could not settle". The reviewer decides whether the assumption was right before the change merges. pr-open finds the design among the earlier outputs by what it contains (#2364) and reads it with the reader the run-status comment uses (ADR-064, amended 2026-11-09). With none, there is no such section.
+
+Enforced by: `tests/unit/unclear-questions-shown-test.sh` Q4 (the PR body shows each question; pr-open finds the design), Q5 (with none, no section).
+
 ### Amendment (2026-10-15, #2368 part 3) — the template defines a lens's fail rule
 
 When a lens fails was written into review-lens's code ("a high or critical problem the change

@@ -1,6 +1,6 @@
 # ADR-038 — Adversarial multi-lens review report (evidence-fed, advisory)
 
-**Status:** Accepted (2026-06-19)
+**Status:** Accepted (2026-06-19); amended 2026-11-09 (#2508: no planned scope is shown to a lens — design writes none)
 **Related** — dispositions below are **PLANNED** (the map lives in ADR-037 §6, executed in I13 / #979); **this PR edits no existing ADR**:
 - peer: ADR-037 (objective gates vs. semantic judgment); EPIC #966
 - supersede-planned: ADR-022, ADR-026
@@ -171,7 +171,9 @@ build is given. The `scope_manifest` input is not shown to a lens. A design
 with no scope block gives no planned-scope section.
 
 Verification: `plugins/agent/review-lens/tests/review-lens-context-unit-test.sh`
-(C12; C3 now reads the scope block too).
+(C12, C3 — since #2508 they assert no planned-scope section is shown).
+
+**Amended 2026-11-09 (#2508):** design writes no scope block (ADR-030 §8, ADR-069 §11), so a lens is shown no planned-scope section. What build changed is held to the issue by issue-acceptance's reverse question (ADR-072 §3).
 
 ## Amendment (2026-10-05): every lens compares the change with the issue (#2307)
 

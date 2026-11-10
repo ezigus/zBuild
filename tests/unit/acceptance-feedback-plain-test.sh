@@ -63,10 +63,12 @@ cat > "$design_md" <<'EOF'
 ```acceptance
 SPEC-5[code]: the lint flags an unchecked write
 WIRING: none
-TESTFILES:
-SPEC-5: tests/unit/x-test.sh
 ```
 EOF
+# #2508: the change's test file is the test-folder file holding the SPEC's tag.
+_f5_repo="$TEST_TEMP_DIR/f5-repo"; mkdir -p "$_f5_repo/tests/unit"; git -C "$_f5_repo" init -q
+printf 'assert "%s lint"\n' "$(acceptance_spec_tag SPEC-5)" > "$_f5_repo/tests/unit/x-test.sh"
+export ZBUILD_REPO_ROOT="$_f5_repo"
 printf 'file 210229 /tmp/zbuild-test-stage.X/tests/unit/x-test.sh\n' > "$TEST_TEMP_DIR/timing.log"
 export ZBUILD_NEGCTL_TIMING_LOG="$TEST_TEMP_DIR/timing.log" ZBUILD_NEGCTL_TIMEOUT=60
 _slow="$(_ag_build_reason negctl_error:timeout:SPEC-5 reachability_error:timeout:lib/c.sh 2>/dev/null)"
@@ -84,7 +86,7 @@ assert_contains "[F5] ...and says what to change" "$_slow" "faster"
 assert_contains "[F6] putting a file back that timed out names it too" "$_slow" "lib/c.sh"
 _infra="$(_ag_build_reason negctl_error:worktree_failed 2>/dev/null)"
 assert_contains "[F7] an error that is not a timeout is still the pipeline's" "$_infra" "problem in the pipeline"
-unset design_md ZBUILD_NEGCTL_TIMING_LOG ZBUILD_NEGCTL_TIMEOUT
+unset design_md ZBUILD_NEGCTL_TIMING_LOG ZBUILD_NEGCTL_TIMEOUT ZBUILD_REPO_ROOT
 
 cleanup_test_env
 print_test_results

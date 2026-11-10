@@ -81,6 +81,19 @@ open_items_render() {
           + "\n   - What would settle it: " + $settle' <<< "$items" 2>/dev/null || true
 }
 
+# The questions design could not settle (#2508, ADR-064 §4): read from the
+# design the design stage writes, artifacts/design.md (its manifest's path).
+# shellcheck source=unclear.sh
+source "${BASH_SOURCE[0]%/*}/unclear.sh"
+# open_items_questions <state_dir> — the questions section, or nothing.
+open_items_questions() {
+    zb_unclear_markdown "$1/artifacts/design.md"
+}
+# open_items_questions_v <var> <state_dir> — the same, with no fork.
+open_items_questions_v() {
+    zb_unclear_markdown_v "$1" "$2/artifacts/design.md"
+}
+
 # open_items_markdown <state_dir> — the list, or nothing when no item is open.
 open_items_markdown() {
     local items; items="$(open_items_json "$1")"
@@ -108,8 +121,6 @@ run_end_words() {
             printf 'stopped: a check that must pass failed%s' "$with" ;;
         blocked|no_committed_changes)
             printf 'stopped: the work could not go further%s' "$with" ;;
-        blocked_on_scope)
-            printf 'stopped: the change needs files it was not allowed to edit%s' "$with" ;;
         cycle_abort)
             printf 'stopped: a check asked for the run to stop%s' "$with" ;;
         timed_out)
@@ -181,8 +192,11 @@ run_completion_body() {
 # completion comment). Prints nothing when no item is open; a redactor failure
 # prints nothing too — never post unredacted.
 open_items_outbound() {
-    local sd="$1" md manifest root
+    local sd="$1" md q manifest root
     md="$(open_items_markdown "$sd")"
+    # #2508: and the questions design could not settle, cleaned the same way.
+    q="$(open_items_questions "$sd")"
+    [[ -n "$q" ]] && md+="${md:+$'\n\n'}${q}"
     [[ -n "$md" ]] || return 0
     manifest="$sd/scope-manifest.md"
     if [[ ! -s "$manifest" ]]; then printf '%s\n' "$md"; return 0; fi
