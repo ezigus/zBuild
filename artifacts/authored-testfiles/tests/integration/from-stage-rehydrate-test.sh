@@ -20,8 +20,8 @@ RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
 
 # shellcheck source=../../scripts/lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
-# shellcheck source=../../scripts/lib/test-helpers.sh
-source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../tests/lib/test-helpers.sh
+source "$REPO_ROOT/tests/lib/test-helpers.sh"
 # shellcheck source=../../core/state/artifact-persist.sh
 source "$REPO_ROOT/core/state/artifact-persist.sh"
 
@@ -742,6 +742,91 @@ if [[ -f "$S10_EVENTS_JSONL" ]]; then
 fi
 assert_eq "[#1805/DSFSTG-3] no stage.skip emitted for verify (stage after --from-stage target must be dispatched, not skipped, in combined --resume --from-stage mode)" \
     "0" "$_s10_verify_skips"
+
+# ── SPEC-4: --from-stage without --resume refuses with diagnostic ─────────────
+# [#1805/DSFSTG-4]: --from-stage <s> without explicit --resume exits 1 with the
+#   diagnostic "--from-stage is only valid with --resume", even when auto-resume
+#   conditions are present (status=interrupted). The guard fires before auto-resume
+#   processes state, so no pipeline.resume event is emitted.
+print_test_section "[#1805/DSFSTG-4] --from-stage without --resume refuses before auto-resume"
+
+# Given — a state file exists with status=interrupted (auto-resume conditions met);
+#   --from-stage is specified on the command line; --resume is NOT given.
+S11_ID="$(zb_test_issue)"
+S11_STATE_DIR="$TEST_TEMP_DIR/s11-state"
+S11_EVENTS_DIR="$TEST_TEMP_DIR/s11-events"
+S11_EVENTS_JSONL="$S11_EVENTS_DIR/events.jsonl"
+S11_STATE_FILE="$S11_STATE_DIR/pipeline-state.json"
+mkdir -p "$S11_STATE_DIR/artifacts" "$S11_EVENTS_DIR"
+
+# State with status=interrupted so auto-resume would otherwise kick in.
+jq -n \
+    --arg run_id "s11-fs4-1805" \
+    --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --argjson issue "$S11_ID" \
+    '{
+        schema_version: 1,
+        run_id: $run_id,
+        issue: $issue,
+        stage_statuses: {intake: "complete", cyc: "pending"},
+        current_iteration: 0,
+        self_heal_count: {},
+        scope_manifest_hash: "",
+        cost_ledger_pointer: 0,
+        claim_lease_id: "",
+        plugin_state: {},
+        status: "interrupted",
+        updated_at: $now
+    }' > "$S11_STATE_FILE"
+
+# Reuse S3_WORK_REPO (artifact-snapshot-coverage template, which has the cyc
+# stage). S3_PLUGINS_ROOT is also reused (intake, build, cycled mocks present).
+
+# When — the runner is invoked with --from-stage but no --resume.
+set +e
+( cd "$S3_WORK_REPO" && env \
+    ZBUILD_CYCLES_ENABLED=1 \
+    ZBUILD_PLUGINS_ROOT="$S3_PLUGINS_ROOT" \
+    ZBUILD_STATE_DIR="$S11_STATE_DIR" \
+    ZBUILD_STATE_FILE="$S11_STATE_FILE" \
+    ZBUILD_EVENTS_DIR="$S11_EVENTS_DIR" \
+    ZBUILD_EVENTS_JSONL="$S11_EVENTS_JSONL" \
+    ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
+    ZBUILD_CONTRACT_VALIDATOR=warn \
+    ZBUILD_VISION_GATE=off \
+    PATH="$PATH" HOME="$HOME" \
+    bash "$RUNNER" --template artifact-snapshot-coverage \
+        --from-stage cyc --issue "$S11_ID" ) \
+    >"$TEST_TEMP_DIR/s11-stdout.txt" 2>"$TEST_TEMP_DIR/s11-stderr.txt"
+_s11_rc=$?
+set -e
+
+# Then — the runner exits 1.
+# Before change: guard absent → runner auto-resumes (exits 0) or fails for a
+#   different reason → exit code != 1 → assertion FAILS.
+# After change: guard fires → runner exits 1 → PASSES.
+assert_eq "[#1805/DSFSTG-4] --from-stage without --resume exits 1" \
+    "1" "$_s11_rc"
+
+# Then — stderr contains the diagnostic "--from-stage is only valid with --resume".
+# Before change: guard absent → diagnostic not emitted → FAILS.
+# After change: guard emits diagnostic → PASSES.
+_s11_stderr="$(cat "$TEST_TEMP_DIR/s11-stderr.txt" 2>/dev/null || true)"
+assert_contains \
+    "[#1805/DSFSTG-4] stderr contains --from-stage is only valid with --resume" \
+    "$_s11_stderr" "--from-stage is only valid with --resume"
+
+# Then — no pipeline.resume event is emitted (guard fires before auto-resume processes
+#   state, so auto-resume never runs).
+# Before change: auto-resume runs → pipeline.resume emitted → count > 0 → FAILS.
+# After change: guard fires before auto-resume → no pipeline.resume → PASSES.
+_s11_resume_events=0
+if [[ -f "$S11_EVENTS_JSONL" ]]; then
+    _s11_resume_events="$(jq -r 'select(.type=="pipeline.resume") | .type' \
+        "$S11_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_eq "[#1805/DSFSTG-4] no pipeline.resume event emitted (guard fires before auto-resume)" \
+    "0" "$_s11_resume_events"
 
 cleanup_test_env
 print_test_results

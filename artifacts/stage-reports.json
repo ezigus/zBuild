@@ -31,6 +31,7 @@
       "tests/integration/resume-entry-points-test.sh",
       "tests/integration/resume-loop-state-test.sh",
       "tests/integration/resume-rehydrate-test.sh",
+      "tests/unit/descriptive-id-readers-test.sh",
       "tests/unit/hydrate-stage-test.sh"
     ]
   }
