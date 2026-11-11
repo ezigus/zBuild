@@ -132,17 +132,20 @@ The design document MUST include:
 
 3. A ```acceptance block listing what this change must deliver. Each line is
    one requirement: an id, a status, and ONE behaviour someone could observe and test.
-   The id describes the SPEC. Every SPEC id starts with DS, then a code of 3 or 4
-   capital letters or digits, starting with a letter, that says what it is about,
-   a dash, and a number — DSLOOP-1 for a SPEC about loop state. SPECs about the
-   same thing share the code and count up: DSLOOP-1, DSLOOP-2. An id is never one
-   the issue itself writes.
-   An id never changes: a SPEC you keep keeps its id. A new SPEC takes the
-   number one more than the highest its code has ever had, removed ones counted.
-   A SPEC you drop gets its own line in the block, `REMOVED: <id> — <why>`, and
-   that line stays in every later design, so the id is never used again.
-   A design written with the old ids (SPEC-1, or ids that do not start with
-   DS) gives each SPEC a new id once; the old ids need no REMOVED line.
+   The id describes the SPEC: DS, then 3 or 4 capital letters or digits,
+   starting with a letter, that say what it is about, a dash, and a number —
+   DSLOOP-1 for a SPEC about loop state. The id is also the tag its test
+   carries, [DSLOOP-1], so it must be new to the repository:
+   - A new SPEC's number is one more than the highest number already used
+     with the same letters in any test file in the repository. If tests
+     already hold DSLOOP-1 and DSLOOP-3, the new one is DSLOOP-4, and the
+     next is DSLOOP-5.
+   - A SPEC you keep keeps its id.
+   - A SPEC you drop gets a line `REMOVED: <id> — <why>`, kept in every later
+     design, so its id is never used again.
+   - Never use one of the issue's requirement ids as a SPEC id.
+   A design written with old ids (SPEC-1, or ids not starting with DS) gives
+   each SPEC a new id once; the old ids need no REMOVED line.
    A requirement that asks for several things gets one SPEC per thing, each
    naming the same requirement id in covers: — never one SPEC that joins them with "and" or ";".
    Each SPEC is checked against one assertion, so a SPEC that promises two
@@ -169,8 +172,8 @@ The design document MUST include:
    - `DSLOOP-2[no-code]:` — it needs work that changes no behaviour: docs, a
      test, config, or a refactor. Its test must pass after the change; it need not fail before.
    - `DSGARD-1[done]:` — the code from before your change already does it. Name the evidence at the end of the line, after ` evidence: ` —
-     a file by its path from the repository root with an exact piece of its text in double quotes
-     (scripts/x.sh:"run_guard()"), or an existing test file named alone; several separated by spaces.
+     a file by its path from the repository root, then ` | `, then one line of it copied as it is
+     (scripts/x.sh | run_guard()), or an existing test file named alone.
      The text must be in the file on the commit this branch started from: code this work added is not
      done yet, so it is [code]. A [done] SPEC still gets a test: it must pass after the change, and it
      need not fail before — it proves the finished change still does what the old code did.
@@ -178,11 +181,8 @@ The design document MUST include:
 
    You name no files: no test file, and no list of the files the change
    touches. The tests are written after the design, in the repository's test
-   folders, wherever they belong. Each assertion's label carries its
-   requirement's tag, which includes this issue's number — for
-   DSLOOP-1 of this issue:
-   [#1805/DSLOOP-1] — and that tag is how a requirement's test is
-   found. Each [code] assertion is also run against the code from before your
+   folders, wherever they belong, and a requirement's test is found by its
+   tag. Each [code] assertion is also run against the code from before your
    change and must fail there, so write ONE requirement per assertion — then
    each behaviour is checked on its own.
 
@@ -195,7 +195,7 @@ DSLOOP-1[code]: <one new behaviour this change introduces>
   And: <another thing a test can observe>
   Cleanup: <what must be true again after, when the setup or a Then outlives the test>
 DSLOOP-2[no-code]: <docs, a test, config or a refactor that changes no behaviour>
-DSGARD-1[done]: <something the code already does> evidence: scripts/x.sh:"run_guard()"
+DSGARD-1[done]: <something the code already does> evidence: scripts/x.sh | run_guard()
   When: <the action>
   Then: <what the code from before this change already does>
 REMOVED: DSLOOP-3 — <why this SPEC was dropped>
@@ -516,7 +516,7 @@ tests/integration/cycle-member-dispatch-events-test.sh: the DSITER-1 fix in cycl
 
 Refine YOUR LATEST DESIGN.
 
-If Previous work says a [code] requirement's test already passes on the code from before this change, rewrite that requirement so its test fails on the old code and passes after — or, if the code already does it, mark it [done] and name the evidence (a file with an exact piece of its text, or an existing test file) after " evidence: ". The evidence is checked. The tests cannot be changed later in this run, so this is where it is fixed. Check the other acceptance entries against the feedback too, and fix any it shows is wrong.
+If Previous work says a [code] requirement's test already passes on the code from before this change, rewrite that requirement so its test fails on the old code and passes after — or, if the code already does it, mark it [done] and name the evidence (a file and one of its lines, or an existing test file) after " evidence: ". The evidence is checked. The tests cannot be changed later in this run, so this is where it is fixed. Check the other acceptance entries against the feedback too, and fix any it shows is wrong.
 
 If a finding of your design's own check (under Previous work, as design finding <n>) is wrong, do not change the design for it: answer it on its own line in your reply, ANSWER design finding <n>: wrong — <why>. The check judges it again, with your answer.
 
@@ -661,28 +661,18 @@ Outputs:
 - acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
 - acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
 
-### issue-acceptance (verdict: error)
+### issue-acceptance (verdict: fail)
 Outputs:
 - issue_acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-result.json
 - issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
 
 Summary:
-## issue-acceptance — unusable
-
-- the answer could not be used, even when asked again: UNASKED scripts/lib/run-status-text.sh appends an empty code span after the last label to prevent a trailing backtick from opening a new span in some renderers — no requirement in this issue asks for rendering fixes.: its quote is not in scripts/lib/run-status-text.sh: "if [[ -n \"$_out\" ]];  then _rcl=\"$_out${_in}\`\`\";  else _rcl=\"$_in\";  fi"; UNASKED tests/unit/descriptive-id-readers-test.sh updates R8 to test the new empty-code-span output from rsc_code_labels_v — no requirement asks for this rendering-behavior test update.: its quote is not in tests/unit/descriptive-id-readers-test.sh: "assert_eq \"[R8] descriptive and old labels are shown as code\" 'failed \`[#1805/DSFSTG-1]\` and \`\`' \"$_o\""; UNASKED tests/unit/multiline-assertion-tag-test.sh replaces "[#1805/SPEC-3]" with "…" in a comment — no requirement asks for this.: its quote is not in tests/unit/multiline-assertion-tag-test.sh: "line (\`assert_contains \\\` then \`\"…\" …\`). The checker only"; UNASKED tests/unit/run-status-comment-render-test.sh updates test input data and assertions from [#1805/SPEC-3] / [#1805/SPEC-13] labels to empty strings, tracking the empty-code-span change — no requirement asks for this.: its quote is not in tests/unit/run-status-comment-render-test.sh: "assert_contains \"[#2460] a label in the summary line is shown as code\" \"$_lbl\" '\`\`'"; UNASKED tests/unit/status-row-findings-test.sh changes finding fixture strings from [#1805/CMBR-1] to CMBR-1 , testing a change in how findings drop the issue-number prefix — no requirement in this issue asks for this change.: its quote is not in tests/unit/status-row-findings-test.sh: "'tests/integration/resume-loop-state-test.sh fails: ✗ \`CMBR-1\` no stage.start for build in iter 2 — expected: 0, got: 1'" — the change was not judged
-
-- the change was not judged against the issue
-
-Its last good output, from an earlier attempt:
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/issue-acceptance/iter-3-attempt-1/issue-acceptance-result.json
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/issue-acceptance/iter-3-attempt-1/issue-acceptance-summary.md
-
-Summary of that output:
 ## issue-acceptance — fail
 
-- judged the change against the issue: 1 requirement(s) not met or not sure
+- judged the change against the issue: 1 requirement(s) not met or not sure, 6 part(s) of the change no requirement asks for
 
-- NOT SURE: ORDE-1: This is a workflow/process constraint — "do not run this in parallel with #1714". Nothing in the diff enforces or records it. It cannot be verified from code, tests, or the diff alone. Settling it would require checking whether #1714 touched runner.sh's dispatch loop in the same merge window. — "Do not run this in parallel with another issue that edits the dispatch loop (#1714 touches the allow-list builder in runner.sh)." — what would settle it: a test that fails when it is not met, or the code or document that shows it is met
+- see result
+- answered: lens-correctness-code finding 2: wrong — RQLOOP-1 and DSCMBR-1 both specify the standard interrupted-member case (build=complete, test=aborted in the interrupted iteration); that case is exercised and passing. The "all complete" edge case — where every member carries `complete` from a prior pass — is beyond the stated requirements. No ISSUE REQUIREMENT or REQUIREMENTS item names or implies that edge case. The finding identifies a coverage gap worth noting but does not constitute an unmet requirement in this issue's contract.
 
 ### review_lenses (verdict: fail)
 Outputs:
@@ -720,8 +710,8 @@ Findings:
 - If what you are asked to produce is already there and right, and no
   finding under Previous work is open for you, confirm it and finish: say so
   in your answer, in its usual form, and do not redo the work.
-- Your budget: each model call has 1200 seconds, with no limit on turns. A call that runs out of time
-  returns nothing: finish and write your answer well before the limit. The whole stage has 2700 seconds.
+- Your budget: each model call has 1200 seconds, with no limit on turns. Finish well before the
+  limit; at the limit, write your notes and give your answer. The whole stage has 2700 seconds.
 
 ### How every stage works
 
