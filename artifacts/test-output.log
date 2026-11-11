@@ -3,40 +3,10 @@
 > bash tests/run-all.sh
 
 unit: 592/592 passed (4 skipped)
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eGMtJR/tests/integration/stage-time-limit-test.sh
-
-  the engine stops a stage past its time limit
-
-  ✗ [S1] the stage is stopped near its limit, not after 60s
-    expected: yes, got: no (16s)
-  ✓ [S1] the dispatch does not report success
-  ✓ [S1] what the stage started is stopped too
-  ✓ [S1] its outcome is timed_out
-  ✓ [S1] the engine says so
-  ✓ [S2] a stage inside its limit succeeds
-  ✓ [S2] ...and its outcome is its own
-  ✓ [S2] a stage that hit its limit before runs clean the next time
-  ✓ [S3] the limit is the stage's timeout_s
-  ✓ [S3] ...or 900 seconds when unset
-  ✓ [S4] simple.yaml: build has 3600s
-  ✓ [S4] simple.yaml: test has 2700s
-  ✓ [S4] simple.yaml: test-author has 2700s
-  ✓ [S4] simple.yaml: design has 2700s
-  ✓ [S4] deployed.yaml: build has 3600s
-  ✓ [S4] deployed.yaml: test has 2700s
-  ✓ [S4] deployed.yaml: design has 1500s
-  ✓ [S5] the stage is told its whole-stage limit
-  ✓ [S5] ...the default too
-
-
-  1 of 19 tests failed
-
-  ✗ [S1] the stage is stopped near its limit, not after 60s
-
-integration: 257/258 passed
+integration: 258/258 passed
 e2e: 10/10 passed
 golden: 1/1 passed
 mutation: 25/25 passed
 lint: 1/1 passed
 
-total: 886/887 passed (4 skipped)
+total: 887/887 passed (4 skipped)
