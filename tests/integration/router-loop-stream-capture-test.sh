@@ -28,6 +28,8 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 source "$REPO_ROOT/tests/lib/test-helpers.sh"
 print_test_header "router loop: a killed call keeps its record (#2139)"
 setup_test_env "router-loop-stream-capture"
+# The kill under test comes at the limit: no call grace (#2517, ADR-063).
+export ZBUILD_CALL_GRACE_S=0
 command -v gtimeout >/dev/null 2>&1 || command -v timeout >/dev/null 2>&1 \
     || { echo "SKIP: no timeout binary"; cleanup_test_env; exit 0; }
 

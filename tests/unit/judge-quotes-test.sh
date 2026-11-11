@@ -25,6 +25,8 @@
 #    quoted a line holding `"$dry_run"` as \"$dry_run\", and the check refused
 #    both its quotes
 # Q8 a file name in backticks or bold marks is the file (#1805 run 42556446368)
+# Q9 a quote of a comment that runs over lines holds: each line's leading comment
+#    mark (#, //, --) is left out, as formatting is (#2517)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -345,6 +347,16 @@ assert_contains "[Q8] a missing file in backticks is still refused" "$(_q '`scri
 assert_contains "[Q8] ...and named without the marks" "$(_q '`scripts/nope.sh`:"line one"')" "names scripts/nope.sh,"
 _Q8P=""; judge_quote_path_v _Q8P '`scripts/cfg.sh`:"line one"' "$XR" "$BASE"
 assert_eq "[Q8] the file a kept answer depends on is named without the marks" "scripts/cfg.sh" "$_Q8P"
+
+print_test_section "Q9: a quote of a comment over several lines holds"
+# On #1805 run 42817975218 issue-acceptance quoted a two-line # comment as one
+# line; the second line's # broke the match and the answer was thrown away.
+printf '%s\n' '# expected error (lens finding 1, #1805 moved the check after' '# auto-resume so the state resumes and bypasses the check).' \
+    '// a C-style note that runs' '//   over two lines' '-- an SQL note' '-- that continues' >> "$XR/scripts/cfg.sh"
+assert_eq "[Q9] a # comment quoted across its lines holds" "ok" "$(_q 'scripts/cfg.sh:"#1805 moved the check after auto-resume so the state resumes"')"
+assert_eq "[Q9] ...as does a // comment" "ok" "$(_q 'scripts/cfg.sh:"a C-style note that runs over two lines"')"
+assert_eq "[Q9] ...and a -- comment" "ok" "$(_q 'scripts/cfg.sh:"an SQL note that continues"')"
+assert_contains "[Q9] words the comment does not hold are still refused" "$(_q 'scripts/cfg.sh:"#1805 moved the check before auto-resume"')" "bad:"
 
 cleanup_test_env
 print_test_results

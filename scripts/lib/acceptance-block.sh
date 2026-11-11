@@ -627,7 +627,8 @@ acceptance_list_supersedes() {
 
 # acceptance_spec_files_v <map_var> <design_md> [repo_root]  (#2508, ADR-069 §11)
 # Each SPEC's test files, found by its tag: map[<id>] = the files in the
-# repository's test folders (scripts/lib/test-paths.sh) that hold the tag
+# repository's test folders (scripts/lib/test-paths.sh) that this branch added
+# or changed (#2517) and that hold the tag
 # acceptance_spec_tag builds for it, space separated, sorted. Design names no
 # files; test-author writes the tests wherever they belong, committed or not.
 # Two forks for every SPEC at once: git lists the files, one grep reads them.
@@ -649,7 +650,7 @@ acceptance_spec_files_v() {
     [[ ${#_by_tag[@]} -gt 0 ]] || return 0
     local f
     local -a files=() pats=()
-    zb_test_folder_files_v files "$root"
+    zb_test_folder_branch_files_v files "$root"
     [[ ${#files[@]} -gt 0 ]] || return 0
     for tag in "${!_by_tag[@]}"; do pats+=(-e "$tag"); done
     local id cur

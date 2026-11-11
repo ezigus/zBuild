@@ -9,8 +9,8 @@
 #
 # N1 a [done] requirement is not run: NEGCTL SKIP <id> already_done
 # N2 a [no-code] requirement is not run: NEGCTL SKIP <id> no_code
-# N3 the tag-coverage check does not ask a [done] or [no-code] requirement for
-#    a tagged assertion; a [code] one still must have one
+# N3 the tag-coverage check asks every requirement for a tagged assertion,
+#    [done] and [no-code] too (#2517: each is proven by a test at the end)
 # N4 [code], the old [change], and an untagged requirement are still checked on
 #    the old and new code; an old [guard] reads as done (never "guard_spec")
 # N5 the gate's pass reason says how many requirements were checked on the old
@@ -120,7 +120,7 @@ assert_eq "[N4] ...and is not run" "absent" \
 assert_eq "[N4] no line says guard_spec any more" "" \
     "$(grep -F 'guard_spec' <<< "$OUT4" || true)"
 
-print_test_section "N3: tag coverage asks only code requirements for a tagged assertion"
+print_test_section "N3: tag coverage asks every requirement for a tagged assertion (#2517)"
 CV="$TEST_TEMP_DIR/cov"; mkdir -p "$CV/tests"; "$GIT" -C "$CV" init -q
 printf 'echo "[SPEC-1] tagged"\n' > "$CV/tests/a-test.sh"
 cat > "$CV/design.md" <<'EOF'
@@ -132,7 +132,8 @@ SPEC-4[no-code]: not tagged either
 ```
 EOF
 COV="$(acceptance_coverage_check "$CV/design.md" "$CV" 2>&1 || true)"
-assert_eq "[N3] only the untagged [code] requirement is reported" "UNTAGGED SPEC-2" "$COV"
+assert_eq "[N3] every untagged requirement is reported, [done] and [no-code] too" \
+    "UNTAGGED SPEC-2 UNTAGGED SPEC-3 UNTAGGED SPEC-4" "$(tr '\n' ' ' <<< "$COV" | sed 's/ $//')"
 
 print_test_section "N5: the pass reason states the counts"
 R5="$(setup_git_temp_repo negctl-status-gate)"
@@ -144,6 +145,8 @@ R5="$(setup_git_temp_repo negctl-status-gate)"
     cat > tests/new-test.sh <<'EOF'
 #!/usr/bin/env bash
 [[ -f "$(dirname "$0")/../impl.sh" ]] && echo "✓ [SPEC-1] works" || { echo "✗ [SPEC-1] works"; exit 1; }
+echo "✓ [SPEC-2] the old flag still parses"
+echo "✓ [SPEC-3] the docs explain the feature"
 EOF
     chmod +x tests/new-test.sh impl.sh
     "$GIT" add -A; "$GIT" commit -q -m "feature"

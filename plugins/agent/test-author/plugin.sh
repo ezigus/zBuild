@@ -255,8 +255,9 @@ test_author_run() {
         [[ -n "$sid" ]] || continue
         local _st="" _txt="" _tfs
         _acceptance_spec_line "$_ta_blk" "$sid" && _st="$_ACC_SPEC_STATUS"
-        # #2304 (ADR-069 §6): the code already does a done requirement — no test.
-        if [[ "$_st" == "done" ]]; then n_done=$(( n_done + 1 )); continue; fi
+        # #2517 (ADR-069): a done requirement gets a test too — it proves the
+        # finished change still does what the old code did.
+        [[ "$_st" == "done" ]] && n_done=$(( n_done + 1 ))
         _txt="$_ACC_SPEC_TEXT"
         local -a _ta_parts=()
         acceptance_parts_shown_v _ta_parts "$_ACC_SPEC_PARTS"
@@ -268,6 +269,8 @@ test_author_run() {
         # #2269: what the status demands of the test, in before-and-after words.
         if [[ "$_st" == "no-code" ]]; then
             spec_block="${spec_block}    its test must pass after this change; it need not fail before"$'\n'
+        elif [[ "$_st" == "done" ]]; then
+            spec_block="${spec_block}    the code from before this change already does this: its test must pass after this change; it need not fail before"$'\n'
         else
             spec_block="${spec_block}    its test must FAIL on the code as it was before this change, and pass after"$'\n'
         fi
@@ -277,12 +280,6 @@ test_author_run() {
         n=$(( n + 1 ))
     done < <(acceptance_list_spec_ids "$design" 2>/dev/null || true)
 
-    if [[ "$n" -eq 0 && "$n_done" -gt 0 ]]; then
-        _ta_emit "test_author.no_contract" "reason=all_done"
-        _ta_write_result "$art" "pass" \
-            "every requirement is already done — there is no test to write" 0
-        return 0
-    fi
     if [[ "$n" -eq 0 ]]; then
         _ta_emit "test_author.no_contract" "reason=no_specs"
         _ta_write_result "$art" "pass" \

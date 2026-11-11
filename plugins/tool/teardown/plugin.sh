@@ -95,7 +95,8 @@ teardown_run() {
         # stage_statuses, and it may never have spawned a group either.
         for _pgf in "$_state_dir"/runtime/stages/*.started "$_state_dir"/runtime/stages/*.pgid; do
             [[ -e "$_pgf" ]] || continue
-            _pgstage="$(basename "$(basename "$_pgf" .pgid)" .started)"
+            # The stage name, by the shell (was two basename forks a marker, #2517).
+            _pgstage="${_pgf##*/}"; _pgstage="${_pgstage%.pgid}"; _pgstage="${_pgstage%.started}"
             _seen=0
             for _s in "${_executed[@]+"${_executed[@]}"}"; do
                 [[ "$_s" == "$_pgstage" ]] && { _seen=1; break; }

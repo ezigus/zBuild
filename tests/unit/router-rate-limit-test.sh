@@ -22,6 +22,8 @@ source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "router rate-limit detection — #1237"
 setup_test_env "router-rate-limit"
+# The kill under test comes at the limit: no call grace (#2517, ADR-063).
+export ZBUILD_CALL_GRACE_S=0
 _test_cleanup_hook() { cleanup_test_env; }
 
 export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"

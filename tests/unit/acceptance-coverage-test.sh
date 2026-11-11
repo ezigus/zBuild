@@ -75,14 +75,16 @@ dm="$(_design "SPEC: legacy untagged claim")"
 set +e; out="$(acceptance_coverage_check "$dm" "$ROOT")"; rc=$?; set -e
 assert_eq "C6: bare SPEC: (no id) → rc=0 (not gated)" "0" "$rc"
 
-# ── C7 (#2304, ADR-069 §4): a [done] or [no-code] SPEC is EXEMPT from tag coverage ─
-# Neither is run against the old code, so neither needs a [SPEC-n]-tagged test.
+# ── C7 (#2517, ADR-069): every requirement is proven by a test at the end ─────
+# A [done] or [no-code] SPEC used to be exempt; on #1805 run 42817975218 a [done]
+# could not be told "still done" from "the branch broke it".
 printf 'assert_eq "unrelated label" 1 1\n' > "$ROOT/tests/g-test.sh"
 dm="$(_design "SPEC-1[done]: already there evidence: tests/g-test.sh
 SPEC-2[no-code]: the docs say so")"
 set +e; out="$(acceptance_coverage_check "$dm" "$ROOT")"; rc=$?; set -e
-assert_eq "C7: done and no-code only, no tagged test → rc=0 (exempt)" "0" "$rc"
-assert_eq "C7: no UNTAGGED lines for a done or no-code SPEC" "" "$out"
+assert_eq "C7: done and no-code with no tagged test → rc=1" "1" "$rc"
+assert_contains "C7: ...the done SPEC is UNTAGGED" "$out" "UNTAGGED SPEC-1"
+assert_contains "C7: ...and so is the no-code SPEC" "$out" "UNTAGGED SPEC-2"
 
 # ── C8: a code SPEC ([change] is read as [code]) still REQUIRES a tagged test ─
 dm="$(_design "SPEC-1[change]: new behavior")"
@@ -90,14 +92,17 @@ set +e; out="$(acceptance_coverage_check "$dm" "$ROOT")"; rc=$?; set -e
 assert_eq "C8: [change] with no tagged test → rc=1 (no regression)" "1" "$rc"
 assert_eq "C8: names the untagged change spec" "UNTAGGED SPEC-1" "$out"
 
-# ── C9: mixed design — done exempt, code still gated ──────────────────────────
+# ── C9: mixed design — every status gated ─────────────────────────────────────
 printf 'assert_eq "[SPEC-2] tagged" 1 1\n' > "$ROOT/tests/c-test.sh"
 dm="$(_design "SPEC-1[done]: an existing behaviour evidence: tests/c-test.sh
 SPEC-2[code]: new behavior with a tagged test
 SPEC-3[code]: new behavior WITHOUT a tagged test")"
 set +e; out="$(acceptance_coverage_check "$dm" "$ROOT")"; rc=$?; set -e
-assert_eq "C9: mixed → rc=1 (only the untagged change flagged)" "1" "$rc"
-assert_eq "C9: flags only SPEC-3, not the done SPEC-1" "UNTAGGED SPEC-3" "$out"
+assert_eq "C9: mixed → rc=1" "1" "$rc"
+assert_eq "C9: flags the untagged done SPEC-1 and code SPEC-3" "UNTAGGED SPEC-1 UNTAGGED SPEC-3" "$(tr '\n' ' ' <<< "$out" | sed 's/ $//')"
+printf 'assert_eq "[SPEC-1] it holds" 1 1\nassert_eq "[SPEC-2] tagged" 1 1\n' > "$ROOT/tests/c-test.sh"
+set +e; out="$(acceptance_coverage_check "$dm" "$ROOT")"; rc=$?; set -e
+assert_eq "C9: ...and a done SPEC with its tagged test passes" "UNTAGGED SPEC-3" "$out"
 
 # ── C10: [SPEC-2] acceptance_find_assertion_label — label found in testfile ────
 printf '#!/usr/bin/env bash\n# [SPEC-1] the feature works correctly\nassert_eq "ok" 1 1\n' \

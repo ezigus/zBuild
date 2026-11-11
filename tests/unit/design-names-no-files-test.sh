@@ -17,6 +17,9 @@
 # N8 design's prompt asks for no scope block and no TESTFILES
 # N9 design's prompt asks it to write UNCLEAR lines and carry on with the assumption
 # N10 a malformed UNCLEAR line is refused by design's checks
+# N11 on an issue's branch, a SPEC's tests are only the test files the branch added
+#     or changed: a file the default branch already had, holding the tag as
+#     sample text, is not its test (#2517)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -157,6 +160,27 @@ GOOD="$TEST_TEMP_DIR/good-design.md"
 { cat "$DESIGN"; printf '\nUNCLEAR: R-1 | does --from-stage need --resume? | it works on its own\n'; } > "$GOOD"
 _design_checks "$GOOD" "$ROOT" ""
 assert_eq "[N10] a well-formed UNCLEAR line passes" "" "${_DESIGN_VIOLATIONS[*]-}"
+
+# ── N11 ────────────────────────────────────────────────────────────────────
+# On #1805 run 42817975218 an engine test holding [#1805/DSFSTG-1] as sample text
+# was run as DSFSTG-1's test. work-test.sh is on the default branch; the branch
+# adds its own test and changes other-test.sh.
+git -C "$ROOT" add -A >/dev/null 2>&1; git -C "$ROOT" commit --quiet -m "base 2" >/dev/null 2>&1
+git -C "$ROOT" checkout --quiet -b issue-work
+printf 'assert "%s on the branch" 1 1\n' "$T1" > "$ROOT/tests/unit/branch-test.sh"
+git -C "$ROOT" add -A && git -C "$ROOT" commit --quiet -m work
+printf 'assert "%s changed, not committed" 1 1\n' "$T2" >> "$ROOT/tests/unit/other-test.sh"
+assert_eq "[N11] on a branch, a SPEC's test is the file the branch added, not one the default branch had" \
+    "tests/unit/branch-test.sh" "$(acceptance_list_testfiles_for_spec "$DESIGN" DSWORK-1)"
+assert_contains "[N11] ...and a file the branch changed (not yet committed) counts" \
+    "$(acceptance_list_testfiles_for_spec "$DESIGN" DSWORK-2)" "tests/unit/other-test.sh"
+assert_not_contains "[N11] ...but an untouched file of the default branch does not" \
+    "$(acceptance_list_testfiles_for_spec "$DESIGN" DSWORK-1)" "tests/unit/work-test.sh"
+# A branch with no base in common with the default branch (as in a shallow
+# clone) has no branch work to tell apart: every test file counts.
+git -C "$ROOT" checkout --quiet --orphan lone && git -C "$ROOT" commit --quiet -am lone
+assert_contains "[N11] with no common base, every test file counts" \
+    "$(acceptance_list_testfiles_for_spec "$DESIGN" DSWORK-1)" "tests/unit/work-test.sh"
 
 print_test_results
 exit $((FAIL > 0))

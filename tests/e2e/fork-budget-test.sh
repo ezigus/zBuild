@@ -128,7 +128,9 @@ setup_test_env "fork-budget"
 # 1,776 macOS; main measured 1,856.
 # 1772 (#2508: build has no file list and reads no scope manifest; a SPEC's
 # tests are found by tag in one git and one grep) — measured 1,769 macOS.
-FORK_BUDGET=1772
+# 1760 (#2517: teardown names a stage file by the shell, not two basename) —
+# measured 1,757 macOS; main measured 1,769.
+FORK_BUDGET=1760
 # PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
 # the programs above plus each `$( )` subshell, a copy of the whole engine shell
 # that FORK_BUDGET cannot see. Ratchets down only, like FORK_BUDGET. History:
@@ -170,7 +172,9 @@ FORK_BUDGET=1772
 # 2401 (#2507, the same change as FORK_BUDGET 1779 — measured 2,398 macOS;
 # main measured 2,504).
 # 2374 (#2508, the same change as FORK_BUDGET 1772 — measured 2,371 macOS).
-PROCESS_BUDGET=2374
+# 2359 (#2517, the same change as FORK_BUDGET 1760 — measured 2,356 macOS;
+# main measured 2,371).
+PROCESS_BUDGET=2359
 # The run's cost in two parts (ADR-065 §6, #2472). Each budget ratchets down
 # like the totals; each floor is the goal, an estimate, measured again when
 # reached. History: 505 / 298 a dispatch, 12 / 7 a plugin at start-up (#2472 —
@@ -187,7 +191,10 @@ PROCESS_BUDGET=2374
 # dispatch (#2487 — measured 478 and 272). 477 / 271 a dispatch (#2491: one jq
 # and no sort for Previous work's state and index — measured 476 and 270).
 # 436 / 240 a dispatch (#2508: no scope manifest or request a build dispatch —
-# measured 433 and 237). # 440 / 240 a dispatch (#2507: a call's permission rules and private paths
+# measured 433 and 237). 435 / 240 a dispatch (#2517: a lens finds a SPEC's
+# tests among the files its branch wrote, one git diff that finds the base
+# itself and one git ls-files — measured 434 and 239; main measured 433 and 237).
+# 440 / 240 a dispatch (#2507: a call's permission rules and private paths
 # built by the shell; a lens is named the change by one git call — measured
 # 438 and 238; the start-up is unchanged, 469 and 233 over 43 plugins: the
 # run's check of every call's tools starts no program).
@@ -198,7 +205,7 @@ PROCESS_BUDGET=2374
 #   and write checks (~4), safe writes (~6), the model call (~2) — ~50 execs.
 # - Start-up, per plugin manifest: discovery and the manifest checks; about one
 #   process and one exec a plugin once each read is in the shell.
-DISPATCH_PROCS_BUDGET=436
+DISPATCH_PROCS_BUDGET=435
 DISPATCH_PROCS_FLOOR=20
 DISPATCH_EXECS_BUDGET=240
 DISPATCH_EXECS_FLOOR=50

@@ -42,8 +42,10 @@ _run() {
     local d="$TEST_TEMP_DIR/$1"; R="$d/repo"; S="$d/state"; A="$S/artifacts"
     mkdir -p "$A" "$R/tests"
     ( cd "$R" && git init -q -b main . && git config user.email t@e.st && git config user.name t \
-        && printf '%s\n' "${A_TEST_BODY:-assert_eq \"x\" 1 1}" > tests/a-test.sh && git add -A && git commit -q -m seed \
-        && git checkout -q -b zbuild/issue-1 && printf 'echo hi\n' > app.sh && git add -A && git commit -q -m change ) >/dev/null 2>&1
+        && git commit -q --allow-empty -m seed \
+        && git checkout -q -b zbuild/issue-1 && printf 'echo hi\n' > app.sh \
+        && printf '%s\n' "${A_TEST_BODY:-assert_eq \"x\" 1 1}" > tests/a-test.sh && git add -A && git commit -q -m change ) >/dev/null 2>&1
+    # #2517: the design's test file is written on the issue's branch, as test-author does.
     printf '{"schema_version":1}' > "$S/pipeline-state.json"
     git -C "$R" diff main HEAD > "$A/diff.patch"
     local idx="$S/stage-inputs.json" inputs='{}'

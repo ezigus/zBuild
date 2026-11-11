@@ -506,7 +506,8 @@ assert_contains "[SPEC-3] S16c: empty SPEC text renders <no description>" \
     "$SUMMARY" "design : <no description>"
 
 # Verify <none found> when the testfile has no [SPEC-n] tag.
-# Use a done SPEC so Level-1 coverage is exempt (done SPECs are not run).
+# A done SPEC is not run on the old code, but since #2517 it needs its tagged
+# test like every requirement: with none, the gate refuses it.
 REPO16B="$(_build_repo gate-enrich-nolabel '#!/usr/bin/env bash
 # no spec tag in this file
 exit 0' docs/impl.md)"
@@ -518,7 +519,7 @@ tests/feature-test.sh
 ```
 EOF
 set +e; _run_gate_with_summary "$REPO16B"; set -e
-assert_eq "[SPEC-3] S16b: done SPEC with no tag → rc=0 (skip)" "0" "$RC"
+assert_eq "[SPEC-3] S16b: done SPEC with no tagged test → rc=1 (#2517)" "1" "$RC"
 assert_contains "[SPEC-3] S16b: summary shows <none found> when no assertion tag" \
     "$SUMMARY" "<none found>"
 

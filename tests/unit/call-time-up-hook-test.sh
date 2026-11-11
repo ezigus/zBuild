@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# tests/unit/call-time-up-hook-test.sh — a model call is told its time is up a
-# minute before it is cut off, and is left only its notes file to write
-# (ADR-063, amended 2026-11-08, #2503).
+# tests/unit/call-time-up-hook-test.sh — a model call that reaches its time limit
+# is told its time is up at its next tool call, and is left only its notes file
+# to write; it is killed only after a grace (ADR-063, amended 2026-11-08, #2503;
+# 2026-11-10, #2517).
 #
 # Why: on #1805 run 42523805245 eight calls were killed at their time limit.
 # Build had found why a test failed ("the mock doesn't have role: intake") and
@@ -9,8 +10,10 @@
 # which Claude gives only in a call's last message.
 #
 # H1 [change] a call's settings file holds a PreToolUse hook naming the call's
-#             deadline (its time limit less a minute) and the stage's notes file
-# H2 [change] a call of a minute or less gets no hook
+#             deadline — its time limit itself (#2517: the warning came 20–40 s
+#             before the kill when the model thought 100–154 s between tools) —
+#             and the stage's notes file
+# H2 [change] a short call gets the hook too, its deadline its own limit
 # H3 [change] before the deadline the hook allows every tool
 # H4 [change] after it, the hook refuses a tool and says why: time is up, write
 #             your notes, give your final reply
@@ -54,12 +57,14 @@ assert_contains "[H1] the hook is the router's time-up hook" "$_cmd" "core/route
 assert_contains "[H1] ...given the stage's notes file" "$_cmd" "$NOTES"
 _dl="$(awk '{print $(NF-1)}' <<< "$_cmd")"
 # Bracketed by the clock read just before and just after: no window to tune.
-assert_eq "[H1] ...and a deadline a minute before the call's limit" "1" \
-    "$(( _dl >= _before + 840 && _dl <= _after + 840 ? 1 : 0 ))"
+assert_eq "[H1] ...and a deadline at the call's limit" "1" \
+    "$(( _dl >= _before + 900 && _dl <= _after + 900 ? 1 : 0 ))"
 assert_eq "[H1] it matches every tool" "*" "$(jq -r '.hooks.PreToolUse[0].matcher' "$_ZBUILD_PERMISSIONS_SETTINGS_FILE")"
 assert_eq "[H1] the deny rules are kept" "array" "$(jq -r '.permissions.deny | type' "$_ZBUILD_PERMISSIONS_SETTINGS_FILE")"
-_zbuild_build_permissions_settings 60 >/dev/null 2>&1
-assert_eq "[H2] a call of a minute or less gets no hook" "null" "$(jq -c '.hooks' "$_ZBUILD_PERMISSIONS_SETTINGS_FILE")"
+_b2=$(date +%s); _zbuild_build_permissions_settings 60 >/dev/null 2>&1; _a2=$(date +%s)
+_dl2="$(jq -r '.hooks.PreToolUse[0].hooks[0].command // empty' "$_ZBUILD_PERMISSIONS_SETTINGS_FILE" | awk '{print $(NF-1)}')"
+assert_eq "[H2] a 60 s call gets the hook, its deadline its own limit" "1" \
+    "$(( ${_dl2:-0} >= _b2 + 60 && ${_dl2:-0} <= _a2 + 60 ? 1 : 0 ))"
 
 # ── H3–H6 ────────────────────────────────────────────────────────────────────
 _call() {   # <deadline> <notes> <tool> [file_path] — the hook's answer
@@ -77,6 +82,10 @@ _out="$(_call $(( _now - 1 )) "$NOTES" Bash)"
 assert_eq "[H4] a tool after the deadline is refused" "deny" "$(_decision "$_out")"
 _why="$(jq -r '.hookSpecificOutput.permissionDecisionReason' <<< "$_out")"
 assert_contains "[H4] ...told its time is up" "$_why" "Time is up"
+assert_contains "[H4] ...that it has reached its time limit" "$_why" "has reached its time limit"
+assert_contains "[H4] ...to give its final reply now" "$_why" "final reply"
+if [[ "$_why" == *"under a minute"* ]]; then assert_fail "[H4] ...not that it ends in under a minute" "$_why"
+else assert_pass "[H4] ...not that it ends in under a minute"; fi
 assert_contains "[H4] ...to write its notes file" "$_why" "$NOTES"
 assert_contains "[H4] ...and to give its final reply with its answers" "$_why" "give your final reply now, with your answer to every finding"
 

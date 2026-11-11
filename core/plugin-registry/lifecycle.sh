@@ -615,6 +615,11 @@ _plugin_hook_call_once() {
         # (the abort banner) to the redirect. It prints nothing anyway.
         template_stage_time_limit_v _tl_secs "$ZBUILD_CURRENT_STAGE" || true
         [[ "$_tl_secs" =~ ^[1-9][0-9]*$ ]] || _tl_secs=900
+        # #2517 (ADR-063): a call may finish in its grace past its own limit; the
+        # stage's limit gains the same grace, or it would stop that call first.
+        local _tl_grace="${ZBUILD_CALL_GRACE_S:-300}"
+        [[ "$_tl_grace" =~ ^[0-9]+$ ]] || _tl_grace=300
+        _tl_secs=$(( _tl_secs + _tl_grace ))
         zb_dirname_v _tl_marker "$2"
         _tl_marker+="/runtime/stage-time-limit.${ZBUILD_CURRENT_STAGE//[^A-Za-z0-9._-]/_}"
         [[ -d "${_tl_marker%/*}" ]] || mkdir -p "${_tl_marker%/*}" 2>/dev/null || true

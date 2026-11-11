@@ -324,7 +324,7 @@ _ta_correspondence() {
     while IFS= read -r sid; do
         [[ -n "$sid" ]] || continue
         _acceptance_spec_line "$_blk" "$sid" || continue
-        [[ "$_ACC_SPEC_STATUS" == "done" || -z "$_ACC_SPEC_TEXT" ]] && continue
+        [[ -z "$_ACC_SPEC_TEXT" ]] && continue
         _tfs="${_sc_files[$sid]:-}"
         # The whole assertion with its enclosing predicate, comments stripped:
         # a bare tagged line reads as a vacuous test, and a pasted SPEC sentence

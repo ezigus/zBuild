@@ -235,3 +235,15 @@ _runner_resolve_run_limit_s() {
     _RUNNER_MAX_RUN_S=20700
     return 0
 }
+
+# ─── zb_call_grace_s_v <var> — #2517 (ADR-063) ──────────────────────────────
+# How long a model call may run past its time limit to write its notes and give
+# its final reply before it is killed: ZBUILD_CALL_GRACE_S, else 5 minutes. The
+# engine cannot tell a call that is stuck from one still thinking: a call still
+# running after the grace is killed.
+_ZB_CALL_GRACE_DEFAULT=300
+zb_call_grace_s_v() {
+    local -n _zcg="$1"
+    _zcg="${ZBUILD_CALL_GRACE_S:-$_ZB_CALL_GRACE_DEFAULT}"
+    [[ "$_zcg" =~ ^[0-9]+$ ]] || _zcg="$_ZB_CALL_GRACE_DEFAULT"
+}
