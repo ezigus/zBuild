@@ -2,41 +2,11 @@
 > zbuild@0.1.0 test
 > bash tests/run-all.sh
 
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Q07SJe/tests/unit/status-row-findings-test.sh
-
-  a row for a try that did not pass says what failed (#2476)
-
-  ✓ [W1] the row's line names what failed
-  ✓ [W1] the folded part lists every finding
-  ✓ [W1] …each once
-  ✓ [W1] nothing of the summary is shown
-  ✓ [W2] a lens row says what it found, and where
-  ✓ [W3] no findings: the summary as before
-  ✓ [W4] a pass row shows its summary
-  ✓ [W4] …and never says what failed
-  ✓ [W8] the line names each requirement not met
-  ✗ [W8] …and the SPEC each failing test is for
-    expected: what failed: `CMBR-1`, `FRSH-2`, got: what failed: 2 findings
-  ✓ [W8] findings naming no id are counted
-  ✓ [W8] …a prefixed id is named whole
-  ✓ [W5] findings are counted by severity, highest first
-  ✓ [W5] …and each is listed once
-  ✓ [W6] one finding: its first line heads the row
-  ✓ [W6] …the rest is folded
-  ✓ [W6] …and the first line is said once
-  ✓ [W7] a try run again for its findings shows as failed
-  ✓ [W7] …one with no findings stays unusable
-
-
-  1 of 19 tests failed
-
-  ✗ [W8] …and the SPEC each failing test is for
-
-unit: 591/592 passed (4 skipped)
+unit: 592/592 passed (4 skipped)
 integration: 258/258 passed
 e2e: 10/10 passed
 golden: 1/1 passed
 mutation: 25/25 passed
 lint: 1/1 passed
 
-total: 886/887 passed (4 skipped)
+total: 887/887 passed (4 skipped)

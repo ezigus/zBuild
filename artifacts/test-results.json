@@ -1,1 +1,70 @@
-{"test_output":"\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Q07SJe/tests/unit/status-row-findings-test.sh\n\n  a row for a try that did not pass says what failed (#2476)\n\n  ✓ [W1] the row's line names what failed\n  ✓ [W1] the folded part lists every finding\n  ✓ [W1] …each once\n  ✓ [W1] nothing of the summary is shown\n  ✓ [W2] a lens row says what it found, and where\n  ✓ [W3] no findings: the summary as before\n  ✓ [W4] a pass row shows its summary\n  ✓ [W4] …and never says what failed\n  ✓ [W8] the line names each requirement not met\n  ✗ [W8] …and the SPEC each failing test is for\n    expected: what failed: `CMBR-1`, `FRSH-2`, got: what failed: 2 findings\n  ✓ [W8] findings naming no id are counted\n  ✓ [W8] …a prefixed id is named whole\n  ✓ [W5] findings are counted by severity, highest first\n  ✓ [W5] …and each is listed once\n  ✓ [W6] one finding: its first line heads the row\n  ✓ [W6] …the rest is folded\n  ✓ [W6] …and the first line is said once\n  ✓ [W7] a try run again for its findings shows as failed\n  ✓ [W7] …one with no findings stays unusable\n\n\n  1 of 19 tests failed\n\n  ✗ [W8] …and the SPEC each failing test is for\n\nunit: 591/592 passed (4 skipped)\nintegration: 258/258 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 886/887 passed (4 skipped)","run_mode":"full","exit_code":1,"data":{"exit_code":1,"passed":886,"failed":1,"test_output":"\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Q07SJe/tests/unit/status-row-findings-test.sh\n\n  a row for a try that did not pass says what failed (#2476)\n\n  ✓ [W1] the row's line names what failed\n  ✓ [W1] the folded part lists every finding\n  ✓ [W1] …each once\n  ✓ [W1] nothing of the summary is shown\n  ✓ [W2] a lens row says what it found, and where\n  ✓ [W3] no findings: the summary as before\n  ✓ [W4] a pass row shows its summary\n  ✓ [W4] …and never says what failed\n  ✓ [W8] the line names each requirement not met\n  ✗ [W8] …and the SPEC each failing test is for\n    expected: what failed: `CMBR-1`, `FRSH-2`, got: what failed: 2 findings\n  ✓ [W8] findings naming no id are counted\n  ✓ [W8] …a prefixed id is named whole\n  ✓ [W5] findings are counted by severity, highest first\n  ✓ [W5] …and each is listed once\n  ✓ [W6] one finding: its first line heads the row\n  ✓ [W6] …the rest is folded\n  ✓ [W6] …and the first line is said once\n  ✓ [W7] a try run again for its findings shows as failed\n  ✓ [W7] …one with no findings stays unusable\n\n\n  1 of 19 tests failed\n\n  ✗ [W8] …and the SPEC each failing test is for\n\nunit: 591/592 passed (4 skipped)\nintegration: 258/258 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 886/887 passed (4 skipped)","diff_applied":false,"test_cmd":"npm test","run_mode":"full","timing":{"tiers":{"lint":103178,"e2e":66057,"golden":5170,"unit":265014,"integration":233715},"slowest_files":[{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Q07SJe/tests/e2e/fork-budget-test.sh","ms":60428},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Q07SJe/tests/integration/core-pipeline-runner-test.sh","ms":45053},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Q07SJe/tests/integration/runner-release-exit-paths-test.sh","ms":35190},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Q07SJe/tests/integration/run-timed-out-test.sh","ms":33975},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Q07SJe/tests/integration/pipeline-preflight-missing-stage-test.sh","ms":31062},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/run-tests-killed-tier.0IvozW/slow/unit/slow-test.sh","ms":30012},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Q07SJe/tests/integration/cycle-acceptance-terminal-failure-test.sh","ms":29485},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Q07SJe/tests/integration/leaf-verdict-halts-test.sh","ms":27972},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Q07SJe/tests/integration/cycle-on-max-pipeline-continues-test.sh","ms":27828},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Q07SJe/tests/e2e/parity-local-vs-ci-test.sh","ms":25516}]},"tree_sha":"77352e4268bb489f6fbd774e90396431036e33fa","failures":[{"file":"tests/unit/status-row-findings-test.sh","reason":"✗ [W8] …and the SPEC each failing test is for — expected: what failed: `CMBR-1`, `FRSH-2`, got: what failed: 2 findings (and 1 more failing check in this file)","points_at":[]}],"findings":[{"n":1,"text":"tests/unit/status-row-findings-test.sh fails: ✗ [W8] …and the SPEC each failing test is for — expected: what failed: `CMBR-1`, `FRSH-2`, got: what failed: 2 findings (and 1 more failing check in this file)","topic":"change-findings"}]},"result_contract":3,"outcome":"fail","reason":"1 of 887 tests failed; the shape floor failed: missing_floor_files;the acceptance check failed: the acceptance check failed — DSFSTG-4: its test already passes on the code from before this change, so it cannot tell whether the change was made — make it check something the old code gets wrong"}
+{
+  "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 592/592 passed (4 skipped)\nintegration: 258/258 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 887/887 passed (4 skipped)",
+  "run_mode": "full",
+  "exit_code": 0,
+  "data": {
+    "exit_code": 0,
+    "passed": 887,
+    "failed": 0,
+    "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 592/592 passed (4 skipped)\nintegration: 258/258 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 887/887 passed (4 skipped)",
+    "diff_applied": false,
+    "test_cmd": "npm test",
+    "run_mode": "full",
+    "timing": {
+      "tiers": {
+        "lint": 101667,
+        "e2e": 65004,
+        "golden": 5077,
+        "unit": 264037,
+        "integration": 225252
+      },
+      "slowest_files": [
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.WWcG8t/tests/e2e/fork-budget-test.sh",
+          "ms": 59354
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.WWcG8t/tests/integration/core-pipeline-runner-test.sh",
+          "ms": 42924
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.WWcG8t/tests/integration/runner-release-exit-paths-test.sh",
+          "ms": 35007
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.WWcG8t/tests/integration/run-timed-out-test.sh",
+          "ms": 33513
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.WWcG8t/tests/integration/pipeline-preflight-missing-stage-test.sh",
+          "ms": 31925
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/run-tests-killed-tier.KFfgxA/slow/unit/slow-test.sh",
+          "ms": 30010
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.WWcG8t/tests/integration/cycle-acceptance-terminal-failure-test.sh",
+          "ms": 27362
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.WWcG8t/tests/unit/run-status-comment-pages-test.sh",
+          "ms": 26348
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.WWcG8t/tests/integration/cycle-on-max-pipeline-continues-test.sh",
+          "ms": 25798
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.WWcG8t/tests/integration/leaf-verdict-halts-test.sh",
+          "ms": 25688
+        }
+      ]
+    },
+    "tree_sha": "541c57cfef99d53cd30d3ea98644deb87919e882",
+    "findings": []
+  },
+  "result_contract": 3,
+  "outcome": "pass",
+  "reason": "887 of 887 tests passed"
+}
