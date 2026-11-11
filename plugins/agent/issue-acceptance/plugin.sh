@@ -24,6 +24,8 @@ source "$_IA_ROOT/core/event-bus/event-bus.sh"
 source "$_IA_ROOT/core/router/route.sh"
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
 source "$_IA_ROOT/scripts/lib/acceptance-block.sh" 2>/dev/null || true
+# shellcheck source=../../../scripts/lib/test-paths.sh
+source "$_IA_ROOT/scripts/lib/test-paths.sh"
 # #2364: earlier work is found by what it contains, never by which stage made it.
 # shellcheck source=../../../scripts/lib/earlier-output.sh
 source "$_IA_ROOT/scripts/lib/earlier-output.sh"
@@ -168,16 +170,20 @@ _ia_write() {
     # finding's topic — it reaches the stages that can fix it — never its text.
     # #2508 (ADR-072 §3): each part of the change nothing asked for is a
     # finding only the code can fix — change-findings, which build takes.
+    # #2523 (ADR-071 §1): one in a test file ([fix-test]) is code-findings, which
+    # test-author takes: build may not change a test.
     local _fnd; _fnd="$(jq -r --argjson s "$s" --argjson x "$x" '(.[]? | tostring
             | (if test("^\\[fix-code\\]") then "code-findings\t" elif test("^\\[fix-design\\]") then "requirement-findings\t" else "" end)
               + "The issue requires this and the change does not meet it: " + sub("^\\[fix-(code|design)\\][[:space:]]*"; "")
               + ". What would settle it: a change that meets this requirement in full."),
         ($s[] | "Not sure this requirement is met: " + tostring
             + ". What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met."),
-        ($x[] | "change-findings\tThe change does this and no requirement asks for it: " + tostring
+        ($x[] | tostring | (if test("^\\[fix-test\\]") then "code-findings\t" else "change-findings\t" end)
+            + "The change does this and no requirement asks for it: " + sub("^\\[fix-test\\][[:space:]]*"; "")
             + ". What would settle it: the change without this part, or a requirement that asks for it.")' \
         <<< "$u" 2>/dev/null | stage_findings_json)"
     u="$(jq -c 'map(tostring | sub("^\\[fix-(code|design)\\][[:space:]]*"; ""))' <<< "$u" 2>/dev/null || printf '%s' "$u")"
+    x="$(jq -c 'map(tostring | sub("^\\[fix-test\\][[:space:]]*"; ""))' <<< "$x" 2>/dev/null || printf '%s' "$x")"
     # ADR-068 §6: what it did about each finding it was given (_IA_ANSWERS),
     # and how many it was shown when it was asked this time.
     local _data _ia_a="[]"
@@ -436,7 +442,9 @@ _ia_parse_unasked() {
     # No own words: the quote is the code that does it, in a file.
     judge_quote_check_v w "$quote" "" "$repo" || { bad+=("UNASKED $part: its quote $w"); return 0; }
     judge_quote_path_v qp "$quote" "$repo"; [[ -n "$qp" ]] && _IA_QUOTED+=("$qp")
-    _IA_UNASKED+=("$part: ${why:-no requirement asks for it} — $quote")
+    # #2523: a part in a test file is the tests' to fix, not the code's.
+    local mark=""; [[ -n "$qp" ]] && zb_is_test_path "$qp" "$repo" && mark="[fix-test] "
+    _IA_UNASKED+=("$mark$part: ${why:-no requirement asks for it} — $quote")
 }
 
 issue_acceptance_cleanup() { return 0; }

@@ -61,7 +61,7 @@ calls:
 outputs:
   - id: issue_acceptance_result
     topic: requirement-findings
-    description: "whether the change meets each of the issue's requirements; findings: each requirement not met, and why"
+    description: "whether the change meets each of the issue's requirements; findings: each requirement not met, and why; each part of the change no requirement asks for, by who can undo it"
     path: "${artifact_dir}/issue-acceptance-result.json"
     finding_topics: code-findings requirement-findings change-findings
     type: issue-acceptance-result.json@1

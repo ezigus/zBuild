@@ -13,7 +13,7 @@ takes:
   - topic: requirement-findings
     for: "findings that a test misses or misstates a requirement"
   - topic: code-findings
-    for: "failing tests and test checks, to fix the tests it owns"
+    for: "failing tests, test checks, and changes to tests no requirement asks for, to fix the tests it owns"
   - topic: test-findings
     for: "what its own check found: an assertion that does not test what its requirement says"
 description: |
