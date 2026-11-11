@@ -1,6 +1,6 @@
 # ADR-072 — A judge reads the code itself, quotes what it complains about, and keeps its answer while nothing changes
 
-**Status:** Accepted (2026-11-03); amended 2026-11-09 (#2508, §3: issue-acceptance also names each part of the change no requirement asks for); amended 2026-11-09 (#2507, §1 §2 §4 §7: a judge's tools are listed in its manifest and include git; test-author reads the existing code in the old-code copy; judges are pointed at the change, not given it); amended 2026-11-09 (#2506, §3: a lens names no line; its finding is shown with its quote); amended 2026-11-09 (#2505, §3: a file name in formatting marks is the file); amended 2026-11-08 (#2495, §3 §4: the scope is not judged — #2491's scope lines are removed); amended 2026-11-08 (#2491, §3 §4: each scope entry gets a line of its own, ok or outside, kept per entry); amended 2026-11-07 (#2487, §3: an escaped quote mark is the mark itself); amended 2026-11-04 (#2466, §2 §4: the old-code copy and every kept answer leave events); amended 2026-11-04 (#2467, §3: the checks answer one line per part of a SPEC); amended 2026-11-04 (#2470, §3 §4: one line per SPEC that is fine and one per failing part; design's check keeps its answer per SPEC, is given the draft by its path, and judges only the SPECs that changed); amended 2026-11-05 (#2472, §3 §4: quotes ignore formatting; a kept answer does not depend on the file its items come from; a bad line costs only its own item); amended 2026-11-05 (#2474, §3: every reply line is read with its formatting aside)
+**Status:** Accepted (2026-11-03); amended 2026-11-10 (#2517, §3: a quote across comment lines holds); amended 2026-11-09 (#2508, §3: issue-acceptance also names each part of the change no requirement asks for); amended 2026-11-09 (#2507, §1 §2 §4 §7: a judge's tools are listed in its manifest and include git; test-author reads the existing code in the old-code copy; judges are pointed at the change, not given it); amended 2026-11-09 (#2506, §3: a lens names no line; its finding is shown with its quote); amended 2026-11-09 (#2505, §3: a file name in formatting marks is the file); amended 2026-11-08 (#2495, §3 §4: the scope is not judged — #2491's scope lines are removed); amended 2026-11-08 (#2491, §3 §4: each scope entry gets a line of its own, ok or outside, kept per entry); amended 2026-11-07 (#2487, §3: an escaped quote mark is the mark itself); amended 2026-11-04 (#2466, §2 §4: the old-code copy and every kept answer leave events); amended 2026-11-04 (#2467, §3: the checks answer one line per part of a SPEC); amended 2026-11-04 (#2470, §3 §4: one line per SPEC that is fine and one per failing part; design's check keeps its answer per SPEC, is given the draft by its path, and judges only the SPECs that changed); amended 2026-11-05 (#2472, §3 §4: quotes ignore formatting; a kept answer does not depend on the file its items come from; a bad line costs only its own item); amended 2026-11-05 (#2474, §3: every reply line is read with its formatting aside)
 **Issue:** #2464 (runs 41643063636 and 41679237388 on #1805)
 **Amends:** ADR-068 §6 §7 (answers are kept in a stage's result; a check keeps a verdict whose inputs have not changed), ADR-017 §11 (`tools: read`), ADR-069 §2 (a `[done]` claim is read in the code from before the change, by file), ADR-067 §8 (a judging call can read and search files, and nothing else)
 **Related:** ADR-060 §6 (one re-ask), ADR-054 §7 (teardown frees run resources), ADR-066 (every ADR statement has a test)
@@ -67,7 +67,7 @@ A judging call is a model call whose answer the engine acts on: design's coverag
 
 - **`scripts/lib/judge.sh`**:
   - old-code copy: `judge_base_dir_v`, `judge_base_release`;
-  - quotes: `judge_quote_check_v`, `judge_quote_path_v`;
+  - quotes: `judge_quote_check_v`, `judge_quote_path_v` (in `scripts/lib/judge-quotes.sh`, which it sources);
   - answers: `zb_answers_collect_v`, `judge_answers_to`, `judge_disputes_block`;
   - kept verdicts: `judge_engine_v`, `judge_fp_v`, `judge_kept_get_v`, `judge_kept_put`, `judge_opened_v`.
 - **The router and the rules** (`core/router/route.sh`, `scripts/lib/stage-limits.sh`, `scripts/lib/stage-prompt.sh`): `_route_judge_tools` picked the read-only tools (since #2507, each call's tools come from its manifest's `calls:`, `core/router/call-tools.sh`), `_route_stream_opened` lists the files a call opened, and `_stage_block_rules_pair_v` writes the read-only rules.
@@ -204,7 +204,13 @@ This question replaces it.
 - **Each such part is a finding only the code can fix** (`change-findings`, ADR-071 §1), which build takes, and
   the change does not pass. The result keeps them apart from the unmet requirements, in `data.unasked`.
 
+## Amendment 2026-11-10 (#2517) — §3: a quote across comment lines holds
+
+On #1805 run 42817975218 issue-acceptance quoted a comment from `tests/integration/pipeline-resume-test.sh` that runs over two lines, each starting with `#`, as one line; the second `#` broke the match and the answer was thrown away. A quote not found as written is looked for again with each line's leading comment mark (`#`, `//`, `--`) and the spaces after it left out (`_judge_uncomment_v`), as formatting already is.
+
 ## Enforced by
+
+- §3 amendment 2026-11-10 (#2517: a quote across comment lines holds) → `tests/unit/judge-quotes-test.sh` Q9
 
 - §3 amendment 2026-11-09 (#2506: a lens names no line; its finding is shown with its quote) → `tests/unit/no-line-numbers-test.sh` L2, L3
 

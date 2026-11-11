@@ -99,9 +99,11 @@ _ta_before_run() {
             [[ -n "$sid" ]] || continue
             [[ " ${_brf[$sid]:-} " == *" $tf "* ]] || continue
             st="$(acceptance_spec_status "$design" "$sid" 2>/dev/null || true)"
-            [[ "$st" == "done" ]] && continue
             v=0; _negctl_spec_log_check "$log" "$sid" || v=$?
-            if [[ "$v" -eq 1 && "$st" != no-code ]]; then
+            if [[ "$v" -eq 0 && "$st" == "done" ]]; then
+                # #2517: the old code is said to do it, so its test passes there.
+                _TA_BEFORE_FINDINGS+=("$sid: $tf fails on the code from before this change, which the design says already does this — the test or the [done] is wrong")
+            elif [[ "$v" -eq 1 && "$st" != no-code && "$st" != "done" ]]; then
                 _TA_BEFORE_FINDINGS+=("$sid: $tf passes on the code from before this change — a requirement that needs code must have a test that fails there")
             elif [[ "$v" -eq 2 && "$rc" -ne 0 ]]; then
                 _TA_BEFORE_FINDINGS+=("$sid: $tf stopped before $sid's assertion ran on the code from before this change (exit $rc): $(_ta_log_tail "$log")")

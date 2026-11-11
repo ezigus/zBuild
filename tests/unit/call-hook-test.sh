@@ -26,7 +26,10 @@
 #             the test folders and the copy stay readable
 # G6 [change] with no deadline the hook never says time is up
 # G7 [change] test-author's prompt says where the code from before the change
-#             is, and its main call is the one the read guard is for# G8 [change] a refusal is valid JSON whatever the command holds (a tab, a
+#             is, and its main call is the one the read guard is for# G9 [change] the router kills a call only after its limit plus a grace, 5 min by
+#             default (ZBUILD_CALL_GRACE_S), and a stage's own limit gains the
+#             same grace (#2517)
+# G8 [change] a refusal is valid JSON whatever the command holds (a tab, a
 #             carriage return); a web guard that cannot read what a secret looks
 #             like refuses, never allows (review on #2512)
 set -uo pipefail
@@ -102,7 +105,8 @@ _ht="$(_hook_of "$_build" 600 "$BASE")"
 assert_contains "[G1] a call given the copy of the code has the read guard" "$_ht" "--code-copy"
 assert_contains "[G1] ...naming the copy" "$_ht" "$BASE"
 assert_contains "[G1] ...and the test folders" "$_ht" "--test-glob"
-assert_eq "[G1] a short call with no tools gets no hook" "<none>" "$(_hook_of "$_quiet" 60)"
+# #2517: every call with a time limit gets the time-up hook, tools or not.
+assert_contains "[G1] a short call with no tools still gets the time-up hook" "$(_hook_of "$_quiet" 60)" "core/router/tool-hook.sh"
 _hs="$(_hook_of "$_judge" 60)"
 assert_contains "[G1] a short call with tools still gets its guards" "$_hs" "--git-only"
 
@@ -220,6 +224,23 @@ assert_eq "[G8] a refusal of a command holding a tab and a CR is valid JSON" "de
 _G8D="$TEST_TEMP_DIR/g8/core/router"; mkdir -p "$_G8D"; cp "$HOOK" "$_G8D/tool-hook.sh"
 _g8w="$(jq -cn '{tool_name:"WebSearch", tool_input:{query:"bash nameref"}}' | bash "$_G8D/tool-hook.sh" 0 '')"
 assert_eq "[G8] a web search with no secret definitions to check against is refused" "deny" "$(_dec "$_g8w")"
+
+print_test_section "G9: the kill comes a grace after the limit"
+# A stand-in timeout program on PATH records the limit it is given, then runs
+# the call; the stand-in claude answers at once.
+mkdir -p "$TEST_TEMP_DIR/tbin"
+for _tb in gtimeout timeout; do
+    printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$1" > "%s/timeout-arg"\nshift\nexec "$@"\n' "$TEST_TEMP_DIR" > "$TEST_TEMP_DIR/tbin/$_tb"
+    chmod +x "$TEST_TEMP_DIR/tbin/$_tb"
+done
+_g9() { ( rm -f "$TEST_TEMP_DIR/timeout-arg"
+    export PATH="$TEST_TEMP_DIR/tbin:$PATH" ZBUILD_ROUTER_TIMEOUT=600 ZBUILD_PLUGIN_DIR="$_quiet"
+    if [[ -n "${1:-}" ]]; then export ZBUILD_CALL_GRACE_S="$1"; else unset ZBUILD_CALL_GRACE_S; fi
+    route_to_model T1 "ping" --skip-precondition >/dev/null 2>&1 || true
+    cat "$TEST_TEMP_DIR/timeout-arg" 2>/dev/null || echo "<none>" ); }
+assert_eq "[G9] a 600 s call is killed at 900 s: its limit plus the 5 min grace" "900" "$(_g9)"
+assert_eq "[G9] ...the grace set by ZBUILD_CALL_GRACE_S" "720" "$(_g9 120)"
+assert_eq "[G9] ...and a grace that is not a whole number of seconds is the default" "900" "$(_g9 soon)"
 
 cleanup_test_env
 print_test_results

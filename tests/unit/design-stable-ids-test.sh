@@ -10,8 +10,8 @@
 # Its evidence was a line number, which moved from 3808 to 3896 between tries.
 #
 # D1  [code] a new design's bare SPEC code is refused, in plain words
-# D16 [code] a [done] whose text the old code has, but only on lines the branch
-#           moved or changed, is refused with a message that says so (#2515)
+# D16 [code] a [done] whose text the old code has, on a line the branch moved, is
+#           accepted: its test proves it at the end (#2517)
 # D2  [code] a duplicate id, and a line shaped like an id with a bad code, are
 #            refused
 # D3  [code] an id the last design had is kept, or listed `REMOVED: <id> — <why>`
@@ -178,16 +178,11 @@ _check 'DSLOOP-1[code]: a covers: RQRSUM-1' '  When: it runs' '  Then: it is don
 _has "[D11] text only in lines this branch added is refused" "DONE_NOT_BEFORE DSGARD-1"
 assert_contains "[D11] ...saying to make it [code] with a test" "$P" "[code]"
 assert_contains "[D11] ...and that the text is not in the code from before" "$P" "is not in the code from before this change"
-# #2515: text the old code has, on a line the branch moved, is the branch's code
-# now — and the message says so, not that the old code lacks it (#1805 run
-# 42732752714: design found the text in the old code and disputed it, three tries).
+# #2517: a [done] is proven by its test at the end, not by an untouched line:
+# text the old code has, on a line the branch moved, is accepted (#1805 run
+# 42817975218: no status fitted, and design ran out of tries).
 _check 'DSLOOP-1[code]: a covers: RQRSUM-1' '  When: it runs' '  Then: it is done' 'DSGARD-1[done]: the moved guard runs evidence: scripts/moved.sh:"echo moved guard"' '  When: it runs' '  Then: it is done'
-_has "[D16] text the old code has, only on a line this branch moved, is refused" "DONE_MOVED DSGARD-1"
-assert_contains "[D16] ...saying the text is in the code from before this change" "$P" "is in the code from before this change"
-assert_contains "[D16] ...that this branch moved or changed every line holding it" "$P" "this branch has since moved or changed every line that holds it"
-assert_contains "[D16] ...and to make it [code] with a test" "$P" "tag DSGARD-1 [code] and give it a test"
-assert_not_contains_d16() { if grep -qF -- "$2" <<< "$P"; then assert_fail "$1" "found: $2"; else assert_pass "$1"; fi; }
-assert_not_contains_d16 "[D16] ...and never that the text is missing from the old code" "is not in the code from before"
+_ok "[D16] a [done] whose evidence the old code has, on a line this branch moved, is accepted"
 _check 'DSLOOP-1[code]: a covers: RQRSUM-1' '  When: it runs' '  Then: it is done' 'DSGARD-1[done]: x evidence: scripts/run.sh:"no such text"' '  When: it runs' '  Then: it is done'
 _has "[D12] text not in the file is refused" "DONE_TEXT_MISSING DSGARD-1"
 _check 'DSLOOP-1[code]: a covers: RQRSUM-1' '  When: it runs' '  Then: it is done' 'DSGARD-1[done]: x evidence: tests/unit/run-test.sh' '  When: it runs' '  Then: it is done'

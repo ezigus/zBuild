@@ -281,8 +281,9 @@ The design document MUST include:
    - \`${_DCK_ID_PREFIX}GARD-1[done]:\` — the code from before your change already does it. Name the evidence at the end of the line, after \` evidence: \` —
      a file by its path from the repository root with an exact piece of its text in double quotes
      (scripts/x.sh:"run_guard()"), or an existing test file named alone; several separated by spaces.
-     The text must be in the file on the commit this branch started from, outside anything this branch
-     changed: code this work added is not done yet, so it is [code], with a test. No test is written for a [done] SPEC.
+     The text must be in the file on the commit this branch started from: code this work added is not
+     done yet, so it is [code]. A [done] SPEC still gets a test: it must pass after the change, and it
+     need not fail before — it proves the finished change still does what the old code did.
    Every requirement carries one of the three. A change that edits code needs at least one [code] requirement.
 
    You name no files: no test file, and no list of the files the change

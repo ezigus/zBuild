@@ -33,6 +33,11 @@
 #             out, and test-author's notes said all 16 were done)
 # B9 [guard]  a changed [no-code] test that passes on the old code is no
 #             finding: it need not fail there (review on #2446)
+# B11 [change] a [done] requirement gets a test too (#2517, ADR-069): it is in the
+#             prompt with its tag, its test must pass after the change and need
+#             not fail before; a design whose every requirement is done still
+#             calls the model; a [done] test that passes on the old code is no
+#             finding, and one that fails there is (the old code is said to do it)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -82,6 +87,7 @@ _run() {
     ( cd "$R" && git init -q -b main . && git config user.email t@e.st && git config user.name t \
         && : > tests/a-test.sh && git add -A && git commit -q -m seed ) >/dev/null 2>&1
     printf '{"schema_version":1}' > "$d/state/pipeline-state.json"
+    if [[ -n "${DESIGN_MD:-}" ]]; then printf '%s\n' "$DESIGN_MD" > "$A/design.md"; else
     cat > "$A/design.md" <<'MD'
 # Design
 ```acceptance
@@ -90,6 +96,7 @@ SPEC-2[no-code]: the docs say so
 WIRING: none
 ```
 MD
+    fi
     export ZBUILD_REPO_ROOT="$R" ZBUILD_EVENTS_JSONL="$d/events.jsonl"
     test_author_run test-author "$d/state/pipeline-state.json" >/dev/null 2>&1
     RC=$?
@@ -176,6 +183,38 @@ if grep -qF 'outside-test.sh' <<< "$_wl"; then
 else
     assert_pass "[B8] ...nor listed in the prompt"
 fi
+
+# ── B11 ──────────────────────────────────────────────────────────────────────
+print_test_section "B11: a [done] requirement gets a test that must pass at the end"
+# SPEC-1 is [done]: the model writes tests/a-test.sh for it (WRITE), tagged T1.
+# The author's model as at the top (a section above replaced it).
+route_to_model_loop() {
+    local n; n=$(( $(cat "$TEST_TEMP_DIR/author-calls" 2>/dev/null || echo 0) + 1 ))
+    printf '%s' "$n" > "$TEST_TEMP_DIR/author-calls"
+    cp "$2" "$TEST_TEMP_DIR/author-prompt-$n"
+    local w="${WRITE[$((n - 1))]:-${WRITE[${#WRITE[@]}-1]}}"
+    [[ "$w" == same ]] || _body "$w" "$T1" > "$R/tests/a-test.sh"
+    _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
+    _ROUTE_LOOP_LAST_RESPONSE="LOOP_COMPLETE"
+    return 0
+}
+DESIGN_MD='# Design
+```acceptance
+SPEC-1[done]: an empty input returns rc 1 evidence: tests/b-test.sh
+WIRING: none
+```'
+WRITE=(passes); _run
+_AP="$(tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/author-prompt-1" 2>/dev/null)"
+assert_eq "[B11] a design whose every requirement is done still calls the model" "1" "$CALLS"
+assert_contains "[B11] the [done] requirement is in the prompt" "$_AP" "SPEC-1 [done] an empty input returns rc 1"
+assert_contains "[B11] ...with its tag" "$_AP" "tag: $T1"
+assert_contains "[B11] ...and what its test must do: pass after the change, without having to fail before" "$_AP" \
+    "its test must pass after this change; it need not fail before"
+assert_eq "[B11] a [done] test that passes on the old code is no finding" "pass" "$OUTCOME"
+WRITE=(fails); _run
+assert_contains "[B11] a [done] test that fails on the old code is a finding" "$FINDINGS" \
+    "SPEC-1: tests/a-test.sh fails on the code from before this change, which the design says already does this"
+unset DESIGN_MD
 
 cleanup_test_env
 print_test_results

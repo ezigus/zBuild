@@ -4,10 +4,11 @@
 # call (or a subagent it starts) uses, and allows it or refuses it with a reason
 # the model reads as the tool's result.
 #
-# Time is up (ADR-063, amended 2026-11-08, #2503): after the deadline it
-# refuses every tool but writing or editing the stage's notes file, and tells
-# the model why, so the call ends with its own last message instead of being
-# killed at its time limit. A deadline of 0 is none.
+# Time is up (ADR-063, amended 2026-11-08, #2503; 2026-11-10, #2517): the
+# deadline is the call's time limit. From the first tool call after it, every
+# tool but writing or editing the stage's notes file is refused, and the model
+# is told to write its notes and give its final reply; the router kills the call
+# only a grace later. A deadline of 0 is none.
 #
 # Guards (#2507, ADR-017 §12), before the deadline:
 #   --git-only           the shell runs only git diff, git log, git show and
@@ -63,7 +64,7 @@ if [[ "$deadline" =~ ^[0-9]+$ ]] && (( deadline > 0 && now >= deadline )); then
     path=""
     [[ "$tool" == Write || "$tool" == Edit ]] && path="$(jq -r '.tool_input.file_path // ""' <<< "$input" 2>/dev/null)"
     [[ -n "$notes" && -n "$path" && "$path" == "$notes" ]] && exit 0
-    why="Time is up: this call ends in under a minute. Stop the work you were doing."
+    why="Time is up: this call has reached its time limit. Stop the work you were doing."
     [[ -n "$notes" ]] && why+=" You may still use Write or Edit on your notes file, $notes: write what you found there now, in one step."
     why+=" Then give your final reply now, with your answer to every finding you were given. Every other tool is refused."
     _deny "$why"

@@ -45,9 +45,8 @@ _dck_unclear_bad_v() {
 #   LINE     a line number      BAD       not a file in the repository
 #   NO_TEXT  a source file named alone    MISSING   the text is not in it
 #   NOT_BEFORE  not on the base commit
-#   MOVED       on the base commit, but now only on lines this branch moved or changed
 _dck_evidence_v() {
-    local -n _dev="$1"; local root="$2" item="$3" base="$4" path txt n src occ ranges a c l ok=0
+    local -n _dev="$1"; local root="$2" item="$3" base="$4" path txt n src
     _dev=""
     acceptance_evidence_split "$item" path txt n
     [[ -n "$n" ]] && { _dev=LINE; return 0; }
@@ -60,23 +59,10 @@ _dck_evidence_v() {
     src="$(<"$root/$path")"
     [[ "$src" == *"$txt"* ]] || { _dev=MISSING; return 0; }
     [[ -n "$base" ]] || return 0
-    [[ "$(git -C "$root" show "$base:$path" 2>/dev/null)" == *"$txt"* ]] || { _dev=NOT_BEFORE; return 0; }
-    # The lines this branch added or changed: each hunk's "+start,count".
-    ranges="$(git -C "$root" diff -U0 --no-color "$base" -- "$path" 2>/dev/null \
-        | sed -nE 's/^@@ [^+]*\+([0-9]+)(,([0-9]+))? @@.*/\1 \3/p')"
-    occ=0
-    while IFS= read -r l; do
-        occ=$((occ + 1))
-        [[ "$l" == *"$txt"* ]] || continue
-        ok=1
-        while read -r a c; do
-            [[ -n "$a" ]] || continue
-            c="${c:-1}"
-            (( occ >= a && occ < a + c )) && { ok=0; break; }
-        done <<< "$ranges"
-        (( ok )) && return 0
-    done <<< "$src"
-    _dev=MOVED
+    # #2517 (ADR-069): the evidence shows where the old code does it; the
+    # requirement's test proves the finished change still does, so a line the
+    # branch moved or changed is no reason to refuse it.
+    [[ "$(git -C "$root" show "$base:$path" 2>/dev/null)" == *"$txt"* ]] || _dev=NOT_BEFORE
 }
 
 # _dck_block_ids_v <ids_var> <removed_var> <block> — the SPEC ids, and the ids
@@ -187,8 +173,6 @@ _dck_plain() {
         DONE_NO_TEXT*)       printf 'the evidence %s for %s names a source file alone — add an exact piece of its text that shows the code already does it: %s:"run_guard()"' "$third" "$id" "$third" ;;
         DONE_TEXT_MISSING*)  printf 'the evidence %s for %s is not in that file — quote its text exactly' "$third" "$id" ;;
         DONE_NOT_BEFORE*)    printf '%s is marked [done], but its evidence %s is not in the code from before this change — this branch added it, so it is not done yet: tag %s [code] and give it a test' "$id" "$third" "$id" ;;
-        # #2515: the old code has the text, but what runs now is the branch's.
-        DONE_MOVED*)         printf '%s is marked [done], and its evidence %s is in the code from before this change, but this branch has since moved or changed every line that holds it. What runs now is this branch'"'"'s code, not the old one, so it is not done: tag %s [code] and give it a test' "$id" "$third" "$id" ;;
         ID_*)                zb_id_plain "$v" SPEC ;;
         CONTENTS_NOT_BEHAVIOUR*) printf '%s describes what a file contains, not what the code does — no test can prove that; describe the behaviour someone could observe (an input and what happens)' "$id" ;;
         "WIRING_MISSING ("*) printf 'the acceptance block does not say which existing file calls the new code — add a WIRING: line naming it, or WIRING: none if nothing calls it yet' ;;
@@ -306,7 +290,6 @@ _design_checks() {
                             NO_TEXT)    violations+=("DONE_NO_TEXT $_spec $_ev (a source file with no text)") ;;
                             MISSING)    violations+=("DONE_TEXT_MISSING $_spec $_ev (the text is not in the file)") ;;
                             NOT_BEFORE) violations+=("DONE_NOT_BEFORE $_spec $_ev (not in the code from before the change)") ;;
-                            MOVED)      violations+=("DONE_MOVED $_spec $_ev (in the code from before, but only on lines this branch moved or changed)") ;;
                             *)          violations+=("DONE_BAD_EVIDENCE $_spec $_ev (not a file in the repository)") ;;
                         esac
                     done < <(acceptance_spec_evidence "$design_md" "$_spec" 2>/dev/null || true)

@@ -35,6 +35,8 @@ source "$REPO_ROOT/core/pipeline/verdict.sh"
 source "$REPO_ROOT/scripts/lib/stage-prompt.sh"
 print_test_header "the engine stops a stage past its time limit"
 setup_test_env "stage-time-limit"
+# The kill under test comes at the limit: no call grace (#2517, ADR-063).
+export ZBUILD_CALL_GRACE_S=0
 
 export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events.jsonl"; : > "$ZBUILD_EVENTS_JSONL"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR"

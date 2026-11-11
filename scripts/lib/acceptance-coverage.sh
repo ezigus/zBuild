@@ -255,9 +255,9 @@ acceptance_find_assertion_label() {
 # SPEC-n ids / no acceptance block — those are handled as a no-op pass by the
 # caller), 1 when at least one gated SPEC-n is untagged.
 #
-# #2304 (ADR-069 §4): a done or no-code requirement is EXEMPT — it is not run
-# against the old code, so it need not carry a [SPEC-n]-tagged test here. The
-# status comes from acceptance_spec_status, the parser the design-gate uses.
+# #2517 (ADR-069): every requirement, whatever its status, is proven by a test
+# that passes at the end, so every one needs its tagged test. Only a [code]
+# requirement's test must also fail on the old code (the negative control).
 acceptance_coverage_check() {
     local design_md="${1:-}" repo_root="${2:-}"
     local spec_id rc=0
@@ -266,9 +266,6 @@ acceptance_coverage_check() {
     acceptance_spec_files_v _acc_files "$design_md" "${repo_root:-}"
     while IFS= read -r spec_id; do
         [[ -z "$spec_id" ]] && continue
-        case "$(acceptance_spec_status "$design_md" "$spec_id")" in
-            done|no-code) continue ;;
-        esac
         if [[ -z "${_acc_files[$spec_id]:-}" ]]; then
             printf 'UNTAGGED %s\n' "$spec_id"
             rc=1

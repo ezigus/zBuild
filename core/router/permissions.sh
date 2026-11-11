@@ -80,17 +80,15 @@ _zbuild_permissions_artifact_dir() {
 # _zbuild_tool_hook_cmd_v <var> <secs> — the command of the call's PreToolUse
 # hook (core/router/tool-hook.sh): the guards its tools need (#2507, ADR-017
 # §12: _ROUTE_HOOK_FLAGS, from core/router/call-tools.sh), then its deadline —
-# its time limit less a minute, #2503 (ADR-063) — and the stage's notes file.
-# The deadline is 0 for a call of a minute or less. Empty when a call has no
-# deadline and no tools. Everything rides in the command: the spawn scrubs
+# its time limit itself (#2517, ADR-063: the kill comes a grace later) — and the
+# stage's notes file. Empty when a call has no limit and no tools. Everything rides in the command: the spawn scrubs
 # ZBUILD_*.
-_ZB_TIME_UP_WINDOW=60
 _zbuild_tool_hook_cmd_v() {
     local -n _tuh="$1"; local secs="${2:-}" now notes="" deadline=0 f
     _tuh=""
-    if [[ "$secs" =~ ^[0-9]+$ ]] && (( secs > _ZB_TIME_UP_WINDOW )); then
+    if [[ "$secs" =~ ^[0-9]+$ ]] && (( secs > 0 )); then
         printf -v now '%(%s)T' -1
-        deadline=$(( now + secs - _ZB_TIME_UP_WINDOW ))
+        deadline=$(( now + secs ))
     fi
     (( deadline > 0 )) || [[ -n "${_ROUTE_CALL_WORDS:-}" ]] || return 0
     [[ -n "${ZBUILD_STATE_DIR:-}" && -n "${ZBUILD_CURRENT_STAGE:-}" ]] && declare -F stage_notes_path_v >/dev/null 2>&1 \

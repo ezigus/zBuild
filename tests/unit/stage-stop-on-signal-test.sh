@@ -34,6 +34,9 @@
 #             `wait` in that trap on a child it had just KILLed blocked until
 #             another child changed state (#2489; the run stalled ~10s, until
 #             its watchdog's KILL)
+# S12 [change] a stage's time limit gains the call grace: its watchdog sleeps the
+#             stage's limit plus ZBUILD_CALL_GRACE_S, so a last call finishing in
+#             its grace is not stopped by the stage's limit first (#2517)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -50,6 +53,9 @@ source "$REPO_ROOT/core/plugin-registry/registry.sh"
 source "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh"
 
 print_test_header "a signal stops the running stage (ADR-054 §7)"
+# The watchdogs below are found by their limit: no call grace is added to it,
+# except in S12, which checks that it is.
+export ZBUILD_CALL_GRACE_S=0
 setup_test_env "stage-stop-on-signal"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
@@ -140,6 +146,21 @@ if [[ -n "$_wd" ]]; then
 else
     assert_pass "[S4] no watchdog outlives the stopped stage"
 fi
+unset _TPL_SOURCE_FILE
+
+print_test_section "S12: a stage's limit gains the call grace"
+_WD12=$(( _WD + 4 ))
+printf 'stages:\n  - slow\nslow:\n  timeout_s: %s\n' "$_WD12" > "$TPL"
+export _TPL_SOURCE_FILE="$TPL" SLOW_SECS=600 SLOW_RC=0
+rm -f "$SLOW_PID_FILE"
+( export ZBUILD_CALL_GRACE_S=7; trap 'plugin_stop_running; exit 143' TERM
+  ZBUILD_CURRENT_STAGE=slow plugin_hook_call "$PLUGIN_DIR" run slow "$STATE_FILE" >/dev/null 2>&1 ) &
+_s12=$!
+for _ in $(seq 1 100); do [[ -s "$SLOW_PID_FILE" ]] && break; sleep 0.05; done
+_w12=""; for _ in $(seq 1 50); do _w12="$(pgrep -f "^sleep $(( _WD12 + 7 ))\$" 2>/dev/null || true)"; [[ -n "$_w12" ]] && break; sleep 0.1; done
+assert_eq "[S12] the stage's watchdog sleeps its limit plus the call grace" "1" "$([[ -n "$_w12" ]] && echo 1 || echo 0)"
+kill -TERM "$_s12" 2>/dev/null || true; wait "$_s12" 2>/dev/null || true
+for _p in $(pgrep -f "^sleep ($_WD12|$(( _WD12 + 7 )))\$" 2>/dev/null); do kill -KILL "$_p" 2>/dev/null || true; done
 unset _TPL_SOURCE_FILE
 
 print_test_section "S11: a trap that stops a bounded stage ends at once, every time"

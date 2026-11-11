@@ -3,6 +3,7 @@
 **Status:** Accepted, amended 2026-10-05 by #2032
 **Issue:** #2032
 **Amends:** ADR-054 §6 (vocabulary updated to `timed_out`/`out_of_turns` per #2187)
+**Amended:** 2026-11-10 (#2517) — a call finishes after its limit; the kill comes a grace later.
 **Amended:** 2026-11-09 (#2505) — the 2026-10-06 (#2325) earlier-round notes label is withdrawn.
 **Amended:** 2026-10-05 (#2032) — vocabulary updated per #2187: the stale disposition word and the stale §4 engine action word are retired; `timed_out`/`out_of_turns` replace the former, and the engine's timeout-retry path (ADR-029) replaces the latter; §1 per-stage `_<stage>_budget_guidance` helpers replace the single shared helper.
 **Related:** ADR-029 (budget escalation), ADR-060 (structure to the engine, prose to humans), #1986 (summary ingestion)
@@ -388,3 +389,14 @@ Enforced by `tests/unit/cut-off-hand-off-test.sh` H5, H6.
 The hook of the amendment above also holds the guards a call's tools need (ADR-017 §12), so it is now `core/router/tool-hook.sh`: its command gives the guards, then the deadline and the notes file. A call of a minute or less has deadline 0, which is none; it gets the hook only when it has tools, for its guards. After the deadline the hook behaves as above.
 
 Enforced by `tests/unit/call-time-up-hook-test.sh` H1–H6; `tests/unit/call-hook-test.sh` G1 (a short call with tools still gets its guards), G6 (deadline 0 is none).
+
+## Amendment (2026-11-10, #2517): a call finishes after its limit; the kill comes a grace later
+
+On #1805 run 42817975218 three calls were killed with nothing kept. The warning came at a tool call after "limit − 60 s", but the model thought for up to 154 s between tool calls, so it arrived 20–40 s before the kill.
+
+- **The deadline is the call's time limit itself.** From the first tool call after it, the call's hook refuses every tool but writing the stage's notes file, and tells the model its time limit is reached: write its notes and give its final reply.
+- **The router kills the call only a grace after the limit:** `ZBUILD_CALL_GRACE_S`, 5 minutes by default (`zb_call_grace_s_v`, `scripts/lib/stage-limits.sh`). The engine cannot tell a call that is stuck from one still thinking: a call still running after the grace is killed.
+- **A stage's own time limit gains the same grace**, so a last call finishing in its grace is not stopped by the stage's limit first.
+- Every call with a time limit gets the hook, tools or not.
+
+Enforced by `tests/unit/call-time-up-hook-test.sh` H1 (the deadline is the limit), H2 (a short call gets it too), H4 (the words: the limit is reached, give the final reply); `tests/unit/call-hook-test.sh` G9 (the kill at limit + grace; ZBUILD_CALL_GRACE_S), G1 (a call with no tools gets the hook); `tests/unit/stage-stop-on-signal-test.sh` S12 (a stage's limit gains the grace).

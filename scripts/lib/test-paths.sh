@@ -66,6 +66,43 @@ zb_test_folder_files_v() {
     return 0
 }
 
+# zb_test_folder_branch_files_v <array_var> [repo_root] — the files in the test
+# folders that this branch added or changed since it left the default branch,
+# committed or not (#2517, ADR-069 §11): an issue's tests are files its branch
+# wrote. On the default branch itself, or with no base to compare with, every
+# file in the test folders. `git diff --merge-base` finds the base itself: no
+# separate merge-base lookup.
+zb_test_folder_branch_files_v() {
+    local -n _ztb_out="$1"; local _root="${2:-${ZBUILD_REPO_ROOT:-$PWD}}" _globs _f _db="" _cur="" _nobase=""
+    local -a _gl=()
+    _ztb_out=()
+    declare -F zbuild_resolve_default_branch_v >/dev/null 2>&1 \
+        || source "${BASH_SOURCE[0]%/*}/default-branch.sh" 2>/dev/null || true
+    # The branch HEAD names, read by the shell (a worktree's .git is a file
+    # naming its git folder): no fork.
+    local _gd="$_root/.git" _hl=""
+    if [[ -f "$_gd" ]]; then IFS= read -r _hl < "$_gd" || true; _gd="${_hl#gitdir: }"; [[ "$_gd" == /* ]] || _gd="$_root/$_gd"; fi
+    _hl=""; [[ -f "$_gd/HEAD" ]] && { IFS= read -r _hl < "$_gd/HEAD" || true; }
+    [[ "$_hl" == "ref: refs/heads/"* ]] && _cur="${_hl#ref: refs/heads/}"
+    declare -F zbuild_resolve_default_branch_v >/dev/null 2>&1 && zbuild_resolve_default_branch_v _db "$_root"
+    # No branch work to tell apart — on the default branch, or no default branch.
+    if [[ -z "$_db" || "$_cur" == "$_db" ]]; then zb_test_folder_files_v _ztb_out "$_root"; return 0; fi
+    zb_test_path_globs_v _globs "$_root"
+    read -ra _gl <<< "$_globs"
+    [[ ${#_gl[@]} -gt 0 ]] || return 0
+    # The remote's default branch first, then the local one; with no common
+    # base for either (a shallow clone), every file, as on the default branch.
+    while IFS= read -r -d '' _f; do
+        [[ "$_f" == $'\x01nobase' ]] && { _nobase=1; continue; }
+        [[ -f "$_root/$_f" ]] && _zb_test_globs_match "$_f" "${_gl[@]}" && _ztb_out+=("$_f")
+    done < <(git -C "$_root" diff --name-only -z --merge-base "origin/$_db" 2>/dev/null \
+        || git -C "$_root" diff --name-only -z --merge-base "$_db" 2>/dev/null \
+        || printf '\x01nobase\0'
+        git -C "$_root" ls-files -o --exclude-standard -z 2>/dev/null)
+    [[ -z "$_nobase" ]] || zb_test_folder_files_v _ztb_out "$_root"
+    return 0
+}
+
 # zb_test_folder_changes_v <array_var> [repo_root] — each file in the test
 # folders that differs from HEAD: changed, added, deleted or new (#2508). The
 # test author commits these; build may change none of them. One git fork.

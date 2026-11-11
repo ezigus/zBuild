@@ -670,7 +670,10 @@ _route_call_claude() {
     local stderr_file rc=0 response
     # TERM-only (`none`), as this bound has always been: a -k here would turn
     # a hang into rc=137, which reads as an out-of-memory kill, not a timeout.
-    _acceptance_timeout_prefix "$secs" none
+    # #2517 (ADR-063): the kill comes a grace after the limit; at the limit the
+    # call's hook leaves it only its notes to write and its reply to give.
+    local _kill_s; zb_call_grace_s_v _kill_s; _kill_s=$(( secs + _kill_s ))
+    _acceptance_timeout_prefix "$_kill_s" none
     local -a _tout_cmd=(${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"})
     if ! stderr_file="$(mktemp "$(zbuild_engine_tmpdir)/zb-router-stderr.XXXXXX" 2>/dev/null)"; then
         error "router: mktemp failed"
@@ -1422,8 +1425,10 @@ route_to_model_loop() {
     _claude_args+=(--output-format stream-json --verbose)
 
     rc=0
-    # TERM-only, as in _route_call_claude (#1752).
-    _acceptance_timeout_prefix "$secs" none
+    # TERM-only, as in _route_call_claude (#1752); killed a grace after the
+    # limit (#2517).
+    local _kill_s; zb_call_grace_s_v _kill_s; _kill_s=$(( secs + _kill_s ))
+    _acceptance_timeout_prefix "$_kill_s" none
     local -a _tout_cmd=(${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"})
 
     # Run claude in $cwd as background child so signal trap can kill it.
