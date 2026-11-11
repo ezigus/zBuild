@@ -17,6 +17,4 @@
 - RQPATH-1: Every way to resume (`--resume`, auto-resume on restart, and `zbuild pipeline resume --run-id`) finds the interrupted run's state in `runs/<run_id>/` and behaves as RQRESU-4. Each has its own test.
 - RQGUAR-1: A run with no prior state behaves exactly as today. This is a guard.
 - RQGUAR-2: A **new** run of the same issue still never skips a stage because of an earlier run's output (ADR-050 §6). This is a guard.
-- the requirements changed since the last run:
-  - removed: RQTEST-1 Tests for RQRESU-4, RQLOOP-1, RQFROM-2, RQFROM-3, and RQPATH-1 must use a cycle. — This is a note about methodology: which test harnesses are valid to evaluate the other requirements. No change to the code can demonstrate it is met; it is a verification constraint, not a code requirement.
-  - removed: RQDISP-1 No requirement may be marked done, and no change made, on the strength of the legacy loop. — This is a note about acceptance criteria and what counts as valid evidence, not a requirement for what the code must do or deliver. No code change demonstrates it. By the same principle as RQORDE-1, it is a methodology note excluded from requirements.
+- the requirements are the same as the last run's
