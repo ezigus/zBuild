@@ -33,11 +33,11 @@
   [38;2;0;212;255m[SPEC-7][change] stage-io records are not put back[0m
   [38;2;74;222;128m✓[0m [SPEC-7] a stage's output is put back
   [38;2;248;113;113m✗[0m [SPEC-7] an earlier run's stage-io record is not put back
-    [2mfile should not exist: /home/runner/work/_temp/zbuild-state/scratch/test/zb-hydrate.V8klfr/s7-to/stage-io/design-iter4-error.json[0m
+    [2mfile should not exist: /home/runner/work/_temp/zbuild-state/scratch/test/zb-hydrate.MzQPmD/s7-to/stage-io/design-iter4-error.json[0m
 
   [38;2;0;212;255m[#1805/DSDLGT-1] hydrate_run calls _artifact_persist_put_back (not inline _hydrate_put_back)[0m
   [38;2;248;113;113m✗[0m [#1805/DSDLGT-1] hydrate_run invoked _artifact_persist_put_back (sentinel written)
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/zb-hydrate.V8klfr/spec13-put-back-called[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/zb-hydrate.MzQPmD/spec13-put-back-called[0m
 
   [38;2;0;212;255m[SPEC-3][guard] a failed restore leaves the area absent, not partial[0m
   [38;2;74;222;128m✓[0m [SPEC-3] hydrate still returns 0 on a failed restore (exit 0)

@@ -52,9 +52,14 @@
   [38;2;74;222;128m✓[0m [#1805/DSFSTG-4] stderr contains --from-stage is only valid with --resume
   [38;2;74;222;128m✓[0m [#1805/DSFSTG-4] no pipeline.resume event emitted (guard fires before auto-resume)
 
+  [38;2;0;212;255m[#1805/DSFSTG-4] --from-stage without --resume refuses via latest-symlink auto-resume path[0m
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-4] --from-stage without --resume exits 1 even via latest-symlink auto-resume path
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-4] stderr contains --from-stage is only valid with --resume (latest-symlink path)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-4] no pipeline.resume event emitted (guard fires before symlink-based auto-resume)
+
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m2 of 32 tests failed[0m
+  [38;2;248;113;113m[1m2 of 35 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1805/DSFSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage target cyc was dispatched as first stage)
   [38;2;248;113;113m✗[0m [#1805/DSFSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage dispatches <s> as first unit on plain path)
@@ -111,7 +116,12 @@
   [38;2;74;222;128m✓[0m [#1805/DSFSTG-4] stderr contains --from-stage is only valid with --resume
   [38;2;74;222;128m✓[0m [#1805/DSFSTG-4] no pipeline.resume event emitted (guard fires before auto-resume)
 
+  [38;2;0;212;255m[#1805/DSFSTG-4] --from-stage without --resume refuses via latest-symlink auto-resume path[0m
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-4] --from-stage without --resume exits 1 even via latest-symlink auto-resume path
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-4] stderr contains --from-stage is only valid with --resume (latest-symlink path)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-4] no pipeline.resume event emitted (guard fires before symlink-based auto-resume)
+
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 32 tests passed[0m
+  [38;2;74;222;128m[1mAll 35 tests passed[0m
 
