@@ -1,0 +1,5 @@
+## issue-acceptance — unusable
+
+- the answer could not be used, even when asked again: UNASKED tests/unit/acceptance-testfile-sections-test.sh strips [#1805/RHYD-1] and [#1805/RHYD-2] from synthetic fixture content and updates expectations: its quote is not in tests/unit/acceptance-testfile-sections-test.sh: "OUT=\"\$(acceptance_testfile_source \"$R\" tests/a-test.sh '')\""; UNASKED tests/unit/status-row-findings-test.sh removes [#1805/ prefix from fixture tag strings: its quote is not in tests/unit/status-row-findings-test.sh: "'tests/integration/resume-loop-state-test.sh fails: ✗ \`CMBR-1\` no stage.start for build in iter 2 — expected: 0, got: 1'"; UNASKED tests/unit/multiline-assertion-tag-test.sh removes [#1805/SPEC-3] from a comment: its quote is not in tests/unit/multiline-assertion-tag-test.sh: "# line (\`assert_contains \\\`\` then \`\"…\" …\`). The checker only" — the change was not judged
+
+- the change was not judged against the issue
