@@ -16,6 +16,12 @@
 #   U3 [code]: `UNASKED: none` is no finding, and the change passes
 #   U4 [code]: an UNASKED line whose quote is not in the code is not used: the
 #              answer is asked again, then `unusable`
+#
+# #2523 (ADR-071 §1): build may not change a test. On #1805 run 43093018140 five
+# unasked test-file edits went to build only, which answered "not mine" to each,
+# and test-author was never shown them.
+#   U5 [code]: an UNASKED line whose quote is in a test folder is code-findings
+#              (test-author takes it); one in any other file stays change-findings
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -58,6 +64,7 @@ _setup() {
     zb_test_issue_output "$_in" "Add --from-stage. Acceptance: - [ ] --from-stage starts the run at that stage" >/dev/null
     printf '%s\n' '# Design' '```acceptance' 'DSFSTG-1[code]: --from-stage starts the run at that stage' 'WIRING: none' '```' > "$_in/design.md"
     printf '%s\n' 'from_stage="$1"' 'resume_required=0' > "$_S/runner.sh"
+    mkdir -p "$_S/tests/unit"; printf '%s\n' 'assert_eq "[R8] shown as code" x y' > "$_S/tests/unit/r-test.sh"
     printf '%s\n' 'diff --git a/runner.sh b/runner.sh' '+from_stage="$1"' '+resume_required=0' > "$_in/diff.patch"
     zb_test_test_run_output "$_in" pass 1 0 >/dev/null
     jq -n --arg i "$_in/intake-result.json" --arg d "$_in/design.md" --arg p "$_in/diff.patch" --arg t "$_in/test-results.json" \
@@ -103,6 +110,20 @@ _run
 assert_eq "[U4] asked again once" "2" "$(grep -c x "$_IA_CALLS")"
 assert_eq "[U4] then unusable" "unusable" "$(_res .outcome)"
 assert_contains "[U4] ...saying which quote" "$(_res .reason)" "cache=1"
+
+print_test_section "U5: an unasked part in a test file is the tests' to fix (#2523)"
+_setup u5
+_IA_ANSWER=$'MET: --from-stage starts the run at that stage\nUNASKED: it changes an old test | WHY: no requirement asks for it | QUOTE: tests/unit/r-test.sh | assert_eq "[R8] shown as code" x y\nUNASKED: it drops the rule | WHY: no requirement asks to drop it | QUOTE: runner.sh | resume_required=0'
+_run
+assert_eq "[U5] two findings" "2" "$(_res '.data.findings | length')"
+assert_eq "[U5] the one in a test file is code-findings (test-author takes it)" "code-findings" \
+    "$(_res '[.data.findings[] | select(.text | contains("it changes an old test"))][0].topic')"
+assert_eq "[U5] the one in another file stays change-findings" "change-findings" \
+    "$(_res '[.data.findings[] | select(.text | contains("it drops the rule"))][0].topic')"
+assert_eq "[U5] the unasked list holds both, without any mark" "0" \
+    "$(_res '[.data.unasked[] | select(startswith("["))] | length')"
+assert_eq "[U5] the manifest lets the result name code-findings" "1" \
+    "$(grep -cE '^[[:space:]]+finding_topics:.*code-findings' "$PLUGIN_DIR/manifest.yaml" || true)"
 
 print_test_results
 exit $((FAIL > 0))

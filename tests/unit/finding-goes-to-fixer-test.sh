@@ -29,6 +29,11 @@
 #             the design's test) reaches build only: not issue-acceptance
 # F6 [change] test-author's check finding is not shown to build; [guard] it still
 #             reaches design and test-author
+#
+# #1805 run 43093018140: issue-acceptance's unasked edits to 5 test files went to
+# build only, which may not change a test; test-author was never shown them.
+# F7 [change] an unasked part in a test file reaches test-author (#2523); one
+#             in any other file still does not
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -127,6 +132,23 @@ print_test_section "F6: test-author's check finding goes to design and test-auth
 assert_not_contains "[F6] build is not shown test-author's check finding" "$(_pw build)" "DSCMBR-1: the Given says in-progress"
 assert_contains "[F6] test-author is shown it" "$(_pw test-author)" "test-author finding 1"
 assert_contains "[F6] ...and design" "$(_pw design)" "DSCMBR-1: the Given says in-progress"
+
+# ── F7 ───────────────────────────────────────────────────────────────────────
+print_test_section "F7: an unasked part in a test file reaches test-author (#2523)"
+# shellcheck source=../../plugins/agent/issue-acceptance/plugin.sh
+source "$REPO_ROOT/plugins/agent/issue-acceptance/plugin.sh" 2>/dev/null
+_R7="$TEST_TEMP_DIR/repo7"; mkdir -p "$_R7/tests/unit" "$_R7/lib"
+printf 'assert_eq "UNASKED-TEST shown as code" x y\n' > "$_R7/tests/unit/r-test.sh"
+printf 'UNASKED_CODE=1\n' > "$_R7/lib/r.sh"
+bad=() _IA_UNASKED=() _IA_QUOTED=() _IA_ANSWERS=()
+_ia_parse_unasked 'it changes an old test | WHY: nobody asks | QUOTE: tests/unit/r-test.sh | assert_eq "UNASKED-TEST shown as code" x y' "$_R7"
+_ia_parse_unasked 'it adds a flag | WHY: nobody asks | QUOTE: lib/r.sh | UNASKED_CODE=1' "$_R7"
+_ia_write "$ART" fail "2 parts no requirement asks for" '[]' '[]' '' "$(_ia_json_list "${_IA_UNASKED[@]}")"
+_update_stage_status "$STATE/pipeline-state.json" issue-acceptance complete
+TA7="$(_pw test-author)"
+assert_contains "[F7] test-author is shown the unasked part in a test file" "$TA7" "UNASKED-TEST shown as code"
+assert_not_contains "[F7] ...and not the one in another file" "$TA7" "UNASKED_CODE=1"
+assert_contains "[F7] build is still shown the one in another file" "$(_pw build)" "UNASKED_CODE=1"
 
 cleanup_test_env
 print_test_results

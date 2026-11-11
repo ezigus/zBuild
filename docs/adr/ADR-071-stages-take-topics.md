@@ -1,6 +1,6 @@
 # ADR-071 — Each output names its topic; each stage takes only the topics it needs
 
-**Status:** Accepted (2026-10-27); amended 2026-11-09 (#2508, §1: issue-acceptance's finding that no requirement asks for a part of the change is a change-findings; "the design's test files" are the test-folder files holding its tags; a work step on a file in the test folders is `tests`; build's "the test must change" answer goes to test-author); amended 2026-11-08 (#2503, §1 §3: one topic, one kind of item — change-findings and test-findings); amended 2026-11-08 (#2491, §1 §3: a lens finding goes by what fixes it, and reaches a stage once; test-author's check findings are requirement-findings); amended 2026-11-06 (#2480, §2: a map group's outputs are read member by member); amended 2026-10-28 (§3: test-author takes requirement-findings); amended 2026-10-30 (#2428, §1 §2: each stage states its contract; every finding a stage takes reaches it); amended 2026-10-31 (#2441, §1: build writes its answers that a test is wrong to its own code-findings output); amended 2026-11-02 (#2452, §1 §2: each finding can carry its own topic); amended 2026-11-02 (#2454, §1 §2: every stage result declares where its findings may go; the test stage labels by whose test it is)
+**Status:** Accepted (2026-10-27); amended 2026-11-11 (#2523, §1: an unasked part of the change in a test file is code-findings, which test-author takes); amended 2026-11-09 (#2508, §1: issue-acceptance's finding that no requirement asks for a part of the change is a change-findings; "the design's test files" are the test-folder files holding its tags; a work step on a file in the test folders is `tests`; build's "the test must change" answer goes to test-author); amended 2026-11-08 (#2503, §1 §3: one topic, one kind of item — change-findings and test-findings); amended 2026-11-08 (#2491, §1 §3: a lens finding goes by what fixes it, and reaches a stage once; test-author's check findings are requirement-findings); amended 2026-11-06 (#2480, §2: a map group's outputs are read member by member); amended 2026-10-28 (§3: test-author takes requirement-findings); amended 2026-10-30 (#2428, §1 §2: each stage states its contract; every finding a stage takes reaches it); amended 2026-10-31 (#2441, §1: build writes its answers that a test is wrong to its own code-findings output); amended 2026-11-02 (#2452, §1 §2: each finding can carry its own topic); amended 2026-11-02 (#2454, §1 §2: every stage result declares where its findings may go; the test stage labels by whose test it is)
 **Issue:** #1944 (run 40393999128)
 **Amends:** ADR-067 §8 (Previous work), ADR-068 §6 and §8 (every stage's latest output goes to every later stage)
 **Related:** ADR-055 (inter-stage data contract), ADR-060 (stages return structure), ADR-066 (every ADR statement has a test)
@@ -173,7 +173,19 @@ On #1805 run 42523805245 two topics each carried two kinds of item, so findings 
   <test file>: <why>`, for a test that pins what the change alters, is written to `build-tests-result.json` like its
   "the test is wrong" answer, so test-author is given it.
 
+## Amendment 2026-11-11 (#2523) — §1: an unasked part in a test file is the tests' to fix
+
+On #1805 run 43093018140 issue-acceptance found that five test files had been changed and that no requirement asked
+for it. Each finding was `change-findings`, so only build was shown them, and build may not change a test (ADR-030
+§8): it answered "not mine" to each. Test-author, which can undo them, saw only the summary's count.
+
+- **An unasked part goes by the file its quote names** (amends #2508's first bullet). A file in the test folders
+  (ADR-069 §10) is `code-findings`: what checks found in the tests, which test-author takes (build takes it too).
+  Any other file is `change-findings`, as before. A lens's finding a test must fix already goes the same way.
+
 ## Enforced by
+
+- §1 amendment 2026-11-11 (#2523: an unasked part in a test file is code-findings) → `tests/unit/issue-acceptance-unasked-test.sh` U5; `tests/unit/finding-goes-to-fixer-test.sh` F7
 
 - §1 amendment 2026-11-09 (#2508: issue-acceptance's unasked parts are change-findings) → `tests/unit/issue-acceptance-unasked-test.sh` U2; (a step on a file in the test folders is `tests`) → `tests/unit/design-step-topics-test.sh` T1, T5; (build's "the test must change" reaches test-author) → `tests/integration/build-never-touches-tests-test.sh` B6
 
