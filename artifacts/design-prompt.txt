@@ -586,7 +586,7 @@ Summary:
 - DSFRSH-2 (covers RQGUAR-2): A new run of the same issue never skips a stage due to prior run output; the dispatch-unit skip guard is conditional on resume_mode so it does not activate for fresh runs
 - DSDLGT-1 (covers RQHYDR-1): The hydrate plugin's hydrate_run calls _artifact_persist_put_back so artifacts placed by the resume path appear at the same filesystem paths as those a hydrate run would produce
 - DSCYCL-1 (covers RQRESU-4 RQLOOP-1 RQFROM-2 RQFROM-3 RQPATH-1): The pipeline fixtures used by resume-rehydrate-test.sh, from-stage-rehydrate-test.sh, resume-loop-state-test.sh, and resume-entry-points-test.sh each contain a stage of type: cycle, verified by an assert_contains tagged [#1805/DSCYCL-1] in each file, ensuring RQRESU-4, RQLOOP-1, RQFROM-2, RQFROM-3, and RQPATH-1 tests run against a cyclic pipeline
-- answered: lens-correctness-design finding 1: wrong — The design already addresses this via Gap 11. The finding describes the scenario where after the from-stage target unit (a cycle) is found and `skip_until_stage` is cleared, `resume_mode` remains `true`, causing the resume skip guard to activate for all subsequent leaf stages marked complete. Gap 11 in the Context/gaps section documents this explicitly and specifies the fix: in both dispatch-unit arms (cycle:* and stage:*) of `main()` in runner.sh, immediately after clearing `skip_until_stage`, also set `resume_mode=false` — preventing the resume skip guard from activating for stages after `<s>`. Pure resume runs (no from-stage) never set `skip_until_stage` so this change is unreachable in that path. DSFSTG-3[code] pins the observable behavior: a 3-unit fixture [intake (leaf), cyc (cycle), verify (leaf)] with all three stages marked complete in an interrupted run, invoked with `--resume --from-stage cyc`, must dispatch verify even though it was marked complete. This test fails on old code (verify skipped because `resume_mode` stays `true`) and passes after the fix. Finding 31 in the Findings section also explicitly confirms this is addressed.
+- answered: lens-correctness-design finding 1: wrong — The design already addresses this via Gap 11 in the Context/gaps section. Gap 11 explicitly documents the scenario: after `skip_until_stage` is cleared when the from-stage target unit is found, `resume_mode` remains `true`, causing the resume skip guard to activate for all subsequent stages marked complete. The fix is specified in the Decision paragraph: "in both dispatch-unit arms (cycle:* and stage:*) of `main()` in runner.sh, immediately after clearing `skip_until_stage`, also set `resume_mode=false` immediately." The steps block includes this fix ("also set `resume_mode=false` immediately: `[[ -n "$skip_until_stage" ]] && { skip_until_stage=""; resume_mode=false; }`"). DSFSTG-3[code] pins the observable behavior: a 3-unit fixture [intake (leaf), cyc (cycle), verify (leaf)] with all three stages marked complete, invoked with `--resume --from-stage cyc`, must still dispatch verify even though it was marked complete — this test fails on the old code (verify skipped because `resume_mode` stays `true`) and passes after the fix. Finding 30 and Finding 31 in the Findings section both explicitly confirm this is fully addressed.
 
 Your notes so far (where they disagree with a list or a result elsewhere in this prompt, the list or the result is right):
 # Design notes: #1805 — resume and --from-stage trust-and-rehydrate
@@ -656,7 +656,7 @@ code path is never reached.
 Outputs:
 - test_author_result: /home/runner/work/_temp/zbuild-state/artifacts/test-author-result.json
 
-### test (verdict: pass)
+### test (verdict: fail)
 Outputs:
 - acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
 - acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
@@ -669,10 +669,10 @@ Outputs:
 Summary:
 ## issue-acceptance — fail
 
-- judged the change against the issue: 1 requirement(s) not met or not sure, 6 part(s) of the change no requirement asks for
+- judged the change against the issue: 1 requirement(s) not met or not sure, 2 part(s) of the change no requirement asks for
 
 - see result
-- answered: lens-correctness-code finding 2: wrong — RQLOOP-1 and DSCMBR-1 both specify the standard interrupted-member case (build=complete, test=aborted in the interrupted iteration); that case is exercised and passing. The "all complete" edge case — where every member carries `complete` from a prior pass — is beyond the stated requirements. No ISSUE REQUIREMENT or REQUIREMENTS item names or implies that edge case. The finding identifies a coverage gap worth noting but does not constitute an unmet requirement in this issue's contract.
+- answered: lens-correctness-code finding 2: wrong — RQLOOP-1 and DSCMBR-1 state their GIVEN explicitly as "member stage 'test' was interrupted before completing; persisted state records test as aborted." Using `stage_statuses.test = "aborted"` is the correct setup for that GIVEN. The untested edge the finding names — where `test.status = "complete"` from iter N-1 and `build.status = "complete"` from iter N — is not stated in any requirement or design spec; it is a future-regression risk beyond this issue's acceptance contract. The finding is factually correct that this edge case is untested, but no requirement is unmet by this.
 
 ### review_lenses (verdict: fail)
 Outputs:
