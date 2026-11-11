@@ -1,33 +1,23 @@
 # Design notes: #1805 — resume and --from-stage trust-and-rehydrate
 
-## Status: Fifty-sixth pass — DSFSTG-4 reclassified from [code] to [done]
+## Status: Fifty-eighth pass — three SPEC fixes
 
 ### What changed this pass
 
-**acceptance-gate finding 1:** DSFSTG-4's test already passes on the code from before this
-change (base code), so it cannot tell whether the change was made.
+**design finding 1 (DSFSTG-1 fourth And):** Removed positive obligation "is emitted."
+Changed from: "`pipeline.skip_to_stage` is emitted when `--from-stage` is active; no stage before <s> is dispatched after that event"
+Changed to: "If `pipeline.skip_to_stage` appears in the event log, no stage before <s> emits stage.start after it"
+RQFROM-2 prohibits the sequence (emit + earlier dispatch), not the absence of the event.
 
-**Root cause:** In the base code, the `--from-stage` validation guard is at runner.sh line 1737,
-BEFORE the auto-resume check at line 2081. So a test of "exits 1 when --from-stage without
---resume, even with auto-resume conditions" passes on base code — the guard fires before
-auto-resume ever runs. The branch moved the guard AFTER auto-resume (a regression). The fix
-(Gap 12) moves it back before auto-resume, restoring the pre-existing behavior.
+**design finding 2 (DSITER-1 third And):** Replaced internal `iter=1` counter with observable event proxy.
+Changed from: "When _ZBUILD_RESUME_ACTIVE is false or unset (fresh run or nested-loop re-entry), the loop starts at iter=1"
+Changed to: "When the cycle orchestrator runs with _ZBUILD_RESUME_ACTIVE unset (fresh run or nested-loop re-entry), stage.start is emitted for a member of the first iteration — no prior iterations are skipped"
+Observable via event log.
 
-For [code] semantics, the test must FAIL on base code. It doesn't. So DSFSTG-4 must be [done].
-
-**Changes made:**
-1. DSFSTG-4[code] → DSFSTG-4[done] with evidence:
-   `core/pipeline/runner.sh:"--from-stage is only valid with --resume"` (confirmed in base code)
-2. Removed the [#1805/DSFSTG-4] sub-case from the from-stage-rehydrate-test.sh step
-   (no test written for [done] SPECs)
-3. Removed DSFSTG-4 from TESTFILES section
-4. Updated Finding 1 (DSFSTG-4 now [done])
-5. Updated Finding 3 (RQFROM-4: DSFSTG-4[done])
-6. Updated Finding 32 (explains [done] rationale)
-
-**Gap 12 fix step remains unchanged:** The step that moves the guard before auto-resume
-is still in the steps block. It's a code change (restoring regression), not driven by a
-failing test but driven by the design's correctness requirement.
+**acceptance-gate finding 1 (DSFSTG-4):** Changed from [code] back to [done].
+Root cause: Base code has the guard (`--from-stage is only valid with --resume`) at runner.sh line 1737, BEFORE the auto-resume elif check at line 2081. So the test passes on base code. The [code] classification was wrong; [done] with evidence is correct.
+Evidence: `core/pipeline/runner.sh:"--from-stage is only valid with --resume"` (guard in `main()` before auto-resume check)
+The Gap 12 FIX STEP remains in the steps block — the branch accidentally moved the guard after auto-resume; the step restores the guard to its pre-branch position to preserve the [done] property.
 
 ### SPEC count (after this pass)
 
@@ -57,8 +47,16 @@ failing test but driven by the design's correctness requirement.
 
 ### Key design decisions (unchanged)
 
-- Gap 11: resume_mode=false immediately when skip_until_stage cleared (DSFSTG-3[code])
-- Gap 12: --from-stage guard restored before auto-resume (DSFSTG-4[done], step still present)
-- Gap 7: _cd_iter > 0 guard in _cycle_dispatch must be removed
+- Gap 7: _cd_iter > 0 guard in _cycle_dispatch must be removed (issue-acceptance finding 2)
 - Gap 8: auto-resume symlink check for per-run layout (DSENTR-2[code])
 - Gap 9: _cycle_dispatch resume_first_iter=true flag (DSCMBR-1[code])
+- Gap 11: resume_mode=false immediately when skip_until_stage cleared (DSFSTG-3[code])
+- Gap 12: --from-stage guard restored before auto-resume — BRANCH REGRESSION FIX
+  (base code already had it right at runner.sh line 1737, before auto-resume at 2081;
+  the branch moved it after; the step restores it; DSFSTG-4 is [done])
+
+### DSENTR-2 critical constraint
+
+The DSENTR-2 test must NOT set ZBUILD_STATE_FILE. If it does, the symlink check
+`[[ -z "${ZBUILD_STATE_FILE:-}" && -L "$state_dir/latest" ]]` is false and the new
+code path is never reached.
