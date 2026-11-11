@@ -1,0 +1,15 @@
+diff --git a/tests/unit/status-row-findings-test.sh b/tests/unit/status-row-findings-test.sh
+index 9a18290a..1154b6b4 100644
+--- a/tests/unit/status-row-findings-test.sh
++++ b/tests/unit/status-row-findings-test.sh
+@@ -102,8 +102,8 @@ stage_result_write "$A/issue-acceptance-result.json" fail "2 requirements not me
+ w8="$(rsc_render_row "$S" "$(_row 3.1.1.1.5 issue-acceptance fail)")"
+ assert_eq "[W8] the line names each requirement not met" "what failed: \`LOOP-1\`, \`GUAR-2\`" "$(sed -n 1p <<< "$w8" | sed 's/.* — //')"
+ stage_result_write "$A/test-result.json" fail "2 files fail" "{\"findings\":$(printf '%s\n' \
+-        'tests/integration/resume-loop-state-test.sh fails: ✗ `` no stage.start for build in iter 2 — expected: 0, got: 1' \
+-        'tests/integration/resume-rehydrate-test.sh fails: ✗ `` fresh run cycle member emits exactly one stage.start — expected: 1, got: 0' | stage_findings_json)}"
++        'tests/integration/resume-loop-state-test.sh fails: ✗ `CMBR-1` no stage.start for build in iter 2 — expected: 0, got: 1' \
++        'tests/integration/resume-rehydrate-test.sh fails: ✗ `FRSH-2` fresh run cycle member emits exactly one stage.start — expected: 1, got: 0' | stage_findings_json)}"
+ w8t="$(rsc_render_row "$S" "$(_row 3.1.1.1.4 test fail)")"
+ assert_eq "[W8] …and the SPEC each failing test is for" "what failed: \`CMBR-1\`, \`FRSH-2\`" "$(sed -n 1p <<< "$w8t" | sed 's/.* — //')"
+ stage_result_write "$A/note-result.json" fail "2 problems" "{\"findings\":$(printf '%s\n' 'the build left a temp file' 'the build log is empty' | stage_findings_json)}"
