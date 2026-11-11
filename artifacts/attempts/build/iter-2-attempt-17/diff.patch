@@ -1,0 +1,32 @@
+diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
+index 011d81ae..99efb25c 100755
+--- a/core/pipeline/runner.sh
++++ b/core/pipeline/runner.sh
+@@ -2205,8 +2205,8 @@ main() {
+     # interrupted state file and mask the error (pipeline.resume would be
+     # emitted before the existing post-auto-resume guard fires). The check is
+     # narrowed to interrupted-status only: status=in_progress runs are allowed
+-    # to reach auto-resume so the DSFSTG-1 without-resume path (skip_restore=false
+-    # branch) continues to work.
++    # to reach auto-resume so the DSFSTG-1 skip_restore=false branch continues
++    # to work (S5 in from-stage-rehydrate-test.sh uses in_progress for this).
+     if [[ -n "$from_stage" ]] && ! $resume_mode && [[ -f "$state_file" ]]; then
+         local _fsg_status
+         _fsg_status="$(get_state_field "$state_file" '.status' '')"
+@@ -2285,6 +2285,16 @@ main() {
+             _lr_recommendation="$(get_resume_recommendation "$_lr_resolved_dir/pipeline-state.json")"
+             case "$_lr_recommendation" in
+                 auto_resume)
++                    # RQFROM-4 (#1805): guard against --from-stage without explicit --resume
++                    # even when state is found via the latest symlink (DSENTR-2 path).
++                    # The flat-file guard above (lines before this elif) only fires when
++                    # [[ -f "$state_file" ]]; for the per-run layout state_file is absent,
++                    # so the guard must be repeated here before resume_mode is set to true.
++                    if [[ -n "$from_stage" ]]; then
++                        error "--from-stage is only valid with --resume"
++                        _usage
++                        return 1
++                    fi
+                     info "Auto-resuming previous run via latest symlink (use --no-resume to force fresh start)"
+                     state_dir="$_lr_resolved_dir"
+                     state_file="$state_dir/pipeline-state.json"
