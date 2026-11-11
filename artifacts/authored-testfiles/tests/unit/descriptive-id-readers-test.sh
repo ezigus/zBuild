@@ -129,7 +129,9 @@ _o=""; _rsc_code_labels_v _o "failed [#1805/DSFSTG-1] and "
 assert_eq "[R8] descriptive and old labels are shown as code" 'failed `[#1805/DSFSTG-1]` and ``' "$_o"
 
 # ── R9 ───────────────────────────────────────────────────────────────────────
-REPO="$TEST_TEMP_DIR/repo"; mkdir -p "$REPO/tests/unit"; git -C "$REPO" init -q
+REPO="$TEST_TEMP_DIR/repo"; mkdir -p "$REPO/tests/unit"
+git -C "$REPO" init -q -b main; git -C "$REPO" config user.email t@t; git -C "$REPO" config user.name t
+git -C "$REPO" commit -q --allow-empty -m base; git -C "$REPO" checkout -qb work   # #2520: the step reads the branch's lines
 printf 'assert "[#%s/DSFSTG-1] keep" 1\nassert "[#%s/SPEC-3] old form, still in contract" 1\nassert "[#%s/SPEC-7] stale" 1\nassert "[#%s/DSLOOP-2] stale" 1\nassert "[#99/DSLOOP-2] other issue" 1\nassert "[UTF-8] not a tag" 1\n' "$_ID" "$_ID" "$_ID" "$_ID" \
     > "$REPO/tests/unit/from-stage-test.sh"
 # shellcheck source=../../plugins/agent/test-author/plugin.sh

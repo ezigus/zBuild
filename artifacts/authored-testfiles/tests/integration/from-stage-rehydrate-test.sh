@@ -828,6 +828,98 @@ fi
 assert_eq "[#1805/DSFSTG-4] no pipeline.resume event emitted (guard fires before auto-resume)" \
     "0" "$_s11_resume_events"
 
+# ── SPEC-4b: --from-stage without --resume refuses even via latest-symlink auto-resume path ──
+# [#1805/DSFSTG-4]: when state lives under runs/<run_id>/ and is found via the
+#   $ZBUILD_STATE_ROOT/latest symlink (the DSENTR-2 auto-resume path), the guard
+#   "--from-stage is only valid with --resume" must still fire when --resume is not
+#   given. ZBUILD_STATE_FILE and ZBUILD_STATE_DIR must be unset so the auto-resume
+#   symlink guard `[[ -z "${ZBUILD_STATE_FILE:-}" && -L "$state_dir/latest" ]]` can fire.
+print_test_section "[#1805/DSFSTG-4] --from-stage without --resume refuses via latest-symlink auto-resume path"
+
+# Given — a state file at $ZBUILD_STATE_ROOT/runs/<run_id>/pipeline-state.json with
+#   status=interrupted (auto-resume conditions met via latest symlink); --from-stage is
+#   specified on the command line; --resume is NOT given; ZBUILD_STATE_FILE and
+#   ZBUILD_STATE_DIR are absent from the environment.
+S12_ID="$(zb_test_issue)"
+S12_RUN_ID="s12-fs4-symlink-1805"
+S12_STATE_ROOT="$TEST_TEMP_DIR/s12-state-root"
+S12_RUN_DIR="$S12_STATE_ROOT/runs/$S12_RUN_ID"
+S12_EVENTS_DIR="$TEST_TEMP_DIR/s12-events"
+S12_EVENTS_JSONL="$S12_EVENTS_DIR/events.jsonl"
+mkdir -p "$S12_RUN_DIR/artifacts" "$S12_EVENTS_DIR"
+
+# State with status=interrupted so auto-resume would fire via latest symlink.
+jq -n \
+    --arg run_id "$S12_RUN_ID" \
+    --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --argjson issue "$S12_ID" \
+    '{
+        schema_version: 1,
+        run_id: $run_id,
+        issue: $issue,
+        stage_statuses: {intake: "complete", cyc: "pending"},
+        current_iteration: 0,
+        self_heal_count: {},
+        scope_manifest_hash: "",
+        cost_ledger_pointer: 0,
+        claim_lease_id: "",
+        plugin_state: {},
+        status: "interrupted",
+        updated_at: $now
+    }' > "$S12_RUN_DIR/pipeline-state.json"
+
+# Create the latest symlink pointing to the per-run state dir.
+ln -sfn "$S12_RUN_DIR" "$S12_STATE_ROOT/latest"
+
+# When — the runner is invoked with --from-stage but no --resume;
+#   ZBUILD_STATE_FILE and ZBUILD_STATE_DIR are explicitly removed from the
+#   environment so the auto-resume symlink guard can fire (without these unset,
+#   the guard's first condition `-z "${ZBUILD_STATE_FILE:-}"` would not hold).
+set +e
+( cd "$S3_WORK_REPO" && env -u ZBUILD_STATE_FILE -u ZBUILD_STATE_DIR \
+    ZBUILD_CYCLES_ENABLED=1 \
+    ZBUILD_PLUGINS_ROOT="$S3_PLUGINS_ROOT" \
+    ZBUILD_STATE_ROOT="$S12_STATE_ROOT" \
+    ZBUILD_EVENTS_DIR="$S12_EVENTS_DIR" \
+    ZBUILD_EVENTS_JSONL="$S12_EVENTS_JSONL" \
+    ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
+    ZBUILD_CONTRACT_VALIDATOR=warn \
+    ZBUILD_VISION_GATE=off \
+    PATH="$PATH" HOME="$HOME" \
+    bash "$RUNNER" --template artifact-snapshot-coverage \
+        --from-stage cyc --issue "$S12_ID" ) \
+    >"$TEST_TEMP_DIR/s12-stdout.txt" 2>"$TEST_TEMP_DIR/s12-stderr.txt"
+_s12_rc=$?
+set -e
+
+# Then — the runner exits 1 (guard fires before auto-resume runs).
+# Before change (new branch): guard fires only when flat state file exists; via
+#   the latest-symlink path the flat state file is absent → guard skipped →
+#   auto-resume fires → runner runs (exit 0 or non-1) → assertion FAILS.
+# After change (guard covers symlink path too): exit 1 → PASSES.
+assert_eq "[#1805/DSFSTG-4] --from-stage without --resume exits 1 even via latest-symlink auto-resume path" \
+    "1" "$_s12_rc"
+
+# Then — stderr contains the diagnostic "--from-stage is only valid with --resume".
+# Before change: guard not reached → diagnostic not emitted → FAILS.
+# After change: guard fires → diagnostic emitted → PASSES.
+_s12_stderr="$(cat "$TEST_TEMP_DIR/s12-stderr.txt" 2>/dev/null || true)"
+assert_contains \
+    "[#1805/DSFSTG-4] stderr contains --from-stage is only valid with --resume (latest-symlink path)" \
+    "$_s12_stderr" "--from-stage is only valid with --resume"
+
+# Then — no pipeline.resume event is emitted (guard fires before auto-resume processes
+#   state via the latest symlink, so auto-resume never runs).
+# Before change: auto-resume fires via symlink → pipeline.resume emitted → count > 0 → FAILS.
+# After change: guard fires before symlink-based auto-resume → no pipeline.resume → PASSES.
+_s12_resume_events=0
+if [[ -f "$S12_EVENTS_JSONL" ]]; then
+    _s12_resume_events="$(jq -r 'select(.type=="pipeline.resume") | .type' \
+        "$S12_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+assert_eq "[#1805/DSFSTG-4] no pipeline.resume event emitted (guard fires before symlink-based auto-resume)" \
+    "0" "$_s12_resume_events"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

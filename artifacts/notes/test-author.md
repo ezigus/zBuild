@@ -1,9 +1,29 @@
-# test-author notes — issue #1805 (round 59)
+# test-author notes — issue #1805 (round 60)
 
-## Status: ALL TESTS PASSING — CONFIRMED
+## Status: DSFSTG-4 SYMLINK SUB-CASE ADDED
 
-All test files pass. 887 tests passed in the last test-stage run. No changes needed
-in this round.
+Added S12 sub-case to tests/integration/from-stage-rehydrate-test.sh to cover the
+`latest`-symlink auto-resume path for DSFSTG-4 (the gap identified in issue-acceptance
+finding 1).
+
+## What was done
+
+The existing S11 sub-case of DSFSTG-4 sets `ZBUILD_STATE_FILE` explicitly (flat-file
+path). The issue-acceptance finding said the NEW branch code's guard fires only when
+the flat state file exists; when state is under a per-run dir found via the `latest`
+symlink (the DSENTR-2 auto-resume path), the guard is skipped.
+
+Added S12 sub-case that:
+- Creates state at `$ZBUILD_STATE_ROOT/runs/<run_id>/pipeline-state.json` with
+  `status=interrupted`
+- Creates `$ZBUILD_STATE_ROOT/latest` symlink pointing to the per-run dir
+- Invokes runner with `env -u ZBUILD_STATE_FILE -u ZBUILD_STATE_DIR` so the symlink
+  guard can activate
+- Asserts: exit 1, stderr contains "--from-stage is only valid with --resume", no
+  `pipeline.resume` event
+
+This test FAILS on the current branch code (guard doesn't fire for symlink path) and
+passes after the guard is extended to cover the symlink path.
 
 ## All SPECs coverage
 
@@ -15,7 +35,7 @@ in this round.
 - DSFRSH-1 ✓, DSSKIP-1 ✓, DSFRSH-2 ✓, DSCYCL-1 ✓
 
 ### tests/integration/from-stage-rehydrate-test.sh
-- DSFSTG-1 ✓, DSFSTG-2 ✓, DSFSTG-3 ✓, DSFSTG-4 ✓, DSCYCL-1 ✓
+- DSFSTG-1 ✓, DSFSTG-2 ✓, DSFSTG-3 ✓, DSFSTG-4 ✓ (S11 flat-file + S12 symlink-path), DSCYCL-1 ✓
 
 ### tests/integration/resume-loop-state-test.sh
 - DSITER-1 ✓, DSCMBR-1 ✓, DSCYCL-1 ✓
@@ -28,30 +48,17 @@ in this round.
 
 ## Findings answered
 
+### issue-acceptance finding 1
+Done. Added S12 sub-case to from-stage-rehydrate-test.sh covering the `latest`-symlink
+auto-resume path. The test asserts exit 1 and "--from-stage is only valid with --resume"
+diagnostic even when ZBUILD_STATE_FILE is unset and state is found via the latest symlink.
+
 ### lens-correctness-code finding 2
 Wrong. `"aborted"` is the status the engine writes for an interrupted cycle member.
-Confirmed in `core/pipeline/cycle-orchestrator.sh` base code: when a cycle member is
-interrupted (SIGINT/SIGTERM path), `_cycle_state_write_member_atomic` writes
-`"aborted"`. The DSCMBR-1 scenario specifically tests that the interrupted "test"
-member is dispatched — if test were "complete", the skip guard would apply and it
-would not be dispatched, which is the wrong behavior for an interrupted stage.
-The "all complete" code path is a different scenario (all members complete means
-the iteration is done and there's nothing to resume in it) and is not part of
-DSCMBR-1's requirement.
+Confirmed in `core/pipeline/cycle-orchestrator.sh` base code. DSCMBR-1 tests the
+interrupted-member case; "all complete" is a different scenario beyond the stated
+requirements.
 
 ### lens-correctness-design finding 1
-Not mine. This is about the implementation in `core/pipeline/runner.sh` (how
-`skip_until_stage` and `resume_mode` interact when `--from-stage` names a cycle).
-The DSFSTG-3 test correctly asserts the observable behavior: stage.start (or
-cycle.start) is emitted for stages after `<s>` and no stage.skip events are emitted.
-That is what the code must satisfy regardless of internal mechanism. No change to
-the test output is needed.
-
-### acceptance-gate finding 1: DSFSTG-4 passes on before-code
-DSFSTG-4 is classified `[done]` in the design — its test must pass on before-code
-(the code from before this change already implements the guard). The acceptance gate
-finding is not applicable to `[done]` requirements.
-
-## Open findings
-
-None outstanding.
+Not mine. This is about the implementation in `core/pipeline/runner.sh`. The DSFSTG-3
+test correctly asserts the observable behavior.
