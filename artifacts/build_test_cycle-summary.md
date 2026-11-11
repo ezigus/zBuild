@@ -1,7 +1,7 @@
-## build_test_cycle — round 2
+## build_test_cycle — round 1
 
-- design: fail — the design fails 1 of its checks
-- test-author: missing
-- build: missing
-- test: missing
-- issue-acceptance: missing
+- design: pass — design_produced
+- test-author: pass — changed 1 test file(s); acceptance assertions for 18 SPEC(s) from the design contract
+- build: pass — build_complete_no_changes
+- test: pass — 887 of 887 tests passed
+- issue-acceptance: error — the answer could not be used, even when asked again: UNASKED scripts/lib/run-status-text.sh appends a trailing empty code span after the last label to prevent rendering artefacts: its quote is not in scripts/lib/run-status-text.sh: "if [[ -n \"$_out\" ]];  then _rcl=\"$_out${_in}\`\`\";  else _rcl=\"$_in\";  fi"; UNASKED tests/unit/status-row-findings-test.sh removes the [#1805/] issue-number prefix from fixture label strings: its quote is not in tests/unit/status-row-findings-test.sh: "'tests/integration/resume-loop-state-test.sh fails: ✗ \`CMBR-1\` no stage.start for build in iter 2 — expected: 0, got: 1'"; UNASKED tests/unit/run-status-comment-render-test.sh removes issue-prefixed labels from fixture input and expected values: its quote is not in tests/unit/run-status-comment-render-test.sh: "printf '%s\n' '## test-author — fail' '' '- 2 findings open on ' '- answered: added;  \`\` kept' > \"$_sf\""; UNASKED tests/unit/descriptive-id-readers-test.sh updates R8 fixture input and expected output to match the trailing empty code span: its quote is not in tests/unit/descriptive-id-readers-test.sh: "assert_eq \"[R8] descriptive and old labels are shown as code\" 'failed \`[#1805/DSFSTG-1]\` and \`\`' \"$_o\""; UNASKED tests/unit/multiline-assertion-tag-test.sh updates a comment that described an issue-prefixed label example: its quote is not in tests/unit/multiline-assertion-tag-test.sh: "# line (\`assert_contains \\\\\` then \`\"…\" …\`). The checker only" — the change was not judged
