@@ -47,7 +47,8 @@ assert_eq "[P3] a new file is not made executable" "not-exec" "$(_is_exec "$F3")
 print_test_section "P2: the stale-tag step"
 REPO="$TEST_TEMP_DIR/repo"; mkdir -p "$REPO/tests"
 # #2508: a SPEC's tests are found in the test folders of a repository.
-git -C "$REPO" init -q
+git -C "$REPO" init -q -b main; git -C "$REPO" config user.email t@t; git -C "$REPO" config user.name t
+git -C "$REPO" commit -q --allow-empty -m base; git -C "$REPO" checkout -qb work   # #2520: the step reads the branch's lines
 DESIGN="$TEST_TEMP_DIR/design.md"
 cat > "$DESIGN" <<'EOF'
 ```acceptance

@@ -48,7 +48,8 @@ _ta_written_list() {
         if [[ -f "$repo/$tf" ]]; then
             while IFS= read -r sid; do
                 [[ -n "$sid" ]] || continue
-                grep -qF -- "$(acceptance_spec_tag "$sid")" "$repo/$tf" 2>/dev/null && { have+="${have:+, }$sid"; found+="$sid "; }
+                local -a _brt=(); acceptance_spec_tags_v _brt "$sid"
+                grep -qF "${_brt[@]/#/-e}" "$repo/$tf" 2>/dev/null && { have+="${have:+, }$sid"; found+="$sid "; }
             done < <(acceptance_list_spec_ids "$design" 2>/dev/null || true)
         fi
         printf -- '- %s: %s\n' "$tf" "${have:-none yet}"

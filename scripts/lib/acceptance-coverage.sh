@@ -27,6 +27,13 @@ acceptance_coverage_spec_tagged() {
     [[ -n "${_cst[$spec_id]:-}" ]]
 }
 
+# _acceptance_holds_tag <text> <tag>... — rc 0 when <text> holds any of the tags.
+_acceptance_holds_tag() {
+    local _aht_t="$1" _aht_g; shift
+    for _aht_g in "$@"; do [[ "$_aht_t" == *"$_aht_g"* ]] && return 0; done
+    return 1
+}
+
 # _acceptance_trim_label <line>  (#1684)
 # Strips leading whitespace and truncates to 100 chars with '…'.
 _acceptance_trim_label() {
@@ -117,7 +124,7 @@ _acceptance_strip_comment_v() {
 # sentence beside a weak assertion is the one gaming vector this input has.
 acceptance_find_assertion_sources() {
     local repo_root="${1:-}" spec_id="${2:-}"; shift 2
-    local tf abs i n a b j line first=1 tag u
+    local tf abs i n a b j line first=1 u
     for tf in "$@"; do
         [[ -z "$tf" ]] && continue
         abs="$repo_root/$tf"
@@ -127,11 +134,11 @@ acceptance_find_assertion_sources() {
         n=${#lines[@]}
         _acceptance_check_units
         local -a starts=()
-        tag="$(acceptance_spec_tag "$spec_id")"
+        local -a _ctg=(); acceptance_spec_tags_v _ctg "$spec_id"
         for (( i = 0; i < n; i++ )); do
             # #2460: a check is the whole command, however many lines it spans.
             (( ucheck[i] && ustart[i] == i )) || continue
-            [[ "${utext[i]}" == *"$tag"* ]] || continue
+            _acceptance_holds_tag "${utext[i]}" "${_ctg[@]}" || continue
             a=$i; while (( a > 0 )) && [[ -n "${lines[a-1]// }" ]]; do (( a-- )); done
             b=${uend[i]}; while (( b < n - 1 )) && [[ -n "${lines[b+1]// }" ]]; do (( b++ )); done
             # The setup: back to the end of the previous check's stanza.
@@ -154,7 +161,7 @@ acceptance_find_assertion_sources() {
                 _acceptance_strip_comment_v line "${lines[a]}"
                 [[ -n "${line// }" ]] || continue
                 u=${ustart[a]}
-                if (( ucheck[u] )) && [[ "${utext[u]}" == *"$tag"* ]]; then
+                if (( ucheck[u] )) && _acceptance_holds_tag "${utext[u]}" "${_ctg[@]}"; then
                     line=">> ${line#"${line%%[![:space:]]*}"}"
                 fi
                 printf '%s\n' "$line"
@@ -215,8 +222,8 @@ acceptance_testfile_source() {
 
 acceptance_find_assertion_label() {
     local repo_root="${1:-}" spec_id="${2:-}"; shift 2
-    local pass tf abs match tag i line
-    tag="$(acceptance_spec_tag "$spec_id")"
+    local pass tf abs match i line
+    local -a _ctg=(); acceptance_spec_tags_v _ctg "$spec_id"
     for pass in assert any; do
         for tf in "$@"; do
             [[ -z "$tf" ]] && continue
@@ -232,12 +239,12 @@ acceptance_find_assertion_label() {
                 _acceptance_check_units
                 for (( i = 0; i < n; i++ )); do
                     (( ucheck[i] && ustart[i] == i )) || continue
-                    [[ "${utext[i]}" == *"$tag"* ]] || continue
+                    _acceptance_holds_tag "${utext[i]}" "${_ctg[@]}" || continue
                     match="${utext[i]//\\$'\n'/ }"; match="${match//$'\n'/ }"
                     break
                 done
             else
-                match="$(grep -m1 -F "$tag" "$abs" 2>/dev/null || true)"
+                match="$(grep -m1 -F "${_ctg[@]/#/-e}" "$abs" 2>/dev/null || true)"
             fi
             if [[ -n "$match" ]]; then
                 _acceptance_trim_label "$match"

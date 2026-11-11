@@ -242,17 +242,20 @@ The design document MUST include:
 
 3. A \`\`\`acceptance block listing what this change must deliver. Each line is
    one requirement: an id, a status, and ONE behaviour someone could observe and test.
-   The id describes the SPEC. Every SPEC id starts with ${_DCK_ID_PREFIX}, then a code of 3 or 4
-   capital letters or digits, starting with a letter, that says what it is about,
-   a dash, and a number — ${_DCK_ID_PREFIX}LOOP-1 for a SPEC about loop state. SPECs about the
-   same thing share the code and count up: ${_DCK_ID_PREFIX}LOOP-1, ${_DCK_ID_PREFIX}LOOP-2. An id is never one
-   the issue itself writes.
-   An id never changes: a SPEC you keep keeps its id. A new SPEC takes the
-   number one more than the highest its code has ever had, removed ones counted.
-   A SPEC you drop gets its own line in the block, \`REMOVED: <id> — <why>\`, and
-   that line stays in every later design, so the id is never used again.
-   A design written with the old ids (SPEC-1, or ids that do not start with
-   ${_DCK_ID_PREFIX}) gives each SPEC a new id once; the old ids need no REMOVED line.
+   The id describes the SPEC: ${_DCK_ID_PREFIX}, then 3 or 4 capital letters or digits,
+   starting with a letter, that say what it is about, a dash, and a number —
+   ${_DCK_ID_PREFIX}LOOP-1 for a SPEC about loop state. The id is also the tag its test
+   carries, $(acceptance_spec_tag ${_DCK_ID_PREFIX}LOOP-1 2>/dev/null || printf '[%sLOOP-1]' "$_DCK_ID_PREFIX"), so it must be new to the repository:
+   - A new SPEC's number is one more than the highest number already used
+     with the same letters in any test file in the repository. If tests
+     already hold ${_DCK_ID_PREFIX}LOOP-1 and ${_DCK_ID_PREFIX}LOOP-3, the new one is ${_DCK_ID_PREFIX}LOOP-4, and the
+     next is ${_DCK_ID_PREFIX}LOOP-5.
+   - A SPEC you keep keeps its id.
+   - A SPEC you drop gets a line \`REMOVED: <id> — <why>\`, kept in every later
+     design, so its id is never used again.
+   - Never use one of the issue's requirement ids as a SPEC id.
+   A design written with old ids (SPEC-1, or ids not starting with ${_DCK_ID_PREFIX}) gives
+   each SPEC a new id once; the old ids need no REMOVED line.
    A requirement that asks for several things gets one SPEC per thing, each
    naming the same requirement id in covers: — never one SPEC that joins them with "and" or ";".
    Each SPEC is checked against one assertion, so a SPEC that promises two
@@ -288,11 +291,8 @@ The design document MUST include:
 
    You name no files: no test file, and no list of the files the change
    touches. The tests are written after the design, in the repository's test
-   folders, wherever they belong. Each assertion's label carries its
-   requirement's tag, which includes this issue's number — for
-   ${_DCK_ID_PREFIX}LOOP-1 of this issue:
-   $(acceptance_spec_tag ${_DCK_ID_PREFIX}LOOP-1 2>/dev/null || printf '[%sLOOP-1]' "$_DCK_ID_PREFIX") — and that tag is how a requirement's test is
-   found. Each [code] assertion is also run against the code from before your
+   folders, wherever they belong, and a requirement's test is found by its
+   tag. Each [code] assertion is also run against the code from before your
    change and must fail there, so write ONE requirement per assertion — then
    each behaviour is checked on its own.
 

@@ -88,7 +88,7 @@ assert_contains "[E2] ...the finding says so" "$FINDINGS" "DSNOTE-1 is written i
 # ── E3 / E4 ──────────────────────────────────────────────────────────────────
 _p="$(tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/design-prompt" 2>/dev/null)"
 assert_contains "[E3] the prompt says what an id is" "$_p" "3 or 4 capital letters or digits"
-assert_contains "[E3] ...that a kept id never changes" "$_p" "never changes"
+assert_contains "[E3] ...that a kept SPEC keeps its id" "$_p" "A SPEC you keep keeps its id"
 assert_contains "[E3] ...how one is removed" "$_p" "REMOVED: <id> — <why>"
 assert_contains "[E3] ...that a new id takes the number after its code's highest" "$_p" "one more than the highest"
 assert_contains "[E3] ...that [done] evidence quotes the file's text" "$_p" 'scripts/x.sh | '
