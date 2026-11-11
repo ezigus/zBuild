@@ -38,7 +38,7 @@ _dck_unclear_bad_v() {
 # _dck_evidence_v <var> <repo_root> <item> <base> — what is wrong with one
 # evidence item of a [done] requirement (ADR-069 §2), or empty. #2462: [done]
 # means the code from before the change already does it, so the item is
-# `file:"exact text"` whose text is in the file on the base commit and still in
+# `<file> | <one line>` whose line is in the file on the base commit and still in
 # it outside what this branch changed — or a test file named alone that the
 # base commit has. Never a line number: lines move as the change is made. With
 # no base commit (none resolves), the text in the file is all that is checked.
@@ -165,12 +165,12 @@ _dck_plain() {
         # The retired tag is named, not written: design would copy it back.
         "UNKNOWN_STATUS "*" [guard] "*) printf '%s carries the old guard tag, which is no longer a status — tag it [done] if the code already does it, naming the evidence after " evidence: ", or [code] if it needs code' "$id" ;;
         UNKNOWN_STATUS*)     printf '%s is tagged %s, which is not a status — tag it [code] if it needs code, [no-code] if it needs work that changes no behaviour, or [done] if the code already does it, naming the evidence after " evidence: "' "$id" "$third" ;;
-        DONE_NO_EVIDENCE*)   printf '%s is marked [done] but names no evidence — end its line with " evidence: " and a file with an exact piece of its text (scripts/x.sh:"run_guard()"), or an existing test file, that shows the code already does it' "$id" ;;
-        DONE_BAD_EVIDENCE*)  printf 'the evidence %s for %s does not point at the repository — name a file that exists, by its path from the repository root (no leading / and no ..), with an exact piece of its text: scripts/x.sh:"run_guard()"' "$third" "$id" ;;
+        DONE_NO_EVIDENCE*)   printf '%s is marked [done] but names no evidence — end its line with " evidence: " and a file and one of its lines (scripts/x.sh | run_guard()), or an existing test file, that shows the code already does it' "$id" ;;
+        DONE_BAD_EVIDENCE*)  printf 'the evidence %s for %s does not point at the repository — name a file that exists, by its path from the repository root (no leading / and no ..), then " | " and one of its lines: scripts/x.sh | run_guard()' "$third" "$id" ;;
         # #2462: [done] is done on the code from before the change, shown by text.
-        DONE_LINE_EVIDENCE*) printf 'the evidence %s for %s names a line number, and line numbers move as the change is made — name an exact piece of the file'"'"'s text instead: scripts/x.sh:"run_guard()"' "$third" "$id" ;;
-        LINE_NUMBER*)        printf 'design.md names a line number (%s), and line numbers move as the change is made — name the file and the function, or quote the text: scripts/x.sh:"run_guard()"' "$id" ;;
-        DONE_NO_TEXT*)       printf 'the evidence %s for %s names a source file alone — add an exact piece of its text that shows the code already does it: %s:"run_guard()"' "$third" "$id" "$third" ;;
+        DONE_LINE_EVIDENCE*) printf 'the evidence %s for %s names a line number, and line numbers move as the change is made — name one of the file'"'"'s lines instead: scripts/x.sh | run_guard()' "$third" "$id" ;;
+        LINE_NUMBER*)        printf 'design.md names a line number (%s), and line numbers move as the change is made — name the file and the function, or quote the text: scripts/x.sh | run_guard()' "$id" ;;
+        DONE_NO_TEXT*)       printf 'the evidence %s for %s names a source file alone — add " | " and one of its lines that shows the code already does it: %s | run_guard()' "$third" "$id" "$third" ;;
         DONE_TEXT_MISSING*)  printf 'the evidence %s for %s is not in that file — quote its text exactly' "$third" "$id" ;;
         DONE_NOT_BEFORE*)    printf '%s is marked [done], but its evidence %s is not in the code from before this change — this branch added it, so it is not done yet: tag %s [code] and give it a test' "$id" "$third" "$id" ;;
         ID_*)                zb_id_plain "$v" SPEC ;;

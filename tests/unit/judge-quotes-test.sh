@@ -25,8 +25,9 @@
 #    quoted a line holding `"$dry_run"` as \"$dry_run\", and the check refused
 #    both its quotes
 # Q8 a file name in backticks or bold marks is the file (#1805 run 42556446368)
-# Q9 a quote of a comment that runs over lines holds: each line's leading comment
-#    mark (#, //, --) is left out, as formatting is (#2517)
+# Q9 a comment is quoted one line at a time (#2517, #2519)
+# Q10 a quote is `<file> | <one line>`, or the item's own words as they are, with
+#    nothing to escape (#2519)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -65,19 +66,20 @@ source "$REPO_ROOT/scripts/lib/judge.sh"
 print_test_section "Q1: the quote check"
 BASE=""; judge_base_dir_v BASE "$XR"
 _q() { local why; judge_quote_check_v why "$1" "${2:-}" "$XR" "$BASE" && printf ok || printf 'bad: %s' "$why"; }
-assert_eq "[Q1] the item's own words" "ok" "$(_q '"refuse a missing"' 'refuse a missing config file')"
-assert_contains "[Q1] words the item does not say are refused" "$(_q '"accept a flag"' 'refuse a missing config file')" "bad:"
-assert_eq "[Q1] a file's text in the repository" "ok" "$(_q 'scripts/cfg.sh:"[[ -r "$1" ]] || return 3"')"
-assert_eq "[Q1] ...or in the code from before the change" "ok" "$(_q 'scripts/cfg.sh:"[[ -f "$1" ]] || return 2"')"
-assert_eq "[Q1] spacing is not the judge's to get right" "ok" "$(_q 'scripts/cfg.sh:"refuse_missing_config()   {  [[ -r"')"
-assert_eq "[Q1] text across lines, quoted on one" "ok" "$(_q 'scripts/cfg.sh:"skip_stage() { continue }"')"
-assert_eq "[Q1] an absolute path inside the repository" "ok" "$(_q "$XR/scripts/cfg.sh:\"line one\"")"
-assert_contains "[Q1] text the file does not hold is refused" "$(_q 'scripts/cfg.sh:"return 9"')" "bad:"
-assert_contains "[Q1] ...and says which file" "$(_q 'scripts/cfg.sh:"return 9"')" "scripts/cfg.sh"
-assert_contains "[Q1] a file that does not exist is refused" "$(_q 'scripts/nope.sh:"line one"')" "bad:"
-assert_contains "[Q1] a path that leaves the repository is refused" "$(_q '../xrepo/scripts/cfg.sh:"line one"')" "bad:"
+assert_eq "[Q1] the item's own words, as they are" "ok" "$(_q 'refuse a missing' 'refuse a missing config file')"
+assert_eq "[Q1] ...or in quote marks" "ok" "$(_q '"refuse a missing"' 'refuse a missing config file')"
+assert_contains "[Q1] words the item does not say are refused" "$(_q 'accept a flag' 'refuse a missing config file')" "bad:"
+assert_eq "[Q1] a file and one of its lines in the repository" "ok" "$(_q 'scripts/cfg.sh | [[ -r "$1" ]] || return 3')"
+assert_eq "[Q1] ...or in the code from before the change" "ok" "$(_q 'scripts/cfg.sh | [[ -f "$1" ]] || return 2')"
+assert_eq "[Q1] spacing is not the judge's to get right" "ok" "$(_q 'scripts/cfg.sh | refuse_missing_config()   {  [[ -r')"
+assert_contains "[Q1] text across two lines is refused: a quote is one line" "$(_q 'scripts/cfg.sh | skip_stage() { continue }')" "bad:"
+assert_eq "[Q1] an absolute path inside the repository" "ok" "$(_q "$XR/scripts/cfg.sh | line one")"
+assert_contains "[Q1] text the file does not hold is refused" "$(_q 'scripts/cfg.sh | return 9')" "bad:"
+assert_contains "[Q1] ...and says which file" "$(_q 'scripts/cfg.sh | return 9')" "scripts/cfg.sh"
+assert_contains "[Q1] a file that does not exist is refused" "$(_q 'scripts/nope.sh | line one')" "bad:"
+assert_contains "[Q1] a path that leaves the repository is refused" "$(_q '../xrepo/scripts/cfg.sh | line one')" "bad:"
 assert_contains "[Q1] no quote at all is refused" "$(_q '')" "bad:"
-assert_contains "[Q1] a word in place of a quote is refused" "$(_q 'omitted' 'omitted')" "bad:"
+assert_contains "[Q1] a word in place of a quote is refused" "$(_q 'omitted' 'refuse a missing config file')" "bad:"
 
 print_test_section "Q2: design's coverage check"
 (
@@ -131,10 +133,10 @@ DONE_WRONG: none"; _R2=""; _cov
     _R1=$'RQRQST-1: covered\nRQRQST-2: uncovered | WHY: x | QUOTE: "accept a flag"\nDSWORK-1: ok\nDSCNFG-1: ok\n'"$_sc"; _R2=""; _cov
     echo "Q2e|$(cat "$_N")|$_DESIGN_COV_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
 
-    _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-1: ok\nDSCNFG-1: done_wrong | WHY: it returns 2 only when the file is absent | QUOTE: scripts/cfg.sh:"[[ -f "$1" ]] || return 2"\n'"$_sc"; _R2=""; _cov
+    _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-1: ok\nDSCNFG-1: done_wrong | WHY: it returns 2 only when the file is absent | QUOTE: scripts/cfg.sh | [[ -f "$1" ]] || return 2\n'"$_sc"; _R2=""; _cov
     echo "Q2f|${#_DESIGN_DONE_WRONG[@]}|${_DESIGN_DONE_WRONG[0]:-}|$_DESIGN_COV_OUTCOME"
 
-    _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-1: done_wrong | WHY: x | QUOTE: scripts/cfg.sh:"line one"\nDSCNFG-1: ok\n'"$_sc"; _R2="$_R1"; _cov
+    _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-1: done_wrong | WHY: x | QUOTE: scripts/cfg.sh | line one\nDSCNFG-1: ok\n'"$_sc"; _R2="$_R1"; _cov
     echo "Q2h|$_DESIGN_COV_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
 
     _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-1: ok\nDSCNFG-1: ok\nSCOPE: scripts/thing.sh: ok\nSCOPE: scripts/telemetry.sh: outside | WHY: the issue asks for no telemetry\n'; _R2=""; _cov
@@ -178,7 +180,7 @@ print_test_section "Q3: test-author's assertion check"
     # one Then), named by its word (#2470).
     _R1=$'DSLOOP-1 Then: missing | WHY: only a fresh run is tested | QUOTE: "nested re-entries"'; _R2=""; _j
     echo "Q3a|${#_TA_CORR_FINDINGS[@]}|${_TA_CORR_FINDINGS[0]:-}|$_TA_CORR_OUTCOME|$(cat "$_N")"
-    echo "Q3p|$([[ "$(cat "$_P.1")" == *'QUOTE: "<that part'"'"'s own words'* ]] && echo asked)"
+    echo "Q3p|$([[ "$(cat "$_P.1")" == *'QUOTE: <that part'"'"'s own words'* ]] && echo asked)"
 
     _R1=$'DSLOOP-1 Then: missing | WHY: only a fresh run is tested'
     _R2=$'DSLOOP-1 Then: missing | WHY: only a fresh run is tested | QUOTE: "nested re-entries"'; _j
@@ -255,7 +257,7 @@ _mk_inputs() {  # <dir> — the issue, its requirements, a design, a diff, a tes
     _R1=$'MET: RQFLAG-1'; _R2=$'MET: RQFLAG-1\nMET: RQCNFG-1'
     echo "Q4c|$(_ia)|$(cat "$_N")|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
 
-    _R1=$'MET: RQFLAG-1\nUNMET: [fix-code] RQCNFG-1 | WHY: x | QUOTE: scripts/cfg.sh:"return 9"'; _R2=""
+    _R1=$'MET: RQFLAG-1\nUNMET: [fix-code] RQCNFG-1 | WHY: x | QUOTE: scripts/cfg.sh | return 9'; _R2=""
     echo "Q4d|$(_ia)|$(cat "$_N")|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
 
     _R1=$'MET: RQFLAG-1\nMET: RQCNFG-1\nUNMET: none\nUNSURE: omitted'; _R2=""
@@ -328,35 +330,50 @@ assert_contains "[Q6] words that are not there are still refused" "$(_q '"stage 
 assert_contains "[Q6] the refusal says the item's own words" "$(_q '"stage k is skipped"' "$_Q6W")" "is not in the item's own words"
 assert_not_contains "[Q6] ...and no variable name" "$(_q '"stage k is skipped"' "$_Q6W")" "_judge__"
 printf 'see `skip_stage` and *every* stage\n' >> "$XR/scripts/cfg.sh"
-assert_eq "[Q6] a file's text, formatting aside" "ok" "$(_q 'scripts/cfg.sh:"see skipstage and every stage"')"
+assert_eq "[Q6] a file's text, formatting aside" "ok" "$(_q 'scripts/cfg.sh | see skipstage and every stage')"
 
 print_test_section "Q7: an escaped quote mark is the mark itself"
 printf '%s\n' 'if ! _gate "$dry_run" "$mode"; then' 'grep -c '"'"'_gate "\$dry_run"'"'"' f' >> "$XR/scripts/cfg.sh"
-assert_eq "[Q7] \\\" in a file quote is a quote mark" "ok" "$(_q 'scripts/cfg.sh:"if ! _gate \"$dry_run\" \"$mode\"; then"')"
-assert_eq "[Q7] ...and a backslash that is really in the file still holds" "ok" "$(_q 'scripts/cfg.sh:"_gate \"\$dry_run\""')"
-assert_eq "[Q7] ...as does \\\\ written for it" "ok" "$(_q 'scripts/cfg.sh:"_gate \"\\$dry_run\""')"
+assert_eq "[Q7] \\\" in a file quote is a quote mark" "ok" "$(_q 'scripts/cfg.sh | if ! _gate \"$dry_run\" \"$mode\"; then')"
+assert_eq "[Q7] ...and a backslash that is really in the file still holds" "ok" "$(_q 'scripts/cfg.sh | _gate "\$dry_run"')"
+assert_eq "[Q7] ...as does \\\\ written for it" "ok" "$(_q 'scripts/cfg.sh | _gate \"\\$dry_run\"')"
 assert_eq "[Q7] \\\" in the item's own words is a quote mark" "ok" "$(_q '"run \"zbuild\" now"' 'please run "zbuild" now')"
-assert_contains "[Q7] words that are not there are still refused" "$(_q 'scripts/cfg.sh:"if ! _gate \"$wet_run\""')" "bad:"
+assert_contains "[Q7] words that are not there are still refused" "$(_q 'scripts/cfg.sh | if ! _gate \"$wet_run\"')" "bad:"
 
 print_test_section "Q8: a file name in formatting marks is the file"
 # On #1805 run 42556446368 issue-acceptance wrote `tests/...-test.sh`:"…" and
 # the check took the backticks as part of the name: "not a file of the repository".
-assert_eq "[Q8] a file name in backticks" "ok" "$(_q '`scripts/cfg.sh`:"line one"')"
-assert_eq "[Q8] ...or in bold marks" "ok" "$(_q '**scripts/cfg.sh**:"line one"')"
-assert_contains "[Q8] a missing file in backticks is still refused" "$(_q '`scripts/nope.sh`:"line one"')" "bad:"
-assert_contains "[Q8] ...and named without the marks" "$(_q '`scripts/nope.sh`:"line one"')" "names scripts/nope.sh,"
-_Q8P=""; judge_quote_path_v _Q8P '`scripts/cfg.sh`:"line one"' "$XR" "$BASE"
+assert_eq "[Q8] a file name in backticks" "ok" "$(_q '`scripts/cfg.sh` | line one')"
+assert_eq "[Q8] ...or in bold marks" "ok" "$(_q '**scripts/cfg.sh** | line one')"
+assert_contains "[Q8] a missing file in backticks is still refused" "$(_q '`scripts/nope.sh` | line one')" "bad:"
+assert_contains "[Q8] ...and named without the marks" "$(_q '`scripts/nope.sh` | line one')" "names scripts/nope.sh,"
+_Q8P=""; judge_quote_path_v _Q8P '`scripts/cfg.sh` | line one' "$XR" "$BASE"
 assert_eq "[Q8] the file a kept answer depends on is named without the marks" "scripts/cfg.sh" "$_Q8P"
 
-print_test_section "Q9: a quote of a comment over several lines holds"
+print_test_section "Q9: a comment is quoted one line at a time"
 # On #1805 run 42817975218 issue-acceptance quoted a two-line # comment as one
-# line; the second line's # broke the match and the answer was thrown away.
-printf '%s\n' '# expected error (lens finding 1, #1805 moved the check after' '# auto-resume so the state resumes and bypasses the check).' \
-    '// a C-style note that runs' '//   over two lines' '-- an SQL note' '-- that continues' >> "$XR/scripts/cfg.sh"
-assert_eq "[Q9] a # comment quoted across its lines holds" "ok" "$(_q 'scripts/cfg.sh:"#1805 moved the check after auto-resume so the state resumes"')"
-assert_eq "[Q9] ...as does a // comment" "ok" "$(_q 'scripts/cfg.sh:"a C-style note that runs over two lines"')"
-assert_eq "[Q9] ...and a -- comment" "ok" "$(_q 'scripts/cfg.sh:"an SQL note that continues"')"
-assert_contains "[Q9] words the comment does not hold are still refused" "$(_q 'scripts/cfg.sh:"#1805 moved the check before auto-resume"')" "bad:"
+# line, and the answer was thrown away (#2517). A quote is one line (#2519): a
+# comment line holds without its mark; two lines joined do not.
+printf '%s\n' '# expected error (lens finding 1, #1805 moved the check after' '# auto-resume so the state resumes and bypasses the check).' >> "$XR/scripts/cfg.sh"
+assert_eq "[Q9] a line of a # comment, without its mark" "ok" "$(_q 'scripts/cfg.sh | #1805 moved the check after')"
+assert_eq "[Q9] ...or with it" "ok" "$(_q 'scripts/cfg.sh | # auto-resume so the state resumes')"
+assert_contains "[Q9] two comment lines joined into one are refused" "$(_q 'scripts/cfg.sh | #1805 moved the check after auto-resume so the state resumes')" "bad:"
+
+print_test_section "Q10: a quote is a file and one of its lines, with nothing to escape"
+# On #1805 run 42943504314 issue-acceptance wrote file:"…" quotes with \" and
+# \` for the quote marks and backticks inside them; the files hold the plain
+# characters, and two of the run's three rounds were lost (#2519).
+printf '%s\n' '    if [[ -n "$_out" ]]; then _rcl="$_out${_in}\`\`"; else _rcl="$_in"; fi' \
+    'assert_eq "[R8] labels are shown as code" '"'"'failed `[DSFSTG-1]` and ``'"'"' "$_o"' >> "$XR/scripts/cfg.sh"
+assert_eq "[Q10] a line holding quote marks and backticks, copied as it is" "ok" \
+    "$(_q 'scripts/cfg.sh | if [[ -n "$_out" ]]; then _rcl="$_out${_in}\`\`"; else _rcl="$_in"; fi')"
+assert_eq "[Q10] ...and another" "ok" "$(_q 'scripts/cfg.sh | assert_eq "[R8] labels are shown as code" '"'"'failed `[DSFSTG-1]` and ``'"'"' "$_o"')"
+assert_contains "[Q10] the old file:\"text\" form is refused" "$(_q 'scripts/cfg.sh:"line one"')" "bad:"
+assert_contains "[Q10] ...saying the form to use" "$(_q 'scripts/cfg.sh:"line one"')" "<file> | <one line"
+_Q10P=""; judge_quote_path_v _Q10P 'scripts/cfg.sh | line one' "$XR" "$BASE"
+assert_eq "[Q10] the file a kept answer depends on" "scripts/cfg.sh" "$_Q10P"
+_Q10P="x"; judge_quote_path_v _Q10P 'refuse a missing' "$XR" "$BASE"
+assert_eq "[Q10] ...and none for the item's own words" "" "$_Q10P"
 
 cleanup_test_env
 print_test_results

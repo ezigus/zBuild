@@ -34,6 +34,8 @@
 #             change, and a "keep every other entry" re-prompt
 # P12 [code]  an answer form offering "nothing to do" fails: an answer is done,
 #             wrong or not mine (ADR-068 §6)
+# P13 [code]  a quote asked for as <file>:"<text>" fails: its text is a file and
+#             one of its lines, with nothing to escape (#2519, ADR-072 §3)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -121,6 +123,19 @@ assert_contains "[P12] it names the file and line" "$out" "plugins/x/m.sh:2"
 printf '%s\n' 'cat <<EOF' 'Do not keep going when there is nothing left to do.' 'EOF' > "$R/plugins/x/n.sh"
 _src plugins/x/n.sh; _lint
 assert_eq "[P12] 'nothing left to do' in a sentence is allowed" "0" "$rc"
+
+# P13 (#2519, ADR-072 §3): a quote asked for as <file>:"<text>" is written with
+# its inner quote marks and backticks escaped, and refused (#1805 run
+# 42943504314). A quote is `<file> | <one line>`, with nothing to escape.
+printf '%s\n' 'cat <<EOF' 'UNASKED: <what> | WHY: <why> | QUOTE: <file>:"<its exact text>"' 'EOF' > "$R/plugins/x/o.sh"
+_src plugins/x/o.sh; _lint
+assert_eq "[P13] a prompt asking for a <file>:\"<text>\" quote fails" "1" "$rc"
+printf '%s\n' 'cat <<EOF' 'X[done]: <what> evidence: scripts/x.sh:"run_guard()"' 'EOF' > "$R/plugins/x/p.sh"
+_src plugins/x/p.sh; _lint
+assert_eq "[P13] ...as does an example written that way" "1" "$rc"
+printf '%s\n' 'cat <<EOF' 'UNASKED: <what> | WHY: <why> | QUOTE: <file> | <one line from it, copied as it is>' 'EOF' > "$R/plugins/x/q.sh"
+_src plugins/x/q.sh; _lint
+assert_eq "[P13] the one-line form is allowed" "0" "$rc"
 
 bash "$LINT" "$REPO_ROOT" > "$TEST_TEMP_DIR/real.out" 2>&1; rc=$?
 assert_eq "[P6] the real tree passes" "0" "$rc"

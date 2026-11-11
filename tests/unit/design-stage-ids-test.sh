@@ -91,7 +91,7 @@ assert_contains "[E3] the prompt says what an id is" "$_p" "3 or 4 capital lette
 assert_contains "[E3] ...that a kept id never changes" "$_p" "never changes"
 assert_contains "[E3] ...how one is removed" "$_p" "REMOVED: <id> — <why>"
 assert_contains "[E3] ...that a new id takes the number after its code's highest" "$_p" "one more than the highest"
-assert_contains "[E3] ...that [done] evidence quotes the file's text" "$_p" 'scripts/x.sh:"'
+assert_contains "[E3] ...that [done] evidence quotes the file's text" "$_p" 'scripts/x.sh | '
 _line=0; [[ "$_p" == *"a file and line"* || "$_p" == *"scripts/x.sh:42"* ]] && _line=1
 assert_eq "[E3] ...and never offers a line number" "0" "$_line"
 DRAFT="$(_design 'DSDOCW-1[no-code]: the docs say so covers: RQDOCS-1')"

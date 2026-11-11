@@ -115,6 +115,13 @@ assert_contains "[D1] Previous work lists the producer's output" \
     "$(cat "$TEST_TEMP_DIR/previous-work.md" 2>/dev/null)" "$ART/sb-producer-out.json"
 assert_contains "[D1] Rules: the per-call budget, the same for every stage" \
     "$(cat "$TEST_TEMP_DIR/rules.md" 2>/dev/null)" "Your budget: each model call has"
+# #2519 (ADR-063): since #2517 a call at its limit writes its notes and gives
+# its answer; it is not left with nothing.
+assert_contains "[D1] Rules: at the limit, write the notes and give the answer" \
+    "$(cat "$TEST_TEMP_DIR/rules.md" 2>/dev/null)" "write your notes and give your answer"
+if grep -qF "returns nothing" "$TEST_TEMP_DIR/rules.md" 2>/dev/null; then
+    assert_fail "[D1] ...and never that a call out of time returns nothing" "found: returns nothing"
+else assert_pass "[D1] ...and never that a call out of time returns nothing"; fi
 assert_file_not_exists "[D2] no per-stage record of what moved (#2363)" \
     "$ART/stage-context/sb-tool.txt"
 

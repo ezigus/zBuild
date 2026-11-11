@@ -13,9 +13,12 @@
 # M3 [guard]  replaced by a broken file moved into place — caught
 # M4 [guard]  a damaged file leaves no mark: caught each time, passes once fixed
 # M5 [guard]  without a mark dir every call checks, as before
-# M6 [guard]  an empty file is damaged, mark or not
+# M6 [code]   an empty file is empty, not damaged (#2519): an errors log the
+#             engine emptied because nothing failed is a real answer
 # M7 [change] the index a stage gets: built twice over unchanged outputs, the
 #             second build checks none of them again, and lists the same files
+# M8 [code]   an empty output is left out of the index, and nothing is announced
+#             (#2519: an empty test-errors.log was "damaged" 14 times in a run)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -73,7 +76,9 @@ assert_eq "[M5] two checks, two jq" "2" "$(jqs)"
 print_test_section "M6: empty"
 F="$D/f.json"; printf '{}\n' > "$F"
 _r1="$(dmg "$F" f "$MARKS")"; : > "$F"
-assert_eq "[M6] passed, then emptied: damaged" "ok damaged" "$_r1 $(dmg "$F" f "$MARKS")"
+assert_eq "[M6] passed, then emptied: empty, not damaged" "ok ok" "$_r1 $(dmg "$F" f "$MARKS")"
+T="$D/errors.log"; : > "$T"
+assert_eq "[M6] an empty text file is not damaged" "ok" "$(dmg "$T" e "$MARKS")"
 
 print_test_section "M7: the index, built twice"
 SD="$TEST_TEMP_DIR/state"; PR="$TEST_TEMP_DIR/plugins"; mkdir -p "$PR" "$SD/artifacts"
@@ -97,6 +102,22 @@ assert_eq "[M7] the second build parses only for writing the index (no checks)" 
 assert_eq "[M7] …and lists the same three outputs" "$_j1" "$_j2"
 assert_contains "[M7] …the JSON ones among them" "$_j2" "plan.json"
 unset -f jq
+
+print_test_section "M8: an empty output"
+assert_not_contains() {
+    if grep -qF -- "$3" <<< "$2"; then assert_fail "$1" "found: $3"; else assert_pass "$1"; fi
+}
+export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events.jsonl"; : > "$ZBUILD_EVENTS_JSONL"
+eb_emit_event() { printf '%s\n' "$*" >> "$ZBUILD_EVENTS_JSONL"; }
+: > "$SD/artifacts/notes.md"
+_seed; _idx3="$(_inputs_resolve_stage design "$PR" "$SD")"; _j3="$(command jq -cS .inputs "$_idx3" 2>/dev/null)"
+assert_not_contains "[M8] an empty output is left out of the index" "$_j3" "notes.md"
+assert_contains "[M8] …and the others are still in it" "$_j3" "plan.json"
+assert_not_contains "[M8] …and nothing calls it damaged" "$(cat "$ZBUILD_EVENTS_JSONL")" "stage.input.degraded"
+printf '{"p":' > "$SD/artifacts/plan.json"
+_seed; _inputs_resolve_stage design "$PR" "$SD" >/dev/null
+assert_contains "[M8] a JSON output jq cannot read is still announced damaged" "$(cat "$ZBUILD_EVENTS_JSONL")" "stage.input.degraded"
+unset -f eb_emit_event
 
 cleanup_test_env
 print_test_results

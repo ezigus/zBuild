@@ -151,7 +151,7 @@ MD
     _R1=$'DOCS-1: ok\nLOOP-1 sections: missing | WHY: there is no Cleanup section\n'; _j
     echo "T4|${#_TA_CORR_FINDINGS[@]}|${_TA_CORR_FINDINGS[0]:-}"
     # #2474: the sections line may quote the test file; the quote is checked.
-    _R1=$'DOCS-1: ok\nLOOP-1 sections: missing | WHY: the assertion is under Given | QUOTE: tests/loop-test.sh:"# Given"\n'; _j
+    _R1=$'DOCS-1: ok\nLOOP-1 sections: missing | WHY: the assertion is under Given | QUOTE: tests/loop-test.sh | # Given\n'; _j
     echo "T4b|$(cat "$_N")|${#_TA_CORR_FINDINGS[@]}|${_TA_CORR_FINDINGS[0]:-}"
     _R1=$'DOCS-1: ok\nLOOP-1 sections: missing | WHY: x | QUOTE: tests/loop-test.sh:"# Arrange"\n'; _R2=$'LOOP-1: ok\n'; _j
     echo "T4c|$(cat "$_N")|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"

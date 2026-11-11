@@ -316,9 +316,10 @@ acceptance_spec_status() {
 
 # acceptance_spec_evidence <design_md> <spec_id>  (#2304, ADR-069 §1)
 # Echoes the evidence an "already done" requirement names — the items after
-# ` evidence: ` on its line, one per line: `file:"exact text"` or a test file
-# (#2462; the old `file:line` still reads, and design's checks refuse it). Empty
-# for any other status, and when none is named.
+# ` evidence: ` on its line, one per line: `<file> | <one line>` (#2519), the
+# old `file:"exact text"`, or a test file (#2462; the old `file:line` still
+# reads, and design's checks refuse it). Empty for any other status, and when
+# none is named.
 acceptance_spec_evidence() {
     local design_md="${1:-}" spec_id="${2:-}" block_output
     [[ -n "$design_md" && -n "$spec_id" && -f "$design_md" ]] || return 0
@@ -335,21 +336,26 @@ acceptance_spec_evidence() {
 
 # _acceptance_evidence_items_v <array> <evidence> — the items of a [done]
 # requirement's evidence, split on spaces except inside a quoted text (#2462).
+# `<file> | <one line>` is one item, the line running to the end (#2519).
 _acceptance_evidence_items_v() {
     local -n _aei="$1"; local _s="$2" _re='^[[:space:]]*([^[:space:]"]+:"[^"]*"|[^[:space:]]+)(.*)$'
     _aei=()
+    if [[ "$_s" =~ ^[[:space:]]*([^[:space:]|]+[[:space:]]+\|[[:space:]]+.*[^[:space:]])[[:space:]]*$ ]]; then
+        _aei=("${BASH_REMATCH[1]}"); return 0
+    fi
     while [[ "$_s" =~ $_re ]]; do _aei+=("${BASH_REMATCH[1]}"); _s="${BASH_REMATCH[2]}"; done
     return 0
 }
 
 # acceptance_evidence_split <item> <path_var> <text_var> <line_var> — one
-# evidence item's parts: `file:"text"` sets path and text, the old `file:N`
-# sets path and line, a bare path sets path alone.
+# evidence item's parts: `<file> | <line>` and the old `file:"text"` set path
+# and text, the old `file:N` sets path and line, a bare path sets path alone.
 acceptance_evidence_split() {
     local -n _aesp="$2" _aest="$3" _aesl="$4"
-    local _it="$1" _rt='^([^"]+):"(.*)"$' _rl='^(.+):([0-9]+)$'
+    local _it="$1" _rt='^([^"]+):"(.*)"$' _rl='^(.+):([0-9]+)$' _rb='^([^[:space:]|]+)[[:space:]]+\|[[:space:]]+(.*)$'
     _aesp="$_it" _aest="" _aesl=""
-    if [[ "$_it" =~ $_rt ]]; then _aesp="${BASH_REMATCH[1]}"; _aest="${BASH_REMATCH[2]}"
+    if [[ "$_it" =~ $_rb ]]; then _aesp="${BASH_REMATCH[1]}"; _aest="${BASH_REMATCH[2]}"
+    elif [[ "$_it" =~ $_rt ]]; then _aesp="${BASH_REMATCH[1]}"; _aest="${BASH_REMATCH[2]}"
     elif [[ "$_it" =~ $_rl ]]; then _aesp="${BASH_REMATCH[1]}"; _aesl="${BASH_REMATCH[2]}"; fi
     return 0
 }

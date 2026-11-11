@@ -1,6 +1,6 @@
 # ADR-072 — A judge reads the code itself, quotes what it complains about, and keeps its answer while nothing changes
 
-**Status:** Accepted (2026-11-03); amended 2026-11-10 (#2517, §3: a quote across comment lines holds); amended 2026-11-09 (#2508, §3: issue-acceptance also names each part of the change no requirement asks for); amended 2026-11-09 (#2507, §1 §2 §4 §7: a judge's tools are listed in its manifest and include git; test-author reads the existing code in the old-code copy; judges are pointed at the change, not given it); amended 2026-11-09 (#2506, §3: a lens names no line; its finding is shown with its quote); amended 2026-11-09 (#2505, §3: a file name in formatting marks is the file); amended 2026-11-08 (#2495, §3 §4: the scope is not judged — #2491's scope lines are removed); amended 2026-11-08 (#2491, §3 §4: each scope entry gets a line of its own, ok or outside, kept per entry); amended 2026-11-07 (#2487, §3: an escaped quote mark is the mark itself); amended 2026-11-04 (#2466, §2 §4: the old-code copy and every kept answer leave events); amended 2026-11-04 (#2467, §3: the checks answer one line per part of a SPEC); amended 2026-11-04 (#2470, §3 §4: one line per SPEC that is fine and one per failing part; design's check keeps its answer per SPEC, is given the draft by its path, and judges only the SPECs that changed); amended 2026-11-05 (#2472, §3 §4: quotes ignore formatting; a kept answer does not depend on the file its items come from; a bad line costs only its own item); amended 2026-11-05 (#2474, §3: every reply line is read with its formatting aside)
+**Status:** Accepted (2026-11-03); amended 2026-11-11 (#2519, §3: a quote is a file and one of its lines, with no quote marks; the #2517 comment-line amendment no longer applies); amended 2026-11-10 (#2517, §3: a quote across comment lines holds); amended 2026-11-09 (#2508, §3: issue-acceptance also names each part of the change no requirement asks for); amended 2026-11-09 (#2507, §1 §2 §4 §7: a judge's tools are listed in its manifest and include git; test-author reads the existing code in the old-code copy; judges are pointed at the change, not given it); amended 2026-11-09 (#2506, §3: a lens names no line; its finding is shown with its quote); amended 2026-11-09 (#2505, §3: a file name in formatting marks is the file); amended 2026-11-08 (#2495, §3 §4: the scope is not judged — #2491's scope lines are removed); amended 2026-11-08 (#2491, §3 §4: each scope entry gets a line of its own, ok or outside, kept per entry); amended 2026-11-07 (#2487, §3: an escaped quote mark is the mark itself); amended 2026-11-04 (#2466, §2 §4: the old-code copy and every kept answer leave events); amended 2026-11-04 (#2467, §3: the checks answer one line per part of a SPEC); amended 2026-11-04 (#2470, §3 §4: one line per SPEC that is fine and one per failing part; design's check keeps its answer per SPEC, is given the draft by its path, and judges only the SPECs that changed); amended 2026-11-05 (#2472, §3 §4: quotes ignore formatting; a kept answer does not depend on the file its items come from; a bad line costs only its own item); amended 2026-11-05 (#2474, §3: every reply line is read with its formatting aside)
 **Issue:** #2464 (runs 41643063636 and 41679237388 on #1805)
 **Amends:** ADR-068 §6 §7 (answers are kept in a stage's result; a check keeps a verdict whose inputs have not changed), ADR-017 §11 (`tools: read`), ADR-069 §2 (a `[done]` claim is read in the code from before the change, by file), ADR-067 §8 (a judging call can read and search files, and nothing else)
 **Related:** ADR-060 §6 (one re-ask), ADR-054 §7 (teardown frees run resources), ADR-066 (every ADR statement has a test)
@@ -206,11 +206,24 @@ This question replaces it.
 
 ## Amendment 2026-11-10 (#2517) — §3: a quote across comment lines holds
 
+> **Withdrawn 2026-11-11 (#2519):** a quote is one line; see the amendment below.
+
 On #1805 run 42817975218 issue-acceptance quoted a comment from `tests/integration/pipeline-resume-test.sh` that runs over two lines, each starting with `#`, as one line; the second `#` broke the match and the answer was thrown away. A quote not found as written is looked for again with each line's leading comment mark (`#`, `//`, `--`) and the spaces after it left out (`_judge_uncomment_v`), as formatting already is.
+
+## Amendment 2026-11-11 (#2519) — §3: a quote is a file and one of its lines, with no quote marks
+
+On #1805 run 42943504314 issue-acceptance lost two of the run's three rounds: it wrote its `<file>:"<text>"` quotes with `\"` and `` \` `` for the quote marks and backticks inside them, as a programmer escapes a string, and the files hold the plain characters. Round 3 quoted the same lines plainly and they were accepted.
+
+- **A quote of code is `<file> | <one line from it>`, copied as it is.** The text runs to the end of the line, so there is nothing to escape. It holds when it is found inside one line of that file in the repository or in the code from before the change, spacing and formatting aside as before (`judge_quote_check_v`, `scripts/lib/judge-quotes.sh`). A text of several lines — a lens's JSON `quote` — is read against the whole file, as before.
+- **A quote of an item's own words is the words as they are.** A pair of quote marks around them is not theirs.
+- **The old `<file>:"<text>"` form is refused**, and the re-ask says the form to use. Every prompt asks for the new form — issue-acceptance, design's coverage check, test-author's check — and design's `[done]` evidence is written `<file> | <one line>` (an old evidence item still reads). `lint-plain-prompts.sh` refuses the old form in any model-facing text.
+- **The #2517 amendment is withdrawn:** a quote is one line, so a comment is quoted one line at a time and the comment-mark retry is gone.
 
 ## Enforced by
 
-- §3 amendment 2026-11-10 (#2517: a quote across comment lines holds) → `tests/unit/judge-quotes-test.sh` Q9
+- §3 amendment 2026-11-11 (#2519: a file and one of its lines, no quote marks) → `tests/unit/judge-quotes-test.sh` Q1, Q9, Q10; `tests/unit/lint-plain-prompts-test.sh` P13; `tests/unit/design-stable-ids-test.sh` D17; `tests/unit/issue-acceptance-unasked-test.sh` U1
+
+- §3 amendment 2026-11-10 (#2517: a quote across comment lines holds — withdrawn by #2519) → `tests/unit/judge-quotes-test.sh` Q9
 
 - §3 amendment 2026-11-09 (#2506: a lens names no line; its finding is shown with its quote) → `tests/unit/no-line-numbers-test.sh` L2, L3
 

@@ -165,7 +165,7 @@ assert_contains "T6: the prompt offers <id>[done]: for what the code from before
     'DSGARD-1[done]:` — the code from before your change already does it'
 assert_contains "T6: the evidence syntax is shown" "$_t6_prompt" "after \` evidence: \`"
 assert_contains "T6: the example block carries a [done] line with evidence" "$_t6_prompt" \
-    'DSGARD-1[done]: <something the code already does> evidence: scripts/x.sh:"run_guard()"'
+    'DSGARD-1[done]: <something the code already does> evidence: scripts/x.sh | run_guard()'
 # #2305 (ADR-069 §9): design-gate rejects a [code] requirement that describes
 # file contents, so the prompt says so before design writes one.
 assert_contains "T6: a [code] requirement must describe behaviour, not file contents (#2305)" "$_t6_prompt" \

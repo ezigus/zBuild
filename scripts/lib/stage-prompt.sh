@@ -289,8 +289,8 @@ _stage_block_rules_pair_v() {
     else
         per_call+=", with no limit on turns"
     fi
-    _budget="- Your budget: each model call has $per_call. A call that runs out of time
-  returns nothing: finish and write your answer well before the limit."
+    _budget="- Your budget: each model call has $per_call. Finish well before the
+  limit; at the limit, write your notes and give your answer."
     [[ "$stage_secs" =~ ^[0-9]+$ ]] && _budget+=" The whole stage has $stage_secs seconds."
     _budget+=$'\n\n'
 

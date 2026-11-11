@@ -66,17 +66,17 @@ Answer at least one line for every SPEC, each starting with that SPEC's identifi
 
 Otherwise one line for each thing wrong, and no ok line:
 
-<identifier> <part>: missing | WHY: <what the test does not do> | QUOTE: "<that part's own words>"
-<identifier> <part>: wrong | WHY: <what the test does instead> | QUOTE: "<that part's own words>"
-<identifier> sections: missing | WHY: <which heading is not there, or which part's code is not under its own> | QUOTE: <test file>:"<the heading or line of the test that shows it>"
+<identifier> <part>: missing | WHY: <what the test does not do> | QUOTE: <that part's own words>
+<identifier> <part>: wrong | WHY: <what the test does instead> | QUOTE: <that part's own words>
+<identifier> sections: missing | WHY: <which heading is not there, or which part's code is not under its own> | QUOTE: <test file> | <the heading or line of the test that shows it>
 
 <part> is the word the part's line starts with: Given, When, Then, And or Cleanup. The QUOTE is copied from that line, and says which line it is when the SPEC has several.
 
 When no test could ever prove a SPEC — it describes what a file or a test contains, or it has no pass or fail — answer instead:
 
-<identifier>: untestable | WHY: <why no test could prove it> | QUOTE: "<the SPEC's own words>"
+<identifier>: untestable | WHY: <why no test could prove it> | QUOTE: <the SPEC's own words>
 
-Copy each QUOTE exactly: it is checked, and a quote that is not there cannot be used.
+Copy each QUOTE as it is, with no quote marks around it: it is checked, and a quote that is not there cannot be used.
 
 ## What you judge against
 The SPECs below, each a REQUIREMENT with its parts and the ASSERTION tagged as covering it. In each ASSERTION, the lines marked >> are the ones tagged for the requirement; the lines above them set up the test, and what they do counts. Each test file is also shown whole, under THE TEST FILES: setup anywhere in the file counts — a helper function, a block shared by several cases — so judge what the test really does, not only the lines next to the assertion. The failure you are looking for is a test that does something real and specific, but not what a part says — including its opposite.
