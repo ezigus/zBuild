@@ -2285,6 +2285,16 @@ main() {
             _lr_recommendation="$(get_resume_recommendation "$_lr_resolved_dir/pipeline-state.json")"
             case "$_lr_recommendation" in
                 auto_resume)
+                    # RQFROM-4 (#1805): guard against --from-stage without explicit --resume
+                    # even when state is found via the latest symlink (DSENTR-2 path).
+                    # The flat-file guard above (lines before this elif) only fires when
+                    # [[ -f "$state_file" ]]; for the per-run layout state_file is absent,
+                    # so the guard must be repeated here before resume_mode is set to true.
+                    if [[ -n "$from_stage" ]]; then
+                        error "--from-stage is only valid with --resume"
+                        _usage
+                        return 1
+                    fi
                     info "Auto-resuming previous run via latest symlink (use --no-resume to force fresh start)"
                     state_dir="$_lr_resolved_dir"
                     state_file="$state_dir/pipeline-state.json"
