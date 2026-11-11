@@ -3,6 +3,7 @@
 **Status:** Accepted, amended 2026-10-05 by #2032
 **Issue:** #2032
 **Amends:** ADR-054 §6 (vocabulary updated to `timed_out`/`out_of_turns` per #2187)
+**Amended:** 2026-11-11 (#2519) — the budget line no longer says a call that runs out of time returns nothing.
 **Amended:** 2026-11-10 (#2517) — a call finishes after its limit; the kill comes a grace later.
 **Amended:** 2026-11-09 (#2505) — the 2026-10-06 (#2325) earlier-round notes label is withdrawn.
 **Amended:** 2026-10-05 (#2032) — vocabulary updated per #2187: the stale disposition word and the stale §4 engine action word are retired; `timed_out`/`out_of_turns` replace the former, and the engine's timeout-retry path (ADR-029) replaces the latter; §1 per-stage `_<stage>_budget_guidance` helpers replace the single shared helper.
@@ -400,3 +401,9 @@ On #1805 run 42817975218 three calls were killed with nothing kept. The warning 
 - Every call with a time limit gets the hook, tools or not.
 
 Enforced by `tests/unit/call-time-up-hook-test.sh` H1 (the deadline is the limit), H2 (a short call gets it too), H4 (the words: the limit is reached, give the final reply); `tests/unit/call-hook-test.sh` G9 (the kill at limit + grace; ZBUILD_CALL_GRACE_S), G1 (a call with no tools gets the hook); `tests/unit/stage-stop-on-signal-test.sh` S12 (a stage's limit gains the grace).
+
+## Amendment (2026-11-11, #2519): the budget line says what happens at the limit
+
+Since #2517 a call at its limit writes its notes and gives its answer; it is not left with nothing. The budget line every stage is given said "A call that runs out of time returns nothing". It now says: finish well before the limit; at the limit, write your notes and give your answer (`scripts/lib/stage-prompt.sh`).
+
+Enforced by `tests/unit/stage-blocks-dispatch-test.sh` D1 (the budget line says to write the notes and give the answer, and never that a call returns nothing).

@@ -53,7 +53,7 @@ EOF2
 One line for every requirement:
 
 <requirement id>: covered
-<requirement id>: uncovered | WHY: <what no SPEC covers> | QUOTE: "<the requirement's own words that no SPEC covers>"
+<requirement id>: uncovered | WHY: <what no SPEC covers> | QUOTE: <the requirement's own words that no SPEC covers>
 EOF2
     cat <<'EOF2'
 
@@ -64,13 +64,13 @@ one line:
 
 When something is wrong with it, one line for each thing wrong, and no ok line:
 
-<SPEC id>: outside | WHY: <what the issue does not ask for, or how it contradicts it> | QUOTE: "<the SPEC's own words that do>"
-<SPEC id>: done_wrong | WHY: <what the code does instead> | QUOTE: <file>:"<the exact text of the code that shows it>"
-<SPEC id>: needs_cleanup | WHY: <what the Given or a Then leaves behind> | QUOTE: "<the words of the part that leaves it>"
-<SPEC id> <part>: untestable | WHY: <why a test cannot observe it> | QUOTE: "<that part's own words>"
-<SPEC id> <part>: how | WHY: <what it says about how it is built> | QUOTE: "<that part's own words>"
-<SPEC id> <part>: contradicts | WHY: <what it cannot be true together with, and where that is> | QUOTE: "<that part's own words>"
-<SPEC id> <part>: duplicate | WHY: <which SPEC already has this action> | QUOTE: "<that part's own words>"
+<SPEC id>: outside | WHY: <what the issue does not ask for, or how it contradicts it> | QUOTE: <the SPEC's own words that do>
+<SPEC id>: done_wrong | WHY: <what the code does instead> | QUOTE: <file> | <one line of the code that shows it>
+<SPEC id>: needs_cleanup | WHY: <what the Given or a Then leaves behind> | QUOTE: <the words of the part that leaves it>
+<SPEC id> <part>: untestable | WHY: <why a test cannot observe it> | QUOTE: <that part's own words>
+<SPEC id> <part>: how | WHY: <what it says about how it is built> | QUOTE: <that part's own words>
+<SPEC id> <part>: contradicts | WHY: <what it cannot be true together with, and where that is> | QUOTE: <that part's own words>
+<SPEC id> <part>: duplicate | WHY: <which SPEC already has this action> | QUOTE: <that part's own words>
 
 <part> is the word the part's line starts with: Given, When, Then, And or
 Cleanup. The QUOTE is copied from that line, and says which line it is when the
@@ -87,8 +87,8 @@ it back.
 EOF2
     cat <<'EOF2'
 
-Copy each QUOTE exactly from what it names. It is checked: a quote that is not
-there makes the answer unusable.
+Copy each QUOTE as it is from what it names, with no quote marks around it. It
+is checked: a quote that is not there makes the answer unusable.
 EOF2
 }
 

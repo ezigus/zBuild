@@ -24,6 +24,9 @@
 #   - maintainer notes and internals: ADR-<n>, _TPL_*.
 #   - the retired answer "nothing to do — …" (ADR-068 §6): an answer is done,
 #     wrong or not mine, and "nothing to do" read as wrong whatever it meant;
+#   - a quote asked for as <file>:"<text>" (#2519, ADR-072 §3): the model escapes
+#     the quote marks and backticks inside it, and the quote is refused; a
+#     quote is <file> | <one line>;
 # It also refuses text that tells a stage to skip part of its own job (#2308,
 # ADR-067 §8): "is proven by the pipeline itself … never judge it here" told two
 # stages to leave what the issue required unchecked. The phrases are the ones
@@ -43,7 +46,7 @@ LIST="$ROOT/config/model-facing-sources.txt"
 [[ -f "$LIST" ]] || { echo "lint-plain-prompts: no $LIST" >&2; exit 1; }
 
 # One extended regex; matched case-sensitively except where noted in the class.
-FORBIDDEN='NEGCTL|REACHABILITY|[Ii]nert|[Tt]autolog|WIRING_MISSING|WIRING_IS_TEST|UNCLASSIFIED|GUARD_REGRESSED|[Nn]egative control|ADR-[0-9]+|_TPL_[A-Z]|RESOLVE|\[guard\]|nothing to do —'
+FORBIDDEN='NEGCTL|REACHABILITY|[Ii]nert|[Tt]autolog|WIRING_MISSING|WIRING_IS_TEST|UNCLASSIFIED|GUARD_REGRESSED|[Nn]egative control|ADR-[0-9]+|_TPL_[A-Z]|RESOLVE|\[guard\]|nothing to do —|(>|\.[a-z]+):"'
 
 # Phrases that tell a stage to leave part of its own job undone.
 SKIP_JOB='[Nn]ever judge|proven by the pipeline|[Nn]ever a gap|not yours to|[Nn]ot your job|[Kk]eep every other|[Dd]o not re-verify|[Nn]ever change, move or remove|is checked later'

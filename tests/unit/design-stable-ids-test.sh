@@ -190,6 +190,16 @@ _ok "[D13] a test file named alone passes"
 _check 'DSLOOP-1[code]: a covers: RQRSUM-1' '  When: it runs' '  Then: it is done' 'DSGARD-1[done]: x evidence: scripts/run.sh' '  When: it runs' '  Then: it is done'
 _has "[D13] a source file named alone is refused" "DONE_NO_TEXT DSGARD-1"
 
+# ── D17 ──────────────────────────────────────────────────────────────────────
+# #2519 (ADR-072 §3): evidence is a file and one of its lines, ` | ` between,
+# copied as it is — no quote marks to escape.
+_check 'DSLOOP-1[code]: a covers: RQRSUM-1' '  When: it runs' '  Then: it is done' 'DSGARD-1[done]: the old guard runs evidence: scripts/run.sh | echo old guard' '  When: it runs' '  Then: it is done'
+_ok "[D17] evidence written <file> | <one line> passes"
+_check 'DSLOOP-1[code]: a covers: RQRSUM-1' '  When: it runs' '  Then: it is done' 'DSGARD-1[done]: the skip guard runs evidence: scripts/run.sh | echo new skip guard' '  When: it runs' '  Then: it is done'
+_has "[D17] ...and its line is still checked against the code from before" "DONE_NOT_BEFORE DSGARD-1"
+_check 'DSLOOP-1[code]: a covers: RQRSUM-1' '  When: it runs' '  Then: it is done' 'DSGARD-1[done]: x' '  When: it runs' '  Then: it is done'
+assert_contains "[D17] the message for a [done] with no evidence shows the form" "$P" "scripts/x.sh | run_guard()"
+
 # ── D14 ──────────────────────────────────────────────────────────────────────
 NOGIT="$TEST_TEMP_DIR/nogit"; mkdir -p "$NOGIT/scripts" "$NOGIT/tests/unit"
 cp "$ROOT/scripts/run.sh" "$NOGIT/scripts/run.sh"; cp "$ROOT/tests/unit/run-test.sh" "$NOGIT/tests/unit/"

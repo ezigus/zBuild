@@ -179,7 +179,9 @@ _inputs_resolve_stage_v() {
         paths="${_IR_PATHS[$id]}"
         joined=""
         while IFS= read -r line; do
-            [[ -n "$line" && -e "$line" ]] || continue
+            # #2519: an empty file is empty — an errors log nothing failed into —
+            # and is left out without a word; only a broken one is announced.
+            [[ -n "$line" && -s "$line" ]] || continue
             if _inputs_damaged "$line" "$id" "$state_dir/runtime/form-ok"; then
                 if declare -F eb_emit_event >/dev/null 2>&1; then
                     local _why="damaged"; [[ -n "${_IR_ISMAP[$id]:-}" ]] && _why="damaged_member"
@@ -266,8 +268,11 @@ _inputs_format_for_v() {
 # FORM, never by meaning — a syntactically valid file whose contents are wrong
 # stays the consumer's business.
 #
-#   any format : zero bytes            -> damaged (empty or a failed write)
 #   json       : `jq empty` rejects it -> damaged (truncated / partial write)
+#
+# An EMPTY file is not damaged (#2519): the engine empties a stage's errors log
+# and writes to it only on a failure, and an output a stage must write is
+# refused empty when the stage ends (#1803). The resolver leaves it out.
 #
 # With <mark_dir>, JSON is parsed once per change (ADR-065 §5): a passing check
 # leaves a mark made BEFORE its read; while the mark is strictly newer than the
@@ -277,8 +282,7 @@ _inputs_format_for_v() {
 # conflating them is what #1894 opened with.
 _inputs_damaged() {
     local pth="${1-}" in_id="${2-}" marks="${3-}"
-    [[ -e "$pth" ]] || return 1
-    [[ -s "$pth" ]] || return 0
+    [[ -s "$pth" ]] || return 1
     local mark="" key fmt
     _inputs_format_for_v fmt "$pth" "$in_id"; [[ "$fmt" == json ]] || return 1
     if [[ -n "$marks" ]]; then

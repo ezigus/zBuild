@@ -72,18 +72,18 @@ _p="$(tr -s '[:space:]' ' ' <<< "$(_ia_prompt "ISSUE-TEXT" "SPEC-TEXT" "DIFF-TEX
 assert_contains "[U1] the composer built a real prompt" "$_p" "ISSUE-TEXT"
 assert_contains "[U1] it asks for each part of the change no requirement asks for" \
     "$_p" "each part of the DIFF that no requirement asks for"
-assert_contains "[U1] it says how to answer it" "$_p" 'UNASKED: <what the change does> | WHY: <why no requirement asks for it> | QUOTE: <file>:"<its exact text>"'
+assert_contains "[U1] it says how to answer it" "$_p" 'UNASKED: <what the change does> | WHY: <why no requirement asks for it> | QUOTE: <file> | <one line of the code that does it>'
 assert_contains "[U1] it says how to say there is none" "$_p" "UNASKED: none"
 
 print_test_section "U2: an unasked part is a finding for build"
 _setup u2
-_IA_ANSWER=$'MET: --from-stage starts the run at that stage\nUNASKED: it drops the rule that --from-stage needs --resume | WHY: no requirement asks to drop it | QUOTE: runner.sh:"resume_required=0"'
+_IA_ANSWER=$'MET: --from-stage starts the run at that stage\nUNASKED: it drops the rule that --from-stage needs --resume | WHY: no requirement asks to drop it | QUOTE: runner.sh | resume_required=0'
 _run
 assert_eq "[U2] the change does not pass" "fail" "$(_res .outcome)"
 assert_eq "[U2] one finding" "1" "$(_res '.data.findings | length')"
 assert_eq "[U2] its topic is change-findings (build takes it)" "change-findings" "$(_res '.data.findings[0].topic')"
 assert_contains "[U2] the finding names the part" "$(_res '.data.findings[0].text')" "it drops the rule that --from-stage needs --resume"
-assert_contains "[U2] ...and the code that shows it" "$(_res '.data.findings[0].text')" 'runner.sh:"resume_required=0"'
+assert_contains "[U2] ...and the code that shows it" "$(_res '.data.findings[0].text')" 'runner.sh | resume_required=0'
 assert_eq "[U2] it is kept apart from the unmet requirements" "0" "$(_res '.data.unmet | length')"
 assert_eq "[U2] ...as an unasked part" "1" "$(_res '.data.unasked | length')"
 assert_eq "[U2] the manifest lets the result name change-findings" "1" \
@@ -98,7 +98,7 @@ assert_eq "[U3] no finding" "0" "$(_res '.data.findings | length')"
 
 print_test_section "U4: an unasked part with a quote that is not there is not used"
 _setup u4
-_IA_ANSWER=$'MET: --from-stage starts the run at that stage\nUNASKED: it adds a cache | WHY: nothing asks for one | QUOTE: runner.sh:"cache=1"'
+_IA_ANSWER=$'MET: --from-stage starts the run at that stage\nUNASKED: it adds a cache | WHY: nothing asks for one | QUOTE: runner.sh | cache=1'
 _run
 assert_eq "[U4] asked again once" "2" "$(grep -c x "$_IA_CALLS")"
 assert_eq "[U4] then unusable" "unusable" "$(_res .outcome)"

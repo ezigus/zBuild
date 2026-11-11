@@ -120,7 +120,7 @@ _check "$(_md '## Decision
 Read the guard at scripts/wire.sh:3 and keep it.')"
 assert_contains "[L4] a line number in a decision is refused" "$V" "LINE_NUMBER scripts/wire.sh:3"
 assert_contains "[L4] ...saying to name the function or quote the text" "$FB" \
-    "names a line number (scripts/wire.sh:3), and line numbers move as the change is made — name the file and the function, or quote the text: scripts/x.sh:\"run_guard()\""
+    "names a line number (scripts/wire.sh:3), and line numbers move as the change is made — name the file and the function, or quote the text: scripts/x.sh | run_guard()"
 _check "$(_md '## Findings
 - design finding 2: done — verified at core/runner.sh:3442-3450')"
 assert_contains "[L4] ...and so is one in a finding" "$V" "LINE_NUMBER core/runner.sh:3442"

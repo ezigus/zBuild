@@ -279,8 +279,8 @@ The design document MUST include:
    - \`${_DCK_ID_PREFIX}LOOP-2[no-code]:\` — it needs work that changes no behaviour: docs, a
      test, config, or a refactor. Its test must pass after the change; it need not fail before.
    - \`${_DCK_ID_PREFIX}GARD-1[done]:\` — the code from before your change already does it. Name the evidence at the end of the line, after \` evidence: \` —
-     a file by its path from the repository root with an exact piece of its text in double quotes
-     (scripts/x.sh:"run_guard()"), or an existing test file named alone; several separated by spaces.
+     a file by its path from the repository root, then \` | \`, then one line of it copied as it is
+     (scripts/x.sh | run_guard()), or an existing test file named alone.
      The text must be in the file on the commit this branch started from: code this work added is not
      done yet, so it is [code]. A [done] SPEC still gets a test: it must pass after the change, and it
      need not fail before — it proves the finished change still does what the old code did.
@@ -305,7 +305,7 @@ ${_DCK_ID_PREFIX}LOOP-1[code]: <one new behaviour this change introduces>
   And: <another thing a test can observe>
   Cleanup: <what must be true again after, when the setup or a Then outlives the test>
 ${_DCK_ID_PREFIX}LOOP-2[no-code]: <docs, a test, config or a refactor that changes no behaviour>
-${_DCK_ID_PREFIX}GARD-1[done]: <something the code already does> evidence: scripts/x.sh:"run_guard()"
+${_DCK_ID_PREFIX}GARD-1[done]: <something the code already does> evidence: scripts/x.sh | run_guard()
   When: <the action>
   Then: <what the code from before this change already does>
 REMOVED: ${_DCK_ID_PREFIX}LOOP-3 — <why this SPEC was dropped>
@@ -419,7 +419,7 @@ DESIGN_PROMPT
     # says"), never in another stage's verdict.
     if [[ -n "$_prior_design_body" ]]; then
         # #2269: plain words; no other stage named (ADR-061), no ADR number.
-        printf '\nIf Previous work says a [code] requirement'"'"'s test already passes on the code from before this change, rewrite that requirement so its test fails on the old code and passes after — or, if the code already does it, mark it [done] and name the evidence (a file with an exact piece of its text, or an existing test file) after " evidence: ". The evidence is checked. The tests cannot be changed later in this run, so this is where it is fixed. Check the other acceptance entries against the feedback too, and fix any it shows is wrong.\n' \
+        printf '\nIf Previous work says a [code] requirement'"'"'s test already passes on the code from before this change, rewrite that requirement so its test fails on the old code and passes after — or, if the code already does it, mark it [done] and name the evidence (a file and one of its lines, or an existing test file) after " evidence: ". The evidence is checked. The tests cannot be changed later in this run, so this is where it is fixed. Check the other acceptance entries against the feedback too, and fix any it shows is wrong.\n' \
             >> "$prompt_input_file"
     fi
 

@@ -102,7 +102,7 @@ _rl_quote_problem_v() {
         _rqp_n=$(( _rqp_n + 1 ))
         [[ -n "$_rqp_f" && "$_rqp_f" != unknown ]] && _RL_QUOTE_FILES+=("$4/$_rqp_f")
         if [[ -z "${_rqp_q//[[:space:]]/}" ]]; then _rqp_bad+=("finding $_rqp_n has no quote"); continue; fi
-        judge_quote_check_v _rqp_w "$_rqp_f:\"$_rqp_q\"" "" "$4" && continue
+        judge_quote_check_v _rqp_w "$_rqp_f | $_rqp_q" "" "$4" && continue
         # #2507 (ADR-072 §7): a removed line is in the file as it was — one git
         # call, only for a quote not found as the file is now.
         if [[ -n "$3" && -n "$_rqp_f" && "$_rqp_f" != unknown ]]; then

@@ -495,6 +495,12 @@ has run — its own included, whichever try or run wrote it (ADR-068 §8, ADR-05
   > again. Any write after the mark — in place, by a move, or emptying it — is checked again. A
   > file put in place with an older timestamp (a move of an older file, `cp -p`, `touch -t`) is
   > the one change this cannot see.
+  > **Amended 2026-11-11 (#2519).** An empty file is empty, not unusable: it is left out of the
+  > index and nothing is announced. The engine empties a stage's errors log at each dispatch and
+  > writes to it only on a failure, so an empty `test-errors.log` means nothing failed; on #1805
+  > run 42943504314 it was announced damaged 14 times. An output a stage must write is refused empty
+  > when the stage ends (#1803). Unusable stays what it is for JSON: a file `jq` cannot read.
+  > Enforced by `tests/unit/output-check-memo-test.sh` M6, M8.
 - **Nothing is refused over a missing output.** The pre-dispatch `INPUT_MISSING` / `INPUT_DAMAGED` /
   `EXTERNAL_UNSUPPLIED` refusal is removed: a stage that finds something it needs missing says so in its
   own result (e.g. review-aggregator's "no review happened").

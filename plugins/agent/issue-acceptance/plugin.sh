@@ -77,17 +77,17 @@ Start each UNMET: line with what would fix it:
 - [fix-design] — the REQUIREMENTS miss it or get it wrong, or the issue itself is
   wrong: the design must change.
 
-A QUOTE is either the requirement's own words — "<the exact words>", from ISSUE
-REQUIREMENTS or the ISSUE — or the code that shows it — <file>:"<its exact
-text>". Copy it exactly: it is checked, and one that is not there makes the
-answer unusable.
+A QUOTE is either the requirement's own words, from ISSUE REQUIREMENTS or the
+ISSUE, or the code that shows it: <file> | <one line from it>. Copy it as it
+is, with no quote marks around it: it is checked, and one that is not there
+makes the answer unusable.
 
 Then answer the reverse question: each part of the DIFF that no requirement asks
 for — not the ISSUE, not ISSUE REQUIREMENTS, not REQUIREMENTS. A test for a
 requirement, and a file that test needs, are asked for by that requirement.
 Write one line for each part nothing asks for:
 
-UNASKED: <what the change does> | WHY: <why no requirement asks for it> | QUOTE: <file>:"<its exact text>"
+UNASKED: <what the change does> | WHY: <why no requirement asks for it> | QUOTE: <file> | <one line of the code that does it>
 
 Its QUOTE is the code that does it. When every part of the DIFF is asked for,
 write one line: UNASKED: none
