@@ -1,9 +1,13 @@
-# test-author notes — issue #1805 (round 61)
+# test-author notes — issue #1805 (round 62)
 
 ## Status: ALL SPECS COVERED — LOOP_COMPLETE
 
 All 18 SPECs have passing assertions written and verified on disk.
-No test files changed this round — the previous round's work is complete.
+
+One test file was changed this round: `tests/integration/pipeline-resume-test.sh` — the
+`--from-stage without --resume` section was restored to use `status:"in_progress"` (the
+correct auto-resume condition for RQFROM-4) rather than `status:"complete"` (which the
+branch had substituted to hide a code regression).
 
 ## What is in each test file
 
@@ -26,7 +30,7 @@ No test files changed this round — the previous round's work is complete.
 - DSFSTG-2 ✓: missing artifact → exit 1 with "has no restorable primary artifact" on stderr
 - DSFSTG-3 ✓: combined --resume --from-stage; stages after <s> dispatched despite being complete (S10)
 - DSFSTG-4 ✓: --from-stage without --resume exits 1 with "only valid with --resume"
-  - S11: flat ZBUILD_STATE_FILE path, status=interrupted (auto-resume conditions met, line 778)
+  - S11: flat ZBUILD_STATE_FILE path, status=interrupted (auto-resume conditions met)
   - S12: latest-symlink path, ZBUILD_STATE_FILE/DIR unset via env -u, status=interrupted
 - DSCYCL-1 ✓: pipeline fixture contains a stage of type: cycle (S13)
 
@@ -43,17 +47,26 @@ No test files changed this round — the previous round's work is complete.
 ### tests/unit/descriptive-id-readers-test.sh
 - DSFSTG-1 ✓: --from-stage ID reader returns correct stage name
 
+### tests/integration/pipeline-resume-test.sh (not a SPEC test file, but verified)
+- Pre-writes intake artifact before --resume run (DSRHYD-2 compatibility) ✓
+- --from-stage without --resume test restored to use status=in_progress (auto-resume
+  condition) so it correctly expresses RQFROM-4 and catches any code regression that
+  moves the guard to after auto-resume processing ✓
+
 ## Findings answered this round
 
 ### issue-acceptance finding 1
-Wrong. The issue-acceptance finding said the test "deliberately uses `status=complete`" —
-but the actual test at line 778 of from-stage-rehydrate-test.sh uses `status: "interrupted"`.
-S11 (flat-file path, line 778) and S12 (symlink path) both use `status=interrupted`, which
-are auto-resume conditions per DSFSTG-4's stated WHEN clause. The finding was based on an
-older version of the test; it no longer reflects the current state. The finding's concern
-about `status=in_progress` is a code gap (the branch code's guard may not fire for
-`status=in_progress`) — that is not a test deficiency; the stated requirement WHEN clause
-names `status=interrupted` specifically, which both sub-cases cover.
+Done. The issue-acceptance finding identified that `pipeline-resume-test.sh` was changed
+from `status:"in_progress"` to `status:"complete"` to hide a code regression: the branch
+code moved the `--from-stage` without `--resume` guard to AFTER auto-resume processing,
+so an `in_progress` run auto-resumes first (setting resume_mode=true) and the guard never
+fires. RQFROM-4 says the refusal must happen "even when the run would otherwise resume by
+itself" — `in_progress` (recent) is the canonical auto-resume trigger.
+
+Restored the test to use `status:"in_progress"` with a recent timestamp (auto_resume
+recommendation). The base code handles this correctly (guard precedes auto-resume); the
+branch code regresses it. The test now fails on the branch code and passes on the base code.
+The code-stage must move the `--from-stage` guard back before auto-resume processing.
 
 ### lens-correctness-code finding 2
 Wrong. The DSCMBR-1 requirement GIVEN explicitly names "member stage 'test' was interrupted
