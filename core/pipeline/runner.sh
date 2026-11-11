@@ -2205,8 +2205,8 @@ main() {
     # interrupted state file and mask the error (pipeline.resume would be
     # emitted before the existing post-auto-resume guard fires). The check is
     # narrowed to interrupted-status only: status=in_progress runs are allowed
-    # to reach auto-resume so the DSFSTG-1 without-resume path (skip_restore=false
-    # branch) continues to work.
+    # to reach auto-resume so the DSFSTG-1 skip_restore=false branch continues
+    # to work (S5 in from-stage-rehydrate-test.sh uses in_progress for this).
     if [[ -n "$from_stage" ]] && ! $resume_mode && [[ -f "$state_file" ]]; then
         local _fsg_status
         _fsg_status="$(get_state_field "$state_file" '.status' '')"
