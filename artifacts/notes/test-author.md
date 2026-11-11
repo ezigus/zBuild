@@ -1,28 +1,9 @@
-# test-author notes — issue #1805 (round 58)
+# test-author notes — issue #1805 (round 59)
 
-## Status: ALL TESTS PASSING
+## Status: ALL TESTS PASSING — CONFIRMED
 
-All test files pass. The only remaining issue was `tests/unit/status-row-findings-test.sh`
-which had a W8 fixture with empty backtick labels `\`\`` instead of `\`CMBR-1\`` and `\`FRSH-2\``.
-
-## Round 58 — Fixed status-row-findings-test.sh W8 fixture
-
-### Root cause
-The W8 fixture in `status-row-findings-test.sh` (lines 104-107) used empty
-backtick labels `\`\`` for the two test finding texts. The extraction regex
-`[A-Z][A-Z0-9]{2,5}-[0-9]+` requires an actual SPEC ID to be present. With empty
-labels, no ID was matched and the output was "what failed: 2 findings" instead of
-"what failed: `CMBR-1`, `FRSH-2`".
-
-### Fix
-Changed the two finding texts to use backtick labels with the SPEC IDs directly:
-- `'tests/integration/resume-loop-state-test.sh fails: ✗ \`CMBR-1\` no stage.start for build in iter 2 — expected: 0, got: 1'`
-- `'tests/integration/resume-rehydrate-test.sh fails: ✗ \`FRSH-2\` fresh run cycle member emits exactly one stage.start — expected: 1, got: 0'`
-
-The extraction regex in `run-status-text.sh` applies `(?<![A-Za-z0-9-])[A-Z][A-Z0-9]{2,5}-[0-9]+(?![0-9])`
-to each finding's first line. With the backtick labels `\`CMBR-1\`` and `\`FRSH-2\``,
-the backtick character before the ID is a non-alphanum character, so the lookbehind
-passes and `CMBR-1`/`FRSH-2` are correctly extracted.
+All test files pass. 887 tests passed in the last test-stage run. No changes needed
+in this round.
 
 ## All SPECs coverage
 
@@ -42,18 +23,34 @@ passes and `CMBR-1`/`FRSH-2` are correctly extracted.
 ### tests/integration/resume-entry-points-test.sh
 - DSENTR-1 ✓, DSENTR-2 ✓, DSCYCL-1 ✓
 
-### tests/unit/status-row-findings-test.sh
-- All 19 tests pass (W8 fixture fixed in this round)
+### tests/unit/descriptive-id-readers-test.sh
+- DSFSTG-1 ✓
 
 ## Findings answered
+
+### lens-correctness-code finding 2
+Wrong. `"aborted"` is the status the engine writes for an interrupted cycle member.
+Confirmed in `core/pipeline/cycle-orchestrator.sh` base code: when a cycle member is
+interrupted (SIGINT/SIGTERM path), `_cycle_state_write_member_atomic` writes
+`"aborted"`. The DSCMBR-1 scenario specifically tests that the interrupted "test"
+member is dispatched — if test were "complete", the skip guard would apply and it
+would not be dispatched, which is the wrong behavior for an interrupted stage.
+The "all complete" code path is a different scenario (all members complete means
+the iteration is done and there's nothing to resume in it) and is not part of
+DSCMBR-1's requirement.
+
+### lens-correctness-design finding 1
+Not mine. This is about the implementation in `core/pipeline/runner.sh` (how
+`skip_until_stage` and `resume_mode` interact when `--from-stage` names a cycle).
+The DSFSTG-3 test correctly asserts the observable behavior: stage.start (or
+cycle.start) is emitted for stages after `<s>` and no stage.skip events are emitted.
+That is what the code must satisfy regardless of internal mechanism. No change to
+the test output is needed.
 
 ### acceptance-gate finding 1: DSFSTG-4 passes on before-code
 DSFSTG-4 is classified `[done]` in the design — its test must pass on before-code
 (the code from before this change already implements the guard). The acceptance gate
 finding is not applicable to `[done]` requirements.
-
-### test-related findings
-All previous findings resolved in prior rounds.
 
 ## Open findings
 
