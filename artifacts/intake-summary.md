@@ -17,4 +17,4 @@
 - RQPATH-1: Every way to resume (`--resume`, auto-resume on restart, and `zbuild pipeline resume --run-id`) finds the interrupted run's state in `runs/<run_id>/` and behaves as RQRESU-4. Each has its own test.
 - RQGUAR-1: A run with no prior state behaves exactly as today. This is a guard.
 - RQGUAR-2: A **new** run of the same issue still never skips a stage because of an earlier run's output (ADR-050 §6). This is a guard.
-- the requirements are the same as the last run's
+- the issue is unchanged since the last run: its requirements were kept, with no model call
