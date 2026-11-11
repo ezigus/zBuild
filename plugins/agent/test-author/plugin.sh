@@ -55,49 +55,52 @@ source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/lib/before-run.sh"
 _ta_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
 
 
-# _ta_drop_stale_tags <design.md> <repo_root> — strip THIS issue's tags whose
-# id is not in this contract (#2174): they are left over from an earlier design
-# of the same issue. Under an issue only [#<issue>/<id>] tags are ever
-# considered — a legacy [SPEC-n] or another issue's [#N/<id>] belongs to other
-# work and is never touched (#1845 stripped #1328's [SPEC-1..10] from a shared
-# test before tags carried their issue). #2462: an id of any form — descriptive
-# (FSTG-1) or old (SPEC-n). With no issue (a --goal run) only bare old-form tags
-# are this run's, as before: a bare [ABC-1] may be any bracketed word.
+# _ta_drop_stale_tags <design.md> <repo_root> — strip the tags whose id is not
+# in this contract (#2174), left over from an earlier design of the same issue —
+# only on lines this branch added (#2520, ADR-069 §11). A line the default
+# branch already has is another piece of work's, whatever tag it holds: on #1805
+# run 42817975218 the step stripped 13 tags of sample text from five engine
+# tests the issue never wrote. A tag is [<id>], or this issue's old
+# [#<issue>/<id>]; one is stale only if its id starts like one of the contract's
+# (its first two letters), so a bracket like [UTF-8] is left alone.
 _ta_drop_stale_tags() {
-    local design="$1" repo="$2" ids tf n=0 before after re issue="${ZBUILD_ISSUE:-}"
+    local design="$1" repo="$2" ids tf n=0 got re issue="${ZBUILD_ISSUE:-}" heads=" " _i
     declare -F acceptance_list_spec_ids >/dev/null 2>&1 || return 0
     ids="$(acceptance_list_spec_ids "$design" 2>/dev/null | tr '\n' ' ')"
     [[ -n "$ids" ]] || return 0
-    if [[ "$issue" =~ ^[1-9][0-9]*$ ]]; then
-        re="\\[#${issue}/${_ACCEPTANCE_ID_ERE}\\]"
-    else
-        re='\[SPEC-[0-9]+\]'
-    fi
-    # #2508: in any file of the test folders — a stale tag may sit in a file
-    # that holds no current one.
-    local -a _tff=()
-    zb_test_folder_files_v _tff "$repo"
-    [[ ${#_tff[@]} -gt 0 ]] || return 0
-    while IFS= read -r tf; do
-        [[ -n "$tf" && -f "$repo/$tf" ]] || continue
-        before="$(grep -cE "$re" "$repo/$tf" 2>/dev/null || true)"
+    for _i in $ids; do [[ "$heads" == *" ${_i:0:2} "* ]] || heads+="${_i:0:2} "; done
+    [[ "$issue" =~ ^[1-9][0-9]*$ ]] || issue=""
+    re="\\[(#${issue:-0}/)?${_ACCEPTANCE_ID_ERE}\\]"
+    local -A _tfl=()
+    zb_test_folder_branch_lines_v _tfl "$repo"
+    for tf in "${!_tfl[@]}"; do
+        [[ -f "$repo/$tf" ]] || continue
         # The pattern goes in through ENVIRON, not -v: awk processes escapes in
-        # a -v value, and `\[` would become a bracket expression.
-        ZB_TAG_RE="$re" awk -v ids=" $ids " '
-            { line=$0; out="";
-              re = ENVIRON["ZB_TAG_RE"]
+        # a -v value, and `\[` would become a bracket expression. The count of
+        # tags removed is written to a file of its own.
+        got=0
+        ZB_TAG_RE="$re" awk -v ids=" $ids " -v heads="$heads" -v lines=" ${_tfl[$tf]} " -v nfile="$repo/$tf.zb-n" '
+            BEGIN { all = (lines ~ / all /) }
+            { line=$0
+              if (!all && index(lines, " " NR " ") == 0) { print; next }
+              out=""; re = ENVIRON["ZB_TAG_RE"]
               while (match(line, re " ?")) {
                   tag=substr(line, RSTART, RLENGTH); id=tag
                   sub(/^\[(#[0-9]+\/)?/, "", id); sub(/\].*$/, "", id)
-                  keep = index(ids, " " id " ") > 0
+                  keep = index(ids, " " id " ") > 0 || index(heads, " " substr(id, 1, 2) " ") == 0
+                  if (!keep) dropped++
                   out = out substr(line, 1, RSTART-1) (keep ? tag : "")
                   line = substr(line, RSTART+RLENGTH)
               }
-              print out line }' "$repo/$tf" > "$repo/$tf.zb-tags" 2>/dev/null \
-            && replace_keep_mode "$repo/$tf.zb-tags" "$repo/$tf" || rm -f "$repo/$tf.zb-tags"
-        after="$(grep -cE "$re" "$repo/$tf" 2>/dev/null || true)"
-        [[ "$before" =~ ^[0-9]+$ && "$after" =~ ^[0-9]+$ ]] && n=$(( n + before - after ))
-    done < <(cd "$repo" && grep -lE "$re" -- "${_tff[@]}" 2>/dev/null)
+              print out line }
+            END { print dropped + 0 > nfile }' "$repo/$tf" > "$repo/$tf.zb-tags" 2>/dev/null || true
+        IFS= read -r got 2>/dev/null < "$repo/$tf.zb-n" || got=0
+        rm -f "$repo/$tf.zb-n"
+        if [[ "$got" =~ ^[1-9][0-9]*$ ]]; then
+            replace_keep_mode "$repo/$tf.zb-tags" "$repo/$tf" && n=$(( n + got ))
+        fi
+        rm -f "$repo/$tf.zb-tags"
+    done
     (( n > 0 )) && _ta_emit "test_author.stale_tags_dropped" "count=$n"
     return 0
 }
@@ -356,7 +359,7 @@ A test you touch that is not laid out this way — one you update, or one you ad
 
 A test that needs data another part of the code writes — a file, a record, a field, a message — makes it with that code, never by hand: hand-made data holds whatever its author assumed. Find how the existing tests and test helpers already make it, and do the same.
 
-Tag each assertion with the tag shown for its SPEC, exactly as shown, in the assertion's label — e.g. ${_spec_tag1}. Tags that carry THIS issue's number are yours: one already there whose SPEC is not in this contract is stale from an earlier design — remove the tag and keep the assertion.
+Tag each assertion with the tag shown for its SPEC, exactly as shown, in the assertion's label — e.g. ${_spec_tag1}. A tag on a line this branch added is yours: one whose SPEC is not in this contract is stale from an earlier design — remove the tag and keep the assertion.
 
 Some test files may already hold assertions from an earlier attempt at this contract: keep what is right, finish what is missing, fix what is wrong.
 
@@ -382,7 +385,7 @@ ${spec_block}${sup_section}${steps_section}${base_section}
 - Do not read code in the working copy, other than files in the repository's test folders: read the existing code in the copy of the code from before this change. Do not guess at code this change has not written yet; write what the requirement demands of it.
 - Run nothing else: run only a test file of yours that you are told fails, and never the suite or lint. When you finish, the test files you create or change are run on the code from before this change. A test for a requirement that needs code must fail there for the reason you intend, not because of a mistake in the test; one that passes there, or stops before its assertion runs, comes back to you.
 - Change no file outside the test folders: do not write, modify or stub any implementation file.
-- A tag that does not carry this issue's number (a bare [SPEC-n], or one naming another issue) belongs to other work: leave it as it is${sup_block:+, except on the existing checks listed above}.
+- A tag on a line the default branch already has belongs to other work: leave it as it is${sup_block:+, except on the existing checks listed above}.
 EOF
 )"
 

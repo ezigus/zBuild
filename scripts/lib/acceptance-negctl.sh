@@ -176,7 +176,8 @@ _negctl_spec_log_check() {
     [[ -z "$clean" ]] && return 2
     # grep exits non-zero on no-match, which is the only way $tagged can be
     # empty — a matched line always contains the tag.
-    tagged="$(LC_ALL=C grep -F "$(acceptance_spec_tag "$spec_id")" <<< "$clean" 2>/dev/null)" || return 2
+    local -a _nst=(); acceptance_spec_tags_v _nst "$spec_id"
+    tagged="$(LC_ALL=C grep -F "${_nst[@]/#/-e}" <<< "$clean" 2>/dev/null)" || return 2
     # ✗ wins over ✓: one failing tagged assertion fails the SPEC.
     LC_ALL=C grep -qF '✗' <<< "$tagged" 2>/dev/null && return 0
     LC_ALL=C grep -qF '✓' <<< "$tagged" 2>/dev/null && return 1
@@ -187,19 +188,21 @@ _negctl_spec_log_check() {
 # other SPEC of this contract that printed a ✓/✗ verdict, rc 0; rc 1 when none
 # did. A file that printed verdicts for its other SPECs and none for this one
 # stopped before this assertion ran (#1835): what it says about this SPEC is
-# nothing. Keyed on the contract's own tag shape, so it holds for any language;
-# a bare test (#1658, no verdict lines at all) finds nothing here.
+# nothing. Keyed on the tag's shape — any [<id>], or this issue's old
+# [#<issue>/<id>] (#2520) — so it holds for any language; a bare test (#1658, no
+# verdict lines at all) finds nothing here. A verdict line of an older tag in
+# the same file may be named: this only says where the file stopped.
 _negctl_last_other_verdict() {
-    local logfile="$1" spec_id="$2" tag prefix line rest id last=""
+    local logfile="$1" spec_id="$2" line id last="" issue="${ZBUILD_ISSUE:-}" re
     [[ -n "${ZBUILD_ACCEPTANCE_RUN_CMD:-}" || ! -f "$logfile" ]] && return 1
-    tag="$(acceptance_spec_tag "$spec_id")"
-    prefix="${tag%"$spec_id"]}"
+    # #2462: any id of the contract's shape, descriptive or old; #2520: the tag
+    # is [<id>], or this issue's old [#<issue>/<id>].
+    [[ "$issue" =~ ^[1-9][0-9]*$ ]] || issue=""
+    re="\[(#${issue:-0}/)?(${_ACCEPTANCE_ID_ERE})\]"
     while IFS= read -r line; do
-        [[ "$line" == *"$prefix"* && ( "$line" == *✓* || "$line" == *✗* ) ]] || continue
-        # #2462: any id of the contract's shape, descriptive or old.
-        rest="${line#*"$prefix"}"
-        id="${rest%%]*}"
-        [[ "$id" =~ ^${_ACCEPTANCE_ID_ERE}$ && "$id" != "$spec_id" ]] && last="$id"
+        [[ ( "$line" == *✓* || "$line" == *✗* ) && "$line" =~ $re ]] || continue
+        id="${BASH_REMATCH[2]}"
+        [[ "$id" != "$spec_id" ]] && last="$id"
     done < <(LC_ALL=C sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g' "$logfile" 2>/dev/null)
     [[ -n "$last" ]] || return 1
     printf '%s' "$last"

@@ -219,6 +219,7 @@ assert_contains "[SPEC-8][change] the prompt says a [SPEC-n] tag not in this con
     "$(cat "$_TA_PROMPT")" "not in this contract"
 print_test_section "SPEC-9: stale tags are stripped mechanically after authoring"
 _setup s9
+git -C "$_R" checkout -qb work   # #2520: a stale tag is stripped only on a line the branch added
 printf '%s\n' 'assert_eq "[SPEC-1] placeholder" "1" "$got"' 'assert_eq "[SPEC-5] old contract: ANSI bytes stripped" "x" "$y"' 'assert_eq "[SPEC-12] old contract too" "a" "$b"' > "$_R/tests/acc-test.sh"
 _TA_RC=0
 test_author_run "test-author" "$_S/pipeline-state.json" >/dev/null 2>&1 || true

@@ -375,14 +375,15 @@ _ta_correspondence() {
     # Only the SPECs not kept are judged. #2450: each test file whole, once,
     # with the tags of every judged SPEC marked — the batch call reads it; a
     # one-SPEC call reads its own files.
-    local -a _jx=() _jids=() _jtxts=() _jsrcs=() _tags=() _files_seen=()
+    local -a _jx=() _jids=() _jtxts=() _jsrcs=() _tags=() _otags=() _files_seen=()
     for (( _i=0; _i<n; _i++ )); do
         (( _kept[_i] )) && continue
         _jx+=("$_i"); _jids+=("${_ids[_i]}"); _jtxts+=("${_txts[_i]}")
         _src="${_srcs[_i]}"
         [[ -n "${_disp[${_ids[_i]}]:-}" ]] && _src+=$'\n\n'"THE TEST AUTHOR SAYS YOUR EARLIER FINDING ON THIS ONE IS WRONG — judge again with it in mind: ${_disp[${_ids[_i]}]}"
         _jsrcs+=("$_src")
-        _tags+=("$(acceptance_spec_tag "${_ids[_i]}")")
+        local -a _ctg=(); acceptance_spec_tags_v _ctg "${_ids[_i]}"
+        _tags+=("${_ctg[0]}"); _otags+=("${_ctg[1]:-}")
     done
     if [[ ${#_jx[@]} -gt 0 ]]; then
         local _files_text="" _sf _seen
@@ -392,7 +393,7 @@ _ta_correspondence() {
                 for _sf in ${_files_seen[@]+"${_files_seen[@]}"}; do [[ "$_sf" == "$_f" ]] && _seen=1; done
                 (( _seen )) && continue
                 _files_seen+=("$_f")
-                _files_text+="--- $_f ---"$'\n'"$(acceptance_testfile_source "$repo" "$_f" "${_tags[@]}")"$'\n'
+                _files_text+="--- $_f ---"$'\n'"$(acceptance_testfile_source "$repo" "$_f" "${_tags[@]}" ${_otags[@]+"${_otags[@]}"})"$'\n'
             done
         done
 
@@ -420,7 +421,7 @@ _ta_correspondence() {
             [[ -z "${_verdicts[_i]}" ]] || continue
             _x=""
             for _f in ${_tfss[_i]}; do
-                _x+="--- $_f ---"$'\n'"$(acceptance_testfile_source "$repo" "$_f" "${_tags[_j]}")"$'\n'
+                _x+="--- $_f ---"$'\n'"$(acceptance_testfile_source "$repo" "$_f" "${_tags[_j]}" ${_otags[_j]:+"${_otags[_j]}"})"$'\n'
             done
             _oid=("${_ids[_i]}"); _otxt=("${_txts[_i]}"); _osrc=("${_jsrcs[_j]}")
             _one_task="$(_sc_batch_prompt _oid _otxt _osrc "$_x")"

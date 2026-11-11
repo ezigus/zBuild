@@ -163,7 +163,7 @@ printf '  \033[32m✓\033[0m [SPEC-1] a\n  ✗ [SPEC-2] b\n  some noise [SPEC-4]
 assert_eq "[U11] bare tags: the last OTHER SPEC with a verdict, colour codes stripped" "SPEC-2 rc=0" "$(unset ZBUILD_ISSUE; _lov SPEC-3)"
 _ID11="$(zb_test_issue)"
 printf '  ✓ [#%s/SPEC-1] a\n  ✓ [#%s/SPEC-7] another issue\n  ✗ [SPEC-8] bare, not this contract\n' "$_ID11" "$((_ID11 + 1))" > "$_L11"
-assert_eq "[U11] issue-prefixed tags: only this issue's contract counts" "SPEC-1 rc=0" "$(ZBUILD_ISSUE="$_ID11" _lov SPEC-18)"
+assert_eq "[U11] a bare tag and this issue's old one count, another issue's does not (#2520)" "SPEC-8 rc=0" "$(ZBUILD_ISSUE="$_ID11" _lov SPEC-18)"
 printf '  ✓ [#%s/SPEC-18] its own line\n' "$_ID11" > "$_L11"
 assert_eq "[U11] its own line is not another SPEC's" " rc=1" "$(ZBUILD_ISSUE="$_ID11" _lov SPEC-18)"
 printf 'no verdicts here\n' > "$_L11"

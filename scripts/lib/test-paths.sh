@@ -103,6 +103,45 @@ zb_test_folder_branch_files_v() {
     return 0
 }
 
+# zb_test_folder_branch_lines_v <assoc_var> [repo_root] — for each file in the
+# test folders this branch added or changed since it left the default branch,
+# committed or not, the numbers of the lines the branch added ("all" for a new
+# file no commit holds yet), space separated (#2520, ADR-069 §11). Empty on the
+# default branch, or with no base to compare with: no line is the branch's own.
+zb_test_folder_branch_lines_v() {
+    local -n _ztl="$1"; local _root="${2:-${ZBUILD_REPO_ROOT:-$PWD}}" _globs _l _f="" _n=0 _db="" _cur=""
+    local -a _gl=()
+    _ztl=()
+    declare -F zbuild_resolve_default_branch_v >/dev/null 2>&1 \
+        || source "${BASH_SOURCE[0]%/*}/default-branch.sh" 2>/dev/null || true
+    local _gd="$_root/.git" _hl=""
+    if [[ -f "$_gd" ]]; then IFS= read -r _hl < "$_gd" || true; _gd="${_hl#gitdir: }"; [[ "$_gd" == /* ]] || _gd="$_root/$_gd"; fi
+    _hl=""; [[ -f "$_gd/HEAD" ]] && { IFS= read -r _hl < "$_gd/HEAD" || true; }
+    [[ "$_hl" == "ref: refs/heads/"* ]] && _cur="${_hl#ref: refs/heads/}"
+    declare -F zbuild_resolve_default_branch_v >/dev/null 2>&1 && zbuild_resolve_default_branch_v _db "$_root"
+    [[ -n "$_db" && "$_cur" != "$_db" ]] || return 0
+    zb_test_path_globs_v _globs "$_root"
+    read -ra _gl <<< "$_globs"
+    [[ ${#_gl[@]} -gt 0 ]] || return 0
+    # A hunk's added lines run on from its "+<start>"; a removed line takes no
+    # number in the new file.
+    while IFS= read -r _l; do
+        case "$_l" in
+            $'\x01nobase') _ztl=(); return 0 ;;
+            '+++ b/'*) _f="${_l#+++ b/}"; _zb_test_globs_match "$_f" "${_gl[@]}" || _f="" ;;
+            '+++ '*|'--- '*) _f="" ;;
+            '@@ '*) [[ "$_l" =~ \+([0-9]+) ]] && _n="${BASH_REMATCH[1]}" ;;
+            '+'*) [[ -n "$_f" ]] && _ztl[$_f]+="$_n "; _n=$(( _n + 1 )) ;;
+        esac
+    done < <(git -C "$_root" diff -U0 --no-color --no-ext-diff --merge-base "origin/$_db" 2>/dev/null \
+        || git -C "$_root" diff -U0 --no-color --no-ext-diff --merge-base "$_db" 2>/dev/null \
+        || printf '\x01nobase\n')
+    while IFS= read -r -d '' _f; do
+        _zb_test_globs_match "$_f" "${_gl[@]}" && _ztl[$_f]="all"
+    done < <(git -C "$_root" ls-files -o --exclude-standard -z 2>/dev/null)
+    return 0
+}
+
 # zb_test_folder_changes_v <array_var> [repo_root] — each file in the test
 # folders that differs from HEAD: changed, added, deleted or new (#2508). The
 # test author commits these; build may change none of them. One git fork.

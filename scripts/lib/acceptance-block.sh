@@ -117,20 +117,23 @@ extract_acceptance_block() {
     return 0
 }
 
-# acceptance_spec_tag <spec_id> — the tag an assertion carries for a SPEC.
-# Under an issue: [#<issue>/SPEC-n] — SPEC numbers restart with every design, so
-# a bare [SPEC-3] cannot say WHICH issue's SPEC-3 it is, and two issues sharing a
-# test file collided (#1845 stripped #1328's [SPEC-1..10]). The scheme adds to
-# the old one and never overlaps it: `\[SPEC-[0-9]+\]` cannot match a new tag,
-# and every reader matches the exact tag it builds here. With no issue (a
-# --goal run, ZBUILD_ISSUE unset or 0) it is the bare legacy [SPEC-n].
+# acceptance_spec_tag <spec_id> — the tag an assertion carries for a SPEC: the
+# id alone, [<id>] (#2520, ADR-069 §11). The issue number it once carried
+# (#1845: two issues' [SPEC-3] in one shared test collided) is not needed now a
+# SPEC's tests are found only in files the branch wrote (#2517) and a new id is
+# numbered past every one the repository's tests use.
 acceptance_spec_tag() {
-    local sid="${1:-}" issue="${ZBUILD_ISSUE:-}"
-    if [[ "$issue" =~ ^[1-9][0-9]*$ ]]; then
-        printf '[#%s/%s]' "$issue" "$sid"
-    else
-        printf '[%s]' "$sid"
-    fi
+    printf '[%s]' "${1:-}"
+}
+
+# acceptance_spec_tags_v <array> <spec_id> — every tag that marks a SPEC's test:
+# [<id>], and under an issue this issue's old [#<issue>/<id>], still read so
+# tests written before #2520 are found (another issue's is not).
+acceptance_spec_tags_v() {
+    local -n _ast="$1"; local issue="${ZBUILD_ISSUE:-}"
+    _ast=("[${2:-}]")
+    [[ "$issue" =~ ^[1-9][0-9]*$ ]] && _ast+=("[#$issue/${2:-}]")
+    return 0
 }
 
 # acceptance_list_spec_ids <design_md>  (ADR-036 / #922)
@@ -642,16 +645,15 @@ acceptance_spec_files_v() {
     local -n _asf="$1"; local design_md="${2:-}" root="${3:-${ZBUILD_REPO_ROOT:-$PWD}}"
     _asf=()
     [[ -n "$design_md" && -f "$design_md" && -d "$root" ]] || return 0
-    local blk l issue="${ZBUILD_ISSUE:-}" tag sid
+    local blk l tag sid
     local -A _by_tag=()
+    local -a _tgs=()
     blk="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 0
-    [[ "$issue" =~ ^[1-9][0-9]*$ ]] || issue=""
     while IFS= read -r l; do
         [[ "$l" =~ $_ACCEPTANCE_SPEC_RE ]] || continue
         sid="${BASH_REMATCH[1]}"
-        # acceptance_spec_tag's rule, inline: one subshell per SPEC otherwise.
-        if [[ -n "$issue" ]]; then tag="[#$issue/$sid]"; else tag="[$sid]"; fi
-        _by_tag[$tag]="$sid"
+        acceptance_spec_tags_v _tgs "$sid"
+        for tag in "${_tgs[@]}"; do _by_tag[$tag]="$sid"; done
     done <<< "$blk"
     [[ ${#_by_tag[@]} -gt 0 ]] || return 0
     local f
