@@ -1,7 +1,7 @@
-## build_test_cycle — round 3
+## build_test_cycle — round 1
 
 - design: pass — design_produced
-- test-author: fail — DSAMDR-1 cannot be proven by any test — design must rewrite it
-- build: missing
-- test: missing
-- issue-acceptance: missing
+- test-author: pass — changed 4 test file(s); acceptance assertions for 15 SPEC(s) from the design contract
+- build: pass — build_complete_no_changes
+- test: fail — 1 of 888 tests failed; the shape floor failed: missing_floor_files
+- issue-acceptance: fail — judged the change against the issue: 1 requirement(s) not met or not sure, 2 part(s) of the change no requirement asks for
