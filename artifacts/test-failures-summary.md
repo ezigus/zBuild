@@ -1,9 +1,26 @@
 # Test stage summary
 
-- all 887 tests passed
-- verdict: pass
+- failed: tests/integration/pipeline-resume-test.sh
+- verdict: fail
 - passed: 887
-- failed: 0
-- exit_code: 0
+- failed: 1
+- exit_code: 1
 
-The suite ran to completion with no failing assertions.
+## Failing files
+
+- tests/integration/pipeline-resume-test.sh — ✗ --from-stage without --resume exits 1 — expected: 1, got: 0 (and 3 more failing checks in this file)
+
+## Failing lines (extracted)
+
+```
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bR8Ubx/tests/integration/pipeline-resume-test.sh
+  [38;2;248;113;113m✗[0m --from-stage without --resume says it needs --resume
+    [2moutput missing: only valid with --resume[0m
+[2m  ──────────────────────────────────────────[0m
+  [38;2;248;113;113m[1m2 of 23 tests failed[0m
+  [38;2;248;113;113m✗[0m --from-stage without --resume exits 1
+    [2mexpected: 1, got: 0[0m
+```
+
+## The checks of this run
+- the shape floor failed: missing_floor_files
