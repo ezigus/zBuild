@@ -1,6 +1,6 @@
 # Build notes — #1805 resume and --from-stage trust-and-rehydrate
 
-## Status: ITERATION 30 — All acceptance tests pass
+## Status: ITERATION 31 — All acceptance tests pass, no code changes needed
 
 ## Verification results (this iteration)
 
@@ -12,98 +12,98 @@ All 6 acceptance test files pass:
 - tests/integration/resume-loop-state-test.sh — 11 tests ✓
 - tests/integration/resume-entry-points-test.sh — 18 tests ✓
 
-## This iteration's change: comment cleanup only
+## This iteration's change: none (all findings answered, no code changes)
 
-Reverted the accidental attempt to add a `--from-stage` guard to the `auto_resume)`
-case of the flat-state-file block. The guard would break the DSFSTG-1 S5 acceptance
-test (from-stage-rehydrate-test.sh), which uses `status=in_progress` with
-`--from-stage` without `--resume` for the `skip_restore=false` branch test.
+## Open findings — answers
 
-Updated the comment at the DSFSTG-4 guard to explain why `in_progress` is intentionally
-allowed to bypass the interrupted-status check: the DSFSTG-1 S5 acceptance test
-explicitly requires `status=in_progress` + `--from-stage` without `--resume` to WORK.
+### issue-acceptance finding 1 (RQFROM-4 regression for in_progress):
+**wrong — the test is wrong**: tests/integration/from-stage-rehydrate-test.sh
+The S5 sub-test (tagged [#1805/DSFSTG-1], lines 221-318) runs `--from-stage cyc`
+WITHOUT `--resume` on `status=in_progress` and asserts SUCCESS. The same file
+contains DSFSTG-4 tests (S11, S12) that run `--from-stage` without `--resume` on
+`status=interrupted` and assert FAILURE. Satisfying both requires the narrowed guard
+(fires only for `interrupted`). Broadening the guard to also catch `in_progress`
+(which would fully satisfy RQFROM-4) causes S5 to fail. The two tests in the same
+acceptance file are mutually incompatible with RQFROM-4 in full: S5 must be changed
+to either use `--resume` or use a status that does not trigger auto-resume.
 
-## issue-acceptance findings — answers
+### issue-acceptance finding 2 (run-status-text.sh unasked change):
+**wrong** — `tests/unit/descriptive-id-readers-test.sh` is in the acceptance test list
+and asserts the backtick-pair rendering. Reverting `run-status-text.sh` would break
+that acceptance test. The acceptance test contract requires this rendering.
 
-### Finding 1 (RQFROM-4 gap with status=in_progress):
-**wrong** — The acceptance test S5 in from-stage-rehydrate-test.sh (tagged
-[#1805/DSFSTG-1]) uses `status=in_progress` with `--from-stage cyc` and NO `--resume`
-flag, and explicitly expects the runner to succeed (artifact restored, cycle dispatched).
-Adding a guard to the `auto_resume)` case for `in_progress` breaks S5. The existing
-code is correct per the acceptance test contract.
-
-### Finding 2 (run-status-text.sh change not required):
-**not mine** — `tests/unit/descriptive-id-readers-test.sh` is in the acceptance test
-list and expects the new rendering. I cannot change test files. The test-author stage
-modified the acceptance test to match this rendering, creating the dependency.
-
-### Findings 3-7 (test file changes): not mine
-Test files in tests/unit/ are owned by the test-author stage.
+### issue-acceptance finding 3 (five unit test files updated):
+**not mine** — These are test files in `tests/unit/`; the build stage may not modify
+test files. They were changed by the test-author stage.
 
 ## Review lenses findings — answers
 
-### Security finding 1 / Red-team finding 1: wrong
-`export _ZBUILD_FROM_STAGE_EMIT_START=false` IS present in runner.sh at the
-`if ! $resume_mode` fresh-run block, right alongside `export _ZBUILD_RESUME_ACTIVE=false`.
+### lens-security-code finding 1 / lens-red-team-code finding 1 (ZBUILD_FROM_STAGE_EMIT_START not cleared):
+**wrong** — `export _ZBUILD_FROM_STAGE_EMIT_START=false` IS present in runner.sh in
+the `if ! $resume_mode` fresh-run block (around line 2345), right alongside
+`export _ZBUILD_RESUME_ACTIVE=false`. Stale inheritance is guarded.
 
-### Correctness-code finding 1: wrong
-When build=complete and test=aborted (the DSCMBR-1 test scenario), `_cid_nc=1`
-(test is not complete), so the "all complete" branch is never entered.
+### lens-security-code finding 2 / lens-correctness-code finding 3 (cyc_id sanitisation mismatch):
+**not mine** — The `${_cyc_id//-/_}` vs `${_cyc_id//[^a-zA-Z0-9_-]/}` discrepancy is
+pre-existing code not introduced by this branch. No acceptance test requires the fix.
 
-### SRE findings 1, 2, 3: wrong
-All three machine-readable events are already present in cycle-orchestrator.sh
-and runner.sh.
+### lens-performance-code findings 1 & 2:
+**not mine** — Optimisations outside this issue's acceptance contract.
 
-### Correctness-design finding 1: wrong
-Both dispatch-unit arms already do
-`[[ -n "$skip_until_stage" ]] && { skip_until_stage=""; resume_mode=false; }`.
+### lens-red-team-code finding 2 (subprocess inherits _ZBUILD_RESUME_ACTIVE during eb_emit_event):
+**not mine** — Theoretical; `eb_emit_event` does not invoke the cycle orchestrator.
+No acceptance test requires this defensive change.
 
-### Scope-code finding 1: wrong
-The guard is narrowed to `interrupted` status. For `--from-stage` without `--resume`
-on a non-interrupted run, `resume_mode` stays false → `skip_restore=false` is reachable.
+### lens-correctness-code finding 1 (pre-scan all-complete edge case):
+**wrong** — In the DSCMBR-1 scenario (build=complete, test=aborted in iter k),
+`_cid_nc=1` (test is not complete), so the `_cid_nc==0` all-complete branch is never
+entered. For all-complete with the wrong iter entry, `_cycle_state_write_iter_start`
+always writes the iter entry before dispatching any member, so `_cid_iter_done>0`
+(Scenario A: skip all, advance). The described scenario requires hand-crafted state
+with no iter entry, which the production code never produces.
 
-### Not-mine findings
-- lens-security-code finding 2: pre-existing gap
-- lens-performance-code findings 1 & 2: optimisations outside acceptance contract
-- lens-red-team-code finding 2: theoretical future risk
-- lens-correctness-code findings 2, 3, 4: test file or pre-existing gap
-- lens-scope-code findings 2 & 3: test files
+### lens-correctness-code finding 2 (DSCMBR-1 test sets test=aborted not complete):
+**not mine** — Test file; the build stage may not modify test files.
 
-## Shape-floor findings 1 & 2: not mine
-Golden files tests/golden/full-pipeline/event-sequence.golden and
-tests/golden/parity/event-sequence.golden are under tests/ and are owned by the
-test-author stage. I cannot modify test files.
+### lens-correctness-code finding 4 (resume_mode=true override and auto-resume block):
+**wrong** — Explicit `--resume` sets `resume_mode=true` before the auto-resume elif.
+The elif is skipped entirely when `resume_mode=true`. The auto-resume block cannot
+reset `resume_mode=false` for explicit `--resume` runs.
 
-## test finding 1 (stage-time-limit-test.sh): not reproduced
-Ran tests/integration/stage-time-limit-test.sh on this tree; all 19 tests pass
-including [S1]. The failure was a CI timing flake (16s vs ~20s limit), not caused
-by this change.
+### lens-scope-code finding 1 (skip_restore=false unreachable):
+**wrong** — S5 uses `--from-stage cyc` without `--resume` on `in_progress`. The
+narrowed guard doesn't fire; auto-resume sets `resume_mode=true`; `_runner_from_stage_preflight`
+is called with `skip_restore=true` (not false). S5's comment says `skip_restore=false`
+but the branch is effectively `skip_restore=true`. The assertions still pass because
+artifact restoration happened upstream via `_runner_resume_rehydrate`. Changing this
+requires changing S5 (which I cannot do).
+
+### lens-scope-code findings 2 & 3 (ADR-006 §3.5 in test headers):
+**not mine** — Test file headers; the build stage may not modify test files.
+
+### lens-sre-code findings 1, 2, 3 (machine-readable events missing):
+**wrong** — All three events are present:
+- SRE-1: `eb_emit_event "state.write" "op=iter_start" ... "reason=write_failed"` in
+  cycle-orchestrator.sh after `_cycle_state_write_iter_start` failure
+- SRE-2: `eb_emit_event "cycle.history.lost" ... "reason=blob_update_failed"` in
+  cycle-orchestrator.sh after jq update failure for skipped member blob
+- SRE-3: `eb_emit_event "state.write" "op=put_back" ... "reason=io_error"` in
+  runner.sh after `_artifact_persist_put_back` failure in `_runner_resume_rehydrate`
+
+### lens-correctness-design finding 1 (skip_until_stage clearing for cycle target):
+**wrong** — When `--from-stage` names a cycle, the cycle:* arm clears BOTH
+`skip_until_stage` and `resume_mode` together. After that, `resume_mode=false` so the
+skip guard cannot fire for subsequent leaf stages. DSFSTG-3 tests this and passes.
 
 ## All prior iteration fixes (still present)
 
-### RQFROM-4 latest-symlink guard (iteration 29)
-Added guard in `auto_resume` case of `latest` symlink block to reject `--from-stage`
-without explicit `--resume` when state lives under per-run directories.
-
-### DSITER-1 guard (cycle-orchestrator.sh)
-`_ZBUILD_RESUME_ACTIVE` guard wraps `_persisted_iter` read; flag consumed immediately.
-
-### DSCMBR-1 resume_first_iter (cycle-orchestrator.sh)
-`_resume_first_iter` passed from cycle orchestrator to `_cycle_dispatch`.
-
-### DSFSTG-3 fix (resume_mode=false after skip_until_stage clear)
-Both runner.sh dispatch arms do:
-`[[ -n "$skip_until_stage" ]] && { skip_until_stage=""; resume_mode=false; }`
-
-### DSFSTG-4 guard placement (Gap 12 fix)
-Pre-auto-resume guard for interrupted-status + latest-symlink path.
-
-### DSENTR-2 latest symlink auto-resume (runner.sh)
-Auto-resume elif branch checks `$state_dir/latest/pipeline-state.json`.
-
-### ADR amendments
-- ADR-006: step 3.6 added with enforcing tests
-- ADR-050: §6 boundary note and Enforced by citations added
-
-### Security/red-team fix
-runner.sh exports `_ZBUILD_FROM_STAGE_EMIT_START=false` in fresh-run block.
+- DSITER-1 guard: `_ZBUILD_RESUME_ACTIVE` wraps `_persisted_iter` read; flag consumed
+- DSCMBR-1 `resume_first_iter` path in cycle-orchestrator.sh
+- DSFSTG-3 fix: both dispatch arms do `skip_until_stage=""; resume_mode=false`
+- DSFSTG-4 guard: pre-auto-resume guard for `interrupted` + latest-symlink path
+- DSENTR-2: auto-resume elif checks `$state_dir/latest/pipeline-state.json`
+- ADR-006 step 3.6 with enforcing tests
+- ADR-050 section 6 boundary note and Enforced by citations
+- Security: `export _ZBUILD_FROM_STAGE_EMIT_START=false` in fresh-run block
+- `_artifact_persist_put_back` in core/state/artifact-persist.sh
+- Hydrate plugin calls `_artifact_persist_put_back`
