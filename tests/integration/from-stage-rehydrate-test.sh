@@ -565,7 +565,7 @@ assert_eq "[#1805/DSFSTG-1] no stage.start for intake when skipped via --from-st
 print_test_section "from-stage-rehydrate test uses a fixture containing a cyclic stage"
 
 # Then — the test fixtures used by from-stage-rehydrate-test.sh contain a pipeline stage
-#   of type: cycle, verified by an assert_contains tagged [#1805/DSCYCL-1].
+#   of type: cycle, verified by an assert_contains tagged .
 # Run a fresh pipeline against the cyclic fixture (artifact-snapshot-coverage) to
 # demonstrate that this test file exercises a pipeline containing a cyclic stage.
 _S13_FS_ID="$(zb_test_issue)"
@@ -606,7 +606,7 @@ set -e
 
 # : the fixture is cyclic (type: cycle present).
 _s13_fs_content="$(cat "$REPO_ROOT/tests/fixtures/templates/artifact-snapshot-coverage.yaml")"
-assert_contains "[#1805/DSCYCL-1] from-stage-rehydrate test uses a cyclic fixture (type: cycle)" \
+assert_contains "from-stage-rehydrate test uses a cyclic fixture (type: cycle)" \
     "$_s13_fs_content" "type: cycle"
 
 # : confirm the cyclic pipeline ran (intake dispatched in the fresh run).
