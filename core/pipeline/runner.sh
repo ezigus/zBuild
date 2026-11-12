@@ -1716,32 +1716,15 @@ _runner_resume_rehydrate() {
     return 0
 }
 
-# ─── _runner_from_stage_preflight <issue> <stages_arr> <from_stage> <state_dir> <plugins_root> [skip_restore] ─
-# For --from-stage <s>: restore + put_back artifacts from the git state branch,
-# then verify every stage before <s> has its primary artifact in ZBUILD_ARTIFACT_DIR.
-# Exits 1 naming the missing stage in stderr. (SPEC-3, SPEC-4, ADR-006 §3.6)
-# When skip_restore=true (passed when called after _runner_resume_rehydrate has
-# already restored artifacts), skip the git restore step to avoid redundant git-archive
-# operations (correctness-1 fix, #1805).
+# ─── _runner_from_stage_preflight <issue> <stages_arr> <from_stage> <state_dir> <plugins_root> ─
+# For --from-stage <s>: verify every stage before <s> has its primary artifact
+# in ZBUILD_ARTIFACT_DIR (already restored by _runner_resume_rehydrate before
+# this call). Exits 1 naming the missing stage in stderr. (SPEC-3, SPEC-4, ADR-006 §3.6)
 _runner_from_stage_preflight() {
     local _fsp_issue="$1"
     local -n _fsp_stages="$2"
     local _fsp_from_stage="$3" _fsp_state_dir="$4" _fsp_plugins_root="$5"
-    local _fsp_skip_restore="${6:-false}"
     local _fsp_artifacts_dir="$_fsp_state_dir/artifacts"
-    if ! $_fsp_skip_restore; then
-        # Restore + put_back (same sequence as _runner_resume_rehydrate). Skipped
-        # when already restored by _runner_resume_rehydrate (resume + from-stage).
-        local _fsp_staging="$_fsp_state_dir/from-stage-preflight.staging"
-        rm -rf "$_fsp_staging" 2>/dev/null || true
-        _artifact_persist_restore "$_fsp_issue" "$_fsp_staging" \
-            || warn "from-stage-preflight: git state restore failed for issue=$_fsp_issue — artifact verification may fail"
-        if [[ -d "$_fsp_staging/artifacts" ]]; then
-            _artifact_persist_put_back "$_fsp_staging/artifacts" "$_fsp_artifacts_dir" \
-                || warn "from-stage-preflight: put_back failed for $_fsp_artifacts_dir — partial restoration"
-        fi
-        rm -rf "${_fsp_staging:?}" 2>/dev/null || true
-    fi
     # When from_stage is a cycle ID, stop checking before the cycle's first
     # member (the first element of _TPL_CYCLE_STAGES_<id>). Cycle IDs are not
     # in active_stages[], so a literal match would never fire and all stages
@@ -3116,9 +3099,7 @@ main() {
     # ADR-006 §3.6 (#1805): when --from-stage is active, verify every stage
     # before the target has a restorable artifact before the dispatch loop runs.
     if [[ -n "$from_stage" ]]; then
-        # Pass resume_mode as skip_restore: when resuming, _runner_resume_rehydrate
-        # already restored artifacts; skip the redundant git-archive restore in preflight.
-        if ! _runner_from_stage_preflight "$_runner_issue" "active_stages" "$from_stage" "$state_dir" "$plugins_root" "$resume_mode"; then
+        if ! _runner_from_stage_preflight "$_runner_issue" "active_stages" "$from_stage" "$state_dir" "$plugins_root"; then
             return 1
         fi
     fi
