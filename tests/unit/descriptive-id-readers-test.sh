@@ -125,8 +125,8 @@ assert_eq "[R7] the false-completion probe no longer reads SPEC-<n> alone" "0" "
 # ── R8 ───────────────────────────────────────────────────────────────────────
 # shellcheck source=../../scripts/lib/run-status-render.sh
 source "$REPO_ROOT/scripts/lib/run-status-render.sh" 2>/dev/null
-_o=""; _rsc_code_labels_v _o "failed [#1805/DSFSTG-1] and "
-assert_eq "[R8] descriptive and old labels are shown as code" 'failed `[#1805/DSFSTG-1]` and ``' "$_o"
+_o=""; _rsc_code_labels_v _o "failed [#1805/DSFSTG-1] and [#1805/SPEC-2]"
+assert_eq "[R8] descriptive and old labels are shown as code" 'failed `[#1805/DSFSTG-1]` and `[#1805/SPEC-2]`' "$_o"
 
 # ── R9 ───────────────────────────────────────────────────────────────────────
 REPO="$TEST_TEMP_DIR/repo"; mkdir -p "$REPO/tests/unit"
