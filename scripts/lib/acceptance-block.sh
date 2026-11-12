@@ -10,7 +10,8 @@
 # convention of the sibling core/ and scripts/lib/ libraries. The function
 # below is self-contained (guarded parameter expansions + explicit returns).
 #
-# Size: over 500 lines, deliberately, for the reason acceptance-negctl.sh gives.
+# #2525: split, so no file is over 500 lines — acceptance-run.sh,
+# acceptance-testfiles.sh and acceptance-judge.sh, sourced at the end.
 #
 # Every `source` here records a failed load in _ZBUILD_CONTRACT_LOAD_ERRORS
 # rather than swallowing it; the gates fail on a non-empty list (#1752).
