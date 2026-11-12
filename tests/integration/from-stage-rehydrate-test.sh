@@ -218,18 +218,16 @@ fi
 assert_eq "[#1805/DSFSTG-1] no stage before <s>=cyc dispatched after pipeline.skip_to_stage (--resume path; RQFROM-2)" \
     "0" "$_s3_intake_after_skip"
 
-# ── SPEC-3b: --from-stage WITHOUT --resume exercises skip_restore=false branch ──
-# This sub-case covers the plain `--from-stage <s>` path (no --resume flag),
-# which routes through _runner_from_stage_preflight with skip_restore=false —
-# the branch that performs the git archive restore itself rather than relying on
-# a prior resume rehydration step. The existing S3 sub-case always uses
-# `--resume --from-stage` (skip_restore=true); without this sub-case that
-# substantively different restore path is never exercised.
-# (Addresses lens-scope-code finding 1.)
-print_test_section "[#1805/DSFSTG-1] --from-stage WITHOUT --resume rehydrates stages before <s> (skip_restore=false branch)"
+# ── SPEC-3b: --resume --from-stage <s> exercises artifact rehydration (second coverage sub-case) ──
+# This sub-case re-exercises the DSFSTG-1 requirement using a distinct issue ID and
+# fixture. The skip_restore=false branch (--from-stage without --resume) was removed
+# per Gap 12; RQFROM-4 requires --resume for all --from-stage invocations.
+# S3 above uses `--resume --from-stage`; this sub-case confirms the same path works
+# end-to-end with an independent fixture invocation.
+print_test_section "[#1805/DSFSTG-1] --resume --from-stage <s> rehydrates prior stages (explicit --resume path)"
 
 # Given — a previous run completed intake; its artifact is present in the git
-#   state branch; a new invocation uses --from-stage cyc WITHOUT --resume.
+#   state branch; a new invocation uses --resume --from-stage cyc.
 S5_ID="$(zb_test_issue)"
 S5_STATE_DIR="$TEST_TEMP_DIR/s5-state"
 S5_EVENTS_DIR="$TEST_TEMP_DIR/s5-events"
@@ -254,7 +252,7 @@ if [[ "$_s5_snap_rc" -ne 0 ]]; then
     assert_fail "[#1805/DSFSTG-1] setup s5: snapshot failed" \
         "rc=$_s5_snap_rc; $(cat "$TEST_TEMP_DIR/s5-snap.log" 2>/dev/null | tail -5)"
 else
-    assert_pass "[#1805/DSFSTG-1] setup s5: state branch populated (no-resume path)"
+    assert_pass "[#1805/DSFSTG-1] setup s5: state branch populated (--resume path)"
 fi
 
 # Remove the artifact from disk — it now lives only on the state branch.
@@ -281,9 +279,9 @@ jq -n \
         updated_at: $now
     }' > "$S5_STATE_FILE"
 
-# When — the runner starts with --from-stage cyc and NO --resume flag.
-# This exercises the skip_restore=false branch of _runner_from_stage_preflight,
-# where the function performs the git archive restore itself.
+# When — the runner starts with --resume --from-stage cyc (explicit --resume).
+# RQFROM-4 requires --resume for all --from-stage invocations; the skip_restore=false
+# branch (plain --from-stage without --resume) is removed per Gap 12.
 set +e
 ( cd "$S5_WORK_REPO" && env \
     ZBUILD_CYCLES_ENABLED=1 \
@@ -297,24 +295,23 @@ set +e
     ZBUILD_VISION_GATE=off \
     PATH="$PATH" HOME="$HOME" \
     bash "$RUNNER" --template artifact-snapshot-coverage \
-        --from-stage cyc --issue "$S5_ID" ) \
+        --resume --from-stage cyc --issue "$S5_ID" ) \
     >"$TEST_TEMP_DIR/s5-stdout.txt" 2>"$TEST_TEMP_DIR/s5-stderr.txt"
 _s5_rc=$?
 set -e
 
 # Then — intake artifact must appear in ZBUILD_ARTIFACT_DIR before cyc dispatches.
-# Before the change: skip_restore=false path does not exist / no rehydration →
-#   file absent → FAILS.
-# After the change: _runner_from_stage_preflight with skip_restore=false restores
+# Before the change: no --from-stage rehydration → file absent → FAILS.
+# After the change: _runner_from_stage_preflight (--resume path) restores
 #   the artifact from the git state branch → PASSES.
 assert_file_exists \
-    "[#1805/DSFSTG-1] intake-result.json rehydrated via --from-stage without --resume (skip_restore=false branch)" \
+    "[#1805/DSFSTG-1] intake-result.json rehydrated via --resume --from-stage (second coverage sub-case)" \
     "$S5_STATE_DIR/artifacts/intake-result.json"
 
 # Then — restored artifact must contain the original payload.
 _s5_restored_content="$(cat "$S5_STATE_DIR/artifacts/intake-result.json" 2>/dev/null || true)"
 assert_contains \
-    "[#1805/DSFSTG-1] restored artifact contains prior-run payload (--from-stage without --resume; skip_restore=false used git state branch)" \
+    "[#1805/DSFSTG-1] restored artifact contains prior-run payload (--resume --from-stage used git state branch)" \
     "$_s5_restored_content" "prior-run-noresume-intake"
 
 # Then — intake emits no stage.start (it was rehydrated, not dispatched).
@@ -325,23 +322,23 @@ if [[ -f "$S5_EVENTS_JSONL" ]]; then
     _s5_intake_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="intake") | .type' \
         "$S5_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
-assert_eq "[#1805/DSFSTG-1] intake emits no stage.start when skipped via --from-stage without --resume" \
+assert_eq "[#1805/DSFSTG-1] intake emits no stage.start when skipped via --resume --from-stage (second coverage sub-case)" \
     "0" "$_s5_intake_starts"
 
 # [#1805/DSFSTG-1]: pipeline.skip_to_stage must be emitted when --from-stage is active
-# (plain --from-stage without --resume; skip_restore=false branch).
+# (--resume --from-stage path).
 # Before the change: no --from-stage support → no pipeline.skip_to_stage event → FAILS.
-# After the change: runner emits pipeline.skip_to_stage on the no-resume path → PASSES.
+# After the change: runner emits pipeline.skip_to_stage on the --resume --from-stage path → PASSES.
 _s5_skip_stage_count=0
 if [[ -f "$S5_EVENTS_JSONL" ]]; then
     _s5_skip_stage_count="$(jq -r 'select(.type=="pipeline.skip_to_stage") | .type' \
         "$S5_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
-assert_gt "[#1805/DSFSTG-1] pipeline.skip_to_stage emitted when --from-stage active without --resume (skip_restore=false branch; RQFROM-2)" \
+assert_gt "[#1805/DSFSTG-1] pipeline.skip_to_stage emitted when --from-stage active (--resume path, second coverage sub-case; RQFROM-2)" \
     "$_s5_skip_stage_count" "0"
 
 # [#1805/DSFSTG-1]: no stage before <s>=cyc dispatched after pipeline.skip_to_stage
-# (plain --from-stage without --resume path).
+# (--resume --from-stage path, second coverage sub-case).
 _s5_skip_lineno=0
 _s5_intake_after_skip=0
 if [[ -f "$S5_EVENTS_JSONL" ]]; then
@@ -353,24 +350,24 @@ if [[ -f "$S5_EVENTS_JSONL" ]]; then
             "$S5_EVENTS_JSONL" 2>/dev/null)"
     fi
 fi
-assert_eq "[#1805/DSFSTG-1] no stage before <s>=cyc dispatched after pipeline.skip_to_stage (no --resume path; RQFROM-2)" \
+assert_eq "[#1805/DSFSTG-1] no stage before <s>=cyc dispatched after pipeline.skip_to_stage (--resume path, second coverage sub-case; RQFROM-2)" \
     "0" "$_s5_intake_after_skip"
 
 # [#1805/DSFSTG-1]: stage <s>=cyc must be dispatched as the first unit on the
-# plain --from-stage path; a cycle.start event must be emitted for cyc.
-# Before the change: without --from-stage support cyc is never dispatched on this
-#   path → no cycle.start → _s5_cyc_starts=0 → assert 0 > 0 → FAILS.
+# --resume --from-stage path; a cycle.start event must be emitted for cyc.
+# Before the change: without --from-stage support cyc is not dispatched →
+#   no cycle.start → _s5_cyc_starts=0 → assert 0 > 0 → FAILS.
 # After the change: cyc is the first dispatched unit → cycle.start emitted → PASSES.
 _s5_cyc_starts=0
 if [[ -f "$S5_EVENTS_JSONL" ]]; then
     _s5_cyc_starts="$(jq -r 'select(.type=="cycle.start" and .data.cycle_id=="cyc") | .type' \
         "$S5_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
-assert_gt "[#1805/DSFSTG-1] cycle.start emitted for <s>=cyc (first dispatch unit on plain --from-stage path)" \
+assert_gt "[#1805/DSFSTG-1] cycle.start emitted for <s>=cyc (first dispatch unit on --resume --from-stage path)" \
     "$_s5_cyc_starts" "0"
 
 # [#1805/DSFSTG-1]: stage.start for cycled (cyc's first cycle member) on the
-# plain --from-stage path; confirms the cycle stage <s> was actually dispatched
+# --resume --from-stage path; confirms the cycle stage <s> was actually dispatched
 # and its first member was started.
 # Before the change: cyc not dispatched → no stage.start for cycled → FAILS.
 # After the change: cyc dispatches cycled → stage.start emitted → PASSES.
@@ -379,7 +376,7 @@ if [[ -f "$S5_EVENTS_JSONL" ]]; then
     _s5_cycled_started="$(jq -r 'select(.type=="stage.start" and .data.stage=="cycled") | .type' \
         "$S5_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 fi
-assert_gt "[#1805/DSFSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage dispatches <s> as first unit on plain path)" \
+assert_gt "[#1805/DSFSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage dispatches <s> as first unit on --resume path)" \
     "$_s5_cycled_started" "0"
 
 # ── SPEC-4: missing artifact with --from-stage exits 1 and names missing stage ─
