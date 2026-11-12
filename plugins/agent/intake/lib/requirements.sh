@@ -98,6 +98,9 @@ work, such as the order to do it in or what not to run it alongside, which no
 change to the code can show is met — gets its own line:
 
 NOT-A-REQUIREMENT: <id> — <why>
+
+An item already removed needs no line: it is shown under ALREADY REMOVED, with
+its words and why, and it is not a requirement.
 EOF
 }
 
@@ -134,7 +137,7 @@ _ireq_call_v() {
 # id (R-1), or one from before the prefix (#2482), is shown without it, so the
 # requirement gets an id of the new form.
 _ireq_prev_load() {
-    _IREQ_PREV_IDS="" _IREQ_PREV_REMOVED="" _IREQ_PREV_SHOWN="" _IREQ_PREV_REMOVED_JSON="[]"
+    _IREQ_PREV_IDS="" _IREQ_PREV_REMOVED="" _IREQ_PREV_SHOWN="" _IREQ_PREV_REMOVED_JSON="[]" _IREQ_PREV_REMOVED_LINES=""
     declare -gA _IREQ_PREV_TEXT=()
     [[ -n "${1:-}" ]] || return 0
     local kind id text why removed=""
@@ -149,6 +152,7 @@ _ireq_prev_load() {
     done < <(jq -r '(.requirements[]? | "A\u001f\(.id)\u001f\(.text | gsub("[[:cntrl:]]"; " "))\u001f"),
                     (.removed[]? | "R\u001f\(.id)\u001f\(.text | gsub("[[:cntrl:]]"; " "))\u001f\(.reason // "" | gsub("[[:cntrl:]]"; " "))"),
                     "J\u001f\([.removed[]?] | tojson)"' <<< "$1" 2>/dev/null)
+    _IREQ_PREV_REMOVED_LINES="$removed"
     [[ -n "$removed" ]] && _IREQ_PREV_SHOWN+=$'\n'"IDS ALREADY REMOVED (never use them again):"$'\n'"$removed"
     return 0
 }
@@ -218,7 +222,9 @@ _ireq_call_parsed() {
         zb_ids_check_v _iv "$3" "$4" "$6 ${_IREQ_IDS[*]+${_IREQ_IDS[*]}}" "${_IREQ_RM_IDS[*]+${_IREQ_RM_IDS[*]}}" "$5" "$_IREQ_PX" 0
         plain=""
         for v in "${_IREQ_NR_IDS[@]+"${_IREQ_NR_IDS[@]}"}"; do
-            [[ " $6 " == *" $v "* ]] || _IREQ_FORM+=("NOT-A-REQUIREMENT: names $v, which the list does not have — name only a listed id")
+            # #2527: never "name a listed id" — on #1805 run 43130129438 that
+            # turned a note already removed into the removal of a requirement.
+            [[ " $6 " == *" $v "* ]] || _IREQ_FORM+=("NOT-A-REQUIREMENT: $v is not in the list, so leave that line out")
         done
         # A requirement that names one of the issue's own items by its label
         # (#1805 run 42340358110: "Tests for R1–R5" reached checks that never
@@ -287,7 +293,13 @@ _intake_requirements_json_v() {
     for i in "${!ids[@]}"; do listed+="REQUIREMENT: ${ids[i]} ${texts[i]}"$'\n'; done
     # shellcheck disable=SC2124  # a space-separated list, not an array
     local _removed_now="$_IREQ_PREV_REMOVED${rm_ids[*]+${rm_ids[*]}}"
-    [[ -n "${_removed_now// }" ]] && listed+=$'\n'"IDS ALREADY REMOVED (never use them again): $_removed_now"
+    # #2527 (ADR-070 §1): each removed item with its words and why, so the check
+    # sees a note is already gone rather than naming it again.
+    local _rm_lines="$_IREQ_PREV_REMOVED_LINES"
+    for i in "${!rm_ids[@]}"; do
+        _rm_lines+="- ${rm_ids[i]} — ${_IREQ_PREV_TEXT[${rm_ids[i]}]:-} (removed: ${rm_why[i]})"$'\n'
+    done
+    [[ -n "${_removed_now// }" ]] && listed+=$'\n'"ALREADY REMOVED (not requirements; never use their ids again):"$'\n'"$_rm_lines"
     prompt="$(stage_prompt_compose_text --fresh "$(_ireq_check_own)" \
         "ISSUE:"$'\n'"$issue"$'\n\n'"THE LIST:"$'\n'"$listed" "$(_ireq_limits)")" \
         || { _INTAKE_REQ_OUTCOME=misconfigured; return 1; }

@@ -16,6 +16,8 @@ source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/../../../../script
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/item-ids.sh"
 # shellcheck source=../../../../scripts/lib/unclear.sh
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/unclear.sh"
+# shellcheck source=../../../../scripts/lib/judge-quotes.sh
+source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/judge-quotes.sh"
 _DCK_LIB_DIR="${BASH_SOURCE[0]%/*}/../../../../scripts/lib"
 # #2482 (ADR-001): design's id prefix, from its manifest — every SPEC id starts with it.
 zb_id_prefix_v _DCK_ID_PREFIX "${BASH_SOURCE[0]%/*}/../manifest.yaml"
@@ -56,13 +58,16 @@ _dck_evidence_v() {
         [[ -z "$base" ]] || git -C "$root" cat-file -e "$base:$path" 2>/dev/null || _dev=NOT_BEFORE
         return 0
     fi
+    # #2527 (ADR-072 §3): the text is a quote, read as every quote is — one
+    # line, spacing and marks aside.
     src="$(<"$root/$path")"
-    [[ "$src" == *"$txt"* ]] || { _dev=MISSING; return 0; }
+    _judge_holds "${src//$'\n'/ $'\x1e' }" "$txt" || { _dev=MISSING; return 0; }
     [[ -n "$base" ]] || return 0
     # #2517 (ADR-069): the evidence shows where the old code does it; the
     # requirement's test proves the finished change still does, so a line the
     # branch moved or changed is no reason to refuse it.
-    [[ "$(git -C "$root" show "$base:$path" 2>/dev/null)" == *"$txt"* ]] || _dev=NOT_BEFORE
+    src="$(git -C "$root" show "$base:$path" 2>/dev/null)"
+    _judge_holds "${src//$'\n'/ $'\x1e' }" "$txt" || _dev=NOT_BEFORE
 }
 
 # _dck_block_ids_v <ids_var> <removed_var> <block> — the SPEC ids, and the ids

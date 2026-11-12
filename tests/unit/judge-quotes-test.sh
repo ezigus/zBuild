@@ -31,6 +31,9 @@
 # Q11 a quote with a backslash in front of a character the file holds plainly is
 #    found: `\``, `\$`, `\|` (#2525); a line that really holds the backslash is
 #    still found as written, and a quote that is not there is still refused
+# Q12 quote marks — straight, curly, and the apostrophe — are left out on both
+#    sides, as `*`, `_` and backticks are (#2527): a line holding "$x" quoted
+#    as $x holds, and words that are not there are still refused
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -391,6 +394,17 @@ assert_eq "[Q11] guard: a line that holds the backslash is found as written" "ok
     "$(_q 'scripts/cfg.sh | _rcl="$_out${_in}\`\`"; else')"
 assert_contains "[Q11] guard: a quote that is not there is still refused" \
     "$(_q 'scripts/cfg.sh | failed \`[DSFSTG-9]\`')" "bad:"
+
+print_test_section "Q12: quote marks are left out, as the other marks are"
+# On #1805 run 43130129438 a judge wrote its quotes with no quote marks, as it
+# was asked (#2519), and the code that picks a part's line still wanted them (#2527).
+assert_eq "[Q12] the item's own words, its quote marks left out" "ok" "$(_q 'refuse a missing config' 'refuse a "missing" config file')"
+assert_eq "[Q12] a quote in curly quote marks" "ok" "$(_q '“refuse a missing”' 'refuse a missing config file')"
+assert_eq "[Q12] ...or holding them" "ok" "$(_q 'refuse a ‘missing’ config' 'refuse a missing config file')"
+assert_eq "[Q12] an apostrophe left out" "ok" "$(_q "the stage's job" 'it is the stages job')"
+assert_eq "[Q12] a file line holding quote marks, quoted without them" "ok" "$(_q 'scripts/cfg.sh | if ! _gate $dry_run $mode; then')"
+assert_contains "[Q12] guard: words that are not there are still refused" "$(_q 'refuse a present config' 'refuse a "missing" config file')" "bad:"
+assert_contains "[Q12] guard: the old file:\"text\" form is still refused" "$(_q 'scripts/cfg.sh:"line one"')" "<file> | <one line"
 
 cleanup_test_env
 print_test_results

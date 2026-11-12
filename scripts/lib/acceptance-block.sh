@@ -365,19 +365,6 @@ acceptance_evidence_split() {
     return 0
 }
 
-# acceptance_evidence_line_v <var> <content> <text> — the number of the first
-# line of <content> that holds <text>, or empty. Read by the shell, no fork.
-acceptance_evidence_line_v() {
-    local -n _ael="$1"; local _l _n=0
-    _ael=""
-    [[ -n "$3" ]] || return 0
-    while IFS= read -r _l; do
-        _n=$((_n + 1))
-        [[ "$_l" == *"$3"* ]] && { _ael="$_n"; return 0; }
-    done <<< "$2"
-    return 0
-}
-
 # acceptance_list_removed_ids <design_md>  (#2462, ADR-069 §1)
 # Each `REMOVED: <id> — <why>` line of the acceptance block, as "<id><TAB><why>".
 acceptance_list_removed_ids() {

@@ -31,6 +31,9 @@
 # T9 a SPEC written on one line is judged as one Then, its words
 # T10 test-author is told to write the sections, and to rewrite an old test it
 #     touches into them
+# J10 T11-T13 a part's quote with no quote marks around it, as the prompts ask
+#     (#2519), still picks its line; curly quote marks are left out too (#2527:
+#     on #1805 run 43130129438 every such answer was refused, and 5 tries lost)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -91,6 +94,11 @@ MD
     echo "J7|$(_design_coverage_findings | tr '\n\036' '~~')"
     _R1="$R"$'FRSH-1 Then: untestable | WHY: x | QUOTE: "it is started again"\n'; _R2="$_R1"; _cov
     echo "J8|$(cat "$_N")|$_DESIGN_COV_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
+    # #2527: no quote marks, or curly ones, and the quote still picks its line.
+    _R1="$R"$'FRSH-1 And: untestable | WHY: a test cannot observe what a file contains | QUOTE: the test file contains both cases\n'; _R2=""; _cov
+    echo "J10|$(_design_coverage_findings | tr '\n\036' '~~')|$_DESIGN_COV_OUTCOME|$(cat "$_N")"
+    _R1="$R"$'FRSH-1 When: how | WHY: it names the call, not what happens | QUOTE: “it is started again”'$'\n'; _R2=""; _cov
+    echo "J11|$(_design_coverage_findings | tr '\n\036' '~~')|$_DESIGN_COV_OUTCOME|$(cat "$_N")"
     # Review on #2469: the tests' stand-in for a judge that finds nothing answers
     # every part of a SPEC with parts, as the real judge is asked to.
     route_to_model() { zb_test_coverage_ok "$2"; }
@@ -116,6 +124,10 @@ assert_contains "[J7] something left behind with no Cleanup is a finding" "$(_l 
 assert_contains "[J7] ...that asks for a Cleanup line" "$(_l "$J" J7)" "Cleanup:"
 assert_contains "[J8] a quote from another part: asked again, then unusable" "$(_l "$J" J8)" "2|unusable|"
 assert_contains "[J8] ...saying which" "$(_l "$J" J8)" "FRSH-1 Then's quote is not in"
+assert_contains "[J10] a part's quote with no quote marks is a finding on that part" "$(_l "$J" J10)" "~  And: the test file contains both cases [FIX IN DESIGN:"
+assert_contains "[J10] ...taken in one call" "$(_l "$J" J10)" "||1"
+assert_contains "[J11] a quote in curly quote marks is a finding on that part" "$(_l "$J" J11)" "  When: it is started again [FIX IN DESIGN:"
+assert_contains "[J11] ...taken in one call" "$(_l "$J" J11)" "||1"
 
 print_test_section "T1-T9: test-author's check"
 (
@@ -164,6 +176,13 @@ MD
     echo "T7|$(cat "$_N")|$_TA_CORR_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.3" 2>/dev/null)"
     _R1=$'DOCS-1: ok\nLOOP-1: untestable | WHY: no test can see the outer loop from outside | QUOTE: "the outer loop is still at round 2"\n'; _R2=""; _R3=""; _j
     echo "T8|${_TA_CORR_UNTESTABLE:-}"
+    # #2527 (#1805 run 43130129438): the check's quotes had no quote marks.
+    _R1=$'DOCS-1: ok\nLOOP-1 When: wrong | WHY: it enters the outer loop | QUOTE: the inner loop is entered again\n'; _R2=""; _R3=""; _j
+    echo "T11|$(cat "$_N")|${#_TA_CORR_FINDINGS[@]}|$(tr '\036' '~' <<< "${_TA_CORR_FINDINGS[0]:-}")|$_TA_CORR_OUTCOME"
+    _R1=$'DOCS-1: ok\nLOOP-1 And: missing | WHY: nothing asserts the outer round | QUOTE: the outer loop is still at round 2\n'; _j
+    echo "T12|$(cat "$_N")|${#_TA_CORR_FINDINGS[@]}|$(tr '\036' '~' <<< "${_TA_CORR_FINDINGS[0]:-}")"
+    _R1=$'DOCS-1: ok\nLOOP-1: untestable | WHY: no test can see the outer loop from outside | QUOTE: the outer loop is still at round 2\n'; _j
+    echo "T13|$(tr '\036' '~' <<< "${_TA_CORR_UNTESTABLE:-}")"
     _R1="$OK"; _j
     echo "T9|$([[ "$(cat "$_P.1")" == *"  Then: the README says how to resume"* ]] && echo one-then)"
 ) > "$TEST_TEMP_DIR/t.out" 2>/dev/null
@@ -195,6 +214,11 @@ assert_contains "[T7] still none: not judged" "$(_l "$T" T7)" "3|unusable|"
 assert_contains "[T8] a SPEC no test can prove is named" "$(_l "$T" T8)" "LOOP-1"
 assert_contains "[T8] ...with why, marked as design's to fix" "$(_l "$T" T8)" "[FIX IN DESIGN: no test can see the outer loop from outside"
 assert_eq "[T9] a one-line SPEC is judged as one Then" "one-then" "$(_l "$T" T9)"
+assert_contains "[T11] a When quote with no quote marks is a finding, in one call" "$(_l "$T" T11)" "1|1|"
+assert_contains "[T11] ...marking the When line" "$(_l "$T" T11)" "~  When: the inner loop is entered again [FIX IN TEST: the test does something else: it enters the outer loop"
+assert_contains "[T12] an And quote with no quote marks is a finding on that And, in one call" "$(_l "$T" T12)" "1|1|"
+assert_contains "[T12] ...marking the And line" "$(_l "$T" T12)" "~  And: the outer loop is still at round 2 [FIX IN TEST:"
+assert_contains "[T13] an untestable quote with no quote marks marks the line it quotes" "$(_l "$T" T13)" "  And: the outer loop is still at round 2 [FIX IN DESIGN:"
 
 print_test_section "T8: a SPEC no test can prove ends the round"
 (

@@ -12,6 +12,13 @@
 # P3 [change] an item the check answers NOT-A-REQUIREMENT for leaves the list,
 #             kept as removed with the check's reason, so it never comes back
 # P4 [guard]  NOT-A-REQUIREMENT for an id the list does not have is asked again
+# P5 [change] (#2527) the check call is shown each removed item with its words
+#             and why, not only its id, and told such an item needs no line
+# P6 [change] (#2527) ...and NOT-A-REQUIREMENT for an id the list does not have
+#             is asked again with "leave the line out", never "name a listed id".
+#             #1805 run 43130129438: shown only removed ids, the check named the
+#             removed cycle note again as RQTEST-2; told to name a listed id, it
+#             named RQRESU-4, a real requirement, and that left the list.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,6 +33,9 @@ setup_test_env "intake-process-notes"
 source "$REPO_ROOT/plugins/agent/intake/tests/intake-test-lib.sh"
 set +e
 _REQ="$ARTIFACT_DIR/requirements.json"
+assert_not_contains() {
+    if grep -qF -- "$3" <<< "$2"; then assert_fail "$1" "found: $3"; else assert_pass "$1"; fi
+}
 
 declare -a REPLY=()
 route_to_model() {
@@ -67,6 +77,22 @@ REPLY=([1]=$'REQUIREMENT: RQRHYD-1 Rehydrate every stage.'
 _intake
 assert_contains "[P4] NOT-A-REQUIREMENT for an id the list lacks is asked again" "$(_prompt 3)" "RQNOPE-1"
 assert_eq "[P4] ...and answered right, intake passes with its list" "RQRHYD-1" "$(_ids)"
+assert_contains "[P6] ...told to leave that line out" "$(_prompt 3)" "RQNOPE-1 is not in the list, so leave that line out"
+assert_not_contains "[P6] ...never to name a listed id" "$(_prompt 3)" "name only a listed id"
+
+# ── P5 ───────────────────────────────────────────────────────────────────────
+# The last run removed the order note (P3's list); the issue has since changed,
+# so both calls are made again.
+REPLY=([1]=$'REQUIREMENT: RQRHYD-1 Rehydrate every stage.\nREQUIREMENT: RQORDE-1 Do not run this in parallel with #1714.'
+       [2]=$'MISSING: none\nNOT-A-REQUIREMENT: RQORDE-1 — it says when to run the work; no change can show it')
+_intake
+_set_gh_mock "Rehydrate on resume" $'1. Rehydrate every stage, in order.\n\nOrder: do not run this in parallel with #1714.' 0
+REPLY=([1]=$'REQUIREMENT: RQRHYD-1 Rehydrate every stage, in order.' [2]=$'MISSING: none')
+rm -f "$TEST_TEMP_DIR"/calls "$TEST_TEMP_DIR"/prompt-*
+intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
+assert_contains "[P5] the check is shown a removed item's words" "$(_prompt 2)" "RQORDE-1 — Do not run this in parallel with #1714."
+assert_contains "[P5] ...and why it was removed" "$(_prompt 2)" "it says when to run the work; no change can show it"
+assert_contains "[P5] ...and told it needs no line" "$(_prompt 2)" "An item already removed needs no line"
 
 cleanup_test_env
 print_test_results

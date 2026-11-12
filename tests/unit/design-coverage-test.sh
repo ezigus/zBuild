@@ -112,6 +112,28 @@ _P="$(cat "$_P_FILE")"
 assert_contains "[I1] the prompt carries the issue's own words" "$_P" "- **R3.** \`--from-stage <s>\` dispatches \`<s>\` first."
 assert_contains "[I1] ...and says that is the issue" "$_P" "ISSUE — the issue itself, in the requester's own words:"
 
+# ── I2 (#2527, ADR-070 §4) ───────────────────────────────────────────────────
+# An uncovered requirement's quote may be the issue's own words, as
+# issue-acceptance's may: on #1805 run 43130129438 the check quoted
+# "(an automatic resume does not count)", which intake had left out of the
+# requirement, and the one answer that named the real gap was thrown away.
+_I2="$TEST_TEMP_DIR/i2"; mkdir -p "$_I2"
+zb_test_issue_output "$_I2" $'## Required behavior\n- **R2.** Refuse a missing config, even an unreadable one (a symlink counts).' >/dev/null
+jq -n --arg i "$_I2/intake-result.json" '{inputs: {a: $i}}' > "$_I2/stage-inputs.json"
+_REPLY='RQST-1: covered
+RQST-2: uncovered | WHY: no SPEC refuses an unreadable one | QUOTE: even an unreadable one (a symlink counts)
+WORK-1: ok'
+ZBUILD_STAGE_INPUTS="$_I2/stage-inputs.json" _cov
+assert_eq "[I2] an uncovered quote in the issue's words is a finding" "1|" "${#_DESIGN_UNCOVERED[@]}|$_DESIGN_COV_OUTCOME"
+_REPLY='RQST-1: covered
+RQST-2: uncovered | WHY: x | QUOTE: words neither of them says
+WORK-1: ok'
+ZBUILD_STAGE_INPUTS="$_I2/stage-inputs.json" _cov
+assert_eq "[I2] guard: a quote in neither the requirement nor the issue cannot be used" "unusable" "$_DESIGN_COV_OUTCOME"
+_REPLY='RQST-1: covered
+RQST-2: covered
+WORK-1: ok'
+
 # ── SPEC-1 / E3 ──────────────────────────────────────────────────────────────
 REQS3="$REQS"'
 - RQST-3: B
