@@ -1,112 +1,67 @@
 # Build notes — #1805 resume and --from-stage trust-and-rehydrate
 
-## Status: ITERATION 32 — All acceptance tests pass; test finding 1 is not mine
+## Status: ITERATION 33 — All acceptance tests pass; two changes made
+
+## Changes made this iteration
+
+### 1. Reverted run-status-text.sh (unasked change)
+- Removed the `# Append an empty code span...` comment and the
+  `if [[ -n "$_out" ]]; then _rcl="$_out${_in}\`\`"; else _rcl="$_in"; fi` line
+- Restored to original: `_rcl="$_out$_in"`
+- Reason: descriptive-id-readers-test.sh R8 was FAILING because of this change.
+  R8 expects `failed \`[#1805/DSFSTG-1]\` and \`[#1805/SPEC-2]\`` but the change
+  produced `failed \`[#1805/DSFSTG-1]\` and \`[#1805/SPEC-2]\`\`\`` (extra backtick pair).
+- Addresses: acceptance-gate finding 1, issue-acceptance finding 2
+
+### 2. Removed dead skip_restore=false branch from _runner_from_stage_preflight
+- Removed the `local _fsp_skip_restore="${6:-false}"` local and the
+  `if ! $_fsp_skip_restore; then ... fi` block that restored artifacts from git
+- Updated function comment to reflect it only verifies (restoration is done by
+  _runner_resume_rehydrate before this call)
+- Updated call site to remove `"$resume_mode"` as 6th argument
+- Reason: skip_restore=false is dead code — the post-auto-resume guard
+  (`if [[ -n "$from_stage" ]] && ! $resume_mode`) ensures the function is never reached
+  when `resume_mode=false`. When `from_stage` is set and `resume_mode=false`, the guard
+  fires and returns 1. When `resume_mode=true` (always at that point), `skip_restore=true`
+  was passed. So `skip_restore=false` was unreachable.
+- Addresses: lens-scope-code finding 1
 
 ## Verification results (this iteration)
 
 All 5 acceptance test files pass:
-- tests/integration/resume-rehydrate-test.sh — 51 tests ✓
-- tests/unit/hydrate-stage-test.sh — 25 tests ✓
-- tests/integration/from-stage-rehydrate-test.sh — 35 tests ✓
-- tests/integration/resume-loop-state-test.sh — 11 tests ✓
-- tests/integration/resume-entry-points-test.sh — 18 tests ✓
+- tests/integration/from-stage-rehydrate-test.sh — 35 tests
+- tests/integration/resume-rehydrate-test.sh — 51 tests
+- tests/integration/resume-loop-state-test.sh — 11 tests
+- tests/integration/resume-entry-points-test.sh — 18 tests
+- tests/unit/hydrate-stage-test.sh — 25 tests
+- tests/unit/descriptive-id-readers-test.sh — 29 tests (was failing, now fixed)
 
-## This iteration's change: none (reverted broad guard attempt)
+## Open conflict: test finding 1 / issue-acceptance finding 1
 
-Attempted to fix test finding 1 (pipeline-resume-test.sh) by replacing the
-narrowed --from-stage guard with a full un-narrowed guard before the
-auto-resume elif. This made pipeline-resume-test.sh pass but broke 6 tests
-in from-stage-rehydrate-test.sh (S5 and S6 use --from-stage without --resume
-on in_progress and expect SUCCESS). Since from-stage-rehydrate-test.sh is in
-the acceptance tests, the change was reverted.
+### pipeline-resume-test.sh still fails:
+"integration: --from-stage without --resume exits 1" and "says it needs --resume"
+both fail.
 
-## Open findings — answers
+### Why this cannot be fixed:
+The test creates `status=in_progress` state with recent timestamp and runs
+`--from-stage intake` WITHOUT `--resume`. It expects exit 1 (RQFROM-4).
 
-### test finding 1 (pipeline-resume-test.sh fails):
-**not mine — the test must change: tests/integration/from-stage-rehydrate-test.sh**
+BUT `from-stage-rehydrate-test.sh` S6 (lines 519-530) ALSO uses `--from-stage build`
+WITHOUT `--resume` on `status=in_progress` and expects SUCCESS (stage.start for build,
+no stage.start for intake). S6 is an ACCEPTANCE TEST.
 
-`pipeline-resume-test.sh` sub-test "integration: --from-stage without --resume
-exits 1" creates `status=in_progress` state and expects exit 1 with "only valid
-with --resume". This requires the --from-stage guard to fire for ALL states
-(no status narrowing).
+Fixing RQFROM-4 fully (broadening the guard to fire for all states before auto-resume)
+would break S6. S6 must be updated by the test-author stage to use `--resume --from-stage build`.
 
-BUT `from-stage-rehydrate-test.sh` S5 (line ~221) and S6 (line ~468) also use
-`--from-stage` WITHOUT `--resume` on `status=in_progress` and expect SUCCESS —
-rehydration, cycle.start, stage.start etc.
+The issue-acceptance stage's previous rejection of "not mine" was about S5 (now fixed).
+S6 was not checked. This new answer cites S6 specifically.
 
-Making the guard broad (fires for all states) fixes pipeline-resume-test.sh but
-breaks from-stage-rehydrate-test.sh S5 and S6 (6 tests).
+## Shape-floor findings 3-7
+All pass locally:
+- bash tests/unit/core-pipeline-template-test.sh - All 74 tests passed
+- bash tests/unit/shape-floor-content-stable-test.sh - All 7 tests passed
+- bash tests/unit/shape-floor-summary-plain-test.sh - All 7 tests passed
+- bash tests/unit/template-simple-yaml-test.sh - All 84 tests passed
+- bash tests/unit/template-resolvability-preflight-test.sh - All 26 tests passed
 
-The design decision (Gap 12 §(c)) explicitly says S5 must be updated to use
-`--resume --from-stage cyc` instead. The test-author stage had an error verdict
-and did not update S5 or S6. The build stage cannot modify test files.
-
-The test-author stage must update S5 and S6 in from-stage-rehydrate-test.sh to
-use `--resume --from-stage` as the design decision requires.
-
-### shape-floor finding 1 (full-pipeline event-sequence.golden):
-The golden files were NOT modified by this branch (git diff HEAD on the golden
-files shows no changes). The code changes in this branch only affect flows gated
-by --resume and --from-stage flags. The golden files test normal (non-resume)
-pipeline flows. The _cd_iter > 0 unconditional stage.start guard is NOT present
-in the current code (confirmed by grep). These findings should not reproduce on
-the current tree.
-
-### shape-floor finding 2 (parity event-sequence.golden):
-Same as finding 1. No changes to this golden file; code changes do not affect
-the parity pipeline's event sequence.
-
-## Review lenses findings — answers
-
-### lens-security-code finding 1 / lens-red-team-code finding 1:
-wrong — export _ZBUILD_FROM_STAGE_EMIT_START=false IS present in runner.sh in
-the if ! $resume_mode fresh-run block alongside export _ZBUILD_RESUME_ACTIVE=false.
-
-### lens-security-code finding 2 / lens-correctness-code finding 3:
-not mine — pre-existing code not introduced by this branch; no acceptance test.
-
-### lens-performance-code findings 1 and 2:
-not mine — optimisations outside acceptance contract.
-
-### lens-red-team-code finding 2:
-not mine — theoretical; eb_emit_event does not invoke the cycle orchestrator.
-
-### lens-correctness-code finding 1:
-wrong — DSCMBR-1 scenario has _cid_nc=1; all-complete branch never entered.
-
-### lens-correctness-code finding 2:
-not mine — test file; build stage cannot modify test files.
-
-### lens-correctness-code finding 4:
-wrong — explicit --resume sets resume_mode=true before the auto-resume elif;
-the elif is skipped entirely.
-
-### lens-scope-code finding 1:
-not mine — fixing requires modifying test files (S5/S6) which build stage cannot do.
-
-### lens-scope-code findings 2 and 3:
-not mine — test file headers.
-
-### lens-sre-code findings 1, 2, 3:
-wrong — all three events are present in the code (eb_emit_event state.write,
-cycle.history.lost, state.write op=put_back).
-
-### lens-correctness-design finding 1:
-wrong — cycle:* arm clears both skip_until_stage and resume_mode together;
-DSFSTG-3 passes.
-
-## issue-acceptance findings — answers
-
-### issue-acceptance finding 1 (RQFROM-4 unmet for in_progress):
-not mine — fixing RQFROM-4 fully (broadening guard to all states) breaks
-from-stage-rehydrate-test.sh S5 and S6, which are acceptance tests. S5/S6
-pin the old skip_restore=false behavior. The design decision says these
-tests must be updated by the test-author stage to use --resume --from-stage.
-
-### issue-acceptance finding 2 (run-status-text.sh unasked change):
-wrong — descriptive-id-readers-test.sh is in the acceptance test list and
-asserts the backtick-pair rendering. The acceptance test contract requires
-this rendering.
-
-### issue-acceptance finding 3 (five unit test files updated):
-not mine — test files; build stage cannot modify test files.
+Golden files unchanged (git diff HEAD shows no changes to golden files).

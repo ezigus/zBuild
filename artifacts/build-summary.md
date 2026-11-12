@@ -1,28 +1,33 @@
 ## build — pass
 
-- changed no file
+- changed core/pipeline/runner.sh, scripts/lib/run-status-text.sh (+6 / -27)
 
 - over 1 pass(es), 1 iteration(s)
-- answered: test finding 1: not mine — the test must change: tests/integration/from-stage-rehydrate-test.sh: S5 (around line 221) and S6 (around line 468) use `--from-stage` without `--resume` on `status=in_progress` and expect SUCCESS (artifact rehydration, cycle.start, stage.start). Making the guard fire for ALL states (which pipeline-resume-test.sh requires to pass) also fires for `in_progress`, breaking S5 and S6 (6 tests). The design decision (Gap 12 §(c)) explicitly says S5 must be updated to use `--resume --from-stage cyc`; the test-author stage had an error verdict and did not update them. The build stage cannot modify test files.
-- answered: shape-floor finding 1: wrong — not reproduced: `git diff HEAD -- tests/golden/full-pipeline/event-sequence.golden` shows no changes to this file. Code changes in this branch only affect flows gated by `--resume`/`--from-stage` flags; the full-pipeline golden flow is unaffected. The `_cd_iter > 0` unconditional stage.start guard is not present in the current code.
-- answered: shape-floor finding 2: wrong — not reproduced: `git diff HEAD -- tests/golden/parity/event-sequence.golden` shows no changes to this file. Same reasoning as finding 1.
-- answered: issue-acceptance finding 1: not mine — fixing RQFROM-4 fully (broadening the guard to all states, including `in_progress`) breaks `from-stage-rehydrate-test.sh` S5 and S6, which are acceptance tests that use `--from-stage` without `--resume` on `status=in_progress` and expect SUCCESS. The design decision (Gap 12 §(c)) requires S5/S6 to be updated to use `--resume --from-stage`; the test-author stage had an error verdict and did not update them. The build stage cannot modify test files.
-- answered: issue-acceptance finding 2: wrong — `descriptive-id-readers-test.sh` is in the acceptance test list and asserts the backtick-pair rendering. The acceptance test contract requires this rendering; reverting `run-status-text.sh` would break that acceptance test.
-- answered: issue-acceptance finding 3: not mine — these are test files; the build stage may not modify test files. They were changed by the test-author stage.
-- answered: lens-security-code finding 1: wrong — `export _ZBUILD_FROM_STAGE_EMIT_START=false` IS present in runner.sh in the `if ! $resume_mode` fresh-run block alongside `export _ZBUILD_RESUME_ACTIVE=false`.
-- answered: lens-security-code finding 2: not mine — pre-existing sanitisation discrepancy not introduced by this branch; no acceptance test requires the fix.
-- answered: lens-performance-code finding 1: not mine — optimisation outside acceptance contract.
-- answered: lens-performance-code finding 2: not mine — optimisation outside acceptance contract.
-- answered: lens-red-team-code finding 1: wrong — `export _ZBUILD_FROM_STAGE_EMIT_START=false` IS present in the fresh-run block alongside `_ZBUILD_RESUME_ACTIVE=false`.
-- answered: lens-red-team-code finding 2: not mine — theoretical risk; `eb_emit_event` does not invoke the cycle orchestrator; no acceptance test requires this defensive change.
-- answered: lens-correctness-code finding 1: wrong — in the DSCMBR-1 scenario (build=complete, test=aborted in iter k), `_cid_nc=1` so the all-complete branch (`_cid_nc==0`) is never entered.
-- answered: lens-correctness-code finding 2: not mine — test file; build stage cannot modify test files.
-- answered: lens-correctness-code finding 3: not mine — pre-existing sanitisation gap not introduced by this branch; no acceptance test requires the fix.
-- answered: lens-correctness-code finding 4: wrong — explicit `--resume` sets `resume_mode=true` before the auto-resume elif block; the elif is skipped entirely when `resume_mode=true`, so it cannot reset `resume_mode=false`.
-- answered: lens-scope-code finding 1: not mine — removing `skip_restore=false` requires S5 and S6 in from-stage-rehydrate-test.sh to be updated first (they test this path); those are test files the build stage cannot modify.
-- answered: lens-scope-code finding 2: not mine — test file header; build stage cannot modify test files.
-- answered: lens-scope-code finding 3: not mine — test file header; build stage cannot modify test files.
-- answered: lens-sre-code finding 1: wrong — `eb_emit_event "state.write" "op=iter_start" ... "reason=write_failed"` is emitted in cycle-orchestrator.sh after `_cycle_state_write_iter_start` failure.
-- answered: lens-sre-code finding 2: wrong — `eb_emit_event "cycle.history.lost" ... "reason=blob_update_failed"` is emitted in cycle-orchestrator.sh after jq update failure for the skipped member blob.
-- answered: lens-sre-code finding 3: wrong — `eb_emit_event "state.write" "op=put_back" ... "reason=io_error"` is emitted in runner.sh after `_artifact_persist_put_back` failure in `_runner_resume_rehydrate`.
-- answered: lens-correctness-design finding 1: wrong — when `--from-stage` names a cycle, the cycle:* arm clears both `skip_until_stage` and `resume_mode` together; after that point `resume_mode=false` so the skip guard cannot fire for subsequent leaf stages. DSFSTG-3 tests this scenario and passes.
+- answered: acceptance-gate finding 1: done — reverted scripts/lib/run-status-text.sh to remove the unasked backtick-pair append; the change was breaking descriptive-id-readers-test.sh R8 (produced trailing `` after last label; expected value had none)
+- answered: shape-floor finding 1: wrong — not reproduced: `git diff HEAD -- tests/golden/full-pipeline/event-sequence.golden` shows no changes; the file is unmodified on this tree
+- answered: shape-floor finding 2: wrong — not reproduced: `git diff HEAD -- tests/golden/parity/event-sequence.golden` shows no changes; the file is unmodified on this tree
+- answered: shape-floor finding 3: wrong — not reproduced: bash tests/unit/core-pipeline-template-test.sh → All 74 tests passed
+- answered: shape-floor finding 4: wrong — not reproduced: bash tests/unit/shape-floor-content-stable-test.sh → All 7 tests passed
+- answered: shape-floor finding 5: wrong — not reproduced: bash tests/unit/shape-floor-summary-plain-test.sh → All 7 tests passed
+- answered: shape-floor finding 6: wrong — not reproduced: bash tests/unit/template-simple-yaml-test.sh → All 84 tests passed
+- answered: shape-floor finding 7: wrong — not reproduced: bash tests/unit/template-resolvability-preflight-test.sh → All 26 tests passed
+- answered: test finding 1: not mine — the test must change: tests/integration/from-stage-rehydrate-test.sh: S6 (lines 519-530) uses `--from-stage build` without `--resume` on `status=in_progress` and expects stage.start for build (SUCCESS); pipeline-resume-test.sh tests the same scenario with `--from-stage intake` without `--resume` on `status=in_progress` and expects exit 1 per RQFROM-4; broadening the guard to fire for all states fixes pipeline-resume-test.sh but breaks S6 (confirmed by manual test); S6 must be updated to `--resume --from-stage build` (the same update Gap 12 §(c) required for S5, which was done, but S6 was not updated)
+- answered: issue-acceptance finding 1: not mine — same as test finding 1: S6 (lines 519-530) in from-stage-rehydrate-test.sh (an acceptance test) uses `--from-stage build` without `--resume` and expects SUCCESS; the previous rejection of "not mine" checked S5 (which was fixed) but not S6; the full guard cannot be enabled without S6 being updated first
+- answered: issue-acceptance finding 2: done — reverted scripts/lib/run-status-text.sh; the backtick-pair append is gone; descriptive-id-readers-test.sh R8 now passes
+- answered: lens-security-code finding 1: wrong — `export _ZBUILD_FROM_STAGE_EMIT_START=false` IS present in runner.sh in the `if ! $resume_mode` block alongside `export _ZBUILD_RESUME_ACTIVE=false` (confirmed at line ~2345)
+- answered: lens-security-code finding 2: not mine — pre-existing sanitisation gap not introduced by this branch; no acceptance test requires the fix
+- answered: lens-performance-code finding 1: not mine — optimisation outside acceptance contract
+- answered: lens-performance-code finding 2: not mine — optimisation outside acceptance contract
+- answered: lens-red-team-code finding 1: wrong — `export _ZBUILD_FROM_STAGE_EMIT_START=false` IS present in the `if ! $resume_mode` block alongside `_ZBUILD_RESUME_ACTIVE=false`
+- answered: lens-red-team-code finding 2: not mine — theoretical risk; `eb_emit_event` does not invoke the cycle orchestrator; no acceptance test requires this defensive change
+- answered: lens-correctness-code finding 1: wrong — in the DSCMBR-1 scenario, `test` is `aborted` (not `complete`); `_cid_nc=1` (test is non-complete); the all-complete branch (`_cid_nc==0`) is never entered for this scenario
+- answered: lens-correctness-code finding 2: not mine — test file; build stage cannot modify test files
+- answered: lens-correctness-code finding 3: not mine — pre-existing sanitisation gap not introduced by this branch; no acceptance test requires the fix
+- answered: lens-correctness-code finding 4: wrong — explicit `--resume` sets `resume_mode=true` before the auto-resume elif block; the elif is skipped entirely when `resume_mode=true`, so it cannot reset `resume_mode=false`
+- answered: lens-scope-code finding 1: done — removed the `skip_restore=false` branch from `_runner_from_stage_preflight` in core/pipeline/runner.sh; the branch was dead code because the post-auto-resume guard ensures `resume_mode=true` by the time the function is called, so `skip_restore` was always `true`
+- answered: lens-scope-code finding 2: not mine — test file header; build stage cannot modify test files
+- answered: lens-scope-code finding 3: not mine — test file header; build stage cannot modify test files
+- answered: lens-sre-code finding 1: wrong — `eb_emit_event "state.write" "op=iter_start" ... "reason=write_failed"` IS emitted in cycle-orchestrator.sh after `_cycle_state_write_iter_start` failure (confirmed at line ~2506)
+- answered: lens-sre-code finding 2: wrong — `eb_emit_event "cycle.history.lost" ... "reason=blob_update_failed"` IS emitted in cycle-orchestrator.sh after jq failure for the skipped member blob (confirmed at line ~1478)
+- answered: lens-sre-code finding 3: wrong — `eb_emit_event "state.write" "op=put_back" ...` IS emitted in runner.sh after `_artifact_persist_put_back` failure in `_runner_resume_rehydrate` (confirmed at line ~1711)
+- answered: lens-correctness-design finding 1: wrong — when `--from-stage` names a cycle, the cycle:* arm clears both `skip_until_stage` and `resume_mode` together; after that point `resume_mode=false` so the skip guard cannot fire for subsequent leaf stages; DSFSTG-3 tests this scenario and passes (All 35 tests passed)
