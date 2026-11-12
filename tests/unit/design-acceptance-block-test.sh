@@ -161,6 +161,15 @@ assert_contains "T6: [code] keeps the fail-before, pass-after rule" "$_t6_prompt
 assert_contains "T6: the prompt offers <id>[no-code]: for work that changes no behaviour" "$_t6_prompt" \
     'DSLOOP-2[no-code]:` — it needs work that changes no behaviour'
 assert_contains "T6: [no-code] need not fail before" "$_t6_prompt" "it need not fail before"
+# #2525 (ADR-069 §1): a doc change is [doc], with no test; [no-code] no longer names docs.
+assert_contains "T6: the prompt offers <id>[doc]: for a change to a doc" "$_t6_prompt" \
+    'DSDOCS-1[doc]:` — it changes a doc'
+assert_contains "T6: [doc] has no test and no parts" "$_t6_prompt" \
+    "It has no test and no Given/When/Then: say, on its one line, what the doc must tell a reader"
+assert_eq "T6: [no-code] no longer names docs" "0" \
+    "$(grep -c 'no-code\]:` — it needs work that changes no behaviour: docs' <<< "$_t6_prompt" || true)"
+assert_contains "T6: the example block carries a [doc] line" "$_t6_prompt" \
+    'DSDOCS-1[doc]: <what a doc must tell a reader>'
 assert_contains "T6: the prompt offers <id>[done]: for what the code from before the change already does" "$_t6_prompt" \
     'DSGARD-1[done]:` — the code from before your change already does it'
 assert_contains "T6: the evidence syntax is shown" "$_t6_prompt" "after \` evidence: \`"
@@ -169,7 +178,7 @@ assert_contains "T6: the example block carries a [done] line with evidence" "$_t
 # #2305 (ADR-069 §9): design-gate rejects a [code] requirement that describes
 # file contents, so the prompt says so before design writes one.
 assert_contains "T6: a [code] requirement must describe behaviour, not file contents (#2305)" "$_t6_prompt" \
-    "Every requirement, whatever its status, describes what someone could see happen, not what a file contains"
+    "Every requirement except a [doc] one describes what someone could see happen, not what a file contains"
 # J1 (#1801 run 40351795413): a SPEC joining several claims is judged against
 # one assertion and comes back partial; one claim per SPEC, several SPECs may
 # cover one requirement.

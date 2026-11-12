@@ -325,6 +325,8 @@ _ta_correspondence() {
         [[ -n "$sid" ]] || continue
         _acceptance_spec_line "$_blk" "$sid" || continue
         [[ -z "$_ACC_SPEC_TEXT" ]] && continue
+        # #2525 (ADR-069 §6): no test proves a doc, so none is judged for one.
+        [[ "$_ACC_SPEC_STATUS" == "doc" ]] && continue
         _tfs="${_sc_files[$sid]:-}"
         # The whole assertion with its enclosing predicate, comments stripped:
         # a bare tagged line reads as a vacuous test, and a pasted SPEC sentence

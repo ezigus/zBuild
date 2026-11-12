@@ -265,14 +265,17 @@ acceptance_find_assertion_label() {
 # #2517 (ADR-069): every requirement, whatever its status, is proven by a test
 # that passes at the end, so every one needs its tagged test. Only a [code]
 # requirement's test must also fail on the old code (the negative control).
+# #2525: a [doc] requirement has no test — issue-acceptance reads the doc.
 acceptance_coverage_check() {
     local design_md="${1:-}" repo_root="${2:-}"
-    local spec_id rc=0
+    local spec_id rc=0 _acc_blk
     # #2508: every SPEC's test files, found by tag once.
     local -A _acc_files=()
     acceptance_spec_files_v _acc_files "$design_md" "${repo_root:-}"
+    _acc_blk="$(extract_acceptance_block "$design_md" 2>/dev/null || true)"
     while IFS= read -r spec_id; do
         [[ -z "$spec_id" ]] && continue
+        _acceptance_spec_line "$_acc_blk" "$spec_id" && [[ "$_ACC_SPEC_STATUS" == "doc" ]] && continue
         if [[ -z "${_acc_files[$spec_id]:-}" ]]; then
             printf 'UNTAGGED %s\n' "$spec_id"
             rc=1

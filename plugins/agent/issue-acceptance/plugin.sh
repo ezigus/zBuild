@@ -122,8 +122,9 @@ red"). The pipeline does not check those for you. For each one, ask: if the
 change were broken, would its tests catch it? If they would not, it is unmet.
 
 Some REQUIREMENTS were not run against the old code: those that need work but
-no code, and those design says are already done. Nothing but you checks them.
-For one already done, open the file its evidence names and check the claim
+no code, the doc changes, and those design says are already done. Nothing but
+you checks them. For a doc change, read the doc on the branch: no test checks
+it. For one already done, open the file its evidence names and check the claim
 against the code. If you cannot
 tell whether such a requirement is met, say so rather than guess: the run then
 reports it as open, with what would settle it.

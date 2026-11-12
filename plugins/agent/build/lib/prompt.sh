@@ -212,7 +212,7 @@ _build_compose_prompt_body() {
             while IFS= read -r _rq_line; do
                 [[ -n "$_rq_line" ]] || continue
                 [[ "$_rq_line" == *$'\t'* ]] || continue
-                _rq_sid="${_rq_line%%$'\t'*}"; _rq_text="${_rq_line#*$'\t'}"
+                _rq_sid="${_rq_line%%$'\t'*}"; _rq_text="${_rq_line#*$'\t'}"; _rq_text="${_rq_text%$'\t'doc}"
                 [[ -n "$_rq_text" ]] && printf -- '- %s %s\n' "$(_bp_spec_tag "$_rq_sid")" "$_rq_text"
             done <<< "$_acceptance_spec_ids"
         fi
@@ -230,7 +230,11 @@ _build_compose_prompt_body() {
                 _sid="${_sline%%$'\t'*}"
                 _stext=""
                 [[ "$_sline" == *$'\t'* ]] && _stext="${_sline#*$'\t'}"
-                if [[ -n "$_stext" ]]; then
+                if [[ "$_stext" == *$'\t'doc ]]; then
+                    # #2525 (ADR-069 §6): a doc has no test.
+                    printf -- '- %s %s\n' "$(_bp_spec_tag "$_sid")" "${_stext%$'\t'doc}"
+                    printf -- '  → a doc change: make the doc say this; no test checks it\n'
+                elif [[ -n "$_stext" ]]; then
                     printf -- '- %s %s\n' "$(_bp_spec_tag "$_sid")" "$_stext"
                     printf -- '  → its test is already written; make it pass\n'
                 else

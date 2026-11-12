@@ -24,6 +24,8 @@
 #   SPEC-6 [change]: context.sh actually BUILDS the id+text list — a formatter
 #                    that can render text nothing feeds it is inert
 #   B1 (#2304, ADR-069 §6): an already-done requirement is not in build's list
+#   B2 (#2525, ADR-069 §6): a [doc] requirement is in build's list, told to make
+#      the doc say it — no test checks it
 #   SPEC-5 [change]: build does not author or modify assertions at all (#2022).
 #                    The branching rule this SPEC once described still let build
 #                    decide an assertion did not test its SPEC and rewrite it —
@@ -198,6 +200,16 @@ if declare -F _build_gather_acceptance_specs >/dev/null 2>&1; then
     # #2304 (ADR-069 §6): build is not asked for what is already done.
     assert_eq "[B1] an already-done requirement is left out of build's list" "0" \
         "$(grep -c 'SPEC-11\|written atomically' <<< "$_gathered" || true)"
+    _doc_design="$TEST_TEMP_DIR/doc-design.md"
+    printf '# Design\n```acceptance\nSPEC-1[code]: the stage writes its result\nSPEC-2[doc]: the stage doc says where the result goes\nWIRING: none\n```\n' > "$_doc_design"
+    _doc_out="$TEST_TEMP_DIR/doc-prompt.txt"
+    _build_compose_prompt_body "$_doc_out" "== H ==" "PLAN" "INSTR" "" "" \
+        "$(_build_gather_acceptance_specs "$_doc_design" 2>/dev/null)" 1 >/dev/null 2>&1 || true
+    _doc_p="$(cat "$_doc_out" 2>/dev/null)"
+    assert_contains "[B2] a [doc] requirement is in build's list" "$_doc_p" "the stage doc says where the result goes"
+    assert_contains "[B2] ...told to make the doc say it, with no test" "$_doc_p" \
+        "→ a doc change: make the doc say this; no test checks it"
+    assert_eq "[B2] ...and not told its test is written" "1" "$(grep -c 'its test is already written' <<< "$_doc_p" || true)"
     _no_block="$TEST_TEMP_DIR/no-block.md"
     printf '# no acceptance block\n' > "$_no_block"
     assert_eq "[SPEC-6] a design with no block yields nothing, not an error" "" \

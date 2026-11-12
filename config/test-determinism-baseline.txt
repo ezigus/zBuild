@@ -7,3 +7,81 @@
 # sleep-kill: a signal timed by a sleep. Convert to wait-for-marker: the
 # process writes a marker at the point under test, the test waits for it with a
 # timeout, then signals. The signal itself stays real.
+
+# clock: a test reads the clock to see how long something took (#2525). Check
+# what shows it happened (an outcome, an event, a marker) instead.
+clock|tests/unit/cleanup-worktrees-test.sh|local when; when="$(( $(date +%s) - age * 86400 ))"
+clock|tests/unit/cleanup-worktrees-test.sh|when="$(( $(date +%s) - age * 86400 ))"
+clock|tests/unit/build-false-completion-guard-test.sh|_t0=$SECONDS
+clock|tests/unit/build-false-completion-guard-test.sh|_el=$(( SECONDS - _t0 ))
+clock|tests/unit/event-bus-emit-cost-test.sh|_before="$(date -u +%s)"
+clock|tests/unit/event-bus-emit-cost-test.sh|_after="$(date -u +%s)"
+clock|tests/unit/cleanup-new-reclaimers-test.sh|_now() { date +%s; }
+clock|tests/unit/runner-stage-dispatch-eb-emit-guard-test.sh|local _ts; _ts="$(date -u +%s 2>/dev/null || echo 0)"
+clock|tests/unit/cleanup-state-dirs-test.sh|if touch -d "@$(( $(date +%s) - secs ))" "$path" 2>/dev/null; then
+clock|tests/unit/cleanup-state-dirs-test.sh|local ts; ts="$(date -r $(( $(date +%s) - secs )) "+%Y%m%d%H%M.%S")"
+clock|tests/unit/run-status-comment-gh-test.sh|t0=$(date +%s)
+clock|tests/unit/run-status-comment-gh-test.sh|t1=$(date +%s)
+clock|tests/unit/event-bus-concurrency-test.sh|start_ns="$(date +%s)"
+clock|tests/unit/event-bus-concurrency-test.sh|end_ns="$(date +%s)"
+clock|tests/unit/run-mutation-kill-grace-test.sh|t0=$(date +%s)
+clock|tests/unit/run-mutation-kill-grace-test.sh|t1=$(date +%s)
+clock|tests/unit/issue-lock-test.sh|local ts; ts="$(date -u -r "$(( $(date -u +%s) - age ))" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+clock|tests/unit/run-tests-tier-concurrency-test.sh|_t0=$(date +%s)
+clock|tests/unit/run-tests-tier-concurrency-test.sh|_serial_secs=$(( $(date +%s) - _t0 ))
+clock|tests/unit/run-tests-tier-concurrency-test.sh|_t0=$(date +%s)
+clock|tests/unit/run-tests-tier-concurrency-test.sh|_conc_secs=$(( $(date +%s) - _t0 ))
+clock|tests/unit/extract-first-json-object-test.sh|t0_ns="$(date +%s%N 2>/dev/null || echo 0)"
+clock|tests/unit/extract-first-json-object-test.sh|t1_ns="$(date +%s%N 2>/dev/null || echo 0)"
+clock|tests/unit/proc-group-test.sh|_u6_start="${EPOCHSECONDS:-$(date -u +%s)}"
+clock|tests/unit/proc-group-test.sh|_u6_elapsed=$(( ${EPOCHSECONDS:-$(date -u +%s)} - _u6_start ))
+clock|tests/unit/clock-dirname-cost-test.sh|local a b; a="$(command date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$1" +%s 2>/dev/null || command date -u -d "$1" +%s 2>/dev/null)"
+clock|tests/unit/clock-dirname-cost-test.sh|b="$(command date -u +%s)"
+clock|tests/unit/runner-status-comment-hook-test.sh|t0=$(date +%s)
+clock|tests/unit/runner-status-comment-hook-test.sh|t1=$(date +%s)
+clock|tests/unit/worktree-reclaim-test.sh|_stale_ts="$(date -u -d '@'"$(( $(date -u +%s) - 172800 ))" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+clock|tests/unit/cleanup-state-dirs-reclaim-test.sh|if ! touch -d "@$(( $(date +%s) - secs ))" "$path" 2>/dev/null; then
+clock|tests/unit/cleanup-state-dirs-reclaim-test.sh|local ts; ts="$(date -r $(( $(date +%s) - secs )) "+%Y%m%d%H%M.%S")"
+clock|tests/unit/cleanup-stashes-test.sh|local ts=$(( $(date +%s) - age_seconds ))
+clock|tests/unit/cleanup-stashes-test.sh|_age_target=$(( $(date +%s) - 7200 ))
+clock|tests/unit/call-time-up-hook-test.sh|_before=$(date +%s)
+clock|tests/unit/call-time-up-hook-test.sh|_after=$(date +%s); _now="$_after"
+clock|tests/unit/call-time-up-hook-test.sh|_b2=$(date +%s); _zbuild_build_permissions_settings 60 >/dev/null 2>&1; _a2=$(date +%s)
+clock|tests/integration/install-copy-flow-test.sh|echo "MUTATION $(date +%s%N)" >> core/pipeline/runner.sh
+clock|tests/integration/full-pipeline-sigint-test.sh|start_ts=$(date +%s)
+clock|tests/integration/full-pipeline-sigint-test.sh|end_ts=$(date +%s)
+clock|tests/integration/core-orch-parallel-test.sh|t_start="$(date +%s)"
+clock|tests/integration/core-orch-parallel-test.sh|t_end="$(date +%s)"
+clock|tests/integration/core-orch-parallel-test.sh|t_start="$(date +%s)"
+clock|tests/integration/core-orch-parallel-test.sh|t_end="$(date +%s)"
+clock|tests/integration/cleanup-cli-e2e-test.sh|if touch -d "@$(( $(date +%s) - 2592000 ))" "$STATE_DIR/pipeline-state-old.json" 2>/dev/null; then :; else
+clock|tests/integration/cleanup-cli-e2e-test.sh|ts="$(date -r $(( $(date +%s) - 2592000 )) "+%Y%m%d%H%M.%S")"
+clock|tests/integration/cleanup-cli-e2e-test.sh|if ! touch -d "@$(( $(date +%s) - secs ))" "$d/pipeline-state.json" 2>/dev/null; then
+clock|tests/integration/cleanup-cli-e2e-test.sh|local ts; ts="$(date -r $(( $(date +%s) - secs )) "+%Y%m%d%H%M.%S")"
+clock|tests/integration/cleanup-cli-e2e-test.sh|_ts_old=$(( $(date +%s) - 15 * 86400 ))
+clock|tests/integration/cleanup-cli-e2e-test.sh|_ts_old2=$(( $(date +%s) - 15 * 86400 ))
+clock|tests/integration/parallel-orchestrator-test.sh|_t4_start=$(date +%s)
+clock|tests/integration/parallel-orchestrator-test.sh|_t4_secs=$(( $(date +%s) - _t4_start ))
+clock|tests/integration/always-run-exit-paths-test.sh|_spec4_t0=$(date +%s)
+clock|tests/integration/always-run-exit-paths-test.sh|_spec4_wait_s=$(( $(date +%s) - _spec4_t0 ))
+clock|tests/integration/resume-24h-boundary-test.sh|NOW="$(date -u +%s)"
+clock|tests/integration/sigint-aborts-pipeline-test.sh|start_ts=$(date +%s)
+clock|tests/integration/sigint-aborts-pipeline-test.sh|end_ts=$(date +%s)
+clock|tests/integration/cleanup-stashes-e2e-test.sh|local ts=$(( $(date +%s) - age_seconds ))
+clock|tests/integration/sigterm-aborts-pipeline-test.sh|start_ts=$(date +%s)
+clock|tests/integration/sigterm-aborts-pipeline-test.sh|end_ts=$(date +%s)
+clock|tests/integration/runner-job-control-abort-test.sh|sig_ts=$(date +%s)
+clock|tests/integration/runner-job-control-abort-test.sh|end_ts=$(date +%s)
+clock|tests/integration/route-fast-abort-test.sh|spawn_deadline_ns=$(( $(date +%s%N) + spawn_ceiling_ms * 1000000 ))
+clock|tests/integration/route-fast-abort-test.sh|while [[ $(date +%s%N) -lt $spawn_deadline_ns ]]; do
+clock|tests/integration/route-fast-abort-test.sh|start_ts=$(date +%s%N)
+clock|tests/integration/route-fast-abort-test.sh|end_ts=$(date +%s%N)
+clock|tests/integration/route-fast-abort-test.sh|deadline_ns=$(( $(date +%s%N) + reap_window_s * 1000000000 ))
+clock|tests/integration/route-fast-abort-test.sh|while [[ $(date +%s%N) -lt $deadline_ns ]]; do
+clock|tests/integration/mutation-parallel-equivalence-test.sh|_t_start="$(date +%s)"
+clock|tests/integration/mutation-parallel-equivalence-test.sh|_t_end="$(date +%s)"
+clock|tests/integration/zbuild-upgrade-subcommand-test.sh|echo "# bump $(date +%s%N)" >> scripts/zbuild
+clock|plugins/tool/test/tests/test-test.sh|T_START="$(date +%s)"
+clock|plugins/tool/test/tests/test-test.sh|T_END="$(date +%s)"
+clock|plugins/tool/orch-ruflo-hive/tests/orch-ruflo-hive-test.sh|t_start="$(date +%s)"
+clock|plugins/tool/orch-ruflo-hive/tests/orch-ruflo-hive-test.sh|t_end="$(date +%s)"

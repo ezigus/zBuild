@@ -295,6 +295,7 @@ _negctl_emit_whole_run_skip() {
 #                                these emit once per declared SPEC.
 #   NEGCTL SKIP <detail>       — same, when the SPEC roster is unavailable
 #   NEGCTL SKIP <spec_id> already_done — a done requirement: not run (ADR-069 §4)
+#   NEGCTL SKIP <spec_id> doc          — a doc requirement: no test (#2525)
 #   NEGCTL SKIP <spec_id> no_code      — a no-code requirement: not run (ADR-069 §4)
 #
 # Returns 0 when every SPEC-n passes (or is legitimately skipped), 1 otherwise.
@@ -349,12 +350,15 @@ acceptance_negctl_check() {
         _acceptance_spec_line "$_blk" "$_sid" || _ACC_SPEC_STATUS=""
         _statuses[$_sid]="$_ACC_SPEC_STATUS"
         _sid_order+=("$_sid")
-        [[ "$_ACC_SPEC_STATUS" == "done" || "$_ACC_SPEC_STATUS" == "no-code" ]] || _any_code=1
+        [[ "$_ACC_SPEC_STATUS" == "done" || "$_ACC_SPEC_STATUS" == "no-code" || "$_ACC_SPEC_STATUS" == "doc" ]] || _any_code=1
     done < <(acceptance_list_spec_ids "$design_md" 2>/dev/null || true)
     if [[ "$_any_code" -eq 0 && ${#_sid_order[@]} -gt 0 ]]; then
         for _sid in "${_sid_order[@]}"; do
-            [[ "${_statuses[$_sid]}" == "done" ]] && printf 'NEGCTL SKIP %s already_done\n' "$_sid" \
-                || printf 'NEGCTL SKIP %s no_code\n' "$_sid"
+            case "${_statuses[$_sid]}" in
+                done) printf 'NEGCTL SKIP %s already_done\n' "$_sid" ;;
+                doc)  printf 'NEGCTL SKIP %s doc\n' "$_sid" ;;
+                *)    printf 'NEGCTL SKIP %s no_code\n' "$_sid" ;;
+            esac
         done
         return 0
     fi
@@ -399,6 +403,8 @@ acceptance_negctl_check() {
         case "${_statuses[$spec_id]:-}" in
             done)    printf 'NEGCTL SKIP %s already_done\n' "$spec_id"; continue ;;
             no-code) printf 'NEGCTL SKIP %s no_code\n' "$spec_id"; continue ;;
+            # #2525 (ADR-069 §6): a doc has no test; issue-acceptance reads it.
+            doc)     printf 'NEGCTL SKIP %s doc\n' "$spec_id"; continue ;;
         esac
         local found_control=0 saw_tautology=0 saw_tagged=0 only_head_fail=0 saw_timeout=0 saw_harness=0 saw_signal=0 saw_sigkill=0
         local ub_after="" uh_after=""

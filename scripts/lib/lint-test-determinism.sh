@@ -12,6 +12,10 @@
 #               past any mock on PATH. A file mocks a command when it calls
 #               mock_<cmd>, mock_binary <cmd> or install_envelope_mock_claude,
 #               or writes a script to a path ending in /<cmd>.
+#   clock       a read of the clock — $SECONDS, `date +%s` — to see how long
+#               something took (#2525: on #1805 run 43093018140 a busy machine
+#               turned a 15 s bound into 16 s). Check what shows the thing
+#               happened — an outcome, an event, a marker — not how long it took.
 #   sleep-kill  a `sleep` followed, within three commands, by a `kill`: a
 #               signal timed by a clock. Wait for a marker the process writes
 #               at the point under test, with a timeout, then signal. A poll
@@ -85,6 +89,7 @@ tag == "K" {
         if (abs) bad(f, l, "remote|calls " cmd " by its path, past any mock")
         else if (!mocked[f, cmd]) bad(f, l, "remote|calls " cmd " with no mock in the file")
     }
+    if (mark[f ":" l] != "ok" && c ~ /([$][{]?SECONDS([^A-Za-z0-9_]|$)|[(][(]([^)]*[^A-Za-z0-9_)])?SECONDS([^A-Za-z0-9_]|$)|date([ \t]+-[A-Za-z]+)*[ \t]+["'"'"']?[+]%s)/) bad(f, l, "clock|reads the clock to time something")
     loop = (c ~ /(^|[;&| \t])done([ \t;|&)]|$)/)
     if (left > 0) {
         if (loop) left = 0
