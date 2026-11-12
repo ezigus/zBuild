@@ -15,15 +15,15 @@
   [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] pipeline.skip_to_stage emitted when --from-stage is active (--resume path)
   [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] no stage before <s>=cyc dispatched after pipeline.skip_to_stage (--resume path; RQFROM-2)
 
-  [38;2;0;212;255m[#1805/DSFSTG-1] --from-stage WITHOUT --resume rehydrates stages before <s> (skip_restore=false branch)[0m
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] setup s5: state branch populated (no-resume path)
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] intake-result.json rehydrated via --from-stage without --resume (skip_restore=false branch)
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] restored artifact contains prior-run payload (--from-stage without --resume; skip_restore=false used git state branch)
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] intake emits no stage.start when skipped via --from-stage without --resume
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] pipeline.skip_to_stage emitted when --from-stage active without --resume (skip_restore=false branch; RQFROM-2)
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] no stage before <s>=cyc dispatched after pipeline.skip_to_stage (no --resume path; RQFROM-2)
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] cycle.start emitted for <s>=cyc (first dispatch unit on plain --from-stage path)
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage dispatches <s> as first unit on plain path)
+  [38;2;0;212;255m[#1805/DSFSTG-1] --resume --from-stage <s> rehydrates prior stages (explicit --resume path)[0m
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] setup s5: state branch populated (--resume path)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] intake-result.json rehydrated via --resume --from-stage (second coverage sub-case)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] restored artifact contains prior-run payload (--resume --from-stage used git state branch)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] intake emits no stage.start when skipped via --resume --from-stage (second coverage sub-case)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] pipeline.skip_to_stage emitted when --from-stage active (--resume path, second coverage sub-case; RQFROM-2)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] no stage before <s>=cyc dispatched after pipeline.skip_to_stage (--resume path, second coverage sub-case; RQFROM-2)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] cycle.start emitted for <s>=cyc (first dispatch unit on --resume --from-stage path)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage dispatches <s> as first unit on --resume path)
 
   [38;2;0;212;255m[#1805/DSFSTG-2] --from-stage with no restorable artifact emits diagnostic and exits 1[0m
   [38;2;74;222;128m✓[0m [#1805/DSFSTG-2] --from-stage exits 1 when prior stage has no restorable artifact
@@ -76,15 +76,15 @@
   [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] pipeline.skip_to_stage emitted when --from-stage is active (--resume path)
   [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] no stage before <s>=cyc dispatched after pipeline.skip_to_stage (--resume path; RQFROM-2)
 
-  [38;2;0;212;255m[#1805/DSFSTG-1] --from-stage WITHOUT --resume rehydrates stages before <s> (skip_restore=false branch)[0m
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] setup s5: state branch populated (no-resume path)
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] intake-result.json rehydrated via --from-stage without --resume (skip_restore=false branch)
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] restored artifact contains prior-run payload (--from-stage without --resume; skip_restore=false used git state branch)
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] intake emits no stage.start when skipped via --from-stage without --resume
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] pipeline.skip_to_stage emitted when --from-stage active without --resume (skip_restore=false branch; RQFROM-2)
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] no stage before <s>=cyc dispatched after pipeline.skip_to_stage (no --resume path; RQFROM-2)
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] cycle.start emitted for <s>=cyc (first dispatch unit on plain --from-stage path)
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage dispatches <s> as first unit on plain path)
+  [38;2;0;212;255m[#1805/DSFSTG-1] --resume --from-stage <s> rehydrates prior stages (explicit --resume path)[0m
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] setup s5: state branch populated (--resume path)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] intake-result.json rehydrated via --resume --from-stage (second coverage sub-case)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] restored artifact contains prior-run payload (--resume --from-stage used git state branch)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] intake emits no stage.start when skipped via --resume --from-stage (second coverage sub-case)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] pipeline.skip_to_stage emitted when --from-stage active (--resume path, second coverage sub-case; RQFROM-2)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] no stage before <s>=cyc dispatched after pipeline.skip_to_stage (--resume path, second coverage sub-case; RQFROM-2)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] cycle.start emitted for <s>=cyc (first dispatch unit on --resume --from-stage path)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage dispatches <s> as first unit on --resume path)
 
   [38;2;0;212;255m[#1805/DSFSTG-2] --from-stage with no restorable artifact emits diagnostic and exits 1[0m
   [38;2;74;222;128m✓[0m [#1805/DSFSTG-2] --from-stage exits 1 when prior stage has no restorable artifact
@@ -204,11 +204,11 @@
 
   [38;2;0;212;255m[#1805/DSITER-1] cycle orchestrator resumes from current_iter (not 1)[0m
 
-══ build-test [cycle] seq=2 input ══════════════════════════════ 01:39:32 UTC ══
+══ build-test [cycle] seq=2 input ══════════════════════════════ 02:39:16 UTC ══
 (no stage summaries)
 
 
-══ build-test [cycle] seq=2 output OK 0.3s ═════════════════════ 01:39:32 UTC ══
+══ build-test [cycle] seq=2 output OK 0.3s ═════════════════════ 02:39:16 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
@@ -216,33 +216,33 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#1805/DSITER-1] iter-1 stages not dispatched on resume into iter-2 (no stage.start for complete iter)
 
   [38;2;0;212;255m[#1805/DSITER-1] nested-loop re-entry after outer resume starts at iter=1 (outer consumed flag)[0m
-══ build-test [cycle] seq=1 input ══════════════════════════════ 01:39:32 UTC ══
+══ build-test [cycle] seq=1 input ══════════════════════════════ 02:39:16 UTC ══
 (no feedback — first iteration)
 
 
-══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 01:39:33 UTC ══
+══ build-test [cycle] seq=1 output OK 0.2s ═════════════════════ 02:39:17 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
   [38;2;74;222;128m✓[0m [#1805/DSITER-1] nested-loop re-entry starts at iter=1 (outer resume consumed/cleared _ZBUILD_RESUME_ACTIVE)
 
   [38;2;0;212;255m[#1805/DSITER-1] without _ZBUILD_RESUME_ACTIVE, fresh run always starts at iter=1[0m
-══ build-test [cycle] seq=1 input ══════════════════════════════ 01:39:33 UTC ══
+══ build-test [cycle] seq=1 input ══════════════════════════════ 02:39:17 UTC ══
 (no feedback — first iteration)
 
 
-══ build-test [cycle] seq=1 output OK 0.2s ═════════════════════ 01:39:33 UTC ══
+══ build-test [cycle] seq=1 output OK 0.2s ═════════════════════ 02:39:17 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
   [38;2;74;222;128m✓[0m [#1805/DSITER-1] without _ZBUILD_RESUME_ACTIVE, fresh run starts at iter=1 (guard prevents iter-skip)
 
   [38;2;0;212;255m[#1805/DSITER-1] write side: current_iter=1 persisted in state before first cycle_dispatch_stage call[0m
-══ build-test [cycle] seq=1 input ══════════════════════════════ 01:39:33 UTC ══
+══ build-test [cycle] seq=1 input ══════════════════════════════ 02:39:17 UTC ══
 (no feedback — first iteration)
 
 
-══ build-test [cycle] seq=1 output OK 0.3s ═════════════════════ 01:39:34 UTC ══
+══ build-test [cycle] seq=1 output OK 0.2s ═════════════════════ 02:39:17 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
@@ -250,10 +250,10 @@ health: progress=0 (no progress) - defects=0 → score=0
 
   [38;2;0;212;255m[#1805/DSCMBR-1] complete cycle members in interrupted iter skipped; interrupted member dispatched[0m
 
-══ build-test [cycle] seq=2 input ══════════════════════════════ 01:39:34 UTC ══
+══ build-test [cycle] seq=2 input ══════════════════════════════ 02:39:18 UTC ══
 (no stage summaries)
 
-══ build-test [cycle] seq=2 output OK 0.2s ═════════════════════ 01:39:34 UTC ══
+══ build-test [cycle] seq=2 output OK 0.2s ═════════════════════ 02:39:18 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
@@ -261,10 +261,10 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#1805/DSCMBR-1] stage.start emitted for 'test' in iter 2 (interrupted cycle member dispatched on resume)
 
   [38;2;0;212;255m[#1805/DSCMBR-1] iter=1 interrupted: build complete in iter=1 is skipped, test dispatched[0m
-══ build-test [cycle] seq=1 input ══════════════════════════════ 01:39:34 UTC ══
+══ build-test [cycle] seq=1 input ══════════════════════════════ 02:39:18 UTC ══
 (no feedback — first iteration)
 
-══ build-test [cycle] seq=1 output OK 0.2s ═════════════════════ 01:39:35 UTC ══
+══ build-test [cycle] seq=1 output OK 0.2s ═════════════════════ 02:39:18 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
@@ -287,11 +287,11 @@ health: progress=0 (no progress) - defects=0 → score=0
 
   [38;2;0;212;255m[#1805/DSITER-1] cycle orchestrator resumes from current_iter (not 1)[0m
 
-══ build-test [cycle] seq=2 input ══════════════════════════════ 01:38:26 UTC ══
+══ build-test [cycle] seq=2 input ══════════════════════════════ 02:38:15 UTC ══
 (no stage summaries)
 
 
-══ build-test [cycle] seq=2 output OK 0.3s ═════════════════════ 01:38:26 UTC ══
+══ build-test [cycle] seq=2 output OK 0.2s ═════════════════════ 02:38:15 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
@@ -299,33 +299,33 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#1805/DSITER-1] iter-1 stages not dispatched on resume into iter-2 (no stage.start for complete iter)
 
   [38;2;0;212;255m[#1805/DSITER-1] nested-loop re-entry after outer resume starts at iter=1 (outer consumed flag)[0m
-══ build-test [cycle] seq=1 input ══════════════════════════════ 01:38:26 UTC ══
+══ build-test [cycle] seq=1 input ══════════════════════════════ 02:38:15 UTC ══
 (no feedback — first iteration)
 
 
-══ build-test [cycle] seq=1 output OK 0.2s ═════════════════════ 01:38:27 UTC ══
+══ build-test [cycle] seq=1 output OK 0.2s ═════════════════════ 02:38:15 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
   [38;2;74;222;128m✓[0m [#1805/DSITER-1] nested-loop re-entry starts at iter=1 (outer resume consumed/cleared _ZBUILD_RESUME_ACTIVE)
 
   [38;2;0;212;255m[#1805/DSITER-1] without _ZBUILD_RESUME_ACTIVE, fresh run always starts at iter=1[0m
-══ build-test [cycle] seq=1 input ══════════════════════════════ 01:38:27 UTC ══
+══ build-test [cycle] seq=1 input ══════════════════════════════ 02:38:15 UTC ══
 (no feedback — first iteration)
 
 
-══ build-test [cycle] seq=1 output OK 0.2s ═════════════════════ 01:38:27 UTC ══
+══ build-test [cycle] seq=1 output OK 0.2s ═════════════════════ 02:38:16 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
   [38;2;74;222;128m✓[0m [#1805/DSITER-1] without _ZBUILD_RESUME_ACTIVE, fresh run starts at iter=1 (guard prevents iter-skip)
 
   [38;2;0;212;255m[#1805/DSITER-1] write side: current_iter=1 persisted in state before first cycle_dispatch_stage call[0m
-══ build-test [cycle] seq=1 input ══════════════════════════════ 01:38:27 UTC ══
+══ build-test [cycle] seq=1 input ══════════════════════════════ 02:38:16 UTC ══
 (no feedback — first iteration)
 
 
-══ build-test [cycle] seq=1 output OK 0.2s ═════════════════════ 01:38:27 UTC ══
+══ build-test [cycle] seq=1 output OK 0.2s ═════════════════════ 02:38:16 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
@@ -333,10 +333,10 @@ health: progress=0 (no progress) - defects=0 → score=0
 
   [38;2;0;212;255m[#1805/DSCMBR-1] complete cycle members in interrupted iter skipped; interrupted member dispatched[0m
 
-══ build-test [cycle] seq=2 input ══════════════════════════════ 01:38:28 UTC ══
+══ build-test [cycle] seq=2 input ══════════════════════════════ 02:38:16 UTC ══
 (no stage summaries)
 
-══ build-test [cycle] seq=2 output OK 0.2s ═════════════════════ 01:38:28 UTC ══
+══ build-test [cycle] seq=2 output OK 0.2s ═════════════════════ 02:38:17 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
@@ -344,10 +344,10 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#1805/DSCMBR-1] stage.start emitted for 'test' in iter 2 (interrupted cycle member dispatched on resume)
 
   [38;2;0;212;255m[#1805/DSCMBR-1] iter=1 interrupted: build complete in iter=1 is skipped, test dispatched[0m
-══ build-test [cycle] seq=1 input ══════════════════════════════ 01:38:28 UTC ══
+══ build-test [cycle] seq=1 input ══════════════════════════════ 02:38:17 UTC ══
 (no feedback — first iteration)
 
-══ build-test [cycle] seq=1 output OK 0.2s ═════════════════════ 01:38:28 UTC ══
+══ build-test [cycle] seq=1 output OK 0.2s ═════════════════════ 02:38:17 UTC ══
 exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: build-test ✓ ──
@@ -524,84 +524,101 @@ health: progress=0 (no progress) - defects=0 → score=0
 
   [38;2;74;222;128m[1mAll 51 tests passed[0m
 
-### scripts/lib/run-status-text.sh reverted tests/unit/descriptive-id-readers-test.sh
+### scripts/lib/run-status-text.sh reverted tests/unit/hydrate-stage-test.sh
 
-[38;2;0;212;255m[1m  every reader of a SPEC id reads a descriptive one (#2462)[0m
+[38;2;0;212;255m[1m  hydrate stage (#1074)[0m
 [2m  ══════════════════════════════════════════[0m
 
-  [38;2;74;222;128m✓[0m [R1] descriptive and old ids are listed
-  [38;2;74;222;128m✓[0m [R1] a REMOVED line is read with its reason
-  [38;2;74;222;128m✓[0m [R1] ...and is not part of the SPEC before it
-  [38;2;74;222;128m✓[0m [R1] covers reads after a wrapped line
-  [38;2;74;222;128m✓[0m [R2] a descriptive id's test files, found by its tag
-  [38;2;74;222;128m✓[0m [R11] an old id's file
-  [38;2;74;222;128m✓[0m [R2] the union of test files
-  [38;2;74;222;128m✓[0m [R3] WIRING stops at a descriptive SPEC line
-  [38;2;74;222;128m✓[0m [R4] quoted evidence text with spaces is one item
-  [38;2;74;222;128m✓[0m [R5] the last other verdict, by a descriptive tag
-  [38;2;74;222;128m✓[0m [R11] ...and by an old one
-  [38;2;74;222;128m✓[0m [R6] the id on a NEGCTL PASS line
-  [38;2;74;222;128m✓[0m [R6] ...and on a NEGCTL ERROR line
-  [38;2;74;222;128m✓[0m [R11] ...and an old one
-  [38;2;74;222;128m✓[0m [R7] build's limits name no test file and no scope list
-  [38;2;74;222;128m✓[0m [R7] the false-completion probe no longer reads SPEC-<n> alone
-  [38;2;248;113;113m✗[0m [R8] descriptive and old labels are shown as code
-    [2mexpected: failed `[#1805/DSFSTG-1]` and ``, got: failed `[#1805/DSFSTG-1]` and [0m
-  [38;2;74;222;128m✓[0m [R9] a tag still in the contract stays
-  [38;2;74;222;128m✓[0m [R11] ...an old-form one too
-  [38;2;74;222;128m✓[0m [R9] this issue's old-form tag no longer in the contract goes
-  [38;2;74;222;128m✓[0m [R9] ...and a descriptive one
-  [38;2;74;222;128m✓[0m [R9] another issue's tag stays
-  [38;2;74;222;128m✓[0m [R9] a bracket that is no tag stays
-  [38;2;74;222;128m✓[0m [R10] the coverage check names the evidence by its text
-  [38;2;74;222;128m✓[0m [R10] ...and the file to open
-  [38;2;74;222;128m✓[0m [R10] issue-acceptance names the evidence by its text
-  [38;2;74;222;128m✓[0m [R10] ...with no window of lines
-  [38;2;74;222;128m✓[0m [R12] issue-acceptance's prompt names the issue's requirements
-  [38;2;74;222;128m✓[0m [R12] ...and does not say they are numbered R-1, R-2
+  [38;2;74;222;128m✓[0m [SETUP] the author run snapshotted and pushed (exit 0)
+
+  [38;2;0;212;255m[SPEC-1][change] a fresh clone restores prior work[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] premise: no local state ref in a fresh clone
+  [38;2;74;222;128m✓[0m [SPEC-1] premise: no remote-tracking state ref either
+  [38;2;74;222;128m✓[0m [SPEC-1] control: restore without a fetch reports first-run
+  [38;2;74;222;128m✓[0m [SPEC-1] hydrate returns 0 (exit 0)
+  [38;2;74;222;128m✓[0m [SPEC-1] prior plan.json was restored
+  [38;2;74;222;128m✓[0m [SPEC-1] prior design.md was restored
+  [38;2;74;222;128m✓[0m [SPEC-1] the result records how many were restored
+  [38;2;74;222;128m✓[0m [SPEC-6] no separate restored area is made
+  [38;2;74;222;128m✓[0m [SPEC-6] a live file already there is kept
+  [38;2;74;222;128m✓[0m [SPEC-6] … and a missing one is put back
+
+  [38;2;0;212;255m[SPEC-2][guard] unpushed local work survives a hydrate[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] the local snapshot succeeded (exit 0)
+  [38;2;74;222;128m✓[0m [SPEC-2] premise: the local snapshot created a ref
+  [38;2;74;222;128m✓[0m [SPEC-2] the local branch ref is unmoved by the fetch
+  [38;2;74;222;128m✓[0m [SPEC-2] and the LOCAL (unpushed) content is what got restored
+
+  [38;2;0;212;255m[SPEC-4][change] hydrate records data.source[0m
+  [38;2;74;222;128m✓[0m [source-guard] the fresh-clone restore still reports restored
+  [38;2;74;222;128m✓[0m [SPEC-4] a fresh clone records source=remote, not local
+
+  [38;2;0;212;255m[SPEC-5][change] hydrate adopts the fetched tip locally[0m
+  [38;2;74;222;128m✓[0m [SPEC-5] the local state ref now exists and matches the fetched tip
+
+  [38;2;0;212;255m[SPEC-7][change] stage-io records are not put back[0m
+  [38;2;74;222;128m✓[0m [SPEC-7] a stage's output is put back
+  [38;2;74;222;128m✓[0m [SPEC-7] an earlier run's stage-io record is not put back
+
+  [38;2;0;212;255m[#1805/DSDLGT-1] hydrate_run calls _artifact_persist_put_back (not inline _hydrate_put_back)[0m
+  [38;2;74;222;128m✓[0m [#1805/DSDLGT-1] hydrate_run invoked _artifact_persist_put_back (sentinel written)
+
+  [38;2;0;212;255m[SPEC-3][guard] a failed restore leaves the area absent, not partial[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] hydrate still returns 0 on a failed restore (exit 0)
+  [38;2;74;222;128m✓[0m [SPEC-3] the half-extracted file was NOT promoted
+  [38;2;74;222;128m✓[0m [SPEC-3] the staging tree is discarded whole
+  [38;2;74;222;128m✓[0m [SPEC-3] and the result records fail (#2366)
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 29 tests failed[0m
+  [38;2;74;222;128m[1mAll 25 tests passed[0m
 
-  [38;2;248;113;113m✗[0m [R8] descriptive and old labels are shown as code
+### scripts/lib/run-status-text.sh head tests/unit/hydrate-stage-test.sh
 
-### scripts/lib/run-status-text.sh head tests/unit/descriptive-id-readers-test.sh
-
-[38;2;0;212;255m[1m  every reader of a SPEC id reads a descriptive one (#2462)[0m
+[38;2;0;212;255m[1m  hydrate stage (#1074)[0m
 [2m  ══════════════════════════════════════════[0m
 
-  [38;2;74;222;128m✓[0m [R1] descriptive and old ids are listed
-  [38;2;74;222;128m✓[0m [R1] a REMOVED line is read with its reason
-  [38;2;74;222;128m✓[0m [R1] ...and is not part of the SPEC before it
-  [38;2;74;222;128m✓[0m [R1] covers reads after a wrapped line
-  [38;2;74;222;128m✓[0m [R2] a descriptive id's test files, found by its tag
-  [38;2;74;222;128m✓[0m [R11] an old id's file
-  [38;2;74;222;128m✓[0m [R2] the union of test files
-  [38;2;74;222;128m✓[0m [R3] WIRING stops at a descriptive SPEC line
-  [38;2;74;222;128m✓[0m [R4] quoted evidence text with spaces is one item
-  [38;2;74;222;128m✓[0m [R5] the last other verdict, by a descriptive tag
-  [38;2;74;222;128m✓[0m [R11] ...and by an old one
-  [38;2;74;222;128m✓[0m [R6] the id on a NEGCTL PASS line
-  [38;2;74;222;128m✓[0m [R6] ...and on a NEGCTL ERROR line
-  [38;2;74;222;128m✓[0m [R11] ...and an old one
-  [38;2;74;222;128m✓[0m [R7] build's limits name no test file and no scope list
-  [38;2;74;222;128m✓[0m [R7] the false-completion probe no longer reads SPEC-<n> alone
-  [38;2;74;222;128m✓[0m [R8] descriptive and old labels are shown as code
-  [38;2;74;222;128m✓[0m [R9] a tag still in the contract stays
-  [38;2;74;222;128m✓[0m [R11] ...an old-form one too
-  [38;2;74;222;128m✓[0m [R9] this issue's old-form tag no longer in the contract goes
-  [38;2;74;222;128m✓[0m [R9] ...and a descriptive one
-  [38;2;74;222;128m✓[0m [R9] another issue's tag stays
-  [38;2;74;222;128m✓[0m [R9] a bracket that is no tag stays
-  [38;2;74;222;128m✓[0m [R10] the coverage check names the evidence by its text
-  [38;2;74;222;128m✓[0m [R10] ...and the file to open
-  [38;2;74;222;128m✓[0m [R10] issue-acceptance names the evidence by its text
-  [38;2;74;222;128m✓[0m [R10] ...with no window of lines
-  [38;2;74;222;128m✓[0m [R12] issue-acceptance's prompt names the issue's requirements
-  [38;2;74;222;128m✓[0m [R12] ...and does not say they are numbered R-1, R-2
+  [38;2;74;222;128m✓[0m [SETUP] the author run snapshotted and pushed (exit 0)
+
+  [38;2;0;212;255m[SPEC-1][change] a fresh clone restores prior work[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] premise: no local state ref in a fresh clone
+  [38;2;74;222;128m✓[0m [SPEC-1] premise: no remote-tracking state ref either
+  [38;2;74;222;128m✓[0m [SPEC-1] control: restore without a fetch reports first-run
+  [38;2;74;222;128m✓[0m [SPEC-1] hydrate returns 0 (exit 0)
+  [38;2;74;222;128m✓[0m [SPEC-1] prior plan.json was restored
+  [38;2;74;222;128m✓[0m [SPEC-1] prior design.md was restored
+  [38;2;74;222;128m✓[0m [SPEC-1] the result records how many were restored
+  [38;2;74;222;128m✓[0m [SPEC-6] no separate restored area is made
+  [38;2;74;222;128m✓[0m [SPEC-6] a live file already there is kept
+  [38;2;74;222;128m✓[0m [SPEC-6] … and a missing one is put back
+
+  [38;2;0;212;255m[SPEC-2][guard] unpushed local work survives a hydrate[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] the local snapshot succeeded (exit 0)
+  [38;2;74;222;128m✓[0m [SPEC-2] premise: the local snapshot created a ref
+  [38;2;74;222;128m✓[0m [SPEC-2] the local branch ref is unmoved by the fetch
+  [38;2;74;222;128m✓[0m [SPEC-2] and the LOCAL (unpushed) content is what got restored
+
+  [38;2;0;212;255m[SPEC-4][change] hydrate records data.source[0m
+  [38;2;74;222;128m✓[0m [source-guard] the fresh-clone restore still reports restored
+  [38;2;74;222;128m✓[0m [SPEC-4] a fresh clone records source=remote, not local
+
+  [38;2;0;212;255m[SPEC-5][change] hydrate adopts the fetched tip locally[0m
+  [38;2;74;222;128m✓[0m [SPEC-5] the local state ref now exists and matches the fetched tip
+
+  [38;2;0;212;255m[SPEC-7][change] stage-io records are not put back[0m
+  [38;2;74;222;128m✓[0m [SPEC-7] a stage's output is put back
+  [38;2;74;222;128m✓[0m [SPEC-7] an earlier run's stage-io record is not put back
+
+  [38;2;0;212;255m[#1805/DSDLGT-1] hydrate_run calls _artifact_persist_put_back (not inline _hydrate_put_back)[0m
+  [38;2;74;222;128m✓[0m [#1805/DSDLGT-1] hydrate_run invoked _artifact_persist_put_back (sentinel written)
+
+  [38;2;0;212;255m[SPEC-3][guard] a failed restore leaves the area absent, not partial[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] hydrate still returns 0 on a failed restore (exit 0)
+  [38;2;74;222;128m✓[0m [SPEC-3] the half-extracted file was NOT promoted
+  [38;2;74;222;128m✓[0m [SPEC-3] the staging tree is discarded whole
+  [38;2;74;222;128m✓[0m [SPEC-3] and the result records fail (#2366)
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 29 tests passed[0m
+  [38;2;74;222;128m[1mAll 25 tests passed[0m
 

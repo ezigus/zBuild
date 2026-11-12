@@ -16,15 +16,15 @@
   [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] pipeline.skip_to_stage emitted when --from-stage is active (--resume path)
   [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] no stage before <s>=cyc dispatched after pipeline.skip_to_stage (--resume path; RQFROM-2)
 
-  [38;2;0;212;255m[#1805/DSFSTG-1] --from-stage WITHOUT --resume rehydrates stages before <s> (skip_restore=false branch)[0m
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] setup s5: state branch populated (no-resume path)
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] intake-result.json rehydrated via --from-stage without --resume (skip_restore=false branch)
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] restored artifact contains prior-run payload (--from-stage without --resume; skip_restore=false used git state branch)
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] intake emits no stage.start when skipped via --from-stage without --resume
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] pipeline.skip_to_stage emitted when --from-stage active without --resume (skip_restore=false branch; RQFROM-2)
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] no stage before <s>=cyc dispatched after pipeline.skip_to_stage (no --resume path; RQFROM-2)
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] cycle.start emitted for <s>=cyc (first dispatch unit on plain --from-stage path)
-  [38;2;248;113;113m✗[0m [#1805/DSFSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage dispatches <s> as first unit on plain path)
+  [38;2;0;212;255m[#1805/DSFSTG-1] --resume --from-stage <s> rehydrates prior stages (explicit --resume path)[0m
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] setup s5: state branch populated (--resume path)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] intake-result.json rehydrated via --resume --from-stage (second coverage sub-case)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] restored artifact contains prior-run payload (--resume --from-stage used git state branch)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] intake emits no stage.start when skipped via --resume --from-stage (second coverage sub-case)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] pipeline.skip_to_stage emitted when --from-stage active (--resume path, second coverage sub-case; RQFROM-2)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] no stage before <s>=cyc dispatched after pipeline.skip_to_stage (--resume path, second coverage sub-case; RQFROM-2)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] cycle.start emitted for <s>=cyc (first dispatch unit on --resume --from-stage path)
+  [38;2;248;113;113m✗[0m [#1805/DSFSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage dispatches <s> as first unit on --resume path)
     [2mexpected >0, got: 0[0m
 
   [38;2;0;212;255m[#1805/DSFSTG-2] --from-stage with no restorable artifact emits diagnostic and exits 1[0m
@@ -62,7 +62,7 @@
   [38;2;248;113;113m[1m2 of 35 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1805/DSFSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage target cyc was dispatched as first stage)
-  [38;2;248;113;113m✗[0m [#1805/DSFSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage dispatches <s> as first unit on plain path)
+  [38;2;248;113;113m✗[0m [#1805/DSFSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage dispatches <s> as first unit on --resume path)
 
 ### core/pipeline/cycle-orchestrator.sh head tests/integration/from-stage-rehydrate-test.sh
 
@@ -81,15 +81,15 @@
   [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] pipeline.skip_to_stage emitted when --from-stage is active (--resume path)
   [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] no stage before <s>=cyc dispatched after pipeline.skip_to_stage (--resume path; RQFROM-2)
 
-  [38;2;0;212;255m[#1805/DSFSTG-1] --from-stage WITHOUT --resume rehydrates stages before <s> (skip_restore=false branch)[0m
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] setup s5: state branch populated (no-resume path)
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] intake-result.json rehydrated via --from-stage without --resume (skip_restore=false branch)
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] restored artifact contains prior-run payload (--from-stage without --resume; skip_restore=false used git state branch)
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] intake emits no stage.start when skipped via --from-stage without --resume
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] pipeline.skip_to_stage emitted when --from-stage active without --resume (skip_restore=false branch; RQFROM-2)
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] no stage before <s>=cyc dispatched after pipeline.skip_to_stage (no --resume path; RQFROM-2)
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] cycle.start emitted for <s>=cyc (first dispatch unit on plain --from-stage path)
-  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage dispatches <s> as first unit on plain path)
+  [38;2;0;212;255m[#1805/DSFSTG-1] --resume --from-stage <s> rehydrates prior stages (explicit --resume path)[0m
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] setup s5: state branch populated (--resume path)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] intake-result.json rehydrated via --resume --from-stage (second coverage sub-case)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] restored artifact contains prior-run payload (--resume --from-stage used git state branch)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] intake emits no stage.start when skipped via --resume --from-stage (second coverage sub-case)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] pipeline.skip_to_stage emitted when --from-stage active (--resume path, second coverage sub-case; RQFROM-2)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] no stage before <s>=cyc dispatched after pipeline.skip_to_stage (--resume path, second coverage sub-case; RQFROM-2)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] cycle.start emitted for <s>=cyc (first dispatch unit on --resume --from-stage path)
+  [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage dispatches <s> as first unit on --resume path)
 
   [38;2;0;212;255m[#1805/DSFSTG-2] --from-stage with no restorable artifact emits diagnostic and exits 1[0m
   [38;2;74;222;128m✓[0m [#1805/DSFSTG-2] --from-stage exits 1 when prior stage has no restorable artifact

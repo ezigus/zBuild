@@ -71897,3 +71897,16 @@ cpu 93 148 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.b
 file 221 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bR8Ubx/tests/golden/golden-contracts-test.sh
 tier 272 golden
 tier 99250 lint
+run 43 targeted
+cpu 1100 2440 tests/integration/resume-loop-state-test.sh
+file 3963 tests/integration/resume-loop-state-test.sh
+cpu 1196 2568 tests/integration/pipeline-resume-test.sh
+file 5610 tests/integration/pipeline-resume-test.sh
+cpu 270 583 tests/unit/hydrate-stage-test.sh
+file 926 tests/unit/hydrate-stage-test.sh
+cpu 3076 7228 tests/integration/resume-entry-points-test.sh
+file 10645 tests/integration/resume-entry-points-test.sh
+cpu 3677 8368 tests/integration/from-stage-rehydrate-test.sh
+file 12274 tests/integration/from-stage-rehydrate-test.sh
+cpu 3688 8585 tests/integration/resume-rehydrate-test.sh
+file 12142 tests/integration/resume-rehydrate-test.sh

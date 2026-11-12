@@ -1,3 +1,4 @@
+the acceptance check failed — scripts/lib/run-status-text.sh was put back to its old version on its own and every test still passed, so no test checks what this change does to it — add a test that fails without the change to it
 NEGCTL PASS DSRHYD-1
       design : On resume, before the dispatch loop, completed-stage artifacts appear in ZBUILD_ARTIFACT_DIR byte-id…
       asserts: assert_fail "[#1805/DSRHYD-1] setup: snapshot to state branch failed"          "rc=$_s1_snap_rc; $(c…
@@ -53,4 +54,4 @@ REACHABILITY PASS core/pipeline/runner.sh
 REACHABILITY PASS core/pipeline/cycle-orchestrator.sh
 REACHABILITY PASS plugins/tool/hydrate/plugin.sh
 REACHABILITY PASS change core/state/artifact-persist.sh
-REACHABILITY PASS change scripts/lib/run-status-text.sh
+REACHABILITY FAIL untested_change scripts/lib/run-status-text.sh
