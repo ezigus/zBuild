@@ -18,6 +18,9 @@ _ZBUILD_BUILD_SUMMARY_LOADED=1
 # sources this file alone.
 declare -F zb_reply_join_v >/dev/null 2>&1 \
     || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/reply-units.sh" 2>/dev/null || true
+# #2527: build's answers are read by the one answer reader (ADR-068 §6).
+# shellcheck source=../../../../scripts/lib/stage-answers.sh
+source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/stage-answers.sh"
 # #2108: the false-completion guard spawns TESTFILEs under the same scrub the
 # acceptance gate uses (env-scrub.sh sources nothing, so no cycle).
 if ! declare -F _zbuild_make_fresh_shell >/dev/null 2>&1; then
@@ -181,18 +184,20 @@ _build_not_reproduced() {
 # `ANSWER <the finding as listed>: wrong — the test is wrong: <file>: <why>`, and
 # (#2508) from `ANSWER <the finding as listed>: not mine — the test must change:
 # <file>: <why>` — a test that pins what this change alters is the test
-# author's to change, never build's. Read by the shell: it runs on every try (ADR-065).
+# author's to change, never build's. #2527: the answers are the ones
+# zb_answers_collect_v reads, so a finding named as listed, "(opened by …)" and
+# all, is read. Read by the shell: it runs on every try (ADR-065).
 _build_test_wrong() {
-    local line re had=0 _joined
-    # #2460: a wrapped answer is read whole.
-    zb_reply_join_v _joined "${1:-}"
-    re='^[[:space:]>*`_-]*answer[[:space:]]+(.+[[:space:]]finding[[:space:]]+[0-9]+)[[:space:]]*:.*the[[:space:]]+test[[:space:]]+(is[[:space:]]+wrong|must[[:space:]]+change)[[:space:]]*:[[:space:]]*(.+)$'
+    local a re had=0
+    local -a _btw=()
+    zb_answers_collect_v _btw "${1:-}"
+    re='^[^:]*finding[[:space:]]+[0-9]+:.*the[[:space:]]+test[[:space:]]+(is[[:space:]]+wrong|must[[:space:]]+change)[[:space:]]*:[[:space:]]*(.+)$'
     shopt -q nocasematch && had=1
     shopt -s nocasematch
-    while IFS= read -r line; do
-        [[ "$line" =~ $re ]] || continue
-        printf '%s: %s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[3]%"${BASH_REMATCH[3]##*[![:space:]]}"}"
-    done <<< "$_joined"
+    for a in ${_btw[@]+"${_btw[@]}"}; do
+        [[ "$a" =~ $re ]] || continue
+        printf '%s: %s\n' "${a%%:*}" "${BASH_REMATCH[2]%"${BASH_REMATCH[2]##*[![:space:]]}"}"
+    done
     (( had )) || shopt -u nocasematch
 }
 

@@ -37,6 +37,11 @@
 #             that stage ran: build runs that one test file once, before working
 #             on it, to see whether it still fails. "Red RIGHT NOW" was false at
 #             the start of every rerun and after a test was changed.
+# W9 [change] (#2527) build's "the test is wrong" answers are read by the one
+#             answer reader: a finding named as listed, "(opened by …)" and all,
+#             is read. #1805 run 43130129438: build wrote "ANSWER issue-acceptance
+#             finding 1 (opened by issue-acceptance): wrong — the test is wrong: …"
+#             in rounds 1 and 2, and neither reached test-author.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -135,6 +140,15 @@ assert_contains "[W3] ...labelled so it can answer it" "$pw" "build-tests findin
 assert_not_contains "[W3] ...and not build's diff" "$pw" "BUILD-SECRET-DIFF"
 assert_not_contains "[W3] ...nor build's summary" "$pw" "BUILD-SECRET-SUMMARY-MD"
 assert_not_contains "[W3] ...nor build's result" "$pw" "BUILD-SECRET-SUMMARY-JSON"
+
+# ── W9 ───────────────────────────────────────────────────────────────────────
+(
+    source "$REPO_ROOT/plugins/agent/build/plugin.sh" >/dev/null 2>&1
+    _build_test_wrong $'ANSWER issue-acceptance finding 1 (opened by issue-acceptance): wrong — the test is wrong: tests/f-test.sh: S5 runs --from-stage without --resume\nANSWER test finding 1 (opened by test): not mine — the test must change: tests/f-test.sh: S6 too\nANSWER lens-sre-code finding 2: wrong — the event is emitted\nANSWER build-tests finding 3: done — fixed it' > "$TEST_TEMP_DIR/w9.txt"
+)
+assert_eq "[W9] a finding named with its (opened by …) label is read, and so is the plain one" \
+    "issue-acceptance finding 1: tests/f-test.sh: S5 runs --from-stage without --resume
+test finding 1: tests/f-test.sh: S6 too" "$(cat "$TEST_TEMP_DIR/w9.txt" 2>/dev/null)"
 
 cleanup_test_env
 print_test_results

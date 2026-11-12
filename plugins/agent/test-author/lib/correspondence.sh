@@ -198,8 +198,8 @@ _sc_judge() {
             _scj_unt="${_scj_why:-no test can prove it}"
             # The line it is about: the part whose words hold the quote, else the first.
             _scj_c=""
-            [[ "$_scj_q" =~ ^\"(.*)\"$ ]] && for _scj_lab in "${_scj_order[@]}"; do
-                _judge_holds "${_scj_text[$_scj_lab]}" "${BASH_REMATCH[1]}" && { _scj_c="$_scj_lab"; break; }
+            for _scj_lab in "${_scj_order[@]}"; do
+                _judge_holds "${_scj_text[$_scj_lab]}" "$_scj_q" && { _scj_c="$_scj_lab"; break; }
             done
             _scj_n=$((_scj_n + 1))
             _scj_head+=("${_scj_c:+${_scj_pw[$_scj_c]}: }$_scj_unt — no test can prove it")
@@ -224,12 +224,10 @@ _sc_judge() {
         fi
         [[ -n "$_scj_cand" ]] || { _scj_bad+=("$_scj_sid has no $_scj_pw1 line"); continue; }
         _scj_lab=""
-        if [[ "$_scj_q" =~ ^\"(.*)\"$ ]]; then
-            _scj_x="${BASH_REMATCH[1]}"
-            while IFS= read -r _scj_c; do
-                [[ -n "$_scj_c" ]] && _judge_holds "${_scj_text[$_scj_c]}" "$_scj_x" && { _scj_lab="$_scj_c"; break; }
-            done <<< "$_scj_cand"
-        fi
+        # #2527: the quote as written; _judge_holds sets its quote marks aside.
+        while IFS= read -r _scj_c; do
+            [[ -n "$_scj_c" ]] && _judge_holds "${_scj_text[$_scj_c]}" "$_scj_q" && { _scj_lab="$_scj_c"; break; }
+        done <<< "$_scj_cand"
         if [[ -z "$_scj_lab" ]]; then
             case "$_scj_pw1" in
                 When) _scj_bad+=("$_scj_sid When's quote is not in its When line") ;;

@@ -1,6 +1,6 @@
 # ADR-070 — One fixed list of requirements per issue
 
-**Status:** Accepted (2026-10-05); amended 2026-11-08 (#2495, §4: the check looks both ways through the SPECs only, and does not judge the scope); amended 2026-11-09 (#2508, §4: design writes no scope block; what build changes is held to the requirements by issue-acceptance)
+**Status:** Accepted (2026-10-05); amended 2026-11-12 (#2527, §1: intake's check is shown each removed item with its words and why, and is never told to name a listed id; §4: design's coverage check takes a quote from the issue's words too); amended 2026-11-08 (#2495, §4: the check looks both ways through the SPECs only, and does not judge the scope); amended 2026-11-09 (#2508, §4: design writes no scope block; what build changes is held to the requirements by issue-acceptance)
 **Issue:** #2306
 **Amends:** ADR-046 (design-gate gains C7), ADR-069 §2 (a requirement line may also carry ` covers: `)
 **Related:** ADR-055 (inter-stage data contract), ADR-040 §5 (spec-coverage judges against the issue), ADR-066 (every ADR statement has a test), ADR-067 (prompts speak plainly)
@@ -168,6 +168,14 @@ finds.
 
 Design writes no scope block and names no test file (ADR-069 §11, ADR-030 §8): a list written before any code exists was wrong often enough to end runs. The other direction of §4 — something the change does that the issue does not ask for — is now judged on the change itself: issue-acceptance names each part of the change no requirement asks for, as a finding for build (ADR-072 §3). A requirement design does not understand is written as an `UNCLEAR:` line with the assumption it went on with (ADR-069 §12), so the requirement list stays the one list every stage reads, and its open questions are shown to the people who can answer them.
 
+## Amendment 2026-11-12 (#2527) — §1: the check sees what was removed; §4: a quote may be the issue's words
+
+On #1805 run 43130129438 two answers that were right were lost to what the checks were shown and held to.
+
+- **§1: intake's check is shown each removed item with its words and why it was removed,** not only its id, and told that an item already removed needs no line. It was shown only the ids, so it did not see that the note "tests must use a cycle" was already removed; it named the note again under a new id, `RQTEST-2`.
+- **§1: a `NOT-A-REQUIREMENT:` line for an id the list does not have is asked again with "that is not in the list, so leave that line out"** — never "name only a listed id". Told to name a listed id, the check named `RQRESU-4`, a requirement the issue states, and it left the list.
+- **§4: design's coverage check's quote for an uncovered requirement may be the requirement's words or the issue's,** as issue-acceptance's already may (§4). The check is shown both; it quoted the issue's "(an automatic resume does not count)", which intake had left out of RQFROM-4, and its answer — that no SPEC covered the case — was thrown away.
+
 ## Enforced by
 
 - Amendment 2026-11-09 (#2508) §4 → `tests/unit/design-names-no-files-test.sh` N1, N8 (no scope block is asked for or required), N9–N10 (UNCLEAR lines); `tests/unit/issue-acceptance-unasked-test.sh` U1–U4 (the change is held to the requirements)
@@ -191,3 +199,5 @@ Design writes no scope block and names no test file (ADR-069 §11, ADR-030 §8):
 - §2 → `tests/unit/requirements-list-test.sh` Q1 (the manifests declare the output and the four inputs; a goal run leaves no list)
 - §3 → `tests/unit/requirements-list-test.sh` Q2 (covers split from the text and evidence, either order), Q3 (an uncovered R fails, named with its words; all covered — one by `[done]` — passes; no list skips), Q4 (the design prompt shows the list and the covers syntax)
 - §4 → `tests/unit/requirements-list-test.sh` Q5 (spec-coverage prompt), Q6 (issue-acceptance prompt)
+- Amendment 2026-11-12 §1 (#2527: removed items shown with their words; no "name a listed id") → `tests/unit/intake-process-notes-test.sh` P5, P6
+- Amendment 2026-11-12 §4 (#2527: an uncovered quote may be the issue's words) → `tests/unit/design-coverage-test.sh` I2

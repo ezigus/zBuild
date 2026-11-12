@@ -16,21 +16,32 @@ _judge_words_v() {
     _jwo="${_jww[*]}"
 }
 
+# _judge_marks_v <var> <text> — the text with the marks a quote may add or drop
+# left out: `*`, `_` and backticks (#2472), and quote marks, straight and curly,
+# and the apostrophe (#2527: on #1805 run 43130129438 a judge quoted with no
+# quote marks, as asked, and every answer was refused). The curly ones are
+# replaced one by one, so no locale can split them.
+_judge_marks_v() {
+    local -n _jmk="$1"
+    _jmk="${2//[*_\`\"\']/}"; _jmk="${_jmk//“/}"; _jmk="${_jmk//”/}"; _jmk="${_jmk//‘/}"; _jmk="${_jmk//’/}"
+}
+
 # _judge_holds <text> <quote> — rc 0 when <text> holds <quote>, spacing and
-# the markdown marks `*`, `_` and backticks aside (#2472: the issue wrote
-# `stage *k*`, the judge quoted "stage k", as it reads).
+# the marks _judge_marks_v leaves out aside (#2472: the issue wrote `stage *k*`,
+# the judge quoted "stage k", as it reads).
 # A model escapes characters it copies: \" and \\ (#2487), and \` \$ \| (#1805
 # run 43093018140, #2525). Read as written first, since code holds real
 # backslashes, then with each escape read as the character it stands for —
 # before the marks are set aside, or "\`\`" would leave a backslash behind.
 _judge_holds() {
-    local _jh_t="${1//[*_\`]/}" _jh_q="${2//[*_\`]/}" _jh_u
+    local _jh_t _jh_q _jh_u
+    _judge_marks_v _jh_t "$1"; _judge_marks_v _jh_q "$2"
     _judge_words_v _jh_t "$_jh_t"; _judge_words_v _jh_q "$_jh_q"
     [[ -n "$_jh_q" ]] || return 1
     [[ " $_jh_t " == *"$_jh_q"* ]] && return 0
     [[ "$2" == *\\* ]] || return 1
     _jh_u="${2//\\\\/$'\x01'}"; _jh_u="${_jh_u//\\/}"; _jh_u="${_jh_u//$'\x01'/\\}"
-    _jh_u="${_jh_u//[*_\`]/}"; _judge_words_v _jh_u "$_jh_u"
+    _judge_marks_v _jh_u "$_jh_u"; _judge_words_v _jh_u "$_jh_u"
     [[ -n "$_jh_u" && " $_jh_t " == *"$_jh_u"* ]]
 }
 
@@ -74,13 +85,9 @@ judge_quote_check_v() {
             _jqw="is not a quote: write <file> | <one line from it, copied as it is>, with no quote marks around the line"
             return 1
         fi
-        # The item's own words, as they are; a pair of quote marks around them is not theirs.
-        _judge__txt="$_judge__q"
-        local _judge__in=""
-        [[ "$_judge__txt" =~ ^\"(.*)\"$ ]] && _judge__in="${BASH_REMATCH[1]}"
-        [[ -n "$_judge__in" ]] && ! _judge_holds "$_judge__own" "$_judge__txt" && _judge__txt="$_judge__in"
-        _judge_holds "$_judge__own" "$_judge__txt" && return 0
-        _jqw="is not in the item's own words: $_judge__txt"
+        # The item's own words, quote marks aside (#2527).
+        _judge_holds "$_judge__own" "$_judge__q" && return 0
+        _jqw="is not in the item's own words: $_judge__q"
         return 1
     fi
     _judge__path="$_jqs_path"; _judge__txt="$_jqs_txt"

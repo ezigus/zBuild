@@ -223,6 +223,14 @@ for _ev in scripts/three.sh:3 scripts/three.sh:0; do
     assert_contains "[G4] evidence '$_ev' names a line number and is rejected" "$(_viol)" "DONE_LINE_EVIDENCE DSWORK-2 $_ev"
 done
 
+# #2527 (ADR-072 §3): evidence is a quote like any other — spacing, quote marks
+# and the markdown marks aside — not an exact match.
+printf '%s\n' 'run_guard "$mode"   # the `guard` runs first' > "$ROOT/scripts/guard.sh"
+_run_gate_with_md "$(_g_md 'DSWORK-1[code]: x' '  When: it runs' '  Then: it is done' 'DSWORK-2[done]: already there evidence: scripts/guard.sh | run_guard $mode # the guard runs first' '  When: it runs' '  Then: it is done')"
+assert_eq "[G4b] evidence quoted without its quote marks, backticks or spacing → pass" "pass" "$VERDICT"
+_run_gate_with_md "$(_g_md 'DSWORK-1[code]: x' '  When: it runs' '  Then: it is done' 'DSWORK-2[done]: already there evidence: scripts/guard.sh | run_other $mode' '  When: it runs' '  Then: it is done')"
+assert_contains "[G4b] guard: evidence text the file does not hold is still refused" "$(_viol)" "DONE_TEXT_MISSING DSWORK-2"
+
 _run_gate_with_md "$(_g_md 'DSWORK-1[code]: x' '  When: it runs' '  Then: it is done' 'DSWORK-2[no-code]: docs' 'DSWORK-3[done]: there evidence: scripts/three.sh:"line one"' '  When: it runs' '  Then: it is done')"
 assert_eq "[G5] [no-code] and [done] need no test file of their own" "pass" "$VERDICT"
 

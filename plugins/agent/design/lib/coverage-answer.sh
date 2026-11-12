@@ -48,7 +48,9 @@ _dcov_parse() {
                 covered) continue ;;
                 uncovered)
                     if [[ -z "$quote" ]]; then bad+=("$id has no QUOTE"); continue; fi
-                    judge_quote_check_v w "$quote" "${req_text[$id]}" "$repo" "$base" || { bad+=("$id's quote $w"); continue; }
+                    # #2527 (ADR-070 §4): the requirement's words or the issue's, as
+                    # issue-acceptance reads them; intake may have left some out.
+                    judge_quote_check_v w "$quote" "${req_text[$id]}"$'\n'"${issue:-}" "$repo" "$base" || { bad+=("$id's quote $w"); continue; }
                     _DESIGN_UNCOVERED+=("$id: ${why:-no SPEC covers it} — $quote") ;;
                 *) bad+=("$id is a requirement: it is covered or uncovered, not $word") ;;
             esac
@@ -164,11 +166,10 @@ _dcov_part_line() {
     fi
     if [[ -z "$cand" ]]; then bad+=("$id has no $pw line"); return 0; fi
     if [[ -z "$quote" ]]; then bad+=("$id $pw has no QUOTE"); return 0; fi
-    if [[ ! "$quote" =~ ^\"(.*)\"$ ]]; then bad+=("$id $pw's quote is not a quote: write \"<that part's own words>\""); return 0; fi
-    local q="${BASH_REMATCH[1]}"
+    # #2527: the quote as written; _judge_holds sets its quote marks aside.
     while IFS= read -r c; do
         [[ -n "$c" ]] || continue
-        _judge_holds "${ptext[$id $c]}" "$q" && { lab="$c"; break; }
+        _judge_holds "${ptext[$id $c]}" "$quote" && { lab="$c"; break; }
     done <<< "$cand"
     if [[ -z "$lab" ]]; then
         case "$pw" in
