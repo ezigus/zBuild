@@ -15,6 +15,11 @@
 #   moved since design last ran — files and the issue text — is the engine's, under
 #   Previous work (ADR-067 §8; stage-prompt-contract-test P4), not design's own block.
 # SPEC-3[change]: the prompt no longer says "refine, do not recreate"
+# SPEC-6[change] (#2525, ADR-069 §2): every SPEC design keeps is checked against
+#   the issue's requirements as they are NOW, and one a requirement now
+#   contradicts is rewritten or removed. On #1805, DSFSTG-1 (2026-11-02) said
+#   --from-stage alone works; R4a (2026-11-10) said it needs --resume; design
+#   added DSFSTG-4 and kept DSFSTG-1, and the two contradicted.
 # SPEC-5[change]: one wording whichever try or run wrote it — a rerun of an issue
 #   continues it (ADR-068 §8): no "earlier in this run", no "previous attempt", no
 #   "earlier run" label
@@ -86,6 +91,10 @@ for _case in 2 5 5b; do
     assert_contains "[SPEC-2] ($_case) the latest design is carried into the prompt" "$Pc" "LATEST-DESIGN-$_case"
     assert_contains "[SPEC-2] ($_case) as YOUR LATEST DESIGN" "$Pc" "### YOUR LATEST DESIGN"
     assert_contains "[SPEC-2] ($_case) every claim is re-checked against the tree as it is now" "$Pc" "re-checked against the tree as it is NOW"
+    assert_contains "[SPEC-6] ($_case) every SPEC it keeps is checked against the requirements as they are now" "$Pc" \
+        "every SPEC it keeps against the issue's requirements as they are NOW"
+    assert_contains "[SPEC-6] ($_case) ...and one a requirement now contradicts is rewritten or removed" "$Pc" \
+        "a SPEC a requirement now contradicts is rewritten or removed"
     if grep -qF 'refine, do not recreate' <<< "$Pc"; then
         assert_fail "[SPEC-3] ($_case) the prompt no longer says 'refine, do not recreate'" "still present"
     else

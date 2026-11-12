@@ -104,6 +104,7 @@ _setup() {
 SPEC-1[change]: plugin-specific fields live under data:{} not at the top level
 SPEC-2[no-code]: the top-level result keys are unchanged
 SPEC-3[done]: results already carry a schema_version evidence: tests/acc-test.sh
+SPEC-4[doc]: the result doc says where plugin fields go
 WIRING: scripts/thing.sh
 ```
 EOF
@@ -131,6 +132,8 @@ assert_contains "[T1] a [no-code] requirement says its test must pass after and 
 assert_contains "[T1] a [done] requirement is in the prompt (#2517)" "$_P" "SPEC-3 [done] results already carry a schema_version"
 assert_contains "[T1] ...its test need not fail before" "$_P" \
     "the code from before this change already does this: its test must pass after this change; it need not fail before"
+# #2525 (ADR-069 §6): a [doc] requirement has no test, so it is not asked for.
+assert_eq "[T1] a [doc] requirement is not in the prompt" "0" "$(grep -c 'SPEC-4' <<< "$_P" || true)"
 assert_eq "[T1] no requirement is told to pass both before and after" "0" \
     "$(grep -c 'pass both before and after' <<< "$_P" || true)"
 

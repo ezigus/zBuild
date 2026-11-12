@@ -258,6 +258,8 @@ test_author_run() {
         [[ -n "$sid" ]] || continue
         local _st="" _txt="" _tfs
         _acceptance_spec_line "$_ta_blk" "$sid" && _st="$_ACC_SPEC_STATUS"
+        # #2525 (ADR-069 §6): a doc has no test; issue-acceptance reads it.
+        [[ "$_st" == "doc" ]] && continue
         # #2517 (ADR-069): a done requirement gets a test too — it proves the
         # finished change still does what the old code did.
         [[ "$_st" == "done" ]] && n_done=$(( n_done + 1 ))
@@ -286,7 +288,7 @@ test_author_run() {
     if [[ "$n" -eq 0 ]]; then
         _ta_emit "test_author.no_contract" "reason=no_specs"
         _ta_write_result "$art" "pass" \
-            "the acceptance block declares no SPECs — nothing to author" 0
+            "no SPEC in the acceptance block needs a test — nothing to author" 0
         return 0
     fi
 

@@ -176,7 +176,7 @@ acceptance_gate_run() {
     local -a failures=()
     # #2304: what the pass reason counts (ADR-069) — requirements checked on the
     # old and new code, already done, and needing no code.
-    local _ag_n_checked=0 _ag_n_done=0 _ag_n_nocode=0
+    local _ag_n_checked=0 _ag_n_done=0 _ag_n_nocode=0 _ag_n_doc=0
     # #1752: SPECs a NEGCTL line named, whatever it said, and whether negctl
     # reported a run-wide error — together they tell "checked nothing" apart.
     local _ag_statused=" " _ag_negctl_error=0
@@ -256,6 +256,7 @@ acceptance_gate_run() {
                 "NEGCTL PASS "*) _ag_n_checked=$((_ag_n_checked + 1)) ;;  # control confirmed
                 "NEGCTL SKIP "*" already_done") _ag_n_done=$((_ag_n_done + 1)) ;;
                 "NEGCTL SKIP "*" no_code")      _ag_n_nocode=$((_ag_n_nocode + 1)) ;;
+                "NEGCTL SKIP "*" doc")          _ag_n_doc=$((_ag_n_doc + 1)) ;;
                 "NEGCTL SKIP "*) : ;;  # no_impl_delta — legitimate skip
                 "NEGCTL FAIL "*)
                     # "NEGCTL FAIL <spec_id> <reason>"
@@ -432,6 +433,7 @@ acceptance_gate_run() {
     # with (#1220) — a pass must not read as a finding there. #2304: it counts
     # each status, so a pass that checked nothing on the old code says so.
     local _pass_reason="the acceptance check passed — ${_ag_n_checked} checked on the old and new code, ${_ag_n_done} already done, ${_ag_n_nocode} no code"
+    if (( _ag_n_doc > 0 )); then _pass_reason+=", ${_ag_n_doc} doc (read by issue-acceptance)"; fi
     # #2271 (ADR-068): the gate states its findings; it never decides who fixes
     # them. Every stage answers each finding, and the loops carry what nobody in
     # the build loop owns back to design.

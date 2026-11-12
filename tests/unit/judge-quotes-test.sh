@@ -28,6 +28,9 @@
 # Q9 a comment is quoted one line at a time (#2517, #2519)
 # Q10 a quote is `<file> | <one line>`, or the item's own words as they are, with
 #    nothing to escape (#2519)
+# Q11 a quote with a backslash in front of a character the file holds plainly is
+#    found: `\``, `\$`, `\|` (#2525); a line that really holds the backslash is
+#    still found as written, and a quote that is not there is still refused
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -374,6 +377,20 @@ _Q10P=""; judge_quote_path_v _Q10P 'scripts/cfg.sh | line one' "$XR" "$BASE"
 assert_eq "[Q10] the file a kept answer depends on" "scripts/cfg.sh" "$_Q10P"
 _Q10P="x"; judge_quote_path_v _Q10P 'refuse a missing' "$XR" "$BASE"
 assert_eq "[Q10] ...and none for the item's own words" "" "$_Q10P"
+
+print_test_section "Q11: a backslash in front of a character the file holds plainly"
+# On #1805 run 43093018140 issue-acceptance quoted the R8 line above with a
+# backslash in front of each backtick; the file holds plain backticks, and a try
+# was lost (#2525).
+printf '%s\n' 'echo "cost: $total | per call: $each"' >> "$XR/scripts/cfg.sh"
+assert_eq "[Q11] backticks written with a backslash" "ok" \
+    "$(_q 'scripts/cfg.sh | failed \`[DSFSTG-1]\` and \`\`')"
+assert_eq "[Q11] a dollar sign and a bar written with a backslash" "ok" \
+    "$(_q 'scripts/cfg.sh | echo "cost: \$total \| per call: \$each"')"
+assert_eq "[Q11] guard: a line that holds the backslash is found as written" "ok" \
+    "$(_q 'scripts/cfg.sh | _rcl="$_out${_in}\`\`"; else')"
+assert_contains "[Q11] guard: a quote that is not there is still refused" \
+    "$(_q 'scripts/cfg.sh | failed \`[DSFSTG-9]\`')" "bad:"
 
 cleanup_test_env
 print_test_results

@@ -19,6 +19,9 @@
 #   T9  the baseline: a listed finding passes, a new finding fails, a listed
 #       finding that is gone fails (the list only shrinks)
 #   T10 the real tree passes, and `npm run lint` runs the lint
+#   T11 a test that reads the clock to see how long something took ($SECONDS,
+#       date +%s) fails; a mention in a comment or string does not (#2525: on
+#       #1805 run 43093018140 a busy machine made a 15 s bound 16 s)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -134,6 +137,13 @@ assert_contains "[T9] ...naming the new one" "$_t9" "tests/unit/x-test.sh:4"
 _t9s="$(_lint "$U" 'echo fixed' $'sleep-kill|tests/unit/x-test.sh|sleep 0.1')"
 assert_eq "[T9] a listed finding that is gone fails" "rc=1" "${_t9s%%$'\n'*}"
 assert_contains "[T9] ...telling you to remove the entry" "$_t9s" "remove"
+
+print_test_section "T11: a test reads no clock"
+assert_eq "[T11] \$SECONDS read to time something fails" "rc=1" "$(_rc "$U" $'_t0=$SECONDS\nrun_it\n_took=$(( SECONDS - _t0 ))')"
+assert_contains "[T11] ...saying why" "$(_lint "$U" '_t0=$SECONDS')" "reads the clock"
+assert_eq "[T11] date +%s fails" "rc=1" "$(_rc "$U" 'start="$(date +%s)"')"
+assert_eq "[T11] a comment that mentions SECONDS passes" "rc=0" "$(_rc "$U" '# the old test read $SECONDS here')"
+assert_eq "[T11] a line marked determinism-ok passes" "rc=0" "$(_rc "$U" '_t0=$SECONDS  # determinism-ok: a run id, not a timing')"
 
 print_test_section "T10: the real tree"
 _rc_t=0; _out_t="$(bash "$LINT" "$REPO_ROOT" 2>&1)" || _rc_t=$?

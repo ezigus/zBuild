@@ -161,10 +161,10 @@ _dck_plain() {
     case "$v" in
         UNCLEAR_MALFORMED*)  printf 'an UNCLEAR line is not in its form (%s) — write it as UNCLEAR: <id> | <the question> | <what you assumed>, all three parts on one line' "${rest#(}" ;;
         ACCEPTANCE_MISSING*) printf 'design.md has no readable ```acceptance block — add one with a line per requirement' ;;
-        NO_STATUS*)          printf '%s has no status — tag it [code] if it needs code (its test fails on the code from before your change and passes after), [no-code] if it needs work that changes no behaviour (docs, a test, config or a refactor), or [done] if the code already does it (then name the evidence after " evidence: ")' "$id" ;;
+        NO_STATUS*)          printf '%s has no status — tag it [code] if it needs code (its test fails on the code from before your change and passes after), [no-code] if it needs work that changes no behaviour (a test, config or a refactor), [doc] if it changes a doc (say what the doc must tell a reader), or [done] if the code already does it (then name the evidence after " evidence: ")' "$id" ;;
         # The retired tag is named, not written: design would copy it back.
         "UNKNOWN_STATUS "*" [guard] "*) printf '%s carries the old guard tag, which is no longer a status — tag it [done] if the code already does it, naming the evidence after " evidence: ", or [code] if it needs code' "$id" ;;
-        UNKNOWN_STATUS*)     printf '%s is tagged %s, which is not a status — tag it [code] if it needs code, [no-code] if it needs work that changes no behaviour, or [done] if the code already does it, naming the evidence after " evidence: "' "$id" "$third" ;;
+        UNKNOWN_STATUS*)     printf '%s is tagged %s, which is not a status — tag it [code] if it needs code, [no-code] if it needs work that changes no behaviour, [doc] if it changes a doc, or [done] if the code already does it, naming the evidence after " evidence: "' "$id" "$third" ;;
         DONE_NO_EVIDENCE*)   printf '%s is marked [done] but names no evidence — end its line with " evidence: " and a file and one of its lines (scripts/x.sh | run_guard()), or an existing test file, that shows the code already does it' "$id" ;;
         DONE_BAD_EVIDENCE*)  printf 'the evidence %s for %s does not point at the repository — name a file that exists, by its path from the repository root (no leading / and no ..), then " | " and one of its lines: scripts/x.sh | run_guard()' "$third" "$id" ;;
         # #2462: [done] is done on the code from before the change, shown by text.
@@ -174,6 +174,7 @@ _dck_plain() {
         DONE_TEXT_MISSING*)  printf 'the evidence %s for %s is not in that file — quote its text exactly' "$third" "$id" ;;
         DONE_NOT_BEFORE*)    printf '%s is marked [done], but its evidence %s is not in the code from before this change — this branch added it, so it is not done yet: tag %s [code] and give it a test' "$id" "$third" "$id" ;;
         ID_*)                zb_id_plain "$v" SPEC ;;
+        DOC_HAS_PARTS*)      printf '%s is a [doc] requirement with Given/When/Then, but no test runs a doc — write it on one line, saying what the doc must tell a reader' "$id" ;;
         CONTENTS_NOT_BEHAVIOUR*) printf '%s describes what a file contains, not what the code does — no test can prove that; describe the behaviour someone could observe (an input and what happens)' "$id" ;;
         "WIRING_MISSING ("*) printf 'the acceptance block does not say which existing file calls the new code — add a WIRING: line naming it, or WIRING: none if nothing calls it yet' ;;
         REQUIREMENT_NOT_COVERED*) local _rt="${rest#* (}"; _rt="${_rt%)}"
@@ -260,13 +261,19 @@ _design_checks() {
             _covered+="${_ACC_SPEC_COVERS//,/ } "
             # ── C10 PARTS (#2467, ADR-073 §3): a [code] or [done] SPEC is written
             # as Given/When/Then — one action, at least one thing to observe.
+            # #2525 (ADR-069 §1): a [doc] requirement is one line — no test runs it.
+            if [[ "$_ACC_SPEC_STATUS" == "doc" ]]; then
+                [[ -n "$_ACC_SPEC_PARTS" ]] && violations+=("DOC_HAS_PARTS $_spec (a [doc] requirement has no Given/When/Then)")
+                continue
+            fi
             _dck_parts "$_spec" "$_ACC_SPEC_STATUS" "$_ACC_SPEC_PARTS"
             # ADR-069 §9 (amended #2474): every SPEC, whatever its tag, says what
-            # someone could see the code do, not what a file contains.
+            # someone could see the code do, not what a file contains — except a
+            # [doc] one, which says what a doc tells a reader (#2525).
             [[ -n "$_ACC_SPEC_STATUS" ]] && _dck_describes_contents "$_ACC_SPEC_TEXT" \
                 && violations+=("CONTENTS_NOT_BEHAVIOUR $_spec (describes file contents, not behaviour)")
             case "$_ACC_SPEC_STATUS" in
-                "")      violations+=("NO_STATUS $_spec (requirement carries no [code], [no-code] or [done] status)") ;;
+                "")      violations+=("NO_STATUS $_spec (requirement carries no [code], [no-code], [doc] or [done] status)") ;;
                 no-code|code) : ;;
                 done)
                     if [[ "$_ACC_SPEC_TAG" == "guard" ]]; then

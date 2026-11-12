@@ -278,16 +278,18 @@ The design document MUST include:
    The status says what work the requirement needs. Look at the code before you choose:
    - \`${_DCK_ID_PREFIX}LOOP-1[code]:\` — it needs code. Its test must fail on the code as it is before your change, and pass after it.
      If the code already does it, it is not [code]: its test would already pass, and the build stalls on it.
-     Every requirement, whatever its status, describes what someone could see happen, not what a file contains: not "x.sh contains foo", "file y exists" or "the test file has both cases" — no test can prove those.
-   - \`${_DCK_ID_PREFIX}LOOP-2[no-code]:\` — it needs work that changes no behaviour: docs, a
-     test, config, or a refactor. Its test must pass after the change; it need not fail before.
+     Every requirement except a [doc] one describes what someone could see happen, not what a file contains: not "x.sh contains foo", "file y exists" or "the test file has both cases" — no test can prove those.
+   - \`${_DCK_ID_PREFIX}LOOP-2[no-code]:\` — it needs work that changes no behaviour: a test,
+     config, or a refactor. Its test must pass after the change; it need not fail before.
+   - \`${_DCK_ID_PREFIX}DOCS-1[doc]:\` — it changes a doc. It has no test and no Given/When/Then: say, on its one line, what the doc must tell a reader
+     (the guide says a resume puts back what every finished stage wrote). The doc is read to check it.
    - \`${_DCK_ID_PREFIX}GARD-1[done]:\` — the code from before your change already does it. Name the evidence at the end of the line, after \` evidence: \` —
      a file by its path from the repository root, then \` | \`, then one line of it copied as it is
      (scripts/x.sh | run_guard()), or an existing test file named alone.
      The text must be in the file on the commit this branch started from: code this work added is not
      done yet, so it is [code]. A [done] SPEC still gets a test: it must pass after the change, and it
      need not fail before — it proves the finished change still does what the old code did.
-   Every requirement carries one of the three. A change that edits code needs at least one [code] requirement.
+   Every requirement carries one of the four. A change that edits code needs at least one [code] requirement.
 
    You name no files: no test file, and no list of the files the change
    touches. The tests are written after the design, in the repository's test
@@ -304,7 +306,8 @@ ${_DCK_ID_PREFIX}LOOP-1[code]: <one new behaviour this change introduces>
   Then: <what a test can observe after it>
   And: <another thing a test can observe>
   Cleanup: <what must be true again after, when the setup or a Then outlives the test>
-${_DCK_ID_PREFIX}LOOP-2[no-code]: <docs, a test, config or a refactor that changes no behaviour>
+${_DCK_ID_PREFIX}LOOP-2[no-code]: <a test, config or a refactor that changes no behaviour>
+${_DCK_ID_PREFIX}DOCS-1[doc]: <what a doc must tell a reader>
 ${_DCK_ID_PREFIX}GARD-1[done]: <something the code already does> evidence: scripts/x.sh | run_guard()
   When: <the action>
   Then: <what the code from before this change already does>
@@ -400,7 +403,7 @@ DESIGN_PROMPT
     [[ -n "$_si_design_path" ]] && _prior_design_body="$(cat "$_si_design_path" 2>/dev/null || true)"
     if [[ -n "$_prior_design_body" ]]; then
         printf '\n### YOUR LATEST DESIGN (refine it; Previous work says what moved since you wrote it)\n' >> "$prompt_input_file"
-        printf 'Every claim it makes about the repository — an ADR it relies on, a file it lists, a hook, field or convention it declares — is re-checked against the tree as it is NOW; anything that no longer holds is dropped or re-derived, and the design says what changed and why. Keep what still holds; do not start over.\n' >> "$prompt_input_file"
+        printf 'Every claim it makes about the repository — an ADR it relies on, a file it lists, a hook, field or convention it declares — is re-checked against the tree as it is NOW, and every SPEC it keeps against the issue'"'"'s requirements as they are NOW, not only the new ones: anything that no longer holds is dropped or re-derived — a SPEC a requirement now contradicts is rewritten or removed — and the design says what changed and why. Keep what still holds; do not start over.\n' >> "$prompt_input_file"
         printf '\n%s\n' "$_prior_design_body" >> "$prompt_input_file"
         # #2470 (ADR-073 §1): the SPECs it keeps that still need their parts,
         # named before design writes, not learned from a failed check.

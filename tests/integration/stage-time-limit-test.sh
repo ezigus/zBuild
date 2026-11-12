@@ -8,7 +8,10 @@
 # the template may set `timeout_s:`; the default is 15 minutes.
 #
 # S1 [change] a stage past its limit is stopped, with everything it started,
-#             and its outcome is timed_out
+#             and its outcome is timed_out. It reads no clock (#2525): its stage
+#             waits on something that never comes, so only the limit can end it,
+#             and a busy machine cannot fail it (#1805 run 43093018140: a 15 s
+#             bound read 16 s)
 # S2 [guard]  a stage inside its limit runs as before: no time-limit record
 # S3 [change] the limit is the stage's `timeout_s:`, or 900 seconds when unset
 # S4 [change] the shipped templates give the long stages room: build 3600,
@@ -79,9 +82,12 @@ MF
 cat > "$P/plugin.sh" <<'PL'
 sleeper_run() {
     local art; art="$(dirname "$2")/artifacts"; mkdir -p "$art"
-    sleep "${SLEEP_FOR:-0}" &
-    printf '%s' "$!" > "$art/child.pid"
-    wait
+    if [[ -n "${BLOCK:-}" ]]; then
+        # Waits on something that never comes: only the limit ends the stage.
+        tail -f /dev/null &
+        printf '%s' "$!" > "$art/child.pid"
+        wait
+    fi
     source "@RESULT_LIB@"
     stage_result_write "$art/sleeper-result.json" pass "slept"
 }
@@ -93,10 +99,7 @@ printf '{"schema_version":1}' > "$S/pipeline-state.json"
 export ZBUILD_STATE_DIR="$S"
 
 # ── S1 ───────────────────────────────────────────────────────────────────────
-_t0=$SECONDS
-SLEEP_FOR=60 plugin_hook_call "$P" run slow "$S/pipeline-state.json" >/dev/null 2>&1; _rc=$?
-_took=$(( SECONDS - _t0 ))
-assert_eq "[S1] the stage is stopped near its limit, not after 60s" "yes" "$([[ $_took -lt 15 ]] && echo yes || echo "no (${_took}s)")"
+BLOCK=1 plugin_hook_call "$P" run slow "$S/pipeline-state.json" >/dev/null 2>&1; _rc=$?
 assert_eq "[S1] the dispatch does not report success" "yes" "$([[ $_rc -ne 0 ]] && echo yes || echo no)"
 _child="$(cat "$S/artifacts/child.pid" 2>/dev/null)"
 assert_eq "[S1] what the stage started is stopped too" "gone" \
@@ -106,11 +109,11 @@ assert_eq "[S1] its outcome is timed_out" "timed_out" \
 assert_contains "[S1] the engine says so" "$(cat "$ZBUILD_EVENTS_JSONL")" '"stage.time_limit.reached"'
 
 # ── S2 ───────────────────────────────────────────────────────────────────────
-SLEEP_FOR=0 plugin_hook_call "$P" run quick "$S/pipeline-state.json" >/dev/null 2>&1; _rc=$?
+plugin_hook_call "$P" run quick "$S/pipeline-state.json" >/dev/null 2>&1; _rc=$?
 assert_eq "[S2] a stage inside its limit succeeds" "0" "$_rc"
 assert_eq "[S2] ...and its outcome is its own" "complete" \
     "$(runner_read_stage_disposition "$S" "$P/manifest.yaml" quick "$_rc" 2>/dev/null)"
-SLEEP_FOR=0 plugin_hook_call "$P" run slow "$S/pipeline-state.json" >/dev/null 2>&1; _rc=$?
+plugin_hook_call "$P" run slow "$S/pipeline-state.json" >/dev/null 2>&1; _rc=$?
 assert_eq "[S2] a stage that hit its limit before runs clean the next time" "complete" \
     "$(runner_read_stage_disposition "$S" "$P/manifest.yaml" slow "$_rc" 2>/dev/null)"
 

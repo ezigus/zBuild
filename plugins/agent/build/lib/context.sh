@@ -39,7 +39,8 @@ _build_read_design_decisions() {
 # builder finds it and re-wires the defect.
 
 # _build_gather_acceptance_specs <design_md>  (#1978)
-# One line per SPEC: "SPEC-n<TAB>what it requires". A SPEC whose text cannot be
+# One line per SPEC: "SPEC-n<TAB>what it requires", and "<TAB>doc" after a [doc]
+# one (#2525: it has no test; build makes the doc say it). A SPEC whose text cannot be
 # resolved emits the bare id, so the prompt degrades to the id-only form rather
 # than dropping a SPEC the gate will still demand coverage for. A done SPEC is
 # left out: the code already does it, so build has nothing to do (#2304, ADR-069 §6).
@@ -58,7 +59,9 @@ _build_gather_acceptance_specs() {
             acceptance_parts_shown_v _bg_parts "$_ACC_SPEC_PARTS"
             for _p in ${_bg_parts[@]+"${_bg_parts[@]}"}; do text+=" — ${_p%%$'\t'*}: ${_p#*$'\t'}"; done
         fi
-        if [[ -n "$text" ]]; then
+        if [[ -n "$text" && "$_ACC_SPEC_STATUS" == "doc" ]]; then
+            printf '%s\t%s\tdoc\n' "$sid" "$text"
+        elif [[ -n "$text" ]]; then
             printf '%s\t%s\n' "$sid" "$text"
         else
             printf '%s\n' "$sid"

@@ -1,6 +1,6 @@
 # ADR-012 — Test Tiering and CI Gating
 
-**Status:** Accepted; amended 2026-11-08 (tests are deterministic); amended 2026-11-09 (#2510: a test signals only the processes it started)  
+**Status:** Accepted; amended 2026-11-08 (tests are deterministic); amended 2026-11-11 (#2525: a test reads no clock to see how long something took); amended 2026-11-09 (#2510: a test signals only the processes it started)  
 **Date:** 2026-05-25  
 **Deciders:** zbuild core team  
 
@@ -173,7 +173,15 @@ References: Martin Fowler, "Eradicating Non-Determinism in Tests" (martinfowler.
 
 6. **A test signals only what it started.** It never kills a pid it read from `ps` (a parent), and never looks across the machine for a fixed command line: a process it must find by its command line carries a value made for the run (the watchdog's limit), so another run's process never matches.
 
+## Amendment 2026-11-11 (#2525) — a test reads no clock to see how long something took
+
+`stage-time-limit-test.sh` ran a stage that slept 60 seconds, and checked that fewer than 15 went by. On #1805 run 43093018140 a busy machine made it 16, and the test failed: a test that times something passes or fails with the machine's load, like one that times a signal (3).
+
+7. **A test reads no clock to see how long something took.** It checks what shows the thing happened — an outcome, an event, a marker the process writes — and waits on a condition, never on time. A stage that must run until stopped waits on something that never comes, not on a long sleep. `scripts/lib/lint-test-determinism.sh` refuses a read of `$SECONDS` or `date +%s` in a test. The tests that already read the clock are listed in `config/test-determinism-baseline.txt` (75 lines), which only shrinks.
+
 ## Enforced by
+
+- Amendment 2026-11-11 (#2525: a test reads no clock) → `tests/unit/lint-test-determinism-test.sh` T11; `tests/integration/stage-time-limit-test.sh` S1
 
 - Amendment 2026-11-09 (#2510: a test signals only the processes it started) → `tests/unit/tests-signal-only-their-own-test.sh` P1, P2
 - Amendment 2026-11-08 (tests are deterministic) → `tests/unit/lint-test-determinism-test.sh` T1–T10 (the lint, its marks and its shrink-only baseline); `scripts/lib/lint-test-determinism.sh` runs in `npm run lint`; it reads code through `scripts/lib/shell-join.sh` (`tests/unit/shell-join-test.sh` S5–S6).

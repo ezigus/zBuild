@@ -20,6 +20,8 @@
 #   RA    a one-SPEC answer with no verdict is asked again once, told what was
 #         wrong and shown the answer (ADR-060 §6)
 #   A SPEC with no tagged assertion is not judged (the acceptance check reports it)
+#   DOC   a [doc] SPEC is not judged, even with a tagged assertion: no test
+#         proves a doc (#2525, ADR-069 §6)
 #   W1 the judge sees the whole test the assertion is in — its setup too, even
 #      when a blank line separates them — with the tagged lines marked (#1944
 #      run 40329284881: the check saw only the assertion's stanza and called it
@@ -187,6 +189,20 @@ route_to_model() { cat >/dev/null; printf 'x\n' >> "$_CALLS"; printf '%s' "$_REP
 _judge
 assert_eq "a SPEC with no tagged assertion is not judged: no call, no finding" "0|0" \
     "$(wc -l < "$_CALLS" | tr -d ' ')|${#_TA_CORR_FINDINGS[@]}"
+
+# ── DOC (#2525): a [doc] SPEC is not judged ─────────────────────────────────
+_contract 1
+printf '# Design\n```acceptance\nSPEC-1[code]: thing 1 holds\nSPEC-2[doc]: the doc says how thing 2 works\nWIRING: none\n```\n' > "$D"
+printf 'assert_eq "[SPEC-2] the doc says it" "1" "$got"\n' >> "$R/tests/acc-test.sh"
+_REPLY=""
+route_to_model() {
+    cat >/dev/null; printf 'x\n' >> "$_CALLS"; printf '%s' "$2" >> "$_P_FILE"
+    zb_test_check_ok "$2"; return 0
+}
+_judge
+assert_contains "[DOC] the design holds the doc SPEC" "$(cat "$D")" "SPEC-2[doc]:"
+assert_contains "[DOC] the [code] SPEC is judged" "$(cat "$_P_FILE")" "### SPEC-1"
+assert_eq "[DOC] the [doc] SPEC is not, though a test is tagged for it" "0" "$(grep -c '### SPEC-2' "$_P_FILE" || true)"
 
 cleanup_test_env
 print_test_results

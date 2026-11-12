@@ -216,6 +216,7 @@ _rl_requirements_readable() {
         _acceptance_spec_line "$blk" "$sid" && { txt="$_ACC_SPEC_TEXT"; st="$_ACC_SPEC_STATUS"; }
         case "$st" in
             no-code) kind="work that changes no behaviour" ;;
+            doc)     kind="a doc change — no test checks it" ;;
             done)    kind="already done — the code already does this" ;;
             *)       kind="new behaviour" ;;
         esac

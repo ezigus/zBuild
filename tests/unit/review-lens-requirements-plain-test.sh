@@ -16,6 +16,7 @@
 # L3 [change] no raw keys (`[change]:`, `WIRING:`, `TESTFILES:`) reach the lens
 # L4 [guard]  each requirement's test files are still named (#2508: the files in
 #             the repo's test folders that hold its tag)
+# L6 [change] (#2525, ADR-069) a [doc] requirement is shown as a doc change
 # L5 [change] (#2304, ADR-069) each status in plain words; a done one's evidence
 set -uo pipefail
 
@@ -44,6 +45,7 @@ cat > "$D" <<'EOF'
 SPEC-1[code]: the stage writes its result on every exit
 SPEC-2[no-code]: the docs describe the result file
 SPEC-3[done]: the dry run opens no PR evidence: plugins/agent/x/plugin.sh:12 tests/unit/z-test.sh
+SPEC-4[doc]: the stage doc says where the result goes
 WIRING: plugins/agent/x/plugin.sh
 ```
 EOF
@@ -56,6 +58,8 @@ assert_contains "[L5] a [no-code] requirement says it changes no behaviour" "$_c
     "SPEC-2 (work that changes no behaviour):"
 assert_contains "[L5] a [done] requirement says the code already does it" "$_ctx" \
     "SPEC-3 (already done — the code already does this): the dry run opens no PR"
+assert_contains "[L6] a [doc] requirement says it is a doc change" "$_ctx" \
+    "SPEC-4 (a doc change — no test checks it): the stage doc says where the result goes"
 assert_contains "[L5] ...and names what shows it" "$_ctx" \
     "shown by: plugins/agent/x/plugin.sh:12 tests/unit/z-test.sh"
 if grep -qF 'must keep working' <<< "$_ctx"; then

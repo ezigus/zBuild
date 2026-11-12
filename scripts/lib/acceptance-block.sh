@@ -10,7 +10,8 @@
 # convention of the sibling core/ and scripts/lib/ libraries. The function
 # below is self-contained (guarded parameter expansions + explicit returns).
 #
-# Size: over 500 lines, deliberately, for the reason acceptance-negctl.sh gives.
+# #2525: split, so no file is over 500 lines — acceptance-run.sh,
+# acceptance-testfiles.sh and acceptance-judge.sh, sourced at the end.
 #
 # Every `source` here records a failed load in _ZBUILD_CONTRACT_LOAD_ERRORS
 # rather than swallowing it; the gates fail on a non-empty list (#1752).
@@ -159,7 +160,7 @@ acceptance_list_spec_ids() {
 # Finds the requirement line for <spec_id> in an extracted block and sets, with
 # no subshell (so reading a requirement costs no extra fork):
 #   _ACC_SPEC_TAG    the tag, or empty
-#   _ACC_SPEC_STATUS code | no-code | done | unknown:<tag> | "" (no tag). The
+#   _ACC_SPEC_STATUS code | no-code | doc | done | unknown:<tag> | "" (no tag). The
 #                    old tags are still read: [change] is code, and [guard] is
 #                    done (the design-gate rejects [guard], so a new design
 #                    never carries it; an old one still reads sensibly).
@@ -192,6 +193,7 @@ _acceptance_spec_line() {
                 "")          _ACC_SPEC_STATUS="" ;;
                 code|change) _ACC_SPEC_STATUS="code" ;;
                 no-code)     _ACC_SPEC_STATUS="no-code" ;;
+                doc)         _ACC_SPEC_STATUS="doc" ;;
                 done|guard)  _ACC_SPEC_STATUS="done"
                              _ACC_SPEC_TEXT="${_ACC_SPEC_TEXT%% evidence: *}" ;;
                 *)           _ACC_SPEC_STATUS="unknown:$_ACC_SPEC_TAG" ;;
@@ -307,7 +309,7 @@ acceptance_block_render_v() {
 }
 
 # acceptance_spec_status <design_md> <spec_id>  (#2304, ADR-069 §1)
-# Echoes the requirement's status: code, no-code, done, unknown:<tag>, or an
+# Echoes the requirement's status: code, no-code, doc, done, unknown:<tag>, or an
 # empty line when it carries no tag or the id is absent.
 acceptance_spec_status() {
     local design_md="${1:-}" spec_id="${2:-}" block_output
@@ -484,303 +486,12 @@ acceptance_list_wiring() {
     return 1
 }
 
-# _acceptance_build_run_cmd <template> <testfile>
-# Expands a {files}-template for a single acceptance testfile.
-# Prints each command token NUL-separated for safe array construction by callers.
-# Returns 1 when the template contains no {files} token (misconfiguration guard).
-#
-# The template is whitespace-tokenized (read -ra) and the resulting array is
-# exec'd DIRECTLY by callers — the testfile path never passes through a shell,
-# so a filename cannot inject shell metacharacters. This is deliberate and is
-# why templates are simple whitespace-separated tokens (bash {files},
-# pytest {files}, jest {files}, cargo test {files}); a template embedding a
-# quoted multi-word argument (e.g. python3 -c 'import sys') is NOT supported —
-# honoring shell quoting would require eval, reintroducing the injection risk
-# this array-exec design avoids. ZBUILD_ACCEPTANCE_RUN_CMD is operator-declared
-# config (same trust model as ZBUILD_TEST_CMD_TARGETED), not untrusted input.
-_acceptance_build_run_cmd() {
-    local template="$1" testfile="$2"
-    [[ "$template" != *'{files}'* ]] && return 1
-    local -a parts
-    read -ra parts <<< "$template"
-    local part
-    for part in "${parts[@]}"; do
-        if [[ "$part" == '{files}' ]]; then
-            printf '%s\0' "$testfile"
-        else
-            printf '%s\0' "$part"
-        fi
-    done
-    return 0
-}
-
-# _acceptance_timeout_prefix lives in timeout-cmd.sh (#1752), loaded above —
-# the one helper every timeout bound in core/, scripts/ and plugins/ uses.
-
-# _acceptance_file_timeout <testfile_rel> <stage_bound_s>  (#2110)
-# The bound for ONE run of ONE file: the stage value raised to 3x the time the
-# test stage MEASURED for that file (artifacts/test-timing.log, `file <ms>
-# <path>`), never lowered, clamped at the test stage's own per-file ceiling
-# (ZBUILD_TEST_FILE_TIMEOUT, default 480). A flat 60s condemned a file the test
-# stage had just accepted at 129s — all 18 SPECs read `timeout`, 68 minutes per
-# gate pass (#1840). The timing log's paths point into a staging dir that no
-# longer exists, so the match is on the repo-relative suffix. Unmeasured file
-# (targeted reruns log only their subset) → stage value. ZBUILD_NEGCTL_TIMEOUT_MEASURED=0
-# disables the raise. The log is the gate's declared `test_timing` input
-# (ZBUILD_NEGCTL_TIMING_LOG, ADR-055 §1); this helper never rebuilds a path.
-_acceptance_file_timeout() {
-    local tf="$1" stage_s="$2"
-    [[ "$stage_s" =~ ^[0-9]+$ ]] || stage_s=60
-    [[ "${ZBUILD_NEGCTL_TIMEOUT_MEASURED:-1}" == "1" ]] || { printf '%s' "$stage_s"; return 0; }
-    local log="${ZBUILD_NEGCTL_TIMING_LOG:-}"
-    [[ -n "$tf" && -n "$log" && -f "$log" ]] || { printf '%s' "$stage_s"; return 0; }
-    local ceiling="${ZBUILD_TEST_FILE_TIMEOUT:-480}"
-    [[ "$ceiling" =~ ^[0-9]+$ && "$ceiling" -gt 0 ]] || ceiling=480
-    local kind ms path best_ms=0
-    while read -r kind ms path; do
-        [[ "$kind" == "file" && "$ms" =~ ^[0-9]+$ ]] || continue
-        [[ "$path" == "$tf" || "$path" == */"$tf" ]] || continue
-        (( ms > best_ms )) && best_ms=$ms
-    done < "$log"
-    local bound=$stage_s
-    if (( best_ms > 0 )); then
-        local measured_s=$(( (best_ms + 999) / 1000 ))
-        (( measured_s * 3 > bound )) && bound=$(( measured_s * 3 ))
-        (( bound > ceiling )) && bound=$ceiling
-        (( bound < stage_s )) && bound=$stage_s
-    fi
-    printf '%s' "$bound"
-}
-
-# ─── _acceptance_run_cached <key> <logfile> <cmd...>  (#2110) ───────────────
-# Memoises ONE execution of a test file per gate pass. The gate used to run the
-# whole file twice PER SPEC — 19 SPECs bound to one file = 38 runs of the same
-# thing, each answering every question the first pair already had. The verdict
-# for a SPEC is a pure function of (rc, capture) at baseline and at HEAD, so
-# every SPEC bound to the same file reads the same pair. The memo is a
-# directory of files (rc + capture), not a shell array: callers run inside
-# `$( )` and `< <( )`, where an array would die with the subshell.
-#
-# Keyed by the absolute path, which already separates a baseline worktree from
-# HEAD and one reverted-target worktree from another. Scope: the directory in
-# _ACCEPTANCE_RUN_CACHE_DIR — created by the check that runs first (or by the
-# plugin, so negctl and reachability share HEAD runs) and removed with it.
-# When the directory is unset, every call executes (pre-#2110 behaviour).
-_acceptance_run_cached() {
-    local key="$1" logfile="$2"; shift 2
-    local dir="${_ACCEPTANCE_RUN_CACHE_DIR:-}"
-    if [[ -z "$dir" || ! -d "$dir" ]]; then
-        if [[ -n "$logfile" ]]; then "$@" >>"$logfile" 2>&1 3>>"$logfile"; else "$@" >/dev/null 2>&1 3>&-; fi
-        return $?
-    fi
-    # The key is a digest of the path, not a sanitised path: `tests/a/b.sh`
-    # and `tests/a_b.sh` would otherwise share one entry, and the second file
-    # would replay the first's verdict without ever running (review, #2110).
-    local id; id="$(printf '%s' "$key" | cksum)"; id="${id%% *}-${#key}"
-    local rcf="$dir/$id.rc" capf="$dir/$id.cap"
-    local cached=""
-    if [[ -f "$rcf" ]]; then
-        read -r cached < "$rcf" || cached=""
-    fi
-    if [[ "$cached" =~ ^[0-9]+$ ]]; then
-        [[ -n "$logfile" && -f "$capf" ]] && cat "$capf" >> "$logfile" 2>/dev/null
-        return "$cached"
-    fi
-    local rc=0
-    : > "$capf"
-    "$@" >>"$capf" 2>&1 3>>"$capf" || rc=$?
-    printf '%s\n' "$rc" > "$rcf"
-    [[ -n "$logfile" ]] && cat "$capf" >> "$logfile" 2>/dev/null
-    return "$rc"
-}
-
-# _acceptance_run_cache_begin — ensure a memo dir exists for this check. Sets
-# _ACCEPTANCE_RUN_CACHE_OWNED=1 when this call created it (the caller removes
-# it on return), 0 when it joined one the plugin already opened. A global, not
-# stdout: the directory must be set in the CALLER's shell, and `$( )` would
-# lose it.
-_acceptance_run_cache_begin() {
-    _ACCEPTANCE_RUN_CACHE_OWNED=0
-    if [[ -n "${_ACCEPTANCE_RUN_CACHE_DIR:-}" && -d "$_ACCEPTANCE_RUN_CACHE_DIR" ]]; then
-        return 0
-    fi
-    _ACCEPTANCE_RUN_CACHE_DIR="$(mktemp -d "$(zbuild_engine_tmpdir)/zb-accept-runs.XXXXXX" 2>/dev/null || true)"
-    export _ACCEPTANCE_RUN_CACHE_DIR
-    [[ -n "$_ACCEPTANCE_RUN_CACHE_DIR" ]] && _ACCEPTANCE_RUN_CACHE_OWNED=1
-    return 0
-}
-
-# acceptance_list_supersedes <design_md>  (#2243)
-# The existing checks this change makes wrong, from design.md's ```supersedes
-# block — a fact about the change, stated by design; updating them to the new
-# behaviour is test-author's (#1842: nobody could, so build evaded one). One line
-# per check:  <repo-relative-path> <tag>: <why>
-# Prints "<path>\t<tag>\t<why>" per valid line. Absolute and ../ paths are
-# refused. No block → nothing.
-acceptance_list_supersedes() {
-    local design_md="${1:-}" line in_block=0 path rest tag why
-    [[ -z "$design_md" || ! -f "$design_md" ]] && return 0
-    while IFS= read -r line; do
-        line="${line%$'\r'}"
-        if [[ "$line" == '```supersedes' ]]; then in_block=1; continue; fi
-        # Every block counts, not only the first (review #2247).
-        if [[ $in_block -eq 1 && "$line" == '```' ]]; then in_block=0; continue; fi
-        [[ $in_block -eq 1 && -n "$line" ]] || continue
-        path="${line%% *}"; rest="${line#* }"
-        [[ "$path" == /* || "/$path/" == *"/../"* || "$rest" == "$line" ]] && continue
-        tag="${rest%%:*}"; why="${rest#*:}"; why="${why# }"
-        [[ "$tag" == "["*"]" ]] || continue
-        printf '%s\t%s\t%s\n' "$path" "$tag" "$why"
-    done < "$design_md"
-}
-
-# acceptance_spec_files_v <map_var> <design_md> [repo_root]  (#2508, ADR-069 §11)
-# Each SPEC's test files, found by its tag: map[<id>] = the files in the
-# repository's test folders (scripts/lib/test-paths.sh) that this branch added
-# or changed (#2517) and that hold the tag
-# acceptance_spec_tag builds for it, space separated, sorted. Design names no
-# files; test-author writes the tests wherever they belong, committed or not.
-# Two forks for every SPEC at once: git lists the files, one grep reads them.
-acceptance_spec_files_v() {
-    local -n _asf="$1"; local design_md="${2:-}" root="${3:-${ZBUILD_REPO_ROOT:-$PWD}}"
-    _asf=()
-    [[ -n "$design_md" && -f "$design_md" && -d "$root" ]] || return 0
-    local blk l tag sid
-    local -A _by_tag=()
-    local -a _tgs=()
-    blk="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 0
-    while IFS= read -r l; do
-        [[ "$l" =~ $_ACCEPTANCE_SPEC_RE ]] || continue
-        sid="${BASH_REMATCH[1]}"
-        acceptance_spec_tags_v _tgs "$sid"
-        for tag in "${_tgs[@]}"; do _by_tag[$tag]="$sid"; done
-    done <<< "$blk"
-    [[ ${#_by_tag[@]} -gt 0 ]] || return 0
-    local f
-    local -a files=() pats=()
-    zb_test_folder_branch_files_v files "$root"
-    [[ ${#files[@]} -gt 0 ]] || return 0
-    for tag in "${!_by_tag[@]}"; do pats+=(-e "$tag"); done
-    local id cur
-    # -o prints each tag found, after its file and a NUL (--null).
-    while IFS= read -r -d '' f && IFS= read -r tag; do
-        id="${_by_tag[$tag]:-}"
-        [[ -n "$id" ]] || continue
-        cur=" ${_asf[$id]:-} "
-        [[ "$cur" == *" $f "* ]] || _asf[$id]="${_asf[$id]:+${_asf[$id]} }$f"
-    done < <(cd "$root" && grep -oHIF --null "${pats[@]}" -- "${files[@]}" 2>/dev/null)
-    for id in "${!_asf[@]}"; do _acceptance_sort_words_v "_asf[$id]" "${_asf[$id]}"; done
-    return 0
-}
-
-# _acceptance_sort_words_v <var> <words> — the words, sorted (byte order), in
-# the shell: a SPEC has a few test files, not enough to pay for a sort fork.
-_acceptance_sort_words_v() {
-    local -n _asw="$1"; local -a _in=() _out=(); local w i
-    read -ra _in <<< "$2"
-    for w in ${_in[@]+"${_in[@]}"}; do
-        i=${#_out[@]}
-        while (( i > 0 )) && [[ "${_out[i-1]}" > "$w" ]]; do _out[i]="${_out[i-1]}"; i=$((i - 1)); done
-        _out[i]="$w"
-    done
-    _asw="${_out[*]-}"
-}
-
-# acceptance_list_testfiles <design_md> [repo_root] — every SPEC's test files,
-# found by tag (acceptance_spec_files_v), each once, sorted, one per line.
-acceptance_list_testfiles() {
-    local -A _alt=(); local _alt_all="" _alt_id _alt_f
-    acceptance_spec_files_v _alt "${1:-}" "${2:-}"
-    for _alt_id in "${!_alt[@]}"; do
-        for _alt_f in ${_alt[$_alt_id]}; do
-            [[ " $_alt_all " == *" $_alt_f "* ]] || _alt_all+="${_alt_all:+ }$_alt_f"
-        done
-    done
-    _acceptance_sort_words_v _alt_all "$_alt_all"
-    local -a _alt_w=(); read -ra _alt_w <<< "$_alt_all"
-    [[ ${#_alt_w[@]} -gt 0 ]] && printf '%s\n' "${_alt_w[@]}"
-    return 0
-}
-
-# acceptance_spec_desc <design_md> <spec_id>  (#1684)
-# Echoes the description text from the SPEC-n line in the acceptance block —
-# the text after the colon on the matching `SPEC-<id>[classifier]: <text>` line.
-# Truncates to 100 characters with '…' when longer — long enough that the
-# clause distinguishing one SPEC from another survives, which is the point of
-# showing it. Returns empty string (not an error) when the SPEC id is not found.
-acceptance_spec_desc() {
-    local design_md="${1:-}" spec_id="${2:-}"
-    [[ -z "$design_md" || -z "$spec_id" || ! -f "$design_md" ]] && return 0
-    local block_output
-    block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 0
-    _acceptance_spec_line "$block_output" "$spec_id" || return 0
-    local text="$_ACC_SPEC_TEXT"
-    if [[ ${#text} -gt 100 ]]; then
-        printf '%s…\n' "${text:0:100}"
-    else
-        printf '%s\n' "$text"
-    fi
-    return 0
-}
-
-# acceptance_list_testfiles_for_spec <design_md> <spec_id> [repo_root] — the
-# SPEC's test files, found by its tag (acceptance_spec_files_v), one per line.
-acceptance_list_testfiles_for_spec() {
-    local -A _altf=()
-    [[ -n "${2:-}" ]] || return 0
-    acceptance_spec_files_v _altf "${1:-}" "${3:-}"
-    local -a _altf_w=(); read -ra _altf_w <<< "${_altf[$2]:-}"
-    [[ ${#_altf_w[@]} -gt 0 ]] && printf '%s\n' "${_altf_w[@]}"
-    return 0
-}
-
-# design_decisions_prose <design_md> [max_lines] — the design's DECISION PROSE:
-# everything outside fenced blocks, capped (default 120 lines). Empty when absent.
-# Shared by build (honours the decisions) and review-lens (judges against them,
-# #1654) — one extractor, so the two cannot read a design differently.
-design_decisions_prose() {
-    local design_md="${1:-}" cap="${2:-120}" body
-    [[ -z "$design_md" || ! -f "$design_md" ]] && return 0
-    body="$(awk -v cap="$cap" '
-        /^```/ { infence = !infence; next }
-        infence { next }
-        { print; emitted++ }
-        emitted >= cap { exit }
-    ' "$design_md" 2>/dev/null || true)"
-    body="$(printf '%s\n' "$body" | sed '/./,$!d')"
-    [[ -z "${body//[[:space:]]/}" ]] && return 0
-    printf '%s\n' "$body"
-}
-
-# acceptance_requirements_for_judge <design_md>  (#2304, ADR-069 §7)
-# The requirements as issue-acceptance reads them: each one's words and, in
-# plain words, what its status means — never the raw tag. A done requirement
-# also gets its evidence, a file and a piece of its text: the judge opens the
-# file and reads as much of it as it needs (#2464, ADR-072 §2 — no window of
-# lines). The caller cleans the text before it reaches a model.
-acceptance_requirements_for_judge() {
-    local design_md="${1:-}" blk l sid ev
-    blk="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 0
-    while IFS= read -r l; do
-        [[ "$l" =~ $_ACCEPTANCE_SPEC_RE ]] || continue
-        sid="${BASH_REMATCH[1]}"
-        _acceptance_spec_line "$blk" "$sid" || continue
-        printf -- '- %s: %s\n' "$sid" "$_ACC_SPEC_TEXT"
-        # #2467: and its parts, each on its own line.
-        local -a _rfj_p=(); local _rfj_x
-        acceptance_parts_shown_v _rfj_p "$_ACC_SPEC_PARTS"
-        for _rfj_x in ${_rfj_p[@]+"${_rfj_p[@]}"}; do printf '  %s: %s\n' "${_rfj_x%%$'\t'*}" "${_rfj_x#*$'\t'}"; done
-        case "$_ACC_SPEC_STATUS" in
-            no-code) printf '  Status: needs work (no code) — nothing checked it mechanically; judge it yourself, and say whether its tests would catch it broken\n' ;;
-            done)    printf '  Status: already done — design says the code already does this; check the claim\n' ;;
-            *)       printf '  Status: needs work (code) — its test failed on the old code and passes now\n'; continue ;;
-        esac
-        [[ "$_ACC_SPEC_STATUS" == "done" && "$_ACC_SPEC_REST" == *" evidence: "* ]] || continue
-        local -a _evs=(); local _evl="${_ACC_SPEC_REST#* evidence: }"
-        _acceptance_evidence_items_v _evs "${_evl%% covers: *}"
-        for ev in "${_evs[@]+"${_evs[@]}"}"; do
-            printf '  Evidence: %s — open the file and read the code around that text\n' "$ev"
-        done
-    done <<< "$blk"
-    return 0
-}
+# #2525: the rest of the acceptance-block readers, split by what each does so
+# no file passes 500 lines. Same-directory lines, so _runner_contract_lib_closure
+# lists them too.
+# shellcheck source=./acceptance-run.sh
+source "$_ACCEPTANCE_BLOCK_DIR/acceptance-run.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" acceptance-run.sh"
+# shellcheck source=./acceptance-testfiles.sh
+source "$_ACCEPTANCE_BLOCK_DIR/acceptance-testfiles.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" acceptance-testfiles.sh"
+# shellcheck source=./acceptance-judge.sh
+source "$_ACCEPTANCE_BLOCK_DIR/acceptance-judge.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" acceptance-judge.sh"
