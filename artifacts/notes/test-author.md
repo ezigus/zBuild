@@ -1,10 +1,8 @@
-# test-author notes — issue #1805 (round 63)
+# test-author notes — issue #1805 (round 66)
 
 ## Status: ALL SPECS COVERED — LOOP_COMPLETE
 
-All 17 SPECs have passing assertions written and verified on disk. 887 tests
-passed on the last test run. All open findings from previous rounds have been
-answered.
+All 17 SPECs have passing assertions written and verified on disk.
 
 ## What is in each test file
 
@@ -21,6 +19,9 @@ answered.
 
 ### tests/integration/from-stage-rehydrate-test.sh
 - DSFSTG-1 ✓: --from-stage <s> rehydrates prior stages and dispatches <s> first (S3, S5, S6)
+  - S3: `--resume --from-stage cyc` with cycle fixture
+  - S5: `--resume --from-stage cyc` with second coverage sub-case
+  - S6: `--resume --from-stage build` with leaf stage
 - DSFSTG-2 ✓: missing artifact → exit 1 with "has no restorable primary artifact" on stderr
 - DSFSTG-3 ✓: combined --resume --from-stage; stages after <s> dispatched despite being complete (S10)
 - DSFSTG-4 ✓: --from-stage without --resume exits 1 with "only valid with --resume"
@@ -36,35 +37,50 @@ answered.
 - DSENTR-2 ✓: auto-resume via latest symlink (ZBUILD_STATE_FILE/DIR unset via env -u) → pipeline.resume emitted, artifacts restored
 
 ### tests/unit/descriptive-id-readers-test.sh
-- DSFSTG-1 ✓: --from-stage ID reader returns correct stage name
+- Identical to base code (R8 reverted in a prior round; no SPEC assertions from this issue)
 
 ### tests/integration/pipeline-resume-test.sh (not a SPEC test file, verified)
 - Pre-writes intake artifact before --resume run (DSRHYD-2 compatibility) ✓
 - --from-stage without --resume section uses status:"in_progress" with $now timestamp
   (auto-resume condition for RQFROM-4) ✓
+- This test FAILS because the implementation in core/pipeline/runner.sh doesn't
+  meet RQFROM-4 (the flat-file auto-resume elif fires before the --from-stage guard
+  for in_progress state). The test is correct. Fixing the implementation is not in scope.
 
-## Findings answered this round
+## Unit test files reverted to base code (round 66)
+
+The following files had changes from base code that tested an unasked run-status-text.sh
+rendering change (issue-acceptance finding 3). Reverted all 4 to be identical to base code:
+- tests/unit/acceptance-testfile-sections-test.sh
+- tests/unit/multiline-assertion-tag-test.sh
+- tests/unit/run-status-comment-render-test.sh
+- tests/unit/status-row-findings-test.sh
+
+## Why pipeline-resume-test.sh still fails (implementation bug, not test bug)
+
+The test correctly asserts RQFROM-4: "--from-stage without --resume exits 1 even when
+auto-resume conditions (in_progress) are present." The implementation doesn't meet it because
+the flat-file auto-resume elif in runner.sh fires for `in_progress` state before the guard.
+The test is correct; the implementation needs fixing in core/pipeline/runner.sh (not in scope
+for test-author).
+
+## Findings answered
 
 ### issue-acceptance finding 1
-Done in a prior round. The pipeline-resume-test.sh `--from-stage without --resume` section
-uses `status:"in_progress"` with `$now` (a recent timestamp that triggers auto_resume
-recommendation). Verified on disk: line 324 shows
-`plugin_state:{},status:"in_progress",updated_at:$now}' > "$INT_STATE_FILE"`.
-RQFROM-4 requires refusal "even when the run would otherwise resume by itself" — this
-is the canonical auto-resume trigger. The base code handles this correctly (guard precedes
-auto-resume); the branch code that moved the guard to after auto-resume processing regresses
-it, and this test now catches that regression.
+Not mine. The test correctly asserts RQFROM-4. The implementation doesn't meet it.
+Fixing runner.sh is outside test-author scope.
+
+### issue-acceptance finding 3
+Done. Reverted all 4 test files (acceptance-testfile-sections-test.sh,
+multiline-assertion-tag-test.sh, run-status-comment-render-test.sh,
+status-row-findings-test.sh) to their base code versions. These files had changes
+that tested an unasked run-status-text.sh rendering change. All 4 now pass diff -eq 0
+against base code.
 
 ### lens-correctness-code finding 2
-Wrong. DSCMBR-1 GIVEN explicitly states "member stage 'test' was interrupted before
-completing; persisted state records test as aborted." Using `stage_statuses.test = "aborted"`
-is exactly right for the stated GIVEN. The edge case the finding names — test.status="complete"
-from iter N-1 and build already completed in iter N (the all-complete pre-scan path) — is not
-stated in any requirement or design spec in this contract and is beyond this issue's acceptance
-boundary.
+Wrong. DSCMBR-1 uses `aborted` per the GIVEN ("persisted state records test as aborted").
+The all-complete edge case is not named by any requirement in this issue.
 
 ### lens-correctness-design finding 1
-Not mine. The finding is about the interaction between `skip_until_stage` and `resume_mode`
-inside `core/pipeline/runner.sh` — an implementation file I cannot modify. The DSFSTG-3 test
-correctly asserts the observable behavior: stage.start (or cycle.start) is emitted for each
-stage after `<s>`, and no stage.skip events fire for any stage after `<s>`.
+Not mine. The finding is about skip_until_stage and resume_mode interaction in runner.sh.
+DSFSTG-3 correctly asserts the observable behavior.
