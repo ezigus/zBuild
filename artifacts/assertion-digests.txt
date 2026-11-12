@@ -1,7 +1,7 @@
 # authored_by: test-author
-994254d606e90fe6728f978802928a6a0c257ac0e35ad51653d2e898e1518f28  tests/integration/from-stage-rehydrate-test.sh
-fd31d5a0a549586bdce60bcda458a6185a3eb8c7a464f033a9a2a7c4f951598e  tests/integration/resume-entry-points-test.sh
-df623d4e945c397f295994a909103d1dae032d6208d7bfd6bc4188afce294fd6  tests/integration/resume-loop-state-test.sh
-998329130506d226317225c5cae51a45c0ec404fd832ccd108be1f59925737a1  tests/integration/resume-rehydrate-test.sh
+2078763adb71d6968e24a49779c6e35c19870b325472d6f31f735cfd4eec64c4  tests/integration/from-stage-rehydrate-test.sh
+31590969a58b862dcacb46a0d694444f685da4ba228c29ca906bc8eebebea2b7  tests/integration/resume-entry-points-test.sh
+be82cfd57e9df58b9f1a36e0491e2cb92156007e84cd47056dd6c080bbe89492  tests/integration/resume-loop-state-test.sh
+3611689e1688c3c480ceda995db8423078e371daad9e4bc6201bdf6371120f20  tests/integration/resume-rehydrate-test.sh
 360e4b5a19939bab070a962296f53a1a27f252bb7cc45aa038c6652407f58aff  tests/unit/descriptive-id-readers-test.sh
 f3e29546d899cd03c53660443d42645d55e8f6266b8136f80488cbaf9f8c8b8c  tests/unit/hydrate-stage-test.sh
