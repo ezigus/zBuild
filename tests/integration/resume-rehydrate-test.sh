@@ -1029,9 +1029,9 @@ assert_gt \
 print_test_section "resume-rehydrate test uses a fixture containing a cyclic stage"
 
 # Then — the test fixtures used by resume-rehydrate-test.sh contain a pipeline stage of
-#   type: cycle, verified by an assert_contains tagged [#1805/DSCYCL-1].
-# [#1805/DSCYCL-1]: the fixture must contain type: cycle.
-assert_contains "[#1805/DSCYCL-1] resume-rehydrate (DSRHYD-1/RHYD-2/BNDY-1) fixture (artifact-snapshot-coverage) contains type: cycle" \
+#   type: cycle, verified by an assert_contains tagged .
+# : the fixture must contain type: cycle.
+assert_contains "resume-rehydrate (DSRHYD-1/RHYD-2/BNDY-1) fixture (artifact-snapshot-coverage) contains type: cycle" \
     "$_s12_fixt_content" "type: cycle"
 
 # : the pipeline using the cyclic fixture was actually run; intake dispatched

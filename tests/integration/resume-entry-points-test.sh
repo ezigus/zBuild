@@ -409,7 +409,7 @@ set -e
 
 # Then — the fixture used by this test file contains a stage of type: cycle
 _s13_ep_content="$(cat "$REPO_ROOT/tests/fixtures/templates/artifact-snapshot-coverage.yaml")"
-assert_contains "[#1805/DSCYCL-1] resume-entry-points test uses a cyclic fixture (type: cycle)" \
+assert_contains "resume-entry-points test uses a cyclic fixture (type: cycle)" \
     "$_s13_ep_content" "type: cycle"
 
 # : confirm the cyclic pipeline ran (intake dispatched in the fresh run).
