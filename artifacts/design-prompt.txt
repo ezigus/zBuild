@@ -168,16 +168,18 @@ The design document MUST include:
    The status says what work the requirement needs. Look at the code before you choose:
    - `DSLOOP-1[code]:` — it needs code. Its test must fail on the code as it is before your change, and pass after it.
      If the code already does it, it is not [code]: its test would already pass, and the build stalls on it.
-     Every requirement, whatever its status, describes what someone could see happen, not what a file contains: not "x.sh contains foo", "file y exists" or "the test file has both cases" — no test can prove those.
-   - `DSLOOP-2[no-code]:` — it needs work that changes no behaviour: docs, a
-     test, config, or a refactor. Its test must pass after the change; it need not fail before.
+     Every requirement except a [doc] one describes what someone could see happen, not what a file contains: not "x.sh contains foo", "file y exists" or "the test file has both cases" — no test can prove those.
+   - `DSLOOP-2[no-code]:` — it needs work that changes no behaviour: a test,
+     config, or a refactor. Its test must pass after the change; it need not fail before.
+   - `DSDOCS-1[doc]:` — it changes a doc. It has no test and no Given/When/Then: say, on its one line, what the doc must tell a reader
+     (the guide says a resume puts back what every finished stage wrote). The doc is read to check it.
    - `DSGARD-1[done]:` — the code from before your change already does it. Name the evidence at the end of the line, after ` evidence: ` —
      a file by its path from the repository root, then ` | `, then one line of it copied as it is
      (scripts/x.sh | run_guard()), or an existing test file named alone.
      The text must be in the file on the commit this branch started from: code this work added is not
      done yet, so it is [code]. A [done] SPEC still gets a test: it must pass after the change, and it
      need not fail before — it proves the finished change still does what the old code did.
-   Every requirement carries one of the three. A change that edits code needs at least one [code] requirement.
+   Every requirement carries one of the four. A change that edits code needs at least one [code] requirement.
 
    You name no files: no test file, and no list of the files the change
    touches. The tests are written after the design, in the repository's test
@@ -194,7 +196,8 @@ DSLOOP-1[code]: <one new behaviour this change introduces>
   Then: <what a test can observe after it>
   And: <another thing a test can observe>
   Cleanup: <what must be true again after, when the setup or a Then outlives the test>
-DSLOOP-2[no-code]: <docs, a test, config or a refactor that changes no behaviour>
+DSLOOP-2[no-code]: <a test, config or a refactor that changes no behaviour>
+DSDOCS-1[doc]: <what a doc must tell a reader>
 DSGARD-1[done]: <something the code already does> evidence: scripts/x.sh | run_guard()
   When: <the action>
   Then: <what the code from before this change already does>
@@ -270,11 +273,10 @@ change this branch made, in this round and in earlier ones.
 - RQADR-1: Amend ADR-006 (resume contract) with the decision above, with the amendment naming its enforcing tests inline.
 - RQADR-2: Amend ADR-050 §6 to draw the line explicitly, stating that the rule "never skip a stage on the basis of prior output" governs a **new** run reusing an **earlier run's** work and stays, while resume continues **the same run** and is governed by ADR-006, with a test pinning each side.
 - RQHYDR-1: Rehydration follows the same path the hydrate stage already uses (ADR-050, `plugins/tool/hydrate`), so "exactly as before" means the same files at the same paths.
-- RQRESU-4: A run is interrupted during stage *k*. Resuming it does not dispatch stages 1…*k−1*, their outputs are present and byte-identical to what they were at the interruption, and stage *k* is dispatched.
 - RQLOOP-1: Inside a loop (e.g. build → test), a run interrupted mid-round resumes at the interrupted stage of that round. The loop's iteration count and state are restored, not reset.
 - RQFROM-2: `--from-stage <s>` dispatches `<s>` first, with every earlier stage's outputs rehydrated. It never emits `pipeline.skip_to_stage` and then runs an earlier stage.
 - RQFROM-3: `--from-stage <s>` naming a stage with no prior output to rehydrate refuses with a reason, and does not start.
-- RQFROM-4: `--from-stage <s>` works only when `--resume` is given; without `--resume` the run refuses with a reason ("only valid with --resume") and does not start, even when the run would otherwise resume by itself.
+- RQFROM-4: `--from-stage <s>` works only when `--resume` is given. Without `--resume` the run refuses with a reason ("only valid with --resume") and does not start, even when the run would otherwise resume by itself.
 - RQPATH-1: Every way to resume (`--resume`, auto-resume on restart, and `zbuild pipeline resume --run-id`) finds the interrupted run's state in `runs/<run_id>/` and behaves as RQRESU-4. Each has its own test.
 - RQGUAR-1: A run with no prior state behaves exactly as today. This is a guard.
 - RQGUAR-2: A **new** run of the same issue still never skips a stage because of an earlier run's output (ADR-050 §6). This is a guard.
@@ -282,7 +284,7 @@ change this branch made, in this round and in earlier ones.
 Every requirement above must be covered by at least one SPEC. End each SPEC line with ` covers: ` and the ids of the requirements it covers, before any ` evidence: ` — for example `DSLOOP-1[code]: <behaviour> covers: <requirement ids>`. A requirement the code already meets is covered by a [done] SPEC with evidence.
 
 ### YOUR LATEST DESIGN (refine it; Previous work says what moved since you wrote it)
-Every claim it makes about the repository — an ADR it relies on, a file it lists, a hook, field or convention it declares — is re-checked against the tree as it is NOW; anything that no longer holds is dropped or re-derived, and the design says what changed and why. Keep what still holds; do not start over.
+Every claim it makes about the repository — an ADR it relies on, a file it lists, a hook, field or convention it declares — is re-checked against the tree as it is NOW, and every SPEC it keeps against the issue's requirements as they are NOW, not only the new ones: anything that no longer holds is dropped or re-derived — a SPEC a requirement now contradicts is rewritten or removed — and the design says what changed and why. Keep what still holds; do not start over.
 
 # Design: #1805 — resume and --from-stage trust-and-rehydrate
 
@@ -537,7 +539,7 @@ Outputs:
 Summary:
 ## intake — pass
 
-- 15 requirement(s): RQRESU-1, RQRESU-2, RQRESU-3, RQFROM-1, RQADR-1, RQADR-2, RQHYDR-1, RQRESU-4, RQLOOP-1, RQFROM-2, RQFROM-3, RQFROM-4, RQPATH-1, RQGUAR-1, RQGUAR-2
+- 14 requirement(s): RQRESU-1, RQRESU-2, RQRESU-3, RQFROM-1, RQADR-1, RQADR-2, RQHYDR-1, RQLOOP-1, RQFROM-2, RQFROM-3, RQFROM-4, RQPATH-1, RQGUAR-1, RQGUAR-2
 
 - RQRESU-1: A resume trusts every stage that already ran.
 - RQRESU-2: Each stage the interrupted run completed counts as done, and its outputs are put back (rehydrated) exactly as they were when the run stopped.
@@ -546,15 +548,15 @@ Summary:
 - RQADR-1: Amend ADR-006 (resume contract) with the decision above, with the amendment naming its enforcing tests inline.
 - RQADR-2: Amend ADR-050 §6 to draw the line explicitly, stating that the rule "never skip a stage on the basis of prior output" governs a **new** run reusing an **earlier run's** work and stays, while resume continues **the same run** and is governed by ADR-006, with a test pinning each side.
 - RQHYDR-1: Rehydration follows the same path the hydrate stage already uses (ADR-050, `plugins/tool/hydrate`), so "exactly as before" means the same files at the same paths.
-- RQRESU-4: A run is interrupted during stage *k*. Resuming it does not dispatch stages 1…*k−1*, their outputs are present and byte-identical to what they were at the interruption, and stage *k* is dispatched.
 - RQLOOP-1: Inside a loop (e.g. build → test), a run interrupted mid-round resumes at the interrupted stage of that round. The loop's iteration count and state are restored, not reset.
 - RQFROM-2: `--from-stage <s>` dispatches `<s>` first, with every earlier stage's outputs rehydrated. It never emits `pipeline.skip_to_stage` and then runs an earlier stage.
 - RQFROM-3: `--from-stage <s>` naming a stage with no prior output to rehydrate refuses with a reason, and does not start.
-- RQFROM-4: `--from-stage <s>` works only when `--resume` is given; without `--resume` the run refuses with a reason ("only valid with --resume") and does not start, even when the run would otherwise resume by itself.
+- RQFROM-4: `--from-stage <s>` works only when `--resume` is given. Without `--resume` the run refuses with a reason ("only valid with --resume") and does not start, even when the run would otherwise resume by itself.
 - RQPATH-1: Every way to resume (`--resume`, auto-resume on restart, and `zbuild pipeline resume --run-id`) finds the interrupted run's state in `runs/<run_id>/` and behaves as RQRESU-4. Each has its own test.
 - RQGUAR-1: A run with no prior state behaves exactly as today. This is a guard.
 - RQGUAR-2: A **new** run of the same issue still never skips a stage because of an earlier run's output (ADR-050 §6). This is a guard.
-- the issue is unchanged since the last run: its requirements were kept, with no model call
+- the requirements changed since the last run:
+  - removed: RQRESU-4 A run is interrupted during stage *k*. Resuming it does not dispatch stages 1…*k−1*, their outputs are present and byte-identical to what they were at the interruption, and stage *k* is dispatched. — Tests for RQRESU-4, RQLOOP-1, RQFROM-2, RQFROM-3, RQFROM-4, RQPATH-1 must use a cycle. This is a constraint on test methodology (how to implement tests to take the dispatch-unit loop rather than the legacy linear loop), not a requirement the code or documentation must satisfy; no code change can demonstrate whether tests are written with cycle templates.
 
 ### design (verdict: pass) — your own
 Outputs:
@@ -586,7 +588,7 @@ Summary:
 - DSFRSH-2 (covers RQGUAR-2): A new run of the same issue never skips a stage due to prior run output; the dispatch-unit skip guard is conditional on resume_mode so it does not activate for fresh runs
 - DSDLGT-1 (covers RQHYDR-1): The hydrate plugin's hydrate_run calls _artifact_persist_put_back so artifacts placed by the resume path appear at the same filesystem paths as those a hydrate run would produce
 - DSCYCL-1 (covers RQRESU-4 RQLOOP-1 RQFROM-2 RQFROM-3 RQPATH-1): The pipeline fixtures used by resume-rehydrate-test.sh, from-stage-rehydrate-test.sh, resume-loop-state-test.sh, and resume-entry-points-test.sh each contain a stage of type: cycle, verified by an assert_contains tagged [#1805/DSCYCL-1] in each file, ensuring RQRESU-4, RQLOOP-1, RQFROM-2, RQFROM-3, and RQPATH-1 tests run against a cyclic pipeline
-- answered: lens-correctness-design finding 1: wrong — The design already fully addresses this. Gap 11 in the Context/gaps section explicitly documents the scenario: after `skip_until_stage` is cleared when the from-stage target unit is found, `resume_mode` remains `true`, causing the resume skip guard to activate and silently skip subsequent units marked complete. The Decision paragraph requires the fix: "in both dispatch-unit arms (cycle:* and stage:*) of `main()` in runner.sh, immediately after clearing `skip_until_stage`, also set `resume_mode=false` immediately." The steps block includes this fix. DSFSTG-3[code] pins the observable behavior: a 3-unit fixture `[intake (leaf), cyc (cycle), verify (leaf)]` with all three stages marked complete, invoked with `--resume --from-stage cyc`, must still dispatch `verify` even though it was marked complete — this test fails on the old code (verify is skipped because `resume_mode` stays `true`) and passes after the fix (resume_mode=false clears the guard). Findings 30, 31, and 11 in the Findings section all explicitly confirm this is covered. No change to the design is needed.
+- answered: lens-correctness-design finding 1: wrong — The design already fully addresses this. Gap 11 in the Context/gaps section explicitly documents exactly this scenario: after `skip_until_stage` is cleared when the from-stage target unit is found, `resume_mode` remains `true`, causing the resume skip guard to activate and silently skip subsequent units marked complete. The Decision paragraph requires the fix: "in both dispatch-unit arms (cycle:* and stage:*) of `main()` in runner.sh, immediately after clearing `skip_until_stage`, also set `resume_mode=false` immediately." This prevents the resume skip guard from firing for any stage after `<s>` in combined `--resume --from-stage <s>` mode. DSFSTG-3[code] pins the observable behavior: a 3-unit fixture `[intake (leaf), cyc (cycle), verify (leaf)]` with all three stages marked complete, invoked with `--resume --from-stage cyc`, must still dispatch `verify` even though it was marked complete — the test fails on old code (verify skipped because `resume_mode` stays `true`) and passes after the fix (`resume_mode=false` clears the guard). Findings 30, 31, and 11 in the Findings section all explicitly confirm this is covered.
 
 Your notes so far (where they disagree with a list or a result elsewhere in this prompt, the list or the result is right):
 # Design notes: #1805 — resume and --from-stage trust-and-rehydrate
@@ -652,9 +654,20 @@ The DSENTR-2 test must NOT set ZBUILD_STATE_FILE. If it does, the symlink check
 `[[ -z "${ZBUILD_STATE_FILE:-}" && -L "$state_dir/latest" ]]` is false and the new
 code path is never reached.
 
-### test-author (verdict: pass)
+### test-author (verdict: fail)
 Outputs:
 - test_author_result: /home/runner/work/_temp/zbuild-state/artifacts/test-author-result.json
+
+Findings:
+- test-author finding 1 (opened by test-author): DSAMDR-1 the SPEC describes what ADR-006-resume-contract.md contains, not an observable runtime behaviour; no test can prove a prose amendment is correct by running the system — no test can prove it
+    DSAMDR-1[no-code]: ADR-006-resume-contract.md amended with step 3.6 (rehydrate completed-stage artifacts before dispatch loop; absent artifact causes exit 1; ordering constraint: not to be combined with dispatch-loop changes); enforcing test names (resume-rehydrate-test.sh, resume-entry-points-test.sh) added inline covers: RQADR-1 [FIX IN DESIGN: the SPEC describes what ADR-006-resume-contract.md contains, not an observable runtime behaviour; no test can prove a prose amendment is correct by running the system — no test can prove it; say something a test can see the code do]
+      Then: ADR-006-resume-contract.md amended with step 3.6 (rehydrate completed-stage artifacts before dispatch loop; absent artifact causes exit 1; ordering constraint: not to be combined with dispatch-loop changes); enforcing test names (resume-rehydrate-test.sh, resume-entry-points-test.sh) added inline
+- test-author finding 2 (opened by test-author): DSAMDR-2 the SPEC describes what ADR-050-prior-work-reuse-contract.md §6 contains, not an observable runtime behaviour; no test can prove a prose amendment is correct by running the system — no test can prove it
+    DSAMDR-2[no-code]: ADR-050-prior-work-reuse-contract.md §6 amended with boundary note: the invariant "never skip a stage on prior output" applies to new runs; a resume continues the same run and is governed by ADR-006; and §6's Enforced by section updated to cite resume-rehydrate-test.sh (DSFRSH-2 for the new-run side) and resume-entry-points-test.sh (DSENTR-1 for the resume side) covers: RQADR-2 [FIX IN DESIGN: the SPEC describes what ADR-050-prior-work-reuse-contract.md §6 contains, not an observable runtime behaviour; no test can prove a prose amendment is correct by running the system — no test can prove it; say something a test can see the code do]
+      Then: ADR-050-prior-work-reuse-contract.md §6 amended with boundary note: the invariant "never skip a stage on prior output" applies to new runs; a resume continues the same run and is governed by ADR-006; and §6's Enforced by section updated to cite resume-rehydrate-test.sh (DSFRSH-2 for the new-run side) and resume-entry-points-test.sh (DSENTR-1 for the resume side)
+- test-author finding 3 (opened by test-author): DSCYCL-1 the SPEC describes what pipeline fixture YAML files and test source files contain, not observable runtime behaviour; "verified by an assert_contains tagged [#1805/DSCYCL-1] in each file" explicitly names what test files contain — no test can prove it
+    DSCYCL-1[no-code]: The pipeline fixtures used by resume-rehydrate-test.sh, from-stage-rehydrate-test.sh, resume-loop-state-test.sh, and resume-entry-points-test.sh each contain a stage of type: cycle, verified by an assert_contains tagged [#1805/DSCYCL-1] in each file, ensuring RQRESU-4, RQLOOP-1, RQFROM-2, RQFROM-3, and RQPATH-1 tests run against a cyclic pipeline covers: RQRESU-4 RQLOOP-1 RQFROM-2 RQFROM-3 RQPATH-1 [FIX IN DESIGN: the SPEC describes what pipeline fixture YAML files and test source files contain, not observable runtime behaviour; "verified by an assert_contains tagged [#1805/DSCYCL-1] in each file" explicitly names what test files contain — no test can prove it; say something a test can see the code do]
+      Then: The pipeline fixtures used by resume-rehydrate-test.sh, from-stage-rehydrate-test.sh, resume-loop-state-test.sh, and resume-entry-points-test.sh each contain a stage of type: cycle, verified by an assert_contains tagged [#1805/DSCYCL-1] in each file, ensuring RQRESU-4, RQLOOP-1, RQFROM-2, RQFROM-3, and RQPATH-1 tests run against a cyclic pipeline
 
 ### test (verdict: pass)
 Outputs:
