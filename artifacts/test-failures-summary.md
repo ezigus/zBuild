@@ -20,4 +20,3 @@ unit: FAIL tests/integration/pipeline-resume-test.sh
 
 ## The checks of this run
 - the shape floor failed: missing_floor_files
-- the acceptance check failed: the acceptance check failed — scripts/lib/run-status-text.sh was put back to its old version on its own and every test still passed, so no test checks what this change does to it — add a test that fails without the change to it

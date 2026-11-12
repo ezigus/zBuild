@@ -71910,3 +71910,16 @@ cpu 3677 8368 tests/integration/from-stage-rehydrate-test.sh
 file 12274 tests/integration/from-stage-rehydrate-test.sh
 cpu 3688 8585 tests/integration/resume-rehydrate-test.sh
 file 12142 tests/integration/resume-rehydrate-test.sh
+run 44 targeted
+cpu 1134 2400 tests/integration/resume-loop-state-test.sh
+file 3854 tests/integration/resume-loop-state-test.sh
+cpu 1171 2534 tests/integration/pipeline-resume-test.sh
+file 5549 tests/integration/pipeline-resume-test.sh
+cpu 250 615 tests/unit/hydrate-stage-test.sh
+file 1046 tests/unit/hydrate-stage-test.sh
+cpu 3192 7173 tests/integration/resume-entry-points-test.sh
+file 10775 tests/integration/resume-entry-points-test.sh
+cpu 3768 8344 tests/integration/from-stage-rehydrate-test.sh
+file 12475 tests/integration/from-stage-rehydrate-test.sh
+cpu 3918 8705 tests/integration/resume-rehydrate-test.sh
+file 12523 tests/integration/resume-rehydrate-test.sh
