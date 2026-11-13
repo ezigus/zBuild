@@ -1,4 +1,4 @@
-the acceptance check failed — plugins/agent/build/plugin.sh is not changed by this change — name a file the change touches, or write WIRING: none
+the acceptance check failed — DSLOCK-2/DSLOCK-3: no assertion in the test files carries its tag — add one labelled with it
 NEGCTL PASS DSDIFF-1
       design : _build_emit_changed_files_summary emits build.discrepancy.detected when terminated_reason is no_done…
       asserts: assert_event_emitted      "[DSDIFF-1] build.discrepancy.detected emitted for no_done_sentinel+0files…
@@ -16,10 +16,10 @@ NEGCTL SKIP DSLOCK-1 already_done
       asserts: assert_pass "[DSLOCK-1] no_done_sentinel is a pre-existing reason assigned in route.sh"
 NEGCTL SKIP DSLOCK-2 already_done
       design : _router_rc_classify sets verdict to error and reason to router_timeout when called with rc=124
-      asserts: assert_eq "[DSLOCK-2] T2: rc=124 verdict=error" "error" "$v"
+      asserts: <none found>
 NEGCTL SKIP DSLOCK-3 already_done
       design : O4 in route-one-call-per-try-test.sh is not changed
-      asserts: assert_eq "[DSLOCK-3][O4] flags follow the three arguments directly" "0" "$_rc"
-REACHABILITY FAIL wiring_not_on_path plugins/agent/build/plugin.sh
+      asserts: <none found>
+REACHABILITY EXEMPT none
 REACHABILITY SKIP no_code core/router/route.sh
 REACHABILITY PASS change plugins/agent/build/lib/summary.sh
