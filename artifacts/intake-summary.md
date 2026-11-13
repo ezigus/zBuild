@@ -12,9 +12,8 @@
 - RQLOOP-1: Inside a loop (e.g. build → test), a run interrupted mid-round resumes at the interrupted stage of that round. The loop's iteration count and state are restored, not reset.
 - RQFROM-2: `--from-stage <s>` dispatches `<s>` first, with every earlier stage's outputs rehydrated. It never emits `pipeline.skip_to_stage` and then runs an earlier stage.
 - RQFROM-3: `--from-stage <s>` naming a stage with no prior output to rehydrate refuses with a reason, and does not start.
-- RQFROM-4: `--from-stage <s>` works only when `--resume` is given. Without `--resume` the run refuses with a reason ("only valid with --resume") and does not start, even when the run would otherwise resume by itself.
-- RQPATH-1: Every way to resume (`--resume`, auto-resume on restart, and `zbuild pipeline resume --run-id`) finds the interrupted run's state in `runs/<run_id>/` and behaves as RQRESU-4. Each has its own test.
+- RQFROM-4: `--from-stage <s>` works only when `--resume` is given. Without `--resume` the run refuses with a reason ("only valid with --resume") and does not start — even when the run would otherwise resume by itself (an automatic resume does not count).
+- RQPATH-1: Every way to resume (`--resume`, auto-resume on restart, and `zbuild pipeline resume --run-id`) finds the interrupted run's state in `runs/<run_id>/` and, for a run interrupted during stage *k*, does not dispatch stages 1…*k−1*, keeps their outputs present and byte-identical to what they were at interruption, and dispatches stage *k*. Each has its own test.
 - RQGUAR-1: A run with no prior state behaves exactly as today. This is a guard.
 - RQGUAR-2: A **new** run of the same issue still never skips a stage because of an earlier run's output (ADR-050 §6). This is a guard.
-- the requirements changed since the last run:
-  - removed: RQRESU-4 A run is interrupted during stage *k*. Resuming it does not dispatch stages 1…*k−1*, their outputs are present and byte-identical to what they were at the interruption, and stage *k* is dispatched. — Tests for RQRESU-4, RQLOOP-1, RQFROM-2, RQFROM-3, RQFROM-4, RQPATH-1 must use a cycle. This is a constraint on test methodology (how to implement tests to take the dispatch-unit loop rather than the legacy linear loop), not a requirement the code or documentation must satisfy; no code change can demonstrate whether tests are written with cycle templates.
+- the requirements are the same as the last run's
