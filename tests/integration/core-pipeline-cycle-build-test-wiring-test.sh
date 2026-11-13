@@ -15,8 +15,7 @@
 #   4) (retired, #2124) the build plugin's bespoke feedback reader — findings
 #      reach build as the router's STAGE SUMMARIES block (ADR-055 §9).
 #   5) (retired with 4)
-#   6) `--from-stage build` is refused when simple.yaml declares a cycle
-#      that contains `build` (Pin 14).
+#   6) (retired with Pin 14, #1805)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -164,33 +163,11 @@ else
     assert_pass "T4: no feedback copy is made (ADR-068 §8)"
 fi
 
-# ─── T5: --from-stage build is refused (Pin 14) ─────────────────────────────
-# Verify runner refuses --from-stage that lands inside a cycle. Easiest test:
-# parse simple.yaml + walk our refusal logic. Drive via runner.sh subprocess.
-# (#979: re-pointed from standard → simple; build lives inside simple.yaml's
-# build_test_cycle, so the same Pin-14 refusal applies.)
-: > "$ZBUILD_EVENTS_JSONL"
-T5_STATE="$TEST_TEMP_DIR/t5-state.json"
-jq -n '{schema_version:1,status:"in_progress",stage_statuses:{intake:"complete",plan:"complete"}}' > "$T5_STATE"
-set +e
-ZBUILD_STATE_FILE="$T5_STATE" \
-ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins" \
-    bash "$REPO_ROOT/core/pipeline/runner.sh" \
-    --issue 0 --resume --from-stage build --template simple \
-    > "$TEST_TEMP_DIR/t5.out" 2> "$TEST_TEMP_DIR/t5.err"
-t5_rc=$?
-set -e
-# #1850 (ADR-054 §4): the refusal exits 1 (was 2); the message below names it.
-if [[ $t5_rc -eq 1 ]]; then
-    assert_pass "T5: --from-stage build refused with rc=1 (Pin 14)"
-else
-    assert_fail "T5: --from-stage build should be refused" "rc=$t5_rc"
-fi
-if grep -q 'inside or after a cycle' "$TEST_TEMP_DIR/t5.err" 2>/dev/null; then
-    assert_pass "T5: rejection message mentions 'inside or after a cycle'"
-else
-    assert_fail "T5: rejection message" "missing expected diagnostic"
-fi
+# NB (#1805): the former T5 asserted that `--from-stage build` was refused
+# (#511 Pin 14). ADR-021, amended 2026-11-13, retired that refusal: a stage
+# inside or after a cycle is a valid --from-stage target, and every cycle the
+# run enters starts at round 1. tests/integration/from-stage-in-cycle-test.sh
+# checks it.
 
 # NB (#979): the former T6 asserted that the retired standard.yaml's outer
 # build_review_cycle dispatched its `review` member on an unconverged inner

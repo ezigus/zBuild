@@ -1,6 +1,6 @@
 # ADR-006: Resume Contract — Pipeline-Resume Memory
 
-**Status:** Accepted
+**Status:** Accepted; amended 2026-11-13 (#1805: a resume trusts and rehydrates every stage that already ran; `--from-stage` works the same way, may name a stage inside or after a cycle, and starts every cycle it enters at round 1)
 **Date:** 2026-05-24
 
 > **Memory type:** This ADR governs **pipeline-resume memory** — the operational
@@ -111,6 +111,15 @@ The engine validates:
    b. plugin reads persisted state via core/state/read_plugin_state
    c. plugin recomputes reconstructed state
    d. plugin refuses to continue if any reconstructed key is missing
+3.6. _runner_resume_rehydrate: before the dispatch loop, call
+     _artifact_persist_restore then _artifact_persist_put_back to place every
+     completed-stage artifact from the git state branch into ZBUILD_ARTIFACT_DIR.
+     A complete stage whose primary artifact is still absent after this
+     restoration causes the runner to exit 1 before any stage.start event is
+     emitted (fail closed — not warn-and-continue).
+     Enforced by: tests/integration/resume-rehydrate-test.sh,
+                  tests/integration/resume-rehydrate-paths-test.sh,
+                  tests/integration/resume-entry-points-test.sh
 4. Engine emits "pipeline.resume" event
 5. Continue from last in_progress stage
 ```
@@ -235,6 +244,73 @@ success on a still-corrupt file — closing a latent silent-failure the bare `cp
 - **Test coverage gaps tracked separately:** #299 (24h boundary not exercised), #300 (runner abort-trap state-write failure path not exercised by mutation A2).
 - **Atomic `.bak` rotation (issue #909):** `atomic_write` rotates `.bak` via `atomic_replace` (`scripts/lib/helpers.sh`, temp+rename). Regression-guarded by `tests/unit/scripts-lib-atomic-replace-test.sh` (incl. a concurrent-reader negative control) and the 50× stability loop in `tests/integration/concurrent-state-test.sh`.
 - **Atomic recovery restore (issue #946):** the three `.bak`→target restores (`validate_json` in `scripts/lib/helpers.sh`; `read_state` and the empty-recovery branch of `locked_state_update` in `core/state/atomic.sh`) restore via `atomic_replace` and fail closed on restore failure. Guarded by Case F (`[SPEC-3]`, a 12-writer concurrent-restore negative control proven to tear under bare `cp`) in `tests/unit/scripts-lib-atomic-replace-test.sh`, a `read_state` recovery case in `tests/unit/core-state-test.sh`, and Scenario 11 (complete large-`.bak` recovery) in `tests/integration/state-corruption-failclosed-b-test.sh`.
+
+## Amendment — full resume and `--from-stage` contract (issue #1805)
+
+The step 3.5 hand-off above (from ADR-021) described two branches: "re-run iter N from
+scratch" on stale artifact, or "start iter N+1 with feedback already wired" on artifact
+present. That description is superseded by the implemented contract below, which restores
+and continues at the interrupted iteration rather than restarting or advancing past it.
+
+### Cycle iteration restoration (`_ZBUILD_RESUME_ACTIVE`)
+
+When a resume is active, the cycle orchestrator reads `cycle_iterations[X].current_iter`
+from persisted state (via `_persisted_iter`) and starts the iteration loop from that value
+instead of 1. The flag `_ZBUILD_RESUME_ACTIVE` is exported by the runner immediately after
+the step 3.6 rehydration call and consumed at the top of `_cycle_orchestrator_run_body`;
+nested cycles and subsequent re-entries always start at iter=1 (the flag is not propagated
+to them — it is consumed on first use).
+
+Within the interrupted iteration (iter k), `_cycle_dispatch` with `resume_first_iter=true`:
+(a) skips member stages already marked complete in persisted state — no stage.start emitted;
+(b) explicitly emits stage.start for the non-complete (interrupted) member, then dispatches
+normally. This ensures the first dispatched cycle member is the one that was actually
+interrupted, not an already-completed earlier member.
+
+Enforced by: tests/integration/resume-loop-state-test.sh (DSITER-1, DSCMBR-1)
+
+### Dispatch-loop skip guard
+
+On resume, the dispatch-unit loop (`_TPL_DISPATCH_UNITS`) skips every stage already marked
+complete whose primary artifact is present in ZBUILD_ARTIFACT_DIR after the step 3.6
+rehydration. The skip guard is conditioned on `resume_mode`; fresh runs never activate it
+and always dispatch all stages from stage 1 with no stage skipped.
+
+Enforced by: tests/integration/resume-rehydrate-test.sh (DSSKIP-1); tests/integration/resume-fresh-run-test.sh (DSFRSH-1, DSFRSH-2)
+
+### `--from-stage <s>` pre-flight contract
+
+When `--from-stage <s>` is active, `_runner_from_stage_preflight` runs before the dispatch
+loop:
+
+1. For every stage before `<s>`: verify a restorable primary artifact exists in the git
+   state branch.
+2. Any stage with no restorable artifact emits the phrase "has no restorable primary
+   artifact" to stderr and causes exit 1 before any stage.start event.
+3. Artifacts from every stage before `<s>` are placed in ZBUILD_ARTIFACT_DIR before the
+   dispatch loop starts.
+4. Stage `<s>` is dispatched as the first unit; no stage before `<s>` receives a dispatch
+   event.
+5. `<s>` may be any stage or cycle, including one inside a cycle, inside a nested cycle, or
+   after a cycle (ADR-021, amended 2026-11-13: #511 Pin 14 is retired). Every cycle the run
+   enters starts fresh at round 1 — a `--from-stage` run never restores a round count. In
+   that first round, the members before `<s>` are not dispatched and count with their
+   verdicts from the run's state; `<s>` and everything after it run.
+
+Enforced by: tests/integration/from-stage-rehydrate-test.sh (DSFSTG-1, DSFSTG-2);
+tests/integration/from-stage-resume-guard-test.sh (DSFSTG-3, DSFSTG-4);
+tests/integration/from-stage-in-cycle-test.sh (FSIC-1–FSIC-5, item 5)
+
+### Auto-resume state discovery via `latest` symlink
+
+The runner's auto-resume check (`get_resume_recommendation`) is extended: when
+ZBUILD_STATE_FILE is unset and `$state_root/pipeline-state.json` does not exist (the flat
+legacy path), the runner checks `$state_root/latest/pipeline-state.json` via the `latest`
+symlink, which points to the most recent per-run directory under
+`$state_root/runs/<run_id>/`. When auto-resume fires via this path, `state_dir` is updated
+to the resolved per-run directory so artifact operations use the correct per-run location.
+
+Enforced by: tests/integration/resume-latest-link-test.sh (DSENTR-2)
 
 ## References
 

@@ -1,0 +1,56 @@
+id: from-stage-in-cycle
+name: --from-stage inside and after a cycle (#1805)
+# A leaf, an outer cycle holding an inner cycle and a leaf, then a leaf after
+# the cycle — the shape simple.yaml has (delivery_loop holding build_test_cycle
+# and review_lenses, then pr), so `--from-stage` can name a stage inside a
+# cycle, inside a nested cycle, a nested cycle itself, or a stage after one.
+defaults:
+  strategy: fanout
+
+flow:
+  - intake
+  - outer_cycle
+  - verify
+
+intake:
+  roles: [intake]
+
+outer_cycle:
+  type: cycle
+  description: Outer cycle wrapping an inner cycle + a leaf
+  flow:
+    - inner_cycle
+    - probe
+  exit_when:
+    stage: probe
+    field: verdict
+    op: eq
+    value: pass
+  max_iterations: 3
+  on_max: continue
+
+inner_cycle:
+  type: cycle
+  description: Inner build/test cycle
+  flow:
+    - build
+    - test
+  exit_when:
+    stage: test
+    field: verdict
+    op: eq
+    value: pass
+  max_iterations: 3
+  on_max: continue
+
+build:
+  roles: [builder]
+
+test:
+  roles: [tester]
+
+probe:
+  roles: [reviewer]
+
+verify:
+  roles: [verifier]

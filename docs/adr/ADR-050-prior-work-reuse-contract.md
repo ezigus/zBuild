@@ -191,6 +191,16 @@ A plugin author, when creating or changing a stage, MUST observe:
 - **Never write anything that must not reach main into the work branch** — durable
   cross-run state belongs on the state branch (engine-managed), not in the code diff.
 
+> **Resume boundary (issue #1805, ADR-006 §3.6).** The invariant above — "never
+> skip the stage on the basis of prior output" — applies to **new runs**. A
+> **resume** continues the same run rather than starting a new one: it restores
+> completed-stage artifacts from the git state branch and skips stages already
+> marked `complete` in the persisted state. Resume semantics are governed by
+> [ADR-006](ADR-006-resume-contract.md); this ADR's reuse rules do not apply
+> to a resume because a resume continues the same run, not a new run.
+
+Enforced by: `tests/integration/resume-fresh-run-test.sh` DSFRSH-2 (new-run side); `tests/integration/resume-entry-points-test.sh` DSENTR-1 (resume side).
+
 ### 7. Amendment (#141) — git is the store, the folder is the working copy, and every run pushes
 
 **Status:** Accepted (2026-08-23). See [ADR-059](ADR-059-issue-vs-run-keying.md) §3.
@@ -436,7 +446,7 @@ no model ever reads that line.
 - §4 (a snapshot at each stage boundary; a failed snapshot never aborts the run) → `tests/integration/artifact-snapshot-runner-test.sh`
 - §4 (#1921: persist's own result joins the store; the secret gate runs before the push) → `tests/unit/persist-stage-test.sh`
 - §5 (`_read_prior_output` order; no restored tier, §9) → `tests/unit/prior-output-reader-test.sh` T2; `tests/unit/own-run-artifacts-first-test.sh` O5–O8
-- §6 (never skip a stage on the basis of prior output — design always runs, the prior design is a reference in its prompt) → `tests/unit/resume-default-test.sh` R5–R11 (#2299)
+- §6 (never skip a stage on the basis of prior output — design always runs, the prior design is a reference in its prompt; new-run invariant governs new runs; resume governed by ADR-006) → `tests/unit/resume-default-test.sh` R5–R11 (#2299); `tests/integration/resume-fresh-run-test.sh` DSFRSH-2 (new-run side); `tests/integration/resume-entry-points-test.sh` DSENTR-1 (resume side)
 - §7 (persist is an always-run stage) → `tests/unit/template-always-run-test.sh`
 - §10 (no changes, no save: with no starting commit set a stage end pushes nothing and the work branch on origin is untouched; with no commits past it, nothing is pushed) → `tests/unit/stage-work-saved-test.sh` SPEC-8, SPEC-9
 - §10 (the starting commit is set by the engine before any stage, hydrate included) → `tests/integration/engine-run-branch-test.sh` E1

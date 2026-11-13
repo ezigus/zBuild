@@ -93,7 +93,6 @@
     "cycle.no_committed_changes",
     "cycle.timeout_exhausted",
     "selfhost.contract_lib.snapshot",
-    "pipeline.from_stage.rejected",
     "registry.discovery",
     "registry.lockfile.written",
     "registry.role-unresolved",

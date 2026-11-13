@@ -247,6 +247,13 @@ jq -n \
         updated_at: $now
     }' > "$INT_STATE_FILE"
 
+# Pre-write intake's primary artifact so the SPEC-2 fail-closed stale-artifact
+# check (ADR-006 §3.6, added in #1805) does not abort the resume when the
+# state branch has no artifact (this test predates artifact rehydration).
+mkdir -p "$INT_STATE_DIR/artifacts"
+printf '{"result_contract":3,"outcome":"pass","reason":"stub"}' \
+    > "$INT_STATE_DIR/artifacts/intake-result.json"
+
 # Run runner --resume against this state file (CWD = overlay repo).
 set +e
 ( cd "$INT_OVERLAY_REPO" && env \
@@ -302,10 +309,17 @@ assert_contains "--from-stage unknown stage says it is not a known stage" \
 # ─── Integration: --from-stage without --resume exits 1 ───────────────────────
 print_test_section "integration: --from-stage without --resume exits 1"
 
-# Reset state for a fresh start scenario
+# RQFROM-4: --from-stage without --resume must refuse even when the run would
+# otherwise resume by itself (auto-resume conditions present). Use
+# status="in_progress" with a recent timestamp so get_resume_recommendation
+# returns auto_resume — confirming the guard fires BEFORE auto-resume kicks in,
+# not after. The base-code guard precedes auto-resume processing; a branch that
+# moves the guard to after auto-resume will cause this test to fail because
+# auto-resume sets resume_mode=true and the guard never fires.
 jq -n \
     --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    '{schema_version:1,run_id:"fresh-run",issue:225,stage_statuses:{},current_iteration:0,
+    --argjson _ZB_ID "$_ZB_ID" \
+    '{schema_version:1,run_id:"inprog-run",issue:$_ZB_ID,stage_statuses:{},current_iteration:0,
       self_heal_count:{},scope_manifest_hash:"",cost_ledger_pointer:0,claim_lease_id:"",
       plugin_state:{},status:"in_progress",updated_at:$now}' > "$INT_STATE_FILE"
 
