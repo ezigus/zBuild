@@ -178,8 +178,6 @@ Where a design decision above conflicts with the plan, follow the design decisio
 These tests were written before your code. Make them pass by changing code only. Each requirement below is checked by the assertion labelled with its tag (for SPEC-1 of this issue: [SPEC-1]).
 - plugins/agent/build/tests/build-test.sh
 - tests/unit/route-loop-terminated-reasons-test.sh
-- tests/unit/route-one-call-per-try-test.sh
-- tests/unit/router-rc-classify-test.sh
 
 What each SPEC requires:
 - [DSDIFF-1] _build_emit_changed_files_summary emits build.discrepancy.detected when terminated_reason is no_done_sentinel and files_count is 0 — Given: a build plugin run where route_to_model_loop returns no_done_sentinel — And: git numstat shows zero files changed — When: _build_emit_changed_files_summary is called with terminated_reason=no_done_sentinel and files_count=0 — Then: a build.discrepancy.detected event is emitted — And: the event payload includes terminated_reason=no_done_sentinel
@@ -201,7 +199,7 @@ Your change is done when the test for every requirement below passes.
 The latest output of every stage that has run, as far as it is about what
 your job takes (ask, tests, change, requirement-findings, code-findings and change-findings), with where to find it. Use what your job needs.
 
-Files this issue's work has changed so far: plugins/agent/build/tests/build-test.sh, tests/unit/route-loop-terminated-reasons-test.sh, tests/unit/route-one-call-per-try-test.sh, tests/unit/router-rc-classify-test.sh
+Files this issue's work has changed so far: core/router/route.sh, plugins/agent/build/lib/summary.sh, plugins/agent/build/tests/build-test.sh, tests/unit/route-loop-terminated-reasons-test.sh
 
 ### intake (verdict: pass)
 Outputs:
@@ -244,7 +242,7 @@ Summary:
 - DSLOCK-1 (covers RQLOCK-1): no_done_sentinel and router_out_of_turns are pre-existing reason values; this change reads them without defining new ones
 - DSLOCK-2 (covers RQLOCK-3): _router_rc_classify sets verdict to error and reason to router_timeout when called with rc=124
 - DSLOCK-3 (covers RQLOCK-4): O4 in route-one-call-per-try-test.sh is not changed
-- answered: design finding 1: done — DSLOCK-2's `When`/`Then` previously described reading the file and comparing bytes ("its content is byte-identical to the base-code version"). Replaced with an observable function-call behaviour: when `_router_rc_classify` is called with `rc=124` and `rate_limited=0`, the verdict variable is set to `error` and the reason variable to `router_timeout`. Evidence points to the specific `printf` line in `router-rc-classify.sh` that assigns `router_timeout`. This is something a test can directly observe and assert, without describing what a file contains.
+- answered: acceptance-gate finding 1: done — Changed `WIRING: plugins/agent/build/plugin.sh` to `WIRING: none`. The pipeline's reachability check confirmed `plugin.sh` is not on the change path (`REACHABILITY FAIL wiring_not_on_path`). `plugin.sh` already calls `_build_emit_changed_files_summary` before this change and requires no modification for the new guard logic to execute; it is therefore not a file this change touches. `core/router/route.sh` is a comment-only change (`REACHABILITY SKIP no_code`). The only structurally changed file is `plugins/agent/build/lib/summary.sh` (the implementation), which is not the caller. `WIRING: none` is correct.
 
 ### test-author (verdict: pass)
 Outputs:
@@ -258,11 +256,175 @@ Summary:
 - the test files, and the requirements each covers:
 - plugins/agent/build/tests/build-test.sh — DSDIFF-1, DSDIFF-2, DSDIFF-3
 - tests/unit/route-loop-terminated-reasons-test.sh — DSEND-1, DSLOCK-1
-- tests/unit/router-rc-classify-test.sh — DSLOCK-2
-- tests/unit/route-one-call-per-try-test.sh — DSLOCK-3
 - Each [code] requirement's test must fail on the code from before this change, and pass once the code is written.
-- answered: test-author finding 1: DSLOCK-1 When: the test does something else: the code placed under the When heading runs static `grep -c` counts on source files; `_build_emit_changed_files_summary` is never called in this test section: done — restructured the DSLOCK-1 section in `tests/unit/route-loop-terminated-reasons-test.sh`: added sourcing of `event-bus.sh`, `numstat-format.sh`, and `plugins/agent/build/lib/summary.sh`; the When section now creates a clean git repo and calls `_build_emit_changed_files_summary` with `no_done_sentinel` and `router_out_of_turns`; the Then section's static analysis assertions are unchanged and still pass.
-- not answered: test-author finding 1
+- answered: test finding 1: done — replaced `|| echo 0` with `|| true` on both `grep -c` lines (159-160 and 168). `grep -c` already prints the count; `|| true` suppresses the exit-1 inside the subshell without appending a second zero.
+- answered: issue-acceptance finding 1: done — same fix as above.
+- answered: issue-acceptance finding 2: done — reverted O4 to base code exactly. DSLOCK-3 requires O4 be unchanged; tagging it would itself change O4 and break the requirement.
+- answered: issue-acceptance finding 3: done — reverted T2 to base code exactly. No requirement asks for changes to this file; the existing T2 assertions already cover the DSLOCK-2 behavior.
+- answered: issue-acceptance finding 4: done — same as finding 2 fix above; O4 is now identical to base code.
+- not answered: acceptance-gate finding 1
+
+### build (verdict: pass) — your own
+Outputs:
+- build_stage_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.md
+- build_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.json
+- diff_patch: /home/runner/work/_temp/zbuild-state/artifacts/diff.patch
+
+Summary:
+## build — pass
+
+- changed core/router/route.sh, plugins/agent/build/lib/summary.sh (+10 / -1)
+
+- over 1 pass(es), 1 iteration(s)
+- no finding was open for it
+
+Your notes so far (where they disagree with a list or a result elsewhere in this prompt, the list or the result is right):
+# Build notes — issue #1769
+
+## Task
+1. Update comment in `route_to_model_loop` in `core/router/route.sh` to list every concrete `_ROUTE_LOOP_TERMINATED_REASON` value
+2. Extend `_build_emit_changed_files_summary` in `plugins/agent/build/lib/summary.sh` to emit `build.discrepancy.detected` for `no_done_sentinel` and `router_out_of_turns` with zero files changed
+
+## Status: COMPLETE
+
+## Changes made
+
+### core/router/route.sh
+Updated the `_ROUTE_LOOP_TERMINATED_REASON` comment in `route_to_model_loop` to list all 10 concrete reason values instead of shorthand "a _router_rc_classify reason":
+done_sentinel | no_done_sentinel | router_timeout | router_rate_limited | router_out_of_turns | router_oom_kill | router_rc_nonzero | router_config_error | router_budget_exceeded | signal
+
+### plugins/agent/build/lib/summary.sh
+Extended `_build_emit_changed_files_summary` with an `elif` branch that emits `build.discrepancy.detected` (with `reason=no_changes_on_incomplete_call`) when `terminated_reason` is `no_done_sentinel` or `router_out_of_turns` and `files_count` is 0. The `done_sentinel` path is left unchanged (RQDIFF-3).
+
+## Tests
+All 4 acceptance test files pass:
+- plugins/agent/build/tests/build-test.sh — 123/123 (DSDIFF-1, DSDIFF-2, DSDIFF-3 all pass)
+- tests/unit/route-loop-terminated-reasons-test.sh — 6/6 (DSEND-1, DSLOCK-1 all pass)
+- tests/unit/route-one-call-per-try-test.sh — 14/14
+- tests/unit/router-rc-classify-test.sh — 34/34
+
+### test (verdict: fail)
+Outputs:
+- acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
+- acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
+- shape_floor_detail: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-detail.md
+- shape_floor_result: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-result.json
+- test_errors: /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log
+- test_failures_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-failures-summary.md
+- test_output_log: /home/runner/work/_temp/zbuild-state/artifacts/test-output.log
+- test_results: /home/runner/work/_temp/zbuild-state/artifacts/test-results.json
+- test_timing: /home/runner/work/_temp/zbuild-state/artifacts/test-timing.log
+
+Findings:
+- test finding 1 (opened by test): tests/unit/lint-grep-c-test.sh fails: ✗ [SPEC-5] real scripts/ core/ plugins/ tree is clean — expected: 0, got: 1 (and 1 more failing check in this file)
+- acceptance-gate finding 1 (opened by test): plugins/agent/build/plugin.sh is not changed by this change — name a file the change touches, or write WIRING: none
+
+Summary:
+# Test stage summary
+
+- failed: tests/unit/lint-grep-c-test.sh
+- verdict: fail
+- passed: 892
+- failed: 2
+- exit_code: 1
+
+## Failing files
+
+- tests/unit/lint-grep-c-test.sh — ✗ [SPEC-5] real scripts/ core/ plugins/ tree is clean — expected: 0, got: 1 (and 1 more failing check in this file)
+
+## Failing lines (extracted)
+
+```
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.y1CLyw/tests/unit/lint-grep-c-test.sh
+lint: FAIL (npm run lint)
+  ✓ [SPEC-4] package.json lint script includes lint-grep-c.sh
+  ✓ [SPEC-5] .github/workflows/test.yml references lint-grep-c step
+  ✓ [SPEC-6] .github/workflows/deferred-tracker.yml has if: failure() step
+  1 of 21 tests failed
+  ✗ [SPEC-5] real scripts/ core/ plugins/ tree is clean
+lint-action-versions: OK — no action version drift detected.
+lint-grep-c: tests/unit/route-loop-terminated-reasons-test.sh:159 — `grep -c … || echo` yields "0\n0" on no-match; use `|| true`
+    _dslock1_nds="$(grep -c '_ROUTE_LOOP_TERMINATED_REASON="no_done_sentinel"' "$_route_sh" 2>/dev/null || echo 0)"
+lint-grep-c: tests/unit/route-loop-terminated-reasons-test.sh:168 — `grep -c … || echo` yields "0\n0" on no-match; use `|| true`
+    _dslock1_rot="$(grep -c '"router_out_of_turns"' "$_classify_sh" 2>/dev/null || echo 0)"
+lint-grep-c: 2 occurrence(s). `grep -c` already prints the count — replace `|| echo 0` with `|| true`.
+    expected: 0, got: 1
+```
+
+## The checks of this run
+- the acceptance check failed: the acceptance check failed — plugins/agent/build/plugin.sh is not changed by this change — name a file the change touches, or write WIRING: none
+
+Errors it hit (last 4096B of /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log):
+re/ plugins/ tree is clean
+    [2mexpected: 0, got: 1[0m
+
+  [38;2;0;212;255m6. legacy-DoNotUse/ directory excluded from scan[0m
+  [38;2;74;222;128m✓[0m [SPEC-6] bad pattern under legacy-DoNotUse/ is excluded from lint
+
+  [38;2;0;212;255m7. test files are scanned (#1969)[0m
+  [38;2;74;222;128m✓[0m [SPEC-7] a *-test.sh under tests/ is scanned, not exempted
+  [38;2;74;222;128m✓[0m [SPEC-7] the offending test file is named with file:line
+  [38;2;74;222;128m✓[0m [SPEC-7] a plain .sh under a tests/ dir is scanned
+
+  [38;2;0;212;255m8. lint-grep-c:allow suppresses a single line (#1969)[0m
+  [38;2;74;222;128m✓[0m [SPEC-8] a line marked lint-grep-c:allow is not reported
+  [38;2;74;222;128m✓[0m [SPEC-8] the marker is per-line: an unmarked sibling still fails
+  [38;2;74;222;128m✓[0m [SPEC-8] only the unmarked line is reported
+
+  [38;2;0;212;255m9a. a command over lines, brackets in quotes, || printf[0m
+  [38;2;74;222;128m✓[0m [SPEC-9] lint exits 1
+  [38;2;74;222;128m✓[0m [SPEC-9] a command continued over lines is caught
+  [38;2;74;222;128m✓[0m [SPEC-9] brackets inside quotes do not hide it
+  [38;2;74;222;128m✓[0m [SPEC-9] || printf is the same bug
+  [38;2;74;222;128m✓[0m [SPEC-9] the safe forms over lines still pass
+
+  [38;2;0;212;255m9. wiring: CI configuration references lint-grep-c.sh[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] package.json lint script includes lint-grep-c.sh
+  [38;2;74;222;128m✓[0m [SPEC-5] .github/workflows/test.yml references lint-grep-c step
+  [38;2;74;222;128m✓[0m [SPEC-6] .github/workflows/deferred-tracker.yml has if: failure() step
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 21 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-5] real scripts/ core/ plugins/ tree is clean
+
+lint: FAIL (npm run lint)
+
+> zbuild@0.1.0 lint
+> bash scripts/lib/lint-model-names.sh && shellcheck -x --severity=warning scripts/zbuild && find scripts core plugins -name '*.sh' -not -path '*/legacy-DoNotUse/*' -print0 | xargs -0 -P 6 -n 90 shellcheck -x --severity=warning && bash scripts/lib/lint-stage-io.sh && bash scripts/lib/lint-contract.sh && bash scripts/lib/lint-doc-style.sh && bash scripts/lib/lint-vision.sh && bash scripts/lib/validate-mechanics-yaml.sh && bash scripts/lib/lint-doc-freshness.sh && bash scripts/lib/lint-action-versions.sh && bash scripts/lib/lint-grep-c.sh && bash scripts/lib/lint-test-identity.sh && bash scripts/lib/lint-llm-envelope.sh && bash scripts/lib/lint-disposition-classify.sh && bash scripts/lib/lint-silenced-redirect.sh && bash scripts/lib/lint-test-errexit.sh && bash scripts/lib/lint-test-engine-state.sh && bash scripts/lib/lint-disposition-words.sh && bash scripts/lib/lint-stage-signals.sh && bash scripts/lib/lint-adr-enforced-by.sh && bash scripts/lib/lint-plain-prompts.sh && bash scripts/lib/lint-bare-timeout.sh && bash scripts/lib/lint-stage-output-names.sh && bash scripts/lib/lint-atomic-write-unchecked.sh && bash scripts/lib/lint-test-determinism.sh && bash scripts/lib/lint-test-helper-place.sh
+
+lint-model-names: OK — no hardcoded model names in core/ plugins/ scripts/
+lint-doc-style: OK — 13 in-scope page(s) have a plain-language newcomer opening (README + docs/wiki/*.md, excluding _Sidebar.md and generated subdirs).
+lint-vision: OK — .zbuild/vision.md conforms to ADR-049.
+validate-mechanics-yaml: OK — 18 mechanics validated
+lint-doc-freshness: OK — 43 plugin(s), 18 mechanic(s) — all checks passed.
+lint-action-versions: OK — no action version drift detected.
+lint-grep-c: tests/unit/route-loop-terminated-reasons-test.sh:159 — `grep -c … || echo` yields "0\n0" on no-match; use `|| true`
+    _dslock1_nds="$(grep -c '_ROUTE_LOOP_TERMINATED_REASON="no_done_sentinel"' "$_route_sh" 2>/dev/null || echo 0)"
+lint-grep-c: tests/unit/route-loop-terminated-reasons-test.sh:168 — `grep -c … || echo` yields "0\n0" on no-match; use `|| true`
+    _dslock1_rot="$(grep -c '"router_out_of_turns"' "$_classify_sh" 2>/dev/null || echo 0)"
+
+lint-grep-c: 2 occurrence(s). `grep -c` already prints the count — replace `|| echo 0` with `|| true`.
+
+### issue-acceptance (verdict: fail)
+Outputs:
+- issue_acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-result.json
+- issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
+
+Findings:
+- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: RQEND-1: The new test file `tests/unit/route-loop-terminated-reasons-test.sh` uses `grep -c … || echo 0` at two places in the DSLOCK-1 section. The repo's `lint-grep-c` rule treats this as a defect (`grep -c` already prints 0 on no-match; `|| echo 0` appends a second zero). `tests/unit/lint-grep-c-test.sh` [SPEC-5] catches it and fails the suite. A test file that breaks the lint suite is broken code; the requirement is not met until the file passes. — tests/unit/route-loop-terminated-reasons-test.sh | _dslock1_rot="$(grep -c '"router_out_of_turns"' "$_classify_sh" 2>/dev/null || echo 0)". What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 2 (opened by issue-acceptance): The issue requires this and the change does not meet it: RQLOCK-4: The requirement says the O4 section in `tests/unit/route-one-call-per-try-test.sh` is unchanged, but the diff shows three assertion-tag renames (`[O4]` → `[DSLOCK-3][O4]`) and three new Given/When/Then comment lines were added inside O4. — tests/unit/route-one-call-per-try-test.sh | assert_eq "[DSLOCK-3][O4] flags follow the three arguments directly" "0" "$_rc". What would settle it: a change that meets this requirement in full.
+- issue-acceptance finding 3 (opened by issue-acceptance): The change does this and no requirement asks for it: tests/unit/router-rc-classify-test.sh was modified (Given/When/Then comments added, assertion tags renamed to [DSLOCK-2]): No requirement names this file or asks for changes to it; RQLOCK-3 concerns the source file `scripts/lib/router-rc-classify.sh` only — tests/unit/router-rc-classify-test.sh | assert_eq "[DSLOCK-2] T2: rc=124 verdict=error" "error" "$v". What would settle it: the change without this part, or a requirement that asks for it.
+- issue-acceptance finding 4 (opened by issue-acceptance): The change does this and no requirement asks for it: tests/unit/route-one-call-per-try-test.sh was modified beyond what RQLOCK-4 allows: No requirement asks for edits to this file; RQLOCK-4 requires it be untouched — tests/unit/route-one-call-per-try-test.sh | assert_pass "[DSLOCK-3][O4] no call limit is resolved anywhere". What would settle it: the change without this part, or a requirement that asks for it.
+
+Summary:
+## issue-acceptance — fail
+
+- judged the change against the issue: 2 requirement(s) not met or not sure, 2 part(s) of the change no requirement asks for
+
+- see result
+- no finding was open for it
 
 ## What you must not do
 
