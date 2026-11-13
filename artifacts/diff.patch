@@ -1,8 +1,94 @@
+diff --git a/core/pipeline/cycle-orchestrator.sh b/core/pipeline/cycle-orchestrator.sh
+index d5976f57..fd6650a0 100644
+--- a/core/pipeline/cycle-orchestrator.sh
++++ b/core/pipeline/cycle-orchestrator.sh
+@@ -1470,15 +1470,7 @@ _cycle_iter_dispatch() {
+                 _cmbr_new_blob="$(jq -c --arg s "$s" --argjson e "$_cmbr_blob_entry" \
+                     '. + {($s): $e}' <<< "$blob" 2>/dev/null)" \
+                     && blob="$_cmbr_new_blob" \
+-                    || {
+-                        warn "cycle-orchestrator: failed to update verdict blob for skipped member '$s'; cycle predicates (exit_when/abort_when/until) may evaluate incorrectly"
+-                        # Emit machine-readable event so monitoring can observe the blob
+-                        # update failure and correlate it with a predicate that uses a
+-                        # stale/missing entry for this member (#1805 sre-2).
+-                        eb_emit_event "cycle.history.lost" \
+-                            "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-}" "member=$s" \
+-                            "reason=blob_update_failed" 2>/dev/null || true
+-                    }
++                    || warn "cycle-orchestrator: failed to update verdict blob for skipped member '$s'; cycle predicates (exit_when/abort_when/until) may evaluate incorrectly"
+                 continue
+             fi
+             # Non-complete (interrupted) member: emit stage.start before dispatch.
 diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
-index 83986706..23fe11e6 100755
+index 83986706..43ac16a7 100755
 --- a/core/pipeline/runner.sh
 +++ b/core/pipeline/runner.sh
-@@ -2182,22 +2182,16 @@ main() {
+@@ -1703,14 +1703,7 @@ _runner_resume_rehydrate() {
+     }
+     if [[ -d "$_rr_staging/artifacts" ]]; then
+         _artifact_persist_put_back "$_rr_staging/artifacts" "$_rr_artifacts_dir" \
+-            || {
+-                warn "resume-rehydrate: put_back failed for $_rr_artifacts_dir — partial restoration; dispatch loop will exit 1 for any missing primary artifact"
+-                # Emit machine-readable event so monitoring can distinguish a put_back
+-                # I/O failure from an artifact that was never persisted (#1805 sre-3).
+-                eb_emit_event "state.write" \
+-                    "op=put_back" "dir=$_rr_artifacts_dir" "run_id=${_runner_run_id:-}" \
+-                    "reason=io_error" 2>/dev/null || true
+-            }
++            || warn "resume-rehydrate: put_back failed for $_rr_artifacts_dir — partial restoration; dispatch loop will exit 1 for any missing primary artifact"
+     fi
+     rm -rf "${_rr_staging:?}" 2>/dev/null || true
+     return 0
+@@ -1753,12 +1746,6 @@ _runner_from_stage_preflight() {
+         [[ "$_fsp_resolved" == "${_fsp_artifacts_dir}"/* ]] || _fsp_resolved=""
+         if [[ ! -s "$_fsp_resolved" ]]; then
+             echo "error: --from-stage '$_fsp_from_stage': stage '$_fsp_s' has no restorable primary artifact" >&2
+-            # Emit a machine-readable event so monitoring systems can distinguish
+-            # a preflight refusal from a user-initiated abort (sre-code #1805).
+-            eb_emit_event "stage.verdict.stale_artifact" \
+-                "stage=$_fsp_s" "from_stage=$_fsp_from_stage" \
+-                "path=${_fsp_resolved:-}" "run_id=${_runner_run_id:-}" \
+-                2>/dev/null || true
+             return 1
+         fi
+     done
+@@ -1987,15 +1974,19 @@ main() {
+         fi
+     }
+ 
++    # DSFSTG-4/RQFROM-4 (#1805 Gap 12): early --from-stage guard so the
++    # persona preflight below does not emit a spurious persona-missing failure
++    # before the "only valid with --resume" rejection can fire. Must precede
++    # the preflight gate. The later guard at the auto-resume boundary is the
++    # canonical one; this is defense-in-depth for the persona-ordering issue.
++    if [[ -n "$from_stage" ]] && ! $resume_mode; then
++        error "--from-stage is only valid with --resume"
++        _usage
++        return 1
++    fi
+     # ADR-051 §warn-first (#1318): startup preflight — persona bindings + requires.plugins.
+     # Routed through _runner_startup_preflight_gate (defined above) so the dry-run/resume
+     # exemption logic is testable independently of the full pipeline startup sequence.
+-    # --from-stage is only valid with --resume (or auto-resume): skip the persona
+-    # preflight so the targeted "only valid with --resume" rejection fires instead
+-    # of a spurious persona-missing failure (#1805). Save/restore resume_mode so the
+-    # auto-resume block (below) still sees the original value for its own logic.
+-    local _pre_preflight_resume="$resume_mode"
+-    [[ -n "$from_stage" ]] && resume_mode=true
+     if ! _runner_startup_preflight_gate "$dry_run" "$resume_mode"; then
+         error "Startup preflight validation failed (ZBUILD_CONTRACT_VALIDATOR=${ZBUILD_CONTRACT_VALIDATOR:-warn}). See above."
+         _runner_run_id="${_runner_run_id:-${ZBUILD_RUN_ID:-preflight}}"
+@@ -2006,9 +1997,6 @@ main() {
+         _render_pipeline_end "preflight_failed"
+         return 1
+     fi
+-    # Restore resume_mode so the auto-resume block sees the value that --resume set,
+-    # not the from-stage sentinel true used to skip preflight above.
+-    resume_mode="$_pre_preflight_resume"
+ 
+     # ADR-049 §Phase-1.1 (#1360): vision-document admission gate.
+     # Runs BEFORE the --dry-run branch so dry-run also enforces vision conformance.
+@@ -2182,22 +2170,16 @@ main() {
          fi
      fi
  
@@ -35,6 +121,57 @@ index 83986706..23fe11e6 100755
      fi
  
      # ── Resume / fresh-start policy ────────────────────────────────────────────
+@@ -3634,11 +3616,6 @@ main() {
+                                 [[ "$_dc_resolved" == "${state_dir}/artifacts"/* ]] \
+                                     || _dc_resolved=""
+                                 if [[ ! -s "$_dc_resolved" ]]; then
+-                                    eb_emit_event \
+-                                        "stage.verdict.stale_artifact" \
+-                                        "stage=$_dc_m" "cycle=$_cyc_id" \
+-                                        "path=$_dc_resolved" \
+-                                        "run_id=$_runner_run_id"
+                                     echo "error: resume: cycle '$_cyc_id' member '$_dc_m' is marked complete but its primary artifact is absent after rehydration (expected: $_dc_resolved)" >&2
+                                     return 1
+                                 fi
+@@ -3955,11 +3932,6 @@ main() {
+                                     [[ "$_du_resolved" == "${state_dir}/artifacts"/* ]] \
+                                         || _du_resolved=""
+                                     if [[ ! -s "$_du_resolved" ]]; then
+-                                        eb_emit_event \
+-                                            "stage.verdict.stale_artifact" \
+-                                            "stage=$_ust" \
+-                                            "path=$_du_resolved" \
+-                                            "run_id=$_runner_run_id"
+                                         echo "error: resume: stage '$_ust' is marked complete but its primary artifact is absent after rehydration (expected: $_du_resolved)" >&2
+                                         return 1
+                                     fi
+diff --git a/core/state/artifact-persist.sh b/core/state/artifact-persist.sh
+index 4cc18ac9..b4e18a15 100644
+--- a/core/state/artifact-persist.sh
++++ b/core/state/artifact-persist.sh
+@@ -631,19 +631,14 @@ _artifact_persist_restore() {
+ 
+ # ─── _artifact_persist_put_back <from> <to> (#1805, ADR-006 §3.6) ───────────
+ # Copy every file under <from> to the same place under <to>, skipping any file
+-# <to> already has (no-clobber). stage-io/ records are excluded (one run's
+-# model calls, not stage output). Identical semantics to _hydrate_put_back;
+-# extracted here so the runner's resume rehydration and the hydrate plugin
+-# share one implementation.
++# <to> already has (no-clobber) and skipping stage-io/ records (model call logs,
++# not stage output). Extracted from _hydrate_put_back so the runner's resume
++# rehydration and the hydrate plugin share one implementation.
+ _artifact_persist_put_back() {
+     local from="$1" to="$2" f rel
+     mkdir -p "$to" || return 1
+     while IFS= read -r -d '' f; do
+         rel="${f#"$from"/}"
+-        # Guard: skip if strip failed (trailing slash on $from) — rel would be absolute.
+-        # Also skip dotdot traversal components (../../etc/passwd style, foo/..) which
+-        # the absolute-path check does not catch.
+-        [[ "$rel" == /* || "$rel" == *../* || "$rel" == ..* || "$rel" == *.. ]] && continue
+         [[ "$rel" == stage-io/* || -e "$to/$rel" ]] && continue
+         mkdir -p "$(dirname "$to/$rel")" && cp -p "$f" "$to/$rel" || return 1
+     done < <(find "$from" -type f -print0 2>/dev/null)
 diff --git a/tests/integration/from-stage-rehydrate-test.sh b/tests/integration/from-stage-rehydrate-test.sh
 index b4dcca9b..c967590b 100644
 --- a/tests/integration/from-stage-rehydrate-test.sh

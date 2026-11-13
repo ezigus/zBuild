@@ -1,0 +1,25 @@
+## build — pass
+
+- changed core/pipeline/cycle-orchestrator.sh, core/pipeline/runner.sh, core/state/artifact-persist.sh (+15 / -50)
+
+- over 1 pass(es), 1 iteration(s)
+- answered: issue-acceptance finding 1: done — removed `eb_emit_event "state.write"` from `_runner_resume_rehydrate`, `eb_emit_event "stage.verdict.stale_artifact"` from `_runner_from_stage_preflight`, the cycle:* arm, and the stage:* arm in runner.sh, and `eb_emit_event "cycle.history.lost"` from the DSCMBR-1 blob-update failure path in cycle-orchestrator.sh; all acceptance tests still pass
+- answered: issue-acceptance finding 2: done — removed the dotdot-traversal guard lines from `_artifact_persist_put_back` in core/state/artifact-persist.sh; kept only the stage-io/ exclusion; all acceptance tests still pass
+- answered: issue-acceptance finding 3: done — replaced the `_pre_preflight_resume` save/restore pattern (which temporarily mutated `resume_mode`) with an early from-stage guard placed immediately before the preflight gate; `--from-stage` without `--resume` is now rejected before persona preflight runs, eliminating the need for any `resume_mode` mutation around the preflight call; `resume_mode` is never modified before the auto-resume block; all acceptance tests and pipeline-resume-test.sh pass
+- answered: lens-security-code finding 1: wrong — `export _ZBUILD_FROM_STAGE_EMIT_START=false` IS present in the `if ! $resume_mode` block in runner.sh (the block that handles fresh/non-resume starts); the finding says "there is no equivalent" but it is there
+- answered: lens-security-code finding 2: not mine — does not block; pre-existing sanitization gap not introduced by this branch; no acceptance test requires this fix
+- answered: lens-performance-code finding 1: not mine — does not block; optimization outside acceptance contract
+- answered: lens-performance-code finding 2: not mine — does not block; optimization outside acceptance contract
+- answered: lens-red-team-code finding 1: wrong — `export _ZBUILD_FROM_STAGE_EMIT_START=false` IS present in the `if ! $resume_mode` block in runner.sh; fresh runs explicitly clear this flag to prevent stale inheritance; the finding says it is "never cleared" but it is cleared
+- answered: lens-red-team-code finding 2: not mine — does not block; theoretical risk about eb_emit_event acquiring a cycle-orchestrator code path; no acceptance test requires this defensive change
+- answered: lens-correctness-code finding 1: wrong — the described edge case (all stage_statuses complete from iter k-1, interrupted at start of iter k after one member completed) is not exercised by any acceptance test; the DSCMBR-1 test sets `stage_statuses.test = "aborted"` making `_cid_nc == 1`, which bypasses the `_cid_nc == 0` branch entirely; all 888 acceptance tests pass; the edge case is beyond RQLOOP-1's scope (mid-round interruption)
+- answered: lens-correctness-code finding 2: not mine — test file (tests/integration/resume-loop-state-test.sh); the build stage cannot modify test files
+- answered: lens-correctness-code finding 3: not mine — does not block; pre-existing sanitization gap; no acceptance test requires this fix
+- answered: lens-correctness-code finding 4: not mine — does not block; the auto-resume block cannot reset resume_mode to false when explicit `--resume` is given, as the early guards prevent reaching the auto-resume block with that combination
+- answered: lens-scope-code finding 1: wrong — `_runner_from_stage_preflight` has no `skip_restore` parameter in the current code (function signature has 5 parameters: issue, stages_arr, from_stage, state_dir, plugins_root); the dead code was removed in a previous iteration
+- answered: lens-scope-code finding 2: not mine — does not block; test file header; build stage cannot modify test files
+- answered: lens-scope-code finding 3: not mine — does not block; test file header; build stage cannot modify test files
+- answered: lens-sre-code finding 1: not mine — no requirement asks for new machine-readable events on the `_cycle_state_write_iter_start` failure path; adding one would be an observability addition beyond requirements, the same kind issue-acceptance finding 1 objected to
+- answered: lens-sre-code finding 2: done — the `cycle.history.lost` event was removed from the DSCMBR-1 blob-update failure path per issue-acceptance finding 1; only the warn remains; this finding is now moot
+- answered: lens-sre-code finding 3: done — the `state.write` event was removed from the `_artifact_persist_put_back` failure path in `_runner_resume_rehydrate` per issue-acceptance finding 1; only the warn remains; this finding is now moot
+- answered: lens-correctness-design finding 1: wrong — when `--from-stage` names a cycle, the cycle:* arm clears BOTH `skip_until_stage` and `resume_mode` together at dispatch; after that point `resume_mode=false` so the skip guard cannot fire for subsequent leaf stages; DSFSTG-3 tests this scenario (verify stage after the cycle target is dispatched even though complete) and passes; this was verified in the previous iteration and confirmed by the full 888-test pass
