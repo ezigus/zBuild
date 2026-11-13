@@ -514,7 +514,7 @@ jq -n \
         status: "in_progress", updated_at: $now
     }' > "$S6_STATE_FILE"
 
-# When — the runner starts with --from-stage build (a leaf stage, not a cycle stage).
+# When — the runner starts with --resume --from-stage build (a leaf stage, not a cycle stage).
 set +e
 ( cd "$S6_WORK_REPO" && env \
     ZBUILD_PLUGINS_ROOT="$S3_PLUGINS_ROOT" \
@@ -527,7 +527,7 @@ set +e
     ZBUILD_VISION_GATE=off \
     PATH="$PATH" HOME="$HOME" \
     bash "$RUNNER" --template resume-minimal \
-        --from-stage build --issue "$S6_ID" ) \
+        --resume --from-stage build --issue "$S6_ID" ) \
     >"$TEST_TEMP_DIR/s6-stdout.txt" 2>"$TEST_TEMP_DIR/s6-stderr.txt"
 _s6_rc=$?
 set -e
