@@ -1,390 +1,59 @@
 diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
-index 99efb25c..83986706 100755
+index 83986706..23fe11e6 100755
 --- a/core/pipeline/runner.sh
 +++ b/core/pipeline/runner.sh
-@@ -1716,32 +1716,15 @@ _runner_resume_rehydrate() {
-     return 0
- }
- 
--# ─── _runner_from_stage_preflight <issue> <stages_arr> <from_stage> <state_dir> <plugins_root> [skip_restore] ─
--# For --from-stage <s>: restore + put_back artifacts from the git state branch,
--# then verify every stage before <s> has its primary artifact in ZBUILD_ARTIFACT_DIR.
--# Exits 1 naming the missing stage in stderr. (SPEC-3, SPEC-4, ADR-006 §3.6)
--# When skip_restore=true (passed when called after _runner_resume_rehydrate has
--# already restored artifacts), skip the git restore step to avoid redundant git-archive
--# operations (correctness-1 fix, #1805).
-+# ─── _runner_from_stage_preflight <issue> <stages_arr> <from_stage> <state_dir> <plugins_root> ─
-+# For --from-stage <s>: verify every stage before <s> has its primary artifact
-+# in ZBUILD_ARTIFACT_DIR (already restored by _runner_resume_rehydrate before
-+# this call). Exits 1 naming the missing stage in stderr. (SPEC-3, SPEC-4, ADR-006 §3.6)
- _runner_from_stage_preflight() {
-     local _fsp_issue="$1"
-     local -n _fsp_stages="$2"
-     local _fsp_from_stage="$3" _fsp_state_dir="$4" _fsp_plugins_root="$5"
--    local _fsp_skip_restore="${6:-false}"
-     local _fsp_artifacts_dir="$_fsp_state_dir/artifacts"
--    if ! $_fsp_skip_restore; then
--        # Restore + put_back (same sequence as _runner_resume_rehydrate). Skipped
--        # when already restored by _runner_resume_rehydrate (resume + from-stage).
--        local _fsp_staging="$_fsp_state_dir/from-stage-preflight.staging"
--        rm -rf "$_fsp_staging" 2>/dev/null || true
--        _artifact_persist_restore "$_fsp_issue" "$_fsp_staging" \
--            || warn "from-stage-preflight: git state restore failed for issue=$_fsp_issue — artifact verification may fail"
--        if [[ -d "$_fsp_staging/artifacts" ]]; then
--            _artifact_persist_put_back "$_fsp_staging/artifacts" "$_fsp_artifacts_dir" \
--                || warn "from-stage-preflight: put_back failed for $_fsp_artifacts_dir — partial restoration"
--        fi
--        rm -rf "${_fsp_staging:?}" 2>/dev/null || true
--    fi
-     # When from_stage is a cycle ID, stop checking before the cycle's first
-     # member (the first element of _TPL_CYCLE_STAGES_<id>). Cycle IDs are not
-     # in active_stages[], so a literal match would never fire and all stages
-@@ -3116,9 +3099,7 @@ main() {
-     # ADR-006 §3.6 (#1805): when --from-stage is active, verify every stage
-     # before the target has a restorable artifact before the dispatch loop runs.
-     if [[ -n "$from_stage" ]]; then
--        # Pass resume_mode as skip_restore: when resuming, _runner_resume_rehydrate
--        # already restored artifacts; skip the redundant git-archive restore in preflight.
--        if ! _runner_from_stage_preflight "$_runner_issue" "active_stages" "$from_stage" "$state_dir" "$plugins_root" "$resume_mode"; then
-+        if ! _runner_from_stage_preflight "$_runner_issue" "active_stages" "$from_stage" "$state_dir" "$plugins_root"; then
-             return 1
+@@ -2182,22 +2182,16 @@ main() {
          fi
      fi
-diff --git a/scripts/lib/run-status-text.sh b/scripts/lib/run-status-text.sh
-index 36e2a717..671e1f40 100644
---- a/scripts/lib/run-status-text.sh
-+++ b/scripts/lib/run-status-text.sh
-@@ -136,7 +136,5 @@ _rsc_code_labels_v() {
-         if [[ "$_pre" == *'`' ]]; then _out+="$_pre$_lbl"; else _out+="$_pre\`$_lbl\`"; fi
-         _in="${_in#*"$_lbl"}"
-     done
--    # Append an empty code span after the last label so the label's closing
--    # backtick is not misread as opening a new span by some renderers.
--    if [[ -n "$_out" ]]; then _rcl="$_out${_in}\`\`"; else _rcl="$_in"; fi
-+    _rcl="$_out$_in"
- }
+ 
+-    # DSFSTG-4/RQFROM-4 (#1805 Gap 12): when --from-stage is given without
+-    # explicit --resume and the state file records status=interrupted, reject
+-    # BEFORE auto-resume runs. Auto-resume would set resume_mode=true from an
+-    # interrupted state file and mask the error (pipeline.resume would be
+-    # emitted before the existing post-auto-resume guard fires). The check is
+-    # narrowed to interrupted-status only: status=in_progress runs are allowed
+-    # to reach auto-resume so the DSFSTG-1 skip_restore=false branch continues
+-    # to work (S5 in from-stage-rehydrate-test.sh uses in_progress for this).
+-    if [[ -n "$from_stage" ]] && ! $resume_mode && [[ -f "$state_file" ]]; then
+-        local _fsg_status
+-        _fsg_status="$(get_state_field "$state_file" '.status' '')"
+-        if [[ "$_fsg_status" == "interrupted" ]]; then
+-            error "--from-stage is only valid with --resume"
+-            _usage
+-            return 1
+-        fi
++    # DSFSTG-4/RQFROM-4 (#1805 Gap 12): --from-stage without explicit --resume
++    # always refuses, regardless of pipeline status (interrupted, in_progress,
++    # complete, or no state). Guard runs BEFORE auto-resume so a run that would
++    # otherwise auto-resume (status=in_progress, fresh timestamp) cannot bypass
++    # the guard. Explicit --resume sets resume_mode=true before we reach this
++    # point, so the guard is a no-op when --resume is given.
++    if [[ -n "$from_stage" ]] && ! $resume_mode; then
++        error "--from-stage is only valid with --resume"
++        _usage
++        return 1
+     fi
+ 
+     # ── Resume / fresh-start policy ────────────────────────────────────────────
 diff --git a/tests/integration/from-stage-rehydrate-test.sh b/tests/integration/from-stage-rehydrate-test.sh
-index 9f0ac7f3..b4dcca9b 100644
+index b4dcca9b..c967590b 100644
 --- a/tests/integration/from-stage-rehydrate-test.sh
 +++ b/tests/integration/from-stage-rehydrate-test.sh
-@@ -218,18 +218,16 @@ fi
- assert_eq "[#1805/DSFSTG-1] no stage before <s>=cyc dispatched after pipeline.skip_to_stage (--resume path; RQFROM-2)" \
-     "0" "$_s3_intake_after_skip"
+@@ -514,7 +514,7 @@ jq -n \
+         status: "in_progress", updated_at: $now
+     }' > "$S6_STATE_FILE"
  
--# ── SPEC-3b: --from-stage WITHOUT --resume exercises skip_restore=false branch ──
--# This sub-case covers the plain `--from-stage <s>` path (no --resume flag),
--# which routes through _runner_from_stage_preflight with skip_restore=false —
--# the branch that performs the git archive restore itself rather than relying on
--# a prior resume rehydration step. The existing S3 sub-case always uses
--# `--resume --from-stage` (skip_restore=true); without this sub-case that
--# substantively different restore path is never exercised.
--# (Addresses lens-scope-code finding 1.)
--print_test_section "[#1805/DSFSTG-1] --from-stage WITHOUT --resume rehydrates stages before <s> (skip_restore=false branch)"
-+# ── SPEC-3b: --resume --from-stage <s> exercises artifact rehydration (second coverage sub-case) ──
-+# This sub-case re-exercises the DSFSTG-1 requirement using a distinct issue ID and
-+# fixture. The skip_restore=false branch (--from-stage without --resume) was removed
-+# per Gap 12; RQFROM-4 requires --resume for all --from-stage invocations.
-+# S3 above uses `--resume --from-stage`; this sub-case confirms the same path works
-+# end-to-end with an independent fixture invocation.
-+print_test_section "[#1805/DSFSTG-1] --resume --from-stage <s> rehydrates prior stages (explicit --resume path)"
- 
- # Given — a previous run completed intake; its artifact is present in the git
--#   state branch; a new invocation uses --from-stage cyc WITHOUT --resume.
-+#   state branch; a new invocation uses --resume --from-stage cyc.
- S5_ID="$(zb_test_issue)"
- S5_STATE_DIR="$TEST_TEMP_DIR/s5-state"
- S5_EVENTS_DIR="$TEST_TEMP_DIR/s5-events"
-@@ -254,7 +252,7 @@ if [[ "$_s5_snap_rc" -ne 0 ]]; then
-     assert_fail "[#1805/DSFSTG-1] setup s5: snapshot failed" \
-         "rc=$_s5_snap_rc; $(cat "$TEST_TEMP_DIR/s5-snap.log" 2>/dev/null | tail -5)"
- else
--    assert_pass "[#1805/DSFSTG-1] setup s5: state branch populated (no-resume path)"
-+    assert_pass "[#1805/DSFSTG-1] setup s5: state branch populated (--resume path)"
- fi
- 
- # Remove the artifact from disk — it now lives only on the state branch.
-@@ -281,9 +279,9 @@ jq -n \
-         updated_at: $now
-     }' > "$S5_STATE_FILE"
- 
--# When — the runner starts with --from-stage cyc and NO --resume flag.
--# This exercises the skip_restore=false branch of _runner_from_stage_preflight,
--# where the function performs the git archive restore itself.
-+# When — the runner starts with --resume --from-stage cyc (explicit --resume).
-+# RQFROM-4 requires --resume for all --from-stage invocations; the skip_restore=false
-+# branch (plain --from-stage without --resume) is removed per Gap 12.
+-# When — the runner starts with --from-stage build (a leaf stage, not a cycle stage).
++# When — the runner starts with --resume --from-stage build (a leaf stage, not a cycle stage).
  set +e
- ( cd "$S5_WORK_REPO" && env \
-     ZBUILD_CYCLES_ENABLED=1 \
-@@ -297,24 +295,23 @@ set +e
+ ( cd "$S6_WORK_REPO" && env \
+     ZBUILD_PLUGINS_ROOT="$S3_PLUGINS_ROOT" \
+@@ -527,7 +527,7 @@ set +e
      ZBUILD_VISION_GATE=off \
      PATH="$PATH" HOME="$HOME" \
-     bash "$RUNNER" --template artifact-snapshot-coverage \
--        --from-stage cyc --issue "$S5_ID" ) \
-+        --resume --from-stage cyc --issue "$S5_ID" ) \
-     >"$TEST_TEMP_DIR/s5-stdout.txt" 2>"$TEST_TEMP_DIR/s5-stderr.txt"
- _s5_rc=$?
+     bash "$RUNNER" --template resume-minimal \
+-        --from-stage build --issue "$S6_ID" ) \
++        --resume --from-stage build --issue "$S6_ID" ) \
+     >"$TEST_TEMP_DIR/s6-stdout.txt" 2>"$TEST_TEMP_DIR/s6-stderr.txt"
+ _s6_rc=$?
  set -e
- 
- # Then — intake artifact must appear in ZBUILD_ARTIFACT_DIR before cyc dispatches.
--# Before the change: skip_restore=false path does not exist / no rehydration →
--#   file absent → FAILS.
--# After the change: _runner_from_stage_preflight with skip_restore=false restores
-+# Before the change: no --from-stage rehydration → file absent → FAILS.
-+# After the change: _runner_from_stage_preflight (--resume path) restores
- #   the artifact from the git state branch → PASSES.
- assert_file_exists \
--    "[#1805/DSFSTG-1] intake-result.json rehydrated via --from-stage without --resume (skip_restore=false branch)" \
-+    "[#1805/DSFSTG-1] intake-result.json rehydrated via --resume --from-stage (second coverage sub-case)" \
-     "$S5_STATE_DIR/artifacts/intake-result.json"
- 
- # Then — restored artifact must contain the original payload.
- _s5_restored_content="$(cat "$S5_STATE_DIR/artifacts/intake-result.json" 2>/dev/null || true)"
- assert_contains \
--    "[#1805/DSFSTG-1] restored artifact contains prior-run payload (--from-stage without --resume; skip_restore=false used git state branch)" \
-+    "[#1805/DSFSTG-1] restored artifact contains prior-run payload (--resume --from-stage used git state branch)" \
-     "$_s5_restored_content" "prior-run-noresume-intake"
- 
- # Then — intake emits no stage.start (it was rehydrated, not dispatched).
-@@ -325,23 +322,23 @@ if [[ -f "$S5_EVENTS_JSONL" ]]; then
-     _s5_intake_starts="$(jq -r 'select(.type=="stage.start" and .data.stage=="intake") | .type' \
-         "$S5_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
- fi
--assert_eq "[#1805/DSFSTG-1] intake emits no stage.start when skipped via --from-stage without --resume" \
-+assert_eq "[#1805/DSFSTG-1] intake emits no stage.start when skipped via --resume --from-stage (second coverage sub-case)" \
-     "0" "$_s5_intake_starts"
- 
- # [#1805/DSFSTG-1]: pipeline.skip_to_stage must be emitted when --from-stage is active
--# (plain --from-stage without --resume; skip_restore=false branch).
-+# (--resume --from-stage path).
- # Before the change: no --from-stage support → no pipeline.skip_to_stage event → FAILS.
--# After the change: runner emits pipeline.skip_to_stage on the no-resume path → PASSES.
-+# After the change: runner emits pipeline.skip_to_stage on the --resume --from-stage path → PASSES.
- _s5_skip_stage_count=0
- if [[ -f "$S5_EVENTS_JSONL" ]]; then
-     _s5_skip_stage_count="$(jq -r 'select(.type=="pipeline.skip_to_stage") | .type' \
-         "$S5_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
- fi
--assert_gt "[#1805/DSFSTG-1] pipeline.skip_to_stage emitted when --from-stage active without --resume (skip_restore=false branch; RQFROM-2)" \
-+assert_gt "[#1805/DSFSTG-1] pipeline.skip_to_stage emitted when --from-stage active (--resume path, second coverage sub-case; RQFROM-2)" \
-     "$_s5_skip_stage_count" "0"
- 
- # [#1805/DSFSTG-1]: no stage before <s>=cyc dispatched after pipeline.skip_to_stage
--# (plain --from-stage without --resume path).
-+# (--resume --from-stage path, second coverage sub-case).
- _s5_skip_lineno=0
- _s5_intake_after_skip=0
- if [[ -f "$S5_EVENTS_JSONL" ]]; then
-@@ -353,24 +350,24 @@ if [[ -f "$S5_EVENTS_JSONL" ]]; then
-             "$S5_EVENTS_JSONL" 2>/dev/null)"
-     fi
- fi
--assert_eq "[#1805/DSFSTG-1] no stage before <s>=cyc dispatched after pipeline.skip_to_stage (no --resume path; RQFROM-2)" \
-+assert_eq "[#1805/DSFSTG-1] no stage before <s>=cyc dispatched after pipeline.skip_to_stage (--resume path, second coverage sub-case; RQFROM-2)" \
-     "0" "$_s5_intake_after_skip"
- 
- # [#1805/DSFSTG-1]: stage <s>=cyc must be dispatched as the first unit on the
--# plain --from-stage path; a cycle.start event must be emitted for cyc.
--# Before the change: without --from-stage support cyc is never dispatched on this
--#   path → no cycle.start → _s5_cyc_starts=0 → assert 0 > 0 → FAILS.
-+# --resume --from-stage path; a cycle.start event must be emitted for cyc.
-+# Before the change: without --from-stage support cyc is not dispatched →
-+#   no cycle.start → _s5_cyc_starts=0 → assert 0 > 0 → FAILS.
- # After the change: cyc is the first dispatched unit → cycle.start emitted → PASSES.
- _s5_cyc_starts=0
- if [[ -f "$S5_EVENTS_JSONL" ]]; then
-     _s5_cyc_starts="$(jq -r 'select(.type=="cycle.start" and .data.cycle_id=="cyc") | .type' \
-         "$S5_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
- fi
--assert_gt "[#1805/DSFSTG-1] cycle.start emitted for <s>=cyc (first dispatch unit on plain --from-stage path)" \
-+assert_gt "[#1805/DSFSTG-1] cycle.start emitted for <s>=cyc (first dispatch unit on --resume --from-stage path)" \
-     "$_s5_cyc_starts" "0"
- 
- # [#1805/DSFSTG-1]: stage.start for cycled (cyc's first cycle member) on the
--# plain --from-stage path; confirms the cycle stage <s> was actually dispatched
-+# --resume --from-stage path; confirms the cycle stage <s> was actually dispatched
- # and its first member was started.
- # Before the change: cyc not dispatched → no stage.start for cycled → FAILS.
- # After the change: cyc dispatches cycled → stage.start emitted → PASSES.
-@@ -379,7 +376,7 @@ if [[ -f "$S5_EVENTS_JSONL" ]]; then
-     _s5_cycled_started="$(jq -r 'select(.type=="stage.start" and .data.stage=="cycled") | .type' \
-         "$S5_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
- fi
--assert_gt "[#1805/DSFSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage dispatches <s> as first unit on plain path)" \
-+assert_gt "[#1805/DSFSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage dispatches <s> as first unit on --resume path)" \
-     "$_s5_cycled_started" "0"
- 
- # ── SPEC-4: missing artifact with --from-stage exits 1 and names missing stage ─
-@@ -565,7 +562,7 @@ assert_eq "[#1805/DSFSTG-1] no stage.start for intake when skipped via --from-st
- print_test_section "from-stage-rehydrate test uses a fixture containing a cyclic stage"
- 
- # Then — the test fixtures used by from-stage-rehydrate-test.sh contain a pipeline stage
--#   of type: cycle, verified by an assert_contains tagged [#1805/DSCYCL-1].
-+#   of type: cycle, verified by an assert_contains tagged .
- # Run a fresh pipeline against the cyclic fixture (artifact-snapshot-coverage) to
- # demonstrate that this test file exercises a pipeline containing a cyclic stage.
- _S13_FS_ID="$(zb_test_issue)"
-@@ -606,7 +603,7 @@ set -e
- 
- # : the fixture is cyclic (type: cycle present).
- _s13_fs_content="$(cat "$REPO_ROOT/tests/fixtures/templates/artifact-snapshot-coverage.yaml")"
--assert_contains "[#1805/DSCYCL-1] from-stage-rehydrate test uses a cyclic fixture (type: cycle)" \
-+assert_contains "from-stage-rehydrate test uses a cyclic fixture (type: cycle)" \
-     "$_s13_fs_content" "type: cycle"
- 
- # : confirm the cyclic pipeline ran (intake dispatched in the fresh run).
-diff --git a/tests/integration/resume-entry-points-test.sh b/tests/integration/resume-entry-points-test.sh
-index 5049dfc1..7f23484e 100644
---- a/tests/integration/resume-entry-points-test.sh
-+++ b/tests/integration/resume-entry-points-test.sh
-@@ -409,7 +409,7 @@ set -e
- 
- # Then — the fixture used by this test file contains a stage of type: cycle
- _s13_ep_content="$(cat "$REPO_ROOT/tests/fixtures/templates/artifact-snapshot-coverage.yaml")"
--assert_contains "[#1805/DSCYCL-1] resume-entry-points test uses a cyclic fixture (type: cycle)" \
-+assert_contains "resume-entry-points test uses a cyclic fixture (type: cycle)" \
-     "$_s13_ep_content" "type: cycle"
- 
- # : confirm the cyclic pipeline ran (intake dispatched in the fresh run).
-diff --git a/tests/integration/resume-loop-state-test.sh b/tests/integration/resume-loop-state-test.sh
-index 45fbf312..6e311839 100644
---- a/tests/integration/resume-loop-state-test.sh
-+++ b/tests/integration/resume-loop-state-test.sh
-@@ -410,7 +410,7 @@ print_test_section "resume-loop-state test uses a fixture containing a cyclic st
- # contains a cyclic stage (as DSCYCL-1 requires).
- # Then — the fixture used by this test file contains a stage of type: cycle
- _s13_loop_fixt_content="$(cat "$FIXT/cycle-converges-iter2.yaml")"
--assert_contains "[#1805/DSCYCL-1] cycle fixture used by resume-loop-state test has type: cycle" \
-+assert_contains "cycle fixture used by resume-loop-state test has type: cycle" \
-     "$_s13_loop_fixt_content" "type: cycle"
- 
- # Also assert the pipeline was actually run: cycle_dispatch_stage was invoked
-diff --git a/tests/integration/resume-rehydrate-test.sh b/tests/integration/resume-rehydrate-test.sh
-index 0575e19f..3482a1c9 100644
---- a/tests/integration/resume-rehydrate-test.sh
-+++ b/tests/integration/resume-rehydrate-test.sh
-@@ -1029,9 +1029,9 @@ assert_gt \
- print_test_section "resume-rehydrate test uses a fixture containing a cyclic stage"
- 
- # Then — the test fixtures used by resume-rehydrate-test.sh contain a pipeline stage of
--#   type: cycle, verified by an assert_contains tagged [#1805/DSCYCL-1].
--# [#1805/DSCYCL-1]: the fixture must contain type: cycle.
--assert_contains "[#1805/DSCYCL-1] resume-rehydrate (DSRHYD-1/RHYD-2/BNDY-1) fixture (artifact-snapshot-coverage) contains type: cycle" \
-+#   type: cycle, verified by an assert_contains tagged .
-+# : the fixture must contain type: cycle.
-+assert_contains "resume-rehydrate (DSRHYD-1/RHYD-2/BNDY-1) fixture (artifact-snapshot-coverage) contains type: cycle" \
-     "$_s12_fixt_content" "type: cycle"
- 
- # : the pipeline using the cyclic fixture was actually run; intake dispatched
-diff --git a/tests/unit/acceptance-testfile-sections-test.sh b/tests/unit/acceptance-testfile-sections-test.sh
-index 2b801c7b..8b9c2cf1 100644
---- a/tests/unit/acceptance-testfile-sections-test.sh
-+++ b/tests/unit/acceptance-testfile-sections-test.sh
-@@ -36,22 +36,22 @@ run_to 3
-   # When: it is resumed
-   resume # resumes it
- # **Then** stages 1 and 2 are not dispatched
--assert_eq "not dispatched" "0" "$n"
-+assert_eq "[#1805/RHYD-1] not dispatched" "0" "$n"
- #and the outputs are byte-identical
--assert_eq "same bytes" "$a" "$b"
-+assert_eq "[#1805/RHYD-1] same bytes" "$a" "$b"
- # THEN stage 3 runs
- # Thereafter nothing else matters
- # Cleanup
- rm -rf "$d"
- SH
- # When the check's view of it is made
--OUT="$(acceptance_testfile_source "$R" tests/a-test.sh '')"
-+OUT="$(acceptance_testfile_source "$R" tests/a-test.sh '[#1805/RHYD-1]')"
- # Then the headings are there, as written, and nothing else that is a comment
- for _h in '# Given a run interrupted in stage 3' '# When: it is resumed' '# **Then** stages 1 and 2 are not dispatched' \
-           '#and the outputs are byte-identical' '# THEN stage 3 runs' '# Cleanup'; do
-     assert_contains "[S1] the heading is shown: $_h" "$OUT" "$_h"
- done
--assert_contains "[S1] ...code is still shown, the assertion marked" "$OUT" '>> assert_eq "not dispatched"'
-+assert_contains "[S1] ...code is still shown, the assertion marked" "$OUT" '>> assert_eq "[#1805/RHYD-1] not dispatched"'
- for _c in 'A note about this file' 'resumes it' 'Thereafter' '#!/usr/bin/env bash'; do
-     assert_eq "[S2] not shown: $_c" "0" "$(grep -cF -- "$_c" <<< "$OUT" || true)"
- done
-@@ -59,9 +59,9 @@ done
- cat > "$R/tests/b-test.sh" <<'SH'
- # setup
- x=1
--assert_eq "x" "1" "$x" # checks x
-+assert_eq "[#1805/RHYD-2] x" "1" "$x" # checks x
- SH
--OUT_B="$(acceptance_testfile_source "$R" tests/b-test.sh '')"
-+OUT_B="$(acceptance_testfile_source "$R" tests/b-test.sh '[#1805/RHYD-2]')"
- assert_eq "[S3] no headings: no comment is shown" "0" "$(grep -c '#' <<< "${OUT_B//\[#1805/}" || true)"
- 
- cleanup_test_env
-diff --git a/tests/unit/descriptive-id-readers-test.sh b/tests/unit/descriptive-id-readers-test.sh
-index b36b32e2..80a52fd3 100644
---- a/tests/unit/descriptive-id-readers-test.sh
-+++ b/tests/unit/descriptive-id-readers-test.sh
-@@ -125,8 +125,8 @@ assert_eq "[R7] the false-completion probe no longer reads SPEC-<n> alone" "0" "
- # ── R8 ───────────────────────────────────────────────────────────────────────
- # shellcheck source=../../scripts/lib/run-status-render.sh
- source "$REPO_ROOT/scripts/lib/run-status-render.sh" 2>/dev/null
--_o=""; _rsc_code_labels_v _o "failed [#1805/DSFSTG-1] and "
--assert_eq "[R8] descriptive and old labels are shown as code" 'failed `[#1805/DSFSTG-1]` and ``' "$_o"
-+_o=""; _rsc_code_labels_v _o "failed [#1805/DSFSTG-1] and [#1805/SPEC-2]"
-+assert_eq "[R8] descriptive and old labels are shown as code" 'failed `[#1805/DSFSTG-1]` and `[#1805/SPEC-2]`' "$_o"
- 
- # ── R9 ───────────────────────────────────────────────────────────────────────
- REPO="$TEST_TEMP_DIR/repo"; mkdir -p "$REPO/tests/unit"
-diff --git a/tests/unit/multiline-assertion-tag-test.sh b/tests/unit/multiline-assertion-tag-test.sh
-index d39a2cf3..94bb055d 100644
---- a/tests/unit/multiline-assertion-tag-test.sh
-+++ b/tests/unit/multiline-assertion-tag-test.sh
-@@ -3,7 +3,7 @@
- # lines counts as tagged when its label is on any of them (#2460).
- #
- # Why: test-author writes long checks with a backslash, the label on the next
--# line (`assert_contains \` then `"…" …`). The checker only
-+# line (`assert_contains \` then `"[#1805/SPEC-3] …" …`). The checker only
- # counted a check whose `assert…` and tag shared one line, called those checks
- # untagged, and raised "only part of the requirement" findings that were false
- # — 3 of 4 on #1805 run 41546214211.
-diff --git a/tests/unit/run-status-comment-render-test.sh b/tests/unit/run-status-comment-render-test.sh
-index eb4ccb25..bb4c3711 100755
---- a/tests/unit/run-status-comment-render-test.sh
-+++ b/tests/unit/run-status-comment-render-test.sh
-@@ -263,17 +263,17 @@ assert_eq "[SPEC-8] no eb_emit_event call in the sidecar" "0" \
- assert_eq "[SPEC-8] the sidecar never sources the event bus" "0" "$(grep -c 'event-bus' "$LIB")"
- 
- # ── #2460: a requirement's label is shown as code ───────────────────────────
--# GitHub links `#1805` and shows the issue's title, so `` read
-+# GitHub links `#1805` and shows the issue's title, so `[#1805/SPEC-3]` read
- # as `[[bug] … #1805/SPEC-3]`. Shown as code, it stays the label it is.
- (
-     source "$REPO_ROOT/scripts/lib/run-status-render.sh" >/dev/null 2>&1
-     _sf="$TEST_TEMP_DIR/lbl-summary.md"
--    printf '%s\n' '## test-author — fail' '' '- 2 findings open on ' '- answered: added; `` kept' > "$_sf"
-+    printf '%s\n' '## test-author — fail' '' '- 2 findings open on [#1805/SPEC-3]' '- answered: [#1805/SPEC-13] added; `[#1805/SPEC-4]` kept' > "$_sf"
-     _o=""; _rsc_first_line_v _o "$_sf"; printf '%s' "$_o" > "$TEST_TEMP_DIR/lbl.txt"
- )
- _lbl="$(cat "$TEST_TEMP_DIR/lbl.txt" 2>/dev/null)"
--assert_contains "[#2460] a label in the summary line is shown as code" "$_lbl" '``'
--assert_contains "[#2460] ...and in the rest of what it reported" "$_lbl" '``'
-+assert_contains "[#2460] a label in the summary line is shown as code" "$_lbl" '`[#1805/SPEC-3]`'
-+assert_contains "[#2460] ...and in the rest of what it reported" "$_lbl" '`[#1805/SPEC-13]`'
- assert_eq "[#2460] ...one already shown as code is left alone" "0" "$(grep -c '``\[#1805/SPEC-4\]' <<< "$_lbl" || true)"
- 
- cleanup_test_env
-diff --git a/tests/unit/status-row-findings-test.sh b/tests/unit/status-row-findings-test.sh
-index 1154b6b4..eb5d796c 100644
---- a/tests/unit/status-row-findings-test.sh
-+++ b/tests/unit/status-row-findings-test.sh
-@@ -102,8 +102,8 @@ stage_result_write "$A/issue-acceptance-result.json" fail "2 requirements not me
- w8="$(rsc_render_row "$S" "$(_row 3.1.1.1.5 issue-acceptance fail)")"
- assert_eq "[W8] the line names each requirement not met" "what failed: \`LOOP-1\`, \`GUAR-2\`" "$(sed -n 1p <<< "$w8" | sed 's/.* — //')"
- stage_result_write "$A/test-result.json" fail "2 files fail" "{\"findings\":$(printf '%s\n' \
--        'tests/integration/resume-loop-state-test.sh fails: ✗ `CMBR-1` no stage.start for build in iter 2 — expected: 0, got: 1' \
--        'tests/integration/resume-rehydrate-test.sh fails: ✗ `FRSH-2` fresh run cycle member emits exactly one stage.start — expected: 1, got: 0' | stage_findings_json)}"
-+        'tests/integration/resume-loop-state-test.sh fails: ✗ `[#1805/CMBR-1]` no stage.start for build in iter 2 — expected: 0, got: 1' \
-+        'tests/integration/resume-rehydrate-test.sh fails: ✗ `[#1805/FRSH-2]` fresh run cycle member emits exactly one stage.start — expected: 1, got: 0' | stage_findings_json)}"
- w8t="$(rsc_render_row "$S" "$(_row 3.1.1.1.4 test fail)")"
- assert_eq "[W8] …and the SPEC each failing test is for" "what failed: \`CMBR-1\`, \`FRSH-2\`" "$(sed -n 1p <<< "$w8t" | sed 's/.* — //')"
- stage_result_write "$A/note-result.json" fail "2 problems" "{\"findings\":$(printf '%s\n' 'the build left a temp file' 'the build log is empty' | stage_findings_json)}"

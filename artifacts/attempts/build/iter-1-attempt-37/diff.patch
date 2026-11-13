@@ -1,0 +1,59 @@
+diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
+index 83986706..23fe11e6 100755
+--- a/core/pipeline/runner.sh
++++ b/core/pipeline/runner.sh
+@@ -2182,22 +2182,16 @@ main() {
+         fi
+     fi
+ 
+-    # DSFSTG-4/RQFROM-4 (#1805 Gap 12): when --from-stage is given without
+-    # explicit --resume and the state file records status=interrupted, reject
+-    # BEFORE auto-resume runs. Auto-resume would set resume_mode=true from an
+-    # interrupted state file and mask the error (pipeline.resume would be
+-    # emitted before the existing post-auto-resume guard fires). The check is
+-    # narrowed to interrupted-status only: status=in_progress runs are allowed
+-    # to reach auto-resume so the DSFSTG-1 skip_restore=false branch continues
+-    # to work (S5 in from-stage-rehydrate-test.sh uses in_progress for this).
+-    if [[ -n "$from_stage" ]] && ! $resume_mode && [[ -f "$state_file" ]]; then
+-        local _fsg_status
+-        _fsg_status="$(get_state_field "$state_file" '.status' '')"
+-        if [[ "$_fsg_status" == "interrupted" ]]; then
+-            error "--from-stage is only valid with --resume"
+-            _usage
+-            return 1
+-        fi
++    # DSFSTG-4/RQFROM-4 (#1805 Gap 12): --from-stage without explicit --resume
++    # always refuses, regardless of pipeline status (interrupted, in_progress,
++    # complete, or no state). Guard runs BEFORE auto-resume so a run that would
++    # otherwise auto-resume (status=in_progress, fresh timestamp) cannot bypass
++    # the guard. Explicit --resume sets resume_mode=true before we reach this
++    # point, so the guard is a no-op when --resume is given.
++    if [[ -n "$from_stage" ]] && ! $resume_mode; then
++        error "--from-stage is only valid with --resume"
++        _usage
++        return 1
+     fi
+ 
+     # ── Resume / fresh-start policy ────────────────────────────────────────────
+diff --git a/tests/integration/from-stage-rehydrate-test.sh b/tests/integration/from-stage-rehydrate-test.sh
+index b4dcca9b..c967590b 100644
+--- a/tests/integration/from-stage-rehydrate-test.sh
++++ b/tests/integration/from-stage-rehydrate-test.sh
+@@ -514,7 +514,7 @@ jq -n \
+         status: "in_progress", updated_at: $now
+     }' > "$S6_STATE_FILE"
+ 
+-# When — the runner starts with --from-stage build (a leaf stage, not a cycle stage).
++# When — the runner starts with --resume --from-stage build (a leaf stage, not a cycle stage).
+ set +e
+ ( cd "$S6_WORK_REPO" && env \
+     ZBUILD_PLUGINS_ROOT="$S3_PLUGINS_ROOT" \
+@@ -527,7 +527,7 @@ set +e
+     ZBUILD_VISION_GATE=off \
+     PATH="$PATH" HOME="$HOME" \
+     bash "$RUNNER" --template resume-minimal \
+-        --from-stage build --issue "$S6_ID" ) \
++        --resume --from-stage build --issue "$S6_ID" ) \
+     >"$TEST_TEMP_DIR/s6-stdout.txt" 2>"$TEST_TEMP_DIR/s6-stderr.txt"
+ _s6_rc=$?
+ set -e
