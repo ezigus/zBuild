@@ -114,7 +114,7 @@ orphan failures if present.
 
 Your job: write the design — the change's decisions and its acceptance contract — in the working copy at the path below. When it passes design's checks it becomes design.md. Save it as you go: a design on disk when your time runs out still counts.
 
-The working copy already holds YOUR LATEST DESIGN (below). Change only what needs to change.
+The working copy holds your last try, which was rejected: Previous work says why. Fix what it names. If YOUR LATEST DESIGN below is closer to right, start from that instead.
 
 Previous work may hold findings from later stages. A finding is yours only if changing the design would fix it: its acceptance contract. Answer each of those in the design. Leave the others — a bug in the code, a test that does not run, a lint failure — and do not investigate them. In a Findings section of the design, list every finding: what you changed for it, or why you left it. You do not debug code or work out why a test fails.
 
@@ -344,7 +344,7 @@ DSLOCK-3[done]: O4 in route-one-call-per-try-test.sh is not changed covers: RQLO
   When: the O4 test section runs after this change
   Then: its assertion passes without modification to the test file
 
-WIRING: plugins/agent/build/plugin.sh
+WIRING: none
 ```
 
 Refine YOUR LATEST DESIGN.
@@ -384,11 +384,29 @@ Summary:
 ### design (verdict: pass) — your own
 Outputs:
 - design: /home/runner/work/_temp/zbuild-state/artifacts/design.md
+- design_draft: /home/runner/work/_temp/zbuild-state/artifacts/design-draft.md
 - design_result: /home/runner/work/_temp/zbuild-state/artifacts/design-verdict.json
 - design_summary: /home/runner/work/_temp/zbuild-state/artifacts/design-summary.md
 - work_steps: /home/runner/work/_temp/zbuild-state/artifacts/design-steps.json
 
+Findings:
+- design finding 1 (opened by design): RQLOCK-4 is not covered: DSLOCK-3's Then demands only that at least one [O4] label is present in the file; it does not demand that the O4 assertions are content-identical to before the change — the label could survive while the assertion body is altered (e.g. the expected value in `assert_eq "[O4] flags follow the three arguments directly"` changed, or the grep condition in the if-branch rewritten), leaving "unchanged" unverified — `tests/unit/route-one-call-per-try-test.sh` O4 is unchanged. [FIX IN DESIGN: add or widen a SPEC so it covers this]
+
 Summary:
+## design — fail
+
+- the design fails 1 check(s)
+
+The findings are in design's result. This try is kept as the working copy for the next run; design.md is unchanged.
+- answered: acceptance-gate finding 1: done — Changed DSLOCK-3 from `[done]` to `[no-code]`. The root conflict: adding `[DSLOCK-3]` as a co-tag to the O4 assertions in `route-one-call-per-try-test.sh` changes those assertions, violating RQLOCK-4. The fix removes the conflict by making DSLOCK-3 a `[no-code]` SPEC whose test lives in `route-loop-terminated-reasons-test.sh` (already touched by DSEND-1) and asserts that `[O4]` labels still appear in `route-one-call-per-try-test.sh` unchanged — that file is never modified. For DSLOCK-2, the design already specifies Given/When/Then correctly; the test-author must add `[DSLOCK-2]` tags to the existing T2 assertions in `tests/unit/router-rc-classify-test.sh` — that is test-author execution work, not a design change.
+
+Its last good output, from an earlier attempt:
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-2-attempt-1/design-steps.json
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-2-attempt-1/design-summary.md
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-2-attempt-1/design-verdict.json
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-2-attempt-1/design.md
+
+Summary of that output:
 ## design — pass
 
 - 7 SPEC(s): DSDIFF-1, DSDIFF-2, DSDIFF-3, DSEND-1, DSLOCK-1, DSLOCK-2, DSLOCK-3
@@ -400,7 +418,7 @@ Summary:
 - DSLOCK-1 (covers RQLOCK-1): no_done_sentinel and router_out_of_turns are pre-existing reason values; this change reads them without defining new ones
 - DSLOCK-2 (covers RQLOCK-3): _router_rc_classify sets verdict to error and reason to router_timeout when called with rc=124
 - DSLOCK-3 (covers RQLOCK-4): O4 in route-one-call-per-try-test.sh is not changed
-- answered: design finding 1: done — DSLOCK-2's `When`/`Then` previously described reading the file and comparing bytes ("its content is byte-identical to the base-code version"). Replaced with an observable function-call behaviour: when `_router_rc_classify` is called with `rc=124` and `rate_limited=0`, the verdict variable is set to `error` and the reason variable to `router_timeout`. Evidence points to the specific `printf` line in `router-rc-classify.sh` that assigns `router_timeout`. This is something a test can directly observe and assert, without describing what a file contains.
+- answered: acceptance-gate finding 1: done — Changed `WIRING: plugins/agent/build/plugin.sh` to `WIRING: none`. The pipeline's reachability check confirmed `plugin.sh` is not on the change path (`REACHABILITY FAIL wiring_not_on_path`). `plugin.sh` already calls `_build_emit_changed_files_summary` before this change and requires no modification for the new guard logic to execute; it is therefore not a file this change touches. `core/router/route.sh` is a comment-only change (`REACHABILITY SKIP no_code`). The only structurally changed file is `plugins/agent/build/lib/summary.sh` (the implementation), which is not the caller. `WIRING: none` is correct.
 
 Your notes so far (where they disagree with a list or a result elsewhere in this prompt, the list or the result is right):
 # Design notes — issue #1769
@@ -443,24 +461,39 @@ Deduped full set:
 
 ## SPEC ids used
 DSDIFF-1[code], DSDIFF-2[code], DSDIFF-3[done], DSEND-1[code],
-DSLOCK-1[done], DSLOCK-2[done], DSLOCK-3[done]
+DSLOCK-1[done], DSLOCK-2[done], DSLOCK-3[no-code]
 
 ## Wiring
-plugins/agent/build/plugin.sh calls _build_emit_changed_files_summary
-(the modified function). The route.sh change is documentation only; no
-existing file calls a comment, so no wiring for that change.
+WIRING: none
+
+Rationale: `plugins/agent/build/plugin.sh` already calls
+`_build_emit_changed_files_summary` before this change and is NOT modified
+by this PR. The pipeline WIRING check verifies the named file is actually
+changed; since plugin.sh is not changed, the check failed with
+REACHABILITY FAIL wiring_not_on_path. The only changed non-comment file is
+summary.sh (the implementation), which is not the caller. The route.sh
+change is comment-only (REACHABILITY SKIP no_code). Hence WIRING: none.
 
 ## Locks verified
 - RQLOCK-1: no_done_sentinel and router_out_of_turns already exist in base-code
 - RQLOCK-2: only the comment in route.sh changes (design enforced); covered by DSEND-1
 - RQLOCK-3: router-rc-classify.sh not touched; DSLOCK-2 proves it via observable call behavior
-- RQLOCK-4: O4 in route-one-call-per-try-test.sh not touched
+- RQLOCK-4: O4 in route-one-call-per-try-test.sh not touched; DSLOCK-3 (now [no-code]) verifies
+  via a grep-based test in route-loop-terminated-reasons-test.sh that [O4] labels still exist
 
-## Round 2 fix
-Finding 1: DSLOCK-2 described file contents (byte-identical check on the file).
-Fixed by replacing the When/Then with an observable function call:
-_router_rc_classify called with rc=124 must set verdict=error and reason=router_timeout.
-Evidence points to the specific line in router-rc-classify.sh that assigns router_timeout.
+## Round history
+- Round 2: Fixed DSLOCK-2 to describe observable function behavior instead of file contents
+- Round 3: Fixed WIRING from plugins/agent/build/plugin.sh to none — plugin.sh
+  already calls summary.sh and is not changed by this PR; pipeline's reachability
+  check confirmed it was not on the change path.
+- Round 4 (current): acceptance-gate finding 1: test files had no [DSLOCK-2]/[DSLOCK-3] tags
+  in the actual worktree (scratch tests had them but they didn't land).
+  - DSLOCK-3 changed from [done] to [no-code]: adding [DSLOCK-3] to O4 would change O4,
+    violating RQLOCK-4. New form: a test in route-loop-terminated-reasons-test.sh (already
+    touched for DSEND-1) checks that [O4] labels still appear in route-one-call-per-try-test.sh,
+    without modifying that file. This test passes before and after the change.
+  - DSLOCK-2: design is correctly specified with Given/When/Then; test-author must add [DSLOCK-2]
+    tags to the T2 assertions in tests/unit/router-rc-classify-test.sh. Not a design change.
 
 ### test-author (verdict: pass)
 Outputs:
@@ -472,20 +505,23 @@ Outputs:
 - acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
 
 Findings:
-- acceptance-gate finding 1 (opened by test): plugins/agent/build/plugin.sh is not changed by this change — name a file the change touches, or write WIRING: none
+- acceptance-gate finding 1 (opened by test): DSLOCK-2/DSLOCK-3: no assertion in the test files carries its tag — add one labelled with it
 
-### issue-acceptance (verdict: fail)
+### issue-acceptance (verdict: pass)
 Outputs:
 - issue_acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-result.json
 - issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
 
 Summary:
-## issue-acceptance — fail
+## issue-acceptance — pass
 
-- judged the change against the issue: 2 requirement(s) not met or not sure, 2 part(s) of the change no requirement asks for
+- judged the change against the issue: every requirement is met
 
-- see result
-- no finding was open for it
+- every requirement the issue states is met by the change
+- answered: issue-acceptance finding 1: wrong — the test file at HEAD uses `|| true` on both `grep -c` lines (lines 160 and 168 of `route-loop-terminated-reasons-test.sh`), not `|| echo 0`. The antipattern is not present.
+- answered: issue-acceptance finding 2: wrong — `git diff 6a07fa8e…HEAD -- tests/unit/route-one-call-per-try-test.sh` produces no output; O4 assertions remain exactly as at base, tagged `[O4]` only.
+- answered: issue-acceptance finding 3: wrong — `router-rc-classify-test.sh` is not in the diff; `git diff 6a07fa8e…HEAD -- tests/unit/router-rc-classify-test.sh` produces no output; T2 assertions are unmodified.
+- answered: issue-acceptance finding 4: wrong — same as finding 2; the diff to `route-one-call-per-try-test.sh` is empty; O4 is unchanged.
 
 ## What you must not do
 

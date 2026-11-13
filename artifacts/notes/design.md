@@ -15,7 +15,7 @@ Current guard (in base-code):
 if [[ "$terminated_reason" == "done_sentinel" && "$files_count" -eq 0 \
       && "$scope_violation_mode" != "true" ]]; then
 ```
-Needs to be: also emit for no_done_sentinel and router_out_of_turns when
+Needs to also emit for no_done_sentinel and router_out_of_turns when
 files_count == 0. The existing done_sentinel branch already fires
 build.diff.empty_after_done_sentinel; the new branches don't (that event is
 specific to done_sentinel). The event payload must include
@@ -38,7 +38,7 @@ Deduped full set:
 
 ## SPEC ids used
 DSDIFF-1[code], DSDIFF-2[code], DSDIFF-3[done], DSEND-1[code],
-DSLOCK-1[done], DSLOCK-2[done], DSLOCK-3[done]
+DSLOCK-1[done], DSLOCK-2[done], DSLOCK-3[no-code]
 
 ## Wiring
 WIRING: none
@@ -55,10 +55,21 @@ change is comment-only (REACHABILITY SKIP no_code). Hence WIRING: none.
 - RQLOCK-1: no_done_sentinel and router_out_of_turns already exist in base-code
 - RQLOCK-2: only the comment in route.sh changes (design enforced); covered by DSEND-1
 - RQLOCK-3: router-rc-classify.sh not touched; DSLOCK-2 proves it via observable call behavior
-- RQLOCK-4: O4 in route-one-call-per-try-test.sh not touched
+- RQLOCK-4: O4 in route-one-call-per-try-test.sh not touched; DSLOCK-3 (no-code) verifies
+  via a git diff check that the file is content-identical before and after the change
 
 ## Round history
 - Round 2: Fixed DSLOCK-2 to describe observable function behavior instead of file contents
 - Round 3: Fixed WIRING from plugins/agent/build/plugin.sh to none — plugin.sh
   already calls summary.sh and is not changed by this PR; pipeline's reachability
   check confirmed it was not on the change path.
+- Round 4: acceptance-gate finding 1: test files had no [DSLOCK-2]/[DSLOCK-3] tags.
+  - DSLOCK-3 changed from [done] to [no-code]: adding [DSLOCK-3] to O4 would change O4,
+    violating RQLOCK-4. New form: a test checks [O4] labels still appear.
+  - DSLOCK-2: design is correctly specified with Given/When/Then; test-author must add [DSLOCK-2]
+    tags to the T2 assertions in tests/unit/router-rc-classify-test.sh.
+- Round 5 (current): design finding 1 — DSLOCK-3's Then only checked for [O4] label presence;
+  this was too weak because the label could survive while assertion bodies changed. Fixed by
+  changing DSLOCK-3's Then to: "git diff output between base commit and HEAD for
+  tests/unit/route-one-call-per-try-test.sh is empty" — an observable behavior that proves
+  content-identity, not just label presence.

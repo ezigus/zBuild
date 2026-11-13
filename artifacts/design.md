@@ -23,6 +23,7 @@ returned by `_router_rc_classify` (deduplicated). No value is renamed or added
 - Extend _build_emit_changed_files_summary to emit build.discrepancy.detected for no_done_sentinel and router_out_of_turns with zero files changed | areas: plugins/agent/build/lib/summary.sh
 - Write tests for DSDIFF-1 and DSDIFF-2 (no_done_sentinel and router_out_of_turns each trigger the event when files_count is 0) | areas: plugins/agent/build/tests/
 - Write test for DSEND-1 (the route.sh comment lists exactly the full set of end reasons) | areas: tests/unit/
+- Write test for DSLOCK-3 (a [DSLOCK-3]-tagged assertion that runs git diff between base and HEAD for route-one-call-per-try-test.sh and asserts the output is empty) | areas: tests/unit/
 ```
 
 ```acceptance
@@ -58,9 +59,9 @@ DSLOCK-2[done]: _router_rc_classify sets verdict to error and reason to router_t
   Then: the verdict variable is set to error
   And: the reason variable is set to router_timeout
 
-DSLOCK-3[done]: O4 in route-one-call-per-try-test.sh is not changed covers: RQLOCK-4 evidence: tests/unit/route-one-call-per-try-test.sh | # O4 [change] the call takes no call limit: <tier> <prompt_file> <cwd>
-  When: the O4 test section runs after this change
-  Then: its assertion passes without modification to the test file
+DSLOCK-3[no-code]: route-one-call-per-try-test.sh is content-identical before and after this change, confirming O4 was not modified covers: RQLOCK-4
+  When: git diff is run between the base commit and HEAD restricting to tests/unit/route-one-call-per-try-test.sh
+  Then: the diff output is empty
 
 WIRING: none
 ```
