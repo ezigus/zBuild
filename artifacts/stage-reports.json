@@ -1,0 +1,5 @@
+{
+  "wiring_files": [
+    "plugins/agent/build/plugin.sh"
+  ]
+}
