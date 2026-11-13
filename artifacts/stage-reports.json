@@ -1,5 +1,13 @@
 {
   "wiring_files": [
     "plugins/agent/build/plugin.sh"
-  ]
+  ],
+  "owned_files": {
+    "test-author": [
+      "plugins/agent/build/tests/build-test.sh",
+      "tests/unit/route-loop-terminated-reasons-test.sh",
+      "tests/unit/route-one-call-per-try-test.sh",
+      "tests/unit/router-rc-classify-test.sh"
+    ]
+  }
 }
