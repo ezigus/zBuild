@@ -1703,14 +1703,7 @@ _runner_resume_rehydrate() {
     }
     if [[ -d "$_rr_staging/artifacts" ]]; then
         _artifact_persist_put_back "$_rr_staging/artifacts" "$_rr_artifacts_dir" \
-            || {
-                warn "resume-rehydrate: put_back failed for $_rr_artifacts_dir — partial restoration; dispatch loop will exit 1 for any missing primary artifact"
-                # Emit machine-readable event so monitoring can distinguish a put_back
-                # I/O failure from an artifact that was never persisted (#1805 sre-3).
-                eb_emit_event "state.write" \
-                    "op=put_back" "dir=$_rr_artifacts_dir" "run_id=${_runner_run_id:-}" \
-                    "reason=io_error" 2>/dev/null || true
-            }
+            || warn "resume-rehydrate: put_back failed for $_rr_artifacts_dir — partial restoration; dispatch loop will exit 1 for any missing primary artifact"
     fi
     rm -rf "${_rr_staging:?}" 2>/dev/null || true
     return 0
@@ -1753,12 +1746,6 @@ _runner_from_stage_preflight() {
         [[ "$_fsp_resolved" == "${_fsp_artifacts_dir}"/* ]] || _fsp_resolved=""
         if [[ ! -s "$_fsp_resolved" ]]; then
             echo "error: --from-stage '$_fsp_from_stage': stage '$_fsp_s' has no restorable primary artifact" >&2
-            # Emit a machine-readable event so monitoring systems can distinguish
-            # a preflight refusal from a user-initiated abort (sre-code #1805).
-            eb_emit_event "stage.verdict.stale_artifact" \
-                "stage=$_fsp_s" "from_stage=$_fsp_from_stage" \
-                "path=${_fsp_resolved:-}" "run_id=${_runner_run_id:-}" \
-                2>/dev/null || true
             return 1
         fi
     done
@@ -1987,15 +1974,19 @@ main() {
         fi
     }
 
+    # DSFSTG-4/RQFROM-4 (#1805 Gap 12): early --from-stage guard so the
+    # persona preflight below does not emit a spurious persona-missing failure
+    # before the "only valid with --resume" rejection can fire. Must precede
+    # the preflight gate. The later guard at the auto-resume boundary is the
+    # canonical one; this is defense-in-depth for the persona-ordering issue.
+    if [[ -n "$from_stage" ]] && ! $resume_mode; then
+        error "--from-stage is only valid with --resume"
+        _usage
+        return 1
+    fi
     # ADR-051 §warn-first (#1318): startup preflight — persona bindings + requires.plugins.
     # Routed through _runner_startup_preflight_gate (defined above) so the dry-run/resume
     # exemption logic is testable independently of the full pipeline startup sequence.
-    # --from-stage is only valid with --resume (or auto-resume): skip the persona
-    # preflight so the targeted "only valid with --resume" rejection fires instead
-    # of a spurious persona-missing failure (#1805). Save/restore resume_mode so the
-    # auto-resume block (below) still sees the original value for its own logic.
-    local _pre_preflight_resume="$resume_mode"
-    [[ -n "$from_stage" ]] && resume_mode=true
     if ! _runner_startup_preflight_gate "$dry_run" "$resume_mode"; then
         error "Startup preflight validation failed (ZBUILD_CONTRACT_VALIDATOR=${ZBUILD_CONTRACT_VALIDATOR:-warn}). See above."
         _runner_run_id="${_runner_run_id:-${ZBUILD_RUN_ID:-preflight}}"
@@ -2006,9 +1997,6 @@ main() {
         _render_pipeline_end "preflight_failed"
         return 1
     fi
-    # Restore resume_mode so the auto-resume block sees the value that --resume set,
-    # not the from-stage sentinel true used to skip preflight above.
-    resume_mode="$_pre_preflight_resume"
 
     # ADR-049 §Phase-1.1 (#1360): vision-document admission gate.
     # Runs BEFORE the --dry-run branch so dry-run also enforces vision conformance.
@@ -3628,11 +3616,6 @@ main() {
                                 [[ "$_dc_resolved" == "${state_dir}/artifacts"/* ]] \
                                     || _dc_resolved=""
                                 if [[ ! -s "$_dc_resolved" ]]; then
-                                    eb_emit_event \
-                                        "stage.verdict.stale_artifact" \
-                                        "stage=$_dc_m" "cycle=$_cyc_id" \
-                                        "path=$_dc_resolved" \
-                                        "run_id=$_runner_run_id"
                                     echo "error: resume: cycle '$_cyc_id' member '$_dc_m' is marked complete but its primary artifact is absent after rehydration (expected: $_dc_resolved)" >&2
                                     return 1
                                 fi
@@ -3949,11 +3932,6 @@ main() {
                                     [[ "$_du_resolved" == "${state_dir}/artifacts"/* ]] \
                                         || _du_resolved=""
                                     if [[ ! -s "$_du_resolved" ]]; then
-                                        eb_emit_event \
-                                            "stage.verdict.stale_artifact" \
-                                            "stage=$_ust" \
-                                            "path=$_du_resolved" \
-                                            "run_id=$_runner_run_id"
                                         echo "error: resume: stage '$_ust' is marked complete but its primary artifact is absent after rehydration (expected: $_du_resolved)" >&2
                                         return 1
                                     fi
