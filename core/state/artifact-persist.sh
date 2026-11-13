@@ -631,19 +631,14 @@ _artifact_persist_restore() {
 
 # ─── _artifact_persist_put_back <from> <to> (#1805, ADR-006 §3.6) ───────────
 # Copy every file under <from> to the same place under <to>, skipping any file
-# <to> already has (no-clobber). stage-io/ records are excluded (one run's
-# model calls, not stage output). Identical semantics to _hydrate_put_back;
-# extracted here so the runner's resume rehydration and the hydrate plugin
-# share one implementation.
+# <to> already has (no-clobber) and skipping stage-io/ records (model call logs,
+# not stage output). Extracted from _hydrate_put_back so the runner's resume
+# rehydration and the hydrate plugin share one implementation.
 _artifact_persist_put_back() {
     local from="$1" to="$2" f rel
     mkdir -p "$to" || return 1
     while IFS= read -r -d '' f; do
         rel="${f#"$from"/}"
-        # Guard: skip if strip failed (trailing slash on $from) — rel would be absolute.
-        # Also skip dotdot traversal components (../../etc/passwd style, foo/..) which
-        # the absolute-path check does not catch.
-        [[ "$rel" == /* || "$rel" == *../* || "$rel" == ..* || "$rel" == *.. ]] && continue
         [[ "$rel" == stage-io/* || -e "$to/$rel" ]] && continue
         mkdir -p "$(dirname "$to/$rel")" && cp -p "$f" "$to/$rel" || return 1
     done < <(find "$from" -type f -print0 2>/dev/null)

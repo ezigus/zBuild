@@ -1470,15 +1470,7 @@ _cycle_iter_dispatch() {
                 _cmbr_new_blob="$(jq -c --arg s "$s" --argjson e "$_cmbr_blob_entry" \
                     '. + {($s): $e}' <<< "$blob" 2>/dev/null)" \
                     && blob="$_cmbr_new_blob" \
-                    || {
-                        warn "cycle-orchestrator: failed to update verdict blob for skipped member '$s'; cycle predicates (exit_when/abort_when/until) may evaluate incorrectly"
-                        # Emit machine-readable event so monitoring can observe the blob
-                        # update failure and correlate it with a predicate that uses a
-                        # stale/missing entry for this member (#1805 sre-2).
-                        eb_emit_event "cycle.history.lost" \
-                            "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-}" "member=$s" \
-                            "reason=blob_update_failed" 2>/dev/null || true
-                    }
+                    || warn "cycle-orchestrator: failed to update verdict blob for skipped member '$s'; cycle predicates (exit_when/abort_when/until) may evaluate incorrectly"
                 continue
             fi
             # Non-complete (interrupted) member: emit stage.start before dispatch.
