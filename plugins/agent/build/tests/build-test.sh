@@ -1122,6 +1122,85 @@ assert_eq "[SPEC-21] manifest declares no router.retries" \
 assert_eq "[SPEC-21] manifest declares no router.retry_on_exhaustion" \
     "" "$(manifest_router_knob "$PLUGIN_DIR/manifest.yaml" retry_on_exhaustion)"
 
+# ─── DSDIFF-1: no_done_sentinel + 0 files → build.discrepancy.detected ──────
+print_test_section "DSDIFF-1: no_done_sentinel + 0 files → build.discrepancy.detected"
+
+# Given: a build plugin run where route_to_model_loop returns no_done_sentinel
+# And: git numstat shows zero files changed (clean repo, no uncommitted changes)
+REPO_DSDIFF1="$(setup_build_repo "repo_dsdiff1")"
+export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state_dsdiff1"
+mkdir -p "$ZBUILD_STATE_DIR"
+_BUILD_PLAN_FILES_CSV=""
+: > "$ZBUILD_EVENTS_JSONL"
+
+# When: _build_emit_changed_files_summary is called with terminated_reason=no_done_sentinel and files_count=0
+_build_emit_changed_files_summary "$REPO_DSDIFF1" "no_done_sentinel" "false" "" \
+    >/dev/null 2>&1 || true
+
+# Then: a build.discrepancy.detected event is emitted
+assert_event_emitted \
+    "[DSDIFF-1] build.discrepancy.detected emitted for no_done_sentinel+0files" \
+    "$ZBUILD_EVENTS_JSONL" "build.discrepancy.detected"
+
+# And: the event payload includes terminated_reason=no_done_sentinel
+_dsdiff1_tr="$(jq -r 'select(.type=="build.discrepancy.detected") | .data.terminated_reason // ""' \
+    "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1 || true)"
+assert_eq \
+    "[DSDIFF-1] event payload includes terminated_reason=no_done_sentinel" \
+    "no_done_sentinel" "$_dsdiff1_tr"
+
+# ─── DSDIFF-2: router_out_of_turns + 0 files → build.discrepancy.detected ───
+print_test_section "DSDIFF-2: router_out_of_turns + 0 files → build.discrepancy.detected"
+
+# Given: a build plugin run where route_to_model_loop returns router_out_of_turns
+# And: git numstat shows zero files changed (clean repo, no uncommitted changes)
+REPO_DSDIFF2="$(setup_build_repo "repo_dsdiff2")"
+export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state_dsdiff2"
+mkdir -p "$ZBUILD_STATE_DIR"
+_BUILD_PLAN_FILES_CSV=""
+: > "$ZBUILD_EVENTS_JSONL"
+
+# When: _build_emit_changed_files_summary is called with terminated_reason=router_out_of_turns and files_count=0
+_build_emit_changed_files_summary "$REPO_DSDIFF2" "router_out_of_turns" "false" "" \
+    >/dev/null 2>&1 || true
+
+# Then: a build.discrepancy.detected event is emitted
+assert_event_emitted \
+    "[DSDIFF-2] build.discrepancy.detected emitted for router_out_of_turns+0files" \
+    "$ZBUILD_EVENTS_JSONL" "build.discrepancy.detected"
+
+# And: the event payload includes terminated_reason=router_out_of_turns
+_dsdiff2_tr="$(jq -r 'select(.type=="build.discrepancy.detected") | .data.terminated_reason // ""' \
+    "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1 || true)"
+assert_eq \
+    "[DSDIFF-2] event payload includes terminated_reason=router_out_of_turns" \
+    "router_out_of_turns" "$_dsdiff2_tr"
+
+# ─── DSDIFF-3: done_sentinel + 0 files → both discrepancy events ─────────────
+print_test_section "DSDIFF-3: done_sentinel + 0 files → build.discrepancy.detected + empty_after_done_sentinel"
+
+# Given: a build plugin run where route_to_model_loop returns done_sentinel
+# And: git numstat shows zero files changed
+REPO_DSDIFF3="$(setup_build_repo "repo_dsdiff3")"
+export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state_dsdiff3"
+mkdir -p "$ZBUILD_STATE_DIR"
+_BUILD_PLAN_FILES_CSV=""
+: > "$ZBUILD_EVENTS_JSONL"
+
+# When: _build_emit_changed_files_summary is called with terminated_reason=done_sentinel and files_count=0
+_build_emit_changed_files_summary "$REPO_DSDIFF3" "done_sentinel" "false" "" \
+    >/dev/null 2>&1 || true
+
+# Then: build.discrepancy.detected is emitted
+assert_event_emitted \
+    "[DSDIFF-3] build.discrepancy.detected emitted for done_sentinel+0files" \
+    "$ZBUILD_EVENTS_JSONL" "build.discrepancy.detected"
+
+# And: build.diff.empty_after_done_sentinel is emitted
+assert_event_emitted \
+    "[DSDIFF-3] build.diff.empty_after_done_sentinel emitted" \
+    "$ZBUILD_EVENTS_JSONL" "build.diff.empty_after_done_sentinel"
+
 # ─── Teardown ────────────────────────────────────────────────────────────────
 _test_cleanup_hook() { cleanup_test_env; }
 cleanup_test_env
