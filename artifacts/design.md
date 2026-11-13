@@ -62,5 +62,5 @@ DSLOCK-3[done]: O4 in route-one-call-per-try-test.sh is not changed covers: RQLO
   When: the O4 test section runs after this change
   Then: its assertion passes without modification to the test file
 
-WIRING: plugins/agent/build/plugin.sh
+WIRING: none
 ```

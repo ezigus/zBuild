@@ -41,9 +41,15 @@ DSDIFF-1[code], DSDIFF-2[code], DSDIFF-3[done], DSEND-1[code],
 DSLOCK-1[done], DSLOCK-2[done], DSLOCK-3[done]
 
 ## Wiring
-plugins/agent/build/plugin.sh calls _build_emit_changed_files_summary
-(the modified function). The route.sh change is documentation only; no
-existing file calls a comment, so no wiring for that change.
+WIRING: none
+
+Rationale: `plugins/agent/build/plugin.sh` already calls
+`_build_emit_changed_files_summary` before this change and is NOT modified
+by this PR. The pipeline WIRING check verifies the named file is actually
+changed; since plugin.sh is not changed, the check failed with
+REACHABILITY FAIL wiring_not_on_path. The only changed non-comment file is
+summary.sh (the implementation), which is not the caller. The route.sh
+change is comment-only (REACHABILITY SKIP no_code). Hence WIRING: none.
 
 ## Locks verified
 - RQLOCK-1: no_done_sentinel and router_out_of_turns already exist in base-code
@@ -51,8 +57,8 @@ existing file calls a comment, so no wiring for that change.
 - RQLOCK-3: router-rc-classify.sh not touched; DSLOCK-2 proves it via observable call behavior
 - RQLOCK-4: O4 in route-one-call-per-try-test.sh not touched
 
-## Round 2 fix
-Finding 1: DSLOCK-2 described file contents (byte-identical check on the file).
-Fixed by replacing the When/Then with an observable function call:
-_router_rc_classify called with rc=124 must set verdict=error and reason=router_timeout.
-Evidence points to the specific line in router-rc-classify.sh that assigns router_timeout.
+## Round history
+- Round 2: Fixed DSLOCK-2 to describe observable function behavior instead of file contents
+- Round 3: Fixed WIRING from plugins/agent/build/plugin.sh to none — plugin.sh
+  already calls summary.sh and is not changed by this PR; pipeline's reachability
+  check confirmed it was not on the change path.

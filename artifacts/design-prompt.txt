@@ -114,7 +114,7 @@ orphan failures if present.
 
 Your job: write the design — the change's decisions and its acceptance contract — in the working copy at the path below. When it passes design's checks it becomes design.md. Save it as you go: a design on disk when your time runs out still counts.
 
-The working copy holds your last try, which was rejected: Previous work says why. Fix what it names. If YOUR LATEST DESIGN below is closer to right, start from that instead.
+The working copy already holds YOUR LATEST DESIGN (below). Change only what needs to change.
 
 Previous work may hold findings from later stages. A finding is yours only if changing the design would fix it: its acceptance contract. Answer each of those in the design. Leave the others — a bug in the code, a test that does not run, a lint failure — and do not investigate them. In a Findings section of the design, list every finding: what you changed for it, or why you left it. You do not debug code or work out why a test fails.
 
@@ -277,6 +277,80 @@ change this branch made, in this round and in earlier ones.
 
 Every requirement above must be covered by at least one SPEC. End each SPEC line with ` covers: ` and the ids of the requirements it covers, before any ` evidence: ` — for example `DSLOOP-1[code]: <behaviour> covers: <requirement ids>`. A requirement the code already meets is covered by a [done] SPEC with evidence.
 
+### YOUR LATEST DESIGN (refine it; Previous work says what moved since you wrote it)
+Every claim it makes about the repository — an ADR it relies on, a file it lists, a hook, field or convention it declares — is re-checked against the tree as it is NOW, and every SPEC it keeps against the issue's requirements as they are NOW, not only the new ones: anything that no longer holds is dropped or re-derived — a SPEC a requirement now contradicts is rewritten or removed — and the design says what changed and why. Keep what still holds; do not start over.
+
+# Design — issue #1769: discrepancy detection for no_done_sentinel and router_out_of_turns
+
+## Decision
+
+`build.discrepancy.detected` is currently emitted only when the router ends
+on `done_sentinel` with zero files changed. Two further end-reason values —
+`no_done_sentinel` (LLM exited cleanly without the done sentinel) and
+`router_out_of_turns` (turn budget exhausted) — also represent a call that
+produced no changes and warrant the same signal. The fix extends the guard in
+`_build_emit_changed_files_summary` to cover both cases. The `done_sentinel`
+path is left exactly as today (RQDIFF-3).
+
+Additionally, the comment in `route_to_model_loop` that lists the possible
+`_ROUTE_LOOP_TERMINATED_REASON` values uses the shorthand "a
+`_router_rc_classify` reason" rather than enumerating each concrete value. The
+comment is updated to list every reason assigned in `route_to_model_loop` and
+returned by `_router_rc_classify` (deduplicated). No value is renamed or added
+(RQLOCK-1); that is the only change to `core/router/route.sh` (RQLOCK-2);
+`scripts/lib/router-rc-classify.sh` is not changed (RQLOCK-3).
+
+```steps
+- Update the comment in route_to_model_loop to enumerate every _ROUTE_LOOP_TERMINATED_REASON value concretely | areas: core/router/route.sh
+- Extend _build_emit_changed_files_summary to emit build.discrepancy.detected for no_done_sentinel and router_out_of_turns with zero files changed | areas: plugins/agent/build/lib/summary.sh
+- Write tests for DSDIFF-1 and DSDIFF-2 (no_done_sentinel and router_out_of_turns each trigger the event when files_count is 0) | areas: plugins/agent/build/tests/
+- Write test for DSEND-1 (the route.sh comment lists exactly the full set of end reasons) | areas: tests/unit/
+```
+
+```acceptance
+DSDIFF-1[code]: _build_emit_changed_files_summary emits build.discrepancy.detected when terminated_reason is no_done_sentinel and files_count is 0 covers: RQDIFF-1
+  Given: a build plugin run where route_to_model_loop returns no_done_sentinel
+  And: git numstat shows zero files changed
+  When: _build_emit_changed_files_summary is called with terminated_reason=no_done_sentinel and files_count=0
+  Then: a build.discrepancy.detected event is emitted
+  And: the event payload includes terminated_reason=no_done_sentinel
+
+DSDIFF-2[code]: _build_emit_changed_files_summary emits build.discrepancy.detected when terminated_reason is router_out_of_turns and files_count is 0 covers: RQDIFF-2
+  Given: a build plugin run where route_to_model_loop returns router_out_of_turns
+  And: git numstat shows zero files changed
+  When: _build_emit_changed_files_summary is called with terminated_reason=router_out_of_turns and files_count=0
+  Then: a build.discrepancy.detected event is emitted
+  And: the event payload includes terminated_reason=router_out_of_turns
+
+DSDIFF-3[done]: _build_emit_changed_files_summary emits build.discrepancy.detected and build.diff.empty_after_done_sentinel when terminated_reason is done_sentinel and files_count is 0 covers: RQDIFF-3 evidence: plugins/agent/build/lib/summary.sh | if [[ "$terminated_reason" == "done_sentinel" && "$files_count" -eq 0 \
+  When: _build_emit_changed_files_summary is called with terminated_reason=done_sentinel and files_count=0
+  Then: build.discrepancy.detected is emitted
+  And: build.diff.empty_after_done_sentinel is emitted
+
+DSEND-1[code]: the _ROUTE_LOOP_TERMINATED_REASON comment in route_to_model_loop lists every concrete reason assigned in route_to_model_loop and every reason _router_rc_classify returns, with no shorthand for the classify subset covers: RQEND-1, RQLOCK-2
+  When: a test extracts every _ROUTE_LOOP_TERMINATED_REASON= assignment from route.sh and every reason= string from _router_rc_classify in router-rc-classify.sh
+  Then: the set of concrete reason values equals exactly the set of tokens on the _ROUTE_LOOP_TERMINATED_REASON comment line in route.sh
+
+DSLOCK-1[done]: no_done_sentinel and router_out_of_turns are pre-existing reason values; this change reads them without defining new ones covers: RQLOCK-1 evidence: core/router/route.sh | _ROUTE_LOOP_TERMINATED_REASON="no_done_sentinel"
+  When: _build_emit_changed_files_summary checks terminated_reason against no_done_sentinel and router_out_of_turns
+  Then: no new _ROUTE_LOOP_TERMINATED_REASON value is assigned anywhere in the changed files
+
+DSLOCK-2[done]: _router_rc_classify sets verdict to error and reason to router_timeout when called with rc=124 covers: RQLOCK-3 evidence: scripts/lib/router-rc-classify.sh | printf -v "$reason_var"  '%s' "router_timeout"
+  When: _router_rc_classify is called with rc=124 and rate_limited=0
+  Then: the verdict variable is set to error
+  And: the reason variable is set to router_timeout
+
+DSLOCK-3[done]: O4 in route-one-call-per-try-test.sh is not changed covers: RQLOCK-4 evidence: tests/unit/route-one-call-per-try-test.sh | # O4 [change] the call takes no call limit: <tier> <prompt_file> <cwd>
+  When: the O4 test section runs after this change
+  Then: its assertion passes without modification to the test file
+
+WIRING: plugins/agent/build/plugin.sh
+```
+
+Refine YOUR LATEST DESIGN.
+
+If Previous work says a [code] requirement's test already passes on the code from before this change, rewrite that requirement so its test fails on the old code and passes after — or, if the code already does it, mark it [done] and name the evidence (a file and one of its lines, or an existing test file) after " evidence: ". The evidence is checked. The tests cannot be changed later in this run, so this is where it is fixed. Check the other acceptance entries against the feedback too, and fix any it shows is wrong.
+
 If a finding of your design's own check (under Previous work, as design finding <n>) is wrong, do not change the design for it: answer it on its own line in your reply, ANSWER design finding <n>: wrong — <why>. The check judges it again, with your answer.
 
 
@@ -307,22 +381,26 @@ Summary:
 - RQLOCK-3: `scripts/lib/router-rc-classify.sh` is not changed.
 - RQLOCK-4: `tests/unit/route-one-call-per-try-test.sh` O4 is unchanged.
 
-### design (verdict: unusable) — your own
+### design (verdict: pass) — your own
 Outputs:
-- design_draft: /home/runner/work/_temp/zbuild-state/artifacts/design-draft.md
+- design: /home/runner/work/_temp/zbuild-state/artifacts/design.md
 - design_result: /home/runner/work/_temp/zbuild-state/artifacts/design-verdict.json
 - design_summary: /home/runner/work/_temp/zbuild-state/artifacts/design-summary.md
-
-Findings:
-- design finding 1 (opened by design): DSLOCK-2 describes what a file contains, not what the code does — no test can prove that; describe the behaviour someone could observe (an input and what happens)
+- work_steps: /home/runner/work/_temp/zbuild-state/artifacts/design-steps.json
 
 Summary:
-## design — fail
+## design — pass
 
-- the design fails 1 check(s)
+- 7 SPEC(s): DSDIFF-1, DSDIFF-2, DSDIFF-3, DSEND-1, DSLOCK-1, DSLOCK-2, DSLOCK-3
 
-The findings are in design's result. This try is kept as the working copy for the next run; design.md is unchanged.
-- no finding was open for it
+- DSDIFF-1 (covers RQDIFF-1): _build_emit_changed_files_summary emits build.discrepancy.detected when terminated_reason is no_done_sentinel and files_count is 0
+- DSDIFF-2 (covers RQDIFF-2): _build_emit_changed_files_summary emits build.discrepancy.detected when terminated_reason is router_out_of_turns and files_count is 0
+- DSDIFF-3 (covers RQDIFF-3): _build_emit_changed_files_summary emits build.discrepancy.detected and build.diff.empty_after_done_sentinel when terminated_reason is done_sentinel and files_count is 0
+- DSEND-1 (covers RQEND-1, RQLOCK-2): the _ROUTE_LOOP_TERMINATED_REASON comment in route_to_model_loop lists every concrete reason assigned in route_to_model_loop and every reason _router_rc_classify returns, with no shorthand for the classify subset
+- DSLOCK-1 (covers RQLOCK-1): no_done_sentinel and router_out_of_turns are pre-existing reason values; this change reads them without defining new ones
+- DSLOCK-2 (covers RQLOCK-3): _router_rc_classify sets verdict to error and reason to router_timeout when called with rc=124
+- DSLOCK-3 (covers RQLOCK-4): O4 in route-one-call-per-try-test.sh is not changed
+- answered: design finding 1: done — DSLOCK-2's `When`/`Then` previously described reading the file and comparing bytes ("its content is byte-identical to the base-code version"). Replaced with an observable function-call behaviour: when `_router_rc_classify` is called with `rc=124` and `rate_limited=0`, the verdict variable is set to `error` and the reason variable to `router_timeout`. Evidence points to the specific `printf` line in `router-rc-classify.sh` that assigns `router_timeout`. This is something a test can directly observe and assert, without describing what a file contains.
 
 Your notes so far (where they disagree with a list or a result elsewhere in this prompt, the list or the result is right):
 # Design notes — issue #1769
@@ -337,7 +415,7 @@ concretely (no "a _router_rc_classify reason" shorthand).
 ## Files to change
 
 ### plugins/agent/build/lib/summary.sh — _build_emit_changed_files_summary
-Current guard (line 115 in base-code):
+Current guard (in base-code):
 ```bash
 if [[ "$terminated_reason" == "done_sentinel" && "$files_count" -eq 0 \
       && "$scope_violation_mode" != "true" ]]; then
@@ -349,13 +427,9 @@ specific to done_sentinel). The event payload must include
 `terminated_reason=$terminated_reason`.
 
 ### core/router/route.sh — comment only (RQLOCK-2)
-Lines 988-990 in base-code:
-```
-#   _ROUTE_LOOP_TERMINATED_REASON  — done_sentinel | no_done_sentinel |
-#                                    router_timeout | router_rate_limited |
-#                                    signal | a _router_rc_classify reason
-```
-Must become an exhaustive list. Full set from code:
+The comment near _ROUTE_LOOP_TERMINATED_REASON in base-code uses the shorthand
+"a _router_rc_classify reason". Must become an exhaustive list.
+Full set from code:
 - Assigned directly in route_to_model_loop: done_sentinel, no_done_sentinel,
   router_timeout, router_rate_limited, signal, router_budget_exceeded,
   router_config_error, router_rc_nonzero
@@ -378,9 +452,40 @@ existing file calls a comment, so no wiring for that change.
 
 ## Locks verified
 - RQLOCK-1: no_done_sentinel and router_out_of_turns already exist in base-code
-- RQLOCK-2: only the comment in route.sh changes (design enforced)
-- RQLOCK-3: router-rc-classify.sh not touched
+- RQLOCK-2: only the comment in route.sh changes (design enforced); covered by DSEND-1
+- RQLOCK-3: router-rc-classify.sh not touched; DSLOCK-2 proves it via observable call behavior
 - RQLOCK-4: O4 in route-one-call-per-try-test.sh not touched
+
+## Round 2 fix
+Finding 1: DSLOCK-2 described file contents (byte-identical check on the file).
+Fixed by replacing the When/Then with an observable function call:
+_router_rc_classify called with rc=124 must set verdict=error and reason=router_timeout.
+Evidence points to the specific line in router-rc-classify.sh that assigns router_timeout.
+
+### test-author (verdict: pass)
+Outputs:
+- test_author_result: /home/runner/work/_temp/zbuild-state/artifacts/test-author-result.json
+
+### test (verdict: fail)
+Outputs:
+- acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
+- acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
+
+Findings:
+- acceptance-gate finding 1 (opened by test): plugins/agent/build/plugin.sh is not changed by this change — name a file the change touches, or write WIRING: none
+
+### issue-acceptance (verdict: fail)
+Outputs:
+- issue_acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-result.json
+- issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
+
+Summary:
+## issue-acceptance — fail
+
+- judged the change against the issue: 2 requirement(s) not met or not sure, 2 part(s) of the change no requirement asks for
+
+- see result
+- no finding was open for it
 
 ## What you must not do
 
