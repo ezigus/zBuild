@@ -157,7 +157,7 @@ _build_emit_changed_files_summary "$_dslock1_repo" "router_out_of_turns" "false"
 
 # no_done_sentinel is a pre-existing reason assigned in route.sh
 _dslock1_nds="$(grep -c '_ROUTE_LOOP_TERMINATED_REASON="no_done_sentinel"' \
-    "$_route_sh" 2>/dev/null || echo 0)"
+    "$_route_sh" 2>/dev/null || true)"
 if [[ "${_dslock1_nds:-0}" -ge 1 ]]; then
     assert_pass "[DSLOCK-1] no_done_sentinel is a pre-existing reason assigned in route.sh"
 else
@@ -165,7 +165,7 @@ else
 fi
 
 # router_out_of_turns is a pre-existing reason returned by _router_rc_classify
-_dslock1_rot="$(grep -c '"router_out_of_turns"' "$_classify_sh" 2>/dev/null || echo 0)"
+_dslock1_rot="$(grep -c '"router_out_of_turns"' "$_classify_sh" 2>/dev/null || true)"
 if [[ "${_dslock1_rot:-0}" -ge 1 ]]; then
     assert_pass "[DSLOCK-1] router_out_of_turns is a pre-existing reason in router-rc-classify.sh"
 else

@@ -21,14 +21,10 @@ assert_eq "T1: rc=0 verdict empty" "" "$v"
 assert_eq "T1: rc=0 reason empty" "" "$r"
 
 # T2: rc=124 (gtimeout) → verdict=error reason=router_timeout.
-# Given: a classifier call with rc=124 (gtimeout) and rate_limited=0
 v=""; r=""
-# When: _router_rc_classify is called with rc=124 and rate_limited=0
-_router_rc_classify 124 v r 0
-# Then: the verdict variable is set to error
-assert_eq "[DSLOCK-2] T2: rc=124 verdict=error" "error" "$v"
-# And: the reason variable is set to router_timeout
-assert_eq "[DSLOCK-2] T2: rc=124 reason=router_timeout" "router_timeout" "$r"
+_router_rc_classify 124 v r
+assert_eq "T2: rc=124 verdict=error" "error" "$v"
+assert_eq "T2: rc=124 reason=router_timeout" "router_timeout" "$r"
 
 # T3: rc=137 (SIGKILL by OOM) → verdict=error reason=router_oom_kill.
 v=""; r=""

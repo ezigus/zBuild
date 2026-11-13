@@ -88,16 +88,13 @@ assert_eq "[O3] the try is done" "done_sentinel" "${_ROUTE_LOOP_TERMINATED_REASO
 assert_eq "[O3] ...and returns 0" "0" "$_RC"
 
 # ── O4 ───────────────────────────────────────────────────────────────────────
-# Given: route_to_model_loop accepts three positional args and optional flags
-# When: the O4 test section runs after this change
 : > "$CALLS"
 MOCK_MODE=done route_to_model_loop T2 "$PROMPT" "$REPO" --done-sentinel LOOP_COMPLETE >/dev/null 2>&1; _rc=$?
-# Then: its assertion passes without modification to the test file
-assert_eq "[DSLOCK-3][O4] flags follow the three arguments directly" "0" "$_rc"
+assert_eq "[O4] flags follow the three arguments directly" "0" "$_rc"
 if grep -qE '_route_resolve_max_iterations|max_iterations' "$REPO_ROOT/core/router/route.sh" "$REPO_ROOT/scripts/lib/stage-limits.sh"; then
-    assert_fail "[DSLOCK-3][O4] no call limit is resolved anywhere" "route.sh or stage-limits.sh still names max_iterations"
+    assert_fail "[O4] no call limit is resolved anywhere" "route.sh or stage-limits.sh still names max_iterations"
 else
-    assert_pass "[DSLOCK-3][O4] no call limit is resolved anywhere"
+    assert_pass "[O4] no call limit is resolved anywhere"
 fi
 
 # ── O5 ───────────────────────────────────────────────────────────────────────
