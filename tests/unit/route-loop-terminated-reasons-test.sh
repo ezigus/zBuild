@@ -116,10 +116,43 @@ else
 fi
 
 # ─── DSLOCK-1 ────────────────────────────────────────────────────────────────
-# Given: no_done_sentinel and router_out_of_turns already exist in the code
-# When: _build_emit_changed_files_summary checks terminated_reason against
-# no_done_sentinel and router_out_of_turns
-# Then: no new _ROUTE_LOOP_TERMINATED_REASON value is assigned anywhere in the
+
+# Source the build plugin's summary module so _build_emit_changed_files_summary
+# can be called in the When step below.
+# shellcheck source=../../core/event-bus/event-bus.sh
+source "$REPO_ROOT/core/event-bus/event-bus.sh" || true
+# shellcheck source=../../scripts/lib/numstat-format.sh
+source "$REPO_ROOT/scripts/lib/numstat-format.sh" || true
+# shellcheck source=../../plugins/agent/build/lib/summary.sh
+source "$REPO_ROOT/plugins/agent/build/lib/summary.sh" || true
+
+# Given — no_done_sentinel and router_out_of_turns already exist as pre-existing
+# reason values in route.sh and _router_rc_classify; this change reads them.
+# (Verified in the Then assertions below by static analysis of source files.)
+
+# When — _build_emit_changed_files_summary is called with terminated_reason set
+# to no_done_sentinel and router_out_of_turns; it reads these values without
+# assigning any new _ROUTE_LOOP_TERMINATED_REASON.
+_dslock1_repo="$TEST_TEMP_DIR/dslock1-repo"
+mkdir -p "$_dslock1_repo"
+( cd "$_dslock1_repo" \
+  && git init -q \
+  && git config user.email "test@zbuild" \
+  && git config user.name "zbuild-test" \
+  && printf 'seed\n' > seed.txt \
+  && git add seed.txt \
+  && git commit -q -m "seed" )
+export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/dslock1-state"
+mkdir -p "$ZBUILD_STATE_DIR"
+export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
+_BUILD_PLAN_FILES_CSV=""
+: > "$ZBUILD_EVENTS_JSONL"
+_build_emit_changed_files_summary "$_dslock1_repo" "no_done_sentinel" "false" "" \
+    >/dev/null 2>&1 || true
+_build_emit_changed_files_summary "$_dslock1_repo" "router_out_of_turns" "false" "" \
+    >/dev/null 2>&1 || true
+
+# Then — no new _ROUTE_LOOP_TERMINATED_REASON value is assigned anywhere in the
 # changed files (the build plugin files do not add new loop-reason assignments)
 
 # no_done_sentinel is a pre-existing reason assigned in route.sh
