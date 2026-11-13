@@ -1,72 +1,12 @@
-unit: FAIL tests/integration/pipeline-resume-test.sh
 
-  pipeline resume — CLI + auto-resume policy (#225)
+> zbuild@0.1.0 test
+> bash tests/run-all.sh
 
+unit: 593/593 passed (4 skipped)
+integration: 258/258 passed
+e2e: 10/10 passed
+golden: 1/1 passed
+mutation: 25/25 passed
+lint: 1/1 passed
 
-  get_resume_recommendation: in_progress < 24h
-  ✓ in_progress recent → auto_resume
-
-  get_resume_recommendation: complete
-  ✓ complete → fresh_start
-
-  get_resume_recommendation: aborted
-  ✓ aborted → manual_resume_only
-
-  get_resume_recommendation: no state file
-  ✓ no state file → fresh_start
-
-  get_resume_recommendation: in_progress > 24h
-  ✓ in_progress old → manual_resume_only
-
-  get_resume_recommendation: interrupted
-  ✓ interrupted → auto_resume
-
-  runner --resume skips completed stages
-  ✓ intake stage is complete in state
-  ✓ output stage is pending in state
-  ✓ completed stage (intake) would be skipped on resume
-
-  set_state_field updates pipeline status
-  ✓ set_state_field writes status=in_progress
-  ✓ set_state_field writes status=complete
-
-  --force: aborted pipeline can be resumed
-  ✓ aborted + force=true → can_resume
-  ✓ aborted + force=false → cannot auto-resume
-  ✓ aborted still returns manual_resume_only (force is caller's responsibility)
-
-  integration: runner --resume skips stages with status=complete
-▸ merge_policy: auto_unless_flagged
-▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/pipeline-resume.nb499N/home/.zbuild/repos/local/int-tpl-overlay-repo/issues/91800001/worktree
-▸ Pipeline resuming — run_id=integ-test-resume-225 issue=91800001 goal= template=runner-state-dir-minimal
-▸ Skipping already-complete stage: intake
-✓ Pipeline complete — run_id=integ-test-resume-225
-  ✓ integration: --resume exits 0 when remaining stage succeeds
-  ✓ integration: state file still present after resume
-  ✓ integration: build stage_status=complete after resume
-  ✓ integration: only 1 stage.start (skipped 1 complete stage)
-  ✓ integration: pipeline.resume event emitted
-
-  integration: --from-stage with unknown stage exits 1
-▸ merge_policy: auto_unless_flagged
-  ✓ --from-stage unknown stage exits 1
-  ✓ --from-stage unknown stage says it is not a known stage
-
-  integration: --from-stage without --resume exits 1
-▸ merge_policy: auto_unless_flagged
-▸ Auto-resuming previous run (use --no-resume to force fresh start)
-▸ Working in the run's worktree /home/runner/work/_temp/zbuild-state/scratch/test/pipeline-resume.nb499N/home/.zbuild/repos/local/int-tpl-overlay-repo/issues/91800001/worktree
-▸ Pipeline resuming — run_id=inprog-run issue=91800001 goal= template=runner-state-dir-minimal
-✓ Pipeline complete — run_id=inprog-run
-  ✗ --from-stage without --resume exits 1
-    expected: 1, got: 0
-  ✗ --from-stage without --resume says it needs --resume
-    output missing: only valid with --resume
-
-
-  2 of 23 tests failed
-
-  ✗ --from-stage without --resume exits 1
-  ✗ --from-stage without --resume says it needs --resume
-
-unit: 5/6 passed
+total: 888/888 passed (4 skipped)
