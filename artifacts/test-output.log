@@ -1,0 +1,75 @@
+
+> zbuild@0.1.0 test
+> bash tests/run-all.sh
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.y1CLyw/tests/unit/lint-grep-c-test.sh
+
+  lint-grep-c — grep -c || echo detection (#1751)
+
+
+  4. bad pattern detected: exit 1
+  ✓ [SPEC-4] lint exits 1 when bad pattern is present
+  ✓ [SPEC-4] lint names the offending file and line
+  ✓ [SPEC-4] lint catches -c in a later flag cluster (grep -E -c)
+  ✓ [SPEC-4] lint catches the GNU long form (grep --count)
+
+  5. clean code: exit 0
+  ✓ [SPEC-5] lint exits 0 when no bad pattern is present
+  ✗ [SPEC-5] real scripts/ core/ plugins/ tree is clean
+    expected: 0, got: 1
+
+  6. legacy-DoNotUse/ directory excluded from scan
+  ✓ [SPEC-6] bad pattern under legacy-DoNotUse/ is excluded from lint
+
+  7. test files are scanned (#1969)
+  ✓ [SPEC-7] a *-test.sh under tests/ is scanned, not exempted
+  ✓ [SPEC-7] the offending test file is named with file:line
+  ✓ [SPEC-7] a plain .sh under a tests/ dir is scanned
+
+  8. lint-grep-c:allow suppresses a single line (#1969)
+  ✓ [SPEC-8] a line marked lint-grep-c:allow is not reported
+  ✓ [SPEC-8] the marker is per-line: an unmarked sibling still fails
+  ✓ [SPEC-8] only the unmarked line is reported
+
+  9a. a command over lines, brackets in quotes, || printf
+  ✓ [SPEC-9] lint exits 1
+  ✓ [SPEC-9] a command continued over lines is caught
+  ✓ [SPEC-9] brackets inside quotes do not hide it
+  ✓ [SPEC-9] || printf is the same bug
+  ✓ [SPEC-9] the safe forms over lines still pass
+
+  9. wiring: CI configuration references lint-grep-c.sh
+  ✓ [SPEC-4] package.json lint script includes lint-grep-c.sh
+  ✓ [SPEC-5] .github/workflows/test.yml references lint-grep-c step
+  ✓ [SPEC-6] .github/workflows/deferred-tracker.yml has if: failure() step
+
+
+  1 of 21 tests failed
+
+  ✗ [SPEC-5] real scripts/ core/ plugins/ tree is clean
+
+unit: 593/594 passed (4 skipped)
+integration: 263/263 passed
+e2e: 10/10 passed
+golden: 1/1 passed
+mutation: 25/25 passed
+lint: FAIL (npm run lint)
+
+> zbuild@0.1.0 lint
+> bash scripts/lib/lint-model-names.sh && shellcheck -x --severity=warning scripts/zbuild && find scripts core plugins -name '*.sh' -not -path '*/legacy-DoNotUse/*' -print0 | xargs -0 -P 6 -n 90 shellcheck -x --severity=warning && bash scripts/lib/lint-stage-io.sh && bash scripts/lib/lint-contract.sh && bash scripts/lib/lint-doc-style.sh && bash scripts/lib/lint-vision.sh && bash scripts/lib/validate-mechanics-yaml.sh && bash scripts/lib/lint-doc-freshness.sh && bash scripts/lib/lint-action-versions.sh && bash scripts/lib/lint-grep-c.sh && bash scripts/lib/lint-test-identity.sh && bash scripts/lib/lint-llm-envelope.sh && bash scripts/lib/lint-disposition-classify.sh && bash scripts/lib/lint-silenced-redirect.sh && bash scripts/lib/lint-test-errexit.sh && bash scripts/lib/lint-test-engine-state.sh && bash scripts/lib/lint-disposition-words.sh && bash scripts/lib/lint-stage-signals.sh && bash scripts/lib/lint-adr-enforced-by.sh && bash scripts/lib/lint-plain-prompts.sh && bash scripts/lib/lint-bare-timeout.sh && bash scripts/lib/lint-stage-output-names.sh && bash scripts/lib/lint-atomic-write-unchecked.sh && bash scripts/lib/lint-test-determinism.sh && bash scripts/lib/lint-test-helper-place.sh
+
+lint-model-names: OK — no hardcoded model names in core/ plugins/ scripts/
+lint-doc-style: OK — 13 in-scope page(s) have a plain-language newcomer opening (README + docs/wiki/*.md, excluding _Sidebar.md and generated subdirs).
+lint-vision: OK — .zbuild/vision.md conforms to ADR-049.
+validate-mechanics-yaml: OK — 18 mechanics validated
+lint-doc-freshness: OK — 43 plugin(s), 18 mechanic(s) — all checks passed.
+lint-action-versions: OK — no action version drift detected.
+lint-grep-c: tests/unit/route-loop-terminated-reasons-test.sh:159 — `grep -c … || echo` yields "0\n0" on no-match; use `|| true`
+    _dslock1_nds="$(grep -c '_ROUTE_LOOP_TERMINATED_REASON="no_done_sentinel"' "$_route_sh" 2>/dev/null || echo 0)"
+lint-grep-c: tests/unit/route-loop-terminated-reasons-test.sh:168 — `grep -c … || echo` yields "0\n0" on no-match; use `|| true`
+    _dslock1_rot="$(grep -c '"router_out_of_turns"' "$_classify_sh" 2>/dev/null || echo 0)"
+
+lint-grep-c: 2 occurrence(s). `grep -c` already prints the count — replace `|| echo 0` with `|| true`.
+lint: 0/1 passed
+
+total: 892/894 passed (4 skipped)
