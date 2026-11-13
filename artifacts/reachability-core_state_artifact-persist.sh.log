@@ -7,12 +7,12 @@
   [38;2;0;212;255m[#1805/DSFSTG-1] --from-stage rehydrates stages before <s> and dispatches <s> first[0m
   [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] setup: state branch populated
   [38;2;248;113;113m✗[0m [#1805/DSFSTG-1] intake-result.json rehydrated into ZBUILD_ARTIFACT_DIR via --from-stage
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/from-stage-rehydrate-1805.EWCF7R/s3-state/artifacts/intake-result.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/from-stage-rehydrate-1805.63wAvC/s3-state/artifacts/intake-result.json[0m
   [38;2;248;113;113m✗[0m [#1805/DSFSTG-1] restored artifact contains original payload (proves _artifact_persist_restore + _artifact_persist_put_back used git state branch)
     [2moutput missing: prior-run intake[0m
   [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] pipeline.resume event emitted (from-stage preflight ran before dispatch loop)
   [38;2;248;113;113m✗[0m [#1805/DSFSTG-1] pipeline.resume precedes first dispatch event (artifact restored before dispatch loop started)
-    [2mexpected >7, got: 0[0m
+    [2mexpected >6, got: 0[0m
   [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] intake emits no stage.start when skipped via --from-stage
   [38;2;248;113;113m✗[0m [#1805/DSFSTG-1] stage.start emitted for cycled (inner member of cyc; proves --from-stage target cyc was dispatched as first stage)
     [2mexpected >0, got: 0[0m
@@ -22,7 +22,7 @@
   [38;2;0;212;255m[#1805/DSFSTG-1] --resume --from-stage <s> rehydrates prior stages (explicit --resume path)[0m
   [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] setup s5: state branch populated (--resume path)
   [38;2;248;113;113m✗[0m [#1805/DSFSTG-1] intake-result.json rehydrated via --resume --from-stage (second coverage sub-case)
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/from-stage-rehydrate-1805.EWCF7R/s5-state/artifacts/intake-result.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/from-stage-rehydrate-1805.63wAvC/s5-state/artifacts/intake-result.json[0m
   [38;2;248;113;113m✗[0m [#1805/DSFSTG-1] restored artifact contains prior-run payload (--resume --from-stage used git state branch)
     [2moutput missing: prior-run-noresume-intake[0m
   [38;2;74;222;128m✓[0m [#1805/DSFSTG-1] intake emits no stage.start when skipped via --resume --from-stage (second coverage sub-case)
