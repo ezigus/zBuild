@@ -1,8 +1,20 @@
-# test-author notes — issue #1805 (round 69)
+# test-author notes — issue #1805 (round 70)
 
 ## Status: ALL SPECS COVERED — LOOP_COMPLETE
 
 All 17 SPECs have passing assertions written and verified on disk.
+
+## Round 70 change
+
+Fixed S6 in `tests/integration/from-stage-rehydrate-test.sh`: added `--resume` to
+the `--from-stage build` invocation (line ~530). RQFROM-4 requires explicit `--resume`
+for `--from-stage` to work; without it, the runner must refuse. S6 tested the DSFSTG-1
+"leaf stage" path, which requires `--resume` to be present (S5 was updated earlier for
+the same reason; S6 was missed). The state file already has `intake=complete` and the
+artifact on the state branch; adding `--resume` causes the runner to enter resume mode
+and the from-stage preflight to rehydrate intake before dispatching build.
+
+Also fixed build-tests finding 1 answer: done — updated S6 to `--resume --from-stage build`.
 
 ## What is in each test file
 
@@ -21,6 +33,7 @@ All 17 SPECs have passing assertions written and verified on disk.
 
 ### tests/integration/from-stage-rehydrate-test.sh
 - DSFSTG-1 ✓: --from-stage <s> rehydrates prior stages and dispatches <s> first (S3, S5, S6)
+  - S6 updated: now uses `--resume --from-stage build` (round 70 fix)
 - DSFSTG-2 ✓: missing artifact → exit 1 with "has no restorable primary artifact" on stderr
 - DSFSTG-3 ✓: combined --resume --from-stage; stages after <s> dispatched despite being complete (S10)
 - DSFSTG-4 ✓: --from-stage without --resume exits 1 with "only valid with --resume"
@@ -60,31 +73,15 @@ Result: pipeline-resume-test.sh (which uses `in_progress` state) fails on branch
 Fixing this requires restoring the guard to its pre-auto-resume position in runner.sh.
 This is NOT in test-author scope.
 
-## About run-status-text.sh (acceptance-gate finding 1)
+## Findings answered (round 70)
 
-The branch changed `_rsc_code_labels_v` in `scripts/lib/run-status-text.sh` to append
-empty backticks after the last label: `if [[ -n "$_out" ]]; then _rcl="$_out${_in}\`\`"; else _rcl="$_in"; fi`
-
-The base code simply does: `_rcl="$_out$_in"`
-
-This change is not covered by any requirement in this issue (issue-acceptance confirmed it
-is an unasked change — finding 2: "1 part(s) of the change no requirement asks for").
-Adding a test for it would pin behavior no requirement demands and lock in an unasked change.
-The test-author must not write tests for unrequested behavior: a test that only fails without
-an unasked change asserts nothing about the issue's requirements.
-The correct resolution is for the code stage to revert the unasked change.
-
-## Findings answered (round 69)
-
-### acceptance-gate finding 1 (opened by test)
-Wrong. The change to `scripts/lib/run-status-text.sh` appends empty backticks in
-`_rsc_code_labels_v` — not covered by any requirement in this issue's scope.
-Issue-acceptance independently confirmed this is an unasked change (finding 2:
-"1 part(s) of the change no requirement asks for"). Adding a test for it would assert
-behavior no requirement demands and lock in an unasked change. The correct resolution
-is for the code stage to revert the unasked change. The test-author must not write
-tests for unrequested behavior: a test that only fails without an unasked change
-asserts nothing about the issue's requirements.
+### build-tests finding 1 (opened by build)
+Done. S6 in `from-stage-rehydrate-test.sh` updated to use `--resume --from-stage build`.
+The state file already has `intake=complete` with artifact on the state branch; adding
+`--resume` causes the runner to enter resume mode and the from-stage preflight to
+rehydrate intake before dispatching build. RQFROM-4 requires explicit `--resume` for
+`--from-stage`; S6's DSFSTG-1 "leaf stage" path was testing that `--from-stage build`
+dispatches build correctly, which requires `--resume` to be present.
 
 ### issue-acceptance finding 1 (opened by issue-acceptance)
 Not mine. The pipeline-resume-test.sh test at "--from-stage without --resume exits 1"
