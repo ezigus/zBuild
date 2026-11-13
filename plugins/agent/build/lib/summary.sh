@@ -122,6 +122,13 @@ _build_emit_changed_files_summary() {
             "terminated_reason=$terminated_reason" \
             "files_changed=0" >/dev/null 2>&1 || true
         warn "build: LLM signaled success but numstat shows 0 files changed" >&2 || true
+    elif [[ ( "$terminated_reason" == "no_done_sentinel" || \
+              "$terminated_reason" == "router_out_of_turns" ) && \
+            "$files_count" -eq 0 && "$scope_violation_mode" != "true" ]]; then
+        emit_event "build.discrepancy.detected" "plugin=build" \
+            "reason=no_changes_on_incomplete_call" \
+            "terminated_reason=$terminated_reason" \
+            "files_changed=0" >/dev/null 2>&1 || true
     fi
 
     : "${formatted:-}"
