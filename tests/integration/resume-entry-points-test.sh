@@ -433,6 +433,10 @@ P4_RUN_ID="e2-p4-resume-1805"
 P4_WORK_REPO="$(setup_git_temp_repo "ep-p4")"
 install_template_overlay "$P4_WORK_REPO" artifact-snapshot-coverage
 
+# The state root is reached through a symlink, as on macOS (/var is a link to
+# /private/var) or a linked home: the containment check must compare real paths.
+mkdir -p "$TEST_TEMP_DIR/p4-state-root-real"
+ln -sfn "$TEST_TEMP_DIR/p4-state-root-real" "$TEST_TEMP_DIR/p4-state-root"
 P4_STATE_ROOT="$TEST_TEMP_DIR/p4-state-root"
 P4_RUN_DIR="$P4_STATE_ROOT/runs/$P4_RUN_ID"
 P4_EVENTS_DIR="$TEST_TEMP_DIR/p4-events"

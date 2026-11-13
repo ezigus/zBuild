@@ -1183,6 +1183,41 @@ _cycle_state_write_iter_start() {
     unset _ZB_CYCLE_ID _ZB_CYCLE_N
 }
 
+# _cycle_holds_stage <cycle> <stage> — rc 0 when <stage> is a member of
+# <cycle> at any depth (#1805: --from-stage may name a stage inside a cycle).
+_cycle_holds_stage() {
+    local _chs_v="_TPL_CYCLE_STAGES_${1//-/_}" _chs_m
+    local -a _chs_ms
+    IFS=',' read -ra _chs_ms <<< "${!_chs_v:-}"
+    for _chs_m in "${_chs_ms[@]}"; do
+        [[ "$_chs_m" == "$2" ]] && return 0
+        _cycle_holds_stage "$_chs_m" "$2" && return 0
+    done
+    return 1
+}
+
+# _cycle_first_leaf_v <var> <id> — <id> itself when it is a leaf, else its
+# cycle's first leaf at any depth.
+_cycle_first_leaf_v() {
+    local -n _cfl="$1"; _cfl="$2"
+    local _cfl_v="_TPL_CYCLE_STAGES_${2//-/_}"
+    [[ -n "${!_cfl_v:-}" ]] && _cycle_first_leaf_v "$1" "${!_cfl_v%%,*}"
+    return 0
+}
+
+# _cycle_member_from_state <s> <state_file> — a member not dispatched this
+# round counts with its verdict from the run's state, added to the caller's
+# `blob` so exit_when/abort_when/until can read it.
+_cycle_member_from_state() {
+    local _cms_v _cms_st _cms_new
+    _cms_v="$(jq -r --arg s "$1" '.stage_verdicts[$s] // "pass"' "$2" 2>/dev/null || echo pass)"
+    _cms_st="$(jq -r --arg s "$1" '.stage_statuses[$s] // "complete"' "$2" 2>/dev/null || echo complete)"
+    _cms_new="$(jq -c --arg s "$1" --arg v "$_cms_v" --arg st "$_cms_st" \
+        '. + {($s): {verdict: $v, status: $st}}' <<< "$blob" 2>/dev/null)" \
+        && blob="$_cms_new" \
+        || warn "cycle-orchestrator: failed to update verdict blob for skipped member '$1'; cycle predicates (exit_when/abort_when/until) may evaluate incorrectly"
+}
+
 # ─── _cycle_state_write_member_atomic ────────────────────────────────────────
 # Persists a cycle member's terminal status and classified verdict into the
 # top-level stage_statuses / stage_verdicts maps of pipeline-state.json.
@@ -1444,6 +1479,20 @@ _cycle_iter_dispatch() {
                 "$(jq -r '.status // "complete"' <<< "$_ru_entry")" "$(jq -r '.verdict // "pass"' <<< "$_ru_entry")" || true
             continue
         fi
+        # #1805 (ADR-021): --from-stage <s> inside this cycle. In this round
+        # the members before <s> are not dispatched and count with their
+        # verdicts from the run's state; <s> and every member after it run. A
+        # member that is <s>'s cycle, or holds <s>, runs and starts there itself.
+        if [[ -n "${_ZBUILD_FROM_STAGE_TARGET:-}" ]]; then
+            if [[ "$s" == "$_ZBUILD_FROM_STAGE_TARGET" && "$_member_kind_pre" != "cycle" ]]; then
+                export _ZBUILD_FROM_STAGE_TARGET=""
+                _from_stage_start=true
+            elif [[ "$s" != "$_ZBUILD_FROM_STAGE_TARGET" ]] \
+                 && ! _cycle_holds_stage "$s" "$_ZBUILD_FROM_STAGE_TARGET"; then
+                _cycle_member_from_state "$s" "$state_file"
+                continue
+            fi
+        fi
         # DSFSTG-1 / finding-3 (#1805): emit stage.start for the FIRST member when
         # --from-stage targets this cycle, or when all prior-iter members completed
         # (interrupted-before-any-dispatch edge case). No skip guard: all members run.
@@ -1459,18 +1508,7 @@ _cycle_iter_dispatch() {
             _cmbr_status="$(jq -r --arg s "$s" '.stage_statuses[$s] // "pending"' \
                 "$state_file" 2>/dev/null || echo "pending")"
             if [[ "$_cmbr_status" == "complete" ]]; then
-                # Add persisted verdict/status to blob so exit_when/abort_when/until
-                # predicates that reference this member can evaluate correctly.
-                local _cmbr_verdict
-                _cmbr_verdict="$(jq -r --arg s "$s" '.stage_verdicts[$s] // "pass"' \
-                    "$state_file" 2>/dev/null || echo "pass")"
-                local _cmbr_blob_entry _cmbr_new_blob
-                _cmbr_blob_entry="$(jq -cn --arg v "$_cmbr_verdict" --arg st "$_cmbr_status" \
-                    '{verdict: $v, status: $st}')"
-                _cmbr_new_blob="$(jq -c --arg s "$s" --argjson e "$_cmbr_blob_entry" \
-                    '. + {($s): $e}' <<< "$blob" 2>/dev/null)" \
-                    && blob="$_cmbr_new_blob" \
-                    || warn "cycle-orchestrator: failed to update verdict blob for skipped member '$s'; cycle predicates (exit_when/abort_when/until) may evaluate incorrectly"
+                _cycle_member_from_state "$s" "$state_file"
                 continue
             fi
             # Non-complete (interrupted) member: emit stage.start before dispatch.
@@ -2410,16 +2448,15 @@ _cycle_orchestrator_run_body() {
     else
         _start_iter=1
     fi
-    # DSFSTG-1 (#1805): when --from-stage targets this cycle, emit stage.start for
-    # its first member even though _ZBUILD_RESUME_ACTIVE was cleared (iter always 1
-    # for from-stage so persisted iter must not be used). Use a SEPARATE flag so
-    # _is_resume stays false — the DSCMBR-1 skip guard must NOT run for from-stage
-    # (it would skip members "complete" from prior runs, leaving no dispatches).
-    # Consume the flag immediately so nested cycles and later iterations are not affected.
+    # DSFSTG-1 (#1805): --from-stage names this cycle — its round 1 (a
+    # --from-stage run never restores a round) starts with its first member,
+    # which emits stage.start. A separate flag, so _is_resume stays false: the
+    # DSCMBR-1 skip guard must not run for from-stage. Consumed here, so later
+    # rounds and other cycles are not affected.
     local _from_stage_cycle_start=false
-    if [[ "${_ZBUILD_FROM_STAGE_EMIT_START:-false}" == "true" ]]; then
+    if [[ -n "${_ZBUILD_FROM_STAGE_TARGET:-}" && "$_ZBUILD_FROM_STAGE_TARGET" == "$cycle_id" ]]; then
         _from_stage_cycle_start=true
-        export _ZBUILD_FROM_STAGE_EMIT_START=false
+        export _ZBUILD_FROM_STAGE_TARGET=""
     fi
 
     _cycle_install_traps

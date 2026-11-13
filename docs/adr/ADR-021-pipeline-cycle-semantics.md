@@ -1,6 +1,6 @@
 # ADR-021: Pipeline Cycle Semantics (Outer-Cycle Framework)
 
-**Status:** Proposed (F1) → Accepted (after F2 / #511); amended 2026-11-09 (#2508: `blocked_on_scope` is removed — build has no file list to be blocked on, ADR-030 §8)
+**Status:** Proposed (F1) → Accepted (after F2 / #511); amended 2026-11-13 (#1805: #511 Pin 14 is retired — `--from-stage` may name a stage inside or after a cycle, and every cycle it enters starts at round 1); amended 2026-11-09 (#2508: `blocked_on_scope` is removed — build has no file list to be blocked on, ADR-030 §8)
 **Date:** 2026-05-30
 **Amends:** ADR-006 (resume contract), ADR-013 (canonical stage list), ADR-015 (stage-io v6), ADR-018 (Pattern 2 inner loops), ADR-020 (contract validator)
 **Amended:** 2026-11-07 (#2487) — Blocked termination: a member whose output could not be used (`unusable`) does not block; the next round runs it again.
@@ -321,13 +321,23 @@ The runner CONTINUES to the next dispatch unit on cycle rc ∈
 stage runs and the ADR-019 fail-closed gate (#485) fires as the FINAL
 arbiter. Halt only on rc=4 (config_invalid) and rc=130 (aborted). **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=interrupted` (`config_invalid`) / `aborted` (abort word `sigint` / `sigterm`))**
 
-### `--from-stage` rejection (#511 Pin 14)
+### `--from-stage` inside or after a cycle (#511 Pin 14, retired 2026-11-13 by #1805)
 
-`runner.sh --from-stage <S>` is REFUSED with rc=2 **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `pipeline.from_stage.rejected`)** when `<S>` is a member
-of any cycle, OR appears strictly after a cycle in the dispatch order.
-Either case would produce non-deterministic feedback state or consume
-stale test artifacts. Event: `pipeline.from_stage.rejected
-reason=inside_cycle_or_after`.
+Pin 14 refused `runner.sh --from-stage <S>` when `<S>` was a member of a cycle or
+came after one, because the run would have had no loop state and stale feedback.
+#1805 puts back every earlier stage's outputs from this same run (ADR-006 §3.6),
+so neither reason holds, and the refusal meant `--from-stage` could name only
+`hydrate` or `intake` on the shipped templates. It is retired:
+
+- `<S>` may be any stage or cycle: inside a cycle, inside a nested cycle, a
+  nested cycle itself, or after a cycle.
+- Every cycle the run enters starts fresh at round 1. A `--from-stage` run never
+  restores a round count (a plain resume does, ADR-006).
+- In that first round, the members before `<S>` are not dispatched and count
+  with their verdicts from the run's state; `<S>` and every member after it run.
+  Later rounds run every member.
+
+Enforced by `tests/integration/from-stage-in-cycle-test.sh` (FSIC-1–FSIC-5).
 
 ### Auto-enable + env override (#511 Pin 4)
 

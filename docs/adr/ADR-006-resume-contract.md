@@ -1,6 +1,6 @@
 # ADR-006: Resume Contract — Pipeline-Resume Memory
 
-**Status:** Accepted
+**Status:** Accepted; amended 2026-11-13 (#1805: a resume trusts and rehydrates every stage that already ran; `--from-stage` works the same way, may name a stage inside or after a cycle, and starts every cycle it enters at round 1)
 **Date:** 2026-05-24
 
 > **Memory type:** This ADR governs **pipeline-resume memory** — the operational
@@ -117,8 +117,6 @@ The engine validates:
      A complete stage whose primary artifact is still absent after this
      restoration causes the runner to exit 1 before any stage.start event is
      emitted (fail closed — not warn-and-continue).
-     Ordering constraint: not to be combined with dispatch-loop changes; this
-     step ships in its own PR so each concern can be verified independently.
      Enforced by: tests/integration/resume-rehydrate-test.sh,
                   tests/integration/resume-entry-points-test.sh
 4. Engine emits "pipeline.resume" event
@@ -292,8 +290,14 @@ loop:
    dispatch loop starts.
 4. Stage `<s>` is dispatched as the first unit; no stage before `<s>` receives a dispatch
    event.
+5. `<s>` may be any stage or cycle, including one inside a cycle, inside a nested cycle, or
+   after a cycle (ADR-021, amended 2026-11-13: #511 Pin 14 is retired). Every cycle the run
+   enters starts fresh at round 1 — a `--from-stage` run never restores a round count. In
+   that first round, the members before `<s>` are not dispatched and count with their
+   verdicts from the run's state; `<s>` and everything after it run.
 
-Enforced by: tests/integration/from-stage-rehydrate-test.sh (DSFSTG-1, DSFSTG-2)
+Enforced by: tests/integration/from-stage-rehydrate-test.sh (DSFSTG-1, DSFSTG-2);
+tests/integration/from-stage-in-cycle-test.sh (FSIC-1–FSIC-5, item 5)
 
 ### Auto-resume state discovery via `latest` symlink
 

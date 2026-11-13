@@ -1686,6 +1686,26 @@ _runner_rearm_traps() {
     trap '_runner_signal_trap TERM' TERM
 }
 
+# _runner_latest_run_dir_v <var> <state_root> — the per-run folder that
+# <state_root>/latest points to, when it is inside <state_root> and holds a
+# pipeline-state.json; else empty (#1805 DSENTR-2, ADR-059 §1). Both sides are
+# real paths (pwd -P): a root reached through a symlink (/var on macOS, a
+# linked home) is still the same root. A link out of the root is refused, as
+# its state could run the work under another issue.
+_runner_latest_run_dir_v() {
+    local -n _rlr="$1"; _rlr=""
+    local _rlr_root _rlr_dir
+    [[ -L "$2/latest" ]] || return 0
+    _rlr_root="$(cd "$2" 2>/dev/null && pwd -P)" || return 0
+    _rlr_dir="$(cd "$2/latest" 2>/dev/null && pwd -P)" || return 0
+    if [[ "$_rlr_dir" != "$_rlr_root"/* ]]; then
+        warn "auto-resume: latest points outside the state root — ignored"
+        return 0
+    fi
+    [[ -f "$_rlr_dir/pipeline-state.json" ]] && _rlr="$_rlr_dir"
+    return 0
+}
+
 # ─── _runner_resume_rehydrate <issue> <state_dir> (#1805, ADR-006 §3.6) ─────
 # Restore completed-stage artifacts from the git state branch into the
 # artifact area before the dispatch loop runs. Non-fatal on restore failure;
@@ -1718,18 +1738,9 @@ _runner_from_stage_preflight() {
     local -n _fsp_stages="$2"
     local _fsp_from_stage="$3" _fsp_state_dir="$4" _fsp_plugins_root="$5"
     local _fsp_artifacts_dir="$_fsp_state_dir/artifacts"
-    # When from_stage is a cycle ID, stop checking before the cycle's first
-    # member (the first element of _TPL_CYCLE_STAGES_<id>). Cycle IDs are not
-    # in active_stages[], so a literal match would never fire and all stages
-    # (including cycle members) would be checked — wrong.
-    local _fsp_stop_stage="$_fsp_from_stage"
-    local _fsp_cycle_safe="${_fsp_from_stage//[^a-zA-Z0-9_]/_}"
-    local _fsp_cycle_stages_var="_TPL_CYCLE_STAGES_${_fsp_cycle_safe}"
-    local _fsp_cycle_csv="${!_fsp_cycle_stages_var:-}"
-    if [[ -n "$_fsp_cycle_csv" ]]; then
-        # from_stage is a cycle; the stop point is its first member stage.
-        _fsp_stop_stage="${_fsp_cycle_csv%%,*}"
-    fi
+    # A cycle id is not in active_stages[] (its leaves are): the stop point is
+    # the cycle's first leaf, at any depth.
+    local _fsp_stop_stage; _cycle_first_leaf_v _fsp_stop_stage "$_fsp_from_stage"
     # Verify every stage before the target has its primary artifact
     local _fsp_s _fsp_plugin_dir _fsp_manifest _fsp_prim_path _fsp_resolved
     for _fsp_s in "${_fsp_stages[@]}"; do
@@ -1802,30 +1813,14 @@ main() {
             issue="$_sf_issue"
         fi
     fi
-    # Also try latest symlink for per-run default layout when ZBUILD_STATE_FILE is
-    # unset (ADR-059 §1 / #1805 DSENTR-2): state lives at runs/<run_id>/ not at root.
+    # Also try the latest link for the per-run layout when ZBUILD_STATE_FILE is
+    # unset (ADR-059 §1 / #1805 DSENTR-2): state lives at runs/<run_id>/.
     if [[ -z "$issue" && -z "$goal" && -z "${ZBUILD_STATE_FILE:-}" ]]; then
-        local _ls_sd="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}/latest"
-        if [[ -L "$_ls_sd" && -f "$_ls_sd/pipeline-state.json" ]]; then
-            # Safety: verify the symlink target is within the state root before
-            # trusting its contents. A crafted or stale symlink escaping the root
-            # could route the run under a different issue's identity (#1805).
-            local _ls_issue_resolved
-            _ls_issue_resolved="$(readlink -f "$_ls_sd" 2>/dev/null || true)"
-            local _ls_issue_root="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}"
-            if [[ -n "$_ls_issue_resolved" && \
-                  ( "$_ls_issue_resolved" == "${_ls_issue_root%%/}/"* || \
-                    "$_ls_issue_resolved" == "${_ls_issue_root%%/}" ) ]]; then
-                local _ls_issue
-                # Security: read from the resolved path (not the unresolved symlink)
-                # to eliminate the TOCTOU race between validation and read.
-                _ls_issue="$(jq -r '.issue // ""' "$_ls_issue_resolved/pipeline-state.json" 2>/dev/null || true)"
-                if [[ "$_ls_issue" =~ ^[0-9]+$ && "$_ls_issue" != "0" ]]; then
-                    issue="$_ls_issue"
-                fi
-            else
-                warn "auto-resume: latest symlink escapes state root — ignoring for issue discovery"
-            fi
+        local _ls_dir _ls_issue
+        _runner_latest_run_dir_v _ls_dir "${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}"
+        if [[ -n "$_ls_dir" ]]; then
+            _ls_issue="$(jq -r '.issue // ""' "$_ls_dir/pipeline-state.json" 2>/dev/null || true)"
+            [[ "$_ls_issue" =~ ^[0-9]+$ && "$_ls_issue" != "0" ]] && issue="$_ls_issue"
         fi
     fi
     if [[ -z "$issue" && -z "$goal" ]]; then
@@ -1974,11 +1969,9 @@ main() {
         fi
     }
 
-    # DSFSTG-4/RQFROM-4 (#1805 Gap 12): early --from-stage guard so the
-    # persona preflight below does not emit a spurious persona-missing failure
-    # before the "only valid with --resume" rejection can fire. Must precede
-    # the preflight gate. The later guard at the auto-resume boundary is the
-    # canonical one; this is defense-in-depth for the persona-ordering issue.
+    # R4a (#1805): --from-stage needs an explicit --resume; an automatic
+    # resume does not count. Checked before the persona preflight, so its
+    # reason is the one shown.
     if [[ -n "$from_stage" ]] && ! $resume_mode; then
         error "--from-stage is only valid with --resume"
         _usage
@@ -2113,73 +2106,6 @@ main() {
             error "--from-stage '$from_stage' is not a known stage (active stages: ${active_stages[*]})"
             return 1
         fi
-        # #511 Pin 14: refuse --from-stage that lands INSIDE a cycle OR
-        # AFTER a cycle (former case would silently skip cycle iters and
-        # produce non-deterministic feedback state; latter would consume
-        # stale test-results from a previous run). Mitigates silent-failure
-        # finding #8. Walks the cycle stage lists collected by template.sh.
-        local _r_cyc_count=0
-        if declare -p _TPL_CYCLES >/dev/null 2>&1; then
-            _r_cyc_count="${#_TPL_CYCLES[@]}"
-        fi
-        if [[ $_r_cyc_count -gt 0 ]]; then
-            local _fs_cycle_id="" _cyc
-            for _cyc in "${_TPL_CYCLES[@]}"; do
-                local _safe="${_cyc//-/_}"
-                local _stages_var="_TPL_CYCLE_STAGES_${_safe}"
-                local _stages_csv="${!_stages_var:-}"
-                local IFS_save="$IFS"; IFS=','
-                # shellcheck disable=SC2206
-                local -a _cs=($_stages_csv)
-                IFS="$IFS_save"
-                local _cs_s
-                for _cs_s in "${_cs[@]}"; do
-                    [[ "$_cs_s" == "$from_stage" ]] && { _fs_cycle_id="$_cyc"; break 2; }
-                done
-            done
-            # Check "after a cycle" too — locate from_stage position and any
-            # cycle position in active_stages, reject if any cycle position
-            # is strictly less.
-            local _after_cycle=0
-            if [[ -z "$_fs_cycle_id" ]]; then
-                local _fs_pos=-1 _i
-                for _i in "${!active_stages[@]}"; do
-                    [[ "${active_stages[$_i]}" == "$from_stage" ]] && _fs_pos=$_i && break
-                done
-                for _cyc in "${_TPL_CYCLES[@]}"; do
-                    local _safe2="${_cyc//-/_}"
-                    local _sv2="_TPL_CYCLE_STAGES_${_safe2}"
-                    local _scsv2="${!_sv2:-}"
-                    local _first_stage="${_scsv2%%,*}"
-                    local _cpos=-1
-                    for _i in "${!active_stages[@]}"; do
-                        [[ "${active_stages[$_i]}" == "$_first_stage" ]] && _cpos=$_i && break
-                    done
-                    if [[ $_cpos -ge 0 && $_fs_pos -gt $_cpos ]]; then
-                        _after_cycle=1; break
-                    fi
-                done
-            fi
-            if [[ -n "$_fs_cycle_id" || $_after_cycle -eq 1 ]]; then
-                eb_emit_event "pipeline.from_stage.rejected" \
-                    "reason=inside_cycle_or_after" "from_stage=$from_stage" \
-                    "cycle_id=${_fs_cycle_id:-}" 2>/dev/null || true
-                error "--from-stage '$from_stage' lands inside or after a cycle ('${_fs_cycle_id:-after-cycle}') — refused. Resume the cycle from its first stage or omit --from-stage."
-                return 1
-            fi
-        fi
-    fi
-
-    # DSFSTG-4/RQFROM-4 (#1805 Gap 12): --from-stage without explicit --resume
-    # always refuses, regardless of pipeline status (interrupted, in_progress,
-    # complete, or no state). Guard runs BEFORE auto-resume so a run that would
-    # otherwise auto-resume (status=in_progress, fresh timestamp) cannot bypass
-    # the guard. Explicit --resume sets resume_mode=true before we reach this
-    # point, so the guard is a no-op when --resume is given.
-    if [[ -n "$from_stage" ]] && ! $resume_mode; then
-        error "--from-stage is only valid with --resume"
-        _usage
-        return 1
     fi
 
     # ── Resume / fresh-start policy ────────────────────────────────────────────
@@ -2225,41 +2151,15 @@ main() {
     elif ! $no_resume && [[ -z "${ZBUILD_STATE_FILE:-}" && -L "$state_dir/latest" ]]; then
         # Auto-resume via latest symlink (per-run layout, ADR-059 §1 / #1805 DSENTR-2):
         # flat state file absent; follow latest to find the interrupted per-run state.
-        # Resolve symlink BEFORE reading to prevent TOCTOU — the escape check runs
-        # on the resolved path before any file access (#1805 red-team finding).
-        local _lr_original_state_dir="$state_dir"
+        # The link is resolved, and checked to stay in the root, before any read.
         local _lr_resolved_dir
-        _lr_resolved_dir="$(readlink -f "$state_dir/latest")" || true
-        # Strip ALL trailing slashes from the original dir for the prefix containment
-        # check (%%/ only strips a single slash — use a loop for multi-slash paths).
-        local _lr_prefix="${_lr_original_state_dir}"
-        while [[ "$_lr_prefix" == */ && "${#_lr_prefix}" -gt 1 ]]; do
-            _lr_prefix="${_lr_prefix%/}"
-        done
-        if [[ -z "$_lr_resolved_dir" ]]; then
-            : # symlink resolution failed; fall through to fresh start
-        elif [[ "$_lr_resolved_dir" != "${_lr_prefix}/"* && \
-                "$_lr_resolved_dir" != "${_lr_prefix}" ]]; then
-            warn "auto-resume: resolved path escapes state root — falling back to fresh start"
-            resume_mode=false
-        elif [[ ! -f "$_lr_resolved_dir/pipeline-state.json" ]]; then
-            : # state file not present in resolved dir; fall through to fresh start
-        else
+        _runner_latest_run_dir_v _lr_resolved_dir "$state_dir"
+        if [[ -n "$_lr_resolved_dir" ]]; then
             # Resolved path validated; read recommendation from resolved path (not symlink).
             local _lr_recommendation
             _lr_recommendation="$(get_resume_recommendation "$_lr_resolved_dir/pipeline-state.json")"
             case "$_lr_recommendation" in
                 auto_resume)
-                    # RQFROM-4 (#1805): guard against --from-stage without explicit --resume
-                    # even when state is found via the latest symlink (DSENTR-2 path).
-                    # The flat-file guard above (lines before this elif) only fires when
-                    # [[ -f "$state_file" ]]; for the per-run layout state_file is absent,
-                    # so the guard must be repeated here before resume_mode is set to true.
-                    if [[ -n "$from_stage" ]]; then
-                        error "--from-stage is only valid with --resume"
-                        _usage
-                        return 1
-                    fi
                     info "Auto-resuming previous run via latest symlink (use --no-resume to force fresh start)"
                     state_dir="$_lr_resolved_dir"
                     state_file="$state_dir/pipeline-state.json"
@@ -2288,26 +2188,15 @@ main() {
         fi
     fi
 
-    # --from-stage is only valid in resume mode — checked AFTER auto-resume so
-    # a run that qualifies for auto-resume (status=in_progress, fresh timestamp)
-    # does not need an explicit --resume flag when --from-stage is also given
-    # (DSFSTG-1, #1805).
-    if [[ -n "$from_stage" ]] && ! $resume_mode; then
-        error "--from-stage is only valid with --resume"
-        _usage
-        return 1
-    fi
-
     if ! $resume_mode; then
         # Guard: clear _ZBUILD_RESUME_ACTIVE so a subprocess runner that inherits a
         # stale `true` value from a parent resume run does not enter cycle-resume mode
         # on a fresh start, violating RQGUAR-1 (#1805).
         export _ZBUILD_RESUME_ACTIVE=false
-        # Guard: clear _ZBUILD_FROM_STAGE_EMIT_START so a subprocess runner that
-        # inherits a stale `true` value from a parent --from-stage run does not
-        # spuriously emit stage.start for the first cycle member of every fresh run,
-        # corrupting the event sequence and violating RQGUAR-1 (#1805).
-        export _ZBUILD_FROM_STAGE_EMIT_START=false
+        # Guard: clear _ZBUILD_FROM_STAGE_TARGET so a subprocess runner that
+        # inherits it from a parent --from-stage run does not skip cycle
+        # members on a fresh run (RQGUAR-1, #1805).
+        export _ZBUILD_FROM_STAGE_TARGET=""
         # Sanitize ZBUILD_RUN_ID: strip characters unsafe in filenames (/, .., spaces, etc.)
         # to prevent path traversal when run_id is used in report-${run_id}.md filenames
         # AND in the per-run state dir below (#887). Generated BEFORE the re-root.
@@ -2983,23 +2872,9 @@ main() {
         if [[ -n "$from_stage" ]]; then
             warn "Skipping ahead to stage '$from_stage' as requested (--from-stage)"
             eb_emit_event "pipeline.skip_to_stage" "stage=$from_stage" "run_id=$_runner_run_id"
-            # DSFSTG-1 (#1805): --from-stage restarts the target cycle from iter=1.
-            # Clear the resume flag so the cycle orchestrator does not restore the
-            # persisted iteration count — from-stage always starts the cycle fresh.
+            # #1805 (ADR-021): every cycle a --from-stage run enters starts fresh
+            # at round 1, so the persisted round count is not restored.
             export _ZBUILD_RESUME_ACTIVE=false
-            # DSFSTG-1 (#1805): when the from-stage target is a cycle, signal the cycle
-            # orchestrator to emit stage.start for the first cycle member (iter=1 always).
-            # Only set for cycle targets; leaf targets emit stage.start via the dispatch loop.
-            # _ZBUILD_FROM_STAGE_EMIT_START is consumed by the first cycle orchestrator entry.
-            if declare -p _TPL_CYCLES >/dev/null 2>&1; then
-                local _fs_tgt_cyc
-                for _fs_tgt_cyc in "${_TPL_CYCLES[@]}"; do
-                    if [[ "$_fs_tgt_cyc" == "$from_stage" ]]; then
-                        export _ZBUILD_FROM_STAGE_EMIT_START=true
-                        break
-                    fi
-                done
-            fi
         fi
     else
         # #1791: the engine sha rides on pipeline.start and the banner so an
@@ -3263,12 +3138,6 @@ main() {
         # ADR-042: resolve role-then-id (uniform with leaf + parallel paths) so a
         # role-bound cycle member whose plugin id ≠ stage name resolves correctly.
         _cd_plugin_dir="$(resolve_stage_plugin "$_cd_stage" "$plugins_root" 2>/dev/null || true)"
-        # Backward-compat id fallback: when role-based resolution fails (e.g. mock
-        # plugins in test harnesses with no declared role), try direct id match so
-        # tests with id-only mock plugins work (#1805).
-        if [[ -z "$_cd_plugin_dir" ]]; then
-            _cd_plugin_dir="$(_find_plugin_for_stage "$_cd_stage" "$plugins_root" 2>/dev/null || true)"
-        fi
         if [[ -z "$_cd_plugin_dir" ]]; then
             _CYCLE_DISPATCH_VERDICT="error"
             _CYCLE_DISPATCH_VERDICT_RAW="error"
@@ -3624,14 +3493,18 @@ main() {
                             continue
                         fi
                     fi
-                    if [[ -n "$skip_until_stage" && "$_cyc_id" != "$skip_until_stage" ]]; then
-                        info "Skipping cycle: $_cyc_id (awaiting $skip_until_stage)"
-                        continue
+                    if [[ -n "$skip_until_stage" ]]; then
+                        if [[ "$_cyc_id" != "$skip_until_stage" ]] \
+                           && ! _cycle_holds_stage "$_cyc_id" "$skip_until_stage"; then
+                            info "Skipping cycle: $_cyc_id (awaiting $skip_until_stage)"
+                            continue
+                        fi
+                        # #1805 (ADR-021): this cycle is <s> or holds it. The
+                        # orchestrator starts there; everything after it runs,
+                        # so the resume skip guard is off too (DSFSTG-3).
+                        export _ZBUILD_FROM_STAGE_TARGET="$skip_until_stage"
+                        skip_until_stage=""; resume_mode=false
                     fi
-                    # ADR-006 / #1805 (DSFSTG-3): when --from-stage targets this cycle,
-                    # clear skip_until_stage AND resume_mode so the resume skip guard does
-                    # not activate for stages after <s> in combined --resume --from-stage mode.
-                    [[ -n "$skip_until_stage" ]] && { skip_until_stage=""; resume_mode=false; }
                     # #524: replace bare `info` with operator-visible cycle
                     # entry banner (heavy ═ + ▸ Entering + DIM trailer).
                     local _cyc_stages_csv=""
