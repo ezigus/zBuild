@@ -134,7 +134,7 @@ assert_eq "FSIC-1: not refused as inside a cycle" "no" "$(_refused "$_RF_ERR")"
 assert_eq "FSIC-1: test, then probe, then verify run; intake and build do not" "test probe verify" "$_RF_RAN"
 assert_eq "FSIC-1: outer_cycle starts at round 1, not the interrupted round 2" "1 " "$(_cycle_start_iters "$_RF_EVENTS" outer_cycle)"
 assert_eq "FSIC-1: inner_cycle starts at round 1, not the interrupted round 2" "1 " "$(_cycle_start_iters "$_RF_EVENTS" inner_cycle)"
-_fsic1_ss="$(jq -r 'select(.type=="stage.start") | .data.stage' "$_RF_EVENTS" 2>/dev/null | head -1 || true)"
+_fsic1_ss="$(jq -rn 'first(inputs | select(.type=="stage.start") | .data.stage)' "$_RF_EVENTS" 2>/dev/null || true)"
 assert_eq "FSIC-1: the first stage.start is the target's" "test" "$_fsic1_ss"
 assert_eq "FSIC-1: the run ends 0" "0" "$_RF_RC"
 

@@ -3449,10 +3449,10 @@ main() {
                     # target is reached.
                     if $resume_mode && [[ -z "$skip_until_stage" ]]; then
                         local _du_cyc_status
-                        # Sanitize cycle id to prevent jq injection via template-sourced values.
-                        local _safe_cyc_id="${_cyc_id//[^a-zA-Z0-9_-]/}"
+                        # Read by the id as written (_update_stage_status), as
+                        # the linear loop reads a stage's.
                         _du_cyc_status="$(get_state_field "$state_file" \
-                            ".stage_statuses[\"$_safe_cyc_id\"]" '' 2>/dev/null || true)"
+                            ".stage_statuses[\"$_cyc_id\"]" '' 2>/dev/null || true)"
                         if [[ "$_du_cyc_status" == "complete" ]]; then
                             # DSRHYD-2 / fail-closed (#1805): verify each cycle member's
                             # primary artifact is present after rehydration. Absent →
@@ -3783,10 +3783,9 @@ main() {
                     # templates honour resume semantics for their leaf stages.
                     if $resume_mode && [[ -z "$skip_until_stage" ]]; then
                         local _du_stage_status
-                        # Sanitize stage id to prevent jq injection via template-sourced values.
-                        local _safe_ust="${_ust//[^a-zA-Z0-9_-]/}"
+                        # Read by the id as written, as the linear loop does.
                         _du_stage_status="$(get_state_field "$state_file" \
-                            ".stage_statuses[\"$_safe_ust\"]" '' 2>/dev/null || true)"
+                            ".stage_statuses[\"$_ust\"]" '' 2>/dev/null || true)"
                         if [[ "$_du_stage_status" == "complete" ]]; then
                             # SPEC-2 / fail-closed: verify the primary artifact
                             # is present after rehydration. Absent → exit 1.

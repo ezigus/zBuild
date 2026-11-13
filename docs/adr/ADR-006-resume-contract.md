@@ -118,6 +118,7 @@ The engine validates:
      restoration causes the runner to exit 1 before any stage.start event is
      emitted (fail closed — not warn-and-continue).
      Enforced by: tests/integration/resume-rehydrate-test.sh,
+                  tests/integration/resume-rehydrate-paths-test.sh,
                   tests/integration/resume-entry-points-test.sh
 4. Engine emits "pipeline.resume" event
 5. Continue from last in_progress stage
@@ -275,7 +276,7 @@ complete whose primary artifact is present in ZBUILD_ARTIFACT_DIR after the step
 rehydration. The skip guard is conditioned on `resume_mode`; fresh runs never activate it
 and always dispatch all stages from stage 1 with no stage skipped.
 
-Enforced by: tests/integration/resume-rehydrate-test.sh (DSSKIP-1, DSFRSH-1, DSFRSH-2)
+Enforced by: tests/integration/resume-rehydrate-test.sh (DSSKIP-1); tests/integration/resume-fresh-run-test.sh (DSFRSH-1, DSFRSH-2)
 
 ### `--from-stage <s>` pre-flight contract
 
@@ -297,6 +298,7 @@ loop:
    verdicts from the run's state; `<s>` and everything after it run.
 
 Enforced by: tests/integration/from-stage-rehydrate-test.sh (DSFSTG-1, DSFSTG-2);
+tests/integration/from-stage-resume-guard-test.sh (DSFSTG-3, DSFSTG-4);
 tests/integration/from-stage-in-cycle-test.sh (FSIC-1–FSIC-5, item 5)
 
 ### Auto-resume state discovery via `latest` symlink
@@ -308,7 +310,7 @@ symlink, which points to the most recent per-run directory under
 `$state_root/runs/<run_id>/`. When auto-resume fires via this path, `state_dir` is updated
 to the resolved per-run directory so artifact operations use the correct per-run location.
 
-Enforced by: tests/integration/resume-entry-points-test.sh (DSENTR-2)
+Enforced by: tests/integration/resume-latest-link-test.sh (DSENTR-2)
 
 ## References
 

@@ -403,6 +403,32 @@ assert_eq \
     "1" "$_CMBR1I1_TEST_DISPATCHED"
 
 # ── DSCYCL-1: test uses a fixture containing a cyclic stage ────────────────────
+# ── [#1805/DSCMBR-1] round k started, no member ran yet ─────────────────────────
+# The run stopped after round k's start was written and before any member of
+# round k ran: every member still reads complete, from round k-1. Round k has
+# not run, so every member runs (not "all complete → round passes").
+print_test_section "[#1805/DSCMBR-1] round 2 started but no member ran: every member runs"
+: > "$ZBUILD_EVENTS_JSONL"
+jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$STATE_FILE"
+zb_engine_loop_state "$STATE_FILE" "build-test" 1 5 "in_progress"
+_cycle_state_write_iter_start "$STATE_FILE" "build-test" 2
+jq '.stage_statuses.build = "complete" | .stage_statuses.test = "complete"' "$STATE_FILE" \
+    > "${STATE_FILE}.b.tmp" && mv "${STATE_FILE}.b.tmp" "$STATE_FILE"
+load_template "$FIXT/cycle-converges-iter2.yaml"
+_B_RAN=""
+cycle_dispatch_stage() {
+    _B_RAN+="$1@$2 "
+    _CYCLE_DISPATCH_VERDICT="pass"; _CYCLE_DISPATCH_STATUS="complete"
+    return 0
+}
+zb_stub_reports_tests test
+set +e
+export _ZBUILD_RESUME_ACTIVE=true
+cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"
+set -e
+assert_contains "[#1805/DSCMBR-1] build runs in round 2 (round 2 had not run it)" "$_B_RAN" "build@2"
+assert_contains "[#1805/DSCMBR-1] test runs in round 2 (round 2 had not run it)" "$_B_RAN" "test@2"
+
 print_test_section "resume-loop-state test uses a fixture containing a cyclic stage"
 
 # cycle-converges-iter2.yaml is loaded above via load_template and driven through
