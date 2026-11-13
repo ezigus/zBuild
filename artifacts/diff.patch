@@ -123,10 +123,10 @@ index 0bbec260..480ebc08 100644
  cleanup_test_env
 diff --git a/tests/unit/route-loop-terminated-reasons-test.sh b/tests/unit/route-loop-terminated-reasons-test.sh
 new file mode 100644
-index 00000000..fed59890
+index 00000000..973d2343
 --- /dev/null
 +++ b/tests/unit/route-loop-terminated-reasons-test.sh
-@@ -0,0 +1,199 @@
+@@ -0,0 +1,244 @@
 +#!/usr/bin/env bash
 +# Tests: core/router/route.sh + scripts/lib/router-rc-classify.sh
 +# DSEND-1: the _ROUTE_LOOP_TERMINATED_REASON comment in route_to_model_loop
@@ -320,6 +320,51 @@ index 00000000..fed59890
 +else
 +    assert_fail "[DSLOCK-1] build plugin.sh does not assign _ROUTE_LOOP_TERMINATED_REASON" \
 +        "found: $_dslock1_plug"
++fi
++
++# ─── DSLOCK-2 ────────────────────────────────────────────────────────────────
++# Given: _router_rc_classify is callable (router-rc-classify.sh sourced via summary.sh)
++# When: _router_rc_classify is called with rc=124 and rate_limited=0
++# Then: verdict is set to error
++# And: reason is set to router_timeout
++
++# shellcheck source=../../scripts/lib/router-rc-classify.sh
++source "$REPO_ROOT/scripts/lib/router-rc-classify.sh" || true
++# Use a fresh state dir so no budget marker file exists.
++export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/dslock2-state"
++mkdir -p "$ZBUILD_STATE_DIR"
++_ROUTE_LAST_BUDGET_EXHAUSTED=0
++_dslock2_v=""; _dslock2_r=""
++_router_rc_classify 124 _dslock2_v _dslock2_r 0
++
++if [[ "$_dslock2_v" == "error" ]]; then
++    assert_pass "[DSLOCK-2] _router_rc_classify rc=124 rate_limited=0 → verdict=error"
++else
++    assert_fail "[DSLOCK-2] _router_rc_classify rc=124 rate_limited=0 → verdict=error" \
++        "got verdict: $_dslock2_v"
++fi
++
++if [[ "$_dslock2_r" == "router_timeout" ]]; then
++    assert_pass "[DSLOCK-2] _router_rc_classify rc=124 rate_limited=0 → reason=router_timeout"
++else
++    assert_fail "[DSLOCK-2] _router_rc_classify rc=124 rate_limited=0 → reason=router_timeout" \
++        "got reason: $_dslock2_r"
++fi
++
++# ─── DSLOCK-3 ────────────────────────────────────────────────────────────────
++# When: git diff is run between the base commit and HEAD restricting to
++#   tests/unit/route-one-call-per-try-test.sh
++# Then: the diff output is empty (file is content-identical before and after)
++
++_dslock3_base="6a07fa8e"
++_dslock3_diff="$(git -C "$REPO_ROOT" diff "${_dslock3_base}..HEAD" -- \
++    "tests/unit/route-one-call-per-try-test.sh" 2>&1 || true)"
++
++if [[ -z "$_dslock3_diff" ]]; then
++    assert_pass "[DSLOCK-3] route-one-call-per-try-test.sh is content-identical between base and HEAD"
++else
++    assert_fail "[DSLOCK-3] route-one-call-per-try-test.sh is content-identical between base and HEAD" \
++        "diff is non-empty"
 +fi
 +
 +# ─── Teardown ────────────────────────────────────────────────────────────────

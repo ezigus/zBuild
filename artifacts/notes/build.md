@@ -20,22 +20,21 @@ Extended `_build_emit_changed_files_summary` with an `elif` branch that emits
 `terminated_reason` is `no_done_sentinel` or `router_out_of_turns` and `files_count` is 0.
 The `done_sentinel` path is left unchanged (RQDIFF-3).
 
-## Test-author fixes (commit 5aeaae3b)
+## Test-author fixes (commits 5aeaae3b, ff556766)
 The test-author stage's latest commit fixed:
-- `tests/unit/route-loop-terminated-reasons-test.sh`: replaced `|| echo 0` with `|| true` on both grep-c lines
-- `tests/unit/route-one-call-per-try-test.sh`: reverted O4 to plain `[O4]` tags (no `[DSLOCK-3]` prefix)
-- `tests/unit/router-rc-classify-test.sh`: reverted T2 to base code (no `[DSLOCK-2]` prefix)
+- `tests/unit/route-loop-terminated-reasons-test.sh`: added [DSLOCK-2] and [DSLOCK-3] assertions
+- `tests/unit/route-one-call-per-try-test.sh`: O4 assertions use plain `[O4]` tags (unchanged from base)
+- `tests/unit/router-rc-classify-test.sh`: T2 assertions unmodified
 
-## Verified test results (this iteration)
+## Verified test results (this iteration — HEAD ff556766)
 - plugins/agent/build/tests/build-test.sh: 123/123 pass (DSDIFF-1, DSDIFF-2, DSDIFF-3 all pass)
-- tests/unit/route-loop-terminated-reasons-test.sh: 6/6 pass (DSEND-1, DSLOCK-1 all pass)
-- tests/unit/lint-grep-c-test.sh: 21/21 pass
-- bash scripts/lib/lint-grep-c.sh: OK (no grep-c || echo occurrences)
+- tests/unit/route-loop-terminated-reasons-test.sh: 9/9 pass (DSEND-1, DSLOCK-1, DSLOCK-2, DSLOCK-3 all pass)
+
+## Acceptance-gate finding — resolved
+The finding "DSLOCK-2/DSLOCK-3: no assertion in the test files carries its tag" was from an
+earlier iteration. At HEAD (ff556766) the test file has [DSLOCK-2] at the _router_rc_classify
+rc=124 check and [DSLOCK-3] at the git diff check. Both pass. The finding does not reproduce.
 
 ## design.md WIRING
 `/home/runner/work/_temp/zbuild-state/artifacts/design.md` line 65 declares `WIRING: none`.
-The acceptance gate will read this on re-run and produce `REACHABILITY EXEMPT none`.
-
-## Previous findings — all resolved by test-author's latest commit
-All findings from the previous test/issue-acceptance run are based on states that
-have since been fixed. The working tree has no uncommitted changes (git diff HEAD = empty).
+The acceptance gate will produce `REACHABILITY EXEMPT none` on re-run.
