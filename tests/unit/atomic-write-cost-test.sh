@@ -40,7 +40,7 @@ done
 printf '{"a":1}\n' | atomic_write "$F1"; _rc1=$?
 unset -f df mktemp cp cat stat chmod mv dirname
 assert_eq "[W1] the file is replaced" "0|{\"a\":1}" "$_rc1|$(cat "$F1")"
-assert_eq "[W1] it starts cat, one stat and mv — the temp is opened with the mode, no chmod" "cat mv stat" \
+assert_eq "[W1][DSBUD-1] it starts cat, one stat and mv — the temp is opened with the mode, no chmod" "cat mv stat" \
     "$(sort "$CALLS" | tr '\n' ' ' | sed 's/ $//')"
 F1b="$TEST_TEMP_DIR/w1/new.json"; : > "$CALLS"
 for _c in cat stat chmod mv; do
