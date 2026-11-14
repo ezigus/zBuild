@@ -1,0 +1,16 @@
+## issue-acceptance — pass
+
+- judged the change against the issue: every requirement is met
+
+- every requirement the issue states is met by the change
+- answered: issue-acceptance finding 1: wrong — confirmed: `tests/unit/route-loop-terminated-reasons-test.sh` line `"$(grep -c '_ROUTE_LOOP_TERMINATED_REASON="no_done_sentinel"' "$_route_sh" 2>/dev/null || true)"` with `${_dslock1_nds:-0}` uses `|| true`, not `|| echo 0`; the antipattern is absent.
+- answered: issue-acceptance finding 2: wrong — confirmed: `git diff 6a07fa8e0a202bb39d55e558f1b51883db3c550a HEAD -- tests/unit/route-one-call-per-try-test.sh` produces no output; the file is unchanged and O4 is intact.
+- answered: issue-acceptance finding 3: wrong — confirmed: `scripts/lib/router-rc-classify.sh` is absent from the changed-files list (M: core/router/route.sh, M: plugins/agent/build/lib/summary.sh, M: plugins/agent/build/tests/build-test.sh, A: tests/unit/route-loop-terminated-reasons-test.sh); the file was not touched.
+- answered: issue-acceptance finding 4: wrong — same as finding 2; the diff for `route-one-call-per-try-test.sh` between base and HEAD is empty; O4 is unchanged.
+- answered: lens-security-code finding 2: wrong — the awk exits on `/^}[[:space:]]*$/`; `_router_rc_classify` in `router-rc-classify.sh` contains no here-doc delimiter or grouped command whose closing brace appears alone at column 0 inside the function body; extraction is correct for the actual code, all 894 tests pass, and future-fragility concerns are outside this issue's requirements.
+- answered: lens-red-team-code finding 1: wrong — `_router_rc_classify` has no column-0 `}` other than its own closing brace; the awk exits correctly; all reason values are collected; the test passes.
+- answered: lens-red-team-code finding 2: wrong — `tests/unit/route-loop-terminated-reasons-test.sh` contains an explicit empty-set guard (`if [[ -z "$_required" ]]; then assert_fail "[DSEND-1] GUARD: reason extraction produced a non-empty required set"`); a silent extraction failure fires `assert_fail`, not a vacuous pass.
+- answered: lens-red-team-code finding 3: wrong — the worktree was created at that exact base commit; the git diff returns empty, confirming the commit is reachable and the check is conclusive; this is not a requirements defect for this issue.
+- answered: lens-correctness-code finding 1: wrong — same as lens-red-team-code finding 1; `_router_rc_classify` has no interior column-0 `}` lines; the awk exits only at the function's closing brace; all reasons are collected correctly.
+- answered: lens-correctness-code finding 2: wrong — RQDIFF-3 is explicitly labelled "This is a guard" for behavior that was not changed; the done_sentinel branch (`plugins/agent/build/lib/summary.sh` | `terminated_reason=$terminated_reason`) is identical before and after the change; a guard verifying the two events are still emitted is sufficient; the issue does not require a payload assertion on the unchanged path.
+- answered: lens-sre-code finding 2: wrong — `signal` is a legitimate and documented `_ROUTE_LOOP_TERMINATED_REASON` value that the loop reports (the signal handler fires during loop execution and sets the same variable); grep finding it from outside `route_to_model_loop`'s inline body does not create a false required value; the comment correctly lists `signal` and must list it.
