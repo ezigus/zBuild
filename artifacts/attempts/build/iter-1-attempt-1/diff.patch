@@ -1,0 +1,118 @@
+diff --git a/docs/adr/ADR-009-platform-aware-modularity.md b/docs/adr/ADR-009-platform-aware-modularity.md
+index 62e27418..3eaa2c50 100644
+--- a/docs/adr/ADR-009-platform-aware-modularity.md
++++ b/docs/adr/ADR-009-platform-aware-modularity.md
+@@ -204,6 +204,30 @@ The runner falls back to `_find_plugin_for_stage` (direct stage-ID match) in two
+ 
+ This lets existing plugins (without `provides.role`) continue working while new plugins adopt role-based manifests incrementally.
+ 
++## Probe-Based Tool Selection (amended 2026-11-14, Issue #1700)
++
++Host tool-form decisions — which `sed -i` form to use and which `stat` form to use
++— come from a probe of the tool itself, run once when the library file loads,
++never from a platform name. `$ZBUILD_PLATFORM` conveys which project platform the
++engine is processing; it is not a reliable indicator of the host OS tools.
++
++Concretely:
++- `scripts/lib/compat.sh` probes `sed --version` at load time and stores the result
++  in `_ZB_SED_INPLACE_ARGS`; `zbuild_sed_inplace` uses that variable.
++- `scripts/lib/helpers.sh` probes `stat -c '%a'` (GNU form first, per RQPRO-3) at
++  load time and stores the result in `_ZB_STAT_MODE_CMD`; `_zb_target_mode_v` uses
++  that variable and calls `stat` exactly once per invocation.
++
++### Enforced by
++
++- `tests/unit/platform-probe-test.sh` — DSPRB-1: `zbuild_sed_inplace` works when
++  `ZBUILD_PLATFORM` is set to a wrong value; DSPRB-2: `_zb_target_mode_v` returns
++  a valid octal mode when `ZBUILD_PLATFORM` is set to a wrong value; DSPRB-3: the
++  stat probe encodes the GNU `-c` form on a GNU host; DSPRB-4: `_zb_target_mode_v`
++  runs exactly one `stat` per call; DSPRB-5: the sed probe variable is set at load
++  time (before any call to `zbuild_sed_inplace`); DSDEL-1: `zbuild_stat_size` is not
++  defined after sourcing `scripts/lib/compat.sh`.
++
+ ## References
+ 
+ - [ADR-001 — Plugin Contract](ADR-001-plugin-contract.md) — manifest schema (extended here)
+diff --git a/scripts/lib/compat.sh b/scripts/lib/compat.sh
+index c1f25dcb..573db340 100644
+--- a/scripts/lib/compat.sh
++++ b/scripts/lib/compat.sh
+@@ -40,20 +40,17 @@ zbuild_has_flock() {
+     command -v flock >/dev/null 2>&1
+ }
+ 
+-# ─── stat -c vs -f (GNU vs BSD) ─────────────────────────────────────────────
+-zbuild_stat_size() {
+-    if [[ "$ZBUILD_PLATFORM" == "macos" ]]; then
+-        stat -f '%z' "$1"
+-    else
+-        stat -c '%s' "$1"
+-    fi
+-}
++# ─── sed -i probe (GNU vs BSD), run once at load time ───────────────────────
++# GNU sed accepts --version; BSD sed does not. Storing the flag array avoids
++# re-probing on every zbuild_sed_inplace call and works regardless of
++# $ZBUILD_PLATFORM (which may be overridden or absent in test environments).
++declare -a _ZB_SED_INPLACE_ARGS
++if sed --version >/dev/null 2>&1; then
++    _ZB_SED_INPLACE_ARGS=(-i)
++else
++    _ZB_SED_INPLACE_ARGS=(-i '')
++fi
+ 
+-# ─── sed -i differences ─────────────────────────────────────────────────────
+ zbuild_sed_inplace() {
+-    if [[ "$ZBUILD_PLATFORM" == "macos" ]]; then
+-        sed -i '' "$@"
+-    else
+-        sed -i "$@"
+-    fi
++    sed "${_ZB_SED_INPLACE_ARGS[@]}" "$@"
+ }
+diff --git a/scripts/lib/helpers.sh b/scripts/lib/helpers.sh
+index e0e8438b..1878b445 100644
+--- a/scripts/lib/helpers.sh
++++ b/scripts/lib/helpers.sh
+@@ -14,6 +14,17 @@ _ZBUILD_HELPERS_LOADED=1
+ # it instead of starting one more to read it (ADR-065 §5, round 9).
+ _ZB_UMASK="$(umask)"
+ 
++# stat form probe, run once at load time (ADR-009 probe clause, Issue #1700).
++# GNU form is stat -c '%a'; BSD form is stat -f '%Lp'. GNU is tried first
++# (RQPRO-3). Result stored in _ZB_STAT_MODE_CMD ("-c" or "-f") so
++# _zb_target_mode_v calls stat exactly once per invocation, regardless of
++# $ZBUILD_PLATFORM.
++if stat -c '%a' /dev/null >/dev/null 2>&1; then
++    _ZB_STAT_MODE_CMD="-c"
++else
++    _ZB_STAT_MODE_CMD="-f"
++fi
++
+ # Source compat first (Bash 5 check, platform detection)
+ _ZBUILD_SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
+ # shellcheck source=./compat.sh
+@@ -270,19 +281,16 @@ zb_dirname_v() {
+ 
+ # _zb_target_mode_v <var> <target> — <target>'s permission bits, or 600 for a
+ # file that is not there yet (what mktemp gave the temp file before).
++# Uses the load-time stat probe (_ZB_STAT_MODE_CMD) to call stat exactly once
++# per invocation, regardless of $ZBUILD_PLATFORM (ADR-009 probe clause, #1700).
+ _zb_target_mode_v() {
+     local -n _tm_var="$1"
+     local _tm_t="$2" _tm=""
+     if [[ -e "$_tm_t" ]]; then
+-        # One stat in this platform's flavour, the other only when the answer
+-        # is not a mode. GNU reads `stat -f` as "file-system status" and prints
+-        # a block to stdout, which the check rejects (review #2229).
+-        if [[ "${ZBUILD_PLATFORM:-}" == "macos" ]]; then
+-            _tm="$(stat -f '%Lp' "$_tm_t" 2>/dev/null || true)"
+-            [[ "$_tm" =~ ^[0-7]{3,4}$ ]] || _tm="$(stat -c '%a' "$_tm_t" 2>/dev/null || true)"
+-        else
++        if [[ "${_ZB_STAT_MODE_CMD:-}" == "-c" ]]; then
+             _tm="$(stat -c '%a' "$_tm_t" 2>/dev/null || true)"
+-            [[ "$_tm" =~ ^[0-7]{3,4}$ ]] || _tm="$(stat -f '%Lp' "$_tm_t" 2>/dev/null || true)"
++        else
++            _tm="$(stat -f '%Lp' "$_tm_t" 2>/dev/null || true)"
+         fi
+     fi
+     [[ "$_tm" =~ ^[0-7]{3,4}$ ]] || _tm=600
