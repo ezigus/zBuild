@@ -1,6 +1,6 @@
 # ADR-059: What belongs to an issue, what belongs to a run
 
-**Status:** Accepted (2026-08-23)
+**Status:** Accepted (2026-08-23); amended 2026-11-14 (#2541, §2/§4: cleanup reclaims an issue tree git no longer lists)
 **Date:** 2026-08-23
 **Issue:** #141
 **Amends:** ADR-023 (§#888 layout string), ADR-024 (the nested-run fence must widen before the layout moves), ADR-035 (§2 pool-dir exclusion rationale), ADR-050 (§storage layer), ADR-054 §7 (three-actor table is run-keyed throughout), ADR-058 (§1 area lifetimes, §6 retention clock)
@@ -436,7 +436,15 @@ committed, stash ablates nothing and reports a false pass.
   defect class), #1664, #1688, #1764 (the concurrency this creates), #1921 (zero on origin),
   #1878 (the snapshot was never called), #1632 (retention), #1802, #34, #141, #142
 
+## Amendment 2026-11-14 (#2541) — §2/§4: a tree git has forgotten is reclaimed
+
+`zbuild cleanup --worktrees` walked `git worktree list`, so an `issues/<N>/worktree` (or `goals/<key>/worktree`) folder git no longer lists — its registration pruned, or left by an older install — was never examined: one sat from September to November while cleanup reported "nothing to clean".
+
+- **Cleanup examines every issue and goal tree folder, listed or not.** One git does not list is reclaimed under the same guards as a listed one: a run holding the issue's lock keeps it (failing closed when the lock cannot be read), and so does being newer than the age limit. It goes as a folder: there is no registration to remove.
+
 ## Enforced by
+
+- §2/§4 amendment 2026-11-14 (#2541: a tree git no longer lists is reclaimed, under the lock and age guards) → `tests/unit/cleanup-forgotten-trees-test.sh` G1–G5
 
 - `tests/unit/worktree-sparse-legacy-test.sh` — §2 per-worktree sparse-checkout: acquire and
   enter leave all of `legacy-DoNotUse/` out of the linked worktree, the formerly kept `migrated/`

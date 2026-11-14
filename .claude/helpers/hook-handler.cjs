@@ -51,7 +51,13 @@ function stripStringContent(cmd) {
   return normalizeWhitespace(stripped);
 }
 
+// #2541 (ADR-035): an event is recorded only where a zbuild run keeps them —
+// its events path is in the environment. Outside a run there is no log to
+// record into: the event bus would make a folder per hook process that nothing
+// reads or removes (56,505 of them, 1.7 GB, on one machine).
 function emitEvent(type, pairs) {
+  const env = process.env;
+  if (!env.ZBUILD_EVENTS_DIR && !env.ZBUILD_EVENTS_JSONL && !env.ZBUILD_EVENTS_DB) return;
   try {
     const eventBus = path.join(PROJECT_ROOT, 'core/event-bus/event-bus.sh');
     if (!fs.existsSync(eventBus)) return;

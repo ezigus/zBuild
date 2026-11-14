@@ -503,6 +503,40 @@ _cleanup_apply_tmpdir_plan() {
     done <<<"$data"
 }
 
+# ─── Event-bus per-process folders (#2541, ADR-035) ─────────────────────────
+# With no events path pinned, the event bus records into
+# <data root>/ephemeral-events/<pid> — process-scoped by design (ADR-035), and
+# nothing else removes it. A folder older than the age limit is stale: the
+# processes that make it live seconds. One find, not a stat per folder.
+_cleanup_ephemeral_events_root() {
+    printf '%s/ephemeral-events' "${ZBUILD_DATA_ROOT:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild}}"
+}
+
+# _cleanup_scan_ephemeral_events <age_hours> — "<path>\tprune\t<reason>" lines.
+_cleanup_scan_ephemeral_events() {
+    local age_hours="$1" root path
+    root="$(_cleanup_ephemeral_events_root)"
+    [[ -d "$root" ]] || return 0
+    while IFS= read -r path; do
+        [[ -n "$path" ]] || continue
+        printf '%s\tprune\tevent-bus folder of process %s, older than %sh\n' "$path" "${path##*/}" "$age_hours"
+    done < <(find "$root" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' ! -name '*[!0-9]*' \
+                 -mmin "+$(( age_hours * 60 ))" 2>/dev/null)
+}
+
+# _cleanup_apply_ephemeral_events_plan <plan_TSV> <dry_run_bool> — removes each
+# planned folder that is still a process-id folder directly under the root.
+_cleanup_apply_ephemeral_events_plan() {
+    local data="$1" dry_run="$2" root line target
+    [[ "$dry_run" == "true" || -z "$data" ]] && return 0
+    root="$(_cleanup_ephemeral_events_root)"
+    while IFS= read -r line; do
+        target="${line%%$'\t'*}"
+        [[ "${target%/*}" == "$root" && "${target##*/}" =~ ^[0-9]+$ && -d "$target" ]] || continue
+        rm -rf -- "$target" 2>/dev/null || true
+    done <<< "$data"
+}
+
 # ─── Stash applier (#594) ───────────────────────────────────────────────────
 # _cleanup_apply_stash_plan <plan_TSV> <dry_run_bool>
 # Drops in reverse stash-index order so dropping doesn't shift remaining refs.
@@ -608,6 +642,38 @@ _cleanup_render_plan() {
     done <<<"$data"
 }
 
+# _cleanup_tree_held_v <var> <worktree> — why an ISSUE- or GOAL-keyed tree must be
+# kept because a run may hold it, or empty when no run does. An issue tree is
+# shared by every run of that issue, so ZBUILD_RUN_ID cannot identify it: the
+# per-issue lock (ADR-059 §4, #1940) is what knows whether a run currently owns
+# this issue. Fail CLOSED — if the lock cannot be consulted, keep the tree.
+_cleanup_tree_held_v() {
+    local -n _cth="$1"; local wt="$2" _wt_ident _wt_key="" _lk
+    _cth=""
+    declare -F _zbuild_worktree_identity >/dev/null 2>&1 || return 0
+    if _wt_ident="$(_zbuild_worktree_identity "$wt" 2>/dev/null)"; then
+        case "${_wt_ident%% *}" in
+            issues) _wt_key="issue-${_wt_ident#* }" ;;
+            goals)  _wt_key="${_wt_ident#* }" ;;
+        esac
+    fi
+    [[ -n "$_wt_key" ]] || return 0
+    # FAIL CLOSED, and it has to be spelled out rather than left to `&&`: the
+    # first draft short-circuited here, so "the lock cannot be consulted" fell
+    # through to the age check and read as "no run is live" — deleting a RUNNING
+    # job's working tree, under a comment that claimed the opposite.
+    if ! declare -F zbuild_issue_lock_path >/dev/null 2>&1 \
+       || ! declare -F _zbuild_issue_lock_holder_is_live >/dev/null 2>&1; then
+        _cth="cannot consult the issue lock for $_wt_key (keeping)"; return 0
+    fi
+    _lk="$(zbuild_issue_lock_path "$_wt_key" 2>/dev/null || true)"
+    if [[ -z "$_lk" ]]; then _cth="no lock path for $_wt_key (keeping)"; return 0; fi
+    if [[ -f "$_lk" ]] && _zbuild_issue_lock_holder_is_live "$_lk" 2>/dev/null; then
+        _cth="active run holds $_wt_key"
+    fi
+    return 0
+}
+
 # ─── _cleanup_scan_worktrees <age_days> ──────────────────────────────────────
 # Emit one decision per examined per-run worktree: "<path>\t<decision>\t<reason>",
 # where <decision> is `prune` (reclaimable; reason carries branch + age) or `skip`
@@ -684,7 +750,8 @@ _cleanup_scan_worktrees() {
     [[ -n "$override_root" ]] && override_root="$( (cd "$override_root" 2>/dev/null && pwd -P) || printf '%s' "$override_root" )"
     [[ -n "$layout_root" ]] && layout_root="$( (cd "$layout_root" 2>/dev/null && pwd -P) || printf '%s' "$layout_root" )"
 
-    local wt branch mtime age_d
+    local wt branch mtime age_d _listed
+    _listed="$(git -C "$repo_root" worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2}')"
     while IFS= read -r wt; do
         [[ -n "$wt" && -d "$wt" ]] || continue
         # Ours under either layout. Anything outside the zbuild run root is not
@@ -711,42 +778,10 @@ _cleanup_scan_worktrees() {
             continue
         fi
         # #141: an ISSUE-keyed tree is shared by every run of that issue, so
-        # ZBUILD_RUN_ID cannot identify it — the guard above would let a LIVE
-        # run's tree be pruned out from under it. Ask the per-issue lock
-        # (ADR-059 §4, #1940) instead: it is the thing that knows whether a run
-        # currently owns this issue. Fail CLOSED — if the lock cannot be
-        # consulted, keep the tree.
-        if declare -F _zbuild_worktree_identity >/dev/null 2>&1; then
-            local _wt_ident _wt_key=""
-            if _wt_ident="$(_zbuild_worktree_identity "$wt" 2>/dev/null)"; then
-                case "${_wt_ident%% *}" in
-                    issues) _wt_key="issue-${_wt_ident#* }" ;;
-                    goals)  _wt_key="${_wt_ident#* }" ;;
-                esac
-            fi
-            if [[ -n "$_wt_key" ]]; then
-                # FAIL CLOSED, and it has to be spelled out rather than left to
-                # `&&`: the first draft short-circuited here, so "the lock cannot
-                # be consulted" fell through to the age check and read as "no run
-                # is live". For a tree shared by every run of an issue that means
-                # deleting a RUNNING job's working tree — the fail-OPEN direction,
-                # under a comment that claimed the opposite.
-                if ! declare -F zbuild_issue_lock_path >/dev/null 2>&1 \
-                   || ! declare -F _zbuild_issue_lock_holder_is_live >/dev/null 2>&1; then
-                    printf '%s\tskip\tcannot consult the issue lock for %s (keeping)\n' "$wt" "$_wt_key"
-                    continue
-                fi
-                local _lk; _lk="$(zbuild_issue_lock_path "$_wt_key" 2>/dev/null || true)"
-                if [[ -z "$_lk" ]]; then
-                    printf '%s\tskip\tno lock path for %s (keeping)\n' "$wt" "$_wt_key"
-                    continue
-                fi
-                if [[ -f "$_lk" ]] && _zbuild_issue_lock_holder_is_live "$_lk" 2>/dev/null; then
-                    printf '%s\tskip\tactive run holds %s\n' "$wt" "$_wt_key"
-                    continue
-                fi
-            fi
-        fi
+        # ZBUILD_RUN_ID cannot identify it — ask the per-issue lock.
+        local _held=""
+        _cleanup_tree_held_v _held "$wt"
+        if [[ -n "$_held" ]]; then printf '%s\tskip\t%s\n' "$wt" "$_held"; continue; fi
         mtime="$(stat -c %Y "$wt" 2>/dev/null || stat -f %m "$wt" 2>/dev/null || echo 0)"
         [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=0
         if [[ "$mtime" -gt "$cutoff" ]]; then
@@ -780,7 +815,29 @@ _cleanup_scan_worktrees() {
         fi
         age_d=$(( (now - mtime) / 86400 ))
         printf '%s\tprune\tbranch=%s age=%sd\n' "$wt" "${branch:-<detached>}" "$age_d"
-    done < <(git -C "$repo_root" worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2}')
+    done <<< "$_listed"
+
+    # #2541 (ADR-059 §2): an issue's or goal's tree folder git no longer lists —
+    # its registration pruned, or made by an older install. The loop above never
+    # sees it, so without this it stays forever. Same lock and age guards; what it
+    # holds is no git worktree any more, so there is no work git could keep.
+    if [[ -n "$layout_root" ]]; then
+        for wt in "$layout_root"/issues/*/worktree "$layout_root"/goals/*/worktree; do
+            [[ -d "$wt" ]] || continue
+            grep -qxF -- "$wt" <<< "$_listed" && continue
+            local _held=""
+            _cleanup_tree_held_v _held "$wt"
+            if [[ -n "$_held" ]]; then printf '%s\tskip\t%s\n' "$wt" "$_held"; continue; fi
+            mtime="$(stat -c %Y "$wt" 2>/dev/null || stat -f %m "$wt" 2>/dev/null || echo 0)"
+            [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=0
+            if [[ "$mtime" -gt "$cutoff" ]]; then
+                printf '%s\tskip\tnewer than %sd\n' "$wt" "$age_days"
+                continue
+            fi
+            age_d=$(( (now - mtime) / 86400 ))
+            printf '%s\tprune\tgit no longer lists this tree age=%sd\n' "$wt" "$age_d"
+        done
+    fi
 }
 
 # ─── _cleanup_apply_worktree_plan <path>... ──────────────────────────────────
@@ -812,6 +869,10 @@ _cleanup_apply_worktree_plan() {
         _ovr_root_l="${ZBUILD_WORKTREE_ROOT:-}"
     fi
     [[ -n "$_ovr_root_l" ]] && _ovr_root_l="$( (cd "$_ovr_root_l" 2>/dev/null && pwd -P) || printf '%s' "$_ovr_root_l" )"
+    local _lay_root_l=""
+    declare -F zbuild_layout_worktree_repo_root >/dev/null 2>&1 \
+        && _lay_root_l="$(zbuild_layout_worktree_repo_root 2>/dev/null || true)"
+    [[ -n "$_lay_root_l" ]] && _lay_root_l="$( (cd "$_lay_root_l" 2>/dev/null && pwd -P) || printf '%s' "$_lay_root_l" )"
     for wt in "$@"; do
         [[ -n "$wt" ]] || continue
         # Defence-in-depth: re-check for uncommitted work at delete-time, mirroring
@@ -826,6 +887,19 @@ _cleanup_apply_worktree_plan() {
             printf 'cleanup: refusing to remove worktree with uncommitted work: %s\n' "$wt" >&2
             rc=1
             continue
+        fi
+        # #2541: a tree folder git no longer lists has no registration to
+        # remove; it goes as a folder, and only at the place an issue's or goal's
+        # tree lives.
+        if [[ -d "$wt" && -n "$_lay_root_l" ]]; then
+            local _wt_c; _wt_c="$( (cd "$wt" 2>/dev/null && pwd -P) || printf '%s' "$wt" )"
+            case "$_wt_c" in
+                "$_lay_root_l"/issues/*/worktree|"$_lay_root_l"/goals/*/worktree)
+                    if ! grep -qxF -- "$_wt_c" <<< "$(git -C "$repo_root" worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2}')"; then
+                        rm -rf -- "$_wt_c" 2>/dev/null || { printf 'cleanup: could not remove %s\n' "$wt" >&2; rc=1; }
+                        continue
+                    fi ;;
+            esac
         fi
         local err
         if ! err="$(git -C "$repo_root" worktree remove "$wt" 2>&1)"; then
