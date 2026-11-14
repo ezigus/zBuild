@@ -157,6 +157,9 @@ _out="$(_pf)"
 assert_contains "[MP5] a missing one refuses the run" "$_out" "no-such-judge"
 _lacks_rc0=1; [[ "$_out" == *"rc=0" ]] && _lacks_rc0=0
 assert_eq "[MP5] ...with a non-zero rc" "1" "$_lacks_rc0"
+sed -i.bak 's/^  check: no-such-judge/  check: Quality-Assurance/' "$TGT/.zbuild/plugins/agent/mp-typo/manifest.yaml"
+rm -f "$TGT/.zbuild/plugins/agent/mp-typo/manifest.yaml.bak"
+assert_contains "[MP5] ...and so does one that is no persona id at all" "$(_pf)" "Quality-Assurance"
 rm -rf "$TGT/.zbuild/plugins/agent/mp-typo"
 
 # ─── MP6 ─────────────────────────────────────────────────────────────────────

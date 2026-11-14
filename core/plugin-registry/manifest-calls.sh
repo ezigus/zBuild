@@ -150,7 +150,10 @@ manifest_personas_v() {
         (( _mpo_in )) || continue
         [[ "$_mpo_l" =~ ^[[:space:]]*(#.*)?$ ]] && continue
         [[ "$_mpo_l" =~ ^[^[:space:]] ]] && break
-        [[ "$_mpo_l" =~ ^[[:space:]]+[A-Za-z0-9_-]+:[[:space:]]*([a-z][a-z0-9-]*) ]] && _mpo+="${BASH_REMATCH[1]}"$'\n'
+        # Every value as written, a malformed one too: the preflight reports it.
+        if [[ "$_mpo_l" =~ ^[[:space:]]+[A-Za-z0-9_-]+:[[:space:]]*([^#[:space:]][^#]*) ]]; then
+            _mpo+="${BASH_REMATCH[1]%"${BASH_REMATCH[1]##*[![:space:]]}"}"$'\n'
+        fi
     done < "$_mpo_mf"
     return 0
 }
