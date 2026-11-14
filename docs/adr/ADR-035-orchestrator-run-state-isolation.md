@@ -1,6 +1,6 @@
 # ADR-035 — Orchestrator Run-State Isolation (scratch & pool dirs)
 
-**Status:** Accepted (2026-06-15)
+**Status:** Accepted (2026-06-15); amended 2026-11-14 (#2541: a process that only reports records no event outside a run; stale per-process event folders are reclaimed)
 **Amended:** 2026-08-23 (#141) — pool dirs live at `runs/<run_id>/pool/` under the issue's (or goal's) area, per [ADR-059](ADR-059-issue-vs-run-keying.md) §1. Superseded paths have been removed from this document rather than annotated, so nothing here can be implemented by mistake; this ADR's shared-dir hazard is answered by the issue retention clock
 **Amended:** 2026-08-22 — the "pool dirs are intentionally not in the cleanup scanner" decision below is reversed; they now have a reclaimer
 **Related:** ADR-024 (subprocess environment isolation), ADR-023 (install isolation), ADR-011 (pluggable orchestrator backends)
@@ -177,3 +177,9 @@ imaginary — #749 reached 1,261 directories and ~13GB before anyone noticed the
 2026-08-22 amendment above already conceded this direction once, reversing *"pool dirs are
 intentionally not in the cleanup scanner"* for the same reason: a dir with no reclaimer accumulates.
 
+## Amendment 2026-11-14 (#2541) — an unpinned event folder is not left behind
+
+The process-scoped default above made one folder per process, `<data root>/ephemeral-events/<pid>`, and nothing removed it. The repository's Claude Code hooks (`.claude/helpers/hook-handler.cjs`) emit an event on every tool call from a process that lives milliseconds: one machine held 56,505 such folders (1.7 GB), none ever read.
+
+- **A process that only reports records nothing when no run keeps events.** The hooks emit only when an events path (`ZBUILD_EVENTS_DIR`, `ZBUILD_EVENTS_JSONL` or `ZBUILD_EVENTS_DB`) is in their environment, as it is inside a zbuild run; outside one there is no log to record into, so they make no folder and start no `bash`. Enforced by `tests/unit/hooks-no-event-leak-test.sh` H1–H3.
+- **`zbuild cleanup --tmpdirs` reclaims a stale per-process folder** — one named by a process id, directly under `<data root>/ephemeral-events`, older than the age limit; a newer one may still be written. Enforced by `tests/integration/cleanup-ephemeral-events-test.sh` E1–E4.

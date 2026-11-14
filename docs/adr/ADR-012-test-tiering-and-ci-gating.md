@@ -1,6 +1,6 @@
 # ADR-012 — Test Tiering and CI Gating
 
-**Status:** Accepted; amended 2026-11-08 (tests are deterministic); amended 2026-11-11 (#2525: a test reads no clock to see how long something took); amended 2026-11-09 (#2510: a test signals only the processes it started)  
+**Status:** Accepted; amended 2026-11-08 (tests are deterministic); amended 2026-11-11 (#2525: a test reads no clock to see how long something took); amended 2026-11-09 (#2510: a test signals only the processes it started)  ; amended 2026-11-14 (#2541: the suite sweeps the temp folders its tests left)
 **Date:** 2026-05-25  
 **Deciders:** zbuild core team  
 
@@ -179,7 +179,13 @@ References: Martin Fowler, "Eradicating Non-Determinism in Tests" (martinfowler.
 
 7. **A test reads no clock to see how long something took.** It checks what shows the thing happened — an outcome, an event, a marker the process writes — and waits on a condition, never on time. A stage that must run until stopped waits on something that never comes, not on a long sleep. `scripts/lib/lint-test-determinism.sh` refuses a read of `$SECONDS` or `date +%s` in a test. The tests that already read the clock are listed in `config/test-determinism-baseline.txt` (75 lines), which only shrinks.
 
+## Amendment 2026-11-14 (#2541) — the suite sweeps what its tests left
+
+A test that is killed, times out or replaces the EXIT trap leaves its temp folder; 172 had piled up on one machine. **`npm test` (`tests/run-all.sh`) ends by removing the test temp folders older than an hour** — the patterns `zbuild cleanup --tmpdirs` reads (`ZBUILD_TMPDIR_PATTERNS`), so the two never drift — says how many, and exits with the suite's own code. A newer folder may belong to a test still running elsewhere, and is kept.
+
 ## Enforced by
+
+- Amendment 2026-11-14 (#2541: the suite sweeps the temp folders its tests left) → `tests/unit/run-all-sweep-test.sh` S1–S4
 
 - Amendment 2026-11-11 (#2525: a test reads no clock) → `tests/unit/lint-test-determinism-test.sh` T11; `tests/integration/stage-time-limit-test.sh` S1
 

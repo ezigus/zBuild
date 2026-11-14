@@ -76,7 +76,8 @@ Commands:
                          (--state-dirs reclaims runs/<id>/ entirely, not just
                          the state JSON inside it), per-stage
                          scratch, zb-applycheck-* stashes, leaked zbuild tmpdirs
-                         (ZBUILD_TMPDIR_PATTERNS in lib/cleanup.sh), orch pool
+                         (ZBUILD_TMPDIR_PATTERNS in lib/cleanup.sh) and the
+                         event bus's stale ephemeral-events/<pid>, orch pool
                          dirs, and the content cache. The MEMORY store is never
                          reclaimed — it is agnostic to the issues it supports.
                          --worktrees reclaims dead-run worktrees (opt-in, never
@@ -936,6 +937,10 @@ UPHELP
             # read ZBUILD_TMPDIR_PATTERNS — an inline whitelist here drifted
             # from the scanner twice (#628, #749).
             _cleanup_apply_tmpdir_plan "$cl_tmp_plan" "$cl_dry_run"
+            # #2541 (ADR-035): the event bus's stale per-process folders.
+            cl_eph_plan="$(_cleanup_scan_ephemeral_events "$cl_age_hours" || true)"
+            _cleanup_render_plan "event-bus folders" "$cl_eph_plan" "$cl_dry_run" "$cl_quiet"
+            _cleanup_apply_ephemeral_events_plan "$cl_eph_plan" "$cl_dry_run"
         fi
 
         if $cl_scratch; then
