@@ -235,6 +235,47 @@ else
     assert_pass "no [computed] banner pair (preserves #587 removal)"
 fi
 
+# ─── #1769 (ADR-054 §6a): the run says when the call changed nothing, however
+# the call ended — not only on done_sentinel. Each case calls the helper
+# directly, in its own shell, on a fresh repository.
+print_test_section "#1769: zero files changed, by end reason"
+_er() {   # <terminated_reason> <scope_violation> <dirty: 0|1> — prints "<events>|<stderr>"
+    local r="$TEST_TEMP_DIR/er-repo-$RANDOM" ev="$TEST_TEMP_DIR/er-events-$RANDOM.jsonl"
+    mkdir -p "$r"
+    ( cd "$r" && git init -q && git config user.email t@t && git config user.name t \
+        && echo seed > seed.txt && git add seed.txt && git commit -q -m seed ) >/dev/null 2>&1
+    [[ "$3" == 1 ]] && echo changed >> "$r/seed.txt"
+    : > "$ev"
+    local err
+    err="$( ZBUILD_EVENTS_JSONL="$ev" bash -c '
+        source "$1/scripts/lib/helpers.sh"; source "$1/core/event-bus/event-bus.sh"
+        source "$1/scripts/lib/numstat-format.sh"; source "$1/plugins/agent/build/lib/summary.sh"
+        _BUILD_PLAN_FILES_CSV=""
+        _build_emit_changed_files_summary "$2" "$3" "$4" ""' _ "$REPO_ROOT" "$r" "$1" "$2" 2>&1 >/dev/null )"
+    printf '%s|%s' "$(jq -r 'select(.type=="build.discrepancy.detected" or .type=="build.diff.empty_after_done_sentinel") | "\(.type)=\(.data.terminated_reason)"' "$ev" 2>/dev/null | tr '\n' ' ')" "$err"
+}
+_o="$(_er no_done_sentinel false 0)"
+assert_contains "[#1769] no_done_sentinel, 0 files: build.discrepancy.detected names the end reason" "${_o%%|*}" "build.discrepancy.detected=no_done_sentinel"
+assert_contains "[#1769] ...and a warning names it" "${_o#*|}" "build: the call ended on no_done_sentinel with 0 files changed"
+_o="$(_er router_out_of_turns false 0)"
+assert_contains "[#1769] router_out_of_turns, 0 files: build.discrepancy.detected names the end reason" "${_o%%|*}" "build.discrepancy.detected=router_out_of_turns"
+assert_contains "[#1769] ...and a warning names it" "${_o#*|}" "build: the call ended on router_out_of_turns with 0 files changed"
+_o="$(_er router_timeout false 0)"
+assert_contains "[#1769] any other end reason, 0 files: the event names it too" "${_o%%|*}" "build.discrepancy.detected=router_timeout"
+_o="$(_er done_sentinel false 0)"
+assert_contains "[#1769] done_sentinel, 0 files: build.discrepancy.detected names done_sentinel (as today)" "${_o%%|*}" "build.discrepancy.detected=done_sentinel"
+assert_contains "[#1769] ...with build.diff.empty_after_done_sentinel" "${_o%%|*}" "build.diff.empty_after_done_sentinel=done_sentinel"
+assert_contains "[#1769] ...and today's warning" "${_o#*|}" "LLM signaled success but numstat shows 0 files changed"
+_o="$(_er no_done_sentinel false 1)"
+assert_eq "[#1769] no_done_sentinel with a file changed: no discrepancy event" "" "${_o%%|*}"
+if [[ "${_o#*|}" == *"0 files changed"* ]]; then
+    assert_fail "[#1769] ...and no warning" "stderr: ${_o#*|}"
+else
+    assert_pass "[#1769] ...and no warning"
+fi
+_o="$(_er no_done_sentinel true 0)"
+assert_eq "[#1769] a scope violation (its numstat set aside): no discrepancy event, as on done_sentinel" "" "${_o%%|*}"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

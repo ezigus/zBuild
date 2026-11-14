@@ -987,7 +987,9 @@ _route_update_ledger() {
 #   _ROUTE_LOOP_ITERATIONS         — 1 once the call is made
 #   _ROUTE_LOOP_TERMINATED_REASON  — done_sentinel | no_done_sentinel |
 #                                    router_timeout | router_rate_limited |
-#                                    signal | a _router_rc_classify reason
+#                                    router_out_of_turns | router_oom_kill |
+#                                    router_rc_nonzero | router_config_error |
+#                                    router_budget_exceeded | signal
 #   _ROUTE_LOOP_INPUT_TOKENS       — .usage.input_tokens
 #   _ROUTE_LOOP_OUTPUT_TOKENS      — .usage.output_tokens
 #   _ROUTE_LOOP_LAST_RESPONSE      — (#608) the call's result_text; the
