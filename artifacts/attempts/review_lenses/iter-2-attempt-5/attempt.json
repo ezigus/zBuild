@@ -1,0 +1,18 @@
+{
+  "stage": "review_lenses",
+  "cycle_iter": 2,
+  "attempt": 5,
+  "rc": "0",
+  "generated_at": "2026-11-14T01:30:52Z",
+  "files": 5,
+  "outputs": {
+    "lens-red-team.json": "changed",
+    "lens-red-team-summary.md": "changed",
+    "lens-red-team-code-result.json": "changed",
+    "lens-red-team-design-result.json": "unchanged",
+    "lens-red-team-reply.txt": "changed",
+    "__notes__": "absent",
+    "__cutoff__": "absent"
+  },
+  "progress": true
+}

@@ -1,0 +1,8 @@
+## review-lens-scope — fail
+
+- found: medium: The issue's scope section names three specific test files for the discrepancy-detection requirements (tests/unit/build-discrepancy-warn-inside-banner-test.sh, tests/integration/build-changed-files-summary-test.sh, tests/unit/build-false-completion-guard-test.sh) and does not list plugins/agent/build/tests/build-test.sh; this pre-existing file received ~85 lines of DSDIFF-1/2/3 test code instead. (plugins/agent/build/tests/build-test.sh) (and 2 more)
+
+- medium: The issue's scope section names three specific test files for the discrepancy-detection requirements (tests/unit/build-discrepancy-warn-inside-banner-test.sh, tests/integration/build-changed-files-summary-test.sh, tests/unit/build-false-completion-guard-test.sh) and does not list plugins/agent/build/tests/build-test.sh; this pre-existing file received ~85 lines of DSDIFF-1/2/3 test code instead. (plugins/agent/build/tests/build-test.sh)
+- medium: The issue scope section lists this file (and tests/integration/build-changed-files-summary-test.sh and tests/unit/build-false-completion-guard-test.sh) as the declared test locations for RQDIFF-1/RQDIFF-2/RQDIFF-3; none of the three were touched, so coverage for those requirements landed outside the scope manifest. (tests/unit/build-discrepancy-warn-inside-banner-test.sh)
+- low: This new file is not listed in the issue's scope section; however the issue is silent on where the RQEND-1/DSEND-1 test should live, and the design directed tests/unit/ as the location, so the addition is consistent with both the requirement and the repository test layout. (tests/unit/route-loop-terminated-reasons-test.sh)
+- score: 7

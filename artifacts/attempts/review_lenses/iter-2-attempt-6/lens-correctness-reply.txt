@@ -1,0 +1,35 @@
+--- reply 1 ---
+{"score": 8, "findings": [{"file": "plugins/agent/build/tests/build-test.sh", "category": "coverage", "severity": "medium", "message": "DSDIFF-1 and DSDIFF-2 have no negative-case guard: a regression that removes or inverts the `files_count -eq 0` condition in the elif branch would not be detected, because neither test asserts the event is absent when files_count > 0.", "quote": "assert_event_emitted \\\n    \"[DSDIFF-1] build.discrepancy.detected emitted for no_done_sentinel+0files\" \\\n    \"$ZBUILD_EVENTS_JSONL\" \"build.discrepancy.detected\"", "introduced": true, "fix": "test"}, {"file": "tests/unit/route-loop-terminated-reasons-test.sh", "category": "logic", "severity": "low", "message": "DSLOCK-3 captures `2>&1` from `git diff` into `_dslock3_diff`; if git cannot resolve the abbreviated SHA (ambiguous or object missing), the error message lands in the variable, the assert fires with the misleading message \"diff is non-empty\" rather than indicating the check could not run.", "quote": "_dslock3_diff=\"$(git -C \"$REPO_ROOT\" diff \"${_dslock3_base}..HEAD\" -- \\\n    \"tests/unit/route-one-call-per-try-test.sh\" 2>&1 || true)\"", "introduced": true, "fix": "test"}, {"file": "tests/unit/route-loop-terminated-reasons-test.sh", "category": "logic", "severity": "low", "message": "The DSEND-1 `_route_reasons` grep scans all of `route.sh`, not just `route_to_model_loop`; the comment above claims \"inside route_to_model_loop\" but the code enforces no such scope, so a future `_ROUTE_LOOP_TERMINATED_REASON=\"value\"` assignment in any other function in the file would enlarge `_required` and force the comment to list that value.", "quote": "_route_reasons=\"$(grep -oE '_ROUTE_LOOP_TERMINATED_REASON=\"[a-z_]+\"' \\\n    \"$_route_sh\" | \\\n    sed 's/.*=\"\\([^\"]*\\)\"/\\1/' | \\\n    grep -v '^$' | \\\n    sort -u)\"", "introduced": true, "fix": "test"}]}
+--- reply 2 ---
+{
+  "score": 8,
+  "findings": [
+    {
+      "file": "plugins/agent/build/tests/build-test.sh",
+      "category": "coverage",
+      "severity": "medium",
+      "message": "DSDIFF-1 and DSDIFF-2 only test the positive case (files_count=0 emits the event); a regression that removed the `\"$files_count\" -eq 0` guard from the elif branch would leave both tests green, because neither test asserts the event is absent when files_count > 0.",
+      "quote": "_build_emit_changed_files_summary \"$REPO_DSDIFF1\" \"no_done_sentinel\" \"false\" \"\" \\",
+      "introduced": true,
+      "fix": "test"
+    },
+    {
+      "file": "tests/unit/route-loop-terminated-reasons-test.sh",
+      "category": "logic",
+      "severity": "low",
+      "message": "DSLOCK-3 redirects stderr into the diff capture with `2>&1`; if git cannot resolve the abbreviated SHA `6a07fa8e` (ambiguous or object absent), the error message is treated as diff output and the assert fires with 'diff is non-empty' rather than indicating the check itself failed.",
+      "quote": "_dslock3_diff=\"$(git -C \"$REPO_ROOT\" diff \"${_dslock3_base}..HEAD\" -- \\",
+      "introduced": true,
+      "fix": "test"
+    },
+    {
+      "file": "tests/unit/route-loop-terminated-reasons-test.sh",
+      "category": "logic",
+      "severity": "low",
+      "message": "The DSEND-1 extraction greps all of `route.sh` for `_ROUTE_LOOP_TERMINATED_REASON` assignments, not just those inside `route_to_model_loop`; a value assigned only in another function (e.g. the signal handler at line 1106) would be added to `_required` and force the comment to list a reason `route_to_model_loop` never produces, while the comment is scoped to that one function.",
+      "quote": "_route_reasons=\"$(grep -oE '_ROUTE_LOOP_TERMINATED_REASON=\"[a-z_]+\"' \\",
+      "introduced": true,
+      "fix": "test"
+    }
+  ]
+}

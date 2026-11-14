@@ -1,16 +1,2 @@
 --- reply 1 ---
-The change involves four files. Looking at each through a performance lens:
-
-**summary.sh**: The new `elif` branch adds two string comparisons (`==`) and one `emit_event` call. It sits at the same level as the existing `done_sentinel` branch — reached at most once per build run, never in a loop. The function already performs `git diff HEAD --numstat`, a `mktemp`, and a `cat`; the marginal cost of two string comparisons and a conditional event emission is negligible.
-
-**route.sh**: Comment-only change. Zero runtime impact.
-
-**build-test.sh**: Three new test sections, each creating a temporary git repo and calling `_build_emit_changed_files_summary` once. Test-time only; not on any production path.
-
-**route-loop-terminated-reasons-test.sh**: New test file. The `grep`/`sed`/`awk`/`sort` pipelines run once at test startup over static source files (O(n) in file size, completely bounded at a few hundred lines). The two `while` loops that call `grep -qxF "$_r" <<< "$_comment_tokens"` iterate over reason values — a set fixed at around six to nine items — so they are effectively O(1). All `grep` calls correctly use here-strings, satisfying the SIGPIPE-antipattern rule. The `git init`/`git commit` setup is a one-time fixture construction, standard for integration tests.
-
-No production hot path is touched. No loop is added. No allocation is added beyond a single conditional event emission that only fires on anomaly conditions (zero files changed). No blocking I/O is introduced that did not already exist.
-
-```json
 {"score": 10, "findings": []}
-```
