@@ -73,7 +73,7 @@ change is comment-only (REACHABILITY SKIP no_code). Hence WIRING: none.
   changing DSLOCK-3's Then to: "git diff output between base commit and HEAD for
   tests/unit/route-one-call-per-try-test.sh is empty" — an observable behavior that proves
   content-identity, not just label presence.
-- Round 6 (current): lens-scope-design finding 1 (medium, blocking) — the DSDIFF-1/DSDIFF-2
+- Round 6: lens-scope-design finding 1 (medium, blocking) — the DSDIFF-1/DSDIFF-2
   test step area was `plugins/agent/build/tests/`, which led the test-author to
   `plugins/agent/build/tests/build-test.sh`. The issue scope section explicitly names the
   test files in `tests/unit/` and `tests/integration/`. Fixed the step area to
@@ -81,3 +81,13 @@ change is comment-only (REACHABILITY SKIP no_code). Hence WIRING: none.
   lens-scope-design finding 2 (low, non-blocking) — answered wrong: the issue scope is silent
   on where the DSEND-1 (R4) test goes; no existing file is named for it; a new file in
   `tests/unit/` is the correct placement.
+- Round 7 (current): build-tests findings 1–4 answered. Design is not changed.
+  - Findings 1 and 2 (hardcoded SHA in route-loop-terminated-reasons-test.sh): not mine —
+    the design spec says "git diff is run between the base commit and HEAD" which does not
+    prescribe a hardcoded SHA; test-author must implement using a non-hardcoded reference.
+  - Finding 3 (DSDIFF-3 missing terminated_reason payload assertion): wrong — RQDIFF-3
+    requires only "behavior remains as today"; a payload assertion is beyond that requirement.
+  - Finding 4 (grep scanning all of route.sh): wrong — the broader scan is correct;
+    `signal` from `_route_signal_handler` is a value `route_to_model_loop` reaches.
+  lens-scope-design findings 1 and 2 were already addressed in Round 6 and are confirmed
+  unchanged in the design-draft.md.
