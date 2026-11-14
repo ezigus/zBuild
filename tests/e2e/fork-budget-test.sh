@@ -174,7 +174,9 @@ FORK_BUDGET=1760
 # 2374 (#2508, the same change as FORK_BUDGET 1772 — measured 2,371 macOS).
 # 2359 (#2517, the same change as FORK_BUDGET 1760 — measured 2,356 macOS;
 # main measured 2,371).
-PROCESS_BUDGET=2359
+# 2356 (#2538: the startup persona check reads each id once, in the shell —
+# measured 2,353 macOS; main measured 2,356).
+PROCESS_BUDGET=2356
 # The run's cost in two parts (ADR-065 §6, #2472). Each budget ratchets down
 # like the totals; each floor is the goal, an estimate, measured again when
 # reached. History: 505 / 298 a dispatch, 12 / 7 a plugin at start-up (#2472 —

@@ -133,6 +133,36 @@ persona_find_dir() {
     printf '%s\n' "${mf%/*}"
 }
 
+# ── persona_find_dir_v <var> <persona_id> [repo_root] ─────────────────────────
+# persona_find_dir into <var>, in this shell: no $( ) per lookup (ADR-065 §2),
+# for a caller that checks many ids, such as the startup preflight. rc 1 when
+# the id exists in neither root.
+persona_find_dir_v() {
+    local -n _pfdv="$1"; local id="${2:-}" _m="" _r _k _i
+    _pfdv=""
+    [[ -n "$id" ]] || return 1
+    local _rr="${3:-${ZBUILD_REPO_ROOT:-}}"
+    # The persona at its usual place, read in this shell: the full lookup below
+    # also validates the manifest, which the registry does at load anyway.
+    for _r in ${_rr:+"$_rr/.zbuild/plugins"} "${ZBUILD_PLUGINS_ROOT:-$_PERSONA_RESOLVE_ROOT/plugins}"; do
+        _m="$_r/persona/$id/manifest.yaml"
+        [[ -f "$_m" ]] || continue
+        _k=""; _i=""
+        yaml_get_v _k "$_m" kind 2>/dev/null || true
+        yaml_get_v _i "$_m" id 2>/dev/null || true
+        if [[ "$_k" == persona && "$_i" == "$id" ]] && ! _persona_is_disabled "$id"; then
+            _pfdv="${_m%/*}"; return 0
+        fi
+    done
+    if [[ -n "$_rr" ]] && _find_persona_in_root "$id" "$_rr/.zbuild/plugins" _m 2>/dev/null; then
+        _pfdv="${_m%/*}"; return 0
+    fi
+    if _find_persona_in_root "$id" "${ZBUILD_PLUGINS_ROOT:-$_PERSONA_RESOLVE_ROOT/plugins}" _m 2>/dev/null; then
+        _pfdv="${_m%/*}"; return 0
+    fi
+    return 1
+}
+
 # ── persona_text <persona_dir> ───────────────────────────────────────────────
 # Read persona.perspective from the manifest; returns 0 always (empty is valid).
 persona_text() {
