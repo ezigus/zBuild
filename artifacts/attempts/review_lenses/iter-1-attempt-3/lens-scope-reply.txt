@@ -1,0 +1,26 @@
+--- reply 1 ---
+{
+  "score": 7,
+  "findings": [
+    {
+      "file": "plugins/agent/build/tests/build-test.sh",
+      "category": "scope",
+      "severity": "medium",
+      "message": "The change added 85 lines of new test code (DSDIFF-1, DSDIFF-2, DSDIFF-3) to a file the issue scope section did not list; the issue named `tests/unit/build-discrepancy-warn-inside-banner-test.sh`, `tests/integration/build-changed-files-summary-test.sh`, and `tests/unit/build-false-completion-guard-test.sh` as the test files for the discrepancy-detection requirements, but those files were left untouched.",
+      "quote": "# ─── DSDIFF-1: no_done_sentinel + 0 files → build.discrepancy.detected ──────\nprint_test_section \"DSDIFF-1: no_done_sentinel + 0 files → build.discrepancy.detected\"",
+      "introduced": true,
+      "fix": "design"
+    },
+    {
+      "file": "tests/unit/route-loop-terminated-reasons-test.sh",
+      "category": "scope",
+      "severity": "low",
+      "message": "The change created a new test file that is not listed in the issue scope section; the issue scope enumerates the exact test files to change but does not include this path, so its addition is out-of-scope per the issue's declared boundary (even though the design stage directed `tests/unit/` as the area and the requirements confirm the filename).",
+      "quote": "#!/usr/bin/env bash\n# Tests: core/router/route.sh + scripts/lib/router-rc-classify.sh\n# DSEND-1: the _ROUTE_LOOP_TERMINATED_REASON comment in route_to_model_loop",
+      "introduced": true,
+      "fix": "design"
+    }
+  ]
+}
+--- reply 2 ---
+{"score": 7, "findings": [{"file": "plugins/agent/build/tests/build-test.sh", "category": "scope", "severity": "medium", "message": "The change added new DSDIFF-1/DSDIFF-2/DSDIFF-3 test sections to a file the issue scope section did not list; the issue named `tests/unit/build-discrepancy-warn-inside-banner-test.sh`, `tests/integration/build-changed-files-summary-test.sh`, and `tests/unit/build-false-completion-guard-test.sh` as the test files for the discrepancy-detection requirements, but those files were left untouched.", "quote": "# ─── DSDIFF-1: no_done_sentinel + 0 files → build.discrepancy.detected ──────", "introduced": true, "fix": "design"}, {"file": "tests/unit/route-loop-terminated-reasons-test.sh", "category": "scope", "severity": "low", "message": "The change created a new test file that is not listed in the issue scope section; the issue scope enumerates the exact test files to change but does not include this path, so its addition is out-of-scope per the issue's declared boundary (even though the design stage directed `tests/unit/` as the area and the requirements confirm the filename).", "quote": "# DSEND-1: the _ROUTE_LOOP_TERMINATED_REASON comment in route_to_model_loop", "introduced": true, "fix": "design"}]}

@@ -1,0 +1,7 @@
+## review-lens-correctness — fail
+
+- found: medium: The `_classify_reasons` awk resets `in_fn` on any column-0 `}` line, so a grouped command like `{ cmd; } 2>&1` placed on its own line inside `_router_rc_classify` would prematurely exit the collection window; reasons after that point would be absent from `_required`, and a comment that also omits them would pass DSEND-1 silently — the test would neither fail for missing reasons nor catch a stale comment. (tests/unit/route-loop-terminated-reasons-test.sh) (and 1 more)
+
+- medium: The `_classify_reasons` awk resets `in_fn` on any column-0 `}` line, so a grouped command like `{ cmd; } 2>&1` placed on its own line inside `_router_rc_classify` would prematurely exit the collection window; reasons after that point would be absent from `_required`, and a comment that also omits them would pass DSEND-1 silently — the test would neither fail for missing reasons nor catch a stale comment. (tests/unit/route-loop-terminated-reasons-test.sh)
+- low: DSDIFF-3 asserts `build.discrepancy.detected` is emitted but never checks that the event payload carries `terminated_reason=done_sentinel`, unlike DSDIFF-1 and DSDIFF-2 which both verify the payload field; a regression that emitted the event with a wrong or empty `terminated_reason` on the done_sentinel path would not be caught by this guard. (plugins/agent/build/tests/build-test.sh)
+- score: 8
