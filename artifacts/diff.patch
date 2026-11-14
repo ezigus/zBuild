@@ -14,10 +14,10 @@ index 73f0ae45..f4cf20dc 100644
  #   _ROUTE_LOOP_OUTPUT_TOKENS      — .usage.output_tokens
  #   _ROUTE_LOOP_LAST_RESPONSE      — (#608) the call's result_text; the
 diff --git a/plugins/agent/build/lib/summary.sh b/plugins/agent/build/lib/summary.sh
-index c7841bc0..d37f56d4 100644
+index c7841bc0..1dab35ce 100644
 --- a/plugins/agent/build/lib/summary.sh
 +++ b/plugins/agent/build/lib/summary.sh
-@@ -122,6 +122,14 @@ _build_emit_changed_files_summary() {
+@@ -122,6 +122,13 @@ _build_emit_changed_files_summary() {
              "terminated_reason=$terminated_reason" \
              "files_changed=0" >/dev/null 2>&1 || true
          warn "build: LLM signaled success but numstat shows 0 files changed" >&2 || true
@@ -28,7 +28,6 @@ index c7841bc0..d37f56d4 100644
 +            "reason=no_changes_on_incomplete_call" \
 +            "terminated_reason=$terminated_reason" \
 +            "files_changed=0" >/dev/null 2>&1 || true
-+        warn "build: loop ended on $terminated_reason with 0 files changed" >&2 || true
      fi
  
      : "${formatted:-}"

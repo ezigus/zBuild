@@ -14,29 +14,42 @@ done_sentinel | no_done_sentinel | router_timeout | router_rate_limited |
 router_out_of_turns | router_oom_kill | router_rc_nonzero | router_config_error |
 router_budget_exceeded | signal
 
-### plugins/agent/build/lib/summary.sh (commit 029da230 + this iteration)
+### plugins/agent/build/lib/summary.sh (commit 029da230 + iterations 2 and 3)
 Extended `_build_emit_changed_files_summary` with an `elif` branch that emits
 `build.discrepancy.detected` (with `reason=no_changes_on_incomplete_call`) when
 `terminated_reason` is `no_done_sentinel` or `router_out_of_turns` and `files_count` is 0.
 The `done_sentinel` path is left unchanged (RQDIFF-3).
 
-This iteration added `warn "build: loop ended on $terminated_reason with 0 files changed" >&2 || true`
-to the new elif branch, matching the pattern of the done_sentinel branch (fixes lens-sre-code finding 1).
+Iteration 2 added a `warn` call to match the done_sentinel branch, but this was removed
+in iteration 3 because issue-acceptance finding 1 correctly identified it as exceeding the
+acceptance criteria — RQDIFF-1 and RQDIFF-2 require only that build.discrepancy.detected is emitted.
 
-## Verified test results (this iteration)
+## Verified test results (iteration 3)
 - plugins/agent/build/tests/build-test.sh: 123/123 pass
 - tests/unit/route-loop-terminated-reasons-test.sh: 9/9 pass
 
-## review_lenses findings resolution
-- lens-sre-code finding 1: FIXED in this iteration — added warn call to the new elif branch
-- lens-red-team-code finding 4: FIXED (same change as sre finding 1)
-- lens-red-team-code finding 1: does NOT reproduce — test file (lines 50-52) already has dual-exit awk condition (function signature OR bare `^}`)
-- lens-red-team-code finding 2: does NOT reproduce — test file (lines 68-71) already has empty _required guard
-- lens-red-team-code finding 3: not mine — test file (hardcoded SHA), test-author stage must address
-- lens-correctness-code finding 1: does NOT reproduce — same awk dual-exit fix already in test file
-- lens-correctness-code finding 2: not mine — test file (DSDIFF-3 payload check), test-author stage must address
-- lens-security-code finding 1: not mine — test file (hardcoded short SHA), test-author stage must address
-- lens-security-code finding 2: does NOT reproduce — test file already has dual-exit awk
-- lens-sre-code finding 2: not mine — test file (grep scans whole route.sh), test-author stage must address
-- lens-scope-design finding 1: not mine — design decision already addressed by design stage
-- lens-scope-design finding 2: not mine — design decision issue, design stage must address
+## Finding answers for this iteration
+
+### issue-acceptance finding 1
+DONE — removed `warn "build: loop ended on $terminated_reason with 0 files changed" >&2 || true`
+from the elif branch in `_build_emit_changed_files_summary`. The warn was added in iteration 2
+but no requirement (RQDIFF-1/RQDIFF-2) asks for it.
+
+### lens-sre-code finding 1
+WRONG — the warn call is not required by RQDIFF-1 or RQDIFF-2; both requirements state only
+that `build.discrepancy.detected` is emitted; adding the warn exceeds scope per
+issue-acceptance finding 1; it has been removed.
+
+### lens-red-team-code finding 4
+WRONG — the warn was absent because it is out of scope; issue-acceptance finding 1 confirms
+that RQDIFF-1/RQDIFF-2 require only the event emission; the warn was removed in iteration 3.
+
+### Test-file findings (not mine)
+- lens-red-team-code finding 1: test file — not mine (awk `^}` exit condition in route-loop-terminated-reasons-test.sh)
+- lens-red-team-code finding 2: test file — not mine (empty _required guard in route-loop-terminated-reasons-test.sh)
+- lens-correctness-code finding 1: test file — not mine (same awk concern as red-team finding 1)
+- lens-scope-design finding 1: design stage — not mine (DSDIFF-1/2/3 test area correction)
+- build-tests finding 1: not mine (hardcoded SHA in route-loop-terminated-reasons-test.sh)
+- build-tests finding 2: not mine (hardcoded SHA in route-loop-terminated-reasons-test.sh)
+- build-tests finding 3: not mine (DSDIFF-3 payload assertion in build-test.sh)
+- build-tests finding 4: not mine (grep scanning whole route.sh in route-loop-terminated-reasons-test.sh)
