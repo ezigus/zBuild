@@ -204,6 +204,30 @@ The runner falls back to `_find_plugin_for_stage` (direct stage-ID match) in two
 
 This lets existing plugins (without `provides.role`) continue working while new plugins adopt role-based manifests incrementally.
 
+## Probe-Based Tool Selection (amended 2026-11-14, Issue #1700)
+
+Host tool-form decisions — which `sed -i` form to use and which `stat` form to use
+— come from a probe of the tool itself, run once when the library file loads,
+never from a platform name. `$ZBUILD_PLATFORM` conveys which project platform the
+engine is processing; it is not a reliable indicator of the host OS tools.
+
+Concretely:
+- `scripts/lib/compat.sh` probes `sed --version` at load time and stores the result
+  in `_ZB_SED_INPLACE_ARGS`; `zbuild_sed_inplace` uses that variable.
+- `scripts/lib/helpers.sh` probes `stat -c '%a'` (GNU form first, per RQPRO-3) at
+  load time and stores the result in `_ZB_STAT_MODE_CMD`; `_zb_target_mode_v` uses
+  that variable and calls `stat` exactly once per invocation.
+
+### Enforced by
+
+- `tests/unit/platform-probe-test.sh` — DSPRB-1: `zbuild_sed_inplace` works when
+  `ZBUILD_PLATFORM` is set to a wrong value; DSPRB-2: `_zb_target_mode_v` returns
+  a valid octal mode when `ZBUILD_PLATFORM` is set to a wrong value; DSPRB-3: the
+  stat probe encodes the GNU `-c` form on a GNU host; DSPRB-4: `_zb_target_mode_v`
+  runs exactly one `stat` per call; DSPRB-5: the sed probe variable is set at load
+  time (before any call to `zbuild_sed_inplace`); DSDEL-1: `zbuild_stat_size` is not
+  defined after sourcing `scripts/lib/compat.sh`.
+
 ## References
 
 - [ADR-001 — Plugin Contract](ADR-001-plugin-contract.md) — manifest schema (extended here)
