@@ -626,7 +626,22 @@ TERM handler is normal: `timeout` sends two, and the run's and a stage's watchdo
   default at its fork, before it had its own group: release was lost in 86 of 1,930 storm runs on Ubuntu). That
   subshell's watchdog and `plugin_stop_running`'s killer are stopped with KILL, since both now ignore TERM.
 
+### Amendment (2026-11-14, #1769) — §6a: build says when its call changed nothing, however the call ended
+
+#2439 made a try one call, and a call that ends without saying it is done ends `no_done_sentinel`; one out of
+turns, `router_out_of_turns`. Build said "0 files changed" only when the call ended `done_sentinel`: a call that
+ended any other way and changed nothing left no trace in the events or the log.
+
+- **A build call that changed no file is said, whatever ended it:** `build.discrepancy.detected` with the end reason
+  in `terminated_reason`, and a warning in the log naming it, so a run whose event bus cannot take the event still
+  says so. `done_sentinel` keeps its own event and warning, as before. A scope violation, whose numstat is set aside,
+  says nothing, on every end reason.
+- **The comment above `route_to_model_loop` lists every value its end reason can hold:** the literals the loop and
+  its signal handler assign, and every reason `_router_rc_classify` returns, and nothing else.
+
 ## Enforced by
+
+- §6a amendment 2026-11-14 (#1769: zero files changed is said however the call ended; the end-reason comment lists exactly the values) → `tests/unit/build-discrepancy-warn-inside-banner-test.sh` [#1769] cases; `tests/unit/route-loop-terminated-reasons-test.sh` DSEND-1
 
 - §7 amendment 2026-11-08 (#2493: a signal that arrives while a handler runs is ignored) → `tests/integration/teardown-repeat-signal-test.sh` T3–T5 (TERM every 10 ms to the run's group: the run still ends rc 1, release (T4a) and persist (T4b) run, the stage is not run again); `tests/unit/signal-handler-hold-test.sh` H1–H4 (each handler runs once when its first step TERMs its own shell)
 

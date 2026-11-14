@@ -122,6 +122,15 @@ _build_emit_changed_files_summary() {
             "terminated_reason=$terminated_reason" \
             "files_changed=0" >/dev/null 2>&1 || true
         warn "build: LLM signaled success but numstat shows 0 files changed" >&2 || true
+    elif [[ "$files_count" -eq 0 && "$scope_violation_mode" != "true" ]]; then
+        # #1769 (ADR-054 §6a): a call that changed nothing is said, however it
+        # ended — the event for the record, the warning for a reader of the log
+        # when the event bus cannot take it.
+        emit_event "build.discrepancy.detected" "plugin=build" \
+            "reason=no_changes_on_incomplete_call" \
+            "terminated_reason=${terminated_reason:-unknown}" \
+            "files_changed=0" >/dev/null 2>&1 || true
+        warn "build: the call ended on ${terminated_reason:-unknown} with 0 files changed" >&2 || true
     fi
 
     : "${formatted:-}"
