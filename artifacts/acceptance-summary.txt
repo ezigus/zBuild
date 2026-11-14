@@ -1,22 +1,21 @@
-the acceptance check failed — DSPRB-1/DSPRB-2/DSPRB-3/DSPRB-4/DSPRB-5/DSDEL-1/DSADR-3/DSBUD-1: no assertion in the test files carries its tag — add one labelled with it; scripts/lib/compat.sh/scripts/lib/helpers.sh: no test file carries a requirement's tag, so putting it back could not be checked
-NEGCTL FAIL DSPRB-1 no_testfile
+NEGCTL PASS DSPRB-1
       design : zbuild_sed_inplace edits a file when ZBUILD_PLATFORM is set to a value that maps to the wrong sed fo…
-      asserts: <none found>
-NEGCTL FAIL DSPRB-2 no_testfile
+      asserts: assert_eq "[DSPRB-1] exit code is 0 — file edited despite wrong ZBUILD_PLATFORM"      "0" "$_dsprb1_…
+NEGCTL PASS DSPRB-2
       design : _zb_target_mode_v returns a valid octal mode when ZBUILD_PLATFORM is set to a value that maps to the…
-      asserts: <none found>
-NEGCTL FAIL DSPRB-3 no_testfile
+      asserts: assert_contains_regex "[DSPRB-2] the nameref variable matches ^[0-7]{3,4}$"      "$_dsprb2_mode" "^[…
+NEGCTL PASS DSPRB-3
       design : The stat probe variable encodes the GNU form when the host's stat supports stat -c
-      asserts: <none found>
-NEGCTL FAIL DSPRB-4 no_testfile
+      asserts: assert_contains "[DSPRB-3] the stat probe encodes the GNU -c form (not BSD -f)"      "$_dsprb3_cmd" …
+NEGCTL PASS DSPRB-4
       design : Each call to _zb_target_mode_v on an existing file runs exactly one stat command
-      asserts: <none found>
-NEGCTL FAIL DSPRB-5 no_testfile
+      asserts: assert_eq "[DSPRB-4] exactly one stat process runs per _zb_target_mode_v call"      "1" "$_dsprb4_co…
+NEGCTL PASS DSPRB-5
       design : The sed probe module variable is set immediately after scripts/lib/compat.sh loads, before any call …
-      asserts: <none found>
-NEGCTL FAIL DSDEL-1 no_testfile
+      asserts: assert_gt "[DSPRB-5] the sed probe module variable is non-empty (set at load time)"      "$_dsprb5_l…
+NEGCTL PASS DSDEL-1
       design : zbuild_stat_size is not defined after scripts/lib/compat.sh is sourced
-      asserts: <none found>
+      asserts: assert_eq "[DSDEL-1] declare -f zbuild_stat_size exits non-zero (function absent)"      "1" "$_dsdel…
 NEGCTL SKIP DSADR-1 doc
       design : ADR-009 states that host tool-form decisions (which sed -i or stat form to use) come from a probe of…
       asserts: <none found>
@@ -25,10 +24,10 @@ NEGCTL SKIP DSADR-2 doc
       asserts: <none found>
 NEGCTL SKIP DSADR-3 already_done
       design : zbuild_sed_inplace keeps its existing name after this change, so ADR-020's reference to it requires …
-      asserts: <none found>
+      asserts: assert_eq "[DSADR-3] declare -f zbuild_sed_inplace exits 0 (function defined under original name)"  …
 NEGCTL SKIP DSBUD-1 no_code
       design : The fork-budget-test.sh still passes after the probe change; the stat probe runs once at library loa…
-      asserts: <none found>
+      asserts: assert_eq "[W1][DSBUD-1] it starts cat, one stat and mv — the temp is opened with the mode, no chmod…
 REACHABILITY EXEMPT none
-REACHABILITY FAIL no_testfiles scripts/lib/compat.sh
-REACHABILITY FAIL no_testfiles scripts/lib/helpers.sh
+REACHABILITY PASS change scripts/lib/compat.sh
+REACHABILITY PASS change scripts/lib/helpers.sh

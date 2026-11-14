@@ -1,0 +1,82 @@
+### DSPRB-1 baseline tests/unit/platform-probe-test.sh
+
+[38;2;0;212;255m[1m  platform probe: load-time tool-form decisions (ADR-009)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mDSPRB-1: zbuild_sed_inplace works despite wrong ZBUILD_PLATFORM[0m
+sed: can't read s/old/new/: No such file or directory
+  [38;2;248;113;113m✗[0m [DSPRB-1] exit code is 0 — file edited despite wrong ZBUILD_PLATFORM
+    [2mexpected: 0, got: 2[0m
+  [38;2;248;113;113m✗[0m [DSPRB-1] the file content is changed as directed by the expression
+    [2mexpected: new content, got: old content[0m
+
+  [38;2;0;212;255mDSPRB-2: _zb_target_mode_v returns valid mode despite wrong ZBUILD_PLATFORM[0m
+  [38;2;74;222;128m✓[0m [DSPRB-2] the nameref variable matches ^[0-7]{3,4}$
+  [38;2;248;113;113m✗[0m [DSPRB-2] mode matches actual mode (not mock BSD value '255')
+    [2mexpected: 644, got: 255[0m
+
+  [38;2;0;212;255mDSPRB-3: stat probe uses GNU -c form when host stat supports it[0m
+  [38;2;248;113;113m✗[0m [DSPRB-3] the stat probe encodes the GNU -c form (not BSD -f)
+    [2moutput missing: -c[0m
+
+  [38;2;0;212;255mDSPRB-4: each _zb_target_mode_v runs exactly one stat command[0m
+  [38;2;248;113;113m✗[0m [DSPRB-4] exactly one stat process runs per _zb_target_mode_v call
+    [2mexpected: 1, got: 2[0m
+
+  [38;2;0;212;255mDSPRB-5: sed probe runs at compat.sh load time, not per call[0m
+  [38;2;248;113;113m✗[0m [DSPRB-5] the sed probe module variable is non-empty (set at load time)
+    [2mexpected >0, got: 0[0m
+
+  [38;2;0;212;255mDSDEL-1: zbuild_stat_size is absent from compat.sh[0m
+  [38;2;248;113;113m✗[0m [DSDEL-1] declare -f zbuild_stat_size exits non-zero (function absent)
+    [2mexpected: 1, got: 0[0m
+
+  [38;2;0;212;255mDSADR-3: zbuild_sed_inplace name is unchanged (ADR-020 unaffected)[0m
+  [38;2;74;222;128m✓[0m [DSADR-3] declare -f zbuild_sed_inplace exits 0 (function defined under original name)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m7 of 9 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [DSPRB-1] exit code is 0 — file edited despite wrong ZBUILD_PLATFORM
+  [38;2;248;113;113m✗[0m [DSPRB-1] the file content is changed as directed by the expression
+  [38;2;248;113;113m✗[0m [DSPRB-2] mode matches actual mode (not mock BSD value '255')
+  [38;2;248;113;113m✗[0m [DSPRB-3] the stat probe encodes the GNU -c form (not BSD -f)
+  [38;2;248;113;113m✗[0m [DSPRB-4] exactly one stat process runs per _zb_target_mode_v call
+  [38;2;248;113;113m✗[0m [DSPRB-5] the sed probe module variable is non-empty (set at load time)
+  [38;2;248;113;113m✗[0m [DSDEL-1] declare -f zbuild_stat_size exits non-zero (function absent)
+
+### DSPRB-1 head tests/unit/platform-probe-test.sh
+
+[38;2;0;212;255m[1m  platform probe: load-time tool-form decisions (ADR-009)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mDSPRB-1: zbuild_sed_inplace works despite wrong ZBUILD_PLATFORM[0m
+  [38;2;74;222;128m✓[0m [DSPRB-1] exit code is 0 — file edited despite wrong ZBUILD_PLATFORM
+  [38;2;74;222;128m✓[0m [DSPRB-1] the file content is changed as directed by the expression
+
+  [38;2;0;212;255mDSPRB-2: _zb_target_mode_v returns valid mode despite wrong ZBUILD_PLATFORM[0m
+  [38;2;74;222;128m✓[0m [DSPRB-2] the nameref variable matches ^[0-7]{3,4}$
+  [38;2;74;222;128m✓[0m [DSPRB-2] mode matches actual mode (not mock BSD value '255')
+
+  [38;2;0;212;255mDSPRB-3: stat probe uses GNU -c form when host stat supports it[0m
+  [38;2;74;222;128m✓[0m [DSPRB-3] the stat probe encodes the GNU -c form (not BSD -f)
+
+  [38;2;0;212;255mDSPRB-4: each _zb_target_mode_v runs exactly one stat command[0m
+  [38;2;74;222;128m✓[0m [DSPRB-4] exactly one stat process runs per _zb_target_mode_v call
+
+  [38;2;0;212;255mDSPRB-5: sed probe runs at compat.sh load time, not per call[0m
+  [38;2;74;222;128m✓[0m [DSPRB-5] the sed probe module variable is non-empty (set at load time)
+
+  [38;2;0;212;255mDSDEL-1: zbuild_stat_size is absent from compat.sh[0m
+  [38;2;74;222;128m✓[0m [DSDEL-1] declare -f zbuild_stat_size exits non-zero (function absent)
+
+  [38;2;0;212;255mDSADR-3: zbuild_sed_inplace name is unchanged (ADR-020 unaffected)[0m
+  [38;2;74;222;128m✓[0m [DSADR-3] declare -f zbuild_sed_inplace exits 0 (function defined under original name)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 9 tests passed[0m
+

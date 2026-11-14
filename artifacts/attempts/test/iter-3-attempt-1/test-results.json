@@ -1,0 +1,70 @@
+{
+  "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 597/597 passed (4 skipped)\nintegration: 263/263 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 897/897 passed (4 skipped)",
+  "run_mode": "full",
+  "exit_code": 0,
+  "data": {
+    "exit_code": 0,
+    "passed": 897,
+    "failed": 0,
+    "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 597/597 passed (4 skipped)\nintegration: 263/263 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 897/897 passed (4 skipped)",
+    "diff_applied": false,
+    "test_cmd": "npm test",
+    "run_mode": "full",
+    "timing": {
+      "tiers": {
+        "lint": 146630,
+        "e2e": 90877,
+        "golden": 5262,
+        "unit": 323622,
+        "integration": 267558
+      },
+      "slowest_files": [
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gDfJa7/tests/e2e/fork-budget-test.sh",
+          "ms": 84790
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gDfJa7/tests/integration/core-pipeline-runner-test.sh",
+          "ms": 49823
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gDfJa7/tests/unit/lint-test-engine-state-test.sh",
+          "ms": 39015
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gDfJa7/tests/integration/pipeline-preflight-missing-stage-test.sh",
+          "ms": 38896
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gDfJa7/tests/integration/runner-release-exit-paths-test.sh",
+          "ms": 35427
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gDfJa7/tests/integration/run-timed-out-test.sh",
+          "ms": 33780
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gDfJa7/tests/unit/run-status-comment-pages-test.sh",
+          "ms": 31507
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gDfJa7/tests/integration/cycle-acceptance-terminal-failure-test.sh",
+          "ms": 31172
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gDfJa7/tests/integration/cycle-on-max-pipeline-continues-test.sh",
+          "ms": 30851
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gDfJa7/tests/e2e/parity-local-vs-ci-test.sh",
+          "ms": 30169
+        }
+      ]
+    },
+    "tree_sha": "6eaaa0577ec07e3a06d02780b70db11a3018b67e",
+    "findings": []
+  },
+  "result_contract": 3,
+  "outcome": "pass",
+  "reason": "897 of 897 tests passed"
+}
