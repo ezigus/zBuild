@@ -177,13 +177,13 @@
 
   [38;2;0;212;255mDSDIFF-1: no_done_sentinel + 0 files → build.discrepancy.detected[0m
   [38;2;248;113;113m✗[0m [DSDIFF-1] build.discrepancy.detected emitted for no_done_sentinel+0files
-    [2mevent 'build.discrepancy.detected' not found in /home/runner/work/_temp/zbuild-state/scratch/test/plugin-build.BSw0A6/events/events.jsonl[0m
+    [2mevent 'build.discrepancy.detected' not found in /home/runner/work/_temp/zbuild-state/scratch/test/plugin-build.CEo2hX/events/events.jsonl[0m
   [38;2;248;113;113m✗[0m [DSDIFF-1] event payload includes terminated_reason=no_done_sentinel
     [2mexpected: no_done_sentinel, got: [0m
 
   [38;2;0;212;255mDSDIFF-2: router_out_of_turns + 0 files → build.discrepancy.detected[0m
   [38;2;248;113;113m✗[0m [DSDIFF-2] build.discrepancy.detected emitted for router_out_of_turns+0files
-    [2mevent 'build.discrepancy.detected' not found in /home/runner/work/_temp/zbuild-state/scratch/test/plugin-build.BSw0A6/events/events.jsonl[0m
+    [2mevent 'build.discrepancy.detected' not found in /home/runner/work/_temp/zbuild-state/scratch/test/plugin-build.CEo2hX/events/events.jsonl[0m
   [38;2;248;113;113m✗[0m [DSDIFF-2] event payload includes terminated_reason=router_out_of_turns
     [2mexpected: router_out_of_turns, got: [0m
 
