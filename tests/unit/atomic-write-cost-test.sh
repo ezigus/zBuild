@@ -32,22 +32,33 @@ _mode() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1" 2>/dev/null; }
 _UM_START="$(umask)"
 
 print_test_section "W1: replacing a file"
+# Given — an existing file at 644 mode; wrappers record each external command call
 F1="$TEST_TEMP_DIR/w1/state.json"; mkdir -p "${F1%/*}"; printf '{"a":0}\n' > "$F1"; chmod 644 "$F1"
 CALLS="$TEST_TEMP_DIR/calls"; : > "$CALLS"
 for _c in df mktemp cp cat stat chmod mv dirname; do
     eval "$_c() { printf '%s\\n' $_c >> \"\$CALLS\"; command $_c \"\$@\"; }"
 done
+
+# When — atomic_write replaces the existing file
 printf '{"a":1}\n' | atomic_write "$F1"; _rc1=$?
 unset -f df mktemp cp cat stat chmod mv dirname
+
+# Then
 assert_eq "[W1] the file is replaced" "0|{\"a\":1}" "$_rc1|$(cat "$F1")"
 assert_eq "[W1][DSBUD-1] it starts cat, one stat and mv — the temp is opened with the mode, no chmod" "cat mv stat" \
     "$(sort "$CALLS" | tr '\n' ' ' | sed 's/ $//')"
+
+# Given — a new file path that does not yet exist
 F1b="$TEST_TEMP_DIR/w1/new.json"; : > "$CALLS"
 for _c in cat stat chmod mv; do
     eval "$_c() { printf '%s\\n' $_c >> \"\$CALLS\"; command $_c \"\$@\"; }"
 done
+
+# When — atomic_write creates the new file
 printf '{"b":1}\n' | atomic_write "$F1b"
 unset -f cat stat chmod mv
+
+# Then
 assert_eq "[W1] a new file starts cat and mv only" "cat mv" "$(sort "$CALLS" | tr '\n' ' ' | sed 's/ $//')"
 
 print_test_section "W2: .bak only when asked"
