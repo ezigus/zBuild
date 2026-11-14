@@ -1,0 +1,12 @@
+## issue-acceptance — pass
+
+- judged the change against the issue: every requirement is met
+
+- every requirement the issue states is met by the change
+- answered: issue-acceptance finding 1: wrong — `tests/unit/platform-probe-test.sh` is confirmed present and the lint passes; the finding does not hold.
+- answered: issue-acceptance finding 2: wrong — DSPRB-1 re-exports `ZBUILD_PLATFORM=macos` after sourcing `compat.sh` and verifies the edit succeeds; the test distinguishes old from new code.
+- answered: issue-acceptance finding 3: wrong — DSPRB-2 injects a mock stat that returns `255` for the `-f` form and asserts the returned mode equals the actual mode, not `255`; the test is differentiating.
+- answered: issue-acceptance finding 4: wrong — DSPRB-1 and DSPRB-2 both source libraries with `ZBUILD_PLATFORM=macos` (the wrong value on Linux CI) and verify correct output; confirmed in the test.
+- answered: issue-acceptance finding 5: wrong — DSPRB-3 inspects `_ZB_STAT_MODE_CMD` immediately after sourcing `helpers.sh` and asserts it contains `-c`; with no probe the variable would be unset and the assertion fails.
+- answered: issue-acceptance finding 6: wrong — DSPRB-4 sets `ZBUILD_PLATFORM=macos` after sourcing, calls `_zb_target_mode_v` once, and asserts the stat-call counter is exactly `1`; confirmed in the test.
+- answered: issue-acceptance finding 7: wrong — DSDEL-1 sources `compat.sh` in a subshell and asserts `declare -f zbuild_stat_size` exits non-zero (`1`); confirmed in the test.
