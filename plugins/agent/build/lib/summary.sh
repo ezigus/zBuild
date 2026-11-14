@@ -129,7 +129,6 @@ _build_emit_changed_files_summary() {
             "reason=no_changes_on_incomplete_call" \
             "terminated_reason=$terminated_reason" \
             "files_changed=0" >/dev/null 2>&1 || true
-        warn "build: loop ended on $terminated_reason with 0 files changed" >&2 || true
     fi
 
     : "${formatted:-}"
