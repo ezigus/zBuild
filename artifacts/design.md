@@ -21,7 +21,7 @@ returned by `_router_rc_classify` (deduplicated). No value is renamed or added
 ```steps
 - Update the comment in route_to_model_loop to enumerate every _ROUTE_LOOP_TERMINATED_REASON value concretely | areas: core/router/route.sh
 - Extend _build_emit_changed_files_summary to emit build.discrepancy.detected for no_done_sentinel and router_out_of_turns with zero files changed | areas: plugins/agent/build/lib/summary.sh
-- Write tests for DSDIFF-1 and DSDIFF-2 (no_done_sentinel and router_out_of_turns each trigger the event when files_count is 0) | areas: plugins/agent/build/tests/
+- Write tests for DSDIFF-1 and DSDIFF-2 (no_done_sentinel and router_out_of_turns each trigger the event when files_count is 0) | areas: tests/unit/, tests/integration/
 - Write test for DSEND-1 (the route.sh comment lists exactly the full set of end reasons) | areas: tests/unit/
 - Write test for DSLOCK-3 (a [DSLOCK-3]-tagged assertion that runs git diff between base and HEAD for route-one-call-per-try-test.sh and asserts the output is empty) | areas: tests/unit/
 ```

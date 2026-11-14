@@ -68,8 +68,16 @@ change is comment-only (REACHABILITY SKIP no_code). Hence WIRING: none.
     violating RQLOCK-4. New form: a test checks [O4] labels still appear.
   - DSLOCK-2: design is correctly specified with Given/When/Then; test-author must add [DSLOCK-2]
     tags to the T2 assertions in tests/unit/router-rc-classify-test.sh.
-- Round 5 (current): design finding 1 — DSLOCK-3's Then only checked for [O4] label presence;
+- Round 5: design finding 1 — DSLOCK-3's Then only checked for [O4] label presence;
   this was too weak because the label could survive while assertion bodies changed. Fixed by
   changing DSLOCK-3's Then to: "git diff output between base commit and HEAD for
   tests/unit/route-one-call-per-try-test.sh is empty" — an observable behavior that proves
   content-identity, not just label presence.
+- Round 6 (current): lens-scope-design finding 1 (medium, blocking) — the DSDIFF-1/DSDIFF-2
+  test step area was `plugins/agent/build/tests/`, which led the test-author to
+  `plugins/agent/build/tests/build-test.sh`. The issue scope section explicitly names the
+  test files in `tests/unit/` and `tests/integration/`. Fixed the step area to
+  `tests/unit/, tests/integration/`.
+  lens-scope-design finding 2 (low, non-blocking) — answered wrong: the issue scope is silent
+  on where the DSEND-1 (R4) test goes; no existing file is named for it; a new file in
+  `tests/unit/` is the correct placement.
