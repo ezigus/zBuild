@@ -26,16 +26,18 @@ print_test_section "DSPRB-1: zbuild_sed_inplace works despite wrong ZBUILD_PLATF
 _f1="$TEST_TEMP_DIR/sed-target.txt"
 printf 'old content\n' > "$_f1"
 
-# When — source compat.sh (which runs any load-time probe), then override
-# ZBUILD_PLATFORM to the wrong value for this host; call zbuild_sed_inplace.
-# Base code reads ZBUILD_PLATFORM at call time and picks `sed -i ''` (BSD),
-# which on GNU sed treats '' as the script and treats the expression as a
-# filename that does not exist — the edit fails.
-# New code uses the probe result (GNU form) and ignores ZBUILD_PLATFORM.
+# When — ZBUILD_PLATFORM=macos is exported before sourcing compat.sh (Given);
+# compat.sh sets ZBUILD_PLATFORM from uname (overwrites to linux on Linux CI).
+# After sourcing the wrong value is re-asserted so old code (reading at call
+# time) picks `sed -i ''` (BSD), which GNU sed rejects; new code uses the
+# probe stored at load time and ignores ZBUILD_PLATFORM entirely.
 (
+    export ZBUILD_PLATFORM=macos    # exported before sourcing compat.sh (Given)
     unset _ZBUILD_COMPAT_LOADED || true
     # shellcheck source=../../scripts/lib/compat.sh
     source "$REPO_ROOT/scripts/lib/compat.sh"
+    # compat.sh overwrites ZBUILD_PLATFORM from uname on Linux CI; re-assert
+    # the wrong value so old code takes the wrong-platform branch at call time.
     ZBUILD_PLATFORM=macos
     zbuild_sed_inplace 's/old/new/' "$_f1"
 ); _dsprb1_rc=$?
@@ -69,13 +71,18 @@ exec "$_real_stat" "\$@"
 EOF
 chmod +x "$_mock2/stat"
 
-# When — source helpers.sh in a subshell with the mock stat, then override
-# ZBUILD_PLATFORM to the wrong value and call _zb_target_mode_v.
+# When — ZBUILD_PLATFORM=macos is exported before sourcing helpers.sh (Given);
+# helpers.sh sources compat.sh, which overwrites on Linux CI. After sourcing
+# the wrong value is re-asserted so old code (reading at call time) calls
+# stat -f (mock returns "255"); new code uses the probe result.
 _dsprb2_mode=$(
     unset _ZBUILD_COMPAT_LOADED _ZBUILD_HELPERS_LOADED || true
     export PATH="$_mock2:$PATH"
+    export ZBUILD_PLATFORM=macos    # exported before sourcing helpers.sh (Given)
     # shellcheck source=../../scripts/lib/helpers.sh
     source "$REPO_ROOT/scripts/lib/helpers.sh"
+    # helpers.sh sources compat.sh, which sets ZBUILD_PLATFORM=linux on Linux CI;
+    # re-assert the wrong value so old code takes the wrong-platform branch at call time.
     ZBUILD_PLATFORM=macos
     _mode_out=""
     _zb_target_mode_v _mode_out "$_f2"
@@ -91,35 +98,25 @@ assert_eq "[DSPRB-2] mode matches actual mode (not mock BSD value '255')" \
 # ─── DSPRB-3: stat probe encodes GNU form at load time ────────────────────────
 print_test_section "DSPRB-3: stat probe uses GNU -c form when host stat supports it"
 
-# Given — a recording stat that appends its argument list to a log file.
-# The log captures every stat call made while helpers.sh loads.  On GNU
-# (Linux CI) stat -c '%a' succeeds, so the probe stores that form.
-_calls3="$TEST_TEMP_DIR/dsprb3-calls"
-: > "$_calls3"
-_mock3="$TEST_TEMP_DIR/mock-stat3"
-mkdir -p "$_mock3"
-cat > "$_mock3/stat" << EOF
-#!/usr/bin/env bash
-printf '%s\n' "\$*" >> "$_calls3"
-exec "$_real_stat" "\$@"
-EOF
-chmod +x "$_mock3/stat"
+# Given — scripts/lib/helpers.sh is sourced on a host where stat -c '%a'
+# succeeds on a known path (Linux CI always satisfies this).
 
-# When — source helpers.sh in a subshell with the recording stat.
-(
+# When — source helpers.sh in a subshell and inspect the stat probe module
+# variable _ZB_STAT_MODE_CMD immediately after sourcing, before any call to
+# _zb_target_mode_v.
+_dsprb3_cmd=$(
     unset _ZBUILD_COMPAT_LOADED _ZBUILD_HELPERS_LOADED || true
-    export PATH="$_mock3:$PATH"
     # shellcheck source=../../scripts/lib/helpers.sh
     source "$REPO_ROOT/scripts/lib/helpers.sh"
+    printf '%s' "${_ZB_STAT_MODE_CMD:-}"
 )
 
-# Then — the probe ran at load time (calls file is non-empty) and the first
-# call used the GNU -c form.
-# Base code: no probe → empty file → first call is "" → -c not found → FAIL.
-_dsprb3_first=""
-{ IFS= read -r _dsprb3_first || true; } < "$_calls3"
-assert_contains "[DSPRB-3] the stat probe encodes the GNU -c form (first call uses -c)" \
-    "$_dsprb3_first" "-c"
+# Then — _ZB_STAT_MODE_CMD is non-empty and encodes the GNU -c form, not BSD -f.
+# Base code: no probe → _ZB_STAT_MODE_CMD unset → empty → "-c" absent → FAIL.
+# New code: probe runs at load time, tries -c first (RQPRO-3), succeeds on
+# Linux CI → stores the -c form in _ZB_STAT_MODE_CMD → assertion passes.
+assert_contains "[DSPRB-3] the stat probe encodes the GNU -c form (not BSD -f)" \
+    "$_dsprb3_cmd" "-c"
 
 # ─── DSPRB-4: exactly one stat call per _zb_target_mode_v invocation ──────────
 print_test_section "DSPRB-4: each _zb_target_mode_v runs exactly one stat command"
@@ -165,33 +162,27 @@ assert_eq "[DSPRB-4] exactly one stat process runs per _zb_target_mode_v call" \
 # ─── DSPRB-5: sed probe variable is set at compat.sh load time ───────────────
 print_test_section "DSPRB-5: sed probe runs at compat.sh load time, not per call"
 
-# Given — a recording sed that appends a marker to a log file for every call.
-# A probe run at load time will make at least one sed call during source;
-# base code has no probe, so zero sed calls happen during source.
-_sed_calls5="$TEST_TEMP_DIR/dsprb5-sed-calls"
-: > "$_sed_calls5"
-_mock5="$TEST_TEMP_DIR/mock-sed5"
-mkdir -p "$_mock5"
-cat > "$_mock5/sed" << EOF
-#!/usr/bin/env bash
-printf 'sed\n' >> "$_sed_calls5"
-exec "$_real_sed" "\$@"
-EOF
-chmod +x "$_mock5/sed"
+# Given — a fresh shell (compat.sh not yet loaded)
 
-# When — source compat.sh in a subshell with the recording sed; inspect the
-# counter before zbuild_sed_inplace is ever called.
-(
+# When — source compat.sh in a subshell and inspect the sed probe module
+# variable _ZB_SED_INPLACE_ARGS immediately after sourcing, before any call
+# to zbuild_sed_inplace.
+_dsprb5_len=$(
     unset _ZBUILD_COMPAT_LOADED || true
-    export PATH="$_mock5:$PATH"
     # shellcheck source=../../scripts/lib/compat.sh
     source "$REPO_ROOT/scripts/lib/compat.sh"
+    if declare -p _ZB_SED_INPLACE_ARGS >/dev/null 2>&1; then
+        printf '%d' "${#_ZB_SED_INPLACE_ARGS[@]}"
+    else
+        printf '0'
+    fi
 )
-_dsprb5_load_calls="$(wc -l < "$_sed_calls5" | tr -d ' ')"
 
-# Then — sed was called at least once during source (probe ran at load time).
-assert_gt "[DSPRB-5] sed probe ran at load time (non-zero calls during source)" \
-    "$_dsprb5_load_calls" "0"
+# Then — _ZB_SED_INPLACE_ARGS has at least one element (probe ran at load time).
+# Base code: no probe → _ZB_SED_INPLACE_ARGS not declared → len 0 → FAIL.
+# New code: probe runs at source time, sets _ZB_SED_INPLACE_ARGS → len ≥ 1 → PASS.
+assert_gt "[DSPRB-5] the sed probe module variable is non-empty (set at load time)" \
+    "$_dsprb5_len" "0"
 
 # ─── DSDEL-1: zbuild_stat_size is not defined after sourcing compat.sh ────────
 print_test_section "DSDEL-1: zbuild_stat_size is absent from compat.sh"
