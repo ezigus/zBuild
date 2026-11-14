@@ -312,18 +312,13 @@ EXISTING CHECKS THIS CHANGE MAKES WRONG — these assertions exist already and a
 ${sup_block}"
     fi
 
-    # #2458 (ADR-071): the design's steps on these test files are this stage's
-    # to do — and only these; a step that changes code is build's.
-    local steps_section="" _wp _wpj="" _tsteps=""
-    _wp="$(earlier_work_plan "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
-    [[ -n "$_wp" && -s "$_wp" ]] && { IFS= read -r -d '' _wpj < "$_wp" || true; }
-    if [[ "$_wpj" == *'"topic":"tests"'* ]]; then
-        _tsteps="$(jq -r '.steps[]? | select(.topic == "tests") | "- \(.description) (\(.areas | join(", ")))"' \
-            <<< "$_wpj" 2>/dev/null || true)"
-    fi
-    [[ -n "$_tsteps" ]] && steps_section="
-WHAT THE DESIGN SAYS TO DO IN THESE TEST FILES — part of your job:
-${_tsteps}
+    # ADR-071 §1 (2026-11-14): which tests, in which files and how is this
+    # stage's, not the design's — it is shown the issue, which may name them.
+    local issue_section="" _ta_issue=""
+    _ta_issue="$(earlier_issue_text "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
+    [[ -n "$_ta_issue" ]] && issue_section="
+THE ISSUE (what was asked for — where it names the files a requirement's tests go in, put them there):
+${_ta_issue}
 "
 
     # #2445: what is already written, found by script, not re-read by the model.
@@ -348,7 +343,7 @@ The commit this branch started from is a copy at ${_ta_base}. When a test needs 
 Your job: write the acceptance assertions for the requirements below, in the language and idiom the target repository already uses.
 
 ## What you own
-An assertion for every requirement below${sup_block:+, and the existing checks listed below brought up to the new behaviour}. Write the tests, and any file they need, in the repository's test folders (${_ta_globs// /, }): put each test where it belongs — beside the tests of the same code, in an existing test file or a new one. The test folders are yours; every file you change in them is kept for you.
+An assertion for every requirement below${sup_block:+, and the existing checks listed below brought up to the new behaviour}. Write the tests, and any file they need, in the repository's test folders (${_ta_globs// /, }): put each test where it belongs — in the test files the issue names for it, when it names them; otherwise beside the tests of the same code, in an existing test file or a new one. Which cases each requirement needs, and which files hold them, is yours to decide. The test folders are yours; every file you change in them is kept for you.
 
 Each assertion must be able to FAIL: if the requirement were not met, your assertion must not pass. Check the new value or file itself — the output, the field, the file's content — not only that the step finished without an error: a test that only checks that something ran passes on the old code too.
 
@@ -382,7 +377,7 @@ LOOP_COMPLETE
 The requirements below. Write what each requirement DEMANDS, not what some implementation might do.
 
 REQUIREMENTS:
-${spec_block}${sup_section}${steps_section}${base_section}
+${spec_block}${sup_section}${issue_section}${base_section}
 ## What you must not do
 - Do not read code in the working copy, other than files in the repository's test folders: read the existing code in the copy of the code from before this change. Do not guess at code this change has not written yet; write what the requirement demands of it.
 - Run nothing else: run only a test file of yours that you are told fails, and never the suite or lint. When you finish, the test files you create or change are run on the code from before this change. A test for a requirement that needs code must fail there for the reason you intend, not because of a mistake in the test; one that passes there, or stops before its assertion runs, comes back to you.

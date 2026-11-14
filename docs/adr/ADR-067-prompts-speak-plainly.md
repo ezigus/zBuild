@@ -105,7 +105,7 @@ On #1805 run 42556446368 every stage prompt was read against what its model then
 - §8 amendment 2026-11-04 (#2470: a judge is not shown its own stage's earlier output; a finding keeps its lines) → `tests/unit/judge-feedback-test.sh` F4 (Previous work for a building call and for a judging call), F5 (a finding shown line by line)
 
 - §8 amendment 2026-11-03 (#2464: a judging call reads and searches files and nothing else) → `tests/unit/judge-tools-test.sh` T5
-- §8 §6 amendment 2026-11-02 (#2458: judging calls and stages with no tools start fresh; build's file list leaves out the test files it may not touch) → `tests/unit/fresh-judge-prompt-test.sh` J1–J4; `tests/unit/design-step-topics-test.sh` T5
+- §8 §6 amendment 2026-11-02 (#2458: judging calls and stages with no tools start fresh; build's file list leaves out the test files it may not touch) → `tests/unit/fresh-judge-prompt-test.sh` J1–J4; `tests/unit/design-steps-code-only-test.sh` T5
 
 - §8 amendment 2026-11-01 (#2445: every stage confirms work already done; test-author runs nothing) → `tests/unit/already-done-test.sh` A1; `tests/unit/test-author-before-run-test.sh` B1; `tests/unit/test-author-checks-own-output-test.sh` A8, A11
 

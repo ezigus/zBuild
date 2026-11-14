@@ -68,8 +68,8 @@ SEVERITY — grade each finding on this one scale:
 
 FIX — say what would fix each finding:
 - \`code\`: the code must change.
-- \`test\`: a test must be added or changed.
-- \`design\`: the design must change: a decision, a requirement in its acceptance contract, or its scope.
+- \`test\`: a test must be added, changed or moved — which cases a test covers and which file holds it are the tests' to fix, never the design's.
+- \`design\`: the design must change: a decision, or a requirement in its acceptance contract.
 - \`issue\`: the issue itself is wrong: it contradicts an ADR, or asks for something that cannot be built as written. No stage can fix this.
 
 ## What you judge against

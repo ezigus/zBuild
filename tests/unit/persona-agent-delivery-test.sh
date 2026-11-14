@@ -23,8 +23,9 @@
 #   PA7 [change]: the model loop carries the agent on every call
 #   PA8 [change]: a map element runs as the persona the template names for it,
 #                 never one guessed from its name
-#   PA9 [change]: the shipped templates pin the personas the stages used to
-#                 choose in their own code (plan, design, build)
+#   PA9 [change]: the shipped templates pin each stage's persona: design,
+#                 build, test-author and issue-acceptance (deployed.yaml takes
+#                 test-author and issue-acceptance from simple.yaml)
 #   PA10 [change]: the persona given to the provider has been through the
 #                 scope redaction like every other model-bound text, before the
 #                 prompt's own (its redaction.applied stays last before the call);
@@ -224,6 +225,10 @@ for _tpl in simple deployed; do
         _got="$( _TPL_SOURCE_FILE="$REPO_ROOT/config/templates/$_tpl.yaml" template_stage_router_persona "${_pair%%:*}" 2>/dev/null )"
         assert_eq "[PA9] $_tpl.yaml pins ${_pair%%:*} to ${_pair#*:}" "${_pair#*:}" "$_got"
     done
+done
+for _pair in test-author:test-strategist issue-acceptance:product-owner; do
+    _got="$( _TPL_SOURCE_FILE="$REPO_ROOT/config/templates/simple.yaml" template_stage_router_persona "${_pair%%:*}" 2>/dev/null )"
+    assert_eq "[PA9] simple.yaml pins ${_pair%%:*} to ${_pair#*:}" "${_pair#*:}" "$_got"
 done
 
 # ─── PA10: the agent's prompt is redacted ────────────────────────────────────

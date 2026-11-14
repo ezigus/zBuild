@@ -1,6 +1,6 @@
 # ADR-051 — Engine-owned, stage-keyed data provision (persona = first instance)
 
-**Status:** Accepted (2026-07-26); amended 2026-10-12 (§3, §6, §7, §8: the provider delivers the persona; no stage frames one)
+**Status:** Accepted (2026-07-26); amended 2026-10-12 (§3, §6, §7, §8: the provider delivers the persona; no stage frames one); amended 2026-11-14 (§7: the pins the templates hold; §9: what a perspective holds)
 **Issue:** #1303 (Initiative 1.3 — "Personas as Data", #1551)
 **Related:** [ADR-047](ADR-047-stage-agnostic-mechanics.md) (stage-agnostic mechanics),
 [ADR-049](ADR-049-vision-document-standard.md) (generic preamble injection),
@@ -118,9 +118,10 @@ the call. A persona that cannot be redacted is not sent.
 ### 7. The pins live in the template; no stage frames a persona (amended 2026-10-12)
 
 The stage plugins no longer call `persona_stage_framing` (#1604; the function is removed with its
-twin `resolve_persona_charter`). The shipped templates pin plan→product-owner, design→architect,
-build→developer, alongside the existing spec-coverage→product-owner,
-spec-correspondence→quality-assurance and issue-acceptance→product-owner. A stage keeps its own
+twin `resolve_persona_charter`). The shipped templates pin design→architect, test-author→test-strategist,
+build→developer and issue-acceptance→product-owner, and each review lens names its own (§2) (amended
+2026-11-14: the plan, spec-coverage and spec-correspondence stages these pins once named are gone;
+test-author, which had none, runs as test-strategist). A stage keeps its own
 job sentence in its own `## What you own` — it is the stage's task, not a persona. A stage with no
 pin runs as `generic`. A review lens keeps its own question as its charter; a lens persona's
 `perspective` is that same question, delivered by the provider.
@@ -131,6 +132,38 @@ pin runs as `generic`. A review lens keeps its own question as its charter; a le
 persona a shipped template pins, and no plugin calls `persona_stage_framing` (amended 2026-10-12). Persona is normative now;
 tier/model/timeout/max_turns/redaction follow the identical declared-data + provider pattern, with
 tier/model codified under EPIC #1308.
+
+### 9. What a perspective holds (amended 2026-11-14)
+
+A perspective says **what to look for**, as rules of thumb: the cases to check, the mistakes to catch,
+how to grade what is found. It is **not an identity**: no "you are a …", no "expert". It speaks of
+**the work, never the pipeline**: no stage, plan, pipeline, manifest or lens, because one persona
+serves every stage that pins it (§1) and words about one stage's work are wrong in the next. A rule
+goes where it holds:
+
+| A rule that… | goes in |
+|---|---|
+| holds for anyone doing that kind of work (test the false case of every condition) | the persona's perspective |
+| is about one stage's output (put a test in the files the issue names) | that stage's `## What you own` |
+| a script can check | a check, not a sentence |
+
+*Why.* Studies of persona prompts agree that a role or identity line does not make a model more
+accurate, and an expert label can make it less so: Zheng et al. found personas in system prompts gave
+no gain over none across 4 model families and 2,410 questions, and picking the best one was no better
+than chance ([arXiv 2311.10054](https://arxiv.org/abs/2311.10054)); Wharton's *Playing Pretend*
+found expert personas, even matched to the field, did not beat no persona on six models, and advised
+task-specific instructions instead ([arXiv 2512.05858](https://arxiv.org/abs/2512.05858)); PRISM
+found an expert persona scored lower on MMLU while helping format and tone
+([arXiv 2603.18507](https://arxiv.org/abs/2603.18507)). Anthropic's guidance is to give the smallest
+set of specific instructions, as heuristics, and add to it from the failures seen
+([Effective context engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)).
+A perspective made of concrete rules of thumb is that; one made of virtues ("verify every invariant")
+is not. Different perspectives may help reviewers find different problems (weaker evidence:
+[arXiv 2605.23108](https://arxiv.org/abs/2605.23108)), which is why each lens keeps its own question.
+
+On #1769 run 43517034037 the scope lens judged against "the plan's declared file list" — the plan
+stage had been merged into design — issue-acceptance ran as a persona that judged "a plan", and test-author ran as no
+persona at all.
 
 ## Consequences
 
@@ -208,5 +241,7 @@ This ADR is the gate for Initiative 1.3; the stories that codify it are `blocked
 - §3 (the provider delivers the persona: Anthropic's `--agents`/`--agent`; `## Who you are` for a provider that cannot; every loop call; no persona outside a stage; a map element's declared persona) → `tests/unit/persona-agent-delivery-test.sh` PA1, PA2, PA5–PA8
 - §4 (the target repository's `.zbuild/plugins/persona/<id>` before the install's; generic when none) → `tests/unit/persona-agent-delivery-test.sh` PA4; the overlay is never leaked via `ZBUILD_PLUGINS_ROOT` → `tests/unit/plugins-root-hermeticity-test.sh`
 - §6 (the persona passes through the scope redaction, before the prompt's own) → `tests/unit/persona-agent-delivery-test.sh` PA10
-- §7 (the shipped templates pin plan, design, build) → `tests/unit/persona-agent-delivery-test.sh` PA9
+- §7 (the shipped templates pin design and build) → `tests/unit/persona-agent-delivery-test.sh` PA9
 - §8 (no stage frames a persona) → `tests/unit/prompt-contract-every-stage-test.sh` E5
+- §7 amendment 2026-11-14 (the pins the templates hold: design, test-author, build, issue-acceptance) → `tests/unit/persona-agent-delivery-test.sh` PA9
+- §9 (a perspective is no identity line and names nothing of the pipeline) → `tests/unit/persona-perspective-test.sh` P1–P3

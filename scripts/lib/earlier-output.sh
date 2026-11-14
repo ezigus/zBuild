@@ -80,15 +80,6 @@ earlier_outputs_with_json() {
 earlier_acceptance_contract() { earlier_output_with_text '^```acceptance' "$@"; }
 # The work plan: JSON with a list of work items.
 earlier_work_plan() { earlier_output_with_json '(.steps | type) == "array"' "$@"; }
-# work_steps_of_topic <plan-json> <topic> — the plan with only the steps of
-# <topic> (ADR-071, #2458): `tests` for the stage that owns the design's test
-# files, `change` for the one that writes code. A step written before steps
-# carried a topic counts as `change`. The input unchanged when it is not a plan.
-work_steps_of_topic() {
-    jq -c --arg t "$2" 'if (.steps | type) == "array"
-        then .steps |= map(select((.topic // "change") == $t)) else . end' <<< "$1" 2>/dev/null \
-        || printf '%s\n' "$1"
-}
 # The issue's numbered requirements: JSON with a requirements list.
 earlier_requirements() { earlier_output_with_json '(.requirements | type) == "array"' "$@"; }
 # The scope manifest: lines of "+ <dir>/".

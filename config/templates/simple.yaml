@@ -96,6 +96,8 @@ delivery_loop:
 test-author:
   gate: auto
   roles: [test_author]
+  # ADR-051: the provider runs the stage as this persona (--agent).
+  persona: test-strategist
   # Each try: one 15-minute model call, then its own checks; the engine stops it
   # here. The default for a stage is 900 (15 minutes).
   timeout_s: 2700

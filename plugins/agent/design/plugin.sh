@@ -233,12 +233,15 @@ Write the design document to this EXACT absolute path:
 
 The design document MUST include:
 1. A brief architectural decision summary (goal, context, decision).
-2. A \`\`\`steps block: the ordered work items that deliver the change, one per
+2. A \`\`\`steps block: the ordered work items that change the code, one per
    line, each with the areas of the code it is about:
 \`\`\`steps
 - <what to do, in one sentence> | areas: path/to/file1, path/to/file2
 \`\`\`
-   The build follows them in order.
+   The build follows them in order. A step is code work only: it names no file
+   or folder in the test folders. What you own of the tests is your SPECs:
+   they say what the tests must prove. The test author writes the tests —
+   which cases, in which files and how.
 
 3. A \`\`\`acceptance block listing what this change must deliver. Each line is
    one requirement: an id, a status, and ONE behaviour someone could observe and test.
@@ -291,10 +294,9 @@ The design document MUST include:
      need not fail before — it proves the finished change still does what the old code did.
    Every requirement carries one of the four. A change that edits code needs at least one [code] requirement.
 
-   You name no files: no test file, and no list of the files the change
-   touches. The tests are written after the design, in the repository's test
-   folders, wherever they belong, and a requirement's test is found by its
-   tag. Each [code] assertion is also run against the code from before your
+   You name no test file, and no list of the files the change touches. The
+   tests are written after the design, by the test author, wherever they
+   belong, and a requirement's test is found by its tag. Each [code] assertion is also run against the code from before your
    change and must fail there, so write ONE requirement per assertion — then
    each behaviour is checked on its own.
 
@@ -596,14 +598,12 @@ ${_dp_limits}")"; then
 }
 
 # _design_write_steps <design_md> <out_json> — the ```steps block as
-# {title, steps:[{id, description, areas, topic}]}. A design with no steps writes none
+# {title, steps:[{id, description, areas}]}. A design with no steps writes none
 # (and removes an earlier one, so a stale list is never read as this design's).
-# #2458 (ADR-071): each step's topic comes from its files — `tests` when they are
-# in the repository's test folders, which only the stage that writes the tests
-# may change (#2508); `change` otherwise. A step with both is split, so each part
-# reaches the stage that may do it.
+# The steps are the code work (ADR-071 §1, 2026-11-14): design's check refuses a
+# step on the test folders, which are test-author's.
 _design_write_steps() {
-    local design="$1" out="$2" line in_block=0 title tfs
+    local design="$1" out="$2" line in_block=0 title
     local -a lines=()
     while IFS= read -r line || [[ -n "$line" ]]; do
         if [[ "$line" =~ ^'```steps'[[:space:]]*$ ]]; then in_block=1; continue; fi
@@ -619,29 +619,11 @@ _design_write_steps() {
     done < "$design"
     if [[ ${#lines[@]} -eq 0 ]]; then rm -f "$out" 2>/dev/null; return 0; fi
     title="$(grep -m1 -E '^# ' "$design" 2>/dev/null || true)"; title="${title#\# }"
-    # #2508 (ADR-071): an area in the test folders is the test author's.
-    local _l _a _ar; tfs=""
-    for _l in "${lines[@]}"; do
-        [[ "$_l" == *" | areas:"* ]] || continue
-        IFS=',' read -ra _ar <<< "${_l#* | areas:}"
-        for _a in ${_ar[@]+"${_ar[@]}"}; do
-            _a="${_a#"${_a%%[![:space:]]*}"}"; _a="${_a%"${_a##*[![:space:]]}"}"
-            [[ -n "$_a" ]] && zb_is_test_path "$_a" && tfs+="$_a"$'\n'
-        done
-    done
-    tfs="$(jq -Rsc 'split("\n") | map(select(length > 0))' <<< "$tfs" 2>/dev/null)"
-    [[ -n "$tfs" ]] || tfs='[]'
-    printf '%s\n' "${lines[@]}" | jq -Rsc --arg t "$title" --argjson tf "$tfs" '
+    printf '%s\n' "${lines[@]}" | jq -Rsc --arg t "$title" '
         split("\n") | map(select(length > 0))
         | [.[] | split(" | areas:") as $p
-            | {d: ($p[0] | gsub("^\\s+|\\s+$"; "")),
-               a: (($p[1] // "") | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0)))}
-            | ([.a[] | select(. as $f | $tf | index([$f]))]) as $ta
-            | ([.a[] | select(. as $f | $tf | index([$f]) | not)]) as $ca
-            | if ($ta | length) > 0 and ($ca | length) > 0
-                then {description: .d, areas: $ca, topic: "change"}, {description: .d, areas: $ta, topic: "tests"}
-              elif ($ta | length) > 0 then {description: .d, areas: $ta, topic: "tests"}
-              else {description: .d, areas: $ca, topic: "change"} end]
+            | {description: ($p[0] | gsub("^\\s+|\\s+$"; "")),
+               areas: (($p[1] // "") | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0)))}]
         | {title: $t, steps: [to_entries[] | {id: "step-\(.key + 1)"} + .value]}' \
         | atomic_write "$out" || rm -f "$out" 2>/dev/null
     return 0
