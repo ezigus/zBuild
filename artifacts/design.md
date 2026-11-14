@@ -18,7 +18,7 @@ the first-choice fallback path; the probe eliminates that overhead.
 - `scripts/lib/helpers.sh`: add a load-time stat probe, trying GNU form (`stat -c '%a'`)
   first (RQPRO-3); store result in a module-level variable; rewrite `_zb_target_mode_v`
   to call stat exactly once per invocation using the probed form.
-- `zbuild_sed_inplace` keeps its name. ADR-020 already names it correctly at line 224; no
+- `zbuild_sed_inplace` keeps its name. ADR-020 already names it correctly; no
   amendment is needed (RQADM-3 is conditional on renaming; we do not rename).
 - Amend ADR-009 with a new clause: host tool-form decisions come from a probe of the tool
   itself, run once at library load time, never from a platform name. Add an "Enforced by"
