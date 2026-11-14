@@ -179,16 +179,13 @@ _build_stage_run_inner() {
     # #2445: the work steps design wrote, when it wrote any.
     local plan_json="{}"
     [[ -n "$plan_json_path" && -s "$plan_json_path" ]] && plan_json="$(cat "$plan_json_path")"
-    # #2458 (ADR-071, ADR-067 §6): build is shown the steps that change code;
-    # a step on the design's own test files is the test author's.
-    [[ "$plan_json" == *'"topic":"tests"'* ]] && plan_json="$(work_steps_of_topic "$plan_json" change)"
 
     local _acceptance_testfiles="" _acceptance_spec_ids="" _design_decisions=""
     _build_load_context
 
     # ─── Write build prompt (ADR-018 Pattern 2, #571 v2 framing) ─────────────
     # Three-section framed structure the LLM sees on every iteration:
-    #   1. ORIGINAL TASK (immutable across iterations) — issue goal + plan md
+    #   1. THE DESIGN'S STEPS — the code work, in order (design-steps.json)
     #   2. INSTRUCTIONS — loop/sentinel rules (stable across iters)
     #   3. STAGE SUMMARIES — appended by the router from every completed
     #      stage's declared summary (ADR-055 §9); nothing is read here.

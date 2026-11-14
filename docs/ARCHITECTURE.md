@@ -68,7 +68,7 @@ plugins/agent/security-lens/
 └── README.md
 ```
 
-**Every plugin — except `kind: persona` — requires a wiki page at `docs/wiki/plugins/<id>.md`.** The `lint-doc-freshness` gate (`scripts/lib/lint-doc-freshness.sh`) checks the real repo at test time and fails if the page is absent or lacks a prose opening paragraph. When adding a new plugin, include this file in the design scope. `kind: persona` plugins are data-only and share a single index at `docs/wiki/plugins/personas.md`; the gate enforces that the index exists and lists every persona id.
+**Every plugin — except `kind: persona` — requires a wiki page at `docs/wiki/plugins/<id>.md`.** The `lint-doc-freshness` gate (`scripts/lib/lint-doc-freshness.sh`) checks the real repo at test time and fails if the page is absent or lacks a prose opening paragraph. A new plugin ships with its page. `kind: persona` plugins are data-only and share a single index at `docs/wiki/plugins/personas.md`; the gate enforces that the index exists and lists every persona id.
 
 ### Manifest schema (`manifest.yaml`)
 

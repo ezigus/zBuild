@@ -199,7 +199,7 @@ _persp() { awk '/^[[:space:]]+perspective:/ { sub(/^[[:space:]]+perspective:[[:s
     "$REPO_ROOT/plugins/persona/$1/manifest.yaml" 2>/dev/null; }
 assert_contains "[#1140-11] the correctness persona asks about logic errors" "$(_persp correctness)" "logic errors"
 # #2433: a scope finding sends the run back like any other lens's — it is no longer warn-only.
-assert_contains "[#1140-12] the scope persona compares the change with the planned scope" "$(_persp scope)" "PLANNED scope"
+assert_contains "[#1140-12] the scope persona compares the change with the scope the issue names" "$(_persp scope)" "the files or areas its scope names"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 

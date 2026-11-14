@@ -131,7 +131,7 @@ _scope="$(awk '/^[[:space:]]+perspective:/ { sub(/^[[:space:]]+perspective:[[:sp
 if grep -qiE "untouched|did not touch" <<< "$_scope"; then
     assert_fail "[C9] the scope lens does not report planned-but-untouched files" "$_scope"
 else
-    assert_contains "[C9] it still reports unplanned edits" "$_scope" "did not list"
+    assert_contains "[C9] it still reports edits nothing asked for" "$_scope" "nothing asked it to touch"
 fi
 
 print_test_section "C12: no planned-scope section (#2508)"

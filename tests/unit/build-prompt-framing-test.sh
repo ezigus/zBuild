@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Tests: build prompt v2 framing — ORIGINAL TASK / the job /
+# Tests: build prompt v2 framing — the design's steps / the job /
 # CURRENT ITERATION FEEDBACK sections + iter N/MAX banner (#571).
 #
 # Verifies the three-section structure the LLM sees:
-#   - Iter 1: banner + ORIGINAL TASK + the job, NO FEEDBACK section.
+#   - Iter 1: banner + the design's steps + the job, NO FEEDBACK section.
 #   - Iter 2+: same; prior-stage findings arrive as the router's STAGE
 #     SUMMARIES block, not a composed section (#2124 retired the readers).
 #   - Banner shows "iter N/MAX" accurately.
@@ -98,9 +98,16 @@ assert_eq "F2: iter 1 prompt carries no iteration banner" "0" \
     "$(grep -c 'ZBUILD BUILD' <<< "$iter1_prompt" || true)"
 assert_eq "F2: iter 1 prompt opens with From the repo" "## From the repo" "${iter1_prompt%%$'\n'*}"
 
-# F3: ORIGINAL TASK section header present
-assert_contains "F3: iter 1 has ORIGINAL TASK section" "$iter1_prompt" \
-    "## ORIGINAL TASK"
+# F3: the design's steps, under a heading that says whose they are (the plan
+# stage was merged into design: nothing build is shown is a plan or the issue)
+assert_contains "F3: iter 1 has the design's steps section" "$iter1_prompt" \
+    "### THE DESIGN'S STEPS"
+_f3_lp="$(tr '[:upper:]' '[:lower:]' <<< "$iter1_prompt")"
+if [[ "$_f3_lp" == *"the plan"* ]]; then
+    assert_fail "F3: build's prompt speaks of no plan" "it says: the plan"
+else
+    assert_pass "F3: build's prompt speaks of no plan"
+fi
 
 # F4: What you own opens with build's job
 assert_contains "F4: iter 1 states build's job" "$iter1_prompt" \
@@ -138,9 +145,9 @@ iter2_prompt="$(cat "$_MOCK_ROUTE_CAPTURE" 2>/dev/null || echo '')"
 assert_eq "F7: iter 2 prompt carries no iteration banner" "0" \
     "$(grep -c 'iter 2/3' <<< "$iter2_prompt" || true)"
 
-# F8: ORIGINAL TASK + the job still present
-assert_contains "F8: iter 2 has ORIGINAL TASK section" "$iter2_prompt" \
-    "## ORIGINAL TASK"
+# F8: the design's steps + the job still present
+assert_contains "F8: iter 2 has the design's steps section" "$iter2_prompt" \
+    "### THE DESIGN'S STEPS"
 assert_contains "F8: iter 2 states build's job" "$iter2_prompt" \
     "Your job is to edit the working tree"
 

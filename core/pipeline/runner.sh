@@ -706,18 +706,43 @@ _runner_validate_startup_preflight() {
     # stage's pin, a map element's, the config default — exists in the target
     # repository's .zbuild/plugins/persona or the install. A misspelt persona
     # must not quietly run as generic, so this refuses in warn mode too.
-    local _persona_missing=0 _pw _pid _pdir
-    if [[ -n "${_TPL_SOURCE_FILE:-}" && -f "$_TPL_SOURCE_FILE" ]]; then
-        # shellcheck source=/dev/null  # followed, it re-reads runner.sh's own includes
-        declare -F persona_find_dir >/dev/null 2>&1 \
-            || source "$_ZBUILD_ROOT/scripts/lib/persona-resolve.sh" 2>/dev/null || true
-        while IFS='|' read -r _pw _pid; do
-            [[ -n "$_pid" ]] || continue
-            _pdir="$(persona_find_dir "$_pid" 2>/dev/null)" && [[ -n "$_pdir" ]] && continue
-            violations+=("${_pw}|PERSONA_MISSING|${_pid}|the template names persona '${_pid}', which is in neither the repository's .zbuild/plugins/persona nor the install")
-            fail_count=$((fail_count + 1)); _persona_missing=1
-        done < <(_runner_template_personas "$_TPL_SOURCE_FILE")
+    # #2538 (amended 2026-11-14): and every persona a manifest names for a call
+    # — the plugins this run dispatches (its plugins root) and the repository's.
+    # Each id is looked up once, in this shell.
+    local _persona_missing=0 _pw _pid _pdir _pmf _plist _prr="${ZBUILD_REPO_ROOT:-}"
+    local -A _pseen=()
+    # shellcheck source=/dev/null  # followed, it re-reads runner.sh's own includes
+    declare -F persona_find_dir_v >/dev/null 2>&1 \
+        || source "$_ZBUILD_ROOT/scripts/lib/persona-resolve.sh" 2>/dev/null || true
+    # shellcheck source=/dev/null  # followed, it re-reads runner.sh's own includes
+    declare -F manifest_personas_v >/dev/null 2>&1 \
+        || source "$_ZBUILD_ROOT/core/plugin-registry/manifest-calls.sh" 2>/dev/null || true
+    _runner_persona_check() {   # <where> <id> <who names it>
+        [[ -n "$2" && -z "${_pseen[$2]:-}" ]] || return 0
+        _pseen[$2]=1
+        persona_find_dir_v _pdir "$2" "$_prr" && return 0
+        violations+=("${1}|PERSONA_MISSING|${2}|${3} names persona '${2}', which is in neither the repository's .zbuild/plugins/persona nor the install")
+        fail_count=$((fail_count + 1)); _persona_missing=1
+    }
+    if declare -F persona_find_dir_v >/dev/null 2>&1; then
+        if [[ -n "${_TPL_SOURCE_FILE:-}" && -f "$_TPL_SOURCE_FILE" ]]; then
+            while IFS='|' read -r _pw _pid; do
+                _runner_persona_check "$_pw" "$_pid" "the template"
+            done < <(_runner_template_personas "$_TPL_SOURCE_FILE")
+        fi
+        if declare -F manifest_personas_v >/dev/null 2>&1; then
+            local -a _pmfs=("${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}"/*/*/manifest.yaml)
+            [[ -n "$_prr" && -d "$_prr/.zbuild/plugins" ]] && _pmfs+=("$_prr"/.zbuild/plugins/*/*/manifest.yaml)
+            for _pmf in "${_pmfs[@]}"; do
+                [[ -f "$_pmf" ]] || continue
+                manifest_personas_v _plist "$_pmf"
+                while IFS= read -r _pid; do
+                    _runner_persona_check "$_pmf" "$_pid" "the manifest, for a call,"
+                done <<< "$_plist"
+            done
+        fi
     fi
+    unset -f _runner_persona_check
 
     # ADR-017 §12 (#2507): every tool word of every stage's calls — the
     # install's and the repository's — is one its provider can supply. A call

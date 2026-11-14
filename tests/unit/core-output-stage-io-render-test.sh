@@ -84,7 +84,7 @@ assert_contains "B4 no metadata.artifact → raw input" "$out" '{"a":1}'
 plan_output_json='{"title":"Out plan","goal":"render output"}'
 rec="$(_make_record build llm "in" "$plan_output_json" '{"artifact":"plan"}')"
 out="$(_stage_io_to_stdout "$rec" 2>/dev/null)"
-assert_contains "B5 output rendered as markdown heading" "$out" "# Plan: Out plan"
+assert_contains "B5 output rendered as markdown heading" "$out" "# Out plan"
 assert_contains "B5 output rendered Goal field" "$out" "**Goal:** render output"
 # Original raw JSON should NOT appear verbatim in the output section.
 if grep -qF '{"title":"Out plan"' <<< "$(printf '%s' "$out" | sed -n '/── output ──/,/── end stage-io/p')"; then

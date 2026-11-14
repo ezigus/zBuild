@@ -24,7 +24,7 @@ PLAN='{"schema_version":1,"title":"T","steps":[{"description":"d","files":["a"]}
 
 # ─── C1: pure JSON → plan only, no comment marker (regression lock) ─────────
 out="$(render_plan_md "$PLAN")"
-assert_contains "C1 plan heading present"     "$out" "# Plan: T"
+assert_contains "C1 plan heading present"     "$out" "# T"
 if grep -qF "── llm comment ──" <<< "$out"; then
     assert_fail "C1 no comment marker on pure-JSON input" "got: $out"
 else
@@ -33,7 +33,7 @@ fi
 
 # ─── C2: pure prose → comment-only output, heading placeholder ──────────────
 out="$(render_plan_md "Just talking, no JSON here.")"
-assert_contains "C2 prose-only emits placeholder heading" "$out" "# Plan: (no JSON returned)"
+assert_contains "C2 prose-only emits placeholder heading" "$out" "# (no JSON returned)"
 assert_contains "C2 prose-only emits comment marker"      "$out" "── llm comment ──"
 assert_contains "C2 prose body preserved"                 "$out" "Just talking, no JSON here."
 
@@ -42,11 +42,11 @@ input="Here is the plan.
 
 $PLAN"
 out="$(render_plan_md "$input")"
-assert_contains "C3 plan heading present"  "$out" "# Plan: T"
+assert_contains "C3 plan heading present"  "$out" "# T"
 assert_contains "C3 comment marker present" "$out" "── llm comment ──"
 assert_contains "C3 prose body preserved"   "$out" "Here is the plan."
 # Ordering: plan heading must come BEFORE the comment marker.
-plan_pos="$(printf '%s\n' "$out" | grep -n "# Plan: T" | head -1 | cut -d: -f1)"
+plan_pos="$(printf '%s\n' "$out" | grep -n "# T" | head -1 | cut -d: -f1)"
 comm_pos="$(printf '%s\n' "$out" | grep -n "── llm comment ──" | head -1 | cut -d: -f1)"
 if [[ -n "$plan_pos" && -n "$comm_pos" && "$plan_pos" -lt "$comm_pos" ]]; then
     assert_pass "C3 plan renders BEFORE comment block"
@@ -60,7 +60,7 @@ input="$PLAN
 
 Let me know if you want changes."
 out="$(render_plan_md "$input")"
-assert_contains "C4 plan heading present"  "$out" "# Plan: T"
+assert_contains "C4 plan heading present"  "$out" "# T"
 assert_contains "C4 comment marker present" "$out" "── llm comment ──"
 assert_contains "C4 suffix prose preserved" "$out" "Let me know if you want changes."
 
@@ -77,7 +77,7 @@ assert_contains "C5 suffix prose preserved" "$out" "After."
 # ─── C6: multi-JSON inline example → LAST renders, earlier in comment ──────
 input='For example {"foo":"bar"}. The real plan: {"schema_version":1,"title":"Real","steps":[]}'
 out="$(render_plan_md "$input")"
-assert_contains "C6 LAST object renders as plan" "$out" "# Plan: Real"
+assert_contains "C6 LAST object renders as plan" "$out" "# Real"
 assert_contains "C6 inline-example object in comment" "$out" '{"foo":"bar"}'
 
 # ─── C7: malformed JSON → comment-only, rc=0 ────────────────────────────────
@@ -104,7 +104,7 @@ input='```json
 '"$PLAN"'
 ```'
 out="$(render_plan_md "$input")"
-assert_contains "C9 fenced JSON renders as plan" "$out" "# Plan: T"
+assert_contains "C9 fenced JSON renders as plan" "$out" "# T"
 if grep -qF "── llm comment ──" <<< "$out"; then
     assert_fail "C9 fences alone do NOT produce comment block" "got: $out"
 else

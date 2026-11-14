@@ -33,7 +33,7 @@ assert_eq "E2 lookup helper" "render_test_spec_md" "$fn"
 # ─── E3: registering an id that exists in the registry of a downstream stage
 # does not break built-ins. ──────────────────────────────────────────────────
 out="$(render_artifact plan '{"title":"x"}')"
-assert_contains "E3 built-in still works after custom register" "$out" "# Plan: x"
+assert_contains "E3 built-in still works after custom register" "$out" "# x"
 
 # ─── E4: extensibility — second fresh id stacks without conflict ─────────────
 my_security_md() { printf 'SEC: %s' "$1"; }

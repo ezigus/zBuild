@@ -55,6 +55,10 @@ config:
 # Everything it judges is in its prompt: no tools.
 calls:
   main: []
+# ADR-051 §2: the persona each call runs as — a call that judges work is
+# not run as the persona that wrote it.
+personas:
+  main: sre
 
 outputs:
   - id: monitor_report

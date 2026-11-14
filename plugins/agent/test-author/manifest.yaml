@@ -72,6 +72,11 @@ capabilities:
 calls:
   main: [read-files, edit-files, run-commands, web-search, subagents, todo-list]
   check: [read-files, read-git, web-search, subagents]
+# ADR-051 §2: the persona each call runs as — a call that judges work is
+# not run as the persona that wrote it.
+personas:
+  main: test-strategist
+  check: quality-assurance
 
 outputs:
   # #2491 (ADR-071 §1): its findings are about a test against its SPEC, so

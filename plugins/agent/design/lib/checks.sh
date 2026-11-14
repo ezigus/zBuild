@@ -37,6 +37,27 @@ _dck_unclear_bad_v() {
     return 0
 }
 
+# _dck_step_areas_v <array> <design_md> — every area the ```steps block's
+# lines name after " | areas:", one per entry, in order.
+_dck_step_areas_v() {
+    local -n _dsa="$1"; local _l _in=0 _a
+    local -a _ar
+    _dsa=()
+    while IFS= read -r _l || [[ -n "$_l" ]]; do
+        _l="${_l%$'\r'}"
+        if [[ "$_l" =~ ^'```steps'[[:space:]]*$ ]]; then _in=1; continue; fi
+        (( _in == 1 )) || continue
+        [[ "$_l" =~ ^'```' ]] && break
+        [[ "$_l" == *" | areas:"* ]] || continue
+        IFS=',' read -ra _ar <<< "${_l#* | areas:}"
+        for _a in ${_ar[@]+"${_ar[@]}"}; do
+            _a="${_a#"${_a%%[![:space:]]*}"}"; _a="${_a%"${_a##*[![:space:]]}"}"
+            [[ -n "$_a" ]] && _dsa+=("$_a")
+        done
+    done < "$2"
+    return 0
+}
+
 # _dck_evidence_v <var> <repo_root> <item> <base> — what is wrong with one
 # evidence item of a [done] requirement (ADR-069 §2), or empty. #2462: [done]
 # means the code from before the change already does it, so the item is
@@ -199,6 +220,7 @@ _dck_plain() {
         GWT_ORPHAN_PART*)    local _op="${rest#(}"; _op="${_op%)}"
             printf 'a part line is under no SPEC (%s) — put each Given:, When:, Then:, And: or Cleanup: line under the SPEC it belongs to' "$_op" ;;
         GWT_PART_ON_REMOVED*) printf '%s is removed, so it has no parts — remove the lines under its REMOVED line' "$id" ;;
+        STEP_IS_TEST*)       printf 'a step names %s, in the test folders — the tests are test-author'"'"'s to write: which cases, in which files, and how. Name only the code a step changes, and drop a step that is only about tests; the SPECs say what the tests must prove' "$id" ;;
         WIRING_IS_TEST*)     printf 'the WIRING file %s is in a test folder — a test is not what runs the change; name the file whose code calls the new code, or write WIRING: none' "$id" ;;
         *) printf '%s' "$v" ;;
     esac
@@ -206,7 +228,7 @@ _dck_plain() {
 
 # _design_checks <design_md> <repo_root> <requirements_json> [last_design] [issue_text]
 # Fills _DESIGN_VIOLATIONS with one code per violation (C2, C3, C5, C7, C9,
-# C10, C11, C12); empty
+# C10, C11, C12, C13); empty
 # when design.md passes. The requirements file is absent on a goal run;
 # [last_design] is the last design that passed, [issue_text] the issue's words
 # (the stage passes none: the requirement list carries the ids they write).
@@ -384,6 +406,14 @@ _design_checks() {
             done < <(acceptance_list_wiring "$design_md" 2>/dev/null || true)
         fi
     fi
+
+    # ── C13 STEPS: a step names code, never the test folders (ADR-071 §1,
+    # 2026-11-14) — which tests, in which files and how is test-author's.
+    local -a _sa=(); local _s
+    [[ -f "$design_md" ]] && _dck_step_areas_v _sa "$design_md"
+    for _s in ${_sa[@]+"${_sa[@]}"}; do
+        zb_is_test_path "$_s" "$repo_root" && violations+=("STEP_IS_TEST $_s (a work step names a file in the test folders)")
+    done
 
     # ── C12 UNCLEAR (#2508, ADR-069 §12): a question design could not settle
     # is in its form, so every report can show it.

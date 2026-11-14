@@ -131,7 +131,7 @@ Before the final \`LOOP_COMPLETE\` line, emit a single line of the form:
 Keep it under 72 characters, present tense, imperative mood (e.g.
 "add foo parser" not "added"). The pipeline uses this as the git commit
 message for the per-iteration commit it creates on your behalf. If you
-omit this line the pipeline falls back to the plan title.
+omit this line the pipeline falls back to the design's title.
 BUILD_PROMPT
 }
 
@@ -156,7 +156,7 @@ You may change any file outside the test folders (${_globs// /, }), and none ins
 - If you must exercise a command you are building (or any command that could
   publish, tag, push, or otherwise mutate state), run it in \`--dry-run\` mode.
   Do everything you can to verify behavior without side effects.
-- Keep changes minimal and aligned with the plan: change what the task needs.
+- Keep changes minimal and aligned with the design: change what the task needs.
 - Clean up scratch siblings of the files you edit (\`*.bak\`, \`*.orig\`,
   \`*.rej\`, \`*.head\`, \`*.tmp\`, \`*~\`). \`sed -i.bak\` and
   \`git show HEAD:f > f.head\` both leave one behind — prefer \`sed -i\` with no
@@ -190,12 +190,11 @@ _build_compose_prompt_body() {
         printf '## What you own\n'
         printf '%s\n\n' "$_instructions"
         printf '## What you judge against\n'
-        printf '### ORIGINAL TASK (immutable across iterations)\n'
+        printf "### THE DESIGN'S STEPS (the code work, in order)\n"
         printf '%s\n' "$_plan_payload"
         if [[ -n "$_design_decisions" ]]; then
-            printf '\n### DESIGN DECISIONS (from the design stage — honor these directives; they refine the plan)\n'
+            printf '\n### DESIGN DECISIONS (honor these: they say why the steps are as they are)\n'
             printf '%s\n' "$_design_decisions"
-            printf 'Where a design decision above conflicts with the plan, follow the design decision.\n'
         fi
         if [[ -n "$_acceptance_testfiles" ]]; then
             printf '\n### ACCEPTANCE TESTS (you MUST make these pass)\n'

@@ -27,9 +27,9 @@ _ROUTE_PERSONA_ARGS=()
 # _route_persona_prepare — for a call a dispatched stage makes, set
 # _ROUTE_PERSONA_ID / _TEXT and either _ROUTE_PERSONA_ARGS (the provider takes
 # it) or _ROUTE_PERSONA_IN_PROMPT=1 (it goes in the prompt). Nothing for a call
-# outside a stage. Worked out once per stage and element.
+# outside a stage. Worked out once per stage, element and call.
 _route_persona_prepare() {
-    local key="${ZBUILD_PLUGIN_DIR:-}|${ZBUILD_CURRENT_STAGE:-}|${ZBUILD_MAP_ELEMENT:-}|${_ROUTE_PROVIDER:-anthropic}"
+    local key="${ZBUILD_PLUGIN_DIR:-}|${ZBUILD_CURRENT_STAGE:-}|${ZBUILD_MAP_ELEMENT:-}|${ZBUILD_ROUTE_CALL:-main}|${_ROUTE_PROVIDER:-anthropic}"
     [[ "$key" == "$_ROUTE_PERSONA_KEY" ]] && return 0
     _ROUTE_PERSONA_KEY="$key" _ROUTE_PERSONA_ID="" _ROUTE_PERSONA_TEXT="" _ROUTE_PERSONA_IN_PROMPT=0
     _ROUTE_PERSONA_DESC="" _ROUTE_PERSONA_REDACTED=""

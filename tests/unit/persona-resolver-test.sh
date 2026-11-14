@@ -266,13 +266,14 @@ assert_contains "[SPEC-1] find_persona points at plugins/persona/scope/manifest.
 assert_eq "[SPEC-2] resolve_persona_role returns 'a software architect'" \
     "a software architect" "$(resolve_persona_role scope "$REAL_PROOT")"
 
-# SPEC-3: perspective names the planned scope (#2433: no longer warn-only)
+# SPEC-3: perspective names the scope the issue names (#2433: no longer warn-only;
+# ADR-051 §9: no plan, which the pipeline no longer has)
 scope_perspective="$(resolve_persona_perspective scope "$REAL_PROOT")"
 case "$scope_perspective" in
-    *"PLANNED scope"*) scope_persp_ok=1 ;;
+    *"the files or areas its scope names"*) scope_persp_ok=1 ;;
     *)             scope_persp_ok=0 ;;
 esac
-assert_eq "[SPEC-3] scope perspective names the planned scope" "1" "$scope_persp_ok"
+assert_eq "[SPEC-3] scope perspective names the scope the issue names" "1" "$scope_persp_ok"
 
 # SPEC-4: validate_manifest passes on the live scope manifest
 set +e

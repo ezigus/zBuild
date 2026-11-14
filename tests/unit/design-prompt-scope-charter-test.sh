@@ -67,7 +67,7 @@ if grep -qF '```scope' "$PROMPT"; then
 else
     assert_pass "T2: prompt asks for no scope block"
 fi
-if grep -qF 'You name no files' "$PROMPT"; then
+if grep -qF 'You name no test file, and no list of the files the change' "$PROMPT"; then
     assert_pass "T2: prompt says design names no files"
 else
     assert_fail "T2: prompt says design names no files"

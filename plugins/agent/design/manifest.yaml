@@ -62,6 +62,11 @@ config:
 calls:
   main: [read-files, edit-files, run-commands, web-search, subagents, todo-list]
   coverage: [read-files, read-git, web-search, subagents]
+# ADR-051 §2: the persona each call runs as — a call that judges work is
+# not run as the persona that wrote it.
+personas:
+  main: architect
+  coverage: quality-assurance
 
 outputs:
   - id: design
