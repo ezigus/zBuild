@@ -9,7 +9,10 @@
 #       1b. for a map element (ZBUILD_MAP_ELEMENT), the persona the template
 #           names for that element (template_map_element_persona) — never one
 #           guessed from the element's name (ADR-051 §2, amended 2026-10-12)
-#       2. template_stage_router_persona (per-stage template binding)
+#       2. template_stage_router_persona (per-stage template binding) — for
+#          the stage's `main` call only
+#       2b. the persona the stage's manifest names for the call
+#           (ZBUILD_ROUTE_CALL, `main` when unset; `personas:`, ADR-051 §5)
 #       3. template_config_persona (global template default)
 #       4. id=generic (terminal fallback)
 #     For the resolved id, scans two roots:
@@ -49,6 +52,9 @@ fi
 if ! declare -F find_persona >/dev/null 2>&1; then
     source "$_PERSONA_RESOLVE_ROOT/core/plugin-registry/registry.sh" 2>/dev/null || true
 fi
+if ! declare -F manifest_call_persona_v >/dev/null 2>&1; then
+    source "$_PERSONA_RESOLVE_ROOT/core/plugin-registry/manifest-calls.sh" 2>/dev/null || true
+fi
 if ! declare -F template_stage_router_persona >/dev/null 2>&1; then
     source "$_PERSONA_RESOLVE_ROOT/core/pipeline/template.sh" 2>/dev/null || true
 fi
@@ -77,11 +83,18 @@ resolve_persona() {
         persona_id="$(template_map_element_persona "$_stage" "$ZBUILD_MAP_ELEMENT" 2>/dev/null || true)"
     fi
 
-    # 2. Template per-stage binding (template_stage_router_persona, ADR-051 §5).
-    if [[ -z "$persona_id" ]] && declare -F template_stage_router_persona >/dev/null 2>&1; then
+    # 2. Template per-stage binding (template_stage_router_persona, ADR-051 §5):
+    # the stage's own call's. A judging call inside the stage is not run as it.
+    local _call="${ZBUILD_ROUTE_CALL:-main}"
+    if [[ -z "$persona_id" && "$_call" == main ]] && declare -F template_stage_router_persona >/dev/null 2>&1; then
         if [[ -n "$_stage" ]]; then
             persona_id="$(template_stage_router_persona "$_stage" 2>/dev/null || true)"
         fi
+    fi
+
+    # 2b. The persona the stage's manifest names for this call (ADR-051 §5).
+    if [[ -z "$persona_id" && -n "${ZBUILD_PLUGIN_DIR:-}" ]] && declare -F manifest_call_persona_v >/dev/null 2>&1; then
+        manifest_call_persona_v persona_id "$ZBUILD_PLUGIN_DIR/manifest.yaml" "$_call"
     fi
 
     # 3. Template global default (template_config_persona, ADR-051 §5).

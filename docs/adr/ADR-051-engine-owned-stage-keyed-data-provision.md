@@ -1,6 +1,6 @@
 # ADR-051 — Engine-owned, stage-keyed data provision (persona = first instance)
 
-**Status:** Accepted (2026-07-26); amended 2026-10-12 (§3, §6, §7, §8: the provider delivers the persona; no stage frames one); amended 2026-11-14 (§7: the pins the templates hold; §9: what a perspective holds)
+**Status:** Accepted (2026-07-26); amended 2026-10-12 (§3, §6, §7, §8: the provider delivers the persona; no stage frames one); amended 2026-11-14 (§2, §3, §5, §7: each model call runs as the persona its stage's manifest names for it, not listed here; §9: what a perspective holds)
 **Issue:** #1303 (Initiative 1.3 — "Personas as Data", #1551)
 **Related:** [ADR-047](ADR-047-stage-agnostic-mechanics.md) (stage-agnostic mechanics),
 [ADR-049](ADR-049-vision-document-standard.md) (generic preamble injection),
@@ -72,10 +72,31 @@ name-mangled accessor — a drop-in copy of the existing `template_stage_router_
 **zero persona semantics in the engine mechanics**. Onboarding a fictitious stage leaves the
 mechanics byte-identical, per ADR-047.
 
+*Amended 2026-11-14 — each call's persona is in its stage's manifest.* A stage's manifest lists every
+model call it makes (`calls:`, ADR-017 §12), and beside it names the persona each call runs as:
+
+```yaml
+calls:
+  main: [read-files, edit-files, run-commands, web-search, subagents, todo-list]
+  coverage: [read-files, read-git, web-search, subagents]
+personas:
+  main: architect
+  coverage: quality-assurance
+```
+
+A call that judges work is not run as the persona of the work it judges: design's check of its own
+SPECs ran as the architect who wrote them, and test-author's check of its assertions as the test
+strategist who wrote them. `validate_manifest` refuses an entry for a call the manifest does not
+list, or one that is not a persona id; the startup preflight refuses a persona a manifest names
+that exists nowhere, as it does a template's. The shipped templates pin no stage's persona; a map
+group's element still names its own, because one plugin serves every element. The direction is
+one way: a stage names the persona it runs as, and a persona names no stage (§9).
+
 ### 3. The router resolves the persona; the provider delivers it (amended 2026-10-12)
 
-Every model call a dispatched stage makes runs as that stage's persona. The router resolves it
-(§4, §5) keyed on `ZBUILD_CURRENT_STAGE` — for a map element, the persona the template names for
+Every model call a dispatched stage makes runs as a persona. The router resolves it
+(§4, §5) keyed on `ZBUILD_CURRENT_STAGE` and the call (`ZBUILD_ROUTE_CALL`, `main` when unset;
+amended 2026-11-14) — for a map element, the persona the template names for
 it (§2) — and the **provider module that calls the
 model decides how it reaches the model** (`core/router/persona-delivery.sh`). A provider that can
 run the call as an agent defines `provider_<name>_persona_args` and gets the persona's id, summary
@@ -103,8 +124,8 @@ leaked via `ZBUILD_PLUGINS_ROOT` into nested runners — preserving
 ### 5. Resolution precedence
 
 Mirroring `resolve_tier` (`scripts/lib/tier-resolve.sh:55`):
-`ZBUILD_<STAGE>_PERSONA` env  >  a map element's own `persona:`  >  template `stage_definitions.<stage>.persona`  >  manifest default
->  **generic default persona**. The first non-empty binding wins; a divergent env override against
+`ZBUILD_<STAGE>_PERSONA` env  >  a map element's own `persona:`  >  template `stage_definitions.<stage>.persona` (the
+`main` call's only)  >  the manifest's persona for the call (`personas:`, amended 2026-11-14)  >  **generic default persona**. The first non-empty binding wins; a divergent env override against
 a template value is auditable, consistent with `_route_resolve_knob` (`route.sh:457`).
 
 ### 6. The persona goes through redaction (amended 2026-10-12)
@@ -115,15 +136,15 @@ as `## Who you are` it is part of the prompt the router redacts; given to the pr
 it is redacted on its own first, so the prompt's `redaction.applied` stays the last event before
 the call. A persona that cannot be redacted is not sent.
 
-### 7. The pins live in the template; no stage frames a persona (amended 2026-10-12)
+### 7. The persona is data, never prompt text; no stage frames one (amended 2026-10-12)
 
 The stage plugins no longer call `persona_stage_framing` (#1604; the function is removed with its
-twin `resolve_persona_charter`). The shipped templates pin design→architect, test-author→test-strategist,
-build→developer and issue-acceptance→product-owner, and each review lens names its own (§2) (amended
-2026-11-14: the plan, spec-coverage and spec-correspondence stages these pins once named are gone;
-test-author, which had none, runs as test-strategist). A stage keeps its own
-job sentence in its own `## What you own` — it is the stage's task, not a persona. A stage with no
-pin runs as `generic`. A review lens keeps its own question as its charter; a lens persona's
+twin `resolve_persona_charter`). Which persona each call runs as is its manifest's to say (§2), and
+this ADR does not list them: a persona knows nothing of the stages that use it (§1, §9) (amended
+2026-11-14: this section listed template pins, and the list had gone stale — it named stages that no
+longer exist). A stage keeps its own
+job sentence in its own `## What you own` — it is the stage's task, not a persona. A call that names
+no persona runs as `generic`. A review lens keeps its own question as its charter; a lens persona's
 `perspective` is that same question, delivered by the provider.
 
 ### 8. Boundary and breadth
@@ -162,8 +183,7 @@ is not. Different perspectives may help reviewers find different problems (weake
 [arXiv 2605.23108](https://arxiv.org/abs/2605.23108)), which is why each lens keeps its own question.
 
 On #1769 run 43517034037 the scope lens judged against "the plan's declared file list" — the plan
-stage had been merged into design — issue-acceptance ran as a persona that judged "a plan", and test-author ran as no
-persona at all.
+stage had been merged into design — and issue-acceptance ran as a persona that judged "a plan".
 
 ## Consequences
 
@@ -241,7 +261,7 @@ This ADR is the gate for Initiative 1.3; the stories that codify it are `blocked
 - §3 (the provider delivers the persona: Anthropic's `--agents`/`--agent`; `## Who you are` for a provider that cannot; every loop call; no persona outside a stage; a map element's declared persona) → `tests/unit/persona-agent-delivery-test.sh` PA1, PA2, PA5–PA8
 - §4 (the target repository's `.zbuild/plugins/persona/<id>` before the install's; generic when none) → `tests/unit/persona-agent-delivery-test.sh` PA4; the overlay is never leaked via `ZBUILD_PLUGINS_ROOT` → `tests/unit/plugins-root-hermeticity-test.sh`
 - §6 (the persona passes through the scope redaction, before the prompt's own) → `tests/unit/persona-agent-delivery-test.sh` PA10
-- §7 (the shipped templates pin design and build) → `tests/unit/persona-agent-delivery-test.sh` PA9
+- §7 (a stage's persona is data, not code) → `tests/unit/persona-agent-delivery-test.sh` PA9
+- §2, §3, §5 amendment 2026-11-14 (each call runs as the persona its manifest names; a template pin is the main call's only; a manifest's unknown call or missing persona is refused; the shipped manifests name each call's persona) → `tests/unit/manifest-call-persona-test.sh` MP1–MP6
 - §8 (no stage frames a persona) → `tests/unit/prompt-contract-every-stage-test.sh` E5
-- §7 amendment 2026-11-14 (the pins the templates hold: design, test-author, build, issue-acceptance) → `tests/unit/persona-agent-delivery-test.sh` PA9
-- §9 (a perspective is no identity line and names nothing of the pipeline) → `tests/unit/persona-perspective-test.sh` P1–P3
+- §9 (a perspective, and the summary sent with it, is no identity line and names nothing of the pipeline) → `tests/unit/persona-perspective-test.sh` P1–P4

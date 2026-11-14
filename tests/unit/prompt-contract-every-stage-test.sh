@@ -215,7 +215,9 @@ _check "design (coverage call)" "$RAW/design-coverage.txt"
 
 # ─── E5: no stage frames a persona ──────────────────────────────────────────
 _persp=()
-_pinned="$(awk '/^  persona:/ { print $2 }' "$REPO_ROOT"/config/templates/*.yaml | sort -u)"
+# The personas the stages run as: each manifest's `personas:` block (ADR-051 §2).
+_pinned="$(awk '/^personas:/ { p = 1; next } p && /^[^[:space:]]/ { p = 0 } p && /^  [A-Za-z0-9_-]+:/ { print $2 }' \
+    "$REPO_ROOT"/plugins/agent/*/manifest.yaml | sort -u)"
 for _pid in $_pinned generic; do
     _pm="$REPO_ROOT/plugins/persona/$_pid/manifest.yaml"
     _pp="$(awk '/^[[:space:]]+perspective:/ { sub(/^[[:space:]]+perspective:[[:space:]]*/, ""); gsub(/^"|"$/, ""); print; exit }' "$_pm")"

@@ -1,38 +1,26 @@
-# zBuild design-stage scope overrides
+# zBuild design-stage overrides
 
-Per-repo overlay to the generic design charter's "enumerated set / absence-by-
-omission" principle (ADR-032/033). The shipped engine states the principle; this
-file states this repo's genuine domain-specific enumerations that break by
-OMISSION. Consult this when a change grows, shrinks, or renames a closed set in
-this repository.
+This repository's own additions to design's job (ADR-032/033): the sets in this
+repository that break by OMISSION, and how a design accounts for them.
 
-> **ADR-047 tombstone (EPIC #1277 / #1282).** zBuild's pipeline stage set is NO
-> LONGER a closed, engine-owned vocabulary. `_ZBUILD_CANONICAL_STAGES` was
-> demoted (ADR-047 §5): stage membership is now a manifest-derived, fail-closed
-> resolvability preflight and stage ordering a data-dependency DAG — both keyed
-> on declared data, not a hardcoded roster. The former Rules ABS-1/ABS-2/ABS-3
-> here enumerated that now-open roster and are retired. What remains below is the
-> **generic** principle only (it names no stage), plus this repo's real closed
-> sets. A change that adds/removes/renames a pipeline stage is now a template +
-> plugin change; it no longer breaks an engine-owned roster enumeration.
-
-## Rule ABS — generic enumerated-set / absence-by-omission wisdom
+## Rule ABS — a closed set breaks by omission
 
 Some closed sets in this repo break by OMISSION rather than by a stale token you
 can grep: the breakage is a MISSING (or orphaned) line, not a changed one. When a
 change grows, shrinks, or renames such a set, every enumeration of that set is
 wrong by omission — yet there is nothing to grep for, because the defect is the
-absent entry.
+absent entry. The pipeline's stages are not such a set: which stages run is
+template data, not a list the code enumerates.
 
-When a change touches a genuinely-closed, exhaustively-enumerated set in this
-repo, design MUST include in scope every test or config that enumerates or COUNTS
-that set. Because the breakage is an absence, do not trust a hardcoded list of
-sites to stay complete — rediscover the sites each time (see "How to find them").
+When a change grows, shrinks or renames a closed set, the design accounts for
+every place that enumerates or COUNTS it:
 
-This principle is target-agnostic: it applies to any closed set, and it does not
-presume the pipeline stage set is closed (per the ADR-047 tombstone above, it is
-not). Use it for sets that are genuinely closed in this repo, declared here per
-ADR-032 as this repo's domain-specific enumerations.
+- code or config that enumerates it: a step, naming that code;
+- an existing test that enumerates or counts it: a line in the ```supersedes
+  block (the test file, the assertion's tag, and why it is now wrong), so the
+  test author brings it up to the new set.
+
+Rediscover the places each time; a hardcoded list of them goes stale.
 
 ## How to find them
 
@@ -44,24 +32,20 @@ grep -rln '_make_plugin\|_make_role_plugin\|_make_verdict_plugin\|mock_plugin_fa
 grep -rln 'stage\.complete\|plugin\.run\.start\|started .*UTC\|finished .*UTC' tests/
 ```
 
-Every match that enumerates or counts a closed set you are changing belongs in
-the design scope block. Re-run the greps each time — new enumeration sites arrive
-with new tests, and the defect (a missing line) leaves no token to search for.
+Re-run the greps each time — new enumeration sites arrive with new tests, and
+the defect (a missing line) leaves no token to search for.
 
-## Rule ABS-W — new plugin directory requires a wiki page
+## Rule ABS-W — a new plugin directory needs a wiki page
 
-Any change that creates `plugins/<kind>/<id>/manifest.yaml` MUST include
-`docs/wiki/plugins/<id>.md` in scope. The `lint-doc-freshness` gate
-(`scripts/lib/lint-doc-freshness.sh`) enforces this at test time against the
-real repo tree — it fails if the wiki page is absent or lacks a prose opening
-paragraph. This is an absence-by-omission gap: there is no old value to grep
-for, because the defect is the missing new file.
+A change that creates `plugins/<kind>/<id>/manifest.yaml` also creates
+`docs/wiki/plugins/<id>.md`, with a prose opening paragraph: a step names it,
+and a `[doc]` SPEC says what it must tell a reader. The `lint-doc-freshness`
+gate (`scripts/lib/lint-doc-freshness.sh`) fails the suite when the page is
+absent or has no opening paragraph — there is no old value to grep for, because
+the defect is the missing new file.
 
-**Exception — `kind: persona` plugins:** `kind: persona` manifests are
-data-only (no `plugin.sh`, no hooks) and share a single index page at
-`docs/wiki/plugins/personas.md`. Adding a new persona requires editing
-`docs/wiki/plugins/personas.md` to list the new id (one known, stable file)
-rather than creating a per-id page. The `lint-doc-freshness` gate enforces
-that `personas.md` exists and that every persona id appears as a literal
-string in it; per-id pages for personas are not required and will trigger
-orphan failures if present.
+**Exception — `kind: persona` plugins:** persona manifests are data-only (no
+`plugin.sh`, no hooks) and share one page, `docs/wiki/plugins/personas.md`. A new
+persona adds its id there instead of a page of its own; `lint-doc-freshness`
+checks that every persona id appears in that page, and a per-id persona page is
+an orphan it fails.

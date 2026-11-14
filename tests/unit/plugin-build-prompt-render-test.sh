@@ -50,7 +50,7 @@ apply_scope_redaction() {
     return 0
 }
 
-# ── Fixture plan.json — markdown rendering will produce a # Plan: heading ──
+# ── Fixture plan.json — markdown rendering will produce a # heading ──
 artifact_dir="$TEST_TEMP_DIR/state/artifacts"
 mkdir -p "$artifact_dir"
 plan_path="$artifact_dir/plan.json"
@@ -83,7 +83,7 @@ assert_eq "IB1 build inner rc=0 with empty diff" "0" "$rc"
 
 # ─── IB2: captured prompt contains markdown heading, not raw JSON ────────────
 captured="$(cat "$_MOCK_ROUTE_CAPTURE" 2>/dev/null || echo '')"
-assert_contains "IB2 prompt has markdown plan heading" "$captured" "# Plan: Test plan"
+assert_contains "IB2 prompt has markdown plan heading" "$captured" "# Test plan"
 assert_contains "IB2 prompt has rendered Goal field" "$captured" "**Goal:** Verify markdown rendering"
 
 # ─── IB3: raw JSON shape is NOT in the prompt ────────────────────────────────

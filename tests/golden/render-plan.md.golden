@@ -1,4 +1,4 @@
-# Plan: Renderer registry
+# Renderer registry
 
 **Goal:** Add a markdown renderer registry for inter-stage artifacts
 

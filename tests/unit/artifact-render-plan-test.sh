@@ -36,7 +36,7 @@ assert_eq "P2 empty plan placeholder" "_empty plan_" "$out"
 
 # ─── P3: missing title → "(untitled)" placeholder ────────────────────────────
 out="$(render_plan_md '{"goal":"x"}')"
-assert_contains "P3 missing title shows (untitled)" "$out" "# Plan: (untitled)"
+assert_contains "P3 missing title shows (untitled)" "$out" "# (untitled)"
 assert_contains "P3 missing title still shows goal" "$out" "**Goal:** x"
 
 # ─── P4: invalid JSON → fenced raw passthrough ───────────────────────────────
@@ -89,14 +89,14 @@ fi
 # gives an accurate coverage signal for this file.
 _p9_tmp="$TEST_TEMP_DIR/p9.out"
 render_plan_md "$(cat "$REPO_ROOT/tests/fixtures/render/plan-full.json")" > "$_p9_tmp"
-assert_contains "P9 in-shell render produces heading" "$(cat "$_p9_tmp")" "# Plan: Renderer registry"
+assert_contains "P9 in-shell render produces heading" "$(cat "$_p9_tmp")" "# Renderer registry"
 # Also exercise the empty-input + bad-JSON + minimal-plan branches without $().
 render_plan_md "" > "$_p9_tmp"
 assert_contains "P9 empty plan placeholder" "$(cat "$_p9_tmp")" "_empty plan_"
 render_plan_md '{not valid' > "$_p9_tmp"
 assert_contains "P9 invalid JSON fence" "$(cat "$_p9_tmp")" '{not valid'
 render_plan_md '{"goal":"x","notes":"n"}' > "$_p9_tmp"
-assert_contains "P9 untitled placeholder" "$(cat "$_p9_tmp")" "# Plan: (untitled)"
+assert_contains "P9 untitled placeholder" "$(cat "$_p9_tmp")" "# (untitled)"
 
 # P10 (#2363): a work item names its areas, and the plan its open questions.
 render_plan_md '{"title":"W","steps":[{"id":"step-1","description":"Stop a hung hook.","areas":["core/plugin-registry/","config/templates/"]}],"open_questions":["Is 90 minutes right?"]}' > "$_p9_tmp"

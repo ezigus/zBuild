@@ -57,6 +57,10 @@ config:
 # It judges: it reads the change, and changes nothing.
 calls:
   main: [read-files, read-git, web-search, subagents]
+# ADR-051 §2: the persona each call runs as — a call that judges work is
+# not run as the persona that wrote it.
+personas:
+  main: product-owner
 
 outputs:
   - id: issue_acceptance_result

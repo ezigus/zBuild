@@ -636,6 +636,10 @@ validate_manifest() {
     local _cerr=0
     _manifest_validate_calls "$manifest" || _cerr=$?
     errors=$((errors + _cerr))
+    # ADR-051 §2: the persona each call runs as.
+    local _perr=0
+    _manifest_validate_personas "$manifest" || _perr=$?
+    errors=$((errors + _perr))
 
     # ─── ADR-071: topics, takes: and finding_topics (manifest-topics.sh) ────
     local _terr=0

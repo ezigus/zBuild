@@ -15,6 +15,8 @@
 # P2 [change] no shipped perspective speaks of the pipeline it runs in: no
 #             stage, plan, pipeline, manifest or lens
 # P3 [change] every shipped persona has a perspective to check
+# P4 [change] a persona's summary, which reaches the model with its perspective
+#             (ADR-051 §3), holds to P1 and P2 too
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -49,6 +51,12 @@ for _m in "$REPO_ROOT"/plugins/persona/*/manifest.yaml; do
         assert_fail "[P2] $_id's perspective names nothing of the pipeline" "it has: ${BASH_REMATCH[2]}"
     else
         assert_pass "[P2] $_id's perspective names nothing of the pipeline"
+    fi
+    _ls="$(tr '[:upper:]' '[:lower:]' <<< "$(yaml_get "$_m" summary 2>/dev/null || true)")"
+    if [[ "$_ls" =~ $_IDENTITY_RE || "$_ls" =~ $_PIPELINE_RE ]]; then
+        assert_fail "[P4] $_id's summary is no identity line and names nothing of the pipeline" "it has: ${BASH_REMATCH[2]}"
+    else
+        assert_pass "[P4] $_id's summary is no identity line and names nothing of the pipeline"
     fi
 done
 if [[ $_n -gt 0 ]]; then assert_pass "[P3] the shipped personas were read ($_n)"

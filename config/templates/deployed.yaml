@@ -112,8 +112,6 @@ design:
   # ADR-068 §8: a run whose design cannot be used is run again, handed its
   # failures and the last good design — 3 runs in all.
   retry: 2
-  # ADR-051: the provider runs the stage as this persona (--agent).
-  persona: architect
   io:
     destinations: [file, stdout]
     tail_lines: 200
@@ -133,8 +131,6 @@ build:
   # or ended without saying it is done) is run again, continuing from its saved
   # work — 3 tries in all. The default for a stage is 1.
   retry: 2
-  # ADR-051: the provider runs the stage as this persona (--agent).
-  persona: developer
   io:
     destinations: [file, stdout]
     tail_lines: 200

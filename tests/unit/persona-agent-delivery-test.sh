@@ -23,9 +23,9 @@
 #   PA7 [change]: the model loop carries the agent on every call
 #   PA8 [change]: a map element runs as the persona the template names for it,
 #                 never one guessed from its name
-#   PA9 [change]: the shipped templates pin each stage's persona: design,
-#                 build, test-author and issue-acceptance (deployed.yaml takes
-#                 test-author and issue-acceptance from simple.yaml)
+#   PA9 [change]: a stage's persona comes from its manifest, not code: the
+#                 real design plugin's call runs as the persona its manifest
+#                 names (tests/unit/manifest-call-persona-test.sh MP6 lists them)
 #   PA10 [change]: the persona given to the provider has been through the
 #                 scope redaction like every other model-bound text, before the
 #                 prompt's own (its redaction.applied stays last before the call);
@@ -218,18 +218,13 @@ _pa8() {
 assert_eq "[PA8] an element runs as the persona it names" "security" "$(_pa8 sec)"
 assert_eq "[PA8] an element named like a persona but naming none runs as generic" "generic" "$(_pa8 architect)"
 
-# ─── PA9: the templates pin what the stages used to hardcode ─────────────────
-print_test_section "PA9: the shipped templates pin each stage's persona"
-for _tpl in simple deployed; do
-    for _pair in design:architect build:developer; do
-        _got="$( _TPL_SOURCE_FILE="$REPO_ROOT/config/templates/$_tpl.yaml" template_stage_router_persona "${_pair%%:*}" 2>/dev/null )"
-        assert_eq "[PA9] $_tpl.yaml pins ${_pair%%:*} to ${_pair#*:}" "${_pair#*:}" "$_got"
-    done
-done
-for _pair in test-author:test-strategist issue-acceptance:product-owner; do
-    _got="$( _TPL_SOURCE_FILE="$REPO_ROOT/config/templates/simple.yaml" template_stage_router_persona "${_pair%%:*}" 2>/dev/null )"
-    assert_eq "[PA9] simple.yaml pins ${_pair%%:*} to ${_pair#*:}" "${_pair#*:}" "$_got"
-done
+# ─── PA9: the manifest names the persona ────────────────────────────────────
+print_test_section "PA9: the real design plugin's call runs as its manifest's persona"
+_reset_cap
+( export ZBUILD_PLUGIN_DIR="$REPO_ROOT/plugins/agent/design" ZBUILD_STATE_DIR="$STATE" ZBUILD_CURRENT_STAGE=design
+  unset _TPL_SOURCE_FILE
+  route_to_model T2 "$PROMPT" >/dev/null 2>&1 )
+assert_eq "[PA9] design's main call runs as architect" "architect" "$(_agent_of "$(_last args)")"
 
 # ─── PA10: the agent's prompt is redacted ────────────────────────────────────
 print_test_section "PA10: the persona passes through the scope redaction"

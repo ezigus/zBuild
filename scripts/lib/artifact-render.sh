@@ -226,7 +226,7 @@ render_plan_md() {
             return 0
         fi
         if [[ -n "$_prose" ]]; then
-            printf '# Plan: (no JSON returned)'
+            printf '# (no JSON returned)'
             _artifact_emit_llm_comment "$_prose"
             return 0
         fi
@@ -261,7 +261,7 @@ render_plan_md() {
     else
         heading_title='(untitled)'
     fi
-    printf '# Plan: %s\n' "$heading_title"
+    printf '# %s\n' "$heading_title"
 
     if [[ -n "$goal" ]]; then
         printf '\n**Goal:** %s\n' "$(_artifact_md_escape_inline "$goal")"

@@ -2,7 +2,7 @@
 
 A persona is a data-only plugin (`kind: persona`, `plugins/persona/<id>/manifest.yaml`) that gives a stage its point of view. It has no `plugin.sh` and fires no hooks. Under `persona:` it declares a `role` (a short noun phrase: metadata, never injected into the prompt) and a `perspective` (one line, because the minimal `yaml_get` reader does not parse folded or block scalars).
 
-The template pins each stage's persona (`persona:` on the stage, or on a review lens's element), and the provider delivers its perspective to the model: Anthropic runs the call as an agent (`--agents`/`--agent`); a provider that cannot gets it as the prompt's first section, `## Who you are` (ADR-051 §2, §3). A stage with no pin runs as `generic`. One persona may serve any stage, and a repository may add or override personas under `.zbuild/plugins/persona/<id>/` (ADR-051 §4).
+A stage's manifest names the persona each of its model calls runs as (`personas:`, beside `calls:`), so a call that judges work is not run as the persona that wrote it; a review lens's element names its own in the template. A persona knows nothing of the stages that use it. The provider delivers the persona to the model: Anthropic runs the call as an agent (`--agents`/`--agent`); a provider that cannot gets it as the prompt's first section, `## Who you are` (ADR-051 §2, §3). A call that names no persona runs as `generic`. One persona may serve any stage, and a repository may add or override personas under `.zbuild/plugins/persona/<id>/` (ADR-051 §4).
 
 **What a perspective holds** (ADR-051 §9): rules of thumb for what to look for — the cases to check, the mistakes to catch, how to grade what is found. It is not an identity (no "you are a …", no "expert"), and it speaks of the work, never the pipeline (no stage, plan, pipeline, manifest or lens). A rule about one stage's output goes in that stage's prompt; a rule a script can check is a check. `tests/unit/persona-perspective-test.sh` holds every shipped persona to this.
 
@@ -14,7 +14,6 @@ _See [[Writing-Plugins]] for the plugin contract. To add a new persona, create i
 
 Judges a change by its structure: how it fits the system's boundaries, keeps coupling low and cohesion high, and preserves conceptual integrity.
 
-- **Pinned by:** design
 - **Manifest:** `plugins/persona/architect/manifest.yaml`
 
 ```yaml
@@ -34,7 +33,6 @@ persona:
 
 Correctness first: the test of every requirement passes, edge cases are handled, and the code does what was decided, no more and no less.
 
-- **Pinned by:** build
 - **Manifest:** `plugins/persona/developer/manifest.yaml`
 
 ```yaml
@@ -54,7 +52,6 @@ persona:
 
 Rules of thumb for tests that can fail: the false case of every condition, the values at each boundary, a search that finds nothing fails, nothing hard-coded that changes.
 
-- **Pinned by:** test-author
 - **Manifest:** `plugins/persona/test-strategist/manifest.yaml`
 
 ```yaml
@@ -74,7 +71,6 @@ persona:
 
 Judges a change by the user value it delivers: every part contributes to an outcome someone can verify, and every promised behaviour runs.
 
-- **Pinned by:** issue-acceptance
 - **Manifest:** `plugins/persona/product-owner/manifest.yaml`
 
 ```yaml
@@ -92,9 +88,8 @@ persona:
 
 ## security
 
-The security lens's question: weaknesses at trust boundaries under a hostile threat model.
+Weaknesses at trust boundaries, under a hostile threat model.
 
-- **Pinned by:** the security review lens
 - **Manifest:** `plugins/persona/security/manifest.yaml`
 
 ```yaml
@@ -112,9 +107,8 @@ persona:
 
 ## performance
 
-The performance lens's question: complexity, hot paths, allocations and blocking I/O.
+Performance regressions: complexity, hot paths, allocations and blocking I/O.
 
-- **Pinned by:** the performance review lens
 - **Manifest:** `plugins/persona/performance/manifest.yaml`
 
 ```yaml
@@ -132,9 +126,8 @@ persona:
 
 ## red-team
 
-The red-team lens's question: flaws an adversary could trigger.
+Flaws an adversary could trigger.
 
-- **Pinned by:** the red-team review lens
 - **Manifest:** `plugins/persona/red-team/manifest.yaml`
 
 ```yaml
@@ -152,9 +145,8 @@ persona:
 
 ## correctness
 
-The correctness lens's question: logic errors, unhandled values and control-flow bugs.
+Logic errors, unhandled values and control-flow bugs.
 
-- **Pinned by:** the correctness review lens
 - **Manifest:** `plugins/persona/correctness/manifest.yaml`
 
 ```yaml
@@ -172,9 +164,8 @@ persona:
 
 ## scope
 
-The scope lens's question: edits nothing asked for, work placed where the issue did not say, and parts of the issue left out.
+Edits nothing asked for, work placed where the issue did not say, and parts of the issue left out.
 
-- **Pinned by:** the scope review lens
 - **Manifest:** `plugins/persona/scope/manifest.yaml`
 
 ```yaml
@@ -192,9 +183,8 @@ persona:
 
 ## sre
 
-The sre lens's question: failure modes, observability and safe recovery.
+Failure modes, observability and safe recovery.
 
-- **Pinned by:** the sre review lens
 - **Manifest:** `plugins/persona/sre/manifest.yaml`
 
 ```yaml
@@ -214,7 +204,6 @@ persona:
 
 Judges whether one verification establishes one requirement: traceability, not testing. Deliberately distinct from `test-strategist`, whose instinct when shown a mismatched assertion is to repair it.
 
-- **Pinned by:** no shipped stage
 - **Manifest:** `plugins/persona/quality-assurance/manifest.yaml`
 
 ```yaml
@@ -232,9 +221,8 @@ persona:
 
 ## generic
 
-The fallback: a stage the template pins no persona for runs as this one.
+The fallback, used when no persona is named.
 
-- **Pinned by:** any stage with no pin
 - **Manifest:** `plugins/persona/generic/manifest.yaml`
 
 ```yaml

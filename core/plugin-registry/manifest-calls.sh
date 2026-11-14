@@ -6,8 +6,13 @@
 #     main: [read-files, edit-files, run-commands, web-search, subagents, todo-list]
 #     coverage: [read-files, read-git, web-search, subagents]
 #
+#   personas:
+#     main: architect
+#     coverage: quality-assurance
+#
 # `main` is the stage's own call; a check inside the stage names its call with
-# ZBUILD_ROUTE_CALL. A call that lists no words (`[]`) has no tools. The words
+# ZBUILD_ROUTE_CALL. `personas:` names the persona each call runs as (ADR-051
+# §2, §5): a judging call is not run as the persona of the work it judges. A call that lists no words (`[]`) has no tools. The words
 # are zbuild's: each provider module turns them into its own
 # (provider_<name>_tool_args, ADR-003).
 #
@@ -89,4 +94,63 @@ _manifest_validate_calls() {
         done
     done <<< "$_vc_all"
     return "$_vc_n"
+}
+
+# manifest_call_persona_v <var> <manifest> <call> — the persona the manifest's
+# `personas:` block names for <call>; empty when it names none.
+manifest_call_persona_v() {
+    local -n _mcp="$1"; local _mcp_mf="${2:-}" _mcp_l _mcp_in=0
+    _mcp=""
+    [[ -n "$_mcp_mf" && -f "$_mcp_mf" ]] || return 0
+    while IFS= read -r _mcp_l || [[ -n "$_mcp_l" ]]; do
+        if [[ "$_mcp_l" =~ ^personas:[[:space:]]*(#.*)?$ ]]; then _mcp_in=1; continue; fi
+        (( _mcp_in )) || continue
+        [[ "$_mcp_l" =~ ^[[:space:]]*(#.*)?$ ]] && continue
+        [[ "$_mcp_l" =~ ^[^[:space:]] ]] && break
+        if [[ "$_mcp_l" =~ ^[[:space:]]+([A-Za-z0-9_-]+):[[:space:]]*([^#]*) ]] && [[ "${BASH_REMATCH[1]}" == "$3" ]]; then
+            _mcp="${BASH_REMATCH[2]%"${BASH_REMATCH[2]##*[![:space:]]}"}"
+            return 0
+        fi
+    done < "$_mcp_mf"
+    return 0
+}
+
+# _manifest_validate_personas <manifest> — validate_manifest's check of the
+# `personas:` block: each entry is a call the manifest lists under `calls:`,
+# naming a persona id. Prints each problem with `error`; returns the number found.
+_manifest_validate_personas() {
+    local _vp_mf="$1" _vp_l _vp_in=0 _vp_k _vp_v _vp_n=0 _vp_w
+    while IFS= read -r _vp_l || [[ -n "$_vp_l" ]]; do
+        if [[ "$_vp_l" =~ ^personas:[[:space:]]*(#.*)?$ ]]; then _vp_in=1; continue; fi
+        (( _vp_in )) || continue
+        [[ "$_vp_l" =~ ^[[:space:]]*(#.*)?$ ]] && continue
+        [[ "$_vp_l" =~ ^[^[:space:]] ]] && break
+        [[ "$_vp_l" =~ ^[[:space:]]+([A-Za-z0-9_-]+):[[:space:]]*([^#]*) ]] || continue
+        _vp_k="${BASH_REMATCH[1]}"; _vp_v="${BASH_REMATCH[2]%"${BASH_REMATCH[2]##*[![:space:]]}"}"
+        if ! manifest_call_words_v _vp_w "$_vp_mf" "$_vp_k"; then
+            error "validate_manifest($_vp_mf): personas.$_vp_k names a call the manifest does not list under calls:"
+            _vp_n=$((_vp_n + 1))
+        fi
+        if [[ ! "$_vp_v" =~ ^[a-z][a-z0-9-]*$ ]]; then
+            error "validate_manifest($_vp_mf): personas.$_vp_k must be a persona id (lower-case letters, digits and dashes), got: ${_vp_v:-<empty>}"
+            _vp_n=$((_vp_n + 1))
+        fi
+    done < "$_vp_mf"
+    return "$_vp_n"
+}
+
+# manifest_personas_v <var> <manifest> — every persona id the `personas:` block
+# names, one per line (the startup preflight checks each exists).
+manifest_personas_v() {
+    local -n _mpo="$1"; local _mpo_mf="${2:-}" _mpo_l _mpo_in=0
+    _mpo=""
+    [[ -n "$_mpo_mf" && -f "$_mpo_mf" ]] || return 0
+    while IFS= read -r _mpo_l || [[ -n "$_mpo_l" ]]; do
+        if [[ "$_mpo_l" =~ ^personas:[[:space:]]*(#.*)?$ ]]; then _mpo_in=1; continue; fi
+        (( _mpo_in )) || continue
+        [[ "$_mpo_l" =~ ^[[:space:]]*(#.*)?$ ]] && continue
+        [[ "$_mpo_l" =~ ^[^[:space:]] ]] && break
+        [[ "$_mpo_l" =~ ^[[:space:]]+[A-Za-z0-9_-]+:[[:space:]]*([a-z][a-z0-9-]*) ]] && _mpo+="${BASH_REMATCH[1]}"$'\n'
+    done < "$_mpo_mf"
+    return 0
 }
