@@ -1,6 +1,6 @@
 {
   "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 594/594 passed (4 skipped)\nintegration: 263/263 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 894/894 passed (4 skipped)",
-  "run_mode": "full",
+  "run_mode": "targeted+full",
   "exit_code": 0,
   "data": {
     "exit_code": 0,
@@ -9,59 +9,65 @@
     "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 594/594 passed (4 skipped)\nintegration: 263/263 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 894/894 passed (4 skipped)",
     "diff_applied": false,
     "test_cmd": "npm test",
-    "run_mode": "full",
+    "run_mode": "targeted+full",
     "timing": {
       "tiers": {
-        "lint": 139164,
-        "e2e": 81963,
-        "golden": 5498,
-        "unit": 320751,
-        "integration": 268871
+        "lint": 138593,
+        "e2e": 83165,
+        "golden": 5629,
+        "unit": 312372,
+        "integration": 286138
       },
       "slowest_files": [
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bQgvvZ/tests/e2e/fork-budget-test.sh",
-          "ms": 75906
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zAayiL/tests/e2e/fork-budget-test.sh",
+          "ms": 77191
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bQgvvZ/tests/integration/core-pipeline-runner-test.sh",
-          "ms": 51737
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zAayiL/tests/integration/pipeline-preflight-missing-stage-test.sh",
+          "ms": 60944
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bQgvvZ/tests/unit/run-status-comment-pages-test.sh",
-          "ms": 35915
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zAayiL/tests/integration/core-pipeline-runner-test.sh",
+          "ms": 52281
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bQgvvZ/tests/integration/runner-release-exit-paths-test.sh",
-          "ms": 35452
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zAayiL/tests/integration/runner-release-exit-paths-test.sh",
+          "ms": 35906
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bQgvvZ/tests/integration/run-timed-out-test.sh",
-          "ms": 34099
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zAayiL/tests/integration/run-timed-out-test.sh",
+          "ms": 34392
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bQgvvZ/tests/unit/lint-test-engine-state-test.sh",
-          "ms": 33058
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zAayiL/tests/integration/cycle-acceptance-terminal-failure-test.sh",
+          "ms": 33621
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bQgvvZ/tests/integration/pipeline-preflight-missing-stage-test.sh",
-          "ms": 32348
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zAayiL/tests/unit/lint-test-engine-state-test.sh",
+          "ms": 33344
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bQgvvZ/tests/integration/cycle-acceptance-terminal-failure-test.sh",
-          "ms": 32118
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zAayiL/tests/integration/cycle-on-max-pipeline-continues-test.sh",
+          "ms": 32969
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bQgvvZ/tests/integration/cycle-on-max-pipeline-continues-test.sh",
-          "ms": 30916
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zAayiL/tests/integration/leaf-verdict-halts-test.sh",
+          "ms": 31966
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.bQgvvZ/tests/integration/leaf-verdict-halts-test.sh",
-          "ms": 30019
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zAayiL/tests/e2e/parity-local-vs-ci-test.sh",
+          "ms": 30598
         }
       ]
     },
-    "tree_sha": "2bf00b348635f26254da3a5cc81e73d871904a01",
+    "tree_sha": "1a021ef75bbebbc797fad97026e8c1e1f79a215a",
+    "targeted": {
+      "test_cmd": "bash scripts/run-tests.sh --files 'plugins/agent/build/tests/build-test-is-wrong-run-test.sh' 'plugins/agent/build/tests/build-test.sh' 'tests/unit/convergence-timeouts-never-fatal-1208-test.sh' 'tests/unit/descriptive-id-readers-test.sh' 'tests/unit/route-loop-terminated-reasons-test.sh' 'tests/unit/stage-boundaries-test.sh' 'tests/unit/stdin-spawn-guard-test.sh' 'tests/unit/timeout-cmd-sites-test.sh' 'tests/unit/timeout-cmd-test.sh'",
+      "verdict": "pass",
+      "passed": 9,
+      "failed": 0
+    },
     "findings": []
   },
   "result_contract": 3,
