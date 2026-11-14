@@ -40,20 +40,17 @@ zbuild_has_flock() {
     command -v flock >/dev/null 2>&1
 }
 
-# ─── stat -c vs -f (GNU vs BSD) ─────────────────────────────────────────────
-zbuild_stat_size() {
-    if [[ "$ZBUILD_PLATFORM" == "macos" ]]; then
-        stat -f '%z' "$1"
-    else
-        stat -c '%s' "$1"
-    fi
-}
+# ─── sed -i probe (GNU vs BSD), run once at load time ───────────────────────
+# GNU sed accepts --version; BSD sed does not. Storing the flag array avoids
+# re-probing on every zbuild_sed_inplace call and works regardless of
+# $ZBUILD_PLATFORM (which may be overridden or absent in test environments).
+declare -a _ZB_SED_INPLACE_ARGS
+if sed --version >/dev/null 2>&1; then
+    _ZB_SED_INPLACE_ARGS=(-i)
+else
+    _ZB_SED_INPLACE_ARGS=(-i '')
+fi
 
-# ─── sed -i differences ─────────────────────────────────────────────────────
 zbuild_sed_inplace() {
-    if [[ "$ZBUILD_PLATFORM" == "macos" ]]; then
-        sed -i '' "$@"
-    else
-        sed -i "$@"
-    fi
+    sed "${_ZB_SED_INPLACE_ARGS[@]}" "$@"
 }
