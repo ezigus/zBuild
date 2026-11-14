@@ -42,20 +42,33 @@ _route_reasons="$(grep -oE '_ROUTE_LOOP_TERMINATED_REASON="[a-z_]+"' \
 
 # Step 2: collect all reason values that _router_rc_classify can assign.
 # The function uses: printf -v "$reason_var"  '%s' "value"
+# Exit in_fn on (a) any top-level function definition that follows, OR
+# (b) a bare closing brace at column 0, whichever comes first. This prevents
+# a column-0 '}' inside the function body (e.g. from a here-doc delimiter or
+# an outer compound command) from truncating the extraction early.
 _classify_reasons="$(awk '
-    /^_router_rc_classify\(\)/ { in_fn=1 }
+    /^_router_rc_classify\(\)/ { in_fn=1; next }
+    in_fn && /^[a-z_][a-z0-9_]*[[:space:]]*\(\)/ { in_fn=0 }
+    in_fn && /^}[[:space:]]*$/ { in_fn=0 }
     in_fn && /printf.*reason_var/ {
         if (match($0, /"[a-z_]+"[ ]*$/)) {
             val = substr($0, RSTART+1, RLENGTH-2)
             if (val != "") print val
         }
     }
-    /^}/ { in_fn=0 }
 ' "$_classify_sh" | sort -u)"
 
 # Step 3: union of both sets = required set
 _required="$(printf '%s\n%s\n' "$_route_reasons" "$_classify_reasons" | \
     sort -u | grep -v '^$')"
+
+# Guard: if extraction returned an empty set, the membership loops below would
+# pass vacuously for any comment content — an empty required set means the grep
+# or awk patterns failed to match, not that there are genuinely zero reasons.
+if [[ -z "$_required" ]]; then
+    assert_fail "[DSEND-1] GUARD: reason extraction produced a non-empty required set" \
+        "_required is empty — grep/awk extraction failed; check route.sh and router-rc-classify.sh"
+fi
 
 # Step 4: extract tokens from the _ROUTE_LOOP_TERMINATED_REASON comment in
 # route.sh. The comment spans multiple continuation lines starting with '#'.
