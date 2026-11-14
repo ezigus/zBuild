@@ -1,6 +1,9 @@
 {
   "wiring_files": [],
   "owned_files": {
-    "test-author": []
+    "test-author": [
+      "tests/unit/atomic-write-cost-test.sh",
+      "tests/unit/platform-probe-test.sh"
+    ]
   }
 }
