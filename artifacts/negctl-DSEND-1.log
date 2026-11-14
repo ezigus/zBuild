@@ -11,10 +11,13 @@
   [38;2;74;222;128m✓[0m [DSLOCK-1] router_out_of_turns is a pre-existing reason in router-rc-classify.sh
   [38;2;74;222;128m✓[0m [DSLOCK-1] build plugin summary.sh does not assign _ROUTE_LOOP_TERMINATED_REASON
   [38;2;74;222;128m✓[0m [DSLOCK-1] build plugin.sh does not assign _ROUTE_LOOP_TERMINATED_REASON
+  [38;2;74;222;128m✓[0m [DSLOCK-2] _router_rc_classify rc=124 rate_limited=0 → verdict=error
+  [38;2;74;222;128m✓[0m [DSLOCK-2] _router_rc_classify rc=124 rate_limited=0 → reason=router_timeout
+  [38;2;74;222;128m✓[0m [DSLOCK-3] route-one-call-per-try-test.sh is content-identical between base and HEAD
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m2 of 6 tests failed[0m
+  [38;2;248;113;113m[1m2 of 9 tests failed[0m
 
   [38;2;248;113;113m✗[0m [DSEND-1] every required reason value is listed in the TERMINATED_REASON comment
   [38;2;248;113;113m✗[0m [DSEND-1] no extra tokens in the comment beyond the required set (no shorthand)
@@ -30,8 +33,11 @@
   [38;2;74;222;128m✓[0m [DSLOCK-1] router_out_of_turns is a pre-existing reason in router-rc-classify.sh
   [38;2;74;222;128m✓[0m [DSLOCK-1] build plugin summary.sh does not assign _ROUTE_LOOP_TERMINATED_REASON
   [38;2;74;222;128m✓[0m [DSLOCK-1] build plugin.sh does not assign _ROUTE_LOOP_TERMINATED_REASON
+  [38;2;74;222;128m✓[0m [DSLOCK-2] _router_rc_classify rc=124 rate_limited=0 → verdict=error
+  [38;2;74;222;128m✓[0m [DSLOCK-2] _router_rc_classify rc=124 rate_limited=0 → reason=router_timeout
+  [38;2;74;222;128m✓[0m [DSLOCK-3] route-one-call-per-try-test.sh is content-identical between base and HEAD
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 6 tests passed[0m
+  [38;2;74;222;128m[1mAll 9 tests passed[0m
 

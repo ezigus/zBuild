@@ -1,4 +1,3 @@
-the acceptance check failed — DSLOCK-2/DSLOCK-3: no assertion in the test files carries its tag — add one labelled with it
 NEGCTL PASS DSDIFF-1
       design : _build_emit_changed_files_summary emits build.discrepancy.detected when terminated_reason is no_done…
       asserts: assert_event_emitted      "[DSDIFF-1] build.discrepancy.detected emitted for no_done_sentinel+0files…
@@ -16,10 +15,10 @@ NEGCTL SKIP DSLOCK-1 already_done
       asserts: assert_pass "[DSLOCK-1] no_done_sentinel is a pre-existing reason assigned in route.sh"
 NEGCTL SKIP DSLOCK-2 already_done
       design : _router_rc_classify sets verdict to error and reason to router_timeout when called with rc=124
-      asserts: <none found>
-NEGCTL SKIP DSLOCK-3 already_done
-      design : O4 in route-one-call-per-try-test.sh is not changed
-      asserts: <none found>
+      asserts: assert_pass "[DSLOCK-2] _router_rc_classify rc=124 rate_limited=0 → verdict=error"
+NEGCTL SKIP DSLOCK-3 no_code
+      design : route-one-call-per-try-test.sh is content-identical before and after this change, confirming O4 was …
+      asserts: assert_pass "[DSLOCK-3] route-one-call-per-try-test.sh is content-identical between base and HEAD"
 REACHABILITY EXEMPT none
 REACHABILITY SKIP no_code core/router/route.sh
 REACHABILITY PASS change plugins/agent/build/lib/summary.sh
