@@ -29,6 +29,10 @@
 # K12 [change] a check call cut short by a signal or its turn limit ends the
 #             lens interrupted / out_of_turns, as the lens's own call does
 # K13 [change] a trigger that is filler ("unknown", "n/a") is no trigger
+# K14 [change] a knock-down whose line the model wrapped is read whole
+# K15 [change] a knock-down with no QUOTE is asked again, not read as stands
+# K16 [change] a finding written as a plain string is asked again: it has no
+#             trigger
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -162,6 +166,20 @@ print_test_section "K13: a filler trigger"
 LENS_REPLY="{\"score\":4,\"findings\":[$(_finding medium "unknown")]}"; LENS_REPLY2="$LENS_REPLY"; CHECK_REPLY='1: stands'
 _lens
 assert_eq "[K13] a trigger of 'unknown' is asked again" "2" "$(_n lens)"
+LENS_REPLY="{\"score\":4,\"findings\":[$(_finding medium "a template turns the guard on")]}"; LENS_REPLY2=""
+
+# ── K14 / K15 / K16 ──────────────────────────────────────────────────────────
+print_test_section "K14-K16: wrapped, unquoted, and string answers"
+CHECK_REPLY='1: knocked down | WHY: the line after it exits when SAFE is
+  unset, so nothing outside can turn the check off | QUOTE: core/x.sh | [[ -n "$SAFE" ]] || exit 1'
+_lens
+assert_eq "[K14] a wrapped knock-down is read whole" "1" "$(_out '.knocked_down | length')"
+CHECK_REPLY='1: knocked down | WHY: it cannot happen'
+_lens
+assert_eq "[K15] a knock-down with no QUOTE is asked again" "2" "$(_n check)"
+LENS_REPLY='{"score":4,"findings":["guard_off turns the safety check off"]}'; LENS_REPLY2="$LENS_REPLY"; CHECK_REPLY='1: stands'
+_lens
+assert_eq "[K16] a finding written as a string is asked again" "2" "$(_n lens)"
 LENS_REPLY="{\"score\":4,\"findings\":[$(_finding medium "a template turns the guard on")]}"; LENS_REPLY2=""
 
 # ── K6 ───────────────────────────────────────────────────────────────────────

@@ -61,6 +61,8 @@ _rl_check_parse() {
     declare -gA _RL_KNOCKED=(); _RL_CHECK_PROBLEM=""
     local -A seen=()
     local -a bad=()
+    # A line the model wrapped is read whole, as every judge's reply is (#2460).
+    zb_reply_join_v raw "$raw"
     while IFS= read -r l; do
         judge_reply_line_v l "$l"
         [[ "$l" =~ ^([0-9]+):[[:space:]]*(stands|knocked[[:space:]]+down)(.*)$ ]] || continue
@@ -72,7 +74,8 @@ _rl_check_parse() {
         if [[ "$rest" == *"| WHY:"* ]]; then why="${rest#*| WHY:}"; why="${why%%| QUOTE:*}"; fi
         why="${why#"${why%%[![:space:]]*}"}"; why="${why%"${why##*[![:space:]]}"}"
         [[ "$rest" == *"| QUOTE:"* ]] && { quote="${rest#*| QUOTE:}"; quote="${quote#"${quote%%[![:space:]]*}"}"; }
-        [[ -n "$quote" ]] && judge_quote_check_v w "$quote" "" "$repo" || continue
+        if [[ -z "$quote" ]]; then bad+=("finding $n is knocked down with no QUOTE: give the line of code that shows it cannot happen, or answer stands"); continue; fi
+        judge_quote_check_v w "$quote" "" "$repo" || continue
         qn="${quote#*|}"; qn="${qn#"${qn%%[![:space:]]*}"}"; qn="${qn%"${qn##*[![:space:]]}"}"
         on="${own[n-1]:-}"
         [[ -n "$on" && ( "$on" == *"$qn"* || "$qn" == *"$on"* ) ]] && continue
@@ -104,13 +107,13 @@ _RL_CHECK_RC=0 _RL_CHECK_NOTE=""
 _rl_check_v() {
     local -n _rlc="$1"; local norm="$2" lens="$3" out="$4" change="$5" cfp="$6" repo="$7"
     _rlc="$norm"; _RL_CHECK_RC=0; _RL_CHECK_NOTE=""
-    local count=0 list own="" l
+    local count=0 list ownq="" l
     # One jq: each finding as the check is shown it, one line a part.
     list="$(jq -r 'def one: tostring | gsub("[\r\n]+"; " ");
         .findings | to_entries[] | "### \(.key + 1)\nfile: \(.value.file | one)\nseverity: \(.value.severity | one)\nmessage: \(.value.message | one)\ntrigger: \(.value.trigger // "" | one)\nquote: \(.value.quote | one)\n"' <<< "$norm" 2>/dev/null)"
     while IFS= read -r l; do
         [[ "$l" == "### "* ]] && count=$(( count + 1 ))
-        [[ "$l" == "quote: "* ]] && own+="${l#quote: }"$'\n'
+        [[ "$l" == "quote: "* ]] && ownq+="${l#quote: }"$'\n'
     done <<< "$list"
     (( count > 0 )) || return 0
     # ADR-072 §4: kept while the findings and the change are unchanged.
@@ -119,7 +122,7 @@ _rl_check_v() {
     judge_fp_v fp "$eng"$'\n'"$list"$'\n'"$cfp"
     judge_kept_get_v kept "$kf" check "$fp"
     if [[ -n "$kept" ]]; then
-        _rl_check_parse "$kept" "$count" "$repo" "$own"
+        _rl_check_parse "$kept" "$count" "$repo" "$ownq"
         [[ -z "$_RL_CHECK_PROBLEM" ]] && reply="$kept"
     fi
     if [[ -z "$reply" ]]; then
@@ -135,7 +138,7 @@ _rl_check_v() {
             # ADR-051 §5: the call the manifest names `check`, as its persona.
             _r="$(ZBUILD_ROUTE_CALL=check route_to_model "${_RL_CHECK_TIER:-T2}" "$ask")" || _rc=$?
             [[ "$_rc" -eq 0 && -n "$_r" && "${_rl_interrupted:-0}" != 1 ]] || break
-            _rl_check_parse "$_r" "$count" "$repo" "$own"
+            _rl_check_parse "$_r" "$count" "$repo" "$ownq"
             if [[ -z "$_RL_CHECK_PROBLEM" ]]; then
                 reply="$_r"
                 judge_kept_put_one "$kf" check "$fp" "$_r"

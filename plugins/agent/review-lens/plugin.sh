@@ -99,7 +99,9 @@ _rl_quote_problem_v() {
     local -n _rqp="$1"; local _rqp_n=0 _rqp_f _rqp_q _rqp_w _rqp_old
     local -a _rqp_bad=()
     _rqp=""; _RL_QUOTE_FILES=()
-    [[ "$2" == *'"file"'* || "$2" == *'"quote"'* || "$2" == *'"message"'* ]] || return 0
+    # No findings, nothing to check; a finding of any form is read (a plain
+    # string has no quote or trigger — lens review on #2552).
+    [[ "$2" =~ \"findings\"[[:space:]]*:[[:space:]]*\[[[:space:]]*\] || "$2" != *'"findings"'* ]] && return 0
     while IFS=$'\037' read -r -d '' _rqp_f _rqp_q _rqp_t; do
         _rqp_n=$(( _rqp_n + 1 ))
         # #2552 (ADR-038): every finding says what makes it happen.
