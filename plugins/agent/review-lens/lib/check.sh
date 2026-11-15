@@ -51,6 +51,8 @@ EOF
 # finding with no line, or a line naming none. A knock-down whose quote is not
 # in the code is no knock-down: the finding stands.
 _rl_check_parse() {
+    # w: judge_quote_check_v's message, which a standing finding does not need.
+    # shellcheck disable=SC2034
     local raw="$1" count="$2" repo="$3" l n rest why quote w
     declare -gA _RL_KNOCKED=(); _RL_CHECK_PROBLEM=""
     local -A seen=()
@@ -66,6 +68,7 @@ _rl_check_parse() {
         if [[ "$rest" == *"| WHY:"* ]]; then why="${rest#*| WHY:}"; why="${why%%| QUOTE:*}"; fi
         why="${why#"${why%%[![:space:]]*}"}"; why="${why%"${why##*[![:space:]]}"}"
         [[ "$rest" == *"| QUOTE:"* ]] && { quote="${rest#*| QUOTE:}"; quote="${quote#"${quote%%[![:space:]]*}"}"; }
+        # A knock-down whose quote is not in the code leaves the finding standing.
         [[ -n "$quote" ]] && judge_quote_check_v w "$quote" "" "$repo" || continue
         _RL_KNOCKED[$n]="${why:-it cannot happen}"$'\x1f'"$quote"
     done <<< "$raw"

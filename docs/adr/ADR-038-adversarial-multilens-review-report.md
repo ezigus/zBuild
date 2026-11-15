@@ -1,6 +1,6 @@
 # ADR-038 — Adversarial multi-lens review report (evidence-fed, advisory)
 
-**Status:** Accepted (2026-06-19); amended 2026-11-09 (#2508: no planned scope is shown to a lens — design writes none); amended 2026-11-15 (#2548: each lens has its own job text; the persona is who does it)
+**Status:** Accepted (2026-06-19); amended 2026-11-09 (#2508: no planned scope is shown to a lens — design writes none); amended 2026-11-15 (#2548: each lens has its own job text; the persona is who does it); amended 2026-11-15 (#2552: every finding names its trigger; a check call tries to knock each lens's findings down)
 **Related** — dispositions below are **PLANNED** (the map lives in ADR-037 §6, executed in I13 / #979); **this PR edits no existing ADR**:
 - peer: ADR-037 (objective gates vs. semantic judgment); EPIC #966
 - supersede-planned: ADR-022, ADR-026
@@ -282,3 +282,13 @@ product-owner), L5 (the unused `security-lens` plugin is gone, the security lens
 `tests/unit/retired-impact-review-report-inputs-test.sh` RT3 (the job is the lens's own text, not its
 persona's); `plugins/agent/review-lens/tests/review-lens-loop-test.sh` R1b (each lens's job gives an
 example of each level); `plugins/agent/review-lens/tests/review-lens-test.sh` #1140-11, #1140-12.
+
+## Amendment (2026-11-15, #2552): every finding names its trigger; a check tries to knock it down
+
+On #1700 run 43663836927, 10 of 15 lens findings quoted a real line but described a case that cannot happen ("if the load guard is pre-set…", "a vendor-patched stat…"). The quote check (ADR-072 §3) proves the line exists, not the claim; nothing asked what makes the problem happen, and only the lens judged its own findings.
+
+- **Every finding names its `trigger`:** what makes it happen on a real run, as the lens's "Where these problems come from" says. A finding with none makes the reply unusable, asked again once, as a finding with no quote does. The finding a stage is sent shows it ("happens when: …").
+- **A check call tries to knock each lens's findings down.** In the lens's own stage, a second call (`check`, run as `quality-assurance`, ADR-051 §5) is shown only the findings — file, severity, message, trigger, quote — never the lens's reasoning. It answers each `<n>: stands`, or `<n>: knocked down | WHY | QUOTE: <file> | <line>` with the code that shows it cannot happen. A knock-down whose quote is in the code moves the finding to the lens result's `knocked_down`; it reaches no stage and does not count toward the lens's outcome. One whose quote is not there leaves it standing. A lens with no findings makes no check call. An answer that cannot be used, asked again once, leaves every finding standing (`review_lens.check_unusable`). The answer is kept while the findings and the change are unchanged (ADR-072 §4).
+- **The lens is asked for "each problem in the change you can say what makes happen, and quote the code that shows it".**
+
+Enforced by: `tests/unit/lens-check-test.sh` K1 (no trigger: asked again, then unusable), K2 (the routed finding shows its trigger), K3 (one check call, given each finding's parts; none without findings), K4 (knocked down: not routed, kept, the lens passes), K5 (a knock-down whose quote is not there: the finding stands), K6 (the check runs as quality-assurance), K7 (a kept check answer), K8 (the wording).

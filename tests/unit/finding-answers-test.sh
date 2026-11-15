@@ -91,7 +91,7 @@ assert_eq "[A5] a judging call is told none of it" "1" "$_a5_j"
 
 print_test_section "B1-B3: a finding not answered stays open"
 _P_SHOWN=$'Previous work\n- lens-sre-code finding 1 (opened by review_lenses): the write is silent\n- lens-sre-code finding 2 (opened by review_lenses): the jq error is hidden\n- issue-acceptance finding 1 (opened by issue-acceptance): R2 is not met\nmore'
-route_to_model() { printf '1' > "$TEST_TEMP_DIR/called"; return 0; }
+route_to_model() { zb_test_lens_check_answer "$2" && return 0; printf '1' > "$TEST_TEMP_DIR/called"; return 0; }
 rm -f "$TEST_TEMP_DIR/called"
 declare -a _ANS=()
 zb_answers_finish _ANS "$_P_SHOWN" $'Fixed it.\nANSWER lens-sre-code finding 1: done — the write emits an event'
@@ -115,7 +115,7 @@ unset -f route_to_model
 print_test_section "B4: build"
 (
     source "$REPO_ROOT/plugins/agent/build/plugin.sh" >/dev/null 2>&1
-    route_to_model() { printf '1' > "$TEST_TEMP_DIR/b4-called"; return 0; }
+    route_to_model() { zb_test_lens_check_answer "$2" && return 0; printf '1' > "$TEST_TEMP_DIR/b4-called"; return 0; }
     B4="$TEST_TEMP_DIR/b4"; mkdir -p "$B4"; artifact_dir="$B4"
     printf '%s\n' "$_P_SHOWN" | sed 's/lens-sre-code finding 1/lens-red-team-code finding 1/; s/lens-sre-code finding 2/lens-red-team-code finding 2/; /issue-acceptance/d' > "$B4/build-prompt.txt"
     output_summary_json="$B4/build-summary.json"; terminated_reason=done_sentinel files_changed_count=1 files_changed_json='["a.sh"]' iterations=1 repo_root="$TEST_TEMP_DIR"
@@ -145,19 +145,19 @@ source "$REPO_ROOT/plugins/agent/review-lens/plugin.sh"
 ART="$TEST_TEMP_DIR/artifacts"; mkdir -p "$ART"
 printf 'diff --git a/a.sh b/a.sh\n+x=1\n' > "$ART/diff.patch"; printf 'scope: all\n' > "$TEST_TEMP_DIR/scope-manifest.md"
 _lens() {  # <fail_on> <findings json>
-    route_to_model() { printf '%s' "$2" > "$TEST_TEMP_DIR/lens-prompt"; printf '%s' "{\"score\":7,\"findings\":$_FINDINGS}"; return 0; }
+    route_to_model() { zb_test_lens_check_answer "$2" && return 0; printf '%s' "$2" > "$TEST_TEMP_DIR/lens-prompt"; printf '%s' "{\"score\":7,\"findings\":$_FINDINGS}"; return 0; }
     rm -f "$ART/lens-performance.json" "$ART/lens-performance-judged.json"
     _FINDINGS="$2" _TPL_STAGE_FAIL_ON_review_lenses="$1" ZBUILD_CURRENT_STAGE=review_lenses \
         ZBUILD_REVIEW_LENS_ID=performance \
         _review_lens_run_inner performance "$TEST_TEMP_DIR/scope-manifest.md" "$ART/diff.patch" "$ART/lens-performance.json" "$ART" >/dev/null 2>&1 || true
 }
-_low='[{"quote":"x=1","file":"a.sh","category":"x","severity":"low","line":1,"message":"an extra state write a round","introduced":true,"fix":"code"}]'
+_low='[{"trigger":"a caller passes this on a normal run","quote":"x=1","file":"a.sh","category":"x","severity":"low","line":1,"message":"an extra state write a round","introduced":true,"fix":"code"}]'
 _lens "medium high critical" "$_low"
 assert_eq "[C1] a low finding does not fail the lens" "pass" "$(jq -r '.outcome' "$ART/lens-performance.json" 2>/dev/null)"
 assert_contains "[C1] ...but is sent on to the stages that fix code" "$(jq -r '.data.findings[0].text // ""' "$ART/lens-performance-code-result.json" 2>/dev/null)" "an extra state write a round"
 assert_eq "[C1] ...marked as not blocking" "false" "$(jq -r '.data.findings[0].blocking' "$ART/lens-performance-code-result.json" 2>/dev/null)"
 assert_eq "[C1] ...and the output it is in does not fail" "pass" "$(jq -r '.outcome' "$ART/lens-performance-code-result.json" 2>/dev/null)"
-_med='[{"quote":"x=1","file":"a.sh","category":"x","severity":"medium","line":1,"message":"two writes a round","introduced":true,"fix":"code"}]'
+_med='[{"trigger":"a caller passes this on a normal run","quote":"x=1","file":"a.sh","category":"x","severity":"medium","line":1,"message":"two writes a round","introduced":true,"fix":"code"}]'
 _lens "medium high critical" "$_med"
 assert_eq "[C1] a medium finding fails it, and blocks" "fail true" \
     "$(jq -r '.outcome' "$ART/lens-performance.json") $(jq -r '.data.findings[0].blocking' "$ART/lens-performance-code-result.json" 2>/dev/null)"

@@ -74,9 +74,9 @@ init_state "$STATE/pipeline-state.json" run-1 7 >/dev/null 2>&1
 # one finding the code must fix and one a test must fix.
 printf 'diff --git a/a.sh b/a.sh\n+x=1\n' > "$ART/diff.patch"
 printf 'scope: all\n' > "$TEST_TEMP_DIR/scope-manifest.md"
-_f() { printf '{"quote":"x=1","file":"a.sh","category":"x","severity":"high","line":1,"message":"%s","introduced":true,"fix":"%s"}' "$1" "$2"; }
+_f() { printf '{"trigger":"a caller passes this on a normal run","quote":"x=1","file":"a.sh","category":"x","severity":"high","line":1,"message":"%s","introduced":true,"fix":"%s"}' "$1" "$2"; }
 _FINDINGS="[$(_f "CODE-FIX the read is unchecked" code),$(_f "TEST-FIX the test sets a value the engine never writes" test)]"
-route_to_model() { printf '%s' "{\"score\":3,\"findings\":$_FINDINGS}"; return 0; }
+route_to_model() { zb_test_lens_check_answer "$2" && return 0; printf '%s' "{\"score\":3,\"findings\":$_FINDINGS}"; return 0; }
 _TPL_STAGE_FAIL_ON_review_lenses="medium high critical" ZBUILD_CURRENT_STAGE=review_lenses ZBUILD_REVIEW_LENS_ID=correctness \
     _review_lens_run_inner correctness "$TEST_TEMP_DIR/scope-manifest.md" "$ART/diff.patch" "$ART/lens-correctness.json" "$ART" >/dev/null 2>&1 || true
 _update_stage_status "$STATE/pipeline-state.json" review_lenses complete

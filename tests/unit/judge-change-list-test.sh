@@ -62,7 +62,7 @@ export ZBUILD_REPO_ROOT="$G"
 
 PROMPT="$TEST_TEMP_DIR/prompt.txt"; CALLS="$TEST_TEMP_DIR/calls"
 ANSWER=""
-route_to_model() { printf '%s' "$2" > "$PROMPT"; printf 'x\n' >> "$CALLS"; printf '%s\n' "$ANSWER"; }
+route_to_model() { zb_test_lens_check_answer "$2" && return 0; printf '%s' "$2" > "$PROMPT"; printf 'x\n' >> "$CALLS"; printf '%s\n' "$ANSWER"; }
 resolve_tier() { printf 'T2'; }
 stage_prompt_compose_parts() { printf '%s' "${@: -1}"; }
 _no_diff() {  # <label> <prompt>
@@ -123,7 +123,7 @@ assert_eq "[L4] nothing changed: the kept report is used" "0" "$(grep -c . "$CAL
 ( cd "$G" && printf 'keep\nNEW_LINE_THIRD\n' > core/a.sh && git commit -qam third ) >/dev/null 2>&1
 : > "$CALLS"; _lens
 assert_eq "[L4] a changed file's content changed: judged again" "1" "$(grep -c . "$CALLS")"
-ANSWER='{"score":4,"findings":[{"file":"core/a.sh","category":"logic","severity":"medium","line":2,"message":"the old guard is gone","quote":"OLD_LINE_REMOVED","introduced":true,"fix":"code"}]}'
+ANSWER='{"score":4,"findings":[{"trigger":"a caller passes this on a normal run","file":"core/a.sh","category":"logic","severity":"medium","line":2,"message":"the old guard is gone","quote":"OLD_LINE_REMOVED","introduced":true,"fix":"code"}]}'
 ( cd "$G" && printf 'keep\nNEW_LINE_FOURTH\n' > core/a.sh && git commit -qam fourth ) >/dev/null 2>&1
 : > "$CALLS"; _lens
 assert_eq "[L5] a quote of a line the change removed is found: no second ask" "1" "$(grep -c . "$CALLS")"
@@ -132,16 +132,16 @@ assert_eq "[L5] ...and the finding stands" "1" "$(jq -r '.findings | length' "$L
 # ── L7 / L8 ──────────────────────────────────────────────────────────────────
 print_test_section "L7/L8: a lens's quote of several lines (#2545)"
 ( cd "$G" && printf 'keep\nFIRST_OF_TWO\n  SECOND_OF_TWO\n' > core/a.sh && git commit -qam fifth ) >/dev/null 2>&1
-ANSWER='{"score":4,"findings":[{"file":"core/a.sh","category":"logic","severity":"medium","message":"two lines","quote":"FIRST_OF_TWO\n  SECOND_OF_TWO","introduced":true,"fix":"code"}]}'
+ANSWER='{"score":4,"findings":[{"trigger":"a caller passes this on a normal run","file":"core/a.sh","category":"logic","severity":"medium","message":"two lines","quote":"FIRST_OF_TWO\n  SECOND_OF_TWO","introduced":true,"fix":"code"}]}'
 : > "$CALLS"; _lens
 assert_eq "[L7] a quote of two lines of the file is found: no second ask" "1" "$(grep -c . "$CALLS")"
 assert_eq "[L7] ...and the finding stands" "1" "$(jq -r '.findings | length' "$LA/lens-correctness.json" 2>/dev/null)"
 ( cd "$G" && printf 'keep\nFIRST_OF_TWO\n  SECOND_OF_TWO\nx\n' > core/a.sh && git commit -qam sixth ) >/dev/null 2>&1
-ANSWER='{"score":4,"findings":[{"file":"core/a.sh","category":"logic","severity":"medium","message":"two lines","quote":"SECOND_OF_TWO\nFIRST_OF_TWO","introduced":true,"fix":"code"}]}'
+ANSWER='{"score":4,"findings":[{"trigger":"a caller passes this on a normal run","file":"core/a.sh","category":"logic","severity":"medium","message":"two lines","quote":"SECOND_OF_TWO\nFIRST_OF_TWO","introduced":true,"fix":"code"}]}'
 : > "$CALLS"; _lens
 assert_eq "[L8] two lines not in the file, in that order: asked again" "2" "$(grep -c . "$CALLS")"
 ( cd "$G" && printf 'keep\nassert_eq "[X] it passes" \\\n\t"0" "$((FAIL > 0))"\n' > core/a.sh && git commit -qam seventh ) >/dev/null 2>&1
-ANSWER='{"score":4,"findings":[{"file":"core/a.sh","category":"logic","severity":"medium","message":"a tautology","quote":"assert_eq \"[X] it passes\" \\\\\n\t\"0\" \"$((FAIL > 0))\"","introduced":true,"fix":"test"}]}'
+ANSWER='{"score":4,"findings":[{"trigger":"a caller passes this on a normal run","file":"core/a.sh","category":"logic","severity":"medium","message":"a tautology","quote":"assert_eq \"[X] it passes\" \\\\\n\t\"0\" \"$((FAIL > 0))\"","introduced":true,"fix":"test"}]}'
 : > "$CALLS"; _lens
 assert_eq "[L9] backslash, quote marks, \$ and a tab across two lines: no second ask" "1" "$(grep -c . "$CALLS")"
 assert_eq "[L9] ...and the finding stands" "1" "$(jq -r '.findings | length' "$LA/lens-correctness.json" 2>/dev/null)"

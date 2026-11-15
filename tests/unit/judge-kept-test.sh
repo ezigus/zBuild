@@ -56,7 +56,7 @@ export ZBUILD_REPO_ROOT="$XR"
 # each prompt, and lists $XR/scripts/cfg.sh as a file it opened.
 _N="$TEST_TEMP_DIR/n"; _P="$TEST_TEMP_DIR/p"
 _counting_judge() {
-    eval 'route_to_model() {
+    eval 'route_to_model() { zb_test_lens_check_answer "$2" && return 0;
         : stdin is not read
         local n; n=$(( $(cat "$_N") + 1 )); printf "%s" "$n" > "$_N"; printf "%s" "$2" > "$_P.$n"
         [[ -n "${ZBUILD_ROUTER_OPENED_FILE:-}" ]] && printf "%s\n" "$XR/scripts/cfg.sh" >> "$ZBUILD_ROUTER_OPENED_FILE"
@@ -119,7 +119,7 @@ print_test_section "K9: what the fingerprint depends on (review on #2465)"
     source "$REPO_ROOT/plugins/agent/design/plugin.sh"
     artifact_dir="$ZBUILD_STATE_DIR/artifacts"; rm -f "$artifact_dir/design-judged.json"
     _R=$'RQST-1: covered\nWORK-1: ok\n'
-    route_to_model() {
+    route_to_model() { zb_test_lens_check_answer "$2" && return 0;
         local n; n=$(( $(cat "$_N") + 1 )); printf "%s" "$n" > "$_N"
         [[ -n "${ZBUILD_ROUTER_OPENED_FILE:-}" ]] && printf "%s\n" "$XR/scripts" >> "$ZBUILD_ROUTER_OPENED_FILE"
         printf "%s" "$_R"
@@ -236,7 +236,7 @@ print_test_section "K8: a review lens"
     printf '%s\n' 'diff --git a/scripts/cfg.sh b/scripts/cfg.sh' '+refuse_missing_config() { [[ -f "$1" ]] || return 2; }' > "$ART/diff.patch"
     printf 'scope: all\n' > "$TEST_TEMP_DIR/k8-scope.md"
     _counting_judge _R
-    _R='{"score":5,"findings":[{"file":"scripts/cfg.sh","severity":"high","message":"exit code 2 is not documented","introduced":true,"quote":"|| return 2"}]}'
+    _R='{"score":5,"findings":[{"trigger":"a caller passes this on a normal run","file":"scripts/cfg.sh","severity":"high","message":"exit code 2 is not documented","introduced":true,"quote":"|| return 2"}]}'
     _lens() {
         printf 0 > "$_N"
         _TPL_STAGE_FAIL_ON_review_lenses="medium high critical" ZBUILD_CURRENT_STAGE=review_lenses ZBUILD_REVIEW_LENS_ID=red-team \
