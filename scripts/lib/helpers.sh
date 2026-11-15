@@ -14,21 +14,19 @@ _ZBUILD_HELPERS_LOADED=1
 # it instead of starting one more to read it (ADR-065 §5, round 9).
 _ZB_UMASK="$(umask)"
 
-# stat form probe, run once at load time (ADR-009 probe clause, Issue #1700).
-# GNU form is stat -c '%a'; BSD form is stat -f '%Lp'. GNU is tried first
-# (RQPRO-3). Result stored in _ZB_STAT_MODE_CMD ("-c" or "-f") so
-# _zb_target_mode_v calls stat exactly once per invocation, regardless of
-# $ZBUILD_PLATFORM.
-if stat -c '%a' /dev/null >/dev/null 2>&1; then
-    _ZB_STAT_MODE_CMD="-c"
-else
-    _ZB_STAT_MODE_CMD="-f"
-fi
-
 # Source compat first (Bash 5 check, platform detection)
 _ZBUILD_SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 # shellcheck source=./compat.sh
 source "$_ZBUILD_SCRIPT_DIR/compat.sh"
+
+# The stat form for a file's mode, probed once at load (ADR-009, #1700): GNU
+# `-c '%a'` first, else BSD `-f '%Lp'`. A form is taken only when it answers a
+# mode, so _zb_target_mode_v runs one stat a call, whatever ZBUILD_PLATFORM says.
+if [[ "$(stat -c '%a' /dev/null 2>/dev/null)" =~ ^[0-7]{3,4}$ ]]; then
+    _ZB_STAT_MODE_CMD="-c"
+else
+    _ZB_STAT_MODE_CMD="-f"
+fi
 
 # ─── Colors (NO_COLOR-aware, FORCE_COLOR override) ───────────────────────────
 # FORCE_COLOR=1 wins over the tty check so tests/CI can pin colored output

@@ -3,7 +3,7 @@
 # _zb_target_mode_v make tool-form decisions from a probe run once at load
 # time, not from ZBUILD_PLATFORM.
 #
-# Covers: DSPRB-1, DSPRB-2, DSPRB-3, DSPRB-4, DSPRB-5, DSDEL-1, DSADR-3
+# Covers: DSPRB-1, DSPRB-2, DSPRB-3, DSPRB-4, DSPRB-5, DSPRB-6, DSDEL-1, DSADR-3
 
 set -uo pipefail
 
@@ -19,107 +19,112 @@ setup_test_env "platform-probe"
 _real_sed="$(command -v sed)"
 _real_stat="$(command -v stat)"
 
-# ─── DSPRB-1: zbuild_sed_inplace works despite ZBUILD_PLATFORM=macos ─────────
+# ─── DSPRB-1: zbuild_sed_inplace works despite a wrong ZBUILD_PLATFORM ──────
 print_test_section "DSPRB-1: zbuild_sed_inplace works despite wrong ZBUILD_PLATFORM"
 
-# Given — a file containing text that the substitution expression will change;
-# ZBUILD_PLATFORM=macos is exported before compat.sh is sourced so that old
-# code (which reads ZBUILD_PLATFORM at call time) would pick `sed -i ''` (BSD),
-# which GNU sed rejects; new code uses the probe stored at load time and
-# ignores ZBUILD_PLATFORM entirely.
+# Given — a file the expression changes. Code that picks its sed -i form from
+# ZBUILD_PLATFORM takes the wrong form for one of the two names below on any
+# host: GNU sed reads `-i ''` as a file, BSD sed reads `-i` with no suffix as
+# taking the expression for one.
 _f1="$TEST_TEMP_DIR/sed-target.txt"
-printf 'old content\n' > "$_f1"
+for _wrong in macos linux; do
+    printf 'old content\n' > "$_f1"
+    (
+        unset _ZBUILD_COMPAT_LOADED || true
+        # shellcheck source=../../scripts/lib/compat.sh
+        source "$REPO_ROOT/scripts/lib/compat.sh"
+        ZBUILD_PLATFORM="$_wrong"
 
-(
-    export ZBUILD_PLATFORM=macos    # exported before sourcing compat.sh
-    unset _ZBUILD_COMPAT_LOADED || true
-    # shellcheck source=../../scripts/lib/compat.sh
-    source "$REPO_ROOT/scripts/lib/compat.sh"
-    # compat.sh overwrites ZBUILD_PLATFORM from uname on Linux CI; re-assert
-    # the wrong value so old code takes the wrong-platform branch at call time.
-    ZBUILD_PLATFORM=macos
+        # When — zbuild_sed_inplace is called with ZBUILD_PLATFORM set to that name
+        zbuild_sed_inplace 's/old/new/' "$_f1"
+    ) >/dev/null 2>&1; _dsprb1_rc=$?
 
-    # When — zbuild_sed_inplace is called with the wrong ZBUILD_PLATFORM set
-    zbuild_sed_inplace 's/old/new/' "$_f1"
-); _dsprb1_rc=$?
-
-# Then
-assert_eq "[DSPRB-1] exit code is 0 — file edited despite wrong ZBUILD_PLATFORM" \
-    "0" "$_dsprb1_rc"
-assert_eq "[DSPRB-1] the file content is changed as directed by the expression" \
-    "new content" "$(cat "$_f1")"
+    # Then
+    assert_eq "[DSPRB-1] ZBUILD_PLATFORM=$_wrong: the file is edited" \
+        "0|new content" "$_dsprb1_rc|$(cat "$_f1")"
+done
 
 # ─── DSPRB-2: _zb_target_mode_v returns valid mode despite wrong platform ─────
 print_test_section "DSPRB-2: _zb_target_mode_v returns valid mode despite wrong ZBUILD_PLATFORM"
 
-# Given — a file with known mode and a mock stat that makes the BSD -f form
-# return a wrong-but-valid-looking mode ("255").  Base code on ZBUILD_PLATFORM=macos
-# uses -f first and accepts 255 without trying the fallback.  New code uses the
-# probe (GNU -c form) and never calls -f, so the actual mode comes back.
+# Given — a file at mode 640, and a stat that answers the form this host does
+# not have with a wrong but valid-looking mode (255) for that file. Code that
+# picks its form from ZBUILD_PLATFORM takes the wrong form for one of the two
+# names below on any host, and gets 255.
 _f2="$TEST_TEMP_DIR/mode-target.txt"
 printf 'test\n' > "$_f2"
-chmod 644 "$_f2"
-_actual_mode="$("$_real_stat" -c '%a' "$_f2")"
-
+chmod 640 "$_f2"
 _mock2="$TEST_TEMP_DIR/mock-stat2"
 mkdir -p "$_mock2"
 cat > "$_mock2/stat" << EOF
 #!/usr/bin/env bash
-# BSD form (-f): return a wrong but valid-looking mode so the caller cannot
-# fall back and still get the right answer.
-if [[ "\${1:-}" == "-f" ]]; then echo "255"; exit 0; fi
-exec "$_real_stat" "\$@"
+out="\$("$_real_stat" "\$@" 2>/dev/null)"; rc=\$?
+if [[ "\${*: -1}" == "$_f2" && ! "\$out" =~ ^[0-7]{3,4}\$ ]]; then echo 255; exit 0; fi
+printf '%s\n' "\$out"; exit "\$rc"
 EOF
 chmod +x "$_mock2/stat"
 
-# Given — ZBUILD_PLATFORM=macos is exported before sourcing helpers.sh;
-# helpers.sh sources compat.sh, which overwrites on Linux CI; after sourcing
-# the wrong value is re-asserted so old code (reading at call time) calls
-# stat -f (mock returns "255"); new code uses the probe result.
-_dsprb2_mode=$(
-    unset _ZBUILD_COMPAT_LOADED _ZBUILD_HELPERS_LOADED || true
-    export PATH="$_mock2:$PATH"
-    export ZBUILD_PLATFORM=macos    # exported before sourcing helpers.sh
-    # shellcheck source=../../scripts/lib/helpers.sh
-    source "$REPO_ROOT/scripts/lib/helpers.sh"
-    # helpers.sh sources compat.sh, which sets ZBUILD_PLATFORM=linux on Linux CI;
-    # re-assert the wrong value so old code takes the wrong-platform branch at call time.
-    ZBUILD_PLATFORM=macos
-    _mode_out=""
+for _wrong in macos linux; do
+    _dsprb2_mode=$(
+        unset _ZBUILD_COMPAT_LOADED _ZBUILD_HELPERS_LOADED || true
+        export PATH="$_mock2:$PATH"
+        # shellcheck source=../../scripts/lib/helpers.sh
+        source "$REPO_ROOT/scripts/lib/helpers.sh"
+        ZBUILD_PLATFORM="$_wrong"
+        _mode_out=""
 
-    # When — _zb_target_mode_v is called with the wrong ZBUILD_PLATFORM set
-    _zb_target_mode_v _mode_out "$_f2"
-    printf '%s' "$_mode_out"
-)
+        # When — _zb_target_mode_v is called with ZBUILD_PLATFORM set to that name
+        _zb_target_mode_v _mode_out "$_f2"
+        printf '%s' "$_mode_out"
+    )
 
-# Then
-assert_contains_regex "[DSPRB-2] the nameref variable matches ^[0-7]{3,4}$" \
-    "$_dsprb2_mode" "^[0-7]{3,4}$"
-assert_eq "[DSPRB-2] mode matches actual mode (not mock BSD value '255')" \
-    "$_actual_mode" "$_dsprb2_mode"
+    # Then
+    assert_eq "[DSPRB-2] ZBUILD_PLATFORM=$_wrong: the file's own mode, not the wrong form's 255" \
+        "640" "$_dsprb2_mode"
+done
 
-# ─── DSPRB-3: stat probe encodes GNU form at load time ────────────────────────
-print_test_section "DSPRB-3: stat probe uses GNU -c form when host stat supports it"
+# ─── DSPRB-3: the stat probe tries the GNU form first ────────────────────────
+print_test_section "DSPRB-3: the stat probe tries the GNU -c form first"
 
-# Given — scripts/lib/helpers.sh is sourced on a host where stat -c '%a'
-# succeeds on a known path (Linux CI always satisfies this).
+# Given — a stat that answers a mode for either form, so only the order the
+# probe tries them in decides.
+_mock3="$TEST_TEMP_DIR/mock-stat3"
+mkdir -p "$_mock3"
+printf '#!/usr/bin/env bash\necho 644\n' > "$_mock3/stat"
+chmod +x "$_mock3/stat"
 
-# When — source helpers.sh in a subshell and inspect the stat probe module
-# variable _ZB_STAT_MODE_CMD immediately after sourcing, before any call to
-# _zb_target_mode_v.
+# When — helpers.sh is sourced and the probe's choice read before any call
 _dsprb3_cmd=$(
     unset _ZBUILD_COMPAT_LOADED _ZBUILD_HELPERS_LOADED || true
+    export PATH="$_mock3:$PATH"
     # shellcheck source=../../scripts/lib/helpers.sh
     source "$REPO_ROOT/scripts/lib/helpers.sh"
     printf '%s' "${_ZB_STAT_MODE_CMD:-}"
 )
 
-# Then — _ZB_STAT_MODE_CMD is non-empty and encodes the GNU -c form, not BSD -f.
-# Base code: no probe → _ZB_STAT_MODE_CMD unset → empty → "-c" absent → FAIL.
-# New code: probe runs at load time, tries -c first (RQPRO-3), succeeds on
-# Linux CI → stores the -c form in _ZB_STAT_MODE_CMD → assertion passes.
-assert_contains "[DSPRB-3] the stat probe encodes the GNU -c form (not BSD -f)" \
-    "$_dsprb3_cmd" "-c"
+# Then
+assert_eq "[DSPRB-3] the probe chose the GNU -c form" "-c" "$_dsprb3_cmd"
+
+# ─── DSPRB-6: the stat probe takes a form only when it answers a mode ───────
+print_test_section "DSPRB-6: a -c form that exits 0 but answers no mode is not chosen"
+
+# Given — a stat whose -c form exits 0 but prints no mode (a shim)
+_mock6="$TEST_TEMP_DIR/mock-stat6"
+mkdir -p "$_mock6"
+printf '#!/usr/bin/env bash\n[[ "$1" == -c ]] && { echo "File: x"; exit 0; }\necho 644\n' > "$_mock6/stat"
+chmod +x "$_mock6/stat"
+
+# When — helpers.sh is sourced and the probe's choice read
+_dsprb6_cmd=$(
+    unset _ZBUILD_COMPAT_LOADED _ZBUILD_HELPERS_LOADED || true
+    export PATH="$_mock6:$PATH"
+    # shellcheck source=../../scripts/lib/helpers.sh
+    source "$REPO_ROOT/scripts/lib/helpers.sh"
+    printf '%s' "${_ZB_STAT_MODE_CMD:-}"
+)
+
+# Then
+assert_eq "[DSPRB-6] the probe chose the -f form" "-f" "$_dsprb6_cmd"
 
 # ─── DSPRB-4: exactly one stat call per _zb_target_mode_v invocation ──────────
 print_test_section "DSPRB-4: each _zb_target_mode_v runs exactly one stat command"
