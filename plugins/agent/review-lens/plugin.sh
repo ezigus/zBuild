@@ -103,7 +103,10 @@ _rl_quote_problem_v() {
     while IFS=$'\037' read -r -d '' _rqp_f _rqp_q _rqp_t; do
         _rqp_n=$(( _rqp_n + 1 ))
         # #2552 (ADR-038): every finding says what makes it happen.
-        [[ -n "${_rqp_t//[[:space:]]/}" ]] || _rqp_bad+=("finding $_rqp_n has no trigger: say what makes it happen on a real run")
+        # Filler is no trigger (lens review on #2552).
+        local _rqp_tl="${_rqp_t,,}"; _rqp_tl="${_rqp_tl//[[:space:].]/}"
+        [[ -n "$_rqp_tl" && ! "$_rqp_tl" =~ ^(unknown|n/a|na|none|tbd|-+|null|\[\]|\{\})$ ]] \
+            || _rqp_bad+=("finding $_rqp_n has no trigger: say what makes it happen on a real run")
         [[ -n "$_rqp_f" && "$_rqp_f" != unknown ]] && _RL_QUOTE_FILES+=("$4/$_rqp_f")
         if [[ -z "${_rqp_q//[[:space:]]/}" ]]; then _rqp_bad+=("finding $_rqp_n has no quote"); continue; fi
         judge_quote_check_v _rqp_w "$_rqp_f | $_rqp_q" "" "$4" && continue
@@ -539,6 +542,15 @@ _review_lens_run_inner() {
     # #2552 (ADR-038): a second call tries to knock each finding down; one it
     # does is kept under knocked_down and reaches no stage.
     _rl_check_v normalized "$normalized" "$lens" "$out" "$_rl_change" "$_rl_cfp" "$_rl_repo"
+    # A check cut short ends the lens as its own call would (lens review on #2552).
+    if [[ "$_RL_CHECK_RC" -eq 130 ]]; then
+        [[ "${_rl_interrupted:-0}" == "1" ]] || _review_lens_write_result "$out" interrupted "signal_interrupt"
+        return 130
+    fi
+    if [[ "$_RL_CHECK_RC" -eq 10 ]]; then
+        _review_lens_write_result "$out" out_of_turns "the check of the lens's findings ran out of turns"
+        return 10
+    fi
 
     # Primary output (manifest provides.outputs, primary:true) is
     # lens-${ZBUILD_REVIEW_LENS_ID}.json — here "$out" resolves to
@@ -587,6 +599,12 @@ _review_lens_run_inner() {
     findings_count="$(printf '%s' "$normalized" | jq '.findings | length' 2>/dev/null || echo 0)"
     local _rl_head _rl_body
     _rl_summary_head_v _rl_head "$lens" "$normalized" _rl_body
+    # #2552: what the check knocked down reaches no stage — a person sees it here.
+    if [[ "$normalized" == *'"knocked_down":[{'* ]]; then
+        local _rl_kd; _rl_kd="$(jq -r '.knocked_down[] | "- knocked down by the check: \(.message) — \(.why)"' <<< "$normalized" 2>/dev/null || true)"
+        [[ -n "$_rl_kd" ]] && _rl_body+="${_rl_body:+$'\n'}$_rl_kd"
+    fi
+    [[ -n "$_RL_CHECK_NOTE" ]] && _rl_body+="${_rl_body:+$'\n'}- $_RL_CHECK_NOTE"
     stage_summary_write "$artifact_dir/lens-${lens}-summary.md" "review-lens-${lens}" "$_rl_outcome" \
         "$_rl_head" "${_rl_body:+$_rl_body$'\n'}- score: $score"
     emit_event "plugin.result" "plugin=review-lens" \

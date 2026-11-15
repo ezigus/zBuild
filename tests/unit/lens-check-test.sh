@@ -20,6 +20,15 @@
 #             unchanged
 # K8 [change] the lens is asked for each problem it can say what makes happen,
 #             with the code that shows it
+# K9 [change] a knock-down that quotes the finding's own line shows nothing:
+#             the finding stands (lens review on #2552)
+# K10 [change] a finding knocked down is named, with why, in the lens's summary
+#             — a person sees what no stage is sent
+# K11 [change] a knock-down quote must be a whole line of the file, and not
+#             overlap the finding's own: a fragment like "return 0" shows nothing
+# K12 [change] a check call cut short by a signal or its turn limit ends the
+#             lens interrupted / out_of_turns, as the lens's own call does
+# K13 [change] a trigger that is filler ("unknown", "n/a") is no trigger
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -55,13 +64,13 @@ printf 'diff --git a/core/x.sh b/core/x.sh\n+guard_off() { :; }\n' > "$ART/diff.
 # again); the check call answers $CHECK_REPLY. Each call is logged with the
 # call it was (ZBUILD_ROUTE_CALL) and the persona it would run as.
 CALLS="$TEST_TEMP_DIR/calls"
-LENS_REPLY="" LENS_REPLY2="" CHECK_REPLY=""
+LENS_REPLY="" LENS_REPLY2="" CHECK_REPLY="" CHECK_RC=0
 route_to_model() {
     local kind=lens
     [[ "$2" == *"Your job: for each finding below, try to show that it cannot happen"* ]] && kind=check
     printf '%s %s %s\n' "$kind" "${ZBUILD_ROUTE_CALL:-main}" "$(basename "$(resolve_persona review_lenses 2>/dev/null)")" >> "$CALLS"
     printf '%s' "$2" > "$TEST_TEMP_DIR/prompt-$kind"
-    if [[ "$kind" == check ]]; then printf '%s\n' "$CHECK_REPLY"
+    if [[ "$kind" == check ]]; then printf '%s\n' "$CHECK_REPLY"; return "$CHECK_RC"
     elif [[ -n "$LENS_REPLY2" && "$(grep -c '^lens ' "$CALLS")" -gt 1 ]]; then printf '%s\n' "$LENS_REPLY2"
     else printf '%s\n' "$LENS_REPLY"; fi
 }
@@ -117,6 +126,43 @@ CHECK_REPLY='1: knocked down | WHY: it cannot happen | QUOTE: core/x.sh | a line
 _lens
 assert_contains "[K5] a knock-down whose quote is not in the code: the finding stands" "$(_routed)" "guard_off turns the safety check off"
 assert_eq "[K5] ...and fails the lens" "fail" "$(_out .outcome)"
+
+# ── K9 / K10 ─────────────────────────────────────────────────────────────────
+print_test_section "K9/K10: knock-downs a person can see, and one that shows nothing"
+CHECK_REPLY='1: knocked down | WHY: already guarded | QUOTE: core/x.sh | guard_off() { :; }'
+_lens
+assert_contains "[K9] a knock-down quoting the finding's own line: the finding stands" "$(_routed)" "guard_off turns the safety check off"
+CHECK_REPLY='1: knocked down | WHY: the line after it exits when SAFE is unset | QUOTE: core/x.sh | [[ -n "$SAFE" ]] || exit 1'
+_lens
+_sum="$(cat "$ART/lens-red-team-summary.md" 2>/dev/null)"
+assert_contains "[K10] the summary names the knocked-down finding" "$_sum" "guard_off turns the safety check off"
+assert_contains "[K10] ...and why it was knocked down" "$_sum" "exits when SAFE is unset"
+
+# ── K11 ──────────────────────────────────────────────────────────────────────
+print_test_section "K11: a knock-down quotes a whole line, not the finding's own"
+CHECK_REPLY='1: knocked down | WHY: it exits | QUOTE: core/x.sh | || exit 1'
+_lens
+assert_contains "[K11] a fragment of a line: the finding stands" "$(_routed)" "guard_off turns the safety check off"
+CHECK_REPLY='1: knocked down | WHY: already guarded | QUOTE: core/x.sh | guard_off() {'
+_lens
+assert_contains "[K11] a quote inside the finding's own: the finding stands" "$(_routed)" "guard_off turns the safety check off"
+
+# ── K12 ──────────────────────────────────────────────────────────────────────
+print_test_section "K12: the check cut short"
+CHECK_REPLY='' CHECK_RC=130
+_lens
+assert_eq "[K12] a signal during the check: the lens is interrupted" "interrupted" "$(_out .outcome)"
+CHECK_RC=10
+_lens
+assert_eq "[K12] the check's turn limit: out_of_turns" "out_of_turns" "$(_out .outcome)"
+CHECK_RC=0
+
+# ── K13 ──────────────────────────────────────────────────────────────────────
+print_test_section "K13: a filler trigger"
+LENS_REPLY="{\"score\":4,\"findings\":[$(_finding medium "unknown")]}"; LENS_REPLY2="$LENS_REPLY"; CHECK_REPLY='1: stands'
+_lens
+assert_eq "[K13] a trigger of 'unknown' is asked again" "2" "$(_n lens)"
+LENS_REPLY="{\"score\":4,\"findings\":[$(_finding medium "a template turns the guard on")]}"; LENS_REPLY2=""
 
 # ── K6 ───────────────────────────────────────────────────────────────────────
 print_test_section "K6: the check runs as quality-assurance"
