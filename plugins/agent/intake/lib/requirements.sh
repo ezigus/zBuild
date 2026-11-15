@@ -65,7 +65,10 @@ every later stage sees only this list, never the issue's names.
 EOF
     # #2460, #2462: a list from the last run is where the work starts, and its
     # ids never move.
-    [[ -n "${_IREQ_PREV_SHOWN:-}" ]] && cat <<'EOF'
+    # #2550 (ADR-069 §1): the numbers, counted by the function intake's id
+    # check uses.
+    local _idl=""; zb_ids_highest_line_v _idl "${_IREQ_PREV_IDS:-}" "${_IREQ_PREV_REMOVED:-}" "$_IREQ_PX" requirement
+    [[ -n "${_IREQ_PREV_SHOWN:-}" ]] && cat <<EOF
 
 Your list from the last run is shown below the issue, each requirement with its
 id: start from it.
@@ -73,13 +76,13 @@ id: start from it.
 - A requirement shown without an id gets one.
 - Leave out any the issue no longer asks for, and say why on its own line:
   REMOVED: <id> — <why>
-- A new requirement's number is one more than the highest its code has ever
-  had, the removed ids counted. Never use a removed id again.
+- $_idl Never use a removed id again.
 EOF
     return 0
 }
 
 _ireq_check_own() {
+    local _idl=""; zb_ids_highest_line_v _idl "${_IREQ_CHECK_IDS:-}" "${_IREQ_CHECK_RM:-}" "$_IREQ_PX" requirement
     cat <<EOF
 Your job: check a list of requirements against the issue it was taken from.
 Name every requirement the issue states that the list misses, in the issue's
@@ -97,8 +100,7 @@ write it as LIMIT: <id> Do not <what the change must not do, in the issue's
 words>, keeping its "Do not" (or "Never"). The id is ${_IREQ_PX}, then
 a code of 3 or 4 capital letters or digits, starting with a letter, that says
 what the requirement is about, a dash, and a number: ${_IREQ_PX}LOOP-1. A requirement about the same
-thing as a listed one shares its code, with the number one more than the
-highest that code has had, the removed ids counted. Never use an id the list or
+thing as a listed one shares its code. $_idl Never use an id the list or
 the issue already writes, or a removed one.
 When a requirement refers to another of the issue's items by the issue's own
 name for it (R1, R1–R5), write the ids of the requirements it means instead:
@@ -337,6 +339,7 @@ _intake_requirements_json_v() {
         _rm_lines+="- ${rm_ids[i]} — ${_IREQ_PREV_TEXT[${rm_ids[i]}]:-} (removed: ${rm_why[i]})"$'\n'
     done
     [[ -n "${_removed_now// }" ]] && listed+=$'\n'"ALREADY REMOVED (not requirements; never use their ids again):"$'\n'"$_rm_lines"
+    local _IREQ_CHECK_IDS="${ids[*]+${ids[*]}}" _IREQ_CHECK_RM="$_removed_now"
     prompt="$(stage_prompt_compose_text --fresh "$(_ireq_check_own)" \
         "ISSUE:"$'\n'"$issue"$'\n\n'"THE LIST:"$'\n'"$listed" "$(_ireq_limits)")" \
         || { _INTAKE_REQ_OUTCOME=misconfigured; return 1; }

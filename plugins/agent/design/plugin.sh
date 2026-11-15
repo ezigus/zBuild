@@ -206,6 +206,12 @@ _design_stage_run_inner() {
     # #2035 run 37289704344 kept an untested design in 1 second.
 
     local prompt_input_file="$artifact_dir/design-prompt.txt"
+    # #2550 (ADR-069 §1): new SPEC numbers from the last design that passed,
+    # counted by the function design's id check uses — the prompt states no
+    # rule of its own.
+    local _id_line="" _id_pa="" _id_pr=""
+    [[ -s "$output_design_md" ]] && _dck_block_ids_v _id_pa _id_pr "$(extract_acceptance_block "$output_design_md" 2>/dev/null)"
+    zb_ids_highest_line_v _id_line "$_id_pa" "$_id_pr" "$_DCK_ID_PREFIX" SPEC
 
     # The persona (ADR-051) reaches the model through the provider, not this
     # text: the stage writes only its own job.
@@ -251,14 +257,12 @@ The design document MUST include:
    The id describes the SPEC: ${_DCK_ID_PREFIX}, then 3 or 4 capital letters or digits,
    starting with a letter, that say what it is about, a dash, and a number —
    ${_DCK_ID_PREFIX}LOOP-1 for a SPEC about loop state. The id is also the tag its test
-   carries, $(acceptance_spec_tag ${_DCK_ID_PREFIX}LOOP-1 2>/dev/null || printf '[%sLOOP-1]' "$_DCK_ID_PREFIX"), so it must be new to the repository:
-   - A new SPEC's number is one more than the highest number already used
-     with the same letters in any test file in the repository. If tests
-     already hold ${_DCK_ID_PREFIX}LOOP-1 and ${_DCK_ID_PREFIX}LOOP-3, the new one is ${_DCK_ID_PREFIX}LOOP-4, and the
-     next is ${_DCK_ID_PREFIX}LOOP-5.
+   carries, $(acceptance_spec_tag ${_DCK_ID_PREFIX}LOOP-1 2>/dev/null || printf '[%sLOOP-1]' "$_DCK_ID_PREFIX"):
+   - ${_id_line}
    - A SPEC you keep keeps its id.
-   - A SPEC you drop gets a line \`REMOVED: <id> — <why>\`, kept in every later
-     design, so its id is never used again.
+   - REMOVED: only for a SPEC in the last design that passed — one you drop
+     gets a line \`REMOVED: <id> — <why>\`, kept in every later design. An id
+     that only a rejected try wrote is not taken: write no REMOVED line for it.
    - Never use one of the issue's requirement ids as a SPEC id.
    A design written with old ids (SPEC-1, or ids not starting with ${_DCK_ID_PREFIX}) gives
    each SPEC a new id once; the old ids need no REMOVED line.

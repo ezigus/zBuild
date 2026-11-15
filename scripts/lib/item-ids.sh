@@ -31,6 +31,43 @@ zb_id_new_form() {
     [[ -n "${2:-}" && "${1:-}" =~ ^(${2}[A-Z][A-Z0-9]{2,3})-([1-9][0-9]*)$ ]]
 }
 
+# _zb_ids_highest_v <assoc> <ids> <prefix> — each code's highest number among
+# <ids> of the new form, into <assoc> (code → number). The one count both the
+# id check and a stage's prompt read (#2550): the prompt states no rule of its
+# own, so the two cannot disagree.
+_zb_ids_highest_v() {
+    local -n _zih="$1"; local id
+    for id in $2; do
+        zb_id_new_form "$id" "$3" || continue
+        (( BASH_REMATCH[2] > ${_zih[${BASH_REMATCH[1]}]:-0} )) && _zih[${BASH_REMATCH[1]}]="${BASH_REMATCH[2]}"
+    done
+    return 0
+}
+
+# zb_ids_highest_line_v <out> <prev_active> <prev_removed> <prefix> <noun> —
+# the line a stage's prompt gives its model for numbering new ids (#2550,
+# ADR-069 §1): each code's highest number in the last list, removed ones
+# counted — what zb_ids_check_v holds a new id to.
+zb_ids_highest_line_v() {
+    local -n _zhl="$1"; local -A _h=(); local c list="" i j t
+    local -a codes=()
+    _zb_ids_highest_v _h "$2 $3" "$4"
+    # In order, sorted in the shell: no process (ADR-065).
+    codes=("${!_h[@]}")
+    for (( i = 1; i < ${#codes[@]}; i++ )); do
+        t="${codes[i]}"; j=$i
+        while (( j > 0 )) && [[ "${codes[j-1]}" > "$t" ]]; do codes[j]="${codes[j-1]}"; j=$(( j - 1 )); done
+        codes[j]="$t"
+    done
+    for c in ${codes[@]+"${codes[@]}"}; do list+="${list:+, }$c ${_h[$c]}"; done
+    if [[ -z "$list" ]]; then
+        _zhl="No $5 id is taken yet: every code starts at 1 (${4}LOOP-1)."
+    else
+        _zhl="The highest number each code has had, removed ones counted: $list. A new $5 with one of these codes takes the next number; a new code starts at 1."
+    fi
+    return 0
+}
+
 # zb_ids_check_v <out> <prev_active> <prev_removed> <new_active> <new_removed>
 #                <text> <prefix> [carry] [tried]
 # Every rule an id list breaks, one entry each in array <out> ("<CODE> <id>
@@ -54,11 +91,7 @@ zb_ids_check_v() {
     local id code num seen=" " hi
     local -A _hi=() _k=()
     _zic=()
-    for id in $2 $3; do
-        zb_id_new_form "$id" "$px" || continue
-        code="${BASH_REMATCH[1]}"; num="${BASH_REMATCH[2]}"
-        (( num > ${_hi[$code]:-0} )) && _hi[$code]="$num"
-    done
+    _zb_ids_highest_v _hi "$2 $3" "$px"
     # How many new ids each code takes: k new ones are exactly the k numbers
     # after its highest, in any order (distinct, so no gap is left).
     for id in $na; do
