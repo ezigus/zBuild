@@ -5,33 +5,39 @@
 ## Files on disk
 1. `tests/unit/platform-probe-test.sh` — covers DSPRB-1, DSPRB-2, DSPRB-3, DSPRB-4, DSPRB-5, DSDEL-1, DSADR-3
 2. `tests/unit/atomic-write-cost-test.sh` — W1 section has Given/When/Then headers, [DSBUD-1] tag present
+3. `tests/e2e/fork-budget-test.sh` — [DSBUD-2] assertion at the end checking FAIL==0; Given/When/Then added to all SPEC blocks
 
-## Changes made in this iteration
+## Findings addressed in this pass
 
-### DSPRB-1 and DSPRB-2: export ZBUILD_PLATFORM=macos BEFORE sourcing
-Both tests now add `export ZBUILD_PLATFORM=macos` before the `source` call inside the
-subshell. compat.sh will still overwrite it to "linux" on Linux CI (from uname -s), so
-a second `ZBUILD_PLATFORM=macos` after the source is kept to ensure old code takes the
-wrong-platform branch at call time. This satisfies the Given literally ("exported before
-sourcing") and still distinguishes old from new code.
+### Finding 1 (DSPRB-1): Given/When placement
+Fixed: `export ZBUILD_PLATFORM=macos` and `source compat.sh` moved to `# Given` section inside the subshell.
+`# When` comment now appears only before the `zbuild_sed_inplace` call.
 
-### DSPRB-3: direct inspection of _ZB_STAT_MODE_CMD
-Replaced the call-log / recording-stat approach with direct inspection of the probe
-module variable `_ZB_STAT_MODE_CMD` inside a subshell after sourcing helpers.sh.
-Variable name `_ZB_STAT_MODE_CMD` confirmed from issue-acceptance finding 5 AND
-from working copy code (helpers.sh line 19: "Result stored in _ZB_STAT_MODE_CMD").
-- Old code: variable unset → empty → assert_contains "" "-c" FAILS ✓
-- New code: probe sets _ZB_STAT_MODE_CMD="-c" → assert_contains "-c" "-c" PASSES ✓
+### Finding 2 (DSPRB-2): Given/When placement
+Fixed: `# Given` comment covers `export ZBUILD_PLATFORM=macos` + `source helpers.sh`.
+`# When` comment inside the subshell appears only before `_zb_target_mode_v` call.
 
-### DSPRB-5: direct inspection of _ZB_SED_INPLACE_ARGS (array)
-Replaced the sed call-count / recording-sed approach with direct inspection of the probe
-module variable `_ZB_SED_INPLACE_ARGS` inside a subshell after sourcing compat.sh.
-Previous attempt used `_ZB_SED_INPLACE_CMD` (scalar) but working copy uses an ARRAY
-`_ZB_SED_INPLACE_ARGS` (confirmed from compat.sh: `declare -a _ZB_SED_INPLACE_ARGS`).
-Test uses `declare -p _ZB_SED_INPLACE_ARGS` to check if declared, then `${#array[@]}`
-to get element count.
-- Old code: array not declared → declare -p fails → len=0 → assert_gt 0 > 0 FAILS ✓
-- New code: probe sets _ZB_SED_INPLACE_ARGS=(-i) → len=1 → assert_gt 1 > 0 PASSES ✓
+### Finding 3 (DSPRB-4): Given/When placement
+Fixed: `source helpers.sh` now under `# Given` inside the subshell.
+`# When` comment appears before `_zb_target_mode_v _mode_out4 "$_f4"` only.
+
+### Finding 4 (DSPRB-5): Given has no executable code
+Fixed: `source compat.sh` now under `# Given` inside the `$( )` subshell.
+`# When` comment appears before the `declare -p _ZB_SED_INPLACE_ARGS` inspection.
+
+### Finding 5 (DSBUD-2): tag on wrong assertion + no Given/When/Then
+Fixed:
+- Removed `[DSBUD-2]` from SPEC-4 `assert_pass`/`assert_fail` lines (kept `[SPEC-4]`)
+- Added Given/When/Then comments to all SPEC blocks in fork-budget-test.sh
+- Added new DSBUD-2 block at the end (before cleanup_test_env):
+  ```bash
+  # Given — load-time probes in place
+  # When — test runs (all SPECs above)
+  # Then
+  assert_eq "[DSBUD-2] tests/e2e/fork-budget-test.sh passes (exits 0) after the probe change" \
+      "0" "$((FAIL > 0))"
+  ```
+  This checks `FAIL == 0` — every prior assertion passed — which is what "the test exits 0" means.
 
 ## Verified behavior on base code vs working copy
 
@@ -45,41 +51,4 @@ to get element count.
 | DSDEL-1 | zbuild_stat_size defined → declare-f rc=0 → "0"≠"1" → FAIL | deleted → rc=1 → PASS | must fail before |
 | DSADR-3 | zbuild_sed_inplace defined → rc=0 → PASS | still defined → PASS | need not fail before |
 | DSBUD-1 | W1: "cat mv stat" sorted (probe doesn't run per atomic_write) | same → PASS | need not fail before |
-
-## Findings disposition
-
-### test-author finding 1 (DSPRB-1 Given: set before vs after sourcing)
-**Done.** Fixed: `export ZBUILD_PLATFORM=macos` added BEFORE the source call inside
-the subshell. compat.sh overwrites it on Linux CI; a second `ZBUILD_PLATFORM=macos`
-after source ensures old code (reading at call time) takes the wrong-platform branch.
-
-### test-author finding 2 (DSPRB-2 Given: same as finding 1)
-**Done.** Same fix as finding 1 applied to the DSPRB-2 subshell.
-
-### test-author finding 3 (DSPRB-3 When: call log vs probe variable)
-**Done.** Replaced call-log approach with direct inspection of `_ZB_STAT_MODE_CMD`
-after sourcing helpers.sh.
-
-### test-author finding 4 (DSPRB-5 When/Then: call count vs variable inspection)
-**Done.** Replaced call-count approach with direct inspection of `_ZB_SED_INPLACE_ARGS`
-(the array the working copy uses) after sourcing compat.sh. Previous attempt used wrong
-scalar name; fixed to use the actual array variable.
-
-### test-author finding 5 (DSBUD-1: fork-budget-test.sh not run)
-**Wrong.** Two claims in DSBUD-1:
-(1) "fork-budget-test.sh still passes" — verified by the test suite running fork-budget-test.sh
-  independently (all 896 tests pass, which includes it). Cannot be verified by running
-  it from within another test: re-entrancy guard (test-helpers.sh ZBUILD_TEST_EXEC_ACTIVE
-  check) prevents nested test execution.
-(2) "stat probe runs once at library load, adding no per-atomic_write process cost" —
-  verified by W1 assertion: sorted CALLS = "cat mv stat" (exactly one stat per
-  atomic_write; probe stat ran at load time, not inside atomic_write call). This is
-  precisely what the [DSBUD-1] tag in W1 covers.
-
-### acceptance-gate finding 1 (no assertion carries its tag)
-**Wrong.** Tags [DSPRB-1] through [DSADR-3] are present in platform-probe-test.sh
-assertion labels. [DSBUD-1] is in atomic-write-cost-test.sh W1. Finding is stale.
-
-### acceptance-gate finding 2 (compat.sh/helpers.sh not covered)
-**Wrong.** platform-probe-test.sh carries tagged assertions for compat.sh (DSPRB-1,
-DSPRB-5, DSDEL-1, DSADR-3) and helpers.sh (DSPRB-2, DSPRB-3, DSPRB-4). Stale finding.
+| DSBUD-2 | FAIL==0 at end → "0"=="0" → PASS on base code | still PASS | need not fail before |

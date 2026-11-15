@@ -2,6 +2,7 @@
   "wiring_files": [],
   "owned_files": {
     "test-author": [
+      "tests/e2e/fork-budget-test.sh",
       "tests/unit/atomic-write-cost-test.sh",
       "tests/unit/platform-probe-test.sh"
     ]
