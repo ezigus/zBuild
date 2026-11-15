@@ -135,8 +135,6 @@ assert_file_exists "[T4b] persist runs under repeated TERM" "$PERSISTED"
 assert_eq "[T5] the stage is not run again" "1" "$(grep -c x "$STARTS")"
 [[ "$_storm_rc" == 1 && -e "$PERSISTED" ]] || tail -15 "$TEST_TEMP_DIR/storm.out" >&2
 
-print_test_results
-
 # ─── DSCLA-5, DSCLA-6, DSCLA-7, DSCLA-9: cross-machine claim (ADR-005) ──────
 #
 # Verifies that runner.sh:
@@ -157,9 +155,11 @@ mkdir -p "$_CLAIM_REPO/.zbuild/templates"
 cat > "$_CLAIM_REPO/.zbuild/templates/claim-test.yaml" <<'CLAIMTPL'
 id: claim-test
 extends: simple
-stages:
-  - id: outcome
-    gate: auto
+flow:
+  - outcome
+always_run: []
+outcome:
+  gate: auto
 CLAIMTPL
 (cd "$_CLAIM_REPO" && git add .zbuild && git commit -qm "add claim-test template") \
     >/dev/null 2>&1
