@@ -82,7 +82,7 @@ _zbuild_permissions_artifact_dir() {
 # §12: _ROUTE_HOOK_FLAGS, from core/router/call-tools.sh), then its deadline —
 # its time limit itself (#2517, ADR-063: the kill comes a grace later) — and the
 # stage's notes file. Empty when a call has no limit and no tools. Everything rides in the command: the spawn scrubs
-# ZBUILD_*.
+# ZBUILD_*. #2543: a loop call's done word (_ROUTE_DONE_WORD) rides too.
 _zbuild_tool_hook_cmd_v() {
     local -n _tuh="$1"; local secs="${2:-}" now notes="" deadline=0 f
     _tuh=""
@@ -95,6 +95,7 @@ _zbuild_tool_hook_cmd_v() {
         && stage_notes_path_v notes "$ZBUILD_STATE_DIR" "$ZBUILD_CURRENT_STAGE"
     printf -v _tuh 'bash %q' "${_ROUTER_DIR:-${BASH_SOURCE[0]%/*}}/tool-hook.sh"
     for f in ${_ROUTE_HOOK_FLAGS[@]+"${_ROUTE_HOOK_FLAGS[@]}"}; do printf -v _tuh '%s %q' "$_tuh" "$f"; done
+    [[ -n "${_ROUTE_DONE_WORD:-}" ]] && printf -v _tuh '%s --done-word %q' "$_tuh" "$_ROUTE_DONE_WORD"
     printf -v _tuh '%s %q %q' "$_tuh" "$deadline" "$notes"
 }
 

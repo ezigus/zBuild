@@ -1343,6 +1343,8 @@ _cycle_iter_dispatch() {
     _CYCLE_LAST_FAILURE_COUNT=0
     _CYCLE_ITER_OUTCOME="error"
     _CYCLE_STOP_RUN_MEMBER=""
+    # #2543 (ADR-068 §3): set when a member ends this round for an earlier one.
+    _CYCLE_ITER_ENDED_FOR_EARLIER=0
 
     if ! declare -F cycle_dispatch_stage >/dev/null 2>&1; then
         error "cycle_orchestrator: no cycle_dispatch_stage hook registered (F2 wires this)"
@@ -1611,6 +1613,10 @@ _cycle_iter_dispatch() {
             cycle_orchestrator_run "$s" "$state_dir" "$state_file"
             rc=$?
             local _inner_outcome="${_CYCLE_LAST_OUTCOME:-}" _inner_halt="${_CYCLE_LAST_MEMBER_HALT:-}"
+            # #2543: whether the inner loop's last round was ended for an
+            # earlier member; this outer round has ended no round yet.
+            local _inner_ended_earlier="${_CYCLE_ITER_ENDED_FOR_EARLIER:-0}"
+            _CYCLE_ITER_ENDED_FOR_EARLIER=0
             _CYCLE_NEST_DEPTH=$(( _CYCLE_NEST_DEPTH - 1 ))
             # Wave 19-B (#718): restore prior seq prefix BEFORE any return path
             # (verdict normal, or an inner loop that stops the run). Prefix must
@@ -1758,6 +1764,16 @@ _cycle_iter_dispatch() {
             # itself stopped on a member it names keeps that member's name.
             local _sr_nvar="_TPL_CYCLE_STOP_RUN_${_CYCLE_TRAP_CYCLE_ID//-/_}"
             if [[ " ${!_sr_nvar:-} " == *" $s "* && "$verdict" != "pass" ]]; then
+                # #2543 (ADR-068 §3): an inner loop out of rounds on a round a
+                # member ended for an earlier member has a finding only a stage
+                # before it can fix, and its rounds could not reach it. While
+                # this loop has rounds, it goes round instead of ending the run.
+                if [[ "$_inner_ended_earlier" == 1 && "$_inner_reason" != out_of_tries:?* ]] \
+                    && (( iter < _CYCLE_MAX_ITER )); then
+                    _cycle_emit "cycle.round.ended_early" "iter=$iter" "stage=$s" \
+                        "reason=inner_loop_ended_for_earlier" 2>/dev/null || true
+                    break
+                fi
                 _CYCLE_STOP_RUN_MEMBER="$s"
                 [[ "$_inner_reason" == out_of_tries:?* ]] && _CYCLE_STOP_RUN_MEMBER="${_inner_reason#out_of_tries:}"
                 break
@@ -2030,6 +2046,7 @@ _cycle_iter_dispatch() {
         # loop goes round from the top. Nothing jumps backwards.
         # The report is JSON, read however it is spaced (review #2475).
         if [[ "$verdict" != pass && "${_CYCLE_DISPATCH_REPORT:-}" =~ \"ends_round\"[[:space:]]*:[[:space:]]*true ]]; then
+            _CYCLE_ITER_ENDED_FOR_EARLIER=1
             _cycle_emit "cycle.member.ends_round" "iter=$iter" "stage=$s" \
                 "reason=${_CYCLE_DISPATCH_REASON:-}"
             break

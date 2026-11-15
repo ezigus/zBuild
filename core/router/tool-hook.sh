@@ -6,9 +6,12 @@
 #
 # Time is up (ADR-063, amended 2026-11-08, #2503; 2026-11-10, #2517): the
 # deadline is the call's time limit. From the first tool call after it, every
-# tool but writing or editing the stage's notes file is refused, and the model
-# is told to write its notes and give its final reply; the router kills the call
-# only a grace later. A deadline of 0 is none.
+# tool but reading, writing or editing the stage's notes file is refused, and
+# the model is told to write its notes and give its final reply; the router
+# kills the call only a grace later. A deadline of 0 is none. #2543: the notes
+# file may be read, since Claude Code refuses to overwrite a file the call has
+# not read; a loop call is given its done word (--done-word) and told it has
+# not finished, so must not end with it.
 #
 # Guards (#2507, ADR-017 §12), before the deadline:
 #   --git-only           the shell runs only git diff, git log, git show and
@@ -32,7 +35,7 @@
 # to allow, or a deny decision. Builtins but for one jq, and only for a tool a
 # guard reads.
 
-git_only=0 code_copy="" repo=""
+git_only=0 code_copy="" repo="" done_word=""
 globs=()
 while [[ $# -gt 2 ]]; do
     case "$1" in
@@ -40,6 +43,7 @@ while [[ $# -gt 2 ]]; do
         --repo)       repo="${2%/}"; shift 2 ;;
         --code-copy)  code_copy="${2%/}"; shift 2 ;;
         --test-glob)  globs+=("$2"); shift 2 ;;
+        --done-word)  done_word="$2"; shift 2 ;;
         *) shift ;;
     esac
 done
@@ -62,11 +66,14 @@ tool=""
 printf -v now '%(%s)T' -1
 if [[ "$deadline" =~ ^[0-9]+$ ]] && (( deadline > 0 && now >= deadline )); then
     path=""
-    [[ "$tool" == Write || "$tool" == Edit ]] && path="$(jq -r '.tool_input.file_path // ""' <<< "$input" 2>/dev/null)"
+    [[ "$tool" == Read || "$tool" == Write || "$tool" == Edit ]] && path="$(jq -r '.tool_input.file_path // ""' <<< "$input" 2>/dev/null)"
     [[ -n "$notes" && -n "$path" && "$path" == "$notes" ]] && exit 0
+    # core/router/route.sh looks for this first sentence (_ROUTE_TIME_UP_WORDS).
     why="Time is up: this call has reached its time limit. Stop the work you were doing."
-    [[ -n "$notes" ]] && why+=" You may still use Write or Edit on your notes file, $notes: write what you found there now, in one step."
-    why+=" Then give your final reply now, with your answer to every finding you were given. Every other tool is refused."
+    [[ -n "$notes" ]] && why+=" You may still use Read, Write or Edit on your notes file, $notes: read your notes file, then write what you found there, in one step."
+    why+=" Then give your final reply now, with your answer to every finding you were given."
+    [[ -n "$done_word" ]] && why+=" This call has not finished, so do not end your reply with $done_word."
+    why+=" Every other tool is refused."
     _deny "$why"
 fi
 

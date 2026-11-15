@@ -202,7 +202,16 @@ On #1805 run 43130129438 build answered "the test is wrong" in rounds 1 and 2, n
 
 - **§6: build's answers that a test is wrong, or must change, are the answers `zb_answers_collect_v` reads** (`_build_test_wrong`, `plugins/agent/build/lib/summary.sh`). There is one reader of a stage's answers, so a finding named in any form it takes is read the same way everywhere.
 
+## Amendment 2026-11-14 (#2543) — §3: an inner loop out of rounds on a finding for an earlier member does not end the run
+
+On #1700 run 43617030653 the build loop ran out of rounds and `stop_run_on_fail` ended the run with an outer round left. §3 already lets any member end a round for an earlier member (`ends_round`); when that happens in the inner loop's last round, the finding needs a stage the inner loop's rounds could no longer reach.
+
+- **An inner loop the outer loop names in `stop_run_on_fail:`, out of rounds on a round a member ended with `ends_round`, does not end the run while the outer loop has rounds:** the outer round ends (`cycle.round.ended_early`, reason `inner_loop_ended_for_earlier`) and the outer loop goes round, its inner loop from round 1. In the outer loop's last round the run ends as before, naming the inner loop.
+- **Only the inner loop's last round counts:** a round ended so earlier, followed by a round that failed otherwise, ends the run as before.
+
 ## Enforced by
+
+- §3 amendment 2026-11-14 (#2543: an inner loop out of rounds on an ends_round round goes round instead of ending the run) → `tests/integration/stop-run-on-fail-test.sh` R9–R11
 
 - §6 amendment 2026-11-09 (#2506: test-author runs only a failing test of its own; build's "the test is wrong" wins; a failed stage shows what failed when it ran) → `tests/unit/test-author-checks-own-output-test.sh` A8, A15; `tests/unit/test-author-before-run-test.sh` B1; `tests/unit/build-test-is-wrong-test.sh` W7, W8; `tests/unit/build-prompt-loop-complete-rule-test.sh` T1; `tests/unit/stage-boundaries-test.sh` SPEC-2
 

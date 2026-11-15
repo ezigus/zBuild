@@ -93,7 +93,17 @@ On #1805 run 41845438073 design used its three tries and never reached test-auth
 - **The check is shown the section headings.** The test file it reads (`acceptance_testfile_source`) keeps each comment line whose first word is Given, When, Then, And or Cleanup, in any case or formatting; every other comment is still left out, so a comment cannot stand in for code. #1805 run 42090130741 was asked about sections it could not see: they were stripped with the other comments.
 - **The sections question is whether each part's code is under its own heading.** A `sections: missing` line may quote the test (`<test file>:"<line>"`); a quote given is checked like any other.
 
+## Amendment 2026-11-14 (#2543) — §1 §5 §6: a requirement describes the code; the test is the test's
+
+On #1700 run 43617030653 design wrote "ZBUILD_PLATFORM=macos is exported before scripts/lib/compat.sh is sourced" and "the stat probe module variable is inspected" — steps of a test, the first impossible on Linux — and test-author's check held its tests to them. §1 called a Given "the setup" and gave design a `Cleanup:` part, so design was writing the test. The reason in the Context — test-author could not send a SPEC back — no longer holds (ADR-068 §3, `ends_round`).
+
+- **§1: a Given is the situation the code is in before the When, never the steps a test takes to get there; a Then is what can be seen, never how a test looks for it.** There is no `Cleanup:` part: how a test sets something up, checks it and cleans up after it is the test's. Design's checks refuse a `Cleanup:` part (`GWT_CLEANUP`). A SPEC from an earlier design that has one still reads.
+- **§5: design's check has no `needs_cleanup`;** its `how` covers a part that says how a test sets something up or checks it, and the finding says to name the situation, the action or what can be seen.
+- **§6: test-author's test puts back what it changes outside its own sandbox** — an exported variable, a file outside its folder, global config or git state — under its Cleanup section, and its check judges that from the test: `<identifier> cleanup: missing | WHY: … | QUOTE: <test file> | <line>`, a finding on the test.
+
 ## Enforced by
+
+- §1 §5 §6 amendment 2026-11-14 (#2543: Given is the situation; Cleanup is the test's; how covers test steps) → `tests/unit/gwt-situation-not-setup-test.sh` G1–G7; `tests/unit/gwt-format-test.sh` D1, P2; `tests/unit/gwt-judges-test.sh` J6, J7
 
 - §1 §2 §5 §6 amendment 2026-11-04 (#2470) → `tests/unit/judge-feedback-test.sh` F1 (the one-line SPECs named), F2 (parts as written; a part named by word and quote), F3 (findings shown once), F5 (the SPEC whole, marked), F6 (a line per SPEC); `tests/unit/reply-multiline-test.sh` Q4 (an `And` line is its own item)
 

@@ -169,7 +169,16 @@ On #1805 run 43093018140 two rules could not both hold for doc work: every requi
 - **§2: design checks every SPEC it keeps** against the issue's requirements as they are now, not only adding SPECs for new ones, and rewrites or removes a SPEC a requirement now contradicts. On the same issue DSFSTG-1 (2026-11-02) said `--from-stage` alone works; R4a (2026-11-10) said it needs `--resume`; design added DSFSTG-4 and kept DSFSTG-1, and build and test-author each followed a different one.
 - `scripts/lib/acceptance-block.sh`, which reads the statuses, was over 500 lines; it is split into `acceptance-run.sh`, `acceptance-testfiles.sh` and `acceptance-judge.sh`, which it sources.
 
+## Amendment 2026-11-14 (#2543) — §2: every status is checked against the old code; test-author reports a [code] requirement the old code already meets
+
+On #1700 run 43617030653 DSPRB-2 was `[code]` though the old code already met it (its `stat` fallback returns a valid mode), and DSBUD-1 `[no-code]` though it needed no work. Design's check asked about the status only of a `[done]` requirement; test-author spent two whole calls looking for a test that cannot fail on the old code.
+
+- **Design's check judges every requirement's status from three facts it quotes** (ADR-072 §3): is it a change to a document only; does the code from before the change already behave as it says, by any route; is work still needed that changes no behaviour. The stage derives the status — document → `[doc]`; not already → `[code]`; already, work left → `[no-code]`; already, none → `[done]` — and a status line whose facts give the SPEC's own status cannot be used. It replaces `done_wrong`. The check is always told where the code from before the change is.
+- **test-author reports a `[code]` requirement the old code already meets** instead of writing a test for it: `<SPEC id>: already_done | WHY: … | QUOTE: <file> | <line>`. The quote is checked in the copy of the code from before the change; a report that holds ends the round (ADR-068 §3) with a finding that the status must change, in test-author's own topic, and the tests written for the other requirements are kept. A quote not found there is a finding back to test-author. A reported requirement counts as handled for ending the call.
+
 ## Enforced by
+
+- §2 amendment 2026-11-14 (#2543: every status from three facts; test-author's already_done report) → `tests/unit/design-status-check-test.sh` S1–S11; `tests/unit/test-author-already-done-test.sh` D1–D6; `tests/unit/design-coverage-test.sh` X4, X5; `tests/unit/judge-quotes-test.sh` Q2
 
 - §1 §4 §6 §7 §9 amendment 2026-11-11 (#2525: a doc change is `[doc]`, with no test) → `tests/unit/doc-status-test.sh` D1–D6; `tests/unit/test-author-test.sh` T1 (left out of test-author's prompt); `tests/unit/test-author-correspondence-test.sh` DOC (not judged); `tests/unit/build-prompt-spec-text-test.sh` B2; `tests/unit/review-lens-requirements-plain-test.sh` L6; `tests/unit/design-acceptance-block-test.sh` T6 (the prompt)
 - §2 amendment 2026-11-11 (#2525: design checks every SPEC it keeps) → `tests/unit/design-prior-hypothesis-test.sh` SPEC-6

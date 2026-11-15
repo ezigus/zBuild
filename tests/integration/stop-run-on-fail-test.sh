@@ -14,6 +14,14 @@
 # R3 [guard]  the named member passes: the later members run
 # R4 [change] a name that is not a member of the loop is refused at load
 #             (review on PR #2393: a typo would silently do nothing)
+# R9 [change] an inner loop the outer loop names, out of rounds on a round a
+#             member ended for an earlier member (ends_round), does not end the
+#             run: the outer loop goes round while it has rounds (#2543; #1700
+#             run 43617030653 stopped with an outer round left on a finding
+#             design could fix)
+# R10 [guard] ...only when its LAST round ended so: an earlier round's
+#             ends_round does not keep the run going
+# R11 [change] ...and the outer round that follows can converge
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -195,6 +203,10 @@ cycle_dispatch_stage() {
     case "$stage" in
         design) [[ "${DESIGN:-pass}" == fail ]] && _CYCLE_DISPATCH_VERDICT="fail" ;;
         test)   [[ "${TEST:-pass}" == fail ]] && _CYCLE_DISPATCH_VERDICT="fail" ;;
+        build)  case "$(cut -d, -f"$n" <<< "${BUILD:-pass}")" in
+                    ends) _CYCLE_DISPATCH_VERDICT="fail"; _CYCLE_DISPATCH_REPORT='{"ends_round":true}' ;;
+                    fail) _CYCLE_DISPATCH_VERDICT="fail" ;;
+                esac ;;
         review) [[ "$(cut -d, -f"$n" <<< "${REVIEW:-pass,pass}")" == fail ]] && _CYCLE_DISPATCH_VERDICT="fail" ;;
     esac
     return 0
@@ -222,6 +234,22 @@ assert_eq "[R7] ...the run converges" "0" "$RUN_RC"
 REVIEW=fail,fail _run "$TPL_NESTED"
 assert_eq "[R8] the review fails twice: the run stops after the second" "2" "$(_count review)"
 assert_eq "[R8] ...the run ends failed" "1" "$RUN_RC"
+
+BUILD=ends,ends,ends,ends,ends,ends _run "$TPL_NESTED"
+assert_eq "[R9] every round ended for an earlier member: the outer loop goes round" "6" "$(_count design)"
+assert_eq "[R9] ...and stops at its own last round, failed" "1" "$RUN_RC"
+assert_eq "[R9] the run is stopped only in the outer loop's last round" "2" \
+    "$(jq -r 'select(.type=="cycle.run.stopped_on_fail") | (.payload.iter // .data.iter // .iter)' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tr '\n' ' ' | xargs)"
+
+BUILD=ends,ends,fail _run "$TPL_NESTED"
+assert_eq "[R10] the last round failed without ends_round: the run stops after one outer round" "3" "$(_count design)"
+assert_eq "[R10] ...failed" "1" "$RUN_RC"
+assert_contains "[R10] ...naming the inner loop" "${_CYCLE_LAST_TERMINATED_REASON:-}" "build_loop"
+
+BUILD=ends,ends,ends,pass _run "$TPL_NESTED"
+assert_eq "[R11] the next outer round runs design again" "4" "$(_count design)"
+assert_eq "[R11] ...the review runs" "1" "$(_count review)"
+assert_eq "[R11] ...and the run converges" "0" "$RUN_RC"
 
 cleanup_test_env
 print_test_results

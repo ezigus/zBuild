@@ -52,6 +52,9 @@ provides:
     - test_author.result.write_failed
     - test_author.stale_tags_dropped
     - test_author.checks.failed
+    # #2543 (ADR-069): a [code] requirement the old code already meets, reported
+    # and its quote checked there.
+    - test_author.already_done
     # #2464, #2466 (ADR-072 §4): a kept answer saved, used instead of a call,
     # or found stale and judged again — one event per item.
     - judge.kept.saved

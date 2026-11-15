@@ -20,6 +20,15 @@
 # H5 [change] ...but allows writing or editing the stage's notes file, and
 #             nothing else
 # H6 [change] with no notes file, every tool is refused after the deadline
+# H7 [change] a loop call's hook is given the call's done word, and after the
+#             deadline its refusal says the call has not finished and must not
+#             end with that word (#2543: on #1700 run 43617030653 two calls told
+#             to "give your final reply" replied LOOP_COMPLETE and passed having
+#             written nothing); a call with no done word is not told so
+# H8 [change] after the deadline the notes file may be read too, so it can be
+#             rewritten: Claude Code refuses to overwrite a file the call has not
+#             read (#2543: round 2's notes were lost so), and the refusal says to
+#             read it, then write it
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -93,10 +102,31 @@ print_test_section "H5: only the notes file may still be written"
 assert_eq "[H5] writing the notes file is allowed" "" "$(_call $(( _now - 1 )) "$NOTES" Write "$NOTES")"
 assert_eq "[H5] editing it is allowed" "" "$(_call $(( _now - 1 )) "$NOTES" Edit "$NOTES")"
 assert_eq "[H5] writing another file is refused" "deny" "$(_decision "$(_call $(( _now - 1 )) "$NOTES" Write "$TEST_TEMP_DIR/repo/x.sh")")"
-assert_eq "[H5] reading the notes file is refused" "deny" "$(_decision "$(_call $(( _now - 1 )) "$NOTES" Read "$NOTES")")"
+assert_eq "[H8] reading the notes file is allowed" "" "$(_call $(( _now - 1 )) "$NOTES" Read "$NOTES")"
+assert_eq "[H8] reading another file is refused" "deny" "$(_decision "$(_call $(( _now - 1 )) "$NOTES" Read "$TEST_TEMP_DIR/repo/x.sh")")"
+assert_contains "[H8] the refusal says to read the notes file, then write it" "$_why" "read your notes file"
 
 print_test_section "H6: with no notes file, every tool is refused"
 assert_eq "[H6] a write is refused" "deny" "$(_decision "$(_call $(( _now - 1 )) "" Write "$NOTES")")"
+assert_eq "[H6] a read is refused" "deny" "$(_decision "$(_call $(( _now - 1 )) "" Read "$NOTES")")"
+
+print_test_section "H7: a loop call is told it has not finished and must not say its done word"
+_ROUTE_DONE_WORD=LOOP_COMPLETE _zbuild_build_permissions_settings 900 >/dev/null 2>&1
+_cmdw="$(jq -r '.hooks.PreToolUse[0].hooks[0].command // empty' "$_ZBUILD_PERMISSIONS_SETTINGS_FILE")"
+assert_contains "[H7] the hook is given the call's done word" "$_cmdw" "--done-word LOOP_COMPLETE"
+_zbuild_build_permissions_settings 900 >/dev/null 2>&1
+_cmdn="$(jq -r '.hooks.PreToolUse[0].hooks[0].command // empty' "$_ZBUILD_PERMISSIONS_SETTINGS_FILE")"
+if [[ "$_cmdn" == *--done-word* ]]; then assert_fail "[H7] a call with no done word gives none" "$_cmdn"
+else assert_pass "[H7] a call with no done word gives none"; fi
+_inw="$(jq -cn '{tool_name:"Bash", tool_input:{command:"ls"}}')"
+_outw="$(bash "$HOOK" --done-word ALL_DONE $(( _now - 1 )) "$NOTES" <<< "$_inw")"
+_whyw="$(jq -r '.hookSpecificOutput.permissionDecisionReason' <<< "$_outw")"
+assert_contains "[H7] the refusal says the call has not finished" "$_whyw" "has not finished"
+assert_contains "[H7] ...and must not end with its own done word" "$_whyw" "do not end your reply with ALL_DONE"
+if [[ "$_why" == *"has not finished"* ]]; then assert_fail "[H7] a call with no done word is not told so" "$_why"
+else assert_pass "[H7] a call with no done word is not told so"; fi
+assert_eq "[H7] the notes file is still writable with a done word given" "" \
+    "$(bash "$HOOK" --done-word ALL_DONE $(( _now - 1 )) "$NOTES" <<< "$(jq -cn --arg f "$NOTES" '{tool_name:"Write", tool_input:{file_path:$f}}')")"
 
 cleanup_test_env
 print_test_results

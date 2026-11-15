@@ -57,8 +57,8 @@ For EACH SPEC, judge every part of it against its test, and the test's layout:
 - a Given: does the test set it up?
 - the When: does the test do it?
 - a Then: does the test assert it — would the test fail if it were not so?
-- a Cleanup: does the test put it back?
-- sections: is each part's code under its own heading — a comment, in the language's own form, marking Given, When and Then (and Cleanup, when the SPEC has one)? The headings are the only comments you are shown.
+- cleanup: does the test change anything outside its own sandbox — an exported variable, a file outside its own folder, global config or git state — and not put it back?
+- sections: is each part's code under its own heading — a comment, in the language's own form, marking Given, When and Then (and Cleanup, when the test puts something back)? The headings are the only comments you are shown.
 
 Answer at least one line for every SPEC, each starting with that SPEC's identifier from its `###` heading, exactly as written there. When its test does every part and is laid out in sections, one line:
 
@@ -69,8 +69,9 @@ Otherwise one line for each thing wrong, and no ok line:
 <identifier> <part>: missing | WHY: <what the test does not do> | QUOTE: <that part's own words>
 <identifier> <part>: wrong | WHY: <what the test does instead> | QUOTE: <that part's own words>
 <identifier> sections: missing | WHY: <which heading is not there, or which part's code is not under its own> | QUOTE: <test file> | <the heading or line of the test that shows it>
+<identifier> cleanup: missing | WHY: <what the test leaves changed> | QUOTE: <test file> | <the line that changes it>
 
-<part> is the word the part's line starts with: Given, When, Then, And or Cleanup. The QUOTE is copied from that line, and says which line it is when the SPEC has several.
+<part> is the word the part's line starts with: Given, When, Then or And. The QUOTE is copied from that line, and says which line it is when the SPEC has several.
 
 When no test could ever prove a SPEC — it describes what a file or a test contains, or it has no pass or fail — answer instead:
 
@@ -156,12 +157,12 @@ _sc_judge() {
     local -A _scj_text=() _scj_pw=() _scj_mark=()
     local -a _scj_order=() _scj_bad=() _scj_head=()
     local _scj_x _scj_l _scj_lab _scj_pw1 _scj_num _scj_word _scj_rest _scj_why _scj_q _scj_w _scj_c _scj_cand
-    local _scj_seen=0 _scj_miss=0 _scj_wrong=0 _scj_sect="" _scj_unt="" _scj_n=0
+    local _scj_seen=0 _scj_miss=0 _scj_wrong=0 _scj_sect="" _scj_unt="" _scj_n=0 _scj_clean=0
     for _scj_x in ${_scj_parts[@]+"${_scj_parts[@]}"}; do
         _scj_lab="${_scj_x%%$'\t'*}"; _scj_x="${_scj_x#*$'\t'}"
         _scj_pw["$_scj_lab"]="${_scj_x%%$'\t'*}"; _scj_text["$_scj_lab"]="${_scj_x#*$'\t'}"; _scj_order+=("$_scj_lab")
     done
-    local _scj_re="^${_scj_sid}[[:space:]]+(Given|When|Then|And|Cleanup|sections)([[:space:]]+[0-9]+)?[*\`_]*:[[:space:]]*([a-z_]+)(.*)$"
+    local _scj_re="^${_scj_sid}[[:space:]]+(Given|When|Then|And|Cleanup|sections|cleanup)([[:space:]]+[0-9]+)?[*\`_]*:[[:space:]]*([a-z_]+)(.*)$"
     local _scj_ure="^${_scj_sid}[*\`_]*:[[:space:]]*([a-z_]+)(.*)$"
     while IFS= read -r _scj_l; do
         judge_reply_line_v _scj_l "$_scj_l"
@@ -189,6 +190,18 @@ _sc_judge() {
             _scj_miss=$((_scj_miss + 1)); _scj_n=$((_scj_n + 1))
             _scj_sect="${_scj_why:-a section is missing}"
             _scj_head+=("sections: $_scj_sect")
+            continue
+        fi
+        # #2543 (ADR-073 §6, amended): what the test leaves changed outside its
+        # sandbox is judged from the test, not from a part of the requirement.
+        if [[ "$_scj_pw1" == cleanup ]]; then
+            [[ "$_scj_word" == missing ]] || { _scj_bad+=("$_scj_sid cleanup is ok or missing, not $_scj_word"); continue; }
+            if [[ -n "$_scj_q" ]]; then
+                judge_quote_check_v _scj_w "$_scj_q" "" "$_scj_repo" || { _scj_bad+=("$_scj_sid's quote $_scj_w"); continue; }
+            fi
+            _scj_miss=$((_scj_miss + 1)); _scj_n=$((_scj_n + 1)); _scj_clean=1
+            _scj_head+=("cleanup: ${_scj_why:-it leaves something changed}")
+            _scj_mark["^"]+=" [FIX IN TEST: ${_scj_why:-it leaves something changed} — put it back at the end of the test, under its Cleanup section]"
             continue
         fi
         if [[ -z "$_scj_pw1" ]]; then
@@ -261,6 +274,7 @@ _sc_judge() {
     if [[ -n "$_scj_sect" ]]; then
         local _scj_secs="Given, When and Then"
         for _scj_lab in "${_scj_order[@]}"; do [[ "$_scj_lab" == Cleanup* ]] && _scj_secs="Given, When, Then and Cleanup"; done
+        (( _scj_clean )) && _scj_secs="Given, When, Then and Cleanup"
         _scj_mark["^"]+=" [FIX IN TEST: lay the test out in $_scj_secs sections — $_scj_sect]"
     fi
     if [[ -n "$_scj_unt" ]]; then _SC_V=untestable

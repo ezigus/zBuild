@@ -111,7 +111,7 @@ print_test_section "F3-F6: design's check"
     _fresh; _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-2: ok\nDSFRSH-1 Then: how | WHY: x | QUOTE: "it is started again"\n'; _R2="$_R1"; _cov
     echo "F2d|$_DESIGN_COV_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
     # F5: a SPEC-level verdict marks the SPEC's own line; an uncovered requirement is one line.
-    _fresh; _R1=$'RQRQST-1: covered\nRQRQST-2: uncovered | WHY: nothing reads the flag from the config file | QUOTE: "read the flag"\nDSWORK-2: ok\nDSFRSH-1: needs_cleanup | WHY: the run it sets up stays in the state folder | QUOTE: "a run whose stages all completed"\n'; _R2=""; _cov
+    _fresh; _R1=$'RQRQST-1: covered\nRQRQST-2: uncovered | WHY: nothing reads the flag from the config file | QUOTE: "read the flag"\nDSWORK-2: ok\nDSFRSH-1: outside | WHY: the issue asks for no fresh start | QUOTE: "a new run starts from the first stage"\n'; _R2=""; _cov
     echo "F5b|$(_design_coverage_findings | tr '\n\036' '~~')"
 
     # F6: answers kept per SPEC.
@@ -142,7 +142,7 @@ assert_contains "[F5] ...the line to fix marked with where and why" "$(_l "$F" F
 assert_lacks "[F5] ...a SPEC that passed is not shown" "$(_l "$F" F5a)" "DSWORK-2"
 assert_contains "[F2] a quote in none of the parts it names is asked again" "$(_l "$F" F2d)" "unusable|"
 assert_contains "[F2] ...saying so" "$(_l "$F" F2d)" "DSFRSH-1 Then's quote is not in any of its Then lines"
-assert_contains "[F5] a SPEC-level verdict marks the SPEC's own line" "$(_l "$F" F5b)" "DSFRSH-1[code]: a new run starts from the first stage covers: RQRQST-1 [FIX IN DESIGN: the run it sets up stays in the state folder"
+assert_contains "[F5] a SPEC-level verdict marks the SPEC's own line" "$(_l "$F" F5b)" "DSFRSH-1[code]: a new run starts from the first stage covers: RQRQST-1 [FIX IN DESIGN: the issue asks for no fresh start"
 assert_contains "[F5] an uncovered requirement is one line, marked" "$(_l "$F" F5b)" "RQRQST-2 is not covered: nothing reads the flag from the config file"
 assert_contains "[F5] ...with where it is fixed" "$(_l "$F" F5b)" "[FIX IN DESIGN: add or widen a SPEC"
 assert_eq "[F6] unchanged: no call" "0" "$(_l "$F" F6c)"
