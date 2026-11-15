@@ -47,10 +47,16 @@ if grep -q "whether a finished CHANGE does what an ISSUE asked" <<< "$prompt"; t
     # #2464 (ADR-072 §3): one line per requirement.
     jq -n --arg r $'MET: RQPRTY-1' \
        '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
+elif grep -q "Your job: for each finding below, try to show that it cannot happen" <<< "$prompt"; then
+    # the check of a lens's findings (#2552): the one finding stands.
+    jq -n --arg r '1: stands' \
+       '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
 elif grep -q 'A report for the ' <<< "$prompt"; then
-    # a review lens (#1842): no concerns — a real lens result for the engine to
-    # hand the aggregator, as in production.
-    jq -n --arg r '{"score":9,"findings":[]}' \
+    # a review lens (#1842): a real lens result for the engine to hand on, as in
+    # production. #2552: one low finding the code already had, so the check of
+    # a lens's findings runs — and is counted by the process budget — while
+    # nothing is sent to another stage.
+    jq -n --arg r '{"score":9,"findings":[{"file":"fixtures/parity-fixture.txt","category":"logic","severity":"low","message":"the fixture file holds one fixed line","quote":"parity-fixture","trigger":"the build writes the fixture file","introduced":false,"fix":"code"}]}' \
        '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
 elif grep -q "whether a DESIGN covers what an ISSUE asked for" <<< "$prompt"; then
     # design's coverage check (#2445: design is in the fixture now that plan is
