@@ -222,6 +222,7 @@ source "$REPO_ROOT/tests/lib/fork-census.sh"
 
 # ─── SPEC-1: the canary ──────────────────────────────────────────────────────
 print_test_section "SPEC-1: a script with one external exec counts exactly 1"
+# Given — a canary script containing exactly one external exec (dirname) and no other programs
 CANARY="$TEST_TEMP_DIR/canary.sh"
 cat > "$CANARY" <<'EOF'
 #!/usr/bin/env bash
@@ -229,8 +230,10 @@ x="$(dirname /a/b)"
 y="${x%/*}"
 printf '%s\n' "$y" >/dev/null
 EOF
+# When — fork_census_traced runs the canary under xtrace
 fork_census_traced "$TEST_TEMP_DIR/canary.trace" bash "$CANARY"
 _canary_n="$(fork_census_count "$TEST_TEMP_DIR/canary.trace" "$TEST_TEMP_DIR/canary.sites")"
+# Then
 assert_eq "[SPEC-1] the canary's one dirname is counted, its builtins are not" "1" "$_canary_n"
 assert_contains "[SPEC-1] …and attributed to its call site" "$(cat "$TEST_TEMP_DIR/canary.sites")" "canary.sh:2"$'\t'"dirname"
 
@@ -238,6 +241,7 @@ assert_contains "[SPEC-1] …and attributed to its call site" "$(cat "$TEST_TEMP
 # xtrace prints `v='review lens: security'` for an assignment whose value has
 # spaces. The words inside the quotes are data; `security` is a binary on macOS,
 # and 178 phantom execs per site were counted from such values (#1842).
+# Given — a script whose only statements are variable assignments (no execs)
 QUOTED="$TEST_TEMP_DIR/quoted.sh"
 cat > "$QUOTED" <<'EOF'
 #!/usr/bin/env bash
@@ -245,12 +249,15 @@ v="first ls second"
 w='x cat y'
 z=$'a\tmkdir b'
 EOF
+# When — fork_census_traced runs the script under xtrace
 fork_census_traced "$TEST_TEMP_DIR/quoted.trace" bash "$QUOTED"
+# Then
 assert_eq "[SPEC-1b] words inside an assigned value are not counted" "0" \
     "$(fork_census_count "$TEST_TEMP_DIR/quoted.trace" "$TEST_TEMP_DIR/quoted.sites")"
 
 # ─── SPEC-5: an exempt wait is listed, not counted ───────────────────────────
 print_test_section "SPEC-5: a marked wait is not counted"
+# Given — a script with one sleep marked fork-budget-exempt and one unmarked, in a loop of 3
 WAITER="$TEST_TEMP_DIR/waiter.sh"
 cat > "$WAITER" <<'EOF'
 #!/usr/bin/env bash
@@ -259,18 +266,22 @@ for _ in 1 2 3; do
     sleep 0
 done
 EOF
+# When — fork_census_traced runs the waiter under xtrace
 fork_census_traced "$TEST_TEMP_DIR/waiter.trace" bash "$WAITER"
 _waiter_n="$(fork_census_count "$TEST_TEMP_DIR/waiter.trace" "$TEST_TEMP_DIR/waiter.sites")"
+# Then
 assert_eq "[SPEC-5] only the unmarked sleep is counted (3 of 6)" "3" "$_waiter_n"
 assert_contains "[SPEC-5] …the marked one is listed apart" \
     "$(cat "$TEST_TEMP_DIR/waiter.sites.exempt" 2>/dev/null)" "waiter.sh:3"$'\t'"sleep"
 
 # ─── SPEC-2: the mocked full run under tracing ───────────────────────────────
 print_test_section "SPEC-2: the mocked full run under tracing"
+# Given — the parity fixture with a clean state dir and bin dir
 FIXTURE="$REPO_ROOT/tests/golden/parity/run-fixture.sh"
 RUN_DIR="$TEST_TEMP_DIR/run"; BIN_DIR="$TEST_TEMP_DIR/bin"
 mkdir -p "$RUN_DIR/events" "$BIN_DIR" "$TEST_TEMP_DIR/pc"
 TRACE="$TEST_TEMP_DIR/run.trace"
+# When — fork_census_traced runs the full mocked pipeline under xtrace
 set +e
 (
     unset GITHUB_ACTIONS CI GITHUB_STEP_SUMMARY RUNNER_OS 2>/dev/null || true
@@ -279,11 +290,15 @@ set +e
 )
 _run_rc=$?
 set -e
+# Then
 assert_eq "[SPEC-2] the mocked full run exits 0 under tracing" "0" "$_run_rc"
 assert_file_exists "[SPEC-2] …and produced events.jsonl" "$RUN_DIR/events/events.jsonl"
 
 # ─── SPEC-3/4: the count ─────────────────────────────────────────────────────
 print_test_section "SPEC-3/4: liveness floor and the budget"
+# Given — the trace produced by SPEC-2's mocked full run
+# When — fork_census_count tallies the external execs from the trace
+# Then — the liveness floor is met and total execs are within FORK_BUDGET
 SITES="$TEST_TEMP_DIR/run.sites"
 _total="$(fork_census_count "$TRACE" "$SITES")"
 _procs="$(fork_census_processes "$TRACE")"
@@ -339,12 +354,16 @@ else
     assert_fail "[SPEC-7] processes ≤ PROCESS_BUDGET" "${_procs} > ${PROCESS_BUDGET} — a \$( ) around an engine function copies the whole shell; ADR-065 §2: the budget only ratchets down"
 fi
 if (( _total <= FORK_BUDGET )); then
-    assert_pass "[SPEC-4][DSBUD-2] ${_total} external execs ≤ FORK_BUDGET ${FORK_BUDGET}"
+    assert_pass "[SPEC-4] ${_total} external execs ≤ FORK_BUDGET ${FORK_BUDGET}"
 else
-    assert_fail "[SPEC-4][DSBUD-2] external execs ≤ FORK_BUDGET" "${_total} > ${FORK_BUDGET} — see the call sites above; ADR-065 §2: the budget only ratchets down"
+    assert_fail "[SPEC-4] external execs ≤ FORK_BUDGET" "${_total} > ${FORK_BUDGET} — see the call sites above; ADR-065 §2: the budget only ratchets down"
 fi
 
-# SPEC-8 (#2472): the cost in two parts.
+# ─── SPEC-8: cost in two parts ───────────────────────────────────────────────
+# Given — run A's dispatch count (from SPEC-2) and a second run B with three
+# extra review lenses added, so the delta is exactly three dispatches
+# When — fork_census_traced runs run B and fork_census_count tallies it
+# Then — per-dispatch and per-plugin start-up budgets hold
 _fb_disp() { jq -r 'select(.type == "plugin.run.start") | 1' "$1" 2>/dev/null | grep -c . || true; }
 _dA="$(_fb_disp "$RUN_DIR/events/events.jsonl")"; _dA="${_dA:-0}"
 # The same run with three more review lenses: three more dispatches.
@@ -383,6 +402,13 @@ assert_eq "[SPEC-8] ${_spp} start-up processes a plugin ≤ STARTUP_PROCS_PER_PL
 assert_eq "[SPEC-8] ${_spe} start-up execs a plugin ≤ STARTUP_EXECS_PER_PLUGIN_BUDGET ${STARTUP_EXECS_PER_PLUGIN_BUDGET}" "1" "$(( _spe <= STARTUP_EXECS_PER_PLUGIN_BUDGET ))"
 assert_eq "[SPEC-8] each floor is below its budget: the goal still ahead" "1" \
     "$(( DISPATCH_PROCS_FLOOR < DISPATCH_PROCS_BUDGET && DISPATCH_EXECS_FLOOR < DISPATCH_EXECS_BUDGET && STARTUP_PROCS_PER_PLUGIN_FLOOR < STARTUP_PROCS_PER_PLUGIN_BUDGET && STARTUP_EXECS_PER_PLUGIN_FLOOR < STARTUP_EXECS_PER_PLUGIN_BUDGET ))"
+
+# ─── DSBUD-2: fork-budget-test.sh passes after the probe change ──────────────
+# Given — scripts/lib/helpers.sh and scripts/lib/compat.sh use load-time probes
+# When — tests/e2e/fork-budget-test.sh is run against the modified code (all SPEC assertions above)
+# Then — the test exits 0
+assert_eq "[DSBUD-2] tests/e2e/fork-budget-test.sh passes (exits 0) after the probe change" \
+    "0" "$((FAIL > 0))"
 
 cleanup_test_env
 print_test_results
