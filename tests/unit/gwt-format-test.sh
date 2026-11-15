@@ -20,7 +20,7 @@
 # C3 ...one with no Then, or an empty part
 # C4 ...a part outside any SPEC, or under a REMOVED line
 # C5 a SPEC with its parts in order passes
-# D1 design's prompt shows the form, with Cleanup, and says to rewrite a
+# D1 design's prompt shows the form (no Cleanup: #2543), and says to rewrite a
 #    one-line SPEC it keeps
 # R1 issue-acceptance, the review lenses and build are shown each SPEC's parts
 # R2 the run-status words of a SPEC are its first line only
@@ -65,7 +65,6 @@ GOOD=(
 '  When: it is started again without --resume'
 '  Then: every stage is dispatched, starting with the first'
 '  And: no stage is skipped'
-'  Cleanup: the run state folder is gone'
 'GARD-1[done]: a resumed run reads the saved round evidence: scripts/x.sh:"run_guard()"'
 '  Given: a run stopped in round 2'
 '  When: it is resumed'
@@ -86,7 +85,7 @@ assert_eq "[P1] ...and evidence:" 'scripts/x.sh:"run_guard()"' "$(acceptance_spe
 _blk="$(extract_acceptance_block "$D")"
 _p=(); acceptance_spec_parts_v _p "$_blk" FRSH-1
 assert_eq "[P2] its parts in order, labelled; And continues the Then" \
-    "Given 1|a run whose stages all completed;When|it is started again without --resume;Then 1|every stage is dispatched, starting with the first;Then 2|no stage is skipped;Cleanup 1|the run state folder is gone" \
+    "Given 1|a run whose stages all completed;When|it is started again without --resume;Then 1|every stage is dispatched, starting with the first;Then 2|no stage is skipped" \
     "$(printf '%s;' "${_p[@]}" | tr '\t' '|' | sed 's/;$//')"
 _p=(); acceptance_spec_parts_v _p "$_blk" DOCS-1
 assert_eq "[P3] a SPEC with no parts has none" "0" "${#_p[@]}"
@@ -131,11 +130,12 @@ assert_contains "[C4] a part under a REMOVED line" "$(_gwt)" "GWT_PART_ON_REMOVE
 
 print_test_section "D1: design's prompt"
 _dp="$(tr -s '[:space:]' ' ' < "$REPO_ROOT/plugins/agent/design/plugin.sh")"
-for _w in "Given: " "When: " "Then: " "And: " "Cleanup: "; do
+for _w in "Given: " "When: " "Then: " "And: "; do
     assert_contains "[D1] the prompt shows $_w" "$_dp" "$_w"
 done
 assert_contains "[D1] one When per SPEC" "$_dp" "exactly one When"
-assert_contains "[D1] Cleanup only for what outlives the test" "$_dp" "outlives the test"
+# #2543 (ADR-073, amended): how a test sets up, checks and cleans up is the test's.
+assert_contains "[D1] how a test cleans up is the test's, not the requirement's" "$_dp" "How a test sets this up, checks it and cleans up after it is the test's"
 # #2470: the kept one-line SPECs are named (judge-feedback-test.sh F1).
 assert_contains "[D1] a one-line SPEC it keeps is rewritten" "$_dp" "is rewritten with its parts"
 

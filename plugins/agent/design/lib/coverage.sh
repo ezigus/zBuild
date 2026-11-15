@@ -41,10 +41,15 @@ EOF2
     cat <<'EOF2'
 
 Look at every SPEC shown in full: find EVERY one that commits to
-something that the issue does not ask for, or that contradicts it. For every
-one marked [done], read the code its evidence names, as it was before this
-change: find each one whose code does not do what it says. Then judge each of
-its parts.
+something that the issue does not ask for, or that contradicts it.
+
+Check each SPEC's status against the code from before this change and the
+issue. Its status follows from three facts:
+- Is it a change to a document only? Then it is [doc].
+- If not, does the code from before this change already behave as the SPEC says — by any route, a fallback included? If not, it is [code].
+- If it does, is work still needed that changes no behaviour — a test, a config, a refactor? Then it is [no-code]; if none, it is [done].
+Find every SPEC whose status is not the one these facts give. Then judge each
+of its parts.
 
 Answer in exactly this form, each line starting with its id.
 EOF2
@@ -65,10 +70,9 @@ one line:
 When something is wrong with it, one line for each thing wrong, and no ok line:
 
 <SPEC id>: outside | WHY: <what the issue does not ask for, or how it contradicts it> | QUOTE: <the SPEC's own words that do>
-<SPEC id>: done_wrong | WHY: <what the code does instead> | QUOTE: <file> | <one line of the code that shows it>
-<SPEC id>: needs_cleanup | WHY: <what the Given or a Then leaves behind> | QUOTE: <the words of the part that leaves it>
+<SPEC id>: status | DOC: <yes or no> | BEFORE: <yes or no> | WORK: <yes or no> | WHY: <what shows it> | QUOTE: <file> | <one line of it>
 <SPEC id> <part>: untestable | WHY: <why a test cannot observe it> | QUOTE: <that part's own words>
-<SPEC id> <part>: how | WHY: <what it says about how it is built> | QUOTE: <that part's own words>
+<SPEC id> <part>: how | WHY: <what it says about how it is built, or how a test sets it up or checks it> | QUOTE: <that part's own words>
 <SPEC id> <part>: contradicts | WHY: <what it cannot be true together with, and where that is> | QUOTE: <that part's own words>
 <SPEC id> <part>: duplicate | WHY: <which SPEC already has this action> | QUOTE: <that part's own words>
 
@@ -76,14 +80,17 @@ When something is wrong with it, one line for each thing wrong, and no ok line:
 Cleanup. The QUOTE is copied from that line, and says which line it is when the
 SPEC has several.
 
-done_wrong is only for a SPEC marked [done]. untestable is only for a Then, or
+status is for a SPEC whose status is not the one its facts give: DOC, BEFORE
+and WORK are the three facts, each yes or no. The QUOTE is a line of the code
+from before this change, or of the document, that shows the fact the status
+gets wrong: when it already behaves this way, the line that does it; when it
+does not, the line that does something else. untestable is only for a Then, or
 an And under a Then: it must be something a test can observe after the When —
 an output, a result, a file the code writes, an event — never what a file or a
-test contains, and never "it works". duplicate is only for the When.
-needs_cleanup is for a SPEC whose Given sets up, or whose Then says the code
-leaves, something that outlives the test — an exported variable, a file outside
-the test's own folder, global config or git state — when no Cleanup part puts
-it back.
+test contains, and never "it works". duplicate is only for the When. how is for
+a part that says how the code is built, or how a test sets something up or
+checks it — a Given names the situation the code is in, never the steps a test
+takes to get there.
 EOF2
     cat <<'EOF2'
 
@@ -141,7 +148,8 @@ EOF2
     printf 'ACCEPTANCE:\n%s\n' "${2:-(none)}"
     [[ -n "${3:-}" && -n "${4:-}" ]] && printf '\nOTHER SPECS — judged before and unchanged, shown by their first line for what they cover. Do not answer for them.\n%s\n' "$4"
     [[ -n "${5:-}" ]] && printf "\nTHE [done] SPECS' EVIDENCE — a file and a piece of its text. Open the file\nand read the code around that text, as much as you need:\n%s\n" "$5"
-    [[ -n "${5:-}" && -n "${6:-}" ]] && printf '\nThe code from before this change is a copy at %s — read the code of each\n[done] SPEC there. The repository as it is now is the current directory.\n' "$6"
+    # #2543: every SPEC's status is checked against it, not only a [done] one's.
+    [[ -n "${6:-}" ]] && printf '\nThe code from before this change is a copy at %s — check each SPEC'"'"'s\nstatus there. The repository as it is now is the current directory.\n' "$6"
     return 0
 }
 _dcov_prompt_limits() {
@@ -228,8 +236,8 @@ _dcov_disputes_v() {
 }
 
 # _design_coverage <design_md> <requirements_text> [tier] [answers]
-# Sets _DESIGN_UNCOVERED, _DESIGN_OUTSIDE, _DESIGN_DONE_WRONG,
-# _DESIGN_NEEDS_CLEANUP, _DESIGN_PART_WRONG and _DESIGN_COV_OUTCOME: empty when
+# Sets _DESIGN_UNCOVERED, _DESIGN_OUTSIDE, _DESIGN_STATUS_WRONG,
+# _DESIGN_PART_WRONG and _DESIGN_COV_OUTCOME: empty when
 # the call judged the design, otherwise the outcome word for how the call failed
 # (rate_limited, unavailable, unusable, misconfigured, broken). [answers]:
 # design's own answers to findings of this check, one per line (ADR-072 §5).
@@ -241,8 +249,8 @@ _dcov_disputes_v() {
 # rc 0 always.
 _design_coverage() {
     local design_md="$1" reqs="$2" tier="${3:-T2}" answers="${4:-}"
-    _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_DONE_WRONG=(); _DESIGN_COV_OUTCOME=""
-    _DESIGN_PART_WRONG=(); _DESIGN_NEEDS_CLEANUP=(); _DESIGN_COV_FINDINGS=()
+    _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_STATUS_WRONG=(); _DESIGN_COV_OUTCOME=""
+    _DESIGN_PART_WRONG=(); _DESIGN_COV_FINDINGS=()
     local acc; acc="$(extract_acceptance_block "$design_md" 2>/dev/null || true)"
     [[ -n "$acc" ]] || return 0
 
@@ -374,7 +382,7 @@ _design_coverage() {
     done <<< "$want"
     [[ -n "$kf" ]] && judge_kept_put_all "$kf" put putfp deps
     if [[ -n "$need" ]]; then
-        _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_DONE_WRONG=(); _DESIGN_PART_WRONG=(); _DESIGN_NEEDS_CLEANUP=()
+        _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_STATUS_WRONG=(); _DESIGN_PART_WRONG=()
         _DESIGN_COV_OUTCOME=unusable
         return 0
     fi

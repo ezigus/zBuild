@@ -639,7 +639,13 @@ ended any other way and changed nothing left no trace in the events or the log.
 - **The comment above `route_to_model_loop` lists every value its end reason can hold:** the literals the loop and
   its signal handler assign, and every reason `_router_rc_classify` returns, and nothing else.
 
+### Amendment (2026-11-14, #2543) — §6: a call told its time is up ends `router_timeout`
+
+`router_timeout` also covers a call that ended after its hook told it its time was up (ADR-063, amended 2026-11-14): its done word answers that it was told to stop, not that the work is done. It is `timed_out`, and the engine runs the stage's next try.
+
 ## Enforced by
+
+- §6 amendment 2026-11-14 (#2543: a call told its time is up ends router_timeout) → `tests/unit/route-time-up-not-done-test.sh` T1, T3, T5
 
 - §6a amendment 2026-11-14 (#1769: zero files changed is said however the call ended; the end-reason comment lists exactly the values) → `tests/unit/build-discrepancy-warn-inside-banner-test.sh` [#1769] cases; `tests/unit/route-loop-terminated-reasons-test.sh` DSEND-1
 

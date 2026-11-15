@@ -51,6 +51,8 @@ declare -F _negctl_run >/dev/null 2>&1 || source "$_TA_ROOT/scripts/lib/acceptan
 declare -F zbuild_resolve_merge_base >/dev/null 2>&1 || source "$_TA_ROOT/scripts/lib/merge-base.sh"
 # shellcheck source=./lib/before-run.sh
 source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/lib/before-run.sh"
+# shellcheck source=./lib/already-done.sh
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/lib/already-done.sh"
 
 _ta_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
 
@@ -347,11 +349,15 @@ An assertion for every requirement below${sup_block:+, and the existing checks l
 
 Each assertion must be able to FAIL: if the requirement were not met, your assertion must not pass. Check the new value or file itself — the output, the field, the file's content — not only that the step finished without an error: a test that only checks that something ran passes on the old code too.
 
+A [code] requirement may be one the code from before this change already does — by any route, a fallback included. Then no test of it can fail on that code, and no test you write can change that: do not write a test for it. Report it instead, on its own line:
+<SPEC id>: already_done | WHY: <how the code from before this change already does it> | QUOTE: <file> | <one line of that file, copied as it is>
+The QUOTE is checked in the code from before this change.
+
 Write each SPEC's test in sections, marked with comments in the test's own language — in a shell test:
 # Given — the setup its Given lines name
 # When — the one action its When names
 # Then — an assertion for each of its Then lines
-# Cleanup — putting back what its Cleanup lines name (when it has any)
+# Cleanup — putting back anything the test changes outside its own sandbox: an exported variable, a file outside its own folder, global config or git state (when it changes any)
 A test you touch that is not laid out this way — one you update, or one you add an assertion to — rewrite it into these sections, keeping everything it checks.
 
 A test that needs data another part of the code writes — a file, a record, a field, a message — makes it with that code, never by hand: hand-made data holds whatever its author assumed. Find how the existing tests and test helpers already make it, and do the same.
@@ -370,7 +376,7 @@ ANSWER <the finding as listed>: wrong — <why the test is right>
 
 Work one testfile at a time: read only what that file's SPECs need, write it to disk, and only then move on — write each file before you plan the next. Do not plan every SPEC up front. Your call has a time limit; a file already written survives it and is continued by the next attempt, and a plan that was never written is lost.
 
-You will be called again until you are done: what you wrote stays on disk and the next call picks up from it. When EVERY SPEC below has its assertion written to disk, end your reply with a line containing only:
+You will be called again until you are done: what you wrote stays on disk and the next call picks up from it. When EVERY SPEC below has its assertion written to disk or is reported already_done, end your reply with a line containing only:
 LOOP_COMPLETE
 
 ## What you judge against
@@ -448,6 +454,19 @@ EOF
         return 1
     fi
 
+    # #2543 (ADR-069): a [code] requirement the old code already meets, its
+    # quote checked in that code, ends the round: no test can fix its status.
+    _ta_already_done "$design" "${_ROUTE_LOOP_LAST_RESPONSE:-}" "$_ta_base"
+    if [[ -n "$_TA_DONE_VERIFIED" ]]; then
+        declare -f assertion_integrity_record >/dev/null 2>&1 && assertion_integrity_record "$art" "$repo"
+        _ta_commit_testfiles "$design" "$repo" "test-author: acceptance assertions for $n SPEC(s); a requirement the old code already meets"
+        _ta_emit "test_author.already_done" "specs=${_TA_DONE_IDS// /,}"
+        _ta_write_result "$art" "fail" \
+            "${_TA_DONE_IDS// /, } already met by the code from before this change — its status must change" "$n" \
+            "$(stage_findings_json <<< "$_TA_DONE_VERIFIED")" ends_round
+        return 1
+    fi
+
     # #2174: the stage enforces its own invariant — a [SPEC-n] tag whose
     # number is not in THIS contract is stale (an earlier contract's), and the
     # gate would match it instead of the authored assertion. Drop the tag,
@@ -481,6 +500,7 @@ EOF
         return 1
     fi
     _TA_CORR_FINDINGS+=(${_TA_BEFORE_FINDINGS[@]+"${_TA_BEFORE_FINDINGS[@]}"})
+    _TA_CORR_FINDINGS+=(${_TA_DONE_FINDINGS[@]+"${_TA_DONE_FINDINGS[@]}"})
     # #2460 (ADR-054 §6a): what its own check found ends the try `unusable`,
     # the findings in its result: the engine runs test-author again, and the
     # next try is shown them under Previous work — as design is (ADR-068 §10).

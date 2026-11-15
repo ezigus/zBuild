@@ -13,6 +13,20 @@ _ZBUILD_ROOT="$(cd "$_ROUTER_DIR/../.." && pwd)"
 # repository; also its idempotence guard (_route_redact_prompt).
 _ZB_READ_ONLY_SCOPE_MARKER='## YOUR SCOPE (engine-provided)'
 
+# #2543 (ADR-063): the first sentence of the refusal core/router/tool-hook.sh
+# gives every tool once a call's time limit has passed. A call whose step
+# stream holds it was told its time is up: its done word is not taken.
+_ROUTE_TIME_UP_WORDS="Time is up: this call has reached its time limit."
+
+# _route_stream_told_time_up <stream_file> — rc 0 when the call was told its
+# time is up. Read by the shell, with no process.
+_route_stream_told_time_up() {
+    local _rst=""
+    [[ -s "${1:-}" ]] || return 1
+    IFS= read -r -d '' _rst < "$1" || true
+    [[ "$_rst" == *"$_ROUTE_TIME_UP_WORDS"* ]]
+}
+
 # ─── _route_has_done_sentinel <sentinel> <text> ─────────────────────────────
 # rc 0 when some LINE of <text> is the sentinel once whitespace and punctuation
 # are removed and case is ignored: `LOOP_COMPLETE.`, `**LOOP_COMPLETE**`,
@@ -1414,6 +1428,9 @@ route_to_model_loop() {
     _claude_args+=("${_ROUTE_PERSONA_ARGS[@]+"${_ROUTE_PERSONA_ARGS[@]}"}")
     : "${ZBUILD_STAGE_SCRATCH:="$_rt_tmp"}"
     # #1919 (C10): abort iteration on settings build failure (SPEC-3).
+    # #2543 (ADR-063): the call's hook is given its done word, to tell it at
+    # the limit that it has not finished.
+    local _ROUTE_DONE_WORD="$done_sentinel"
     _zbuild_build_permissions_settings "$secs" || {
         _ROUTE_LOOP_TERMINATED_REASON="router_config_error"
         rm -f "$stderr_file" "$json_file"
@@ -1556,7 +1573,9 @@ route_to_model_loop() {
         # done_sentinel rather than discarding the work-done signal. Dogfood 20260607181657-82646
         # iter 4 exhibited this: 900s wall time + LOOP_COMPLETE in
         # output + rc=124 → loop wasted iter 5 on already-complete code.
-        if [[ $rc -eq 124 && -s "$json_file" ]]; then
+        # #2543 (ADR-063): not when the call was told its time is up — its
+        # done word then answers that, not that the work is done.
+        if [[ $rc -eq 124 && -s "$json_file" ]] && ! _route_stream_told_time_up "$_stream_file"; then
             local _rc124_result
             _rc124_result="$(jq -r '.result // empty' "$json_file" 2>/dev/null || true)"
             if _route_has_done_sentinel "$done_sentinel" "$_rc124_result"; then
@@ -1795,8 +1814,12 @@ route_to_model_loop() {
     # callers using --defer-final-banner-close can decide whether to
     # leave the banner open for post-loop output. Line-anchored grep
     # against the result text; matches whitespace + sentinel + whitespace.
-    local _iter_done_sentinel="false"
-    if _route_has_done_sentinel "$done_sentinel" "$result_text"; then
+    local _iter_done_sentinel="false" _iter_told_time_up="false"
+    # #2543 (ADR-063, ADR-054 §6): a call told its time is up has not finished,
+    # whatever its reply says — it ends router_timeout, as a killed call does.
+    if _route_stream_told_time_up "$_stream_file"; then
+        _iter_told_time_up="true"
+    elif _route_has_done_sentinel "$done_sentinel" "$result_text"; then
         _iter_done_sentinel="true"
     fi
 
@@ -1849,6 +1872,15 @@ route_to_model_loop() {
         return 0
     fi
     rm -f "$json_file"
+    if [[ "$_iter_told_time_up" == "true" ]]; then
+        warn "route_to_model_loop: the model call reached its time limit — the try ends timed_out"
+        _ROUTE_LOOP_TERMINATED_REASON="router_timeout"
+        eb_emit_event "loop.timeout_yield" \
+            "iterations=$iter" "model_id=$_ROUTE_MODEL_ID" \
+            "reason=told_time_up" 2>/dev/null || true
+        _route_loop_clear_traps
+        return 0
+    fi
     # The call ended without saying it is done: its output cannot be used
     # as a finished try (unusable). The engine decides whether to try again.
     _ROUTE_LOOP_TERMINATED_REASON="no_done_sentinel"

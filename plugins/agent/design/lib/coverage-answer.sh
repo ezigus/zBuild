@@ -14,15 +14,15 @@ _ZBUILD_DESIGN_COVERAGE_ANSWER_LOADED=1
 # ids, and `requirements` when requirement coverage was asked), read in
 # _design_coverage's scope (ids, first, text, st, labs, pword, ptext, req_text,
 # req_order, repo, base), into _DESIGN_UNCOVERED, _DESIGN_OUTSIDE,
-# _DESIGN_DONE_WRONG, _DESIGN_NEEDS_CLEANUP and _DESIGN_PART_WRONG.
+# _DESIGN_STATUS_WRONG and _DESIGN_PART_WRONG.
 # _DCOV_PROBLEM says what makes the answer unusable (an item with no line, a
 # word that is not its kind's, a quote that is not there); _DCOV_LINES holds
 # each item's lines and _DCOV_QUOTED the files each item's quotes name, for the
 # answer kept per item (#2470, ADR-072 §4).
 _dcov_parse() {
     local raw="$1" want=$'\n'"$2"$'\n'
-    _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_DONE_WRONG=(); _DCOV_PROBLEM=""
-    _DESIGN_PART_WRONG=(); _DESIGN_NEEDS_CLEANUP=(); _DCOV_LINES=(); _DCOV_QUOTED=()
+    _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_STATUS_WRONG=(); _DCOV_PROBLEM=""
+    _DESIGN_PART_WRONG=(); _DCOV_LINES=(); _DCOV_QUOTED=()
     local -A seen=()
     local -a bad=()
     local l id rest word why quote w qp key reqs_asked=0
@@ -58,22 +58,22 @@ _dcov_parse() {
         fi
         case "$word" in
             ok) ;;
-            needs_cleanup)
-                if [[ -z "$quote" ]]; then bad+=("$id has no QUOTE"); continue; fi
-                local _dpw="${text[$id]}" _dpl
-                while IFS= read -r _dpl; do [[ -n "$_dpl" ]] && _dpw+=$'\n'"${ptext[$id $_dpl]}"; done <<< "${labs[$id]}"
-                judge_quote_check_v w "$quote" "$_dpw" "$repo" "$base" || { bad+=("$id's quote $w"); continue; }
-                _DESIGN_NEEDS_CLEANUP+=("$id"$'\t'"${why:-it leaves something behind}"$'\t'"$quote") ;;
-            outside|done_wrong)
-                if [[ "$word" == done_wrong && "${st[$id]}" != "done" ]]; then
-                    bad+=("$id is not marked [done]: done_wrong is only for a SPEC that is"); continue
+            outside|status)
+                # #2543 (ADR-072, ADR-069): a status line gives three facts; the
+                # status they give is worked out here, never taken from the judge.
+                local right=""
+                if [[ "$word" == status ]]; then
+                    _dcov_status_from_facts_v right "$rest" || { bad+=("$id's status line $right"); continue; }
+                    if [[ "$right" == "${st[$id]:-code}" ]]; then
+                        bad+=("$id's facts give [$right], its own status: a status line is only for a SPEC whose status is wrong"); continue
+                    fi
                 fi
                 if [[ -z "$quote" ]]; then bad+=("$id has no QUOTE"); continue; fi
                 judge_quote_check_v w "$quote" "${text[$id]}" "$repo" "$base" || { bad+=("$id's quote $w"); continue; }
                 judge_quote_path_v qp "$quote" "$repo" "$base"; [[ -n "$qp" ]] && _DCOV_QUOTED["$id"]+="$qp"$'\n'
                 if [[ "$word" == outside ]]; then _DESIGN_OUTSIDE+=("$id"$'\t'"${why:-the issue does not ask for it}"$'\t'"$quote")
-                else _DESIGN_DONE_WRONG+=("$id"$'\t'"${why:-the code does not do it}"$'\t'"$quote"); fi ;;
-            *) bad+=("$id is a SPEC: it is ok, outside, done_wrong or needs_cleanup, not $word") ;;
+                else _DESIGN_STATUS_WRONG+=("$id"$'\t'"$right"$'\t'"${st[$id]:-code}"$'\t'"${why:-its facts say so}"$'\t'"$quote"); fi ;;
+            *) bad+=("$id is a SPEC: it is ok, outside or status, not $word") ;;
         esac
     done <<< "$raw"
     local -a missing=()
@@ -130,6 +130,25 @@ _dcov_need_names() {
     done <<< "$1"
     [[ -n "$_dn_req" ]] && _dn_out+="${_dn_out:+, }every requirement"
     printf '%s' "$_dn_out"
+}
+
+# _dcov_status_from_facts_v <var> <rest> — the status a status line's three
+# facts give (#2543): a document only → doc; else not already so → code; else
+# work left → no-code; else done. rc 1, <var> saying why, when a fact is
+# missing or not yes or no.
+_dcov_status_from_facts_v() {
+    local -n _dsf="$1"; local _dsf_r="$2" _dsf_re
+    # judge_reply_line_v has made the head's borders spaces: either may part them.
+    _dsf_re='DOC:[[:space:]]*([A-Za-z]+)[[:space:]|]*BEFORE:[[:space:]]*([A-Za-z]+)[[:space:]|]*WORK:[[:space:]]*([A-Za-z]+)'
+    if ! [[ "$_dsf_r" =~ $_dsf_re ]]; then _dsf="has no DOC, BEFORE and WORK"; return 1; fi
+    local _dsf_d="${BASH_REMATCH[1],,}" _dsf_b="${BASH_REMATCH[2],,}" _dsf_w="${BASH_REMATCH[3],,}" _dsf_x
+    for _dsf_x in "$_dsf_d" "$_dsf_b" "$_dsf_w"; do
+        [[ "$_dsf_x" == yes || "$_dsf_x" == no ]] || { _dsf="has a fact that is not yes or no: $_dsf_x"; return 1; }
+    done
+    if [[ "$_dsf_d" == yes ]]; then _dsf=doc
+    elif [[ "$_dsf_b" == no ]]; then _dsf=code
+    elif [[ "$_dsf_w" == yes ]]; then _dsf=no-code
+    else _dsf="done"; fi
 }
 
 # _dcov_why_quote <rest> — a line's WHY and QUOTE, into the caller's why and quote.
@@ -192,12 +211,18 @@ _dcov_fix_v() {
     local -n _dfx="$1"
     case "$2" in
         untestable)    _dfx="$3 — say what a test can see the code do after the When" ;;
-        how)           _dfx="$3 — say what someone could see happen, not how it is built" ;;
+        how)           _dfx="$3 — say the situation, the action, or what can be seen — not how it is built or how a test does it" ;;
         contradicts)   _dfx="$3 — it cannot be true together with that; make them agree" ;;
         duplicate)     _dfx="$3 — another SPEC has this action; keep one of them" ;;
-        needs_cleanup) _dfx="$3 — add a Cleanup: line saying what must be true again after the test" ;;
         outside)       _dfx="$3 — the issue does not ask for this; take it out, or make it what the issue asks" ;;
-        done_wrong)    _dfx="$3: $4 — the code from before this change does not do it; mark it [code], or name evidence that shows it" ;;
+        status:*)
+            local _dfr="${2#status:}"; _dfr="${_dfr%%:*}"; local _dfo="${2##*:}"
+            case "$_dfr" in
+                done)    _dfx="$3: $4 — it is [done], not [$_dfo]: the code from before this change already does it; mark it [done], naming this evidence" ;;
+                code)    _dfx="$3: $4 — it is [code], not [$_dfo]: the code from before this change does not do it" ;;
+                no-code) _dfx="$3: $4 — it is [no-code], not [$_dfo]: the code already behaves so, and the work left changes no behaviour" ;;
+                doc)     _dfx="$3: $4 — it is [doc], not [$_dfo]: write it on one line, saying what the doc must tell a reader" ;;
+            esac ;;
     esac
 }
 
@@ -215,8 +240,11 @@ _dcov_findings_build() {
     done
     local -a spec_level=()
     for x in ${_DESIGN_OUTSIDE[@]+"${_DESIGN_OUTSIDE[@]}"}; do spec_level+=("outside"$'\t'"$x"); done
-    for x in ${_DESIGN_DONE_WRONG[@]+"${_DESIGN_DONE_WRONG[@]}"}; do spec_level+=("done_wrong"$'\t'"$x"); done
-    for x in ${_DESIGN_NEEDS_CLEANUP[@]+"${_DESIGN_NEEDS_CLEANUP[@]}"}; do spec_level+=("needs_cleanup"$'\t'"$x"); done
+    local _sr _so
+    for x in ${_DESIGN_STATUS_WRONG[@]+"${_DESIGN_STATUS_WRONG[@]}"}; do
+        IFS=$'\t' read -r _id _sr _so _w _q <<< "$x"
+        spec_level+=("status:$_sr:$_so"$'\t'"$_id"$'\t'"$_w"$'\t'"$_q")
+    done
     for x in ${spec_level[@]+"${spec_level[@]}"}; do
         IFS=$'\t' read -r _v _id _w _q <<< "$x"
         _dcov_fix_v _fix "$_v" "$_w" "$_q"

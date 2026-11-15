@@ -39,7 +39,7 @@
 #          evidence names, and asked whether that code does what the SPEC says
 #          (#2445; #2464: it opens the file itself — no window of lines)
 #   X5     each [done] SPEC it says the code does not do is one entry, and a
-#          finding
+#          finding (#2543: a status line whose facts give [code])
 #   NS1    the check is asked for no verdict on a scope entry (#2495): on #1805
 #          run 42439063480 a scope line whose own reason said "raises no concern"
 #          failed design
@@ -240,14 +240,15 @@ assert_contains "[X1] ...for what the design commits to that the issue does not 
     "that the issue does not ask for, or that contradicts it"
 assert_not_contains "[X3] the check is not shown the design's scope" "$_P" "scripts/telemetry.sh"
 assert_contains "[X4] the check is pointed at the file a [done] SPEC's evidence names" "$_P" 'CNFG-1: scripts/cfg.sh:"refuse_missing_config()" — open'
-assert_contains "[X4] ...and asked whether it does what the SPEC says" "$_P" "<SPEC id>: done_wrong"
+# #2543: every SPEC's status is judged from three facts (design-status-check-test.sh).
+assert_contains "[X4] ...and asked whether its status is the one the facts give" "$_P" "<SPEC id>: status | DOC: <yes or no> | BEFORE: <yes or no> | WORK: <yes or no>"
 _REPLY='RQST-1: covered
 RQST-2: covered
 WORK-1: outside | WHY: also renames the flag | QUOTE: "a --dry-run flag is accepted"
-CNFG-1: done_wrong | WHY: it returns 2 only when the file is absent, not when it is unreadable | QUOTE: scripts/cfg.sh | [[ -f "$1" ]] || return 2'
+CNFG-1: status | DOC: no | BEFORE: no | WORK: yes | WHY: it returns 2 only when the file is absent, not when it is unreadable | QUOTE: scripts/cfg.sh | [[ -f "$1" ]] || return 2'
 ZBUILD_REPO_ROOT="$XR" _design_coverage "$DX" "$REQS" T2
 assert_eq "[X2] each item outside the issue is one entry, whatever the coverage verdict" "1" "${#_DESIGN_OUTSIDE[@]}"
-assert_eq "[X5] each [done] SPEC the code does not do is one entry" "1" "${#_DESIGN_DONE_WRONG[@]}"
+assert_eq "[X5] each [done] SPEC the code does not do is one entry" "1" "${#_DESIGN_STATUS_WRONG[@]}"
 _fx="$(_design_coverage_findings)"
 # #2470 (ADR-073 §5): the line to fix is marked with what to do.
 assert_contains "[X2] ...the SPEC's own line marked" "$_fx" "WORK-1[code]: a --dry-run flag is accepted covers: RQST-1 [FIX IN DESIGN: also renames the flag — the issue does not ask for this"

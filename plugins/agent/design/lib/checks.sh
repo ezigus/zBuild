@@ -175,6 +175,11 @@ _dck_parts() {
             "EMPTY "*)      violations+=("GWT_EMPTY_PART $_dp_id ${_dp_q#EMPTY } (no words)") ;;
         esac
     done
+    # #2543 (ADR-073 §1, amended): putting things back is the test's concern.
+    local _dp_p
+    for _dp_p in ${_dp_parts[@]+"${_dp_parts[@]}"}; do
+        [[ "$_dp_p" == Cleanup* ]] && { violations+=("GWT_CLEANUP $_dp_id (a Cleanup: part)"); break; }
+    done
     return 0
 }
 
@@ -209,16 +214,17 @@ _dck_plain() {
             printf 'requirement %s from the issue is not covered by any SPEC: %s. End the line of the SPEC that delivers it with " covers: %s" (before any " evidence: "), or add a SPEC for it; if the code already does it, a [done] SPEC with evidence covers it' "$id" "$_rt" "$id" ;;
         WIRING_MISSING*)     printf 'the WIRING file %s does not exist — name a file that exists in the repository, or WIRING: none' "$id" ;;
         # #2467 (ADR-073 §1 §3): a SPEC's parts.
-        GWT_MISSING*)        printf '%s is written on one line — rewrite it with its parts on the lines under it: Given: <the setup> (optional), When: <the one action>, Then: <what a test can observe> (one or more; And: adds another), and Cleanup: <what must be true again after> when the setup or a Then leaves something behind' "$id" ;;
+        GWT_MISSING*)        printf '%s is written on one line — rewrite it with its parts on the lines under it: Given: <the setup> (optional), When: <the one action>, Then: <what a test can observe> (one or more; And: adds another)' "$id" ;;
         GWT_NO_WHEN*)        printf '%s has no When: line — add the one action that the test performs' "$id" ;;
         GWT_MANY_WHEN*)      printf '%s has more than one When: — one SPEC has one When, one action; split it into one SPEC per action' "$id" ;;
         GWT_AND_AFTER_WHEN*) printf '%s has an And: straight after its When:, which would be a second action — one SPEC has one When; put the extra setup under Given: or split the SPEC' "$id" ;;
-        GWT_AND_FIRST*)      printf '%s starts its parts with And: — And: continues the Given:, Then: or Cleanup: above it' "$id" ;;
+        GWT_AND_FIRST*)      printf '%s starts its parts with And: — And: continues the Given: or Then: above it' "$id" ;;
         GWT_NO_THEN*)        printf '%s has no Then: line — add what a test can observe after the When' "$id" ;;
         GWT_EMPTY_PART*)     local _gp="${rest#* }"; _gp="${_gp%% (*}"
             printf '%s has an empty %s — write what it says, or remove the line' "$id" "$_gp" ;;
         GWT_ORPHAN_PART*)    local _op="${rest#(}"; _op="${_op%)}"
-            printf 'a part line is under no SPEC (%s) — put each Given:, When:, Then:, And: or Cleanup: line under the SPEC it belongs to' "$_op" ;;
+            printf 'a part line is under no SPEC (%s) — put each Given:, When:, Then: or And: line under the SPEC it belongs to' "$_op" ;;
+        GWT_CLEANUP*)        printf '%s has a Cleanup: line — putting things back is the test'"'"'s concern, not the requirement'"'"'s: take the Cleanup: line out' "$id" ;;
         GWT_PART_ON_REMOVED*) printf '%s is removed, so it has no parts — remove the lines under its REMOVED line' "$id" ;;
         STEP_IS_TEST*)       printf 'a step names %s, in the test folders — the tests are test-author'"'"'s to write: which cases, in which files, and how. Name only the code a step changes, and drop a step that is only about tests; the SPECs say what the tests must prove' "$id" ;;
         WIRING_IS_TEST*)     printf 'the WIRING file %s is in a test folder — a test is not what runs the change; name the file whose code calls the new code, or write WIRING: none' "$id" ;;

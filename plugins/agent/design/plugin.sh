@@ -266,17 +266,14 @@ The design document MUST include:
 
    Under its line, each [code] and [done] SPEC says its behaviour in parts, one
    per line, indented ([no-code] may too):
-   - \`Given:\` the setup the behaviour starts from. Optional; any number.
+   - \`Given:\` the situation the code is in before the When — never the steps a test takes to get there. Optional; any number.
    - \`When:\` the one action — exactly one When per SPEC: a second action is a second SPEC.
    - \`Then:\` something a test can observe after the When — an output, a
      result, a file the code writes, an event. One or more. Never what a file
-     or a test contains.
-   - \`And:\` adds another line to the Given, Then or Cleanup above it.
-   - \`Cleanup:\` what must be true again after the test, for anything the
-     Given sets up or a Then says happens that outlives the test — an exported
-     variable, a file outside the test's own folder, global config or git state.
-     Leave it out when nothing outlives the test: the test harness cleans up
-     after every test.
+     or a test contains, and never how a test looks for it.
+   - \`And:\` adds another line to the Given or Then above it.
+   How a test sets this up, checks it and cleans up after it is the test's, not
+   the requirement's.
 
    The status says what work the requirement needs. Look at the code before you choose:
    - \`${_DCK_ID_PREFIX}LOOP-1[code]:\` — it needs code. Its test must fail on the code as it is before your change, and pass after it.
@@ -303,11 +300,10 @@ The design document MUST include:
 The \`\`\`acceptance block format:
 \`\`\`acceptance
 ${_DCK_ID_PREFIX}LOOP-1[code]: <one new behaviour this change introduces>
-  Given: <the setup it starts from>
+  Given: <the situation the code is in>
   When: <the one action>
   Then: <what a test can observe after it>
   And: <another thing a test can observe>
-  Cleanup: <what must be true again after, when the setup or a Then outlives the test>
 ${_DCK_ID_PREFIX}LOOP-2[no-code]: <a test, config or a refactor that changes no behaviour>
 ${_DCK_ID_PREFIX}DOCS-1[doc]: <what a doc must tell a reader>
 ${_DCK_ID_PREFIX}GARD-1[done]: <something the code already does> evidence: scripts/x.sh | run_guard()

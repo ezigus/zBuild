@@ -407,3 +407,13 @@ Enforced by `tests/unit/call-time-up-hook-test.sh` H1 (the deadline is the limit
 Since #2517 a call at its limit writes its notes and gives its answer; it is not left with nothing. The budget line every stage is given said "A call that runs out of time returns nothing". It now says: finish well before the limit; at the limit, write your notes and give your answer (`scripts/lib/stage-prompt.sh`).
 
 Enforced by `tests/unit/stage-blocks-dispatch-test.sh` D1 (the budget line says to write the notes and give the answer, and never that a call returns nothing).
+
+## Amendment (2026-11-14, #2543): a call told its time is up is not done; it may read its notes
+
+On #1700 run 43617030653 test-author's calls in rounds 1 and 2 reached their limit, were told to give their final reply, replied `LOOP_COMPLETE`, and the stage passed having written no test: two rounds were lost. Round 2's notes were lost too: after the limit the hook let it write only its notes file, but Claude Code refuses to overwrite a file the call has not read, and Read was refused.
+
+- **A call whose hook told it its time is up does not end done, whatever its reply says.** The router reads the call's step stream for the first sentence of the hook's refusal (`_ROUTE_TIME_UP_WORDS`, `core/router/route.sh`) and ends the try `router_timeout`, as a killed call ends; the engine runs the next try (ADR-054 §6a). A call never told — it made no tool call after its limit — still ends `done_sentinel` on its done word, a killed one included.
+- **A loop call's hook is given its done word** (`--done-word`), and after the limit its refusal says the call has not finished, so it must not end its reply with that word. A call with no done word is not told so.
+- **After the limit the hook allows Read of the notes file too** (that path only), and its refusal says to read the notes file, then write it.
+
+Enforced by `tests/unit/route-time-up-not-done-test.sh` T1–T5; `tests/unit/call-time-up-hook-test.sh` H7 (the done word, and the words), H8 (the notes file may be read).

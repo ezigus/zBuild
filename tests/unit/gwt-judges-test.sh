@@ -15,7 +15,7 @@
 # J4 a Then a test cannot observe is a finding naming the SPEC, the part and why
 # J5 ...untestable only for a Then, duplicate only for a When: asked again
 # J6 a part that says how, not what, is a finding
-# J7 a SPEC whose Given leaves something behind with no Cleanup is a finding
+# J7 needs_cleanup is no verdict any more: cleaning up is the test's (#2543)
 # J8 a quote that is not in that part's words is asked again, then unusable
 # T1 test-author's check is shown the parts as written, and answers a line for
 #    a SPEC whose test is right, one for each part it is not, and one for
@@ -91,7 +91,7 @@ MD
     _R1="$R"$'FRSH-1 When: how | WHY: it names the call, not what happens | QUOTE: "it is started again"\n'; _R2=""; _cov
     echo "J6|$(_design_coverage_findings | tr '\n\036' '~~')"
     _R1="$R"$'FRSH-1: needs_cleanup | WHY: the run it sets up stays in the state folder | QUOTE: "a run whose stages all completed"\n'; _R2=""; _cov
-    echo "J7|$(_design_coverage_findings | tr '\n\036' '~~')"
+    echo "J7|$_DESIGN_COV_OUTCOME"
     _R1="$R"$'FRSH-1 Then: untestable | WHY: x | QUOTE: "it is started again"\n'; _R2="$_R1"; _cov
     echo "J8|$(cat "$_N")|$_DESIGN_COV_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
     # #2527: no quote marks, or curly ones, and the quote still picks its line.
@@ -119,9 +119,9 @@ assert_contains "[J4] ...and why" "$(_l "$J" J4)" "a test cannot observe what a 
 assert_eq "[J5] untestable on a When cannot be used" "unusable" "$(_l "$J" J5 | cut -d'|' -f1)"
 assert_contains "[J5] ...and is asked again saying so" "$(_l "$J" J5)" "untestable is only for a Then"
 assert_eq "[J5] duplicate on a Then cannot be used" "unusable" "$(_l "$J" J5b)"
-assert_contains "[J6] a part that says how is a finding" "$(_l "$J" J6)" "  When: it is started again [FIX IN DESIGN: it names the call, not what happens — say what someone could see happen"
-assert_contains "[J7] something left behind with no Cleanup is a finding" "$(_l "$J" J7)" "covers: RQST-1 [FIX IN DESIGN: the run it sets up stays in the state folder"
-assert_contains "[J7] ...that asks for a Cleanup line" "$(_l "$J" J7)" "Cleanup:"
+assert_contains "[J6] a part that says how is a finding" "$(_l "$J" J6)" "  When: it is started again [FIX IN DESIGN: it names the call, not what happens — say the situation, the action, or what can be seen"
+# #2543 (ADR-073, amended): putting things back is the test's; the check asks no needs_cleanup.
+assert_eq "[J7] needs_cleanup is no verdict: the answer cannot be used" "unusable" "$(_l "$J" J7)"
 assert_contains "[J8] a quote from another part: asked again, then unusable" "$(_l "$J" J8)" "2|unusable|"
 assert_contains "[J8] ...saying which" "$(_l "$J" J8)" "FRSH-1 Then's quote is not in"
 assert_contains "[J10] a part's quote with no quote marks is a finding on that part" "$(_l "$J" J10)" "~  And: the test file contains both cases [FIX IN DESIGN:"

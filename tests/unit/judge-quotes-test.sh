@@ -118,7 +118,7 @@ MD
     _ok=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-1: ok\nDSCNFG-1: ok\n'"$_sc"
 
     _R1="$_ok"; _R2=""; _cov
-    echo "Q2a|${#_DESIGN_UNCOVERED[@]}${#_DESIGN_OUTSIDE[@]}${#_DESIGN_DONE_WRONG[@]}|$_DESIGN_COV_OUTCOME|$(cat "$_N")"
+    echo "Q2a|${#_DESIGN_UNCOVERED[@]}${#_DESIGN_OUTSIDE[@]}${#_DESIGN_STATUS_WRONG[@]}|$_DESIGN_COV_OUTCOME|$(cat "$_N")"
     _p1="$(tr -s '[:space:]' ' ' < "$_P.1")"
     echo "Q2g|$([[ "$_p1" == *"|| return 2"* || "$_p1" == *"|| return 3"* ]] && echo snippet || echo nosnippet)"
     echo "Q2g2|$([[ "$_p1" == *"scripts/cfg.sh"* ]] && echo named)"
@@ -128,7 +128,7 @@ MD
     _R1="${_ok}UNCOVERED: omitted
 OUTSIDE: (none)
 DONE_WRONG: none"; _R2=""; _cov
-    echo "Q2b|${#_DESIGN_UNCOVERED[@]}${#_DESIGN_OUTSIDE[@]}${#_DESIGN_DONE_WRONG[@]}|$_DESIGN_COV_OUTCOME"
+    echo "Q2b|${#_DESIGN_UNCOVERED[@]}${#_DESIGN_OUTSIDE[@]}${#_DESIGN_STATUS_WRONG[@]}|$_DESIGN_COV_OUTCOME"
 
     _R1=$'RQRQST-1: covered\nRQRQST-2: uncovered | WHY: no SPEC refuses an unreadable file | QUOTE: "refuse a missing config file"\nDSWORK-1: ok\nDSCNFG-1: ok\n'"$_sc"; _R2=""; _cov
     echo "Q2c|${#_DESIGN_UNCOVERED[@]}|${_DESIGN_UNCOVERED[0]:-}|$(cat "$_N")"
@@ -139,10 +139,10 @@ DONE_WRONG: none"; _R2=""; _cov
     _R1=$'RQRQST-1: covered\nRQRQST-2: uncovered | WHY: x | QUOTE: "accept a flag"\nDSWORK-1: ok\nDSCNFG-1: ok\n'"$_sc"; _R2=""; _cov
     echo "Q2e|$(cat "$_N")|$_DESIGN_COV_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
 
-    _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-1: ok\nDSCNFG-1: done_wrong | WHY: it returns 2 only when the file is absent | QUOTE: scripts/cfg.sh | [[ -f "$1" ]] || return 2\n'"$_sc"; _R2=""; _cov
-    echo "Q2f|${#_DESIGN_DONE_WRONG[@]}|${_DESIGN_DONE_WRONG[0]:-}|$_DESIGN_COV_OUTCOME"
+    _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-1: ok\nDSCNFG-1: status | DOC: no | BEFORE: no | WORK: yes | WHY: it returns 2 only when the file is absent | QUOTE: scripts/cfg.sh | [[ -f "$1" ]] || return 2\n'"$_sc"; _R2=""; _cov
+    echo "Q2f|${#_DESIGN_STATUS_WRONG[@]}|${_DESIGN_STATUS_WRONG[0]:-}|$_DESIGN_COV_OUTCOME"
 
-    _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-1: done_wrong | WHY: x | QUOTE: scripts/cfg.sh | line one\nDSCNFG-1: ok\n'"$_sc"; _R2="$_R1"; _cov
+    _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-1: status | DOC: no | BEFORE: no | WORK: yes | WHY: x | QUOTE: scripts/cfg.sh | line one\nDSCNFG-1: ok\n'"$_sc"; _R2="$_R1"; _cov
     echo "Q2h|$_DESIGN_COV_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
 
     _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-1: ok\nDSCNFG-1: ok\nSCOPE: scripts/thing.sh: ok\nSCOPE: scripts/telemetry.sh: outside | WHY: the issue asks for no telemetry\n'; _R2=""; _cov
@@ -163,8 +163,9 @@ assert_contains "[Q2] a quote the requirement does not say is asked again, then 
 assert_contains "[Q2] ...saying which quote" "$(_l Q2e)" "RQRQST-2's quote is not in"
 assert_contains "[Q2] a [done] claim is judged on the code from before the change" "$(_l Q2f)" "1|DSCNFG-1"
 assert_contains "[Q2] ...and carries its quote" "$(_l Q2f)" 'return 2'
-assert_contains "[Q2] done_wrong on a SPEC not marked [done] cannot be used" "$(_l Q2h)" "unusable|"
-assert_contains "[Q2] ...and is asked again, saying so" "$(_l Q2h)" "DSWORK-1 is not marked [done]"
+# #2543: a status line whose facts give the SPEC's own status says nothing wrong.
+assert_contains "[Q2] a status line whose facts give the SPEC's own status cannot be used" "$(_l Q2h)" "unusable|"
+assert_contains "[Q2] ...and is asked again, saying so" "$(_l Q2h)" "DSWORK-1's facts give [code], its own status"
 assert_eq "[Q2] a scope line is no finding, and needs no line (#2495)" "0|" "$(_l Q2i)"
 
 print_test_section "Q3: test-author's assertion check"

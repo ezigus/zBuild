@@ -235,7 +235,13 @@ On #1805 run 43130129438 test-author's check said a test was wrong in six calls 
 - **§3: every quote is read by that one comparison** (`_judge_holds`). The part readers of design's coverage check and test-author's check take the quote as written, with no pattern of their own, and design's coverage check no longer refuses a part's quote written without quote marks. Design's `[done]` evidence is a quote too: it is found inside one line of its file, spacing and marks aside, not by an exact match.
 - **The `<file>:"<text>"` form is still refused** (#2519): that is the form of a quote, not its characters.
 
+## Amendment 2026-11-14 (#2543) — §3: design's check answers a status line with three facts
+
+Design's check answers `<SPEC id>: status | DOC: <yes or no> | BEFORE: <yes or no> | WORK: <yes or no> | WHY: … | QUOTE: <file> | <line>` for a SPEC whose status the facts do not give (ADR-069 §2, amended 2026-11-14). The judge states the facts, each backed by its quote; the stage works out the status, never the judge. `done_wrong` and `needs_cleanup` are no longer verdicts (ADR-073, amended 2026-11-14), and an answer that uses them cannot be used. `how` covers a part that says how a test sets something up or checks it, as well as how the code is built.
+
 ## Enforced by
+
+- §3 amendment 2026-11-14 (#2543: the status line; done_wrong and needs_cleanup gone; how widened) → `tests/unit/design-status-check-test.sh` S1, S9–S11; `tests/unit/gwt-situation-not-setup-test.sh` G3–G5; `tests/unit/gwt-judges-test.sh` J6, J7
 
 - §3 amendment 2026-11-11 (#2525: a backslash in front of any character) → `tests/unit/judge-quotes-test.sh` Q11
 
