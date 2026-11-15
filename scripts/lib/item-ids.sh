@@ -93,8 +93,8 @@ zb_ids_highest_line_v() {
     if [[ -z "$list" ]]; then
         _zhl="No $5 id is taken yet: every code starts at 1 (${4}LOOP-1)."
     else
-        local where=""; [[ -n "${6:-}" ]] && where=", and in the repository's tests"
-        _zhl="The highest number each code has had, removed ones counted$where: $list. A new $5 with one of these codes takes the next number; a new code starts at 1."
+        local _in=""; [[ -n "${6:-}" ]] && _in=", and in the repository's tests"
+        _zhl="The highest number each code has had, removed ones counted$_in: $list. A new $5 with one of these codes takes the next number; a new code starts at 1."
     fi
     return 0
 }
