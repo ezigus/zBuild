@@ -136,4 +136,268 @@ assert_eq "[T5] the stage is not run again" "1" "$(grep -c x "$STARTS")"
 [[ "$_storm_rc" == 1 && -e "$PERSISTED" ]] || tail -15 "$TEST_TEMP_DIR/storm.out" >&2
 
 print_test_results
+
+# ─── DSCLA-5, DSCLA-6, DSCLA-7, DSCLA-9: cross-machine claim (ADR-005) ──────
+#
+# Verifies that runner.sh:
+#   DSCLA-5: releases zbuild:claimed on normal pipeline exit
+#   DSCLA-6: releases zbuild:claimed on pipeline failure exit
+#   DSCLA-7: releases zbuild:claimed on TERM signal
+#   DSCLA-9: outputs the holder string when refusing a claimed issue
+#
+# These tests FAIL on the code from before this change because runner.sh
+# never calls zbuild_claim_acquire, so zbuild:claimed is never added to the
+# claim store during a run.  The mid-run claim-present marker is therefore
+# never written, and the assertion fails.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Claim-test infrastructure: one repo shared across all four scenarios.
+_CLAIM_REPO="$(setup_git_temp_repo claim-dscla)"
+mkdir -p "$_CLAIM_REPO/.zbuild/templates"
+cat > "$_CLAIM_REPO/.zbuild/templates/claim-test.yaml" <<'CLAIMTPL'
+id: claim-test
+extends: simple
+stages:
+  - id: outcome
+    gate: auto
+CLAIMTPL
+(cd "$_CLAIM_REPO" && git add .zbuild && git commit -qm "add claim-test template") \
+    >/dev/null 2>&1
+
+mock_plugin_factory outcome agent 0 >/dev/null
+
+export ZBUILD_CLAIM_BACKEND="local-fs"
+export ZBUILD_CLAIM_STORE="$TEST_TEMP_DIR/claim-store-dscla"
+export ZBUILD_CLAIM_BACKOFF_MIN_MS=5
+export ZBUILD_CLAIM_BACKOFF_MAX_MS=15
+export ZBUILD_NO_WORKTREE=1
+export ZBUILD_NO_ISSUE_LOCK=1
+mkdir -p "$ZBUILD_CLAIM_STORE"
+
+_SRL="$REPO_ROOT/scripts/lib/stage-result.sh"
+
+# ── Helper: prepare a fresh state+events dir for one claim scenario ──────────
+_claim_prep() {
+    local _label="$1"
+    _CDIR="$TEST_TEMP_DIR/cscenario-$_label"
+    mkdir -p "$_CDIR/state" "$_CDIR/events"
+    export ZBUILD_STATE_DIR="$_CDIR/state"
+    export ZBUILD_EVENTS_DIR="$_CDIR/events"
+    export ZBUILD_EVENTS_JSONL="$_CDIR/events/events.jsonl"
+}
+
+# ── DSCLA-5: zbuild:claimed released on normal pipeline completion ────────────
+
+# Given: the claim was acquired at run start (issue 90001764)
+_DSCLA5_ISSUE="90001764"
+_DSCLA5_PRESENT="$TEST_TEMP_DIR/dscla5-claim-present"
+_DSCLA5_STARTED="$TEST_TEMP_DIR/dscla5-stage-started"
+rm -f "$_DSCLA5_PRESENT" "$_DSCLA5_STARTED"
+
+# Stage: checks for zbuild:claimed before writing result; completes normally
+cat > "$PLUGINS_ROOT/agent/outcome/plugin.sh" <<PLUG
+outcome_run() {
+    # Check if zbuild:claimed is present before stage does any work [DSCLA-1]
+    if grep -Fxq "zbuild:claimed" "$ZBUILD_CLAIM_STORE/$_DSCLA5_ISSUE/labels.txt" 2>/dev/null; then
+        : > "$_DSCLA5_PRESENT"
+    fi
+    : > "$_DSCLA5_STARTED"
+    local _art; _art="\${ZBUILD_ARTIFACT_DIR:-\$(dirname "\$2")/artifacts}"; mkdir -p "\$_art"
+    source "$_SRL"
+    stage_result_write "\$_art/outcome-result.json" "pass" "claim check ok"
+    return 0
+}
+PLUG
+
+_claim_prep "dscla5"
+
+# When: the pipeline exits normally (_runner_ended=true)
+( cd "$_CLAIM_REPO" && exec bash "$RUNNER" \
+    --issue "$_DSCLA5_ISSUE" --no-resume \
+    --template claim-test ) \
+    > "$TEST_TEMP_DIR/dscla5.out" 2>&1
+_dscla5_rc=$?
+
+# Then: zbuild:claimed was present on the issue before the first stage ran
+if [[ -e "$_DSCLA5_PRESENT" ]]; then
+    assert_pass "[DSCLA-1/5] zbuild:claimed was present before the first stage dispatched"
+else
+    assert_fail "[DSCLA-1/5] zbuild:claimed was present before the first stage dispatched" \
+        "claim never appeared in store; rc=$_dscla5_rc output=$(tail -5 "$TEST_TEMP_DIR/dscla5.out")"
+fi
+
+# Then: zbuild:claimed is absent from the issue after normal exit
+if ! grep -Fxq "zbuild:claimed" "$ZBUILD_CLAIM_STORE/$_DSCLA5_ISSUE/labels.txt" 2>/dev/null; then
+    assert_pass "[DSCLA-5] zbuild:claimed absent after normal pipeline completion"
+else
+    assert_fail "[DSCLA-5] zbuild:claimed absent after normal pipeline completion" \
+        "label still present in claim store after runner exit"
+fi
+
+# ── DSCLA-6: zbuild:claimed released on pipeline failure ─────────────────────
+
+# Given: the claim was acquired at run start (issue 90001765)
+_DSCLA6_ISSUE="90001765"
+_DSCLA6_PRESENT="$TEST_TEMP_DIR/dscla6-claim-present"
+rm -f "$_DSCLA6_PRESENT"
+
+# Stage: checks for zbuild:claimed, then fails (stage failure triggers abort)
+cat > "$PLUGINS_ROOT/agent/outcome/plugin.sh" <<PLUG
+outcome_run() {
+    if grep -Fxq "zbuild:claimed" "$ZBUILD_CLAIM_STORE/$_DSCLA6_ISSUE/labels.txt" 2>/dev/null; then
+        : > "$_DSCLA6_PRESENT"
+    fi
+    local _art; _art="\${ZBUILD_ARTIFACT_DIR:-\$(dirname "\$2")/artifacts}"; mkdir -p "\$_art"
+    source "$_SRL"
+    stage_result_write "\$_art/outcome-result.json" "broken" "deliberate failure"
+    return 1
+}
+PLUG
+
+_claim_prep "dscla6"
+
+# When: the pipeline exits due to a stage failure (_runner_abort_trap fires)
+( cd "$_CLAIM_REPO" && exec bash "$RUNNER" \
+    --issue "$_DSCLA6_ISSUE" --no-resume \
+    --template claim-test ) \
+    > "$TEST_TEMP_DIR/dscla6.out" 2>&1
+_dscla6_rc=$?
+
+# Then: zbuild:claimed was present before the stage ran
+if [[ -e "$_DSCLA6_PRESENT" ]]; then
+    assert_pass "[DSCLA-6] zbuild:claimed was present during failure run"
+else
+    assert_fail "[DSCLA-6] zbuild:claimed was present during failure run" \
+        "claim never appeared in store; rc=$_dscla6_rc output=$(tail -5 "$TEST_TEMP_DIR/dscla6.out")"
+fi
+
+# Then: zbuild:claimed is absent after failure exit
+if ! grep -Fxq "zbuild:claimed" "$ZBUILD_CLAIM_STORE/$_DSCLA6_ISSUE/labels.txt" 2>/dev/null; then
+    assert_pass "[DSCLA-6] zbuild:claimed absent after pipeline failure"
+else
+    assert_fail "[DSCLA-6] zbuild:claimed absent after pipeline failure" \
+        "label still present after failure exit"
+fi
+
+# ── DSCLA-7: zbuild:claimed released on TERM signal ──────────────────────────
+
+# Given: the claim was acquired at run start (issue 90001766)
+_DSCLA7_ISSUE="90001766"
+_DSCLA7_PRESENT="$TEST_TEMP_DIR/dscla7-claim-present"
+_DSCLA7_STARTED="$TEST_TEMP_DIR/dscla7-stage-started"
+rm -f "$_DSCLA7_PRESENT" "$_DSCLA7_STARTED"
+
+# Stage: checks for zbuild:claimed, writes marker, then sleeps (waits for TERM)
+cat > "$PLUGINS_ROOT/agent/outcome/plugin.sh" <<PLUG
+outcome_run() {
+    if grep -Fxq "zbuild:claimed" "$ZBUILD_CLAIM_STORE/$_DSCLA7_ISSUE/labels.txt" 2>/dev/null; then
+        : > "$_DSCLA7_PRESENT"
+    fi
+    : > "$_DSCLA7_STARTED"
+    sleep 60
+    local _art; _art="\${ZBUILD_ARTIFACT_DIR:-\$(dirname "\$2")/artifacts}"; mkdir -p "\$_art"
+    source "$_SRL"
+    stage_result_write "\$_art/outcome-result.json" "pass" "claim check ok"
+    return 0
+}
+PLUG
+
+_claim_prep "dscla7"
+
+# When: the runner process receives SIGTERM (_runner_signal_trap then _runner_abort_trap)
+( cd "$_CLAIM_REPO" && exec bash "$RUNNER" \
+    --issue "$_DSCLA7_ISSUE" --no-resume \
+    --template claim-test ) \
+    > "$TEST_TEMP_DIR/dscla7.out" 2>&1 &
+_DSCLA7_PID=$!
+
+# Wait for the stage to have started (which means claim was acquired before it)
+for _ in $(seq 1 300); do [[ -e "$_DSCLA7_STARTED" ]] && break; sleep 0.1; done
+
+kill -TERM "$_DSCLA7_PID" 2>/dev/null || true
+for _ in $(seq 1 300); do kill -0 "$_DSCLA7_PID" 2>/dev/null || break; sleep 0.1; done
+kill -KILL "$_DSCLA7_PID" 2>/dev/null || true
+wait "$_DSCLA7_PID" 2>/dev/null || true
+
+if [[ ! -e "$_DSCLA7_STARTED" ]]; then
+    assert_fail "[setup-DSCLA-7] stage started before TERM" \
+        "$(tail -10 "$TEST_TEMP_DIR/dscla7.out")"
+fi
+
+# Then: zbuild:claimed was present before the stage ran
+if [[ -e "$_DSCLA7_PRESENT" ]]; then
+    assert_pass "[DSCLA-7] zbuild:claimed was present before stage started"
+else
+    assert_fail "[DSCLA-7] zbuild:claimed was present before stage started" \
+        "claim never appeared in store"
+fi
+
+# Then: zbuild:claimed is absent after TERM exit
+if ! grep -Fxq "zbuild:claimed" "$ZBUILD_CLAIM_STORE/$_DSCLA7_ISSUE/labels.txt" 2>/dev/null; then
+    assert_pass "[DSCLA-7] zbuild:claimed absent after TERM signal"
+else
+    assert_fail "[DSCLA-7] zbuild:claimed absent after TERM signal" \
+        "label still present after TERM"
+fi
+
+# ── DSCLA-9: runner output contains holder string when zbuild:claimed present ─
+
+# Given: zbuild:claimed on the issue and a claim comment with a holder string
+_DSCLA9_ISSUE="90001767"
+_DSCLA9_HOLDER="run-holder-9abc on machine-other"
+_DSCLA9_STARTED="$TEST_TEMP_DIR/dscla9-stage-started"
+rm -f "$_DSCLA9_STARTED"
+
+# Pre-populate the claim store: label + holder
+mkdir -p "$ZBUILD_CLAIM_STORE/$_DSCLA9_ISSUE"
+printf 'zbuild:claimed\n' > "$ZBUILD_CLAIM_STORE/$_DSCLA9_ISSUE/labels.txt"
+printf '%s\n' "$_DSCLA9_HOLDER" > "$ZBUILD_CLAIM_STORE/$_DSCLA9_ISSUE/holder.txt"
+
+# Stage: writes marker if dispatched (must NOT be dispatched for DSCLA-9 to pass)
+cat > "$PLUGINS_ROOT/agent/outcome/plugin.sh" <<PLUG
+outcome_run() {
+    : > "$_DSCLA9_STARTED"
+    local _art; _art="\${ZBUILD_ARTIFACT_DIR:-\$(dirname "\$2")/artifacts}"; mkdir -p "\$_art"
+    source "$_SRL"
+    stage_result_write "\$_art/outcome-result.json" "pass" "should not reach here"
+    return 0
+}
+PLUG
+
+_claim_prep "dscla9"
+
+# When: the runner is started on that issue
+( cd "$_CLAIM_REPO" && exec bash "$RUNNER" \
+    --issue "$_DSCLA9_ISSUE" --no-resume \
+    --template claim-test ) \
+    > "$TEST_TEMP_DIR/dscla9.out" 2>&1
+_dscla9_rc=$?
+
+# Then: the runner's stdout or stderr output contains the holder string
+if grep -qF "$_DSCLA9_HOLDER" "$TEST_TEMP_DIR/dscla9.out" 2>/dev/null; then
+    assert_pass "[DSCLA-9] runner output contains holder string when zbuild:claimed is present"
+else
+    assert_fail "[DSCLA-9] runner output contains holder string when zbuild:claimed is present" \
+        "holder '$_DSCLA9_HOLDER' not found in: $(cat "$TEST_TEMP_DIR/dscla9.out" 2>/dev/null)"
+fi
+
+# Then: runner exits non-zero before any stage is dispatched
+if [[ "$_dscla9_rc" -ne 0 ]]; then
+    assert_pass "[DSCLA-9] runner exits non-zero when zbuild:claimed is present"
+else
+    assert_fail "[DSCLA-9] runner exits non-zero when zbuild:claimed is present" \
+        "runner exited 0 (should have refused)"
+fi
+
+if [[ ! -e "$_DSCLA9_STARTED" ]]; then
+    assert_pass "[DSCLA-9] no stage was dispatched when runner refused the claim"
+else
+    assert_fail "[DSCLA-9] no stage was dispatched when runner refused the claim" \
+        "stage started marker found — runner dispatched a stage after refusing"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# End of DSCLA claim tests
+# ─────────────────────────────────────────────────────────────────────────────
+print_test_results
 exit $((FAIL > 0))
