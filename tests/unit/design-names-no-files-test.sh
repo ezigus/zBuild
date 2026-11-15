@@ -78,7 +78,11 @@ WIRING: scripts/wire.sh
 EOF
 
 # ── N1 ─────────────────────────────────────────────────────────────────────
-_design_checks "$DESIGN" "$ROOT" ""
+# The tests carry the design's tags because the design passed before (a test is
+# written only after its design passes): it is the last design that passed, so
+# its ids are its own, not ones other work tagged (#2550).
+cp "$DESIGN" "$TEST_TEMP_DIR/last-design.md"
+_design_checks "$DESIGN" "$ROOT" "" "$TEST_TEMP_DIR/last-design.md"
 assert_eq "[N1] a design with no TESTFILES and no scope block passes design's checks" \
     "" "${_DESIGN_VIOLATIONS[*]-}"
 
@@ -152,13 +156,13 @@ assert_contains "[N9] and to carry on with what it assumed" "$PROMPT" "carry on 
 # ── N10 ────────────────────────────────────────────────────────────────────
 BAD="$TEST_TEMP_DIR/bad-design.md"
 { cat "$DESIGN"; printf '\nUNCLEAR: R-1 does --from-stage need --resume?\n'; } > "$BAD"
-_design_checks "$BAD" "$ROOT" ""
+_design_checks "$BAD" "$ROOT" "" "$TEST_TEMP_DIR/last-design.md"
 assert_contains "[N10] a malformed UNCLEAR line is refused" "${_DESIGN_VIOLATIONS[*]-}" "UNCLEAR_MALFORMED"
 _n10=""; for v in "${_DESIGN_VIOLATIONS[@]}"; do _n10+="$(_dck_plain "$v")"; done
 assert_contains "[N10] and design is told the form" "$_n10" "UNCLEAR: <id> | <the question> | <what you assumed>"
 GOOD="$TEST_TEMP_DIR/good-design.md"
 { cat "$DESIGN"; printf '\nUNCLEAR: R-1 | does --from-stage need --resume? | it works on its own\n'; } > "$GOOD"
-_design_checks "$GOOD" "$ROOT" ""
+_design_checks "$GOOD" "$ROOT" "" "$TEST_TEMP_DIR/last-design.md"
 assert_eq "[N10] a well-formed UNCLEAR line passes" "" "${_DESIGN_VIOLATIONS[*]-}"
 
 # ── N11 ────────────────────────────────────────────────────────────────────

@@ -20,6 +20,9 @@
 # N6 [change] a test tag is the id alone (#2520), so an id another piece of
 #             work tagged in the repository's tests is taken: design's prompt
 #             and its check both count those tags, so a new id is past them
+# N7 [change] a tag this branch added is its own (ADR-069 §11): it is read from
+#             the commit the branch started from, so the branch's tags are not
+#             counted as taken
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -94,6 +97,14 @@ printf '%s\n' '# Design' '```acceptance' 'DSCLM-1[doc]: one' 'DSCLM-2[doc]: two'
 assert_contains "[N6] design's check refuses a new id at or below it" "$(_ids_ok "$TEST_TEMP_DIR/draft-c.md")" "ID_NOT_AFTER_LAST DSCLM-3 DSCLM-6"
 printf '%s\n' '# Design' '```acceptance' 'DSCLM-1[doc]: one' 'DSCLM-2[doc]: two' 'DSCLM-6[doc]: six' 'WIRING: none' '```' > "$TEST_TEMP_DIR/draft-d.md"
 assert_eq "[N6] ...and passes the one the prompt says" "" "$(_ids_ok "$TEST_TEMP_DIR/draft-d.md")"
+# N7: on a branch, a tag the branch added is not taken.
+git -C "$FIX" checkout -q -b feature >/dev/null 2>&1
+printf 'assert_eq "[DSCLM-9] this branch" 1 1\n' > "$FIX/tests/mine-test.sh"
+git -C "$FIX" add tests/mine-test.sh >/dev/null 2>&1
+git -C "$FIX" -c user.email=t@t -c user.name=t commit -q -m mine >/dev/null 2>&1
+_p="$(_design_prompt)"
+assert_contains "[N7] on a branch, the count is the default branch's" "$_p" "DSCLM 5"
+_lacks "[N7] ...a tag the branch added is not counted" "$_p" "DSCLM 9"
 rm -f "$ART/design.md"
 
 # ── N5: intake ───────────────────────────────────────────────────────────────

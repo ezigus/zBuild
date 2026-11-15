@@ -44,24 +44,30 @@ _zb_ids_highest_v() {
     return 0
 }
 
-# zb_test_tag_ids_v <out> <repo> <prefix> — the ids of stage <prefix> tagged
-# in the repository's test folders, as `[<id>]` (a tag is the id alone since
-# #2520, so one another piece of work tagged is taken). One git grep, done once
-# for a repository and kept for the rest of this shell (#2550).
+# zb_test_tag_ids_v <out> <repo> <prefix> — the ids of stage <prefix> that
+# other work tagged in the repository's test folders, as `[<id>]`: a tag is the
+# id alone since #2520, so one another piece of work tagged is taken. Read from
+# the commit this branch started from — a tag this branch added is its own
+# (ADR-069 §11) — or, with none (the default branch itself), from the tree.
+# Done once for a repository and kept for the rest of this shell (#2550).
 _ZB_TAG_IDS_KEY="" _ZB_TAG_IDS=""
 zb_test_tag_ids_v() {
-    local -n _zti="$1"; local repo="$2" px="$3" globs="" t
+    local -n _zti="$1"; local repo="$2" px="$3" globs="" t base=""
     if [[ "$_ZB_TAG_IDS_KEY" == "$repo|$px" ]]; then _zti="$_ZB_TAG_IDS"; return 0; fi
     _zti=""
     [[ -n "$repo" && -n "$px" ]] && declare -F zb_test_path_globs_v >/dev/null 2>&1 \
         && zb_test_path_globs_v globs "$repo"
     if [[ -n "$globs" ]]; then
+        declare -F zbuild_resolve_merge_base_v >/dev/null 2>&1 \
+            || source "${BASH_SOURCE[0]%/*}/merge-base.sh" 2>/dev/null || true
+        declare -F zbuild_resolve_merge_base_v >/dev/null 2>&1 && zbuild_resolve_merge_base_v base "$repo"
         # read -a: the globs reach git as written, never expanded by the shell.
-        local -a pats=(); read -r -a pats <<< "$globs"
+        local -a pats=() where=(--untracked); read -r -a pats <<< "$globs"
+        [[ -n "$base" ]] && where=("$base")
         while IFS= read -r t; do
             t="${t#\[}"; t="${t%\]}"
             [[ -n "$t" && " $_zti " != *" $t "* ]] && _zti+="${_zti:+ }$t"
-        done < <(git -C "$repo" grep --untracked -h -o -E "\[${px}[A-Z][A-Z0-9]{2,3}-[0-9]+\]" -- "${pats[@]}" 2>/dev/null)
+        done < <(git -C "$repo" grep -h -o -E "\[${px}[A-Z][A-Z0-9]{2,3}-[0-9]+\]" "${where[@]}" -- "${pats[@]}" 2>/dev/null)
     fi
     _ZB_TAG_IDS_KEY="$repo|$px" _ZB_TAG_IDS="$_zti"
     return 0
