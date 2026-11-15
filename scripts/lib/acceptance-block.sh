@@ -398,7 +398,17 @@ acceptance_spec_covers() {
 acceptance_requirements_list() {
     local f="${1:-}"
     [[ -n "$f" && -s "$f" ]] || return 0
-    jq -r '.requirements[]? | "- \(.id): \(.text)"' "$f" 2>/dev/null || true
+    # #2550 (ADR-070 §1): a limit is not a requirement — acceptance_limits_list.
+    jq -r '.requirements[]? | select(.limit != true) | "- \(.id): \(.text)"' "$f" 2>/dev/null || true
+}
+
+# acceptance_limits_list <requirements.json>  (#2550, ADR-070 §1)
+# What the change must not do, as intake listed it: one `- <id>: <Do not …>`
+# line each. Empty when there is none.
+acceptance_limits_list() {
+    local f="${1:-}"
+    [[ -n "$f" && -s "$f" ]] || return 0
+    jq -r '.requirements[]? | select(.limit == true) | "- \(.id): \(.text)"' "$f" 2>/dev/null || true
 }
 
 # acceptance_spec_text <design_md> <spec_id>  (#1978)

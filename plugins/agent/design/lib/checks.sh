@@ -212,6 +212,9 @@ _dck_plain() {
             # The requirement's own words go last, unquoted, so quotes inside them
             # cannot break the sentence (review #2320).
             printf 'requirement %s from the issue is not covered by any SPEC: %s. End the line of the SPEC that delivers it with " covers: %s" (before any " evidence: "), or add a SPEC for it; if the code already does it, a [done] SPEC with evidence covers it' "$id" "$_rt" "$id" ;;
+        LIMIT_COVERED*)      local _lt="${rest#* (}"; _lt="${_lt%)}"
+            # #2550: a limit is what the change must not do; it gets no SPEC.
+            printf '%s covers %s, which is a limit — something the change must not do: %s. Write no SPEC for a limit; take %s out of its covers:, and drop the SPEC if it builds what the limit forbids' "$id" "$third" "$_lt" "$third" ;;
         WIRING_MISSING*)     printf 'the WIRING file %s does not exist — name a file that exists in the repository, or WIRING: none' "$id" ;;
         # #2467 (ADR-073 §1 §3): a SPEC's parts.
         GWT_MISSING*)        printf '%s is written on one line — rewrite it with its parts on the lines under it: Given: <the setup> (optional), When: <the one action>, Then: <what a test can observe> (one or more; And: adds another)' "$id" ;;
@@ -243,13 +246,16 @@ _design_checks() {
     _DESIGN_VIOLATIONS=()
     local -a violations=()
     local _covered=" " _base="" _base_done="" _evw="" _req_rows="" _rr_k _rr_id _rr_t
-    # The requirements, read once: "A<US>id<US>text" for each, "R<US>id" for
+    # #2550: which SPECs cover each id, so a SPEC that covers a limit is named.
+    local -A _DCK_COVERS_OF=()
+    # The requirements, read once: "A<US>id<US>text" for each ("L" for a limit,
+    # #2550), "R<US>id" for
     # each removed one, "I<US>id" for each id the issue's words write — C7 reads
     # the first, C9 the issue's ids.
     if [[ -s "$req_json" ]]; then
         # Unit separator, not @tsv: @tsv would double every backslash in the
         # text (review #2320). Intake strips control characters, so it never occurs.
-        _req_rows="$(jq -r '(.requirements[]? | "A\u001f" + .id + "\u001f" + (.text | gsub("[[:cntrl:]]"; " "))),
+        _req_rows="$(jq -r '(.requirements[]? | (if .limit == true then "L" else "A" end) + "\u001f" + .id + "\u001f" + (.text | gsub("[[:cntrl:]]"; " "))),
                             (.removed[]? | "R\u001f" + .id + "\u001f"),
                             (.issue_ids[]? | "I\u001f" + . + "\u001f")' "$req_json" 2>/dev/null || true)"
         while IFS=$'\x1f' read -r _rr_k _rr_id _rr_t; do
@@ -292,6 +298,7 @@ _design_checks() {
         for _spec in $_na; do
             _acceptance_spec_line "$_blk" "$_spec" || continue
             _covered+="${_ACC_SPEC_COVERS//,/ } "
+            local _cv; for _cv in ${_ACC_SPEC_COVERS//,/ }; do _DCK_COVERS_OF[$_cv]+="$_spec "; done
             # ── C10 PARTS (#2467, ADR-073 §3): a [code] or [done] SPEC is written
             # as Given/When/Then — one action, at least one thing to observe.
             # #2525 (ADR-069 §1): a [doc] requirement is one line — no test runs it.
@@ -391,7 +398,14 @@ _design_checks() {
     if [[ $_accept_ok -eq 1 && -s "$req_json" ]]; then
         local _rid _rtext _rk
         while IFS=$'\x1f' read -r _rk _rid _rtext; do
-            [[ "$_rk" == A && -n "$_rid" ]] || continue
+            [[ -n "$_rid" ]] || continue
+            # #2550 (ADR-069): a limit gets no SPEC — one that covers it is refused.
+            if [[ "$_rk" == L ]]; then
+                local _ls
+                for _ls in ${_DCK_COVERS_OF[$_rid]:-}; do violations+=("LIMIT_COVERED $_ls $_rid ($_rtext)"); done
+                continue
+            fi
+            [[ "$_rk" == A ]] || continue
             [[ "$_covered" == *" $_rid "* ]] \
                 || violations+=("REQUIREMENT_NOT_COVERED $_rid ($_rtext)")
         done <<< "$_req_rows"

@@ -93,7 +93,16 @@ UNASKED: <what the change does> | WHY: <why no requirement asks for it> | QUOTE:
 
 Its QUOTE is the code that does it. When every part of the DIFF is asked for,
 write one line: UNASKED: none
+${7:+
+Then judge each LIMIT — something the issue says the change must not do — one
+line for each, by its id:
 
+KEPT: <id>
+BROKEN: <id> | WHY: <what the change does that the limit forbids> | QUOTE: <file> | <one line of the code that does it>
+
+A limit is broken only by code the change adds or changes; its QUOTE is that
+code.
+}
 Findings other stages raised may be shown under Previous work. After your
 verdict lines, answer each of them:
 ${_ZB_ANSWER_FORMS:-}
@@ -149,7 +158,10 @@ ${5:-<none listed>}
 
 REQUIREMENTS:
 $2
-
+${7:+
+LIMITS — what the change must not do:
+$7
+}
 THE CHANGE:
 $3
 
@@ -270,16 +282,19 @@ issue_acceptance_run() {
     # #2306 (ADR-070 §4): the issue's requirements as intake numbered them.
     local _reqs=""; declare -F acceptance_requirements_list >/dev/null 2>&1 \
         && _reqs="$(acceptance_requirements_list "$(earlier_requirements "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)")"
+    # #2550 (ADR-072 §3): what the change must not do, judged against it.
+    local _lims=""; declare -F acceptance_limits_list >/dev/null 2>&1 \
+        && _lims="$(acceptance_limits_list "$(earlier_requirements "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)")"
     # #2464 (ADR-072 §4 §5): the answer is kept while what it judged is
     # unchanged; a stage's `wrong` answer to one of its findings is judged
     # again, shown to the judge.
     local _ans=""; judge_answers_to_v _ans "$art" issue-acceptance
     local kf="${art%/}/issue-acceptance-judged.json" eng fp kept="" _root_q="$_root"
     judge_engine_v eng
-    judge_fp_v fp "$eng"$'\n'"$issue"$'\n'"$_reqs"$'\n'"$acc"$'\n'"$_change_fp"$'\n'"$test_verdict"$'\n'"$_ans"
+    judge_fp_v fp "$eng"$'\n'"$issue"$'\n'"$_reqs"$'\n'"$_lims"$'\n'"$acc"$'\n'"$_change_fp"$'\n'"$test_verdict"$'\n'"$_ans"
     judge_kept_get_v kept "$kf" issue "$fp" "${_ans:+1}"
     if [[ -n "$kept" ]]; then
-        _ia_parse "$kept" "$_reqs" "$issue" "$_root_q"
+        _ia_parse "$kept" "$_reqs" "$issue" "$_root_q" "$_lims"
         # A kept answer was not asked this time: its answers stand as given.
         zb_answers_collect_v _IA_ANSWERS "$kept"
         if [[ -z "$_IA_PROBLEM" ]]; then
@@ -288,7 +303,7 @@ issue_acceptance_run() {
         fi
     fi
 
-    _task="$(_ia_prompt "$issue" "${acc:-<none>}" "${change:-<no change found>}" "${test_verdict:-unknown}" "$_reqs" "$(judge_disputes_block "$_ans")")"
+    _task="$(_ia_prompt "$issue" "${acc:-<none>}" "${change:-<no change found>}" "${test_verdict:-unknown}" "$_reqs" "$(judge_disputes_block "$_ans")" "$_lims")"
     _framed="$_task"
     # ADR-067 §8: the stage's three parts and the engine's blocks, in the one
     # prompt order. A prompt that cannot be composed is not sent.
@@ -317,7 +332,7 @@ issue_acceptance_run() {
         # No `| head` (#1886): capture in full, trim in bash. #2460: a wrapped
         # line is read whole.
         zb_reply_join_v _raw "$_raw"
-        _ia_parse "$_raw" "$_reqs" "$issue" "$_root_q"
+        _ia_parse "$_raw" "$_reqs" "$issue" "$_root_q" "$_lims"
         [[ -z "$_IA_PROBLEM" ]] && break
         _ask="$(stage_prompt_reask "$_framed" "$_IA_PROBLEM" "$_raw")"
     done
@@ -383,9 +398,9 @@ _ia_json_list() {
 # asks for, with the code that does it — into _IA_UNASKED ("<part>: <why> —
 # <quote>"); its quote must be in a file, and `UNASKED: none` is no line.
 _ia_parse() {
-    local raw="$1" reqs="$2" issue="$3" repo="$4"
+    local raw="$1" reqs="$2" issue="$3" repo="$4" lims="${5:-}"
     _IA_UNMET=(); _IA_UNSURE=(); _IA_UNASKED=(); _IA_PROBLEM=""; _IA_QUOTED=()
-    local -A rtext=() seen=()
+    local -A rtext=() seen=() ltext=() lseen=()
     local -a order=() bad=()
     local l kind rest fix name why quote w qp own
     while IFS= read -r l; do
@@ -393,7 +408,28 @@ _ia_parse() {
         rtext["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"; order+=("${BASH_REMATCH[1]}")
     done <<< "$reqs"
     while IFS= read -r l; do
+        [[ "$l" =~ ^-[[:space:]]+([A-Za-z0-9]+-[0-9]+):[[:space:]]*(.*)$ ]] || continue
+        ltext["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"
+    done <<< "$lims"
+    while IFS= read -r l; do
         judge_reply_line_v l "$l"
+        # #2550 (ADR-072 §3): one line per limit; a broken one is unmet code.
+        if [[ "$l" =~ ^(KEPT|BROKEN):[[:space:]]*(.*)$ ]]; then
+            kind="${BASH_REMATCH[1]}"; rest="${BASH_REMATCH[2]}"
+            name="${rest%%|*}"; name="${name%"${name##*[![:space:]]}"}"; name="${name%:}"
+            if [[ -z "${ltext[$name]+x}" ]]; then bad+=("$kind names $name, which is not a limit listed"); continue; fi
+            lseen["$name"]=1
+            [[ "$kind" == KEPT ]] && continue
+            why=""; quote=""
+            if [[ "$rest" == *"| WHY:"* ]]; then why="${rest#*| WHY:}"; why="${why%%| QUOTE:*}"; fi
+            why="${why#"${why%%[![:space:]]*}"}"; why="${why%"${why##*[![:space:]]}"}"
+            [[ "$rest" == *"| QUOTE:"* ]] && { quote="${rest#*| QUOTE:}"; quote="${quote#"${quote%%[![:space:]]*}"}"; }
+            if [[ -z "$quote" ]]; then bad+=("BROKEN $name has no QUOTE"); continue; fi
+            judge_quote_check_v w "$quote" "" "$repo" || { bad+=("BROKEN $name: its quote $w"); continue; }
+            judge_quote_path_v qp "$quote" "$repo"; [[ -n "$qp" ]] && _IA_QUOTED+=("$qp")
+            _IA_UNMET+=("[fix-code] $name: ${why:-the change does what this limit forbids} (${ltext[$name]}) — $quote")
+            continue
+        fi
         if [[ "$l" =~ ^UNASKED:[[:space:]]*(.*)$ ]]; then
             _ia_parse_unasked "${BASH_REMATCH[1]}" "$repo"; continue
         fi
@@ -423,6 +459,7 @@ _ia_parse() {
     done <<< "$raw"
     local -a missing=()
     for name in ${order[@]+"${order[@]}"}; do [[ -n "${seen[$name]+x}" ]] || missing+=("$name"); done
+    for name in "${!ltext[@]}"; do [[ -n "${lseen[$name]+x}" ]] || missing+=("$name"); done
     [[ ${#missing[@]} -gt 0 ]] && bad=("it has no line for ${missing[*]}" ${bad[@]+"${bad[@]}"})
     # With no list, an answer must still judge something: no line is no answer.
     [[ ${#order[@]} -eq 0 && ${#seen[@]} -eq 0 && ${#bad[@]} -eq 0 ]] \

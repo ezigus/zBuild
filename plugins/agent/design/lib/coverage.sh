@@ -99,7 +99,7 @@ is checked: a quote that is not there makes the answer unusable.
 EOF2
 }
 
-# _dcov_prompt_judge <draft> <shown> [requirements] [others] [done_evidence] [base] [issue]
+# _dcov_prompt_judge <draft> <shown> [requirements] [others] [done_evidence] [base] [issue] [limits]
 # — <shown> the SPECs to judge, in full; [others] the rest, by their first line,
 # given only with [requirements], for what they cover (#2470, ADR-072 §4).
 _dcov_prompt_judge() {
@@ -149,6 +149,8 @@ $3
 EOF2
     printf '\nACCEPTANCE — the SPECs to judge, each with its parts:\n'
     printf 'ACCEPTANCE:\n%s\n' "${2:-(none)}"
+    # #2550 (ADR-069): a limit is not covered; a SPEC that builds one contradicts it.
+    [[ -n "${8:-}" ]] && printf '\nLIMITS — what the change must not do. They are not requirements: give them no line. A SPEC that does what a limit forbids contradicts it: answer contradicts for the part that does it, quoting that part.\n%s\n' "$8"
     [[ -n "${3:-}" && -n "${4:-}" ]] && printf '\nOTHER SPECS — judged before and unchanged, shown by their first line for what they cover. Do not answer for them.\n%s\n' "$4"
     [[ -n "${5:-}" ]] && printf "\nTHE [done] SPECS' EVIDENCE — a file and a piece of its text. Open the file\nand read the code around that text, as much as you need:\n%s\n" "$5"
     # #2543: every SPEC's status is checked against it, not only a [done] one's.
@@ -251,7 +253,7 @@ _dcov_disputes_v() {
 # call is given the draft by its path and, in full, only the SPECs it judges.
 # rc 0 always.
 _design_coverage() {
-    local design_md="$1" reqs="$2" tier="${3:-T2}" answers="${4:-}"
+    local design_md="$1" reqs="$2" tier="${3:-T2}" answers="${4:-}" lims="${5:-}"
     _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_STATUS_WRONG=(); _DESIGN_COV_OUTCOME=""
     _DESIGN_PART_WRONG=(); _DESIGN_COV_FINDINGS=()
     local acc; acc="$(extract_acceptance_block "$design_md" 2>/dev/null || true)"
@@ -287,10 +289,10 @@ _design_coverage() {
     for id in ${ids[@]+"${ids[@]}"}; do
         _dcov_ev_items_v _evi "${ev[$id]:-}" "$base"
         _ev_all+="$_evi"; _all+="${render[$id]}"$'\n'
-        judge_fp_v _fpv "$eng"$'\n'"$id"$'\n'"${render[$id]}"$'\n'"$_evi"$'\n'"$base_sha"$'\n'"${disp[$id]:-}"
+        judge_fp_v _fpv "$eng"$'\n'"$id"$'\n'"${render[$id]}"$'\n'"$_evi"$'\n'"$base_sha"$'\n'"${disp[$id]:-}"$'\n'"$lims"
         fps["$id"]="$_fpv"
     done
-    judge_fp_v _fpv "$eng"$'\n'"$reqs"$'\n'"$_all"$'\n'"$_ev_all"$'\n'"$base_sha"$'\n'"${disp[requirements]:-}"
+    judge_fp_v _fpv "$eng"$'\n'"$reqs"$'\n'"$_all"$'\n'"$_ev_all"$'\n'"$base_sha"$'\n'"${disp[requirements]:-}"$'\n'"$lims"
     fps["requirements"]="$_fpv"
     [[ -n "$kf" ]] && judge_kept_get_all_v kept "$kf" fps disp
 
@@ -318,7 +320,7 @@ _design_coverage() {
     [[ -n "$reqs_asked" ]] && issue="$(earlier_issue_text "${artifact_dir:-${ZBUILD_ARTIFACT_DIR:-}}" "${state_dir:-}" 2>/dev/null || true)"
     for k in "${!disp[@]}"; do [[ $'\n'"$want" == *$'\n'"$k"$'\n'* ]] && _disp_shown+="${disp[$k]}"; done
     # #2458: it judges, so it composes fresh — no notes, and no rule to confirm earlier work.
-    if ! framed="$(stage_prompt_compose_text --fresh "$(_dcov_prompt_own "$reqs_asked")" "$(_dcov_prompt_judge "$design_md" "${shown%$'\n'}" "$reqs_asked" "${others%$'\n'}" "$done_ev" "$base" "$issue")$(judge_disputes_block "$_disp_shown")" "$(_dcov_prompt_limits)")"; then
+    if ! framed="$(stage_prompt_compose_text --fresh "$(_dcov_prompt_own "$reqs_asked")" "$(_dcov_prompt_judge "$design_md" "${shown%$'\n'}" "$reqs_asked" "${others%$'\n'}" "$done_ev" "$base" "$issue" "$lims")$(judge_disputes_block "$_disp_shown")" "$(_dcov_prompt_limits)")"; then
         _DESIGN_COV_OUTCOME=misconfigured
         return 0
     fi

@@ -46,6 +46,14 @@ Answer with one line per requirement, in the order the issue gives them:
 
 REQUIREMENT: <id> <the requirement, in the issue's words>
 
+An item the issue says not to do or not to build is a limit, not a
+requirement: no test can show something was never built. Write it on its own
+line, keeping its "Do not" (or "Never"):
+
+LIMIT: <id> Do not <what the change must not do, in the issue's words>
+
+A limit takes an id the way a requirement does.
+
 The id names the requirement: ${_IREQ_PX}, then a code of 3 or 4 capital letters
 or digits, starting with a letter, that says what the requirement is about, a
 dash, and a number — ${_IREQ_PX}LOOP-1 for a requirement about loop state.
@@ -83,7 +91,10 @@ Answer with one line for each requirement the list misses, in this form:
 
 MISSING: <id> <a requirement the list misses, in the issue's words>
 
-or the one line "MISSING: none" when it misses nothing. The id is ${_IREQ_PX}, then
+or the one line "MISSING: none" when it misses nothing. An item the issue says
+not to do or not to build that the list misses is a limit, not a requirement:
+write it as LIMIT: <id> Do not <what the change must not do, in the issue's
+words>, keeping its "Do not" (or "Never"). The id is ${_IREQ_PX}, then
 a code of 3 or 4 capital letters or digits, starting with a letter, that says
 what the requirement is about, a dash, and a number: ${_IREQ_PX}LOOP-1. A requirement about the same
 thing as a listed one shares its code, with the number one more than the
@@ -148,12 +159,13 @@ _ireq_prev_load() {
     while IFS=$'\x1f' read -r kind id text why; do
         case "$kind" in
             A)  _IREQ_PREV_IDS+="$id "; _IREQ_PREV_TEXT[$id]="$text"
-                if zb_id_new_form "$id" "$_IREQ_PX"; then _IREQ_PREV_SHOWN+="REQUIREMENT: $id $text"$'\n'
-                else _IREQ_PREV_SHOWN+="REQUIREMENT: $text"$'\n'; fi ;;
+                local _pl=REQUIREMENT; [[ "$why" == L ]] && _pl=LIMIT
+                if zb_id_new_form "$id" "$_IREQ_PX"; then _IREQ_PREV_SHOWN+="$_pl: $id $text"$'\n'
+                else _IREQ_PREV_SHOWN+="$_pl: $text"$'\n'; fi ;;
             R)  _IREQ_PREV_REMOVED+="$id "; removed+="- $id — $text (removed: $why)"$'\n' ;;
             J)  _IREQ_PREV_REMOVED_JSON="$id" ;;
         esac
-    done < <(jq -r '(.requirements[]? | "A\u001f\(.id)\u001f\(.text | gsub("[[:cntrl:]]"; " "))\u001f"),
+    done < <(jq -r '(.requirements[]? | "A\u001f\(.id)\u001f\(.text | gsub("[[:cntrl:]]"; " "))\u001f\(if .limit == true then "L" else "" end)"),
                     (.removed[]? | "R\u001f\(.id)\u001f\(.text | gsub("[[:cntrl:]]"; " "))\u001f\(.reason // "" | gsub("[[:cntrl:]]"; " "))"),
                     "J\u001f\([.removed[]?] | tojson)"' <<< "$1" 2>/dev/null)
     _IREQ_PREV_REMOVED_LINES="$removed"
@@ -184,7 +196,24 @@ _ireq_parse() {
     local re_rm='^[[:space:]]*REMOVED:[[:space:]]*([A-Za-z][A-Za-z0-9_]*-[0-9]+)[[:space:]]*(—|–|-|:)?[[:space:]]*(.*[^[:space:]])?[[:space:]]*$'
     local re_nr='^[[:space:]]*NOT-A-REQUIREMENT:[[:space:]]*([A-Za-z][A-Za-z0-9_]*-[0-9]+)[[:space:]]*(—|–|-|:)?[[:space:]]*(.*[^[:space:]])?[[:space:]]*$'
     _IREQ_IDS=() _IREQ_TEXTS=() _IREQ_RM_IDS=() _IREQ_RM_WHY=() _IREQ_FORM=() _IREQ_NR_IDS=() _IREQ_NR_WHY=()
+    _IREQ_LIMITS=" "
     while IFS= read -r line; do
+        # #2550 (ADR-070 §1): an item the issue says not to do is a limit, in
+        # either call's answer, and keeps its "Do not".
+        if [[ "$line" =~ ^[[:space:]]*LIMIT:[[:space:]]*(.*[^[:space:]])[[:space:]]*$ ]]; then
+            rest="${BASH_REMATCH[1]}"
+            if [[ ! "$rest" =~ $re_id ]]; then
+                _IREQ_FORM+=("\"${rest:0:60}\" has no id — write it as LIMIT: <id> Do not <what the change must not do>")
+                continue
+            fi
+            local _lid="${BASH_REMATCH[1]}" _ltx="${BASH_REMATCH[3]}"
+            if [[ "${_ltx,,}" =~ ^(do[[:space:]]+not|don\'t|never)[[:space:]] ]]; then
+                _IREQ_IDS+=("$_lid"); _IREQ_TEXTS+=("$_ltx"); _IREQ_LIMITS+="$_lid "
+            else
+                _IREQ_FORM+=("the LIMIT: line for $_lid does not say what the change must not do — write it starting with \"Do not\": LIMIT: $_lid Do not <…>")
+            fi
+            continue
+        fi
         # #2476: the check names a listed item that is not a requirement.
         if [[ "$label" == MISSING && "$line" =~ $re_nr ]]; then
             if [[ -n "${BASH_REMATCH[3]}" ]]; then _IREQ_NR_IDS+=("${BASH_REMATCH[1]}"); _IREQ_NR_WHY+=("${BASH_REMATCH[3]}")
@@ -292,9 +321,13 @@ _intake_requirements_json_v() {
     _ireq_call_parsed "$prompt" REQUIREMENT "$_IREQ_PREV_IDS" "$_IREQ_PREV_REMOVED" "$issue" "" || return 1
     ids=("${_IREQ_IDS[@]+"${_IREQ_IDS[@]}"}"); texts=("${_IREQ_TEXTS[@]+"${_IREQ_TEXTS[@]}"}")
     rm_ids=("${_IREQ_RM_IDS[@]+"${_IREQ_RM_IDS[@]}"}"); rm_why=("${_IREQ_RM_WHY[@]+"${_IREQ_RM_WHY[@]}"}")
+    local _lims="$_IREQ_LIMITS"
 
     listed=""
-    for i in "${!ids[@]}"; do listed+="REQUIREMENT: ${ids[i]} ${texts[i]}"$'\n'; done
+    for i in "${!ids[@]}"; do
+        if [[ "$_lims" == *" ${ids[i]} "* ]]; then listed+="LIMIT: ${ids[i]} ${texts[i]}"$'\n'
+        else listed+="REQUIREMENT: ${ids[i]} ${texts[i]}"$'\n'; fi
+    done
     # shellcheck disable=SC2124  # a space-separated list, not an array
     local _removed_now="$_IREQ_PREV_REMOVED${rm_ids[*]+${rm_ids[*]}}"
     # #2527 (ADR-070 §1): each removed item with its words and why, so the check
@@ -312,6 +345,7 @@ _intake_requirements_json_v() {
     _ireq_call_parsed "$prompt" MISSING "${ids[*]}" "$_removed_now" "$issue" "${ids[*]}" || return 1
     unset ZBUILD_ROUTE_CALL
     ids+=("${_IREQ_IDS[@]+"${_IREQ_IDS[@]}"}"); texts+=("${_IREQ_TEXTS[@]+"${_IREQ_TEXTS[@]}"}")
+    _lims+="${_IREQ_LIMITS# }"
     # #2476: what the check says is not a requirement leaves the list, kept as
     # removed with its words and why, so it never comes back.
     local -A _txt_of=()
@@ -333,14 +367,17 @@ _intake_requirements_json_v() {
         [[ "$_iss" == *$'\n'"${BASH_REMATCH[0]}"$'\n'* ]] || _iss+=$'\n'"${BASH_REMATCH[0]}"$'\n'
         _s="${_s#*"${BASH_REMATCH[0]}"}"
     done
-    for i in "${!ids[@]}"; do _new+="${ids[i]}"$'\x1f'"${texts[i]}"$'\n'; done
+    for i in "${!ids[@]}"; do
+        _new+="${ids[i]}"$'\x1f'"${texts[i]}"; [[ "$_lims" == *" ${ids[i]} "* ]] && _new+=$'\x1f'L
+        _new+=$'\n'
+    done
     for i in "${!rm_ids[@]}"; do _rm+="${rm_ids[i]}"$'\x1f'"${_IREQ_PREV_TEXT[${rm_ids[i]}]:-${_txt_of[${rm_ids[i]}]:-}}"$'\x1f'"${rm_why[i]}"$'\n'; done
     _irj="$(jq -nc --arg n "$_new" --arg r "$_rm" --arg iss "$_iss" --arg fp "$_ifp" --argjson carry "$_IREQ_PREV_REMOVED_JSON" '
         def rows($s): $s | split("\n") | map(select(length > 0) | split("\u001f")
             | map(gsub("[[:cntrl:]]"; " ") | gsub("^\\s+|\\s+$"; "")));
         (rows($r) | map({id: .[0], text: .[1], reason: .[2]})) as $now
         | {schema_version: 1, source: "model",
-           requirements: (rows($n) | map({id: .[0], text: .[1]})),
+           requirements: (rows($n) | map({id: .[0], text: .[1]} + (if .[2] == "L" then {limit: true} else {} end))),
            removed: ($carry + $now),
            issue_ids: ($iss | split("\n") | map(select(length > 0)))}
         + (if $fp != "" then {input_fp: $fp} else {} end)')"
