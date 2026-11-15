@@ -211,7 +211,8 @@ _design_stage_run_inner() {
     # rule of its own.
     local _id_line="" _id_pa="" _id_pr=""
     [[ -s "$output_design_md" ]] && _dck_block_ids_v _id_pa _id_pr "$(extract_acceptance_block "$output_design_md" 2>/dev/null)"
-    zb_ids_highest_line_v _id_line "$_id_pa" "$_id_pr" "$_DCK_ID_PREFIX" SPEC
+    local _id_used=""; zb_test_tag_ids_v _id_used "${repo_root:-${ZBUILD_REPO_ROOT:-$PWD}}" "$_DCK_ID_PREFIX"
+    zb_ids_highest_line_v _id_line "$_id_pa" "$_id_pr" "$_DCK_ID_PREFIX" SPEC "$_id_used"
 
     # The persona (ADR-051) reaches the model through the provider, not this
     # text: the stage writes only its own job.
@@ -546,7 +547,7 @@ ${_dp_limits}")"; then
     # requirement list, to the ids the issue's words write).
     _design_checks "$output_draft" "$repo_root" "$_req_f" "$output_design_md"
     for _v in "${_DESIGN_VIOLATIONS[@]}"; do _fnd+=("$(_dck_plain "$_v")"); done
-    if [[ -n "$_reqs" ]] && extract_acceptance_block "$output_draft" >/dev/null 2>&1; then
+    if [[ -n "$_reqs" || -n "$_lims" ]] && extract_acceptance_block "$output_draft" >/dev/null 2>&1; then
         local _dp_ans="" _a
         for _a in ${_DESIGN_ANSWERS[@]+"${_DESIGN_ANSWERS[@]}"}; do
             [[ "$_a" == "design finding "* ]] && _dp_ans+="$_a"$'\n'

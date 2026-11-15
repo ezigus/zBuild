@@ -25,8 +25,10 @@
 # T5 [change] test-author is shown the literal tag to write for each SPEC
 # T6 [change] the build prompt names the same tags
 # T7 [change] ...and so does the design prompt's tagging rule (review on #2214)
-# T8 [code]   design numbers a new id after the highest its letters have in the
-#             repository's tests, and never says a tag holds the issue's number
+# T8 [code]   design says the id is the tag its test carries, and never says a
+#             tag holds the issue's number. That a new id is numbered past every
+#             one tagged in the repository's tests is checked against real tags:
+#             tests/unit/ids-one-rule-test.sh N6 (#2550)
 # T9 [code]   test-author: a tag on a line the branch added is its own
 set -uo pipefail
 
@@ -150,9 +152,6 @@ fi
 
 _design_src="$(sed -n '/You name no files/,/checked on its own/p' "${ZB_DESIGN_PLUGIN:-$REPO_ROOT/plugins/agent/design/plugin.sh}")"
 _design_ids="$(sed -n '/The id describes the SPEC/,/need no REMOVED line/p' "$REPO_ROOT/plugins/agent/design/plugin.sh")"
-assert_contains "[T8] design numbers a new id after the highest its letters have in the repository's tests" "$_design_ids" \
-    "one more than the highest number already used"
-assert_contains "[T8] ...with an example" "$_design_ids" "the new one is \${_DCK_ID_PREFIX}LOOP-4"
 assert_contains "[T8] ...and says the id is the tag its test carries" "$_design_ids" "The id is also the tag its test"
 if grep -qF "this issue's number" <<< "$_design_src$_design_ids"; then
     assert_fail "[T8] design no longer says a tag holds the issue's number" "found"

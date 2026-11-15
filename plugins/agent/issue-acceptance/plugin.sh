@@ -280,11 +280,11 @@ issue_acceptance_run() {
 
     local _task _framed
     # #2306 (ADR-070 §4): the issue's requirements as intake numbered them.
-    local _reqs=""; declare -F acceptance_requirements_list >/dev/null 2>&1 \
-        && _reqs="$(acceptance_requirements_list "$(earlier_requirements "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)")"
+    local _reqs="" _lims="" _req_f=""
+    _req_f="$(earlier_requirements "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
+    declare -F acceptance_requirements_list >/dev/null 2>&1 && _reqs="$(acceptance_requirements_list "$_req_f")"
     # #2550 (ADR-072 §3): what the change must not do, judged against it.
-    local _lims=""; declare -F acceptance_limits_list >/dev/null 2>&1 \
-        && _lims="$(acceptance_limits_list "$(earlier_requirements "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)")"
+    declare -F acceptance_limits_list >/dev/null 2>&1 && _lims="$(acceptance_limits_list "$_req_f")"
     # #2464 (ADR-072 §4 §5): the answer is kept while what it judged is
     # unchanged; a stage's `wrong` answer to one of its findings is judged
     # again, shown to the judge.
@@ -417,6 +417,8 @@ _ia_parse() {
         if [[ "$l" =~ ^(KEPT|BROKEN):[[:space:]]*(.*)$ ]]; then
             kind="${BASH_REMATCH[1]}"; rest="${BASH_REMATCH[2]}"
             name="${rest%%|*}"; name="${name%"${name##*[![:space:]]}"}"; name="${name%:}"
+            # An empty id is no key: refused before the lookup (lens review on #2550).
+            [[ -n "$name" ]] || { bad+=("a $kind: line names no limit"); continue; }
             if [[ -z "${ltext[$name]+x}" ]]; then bad+=("$kind names $name, which is not a limit listed"); continue; fi
             lseen["$name"]=1
             [[ "$kind" == KEPT ]] && continue

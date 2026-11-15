@@ -385,7 +385,10 @@ _design_checks() {
             _dck_block_ids_v _ta _tr "$(extract_acceptance_block "$_tf" 2>/dev/null)"
             _tried+="$_ta"
         done
-        zb_ids_check_v _iv "$_pa" "$_pr" "$_na" "$_nr" "$_txt" "$_DCK_ID_PREFIX" 1 "$_tried"
+        # #2550: an id tagged in the repository's tests is taken (a tag is the
+        # id alone, #2520) — the same count design's prompt gives.
+        local _used=""; zb_test_tag_ids_v _used "$repo_root" "$_DCK_ID_PREFIX"
+        zb_ids_check_v _iv "$_pa" "$_pr" "$_na" "$_nr" "$_txt" "$_DCK_ID_PREFIX" 1 "$_tried" "$_used"
         for _w in "${_iv[@]+"${_iv[@]}"}"; do violations+=("$_w"); done
         local -a _bads=()
         _dck_bad_id_lines_v _bads "$design_md"

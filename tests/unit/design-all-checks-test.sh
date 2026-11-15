@@ -14,6 +14,8 @@
 #             result says coverage was not checked
 # C3 [guard]  a design that passes every script check and whose coverage call
 #             cannot be run still ends saying the coverage check could not run
+# C4 [change] an issue whose items are all limits still gets the coverage
+#             check, which is how a SPEC that builds one is caught (lens review)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -109,6 +111,19 @@ CLEAN="${DRAFT//DSHLD-3/DSHLD-1}"
 _design "$CLEAN" FAIL
 assert_eq "[C3] it ends saying the coverage check could not run" "coverage_check_failed" \
     "$(jq -r '.reason' "$ART/design-verdict.json" 2>/dev/null)"
+
+# ── C4 ───────────────────────────────────────────────────────────────────────
+print_test_section "C4: limits and no requirement"
+( export ZBUILD_REPO_ROOT="$TEST_TEMP_DIR"
+  source "$REPO_ROOT/plugins/agent/intake/plugin.sh" >/dev/null 2>&1
+  route_to_model() {
+      if [[ "$2" == *"Your job: check a list"* ]]; then printf 'MISSING: none\n'
+      else printf 'LIMIT: RQNCI-1 Do not build a CI status check.\n'; fi
+  }
+  _j=""; _intake_requirements_json_v _j '{"title":"t","body":"Do not build a CI status check."}' && printf '%s\n' "$_j" > "$REQ" ) >/dev/null 2>&1
+_design "${CLEAN//covers: RQCLM-1/}" 'DSCLM-1: ok
+DSHLD-1: ok'
+assert_eq "[C4] the coverage check was asked" "yes" "$([[ -e "$TEST_TEMP_DIR/cov-called" ]] && echo yes || echo no)"
 
 cleanup_test_env
 print_test_results

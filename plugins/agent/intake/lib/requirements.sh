@@ -154,14 +154,14 @@ _ireq_call_v() {
 # id (R-1), or one from before the prefix (#2482), is shown without it, so the
 # requirement gets an id of the new form.
 _ireq_prev_load() {
-    _IREQ_PREV_IDS="" _IREQ_PREV_REMOVED="" _IREQ_PREV_SHOWN="" _IREQ_PREV_REMOVED_JSON="[]" _IREQ_PREV_REMOVED_LINES=""
+    _IREQ_PREV_IDS="" _IREQ_PREV_REMOVED="" _IREQ_PREV_SHOWN="" _IREQ_PREV_REMOVED_JSON="[]" _IREQ_PREV_REMOVED_LINES="" _IREQ_PREV_LIMS=" "
     declare -gA _IREQ_PREV_TEXT=()
     [[ -n "${1:-}" ]] || return 0
     local kind id text why removed=""
     while IFS=$'\x1f' read -r kind id text why; do
         case "$kind" in
             A)  _IREQ_PREV_IDS+="$id "; _IREQ_PREV_TEXT[$id]="$text"
-                local _pl=REQUIREMENT; [[ "$why" == L ]] && _pl=LIMIT
+                local _pl=REQUIREMENT; [[ "$why" == L ]] && { _pl=LIMIT; _IREQ_PREV_LIMS+="$id "; }
                 if zb_id_new_form "$id" "$_IREQ_PX"; then _IREQ_PREV_SHOWN+="$_pl: $id $text"$'\n'
                 else _IREQ_PREV_SHOWN+="$_pl: $text"$'\n'; fi ;;
             R)  _IREQ_PREV_REMOVED+="$id "; removed+="- $id — $text (removed: $why)"$'\n' ;;
@@ -257,6 +257,8 @@ _ireq_call_parsed() {
         zb_ids_check_v _iv "$3" "$4" "$6 ${_IREQ_IDS[*]+${_IREQ_IDS[*]}}" "${_IREQ_RM_IDS[*]+${_IREQ_RM_IDS[*]}}" "$5" "$_IREQ_PX" 0
         plain=""
         for v in "${_IREQ_NR_IDS[@]+"${_IREQ_NR_IDS[@]}"}"; do
+            # #2550: a limit is kept — not dropped as a note (lens review).
+            [[ "${_IREQ_LIMS_NOW:-}" == *" $v "* ]] && { _IREQ_FORM+=("$v is a limit — something the change must not do — and is kept: write no NOT-A-REQUIREMENT line for it"); continue; }
             # #2527: never "name a listed id" — on #1805 run 43130129438 that
             # turned a note already removed into the removal of a requirement.
             [[ " $6 " == *" $v "* ]] || _IREQ_FORM+=("NOT-A-REQUIREMENT: $v is not in the list, so leave that line out")
@@ -270,12 +272,23 @@ _ireq_call_parsed() {
                     && _IREQ_FORM+=("${_IREQ_IDS[i]} writes $v, the issue's own name for one of its items — write the id of the requirement it means instead")
             done
         done
+        # #2550: an id keeps its kind — a limit in the last list stays a limit.
+        for i in "${!_IREQ_IDS[@]}"; do
+            v="${_IREQ_IDS[i]}"
+            if [[ "${_IREQ_PREV_LIMS:-}" == *" $v "* && "$_IREQ_LIMITS" != *" $v "* ]]; then
+                _IREQ_FORM+=("$v was a limit in the last list — keep it a LIMIT: line starting \"Do not\", or remove it and give the new item a new id")
+            elif [[ "${_IREQ_PREV_IDS:-}" == *"$v "* && "${_IREQ_PREV_LIMS:-}" != *" $v "* && "$_IREQ_LIMITS" == *" $v "* ]]; then
+                _IREQ_FORM+=("$v was a requirement in the last list — keep it a REQUIREMENT: line, or remove it and give the limit a new id")
+            fi
+        done
         for v in "${_IREQ_FORM[@]+"${_IREQ_FORM[@]}"}"; do plain+="${plain:+; }$v"; done
         for v in "${_iv[@]+"${_iv[@]}"}"; do plain+="${plain:+; }$(zb_id_plain "$v" requirement)"; done
         [[ -z "$plain" ]] && return 0
         ask="$(stage_prompt_reask "$prompt" "$plain" "$reply")"
     done
     _INTAKE_REQ_OUTCOME=unusable
+    # #2550 (lens review): the rule the last answer still broke, for the result.
+    _INTAKE_REQ_WHY="$plain"
     return 1
 }
 
@@ -339,7 +352,7 @@ _intake_requirements_json_v() {
         _rm_lines+="- ${rm_ids[i]} — ${_IREQ_PREV_TEXT[${rm_ids[i]}]:-} (removed: ${rm_why[i]})"$'\n'
     done
     [[ -n "${_removed_now// }" ]] && listed+=$'\n'"ALREADY REMOVED (not requirements; never use their ids again):"$'\n'"$_rm_lines"
-    local _IREQ_CHECK_IDS="${ids[*]+${ids[*]}}" _IREQ_CHECK_RM="$_removed_now"
+    local _IREQ_CHECK_IDS="${ids[*]+${ids[*]}}" _IREQ_CHECK_RM="$_removed_now" _IREQ_LIMS_NOW="$_lims"
     prompt="$(stage_prompt_compose_text --fresh "$(_ireq_check_own)" \
         "ISSUE:"$'\n'"$issue"$'\n\n'"THE LIST:"$'\n'"$listed" "$(_ireq_limits)")" \
         || { _INTAKE_REQ_OUTCOME=misconfigured; return 1; }

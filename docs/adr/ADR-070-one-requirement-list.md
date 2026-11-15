@@ -180,13 +180,15 @@ On #1805 run 43130129438 two answers that were right were lost to what the check
 
 On #1764 run 43735596812 the issue said "Do not build: a check of a CI job's status through the GitHub Actions API; a 'do I still hold the claim' check before each stage". Intake's check found both, but the list stored them as "a check of a CI job's status …" — a thing to build — and design, which never reads the issue, built both.
 
-- **§1: an item the issue says not to do or not to build is a limit**, written `LIMIT: <id> Do not …` by either intake call and kept in the list with `limit: true`. Its words start with "Do not" (or "Never"); a LIMIT line that does not is asked again. A limit takes an id like a requirement, and is kept, removed and numbered the same way.
+- **§1: an item the issue says not to do or not to build is a limit**, written `LIMIT: <id> Do not …` by either intake call and kept in the list with `limit: true`. Its words start with "Do not", "Don't" or "Never"; a LIMIT line that does not is asked again. A limit takes an id like a requirement, and is kept, removed and numbered the same way.
 - **§1: a limit is not a requirement.** `acceptance_requirements_list` leaves it out; `acceptance_limits_list` lists the limits. Design is shown them as what the change must not do (ADR-069); issue-acceptance judges each against the change (ADR-072 §3).
+- **§1: a limit stays a limit.** The check may not drop one as `NOT-A-REQUIREMENT` (that line is refused and asked again), and an id keeps its kind from the last list: a limit written back as a `REQUIREMENT:`, or a requirement as a `LIMIT:`, is asked again (lens review on #2550).
+- **§1: intake's summary counts and lists the limits apart** from the requirements. An answer that still breaks a rule after it is asked again ends intake naming that rule.
 - **§1: intake's prompts give each code's highest number** from the function its id check uses (`zb_ids_highest_line_v`, `scripts/lib/item-ids.sh`), and state no rule of their own (ADR-069 §1).
 
 ## Enforced by
 
-- §1 amendment 2026-11-15 (#2550: a limit keeps its "Do not"; the lists; intake's numbers from its check's count) → `tests/unit/limits-test.sh` LM1–LM4; `tests/unit/ids-one-rule-test.sh` N1, N5
+- §1 amendment 2026-11-15 (#2550: a limit keeps its "Do not"; the lists; intake's numbers from its check's count) → `tests/unit/limits-test.sh` LM1–LM4, LM9, LM10, LM12; `tests/unit/ids-one-rule-test.sh` N1, N5; `tests/unit/intake-requirements-model-test.sh` I8
 
 - Amendment 2026-11-09 (#2508) §4 → `tests/unit/design-names-no-files-test.sh` N1, N8 (no scope block is asked for or required), N9–N10 (UNCLEAR lines); `tests/unit/issue-acceptance-unasked-test.sh` U1–U4 (the change is held to the requirements)
 - Amendment 2026-11-08 (#2495) §4 → `tests/unit/design-coverage-test.sh` NS1 (the prompt asks for no scope verdict), NS2 (a reply with no scope lines is complete, in one call), NS3 (a scope line is no finding), X3 (the scope is not shown to judge)

@@ -17,6 +17,9 @@
 # N4 [change] design's prompt states no rule of its own: no "in any test file",
 #             no "never used again" for an id only a failed try wrote
 # N5 [change] intake's prompts give the same line, from its last list
+# N6 [change] a test tag is the id alone (#2520), so an id another piece of
+#             work tagged in the repository's tests is taken: design's prompt
+#             and its check both count those tags, so a new id is past them
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -77,6 +80,21 @@ print_test_section "N4: design states no rule of its own"
 _lacks "[N4] no 'in any test file'" "$_p" "in any test file"
 _lacks "[N4] no 'never used again' for every dropped SPEC" "$_p" "so its id is never used again"
 assert_contains "[N4] REMOVED is for a SPEC of the last design that passed" "$_p" "REMOVED: only for a SPEC in the last design that passed"
+
+# ── N6: ids tagged in the repository's tests ───────────────────────────────
+print_test_section "N6: an id tagged in the tests is taken"
+mkdir -p "$FIX/tests"
+printf 'assert_eq "[DSCLM-5] other work" 1 1\n' > "$FIX/tests/other-test.sh"
+git -C "$FIX" add tests/other-test.sh >/dev/null 2>&1
+git -C "$FIX" -c user.email=t@t -c user.name=t commit -q -m other >/dev/null 2>&1
+printf '%s\n' '# Design' '```acceptance' 'DSCLM-1[doc]: one' 'DSCLM-2[doc]: two' 'WIRING: none' '```' > "$ART/design.md"
+_p="$(_design_prompt)"
+assert_contains "[N6] design's prompt counts the id tagged in the tests" "$_p" "DSCLM 5"
+printf '%s\n' '# Design' '```acceptance' 'DSCLM-1[doc]: one' 'DSCLM-2[doc]: two' 'DSCLM-3[doc]: three' 'WIRING: none' '```' > "$TEST_TEMP_DIR/draft-c.md"
+assert_contains "[N6] design's check refuses a new id at or below it" "$(_ids_ok "$TEST_TEMP_DIR/draft-c.md")" "ID_NOT_AFTER_LAST DSCLM-3 DSCLM-6"
+printf '%s\n' '# Design' '```acceptance' 'DSCLM-1[doc]: one' 'DSCLM-2[doc]: two' 'DSCLM-6[doc]: six' 'WIRING: none' '```' > "$TEST_TEMP_DIR/draft-d.md"
+assert_eq "[N6] ...and passes the one the prompt says" "" "$(_ids_ok "$TEST_TEMP_DIR/draft-d.md")"
+rm -f "$ART/design.md"
 
 # ── N5: intake ───────────────────────────────────────────────────────────────
 print_test_section "N5: intake"

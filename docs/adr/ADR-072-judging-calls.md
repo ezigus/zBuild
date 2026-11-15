@@ -247,11 +247,11 @@ On #1700 run 43663836927 the scope lens quoted three lines of an ADR exactly as 
 
 ## Amendment 2026-11-15 (#2550) — §3: issue-acceptance judges each limit
 
-- **§3: issue-acceptance is shown the limits** (ADR-070 §1, amended 2026-11-15) and answers one line for each: `KEPT: <id>`, or `BROKEN: <id> | WHY: <what the change does that the limit forbids> | QUOTE: <file> | <the line of code that does it>`. The quote is checked like any other. A broken limit is an unmet item the code must fix (`code-findings`); a limit with no line makes the answer unusable, as a requirement with none does. A prohibition is judged the one way it can be: against the change.
+- **§3: issue-acceptance is shown the limits** (ADR-070 §1, amended 2026-11-15) and answers one line for each: `KEPT: <id>`, or `BROKEN: <id> | WHY: <what the change does that the limit forbids> | QUOTE: <file> | <the line of code that does it>`. The quote is checked like any other. A broken limit is an unmet item the code must fix (`code-findings`); a limit with no line, or a `KEPT:`/`BROKEN:` line that names none, makes the answer unusable, as a requirement with none does. A prohibition is judged the one way it can be: against the change.
 
 ## Enforced by
 
-- §3 amendment 2026-11-15 (#2550: KEPT or BROKEN for each limit) → `tests/unit/limits-test.sh` LM8
+- §3 amendment 2026-11-15 (#2550: KEPT or BROKEN for each limit) → `tests/unit/limits-test.sh` LM8, LM11
 
 - §3 amendment 2026-11-15 (#2545: a lens's quote of several lines is read whole) → `tests/unit/judge-change-list-test.sh` L7–L9
 

@@ -26,6 +26,13 @@
 # LM8 [change] issue-acceptance is shown the limits and answers KEPT or BROKEN
 #              for each; BROKEN is unmet, fix-code; a limit with no line makes
 #              the answer unusable
+# LM9  [change] intake's check cannot drop a limit as NOT-A-REQUIREMENT: that
+#              line is refused and asked again (lens review on #2550)
+# LM10 [change] an id keeps its kind from the last list: a limit that comes
+#              back as a requirement, or a requirement as a limit, is asked again
+# LM11 [change] a KEPT: or BROKEN: line with no id makes the answer unusable —
+#              it does not stop issue-acceptance
+# LM12 [change] intake's summary counts and lists limits apart from requirements
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -191,6 +198,51 @@ _ia 'MET: RQCLM-1
 KEPT: RQNCI-1
 UNASKED: none'
 assert_eq "[LM8] a limit with no line: the answer cannot be used" "unusable" "$(jq -r '.outcome' "$A/issue-acceptance-result.json" 2>/dev/null)"
+
+# ── LM9 ──────────────────────────────────────────────────────────────────────
+print_test_section "LM9: the check cannot drop a limit"
+REQ9="$TEST_TEMP_DIR/requirements-9.json"
+_intake_list "$REQ9" 'REQUIREMENT: RQCLM-1 Add the claimed label before the first stage.
+LIMIT: RQNCI-1 Do not build a check of a CI job status through the GitHub Actions API' \
+'NOT-A-REQUIREMENT: RQNCI-1 — it is a limit'
+assert_contains "[LM9] the check is asked again: a limit gets no NOT-A-REQUIREMENT line" "$(cat "$TEST_TEMP_DIR/ip-3" 2>/dev/null)" "RQNCI-1 is a limit"
+
+# ── LM10 ─────────────────────────────────────────────────────────────────────
+print_test_section "LM10: an id keeps its kind"
+( export ZBUILD_REPO_ROOT="$TEST_TEMP_DIR"
+  source "$REPO_ROOT/plugins/agent/intake/plugin.sh" >/dev/null 2>&1
+  export _INTAKE_PREV_REQ_JSON="$(cat "$REQ")"
+  : > "$TEST_TEMP_DIR/ic10"
+  route_to_model() {
+      local n; n=$(( $(grep -c . "$TEST_TEMP_DIR/ic10") + 1 )); printf 'x\n' >> "$TEST_TEMP_DIR/ic10"
+      printf '%s' "$2" > "$TEST_TEMP_DIR/ip10-$n"
+      if [[ "$2" == *"Your job: check a list"* ]]; then printf 'MISSING: none\n'
+      else printf 'REQUIREMENT: RQCLM-1 Add the claimed label before the first stage.\nREQUIREMENT: RQNCI-1 a check of a CI job status through the GitHub Actions API\nLIMIT: RQSTG-1 Do not build a do I still hold the claim check before each stage\n'; fi
+  }
+  # A changed issue: an unchanged one keeps the last list and asks no model.
+  _j=""; _intake_requirements_json_v _j "${ISSUE_JSON/first stage./first stage, every run.}" ) >/dev/null 2>&1
+assert_contains "[LM10] a limit listed as a requirement is asked again" "$(cat "$TEST_TEMP_DIR/ip10-2" 2>/dev/null)" "RQNCI-1 was a limit in the last list"
+
+# ── LM11 ─────────────────────────────────────────────────────────────────────
+print_test_section "LM11: a limit line with no id"
+rm -f "$A/issue-acceptance-result.json"
+_ia 'MET: RQCLM-1
+KEPT:
+KEPT: RQNCI-1
+KEPT: RQSTG-1
+UNASKED: none'
+assert_eq "[LM11] a KEPT: line with no id: the answer cannot be used" "unusable" \
+    "$(jq -r '.outcome' "$A/issue-acceptance-result.json" 2>/dev/null)"
+assert_contains "[LM11] ...and it says the line names no limit" \
+    "$(jq -r '.reason' "$A/issue-acceptance-result.json" 2>/dev/null)" "line names no limit"
+
+# ── LM12 ─────────────────────────────────────────────────────────────────────
+print_test_section "LM12: intake's summary"
+( source "$REPO_ROOT/plugins/agent/intake/plugin.sh" >/dev/null 2>&1
+  _intake_pass_summary_write "$TEST_TEMP_DIR/intake-summary.md" 1764 "$REQ" "" "t" ) >/dev/null 2>&1
+_sm="$(cat "$TEST_TEMP_DIR/intake-summary.md" 2>/dev/null)"
+assert_contains "[LM12] the summary counts only the requirements" "$_sm" "1 requirement(s): RQCLM-1"
+assert_contains "[LM12] ...and the limits apart" "$_sm" "2 limit(s): RQNCI-1, RQSTG-1"
 
 cleanup_test_env
 print_test_results

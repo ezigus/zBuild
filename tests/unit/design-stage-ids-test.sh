@@ -90,7 +90,7 @@ _p="$(tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/design-prompt" 2>/dev/null)"
 assert_contains "[E3] the prompt says what an id is" "$_p" "3 or 4 capital letters or digits"
 assert_contains "[E3] ...that a kept SPEC keeps its id" "$_p" "A SPEC you keep keeps its id"
 assert_contains "[E3] ...how one is removed" "$_p" "REMOVED: <id> — <why>"
-assert_contains "[E3] ...that a new id takes the number after its code's highest" "$_p" "one more than the highest"
+assert_contains "[E3] ...how a new id is numbered (#2550: from the check's own count)" "$_p" "starts at 1"
 assert_contains "[E3] ...that [done] evidence quotes the file's text" "$_p" 'scripts/x.sh | '
 _line=0; [[ "$_p" == *"a file and line"* || "$_p" == *"scripts/x.sh:42"* ]] && _line=1
 assert_eq "[E3] ...and never offers a line number" "0" "$_line"
