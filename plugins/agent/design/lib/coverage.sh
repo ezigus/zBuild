@@ -124,6 +124,9 @@ what the issue REQUIRES, not everything it mentions.
 Several SPECs may cover one requirement together, one thing each: judge every
 SPEC that names it, together.
 
+When a requirement is written so loosely that no SPEC could settle it — nothing
+anyone could observe would show it met — say so in its WHY: that is a finding against the requirement, not a gap a SPEC can close.
+
 Mapping is not enough: those SPECs together must demand ALL of the requirement.
 A set of SPECs that demands less than the requirement — a subset of the cases,
 a weaker condition, some of the files, a narrower scope — leaves it uncovered. Name the

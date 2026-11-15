@@ -14,14 +14,16 @@
 #       2b. the persona the stage's manifest names for the call
 #           (ZBUILD_ROUTE_CALL, `main` when unset; `personas:`, ADR-051 §5)
 #       3. template_config_persona (global template default)
-#       4. id=generic (terminal fallback)
+#     None of them naming one: no persona — the call runs with none (#2548,
+#     ADR-051 §5 amended; there is no generic persona).
 #     For the resolved id, scans two roots:
 #       - installed: ${ZBUILD_PLUGINS_ROOT:-<repo>/plugins}
 #       - repo overlay: ${ZBUILD_REPO_ROOT:-git rev-parse --show-toplevel}/.zbuild/plugins
 #     Overlay wins on id collision; absent overlay dir is silent (no error).
 #     The overlay scan uses a LOCAL variable — never ZBUILD_PLUGINS_ROOT (ADR-024).
-#     If the resolved id is absent from both roots, falls back to id=generic.
-#     Prints the persona directory path; returns 0 on success, 1 if not found.
+#     Prints the persona directory path; returns 0 on success, 1 when no
+#     persona is named or the named one exists in neither root (the startup
+#     preflight refuses a named one that exists nowhere).
 #
 #   persona_find_dir <persona_id>
 #     The persona's directory from the two roots (overlay first), no fallback.
@@ -29,7 +31,7 @@
 #
 #   persona_text <persona_dir>
 #     Reads persona.perspective from <persona_dir>/manifest.yaml via yaml_get.
-#     Prints the value (may be empty for a neutral/generic persona).
+#     Prints the value (may be empty).
 #     Returns 0 even when perspective is empty.
 #
 # Sourced library: no set -euo pipefail (would mutate the caller's shell options).
@@ -102,16 +104,11 @@ resolve_persona() {
         persona_id="$(template_config_persona 2>/dev/null || true)"
     fi
 
-    # 4. Fall through to id=generic — the terminal fallback.
-    [[ -z "$persona_id" ]] && persona_id="generic"
+    # No persona named: the call runs with none (#2548).
+    [[ -n "$persona_id" ]] || return 1
 
     local persona_dir=""
     persona_dir="$(persona_find_dir "$persona_id")" || persona_dir=""
-    # Not found in either root: retry with the generic terminal fallback.
-    if [[ -z "$persona_dir" && "$persona_id" != "generic" ]]; then
-        persona_dir="$(persona_find_dir generic)" || persona_dir=""
-    fi
-
     [[ -n "$persona_dir" ]] || return 1
     printf '%s\n' "$persona_dir"
     return 0

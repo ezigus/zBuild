@@ -55,7 +55,7 @@ Save this as `plugins/tool/my-linter/manifest.yaml`. Then implement `run_my_lint
 
 ## Two worked examples
 
-- **[[plugins/security-lens]]** — an `agent` kind plugin: shows the full manifest, how to write the `run` hook, and how to validate LLM output using the envelope mechanism.
+- **[[plugins/review-lens]]** — an `agent` kind plugin: its manifest and `run` hook; its `plugin.sh` reads the model's reply with the shared envelope parser (ADR-028).
 - **[[plugins/claim-coordinator-github-labels]]** — a `claim-coordinator` kind plugin: shows all four required hooks (`claim`, `release`, `heartbeat`, `list_claims`).
 
 ## Three rules every plugin must follow

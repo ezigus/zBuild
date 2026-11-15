@@ -61,11 +61,12 @@ The engine is intentionally small. All behavior is plugin-delivered. The seams b
 Every plugin lives in `plugins/<kind>/<name>/` and contains at minimum:
 
 ```
-plugins/agent/security-lens/
+plugins/agent/review-lens/
 ├── manifest.yaml
 ├── plugin.sh        # implements lifecycle hooks
-├── prompts/         # (for kind: agent) prompt templates
-└── README.md
+├── lib/             # the plugin's own sourced libraries
+├── lenses/          # each lens's job, one file per lens (#2548)
+└── tests/           # the plugin's own tests
 ```
 
 **Every plugin — except `kind: persona` — requires a wiki page at `docs/wiki/plugins/<id>.md`.** The `lint-doc-freshness` gate (`scripts/lib/lint-doc-freshness.sh`) checks the real repo at test time and fails if the page is absent or lacks a prose opening paragraph. A new plugin ships with its page. `kind: persona` plugins are data-only and share a single index at `docs/wiki/plugins/personas.md`; the gate enforces that the index exists and lists every persona id.
@@ -73,39 +74,51 @@ plugins/agent/security-lens/
 ### Manifest schema (`manifest.yaml`)
 
 ```yaml
-id: security-lens                 # globally unique; lowercase-kebab
-name: Security Audit Lens         # human-readable
+id: review-lens                   # globally unique; lowercase-kebab
+name: Review Lens (single, advisory)  # human-readable
 kind: agent                       # agent | tool | orchestrator | claim-coordinator | daemon
+id_prefix: RL                     # the ids this stage writes start with it (ADR-001, #2482)
 version: 0.1.0
 description: |
-  Detects auth, injection, secret leakage, and unsafe defaults in
-  changed code. One of the 7 compound-audit lenses.
+  A single advisory review lens as its own isolated model stage. The same
+  plugin serves every lens of the review_lenses map group (security,
+  performance, red-team, correctness, scope, sre); each lens's job is its
+  own text, lenses/<lens>.md.
+
+# The topics of earlier stages' output its prompt's Previous work holds (ADR-071).
+takes:
+  - topic: ask
+    for: "what the change is meant to do"
+  - topic: change
+    for: "the change to review"
 
 # Lifecycle entry points (function names in plugin.sh)
 hooks:
-  run: security_lens_run          # called by orchestrator with input artifact — REQUIRED
-  cleanup: security_lens_cleanup  # called on abnormal exit (kill, abort) — OPTIONAL
+  run: review_lens_run            # called by the engine for each dispatch — REQUIRED
+                                  # cleanup: OPTIONAL, for a plugin that holds live resources
 
 # Dependencies on core subsystems
 requires:
   core:
-    - redaction         # I emit LLM-bound text
+    - redaction         # I emit model-bound text
     - event-bus         # I emit events
-    - state             # I persist findings
+    - state             # I persist my last result
+    - router            # I call route_to_model
   plugins: []           # other plugins I depend on (cross-plugin contracts)
 
-# Capabilities I provide (consumed by orchestrators)
+# What I provide (consumed by the engine and orchestrators)
 provides:
-  artifact_type: findings.json
-  schema_version: 1
+  role: review_lens     # the role a template binds a stage to
+  result_contract: 3
+  events:               # my own events, composed into the engine's known set
+    - review_lens.failed
 
 # Configuration surface (env vars, config keys)
 config:
-  tier_default: T3      # T0–T4 routing tier; resolved by core router
-  max_findings: 50
+  tier_default: T2      # T0–T4 routing tier; resolved by core router
   router:               # ADR-017 §11: my own budget defaults (a template still wins)
     timeout_s: 600      # 1..3600   (constant: 300)
-    max_turns: 45       # 0..200    (constant: 25)
+    max_turns: 20       # 0..200    (constant: 25)
                         # no retries here: the template's per-stage retry:
                         # is the one retry (ADR-054 §6a, #2439)
 
@@ -120,9 +133,10 @@ calls:
 # I/O contract (ADR-055). A stage declares only what it writes; it declares no
 # inputs — every stage gets every stage's latest output, by id, in its index.
 outputs:
-  - id: findings
-    path: ${artifact_dir}/security-findings.json
-    type: findings.json
+  - id: lens_result
+    path: "${artifact_dir}/lens-${ZBUILD_REVIEW_LENS_ID}.json"
+    type: review-lens.json@1
+    format: json
     required: true
     primary: true
 ```
@@ -283,7 +297,7 @@ Events are appended, under `flock`, to one JSONL file (`events.jsonl`), which is
   "run_id": "uuid",
   "issue": 42,
   "type": "stage.complete",
-  "plugin": "security-lens",
+  "plugin": "review-lens",
   "kind": "agent",
   "data": { /* type-specific */ },
   "schema_version": 1

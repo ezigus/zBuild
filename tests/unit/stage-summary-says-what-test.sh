@@ -16,7 +16,6 @@
 # S4 [change] build names the files it changed; a try cut off says so
 # S5 [change] test says how many passed, or which files failed
 # S6 [change] a review lens names what it found, or that it found nothing
-# S7 [change] the security lens names what it found, or that it found nothing
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -108,13 +107,6 @@ s6="$( source "$REPO_ROOT/plugins/agent/review-lens/plugin.sh"
   _rl_summary_head_v h correctness '{"findings":[]}'; printf '%s\n' "$h" 2>/dev/null )"
 assert_eq "[S6] a lens names what it found" "found: high: the loop never ends (core/x.sh:3) (and 1 more)" "$(sed -n 1p <<< "$s6")"
 assert_eq "[S6] …or that it found nothing" "reviewed the change through the correctness lens: found no problem" "$(sed -n 2p <<< "$s6")"
-
-# ── S7 security lens ─────────────────────────────────────────────────────────
-s7="$( source "$REPO_ROOT/plugins/agent/security-lens/plugin.sh"
-  _sl_summary_head_v h '[{"file":"core/r.sh","severity":"high","message":"a path is not checked"}]'; printf '%s\n' "$h"
-  _sl_summary_head_v h '[]'; printf '%s\n' "$h" 2>/dev/null )"
-assert_eq "[S7] the security lens names what it found" "found: high: a path is not checked (core/r.sh)" "$(sed -n 1p <<< "$s7")"
-assert_eq "[S7] …or that it found nothing" "reviewed the change for security: found no problem" "$(sed -n 2p <<< "$s7")"
 
 print_test_results
 exit $((FAIL > 0))

@@ -1548,3 +1548,17 @@ zb_test_check_ok() {
 zb_test_prompt_write_path() {
     awk '/EXACT absolute path:/ { getline; sub(/^[[:space:]]+/, ""); print; exit }' <<< "${1-}"
 }
+
+# zb_test_lens_jobs <lens>... — a job text for each made-up lens a test runs,
+# beside the shipped ones (#2548: a lens with no job reviews nothing). Points
+# the review-lens stage's job folder at a copy in the test's temp dir.
+zb_test_lens_jobs() {
+    local _d="${TEST_TEMP_DIR:?}/lens-jobs" _id
+    local _src="${BASH_SOURCE[0]%/*}/../../plugins/agent/review-lens/lenses"
+    mkdir -p "$_d"
+    cp "$_src"/*.md "$_d/" 2>/dev/null || true
+    for _id in "$@"; do
+        printf 'What this lens looks for: anything the change gets wrong (the %s test lens).\n' "$_id" > "$_d/$_id.md"
+    done
+    _RL_LENSES_DIR="$_d"
+}

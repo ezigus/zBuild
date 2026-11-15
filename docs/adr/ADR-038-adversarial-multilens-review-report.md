@@ -1,6 +1,6 @@
 # ADR-038 — Adversarial multi-lens review report (evidence-fed, advisory)
 
-**Status:** Accepted (2026-06-19); amended 2026-11-09 (#2508: no planned scope is shown to a lens — design writes none)
+**Status:** Accepted (2026-06-19); amended 2026-11-09 (#2508: no planned scope is shown to a lens — design writes none); amended 2026-11-15 (#2548: each lens has its own job text; the persona is who does it)
 **Related** — dispositions below are **PLANNED** (the map lives in ADR-037 §6, executed in I13 / #979); **this PR edits no existing ADR**:
 - peer: ADR-037 (objective gates vs. semantic judgment); EPIC #966
 - supersede-planned: ADR-022, ADR-026
@@ -189,18 +189,20 @@ of the issue the change does not deliver, in its own terms, as a finding. The
 instruction is written once, in the prompt builder (`_rl_build_lens_prompt`,
 `plugins/agent/review-lens/lib/charters.sh`), so it reaches every lens whether
 its charter comes from a persona manifest or the built-in fallback; no charter
-repeats it.
+repeats it. (2026-11-15, #2548: a lens's job is its own text, `lenses/<lens>.md`; the instruction is
+still written once in the prompt builder, beside it.)
 
 Verification: `plugins/agent/review-lens/tests/review-lens-context-unit-test.sh`
 (C13: for each lens in `config/templates/simple.yaml`'s `review_lenses`, the
 prompt the plugin sends carries the instruction).
 
-## Amendment (2026-10-12): every lens gets the same evidence; the lens's question is its persona's
+## Amendment (2026-10-12): every lens gets the same evidence; the lens's question is its persona's (its second half withdrawn 2026-11-15, #2548)
 
 §2's per-lens evidence is retired. Nothing produced the per-lens artifacts once review-report went (the
 call graph was its own), and a lens is a stage like any other (ADR-051 §3, amended 2026-10-12): every
 lens judges the same change bundle (§2's merge-base basis), the review-lens stage writes one job for every
-lens, and the question each lens asks is the perspective of the persona its element names. review-report
+lens, and the question each lens asks is the perspective of the persona its element names (withdrawn
+2026-11-15, #2548: each lens's job is its own text — see that amendment). review-report
 and `scripts/lib/call-graph.sh` are retired.
 
 Enforced by: `tests/unit/retired-impact-review-report-inputs-test.sh` RT2 (review-report and the call
@@ -240,12 +242,43 @@ Every lens grades each finding on one scale, defined once in the lens charter
 - `medium`: the change works, but a realistic case gets it wrong, a test does not prove what it claims, or the design leaves a gap that will cause the next bug.
 - `low`: style, wording, a small inefficiency, or hardening against an unlikely case.
 
-Each lens's persona gives examples of each level for that lens; the definitions live only in the charter.
+Each lens gives examples of each level for that lens — in its own job text since 2026-11-15 (#2548), in
+its persona before; the definitions live only in the charter.
 Each finding also says what would fix it — `code`, `test`, `design`, or `issue` (the issue itself is
 wrong: it contradicts an ADR or asks for something that cannot be built as written) — never which stage.
 A word off that list is read as `code`. Scope is no longer warn-only: its findings send the change back
 like any lens's.
 
 Enforced by: `plugins/agent/review-lens/tests/review-lens-loop-test.sh` R1 (the four levels and the fix
-words are in every lens's prompt), R1b (each lens persona gives an example of each level; scope is no
+words are in every lens's prompt), R1b (each lens's job text gives an example of each level, #2548; scope is no
 longer warn-only); `plugins/agent/review-lens/tests/review-lens-test.sh` #1140-12.
+
+## Amendment (2026-11-15, #2548): each lens has its own job; the persona is who does it
+
+The 2026-10-12 amendment made "the question each lens asks … the perspective of the persona its element
+names", and that sentence is withdrawn. A persona is a role and its mindset, reusable for any work
+(ADR-051 §9, amended 2026-11-15), so a lens's job cannot live in it: five lens personas began
+"Examine the change …" with severity examples, and `scope` and `correctness` were lens jobs with a
+role's name. On #1700 run 43663836927, 10 of 15 lens findings had a real quote but a case that cannot
+happen, and only the scope lens said what is not a finding.
+
+- **Each lens's job is its own text**, kept by the review-lens stage at
+  `plugins/agent/review-lens/lenses/<lens>.md` and put in its prompt's `## What you own`. It says what
+  the lens looks for, what is **not** a finding for it, where its problems come from on a real run, and
+  an example of each severity level. The levels themselves are still defined once, for every lens
+  (2026-10-30 amendment).
+- **The template names the lens and, separately, the persona it runs as** (ADR-051 §2). The correctness
+  lens runs as `test-strategist` and the scope lens as `product-owner`.
+- **A lens with no job text reviews nothing**: it ends `misconfigured`, and no model is asked. A lens's
+  job is the install's only: a repository's template naming a lens zbuild does not ship ends there. (A
+  repository's own lens jobs were considered and left out: read from the worktree, a run's own change
+  could rewrite the lenses that judge it.)
+- Every lens still gets the same evidence, and the review-lens stage special-cases no lens in code.
+
+Enforced by: `tests/unit/lens-task-test.sh` L1 (every template lens has its job, with its four parts),
+L2 (a lens's prompt holds its own job; two lenses' prompts differ by more than their names), L3 (a lens
+with no job ends misconfigured, no model asked), L4 (correctness runs as test-strategist, scope as
+product-owner), L5 (the unused `security-lens` plugin is gone, the security lens stays);
+`tests/unit/retired-impact-review-report-inputs-test.sh` RT3 (the job is the lens's own text, not its
+persona's); `plugins/agent/review-lens/tests/review-lens-loop-test.sh` R1b (each lens's job gives an
+example of each level); `plugins/agent/review-lens/tests/review-lens-test.sh` #1140-11, #1140-12.

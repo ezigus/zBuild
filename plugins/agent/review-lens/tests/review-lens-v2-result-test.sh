@@ -27,6 +27,8 @@ source "$REPO_ROOT/core/plugin-registry/registry.sh"
 PLUGIN_DIR="$REPO_ROOT/plugins/agent/review-lens"
 # shellcheck source=../../../../plugins/agent/review-lens/plugin.sh
 source "$PLUGIN_DIR/plugin.sh"
+# #2548: the made-up lenses below each get a job text.
+zb_test_lens_jobs 1840spec1 1840spec2 1840spec3 1840spec4 1840spec5 1840spec8fail 1840spec8unparse 1840spec9 2366fail 2366pre
 
 # ─── Mocks ───────────────────────────────────────────────────────────────────
 # In-process route_to_model shadow: record the prompt that reaches the model and

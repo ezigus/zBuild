@@ -3,8 +3,8 @@
 # Covers the human-readable review_lenses output surface:
 #   - render_lens_one_line: ONE terminal line per lens (glyph, name, score,
 #     finding count, highest-severity top finding), no raw JSON.
-#   - render_lens_md + registry: review-lens / security-lens dispatch to a prose
-#     renderer so render_artifact never passes raw JSON through.
+#   - render_lens_md + registry: review-lens dispatches to a prose renderer so
+#     render_artifact never passes raw JSON through.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -75,10 +75,9 @@ set -e
 assert_eq "T4 rc=0 (best-effort)" "0" "$rc"
 assert_contains "T4 missing-artifact shape" "$out" "⚠ scope — no result"
 
-# ─── T5: render_lens_md registered for review-lens AND security-lens ─────────
+# ─── T5: render_lens_md registered for review-lens ───────────────────────────
 print_test_section "T5: renderers registered"
 assert_eq "T5 review-lens → render_lens_md"   "render_lens_md" "$(artifact_renderer_for review-lens)"
-assert_eq "T5 security-lens → render_lens_md" "render_lens_md" "$(artifact_renderer_for security-lens)"
 
 # ─── T6: render_artifact review-lens does NOT passthrough raw JSON ───────────
 print_test_section "T6: render_artifact never leaks raw JSON"
@@ -91,19 +90,20 @@ else
 fi
 assert_contains "T6 rendered output has a severity bullet" "$out" "[high]"
 
-# ─── T7: render_lens_md tolerates security-lens schema (no score, plugin_id) ─
-print_test_section "T7: security-lens schema (no score) renders without error"
-_sec='{"plugin_id":"security-lens","findings":[{"file":"z.sh","severity":"critical","line":1,"message":"eval user input"}]}'
+# ─── T7: render_lens_md tolerates a result with no score (plugin_id) ────────
+print_test_section "T7: a lens result with no score renders without error"
+_sec='{"plugin_id":"security","findings":[{"file":"z.sh","severity":"critical","line":1,"message":"eval user input"}]}'
 set +e
-out="$(render_artifact security-lens "$_sec")"
+out="$(render_artifact review-lens "$_sec")"
 rc=$?
 set -e
 assert_eq "T7 render_artifact rc=0" "0" "$rc"
 if grep -q '{"plugin_id"' <<< "$out"; then
-    assert_fail "T7 no raw JSON for security-lens" "raw JSON leaked: $out"
+    assert_fail "T7 no raw JSON for a result with no score" "raw JSON leaked: $out"
 else
-    assert_pass "T7 security-lens (no score) rendered to prose, no raw JSON"
+    assert_pass "T7 a result with no score rendered to prose, no raw JSON"
 fi
+assert_contains "T7 ...with its finding" "$out" "[critical]"
 
 cleanup_test_env
 print_test_results

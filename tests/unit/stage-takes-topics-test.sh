@@ -207,7 +207,6 @@ assert_eq "[T7] test-author takes (never change; requirement findings, e.g. a te
 assert_eq "[T7] build takes (change-findings: only the code can fix them; never test-findings)" "ask,tests,change,requirement-findings,code-findings,change-findings" "$(_takes_of build)"
 assert_eq "[T7] issue-acceptance takes" "ask,change,code-findings" "$(_takes_of issue-acceptance)"
 assert_eq "[T7] review-lens takes" "ask,change" "$(_takes_of review-lens)"
-assert_eq "[T7] security-lens takes" "ask,change" "$(_takes_of security-lens)"
 assert_eq "[T7] monitor takes" "ask,change" "$(_takes_of monitor)"
 
 # _topics_of <manifest> — "<id>=<topic>" per output, "<id>=" when none.
@@ -239,8 +238,6 @@ assert_eq "[T7] issue-acceptance: requirement-findings" \
 # #2491: its verdict, summary and replies reach no stage; its findings do.
 assert_eq "[T7] review-lens: only its findings have a topic" "lens_result= review_lens_summary= review_lens_code=code-findings review_lens_design=requirement-findings review_lens_replies= " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/review-lens/manifest.yaml")"
-assert_eq "[T7] security-lens: code-findings" "findings=code-findings security_lens_summary=code-findings " \
-    "$(_topics_of "$REPO_ROOT/plugins/agent/security-lens/manifest.yaml")"
 # Every model stage composes its prompt through stage_prompt_compose*; each one
 # declares takes:.
 missing=""

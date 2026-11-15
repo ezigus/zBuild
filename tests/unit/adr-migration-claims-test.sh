@@ -40,10 +40,11 @@ assert_file_exists "SPEC-0: ADR-028 exists" "$ADR"
 # So: if the document names a stage that has no plugin directory, it must also
 # say, unmissably, that the stage was deleted.
 _ghosts=""
-for _s in test_assessment; do
+# security-lens was removed by #2548: it was never run by any template.
+for _s in test_assessment security-lens; do
     grep -q "$_s" "$ADR" 2>/dev/null || continue
     [[ -d "$REPO_ROOT/plugins/agent/${_s//_/-}" ]] && continue
-    grep -qiE "\`?$_s\`? no longer exists|$_s.*(was )?deleted in #979" "$ADR" || _ghosts+="$_s "
+    grep -qiE "\`?$_s\`? no longer exists|$_s.*(was )?(deleted|removed) (in|by) #[0-9]+" "$ADR" || _ghosts+="$_s "
 done
 if [[ -z "$_ghosts" ]]; then
     assert_pass "SPEC-1: deleted stages are named as deleted, not as current"
@@ -58,7 +59,7 @@ fi
 # every non-test .sh file in the plugin directory counts. Only code lines count:
 # a comment that names the old parser (review-lens explains why it left it) is
 # not a call.
-_MIGRATED_STAGES="security-lens monitor review-lens"
+_MIGRATED_STAGES="monitor review-lens"
 
 # Prints why <plugin dir> is not migrated; prints nothing when it is.
 _stage_unmigrated_reason() {

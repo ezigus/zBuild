@@ -185,13 +185,13 @@ Add `--schema-gate <func>` to `_llm_envelope_parse`. When provided and the LAST-
 - `_plan_envelope_schema_ok` — retired 2026-10-13 (#2363): plan writes plan.json itself and parses no reply.
 - `_review_lens_envelope_schema_ok` — type==object, findings array (review-lens, #1840)
 
-**Migration.** `security-lens`, `monitor` and `review-lens` (#1840) call `_llm_envelope_parse --schema-gate`. (`review-report` (#1843) and `impact` were retired 2026-10-12. `plan` parsed its reply this way until #2363, when it began writing plan.json itself.)
+**Migration.** `monitor` and `review-lens` (#1840) call `_llm_envelope_parse --schema-gate`. (`security-lens`, an unused Phase 0 proof of concept, was removed by #2548; the security lens runs in `review-lens`.) (`review-report` (#1843) and `impact` were retired 2026-10-12. `plan` parsed its reply this way until #2363, when it began writing plan.json itself.)
 
 *Corrected 2026-10-06 (#2035).* Until this date the paragraph here said `review-lens` was not migrated. That stopped being true when #1840 moved it onto the shared parser; the ADR was not updated with it. `tests/unit/adr-migration-claims-test.sh` (SPEC-2, SPEC-3) checks the listed stages against this paragraph.
 
 *Corrected 2026-09-02.* This paragraph previously asserted that the migration was complete across four stages, one of which had been deleted months earlier and one of which was never migrated. The wrong sentence is not reproduced here: a reader — person or agent — who meets it takes it as settled and builds on it, and that is exactly how a claim nobody can check comes to read like a claim that is true. `tests/unit/adr-migration-claims-test.sh` now checks this paragraph against the code, so it cannot drift back into fiction unnoticed.
 
-- `security-lens`: its rc=0 parse routes through `_llm_envelope_parse --schema-gate <stage>_envelope_schema_ok`. `test_assessment` was deleted (#979).
+- `security-lens` was removed by #2548. `test_assessment` was deleted (#979).
 - `plan`: no longer parses a reply (#2363) — it writes plan.json to the path its prompt names and the stage reads that file.
 
 `impact` retains its stage-local `_impact_recover_envelope_json` helper by design — it is not part of this migration.

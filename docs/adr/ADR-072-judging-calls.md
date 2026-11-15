@@ -19,7 +19,7 @@ A judging call is a model call whose answer the engine acts on: design's coverag
 
 1. **A judging call reads the code itself, and can change nothing.**
    - It gets Read, Grep and Glob, and no MCP server: the router passes `--strict-mcp-config --tools "Read,Grep,Glob"`.
-   - A plugin whose every call judges declares `config.router.tools: read`: issue-acceptance, review-lens and security-lens.
+   - A plugin whose every call judges declares `config.router.tools: read`: issue-acceptance and review-lens (security-lens, an unused proof of concept, was removed by #2548).
    - The design coverage check and test-author's assertion check run inside stages that need full tools for their own call, so they ask for read-only tools for their call only (`ZBUILD_ROUTE_TOOLS=read`).
    - `tools: none` wins over both. intake and monitor declare it: everything they judge is in their prompt.
    - The rules a judging call is given (`--fresh`) say it can open and search files and change none, and that it should open whatever it needs.
@@ -177,7 +177,7 @@ On #1805 run 42556446368 issue-acceptance quoted `` `tests/integration/pipeline-
 
 ## Amendment 2026-11-09 (#2506) — §3: a lens names no line; its finding is shown with its quote
 
-On #1805 run 42556446368 a lens was asked for a line and a quote, and the finding shown to the stages that fix it kept `file:line` and dropped the quote. Lines move as the change is made. A lens (review-lens and security-lens) is no longer asked for a line, and its finding reaches the stages that fix it as `(<file>: "<quote>"; fix: <what>)`. A line a model still sends is not passed on. ADR-067 §8 (amended the same day) says no stage names a line number.
+On #1805 run 42556446368 a lens was asked for a line and a quote, and the finding shown to the stages that fix it kept `file:line` and dropped the quote. Lines move as the change is made. A lens (review-lens) is no longer asked for a line, and its finding reaches the stages that fix it as `(<file>: "<quote>"; fix: <what>)`. A line a model still sends is not passed on. ADR-067 §8 (amended the same day) says no stage names a line number.
 
 ## Amendment 2026-11-09 (#2507) — §1 §2 §4 §7: judges read git and are pointed at the change; test-author reads the old code in the copy
 

@@ -40,11 +40,10 @@ declare -gA _STAGE_COLORS=(
     [build]="$BLUE"
     [test]="$BLUE"
     [review]="$BLUE"
-    [security-lens]="$BLUE"
 )
 
 # ─── R1: every built-in stage returns $BLUE (collapsed palette, #499) ────────
-for stage in intake plan build test review security-lens; do
+for stage in intake plan build test review; do
     c="$(_stage_color "$stage")"
     if [[ "$c" == "$BLUE" ]]; then
         assert_pass "R1 _stage_color $stage == \$BLUE"
@@ -73,13 +72,12 @@ build_c="$(_stage_color build)"
 intake_c="$(_stage_color intake)"
 test_c="$(_stage_color test)"
 review_c="$(_stage_color review)"
-sec_c="$(_stage_color security-lens)"
 if [[ "$plan_c" == "$build_c" && "$build_c" == "$intake_c" && "$intake_c" == "$test_c" \
-    && "$test_c" == "$review_c" && "$review_c" == "$sec_c" && "$plan_c" == "$BLUE" ]]; then
+    && "$test_c" == "$review_c" && "$plan_c" == "$BLUE" ]]; then
     assert_pass "R5 all built-in stages == \$BLUE"
 else
     assert_fail "R5 all built-in stages == \$BLUE" \
-        "plan=${plan_c@Q} build=${build_c@Q} intake=${intake_c@Q} test=${test_c@Q} review=${review_c@Q} sec=${sec_c@Q}"
+        "plan=${plan_c@Q} build=${build_c@Q} intake=${intake_c@Q} test=${test_c@Q} review=${review_c@Q}"
 fi
 
 # ─── R6: NO_COLOR-aware — empty-string registry entries on re-init ───────────
@@ -91,7 +89,6 @@ declare -gA _STAGE_COLORS=(
     [build]="$BLUE_OFF"
     [test]="$BLUE_OFF"
     [review]="$BLUE_OFF"
-    [security-lens]="$BLUE_OFF"
 )
 plan_no_color="$(_stage_color plan)"
 if [[ -z "$plan_no_color" ]]; then
@@ -104,7 +101,7 @@ fi
 # Rebuild the colored registry so we can verify a runtime register call wins.
 declare -gA _STAGE_COLORS=(
     [intake]="$BLUE" [plan]="$BLUE" [build]="$BLUE"
-    [test]="$BLUE" [review]="$BLUE" [security-lens]="$BLUE"
+    [test]="$BLUE" [review]="$BLUE"
 )
 register_stage_color "my-custom-stage" "$RED"
 custom_c="$(_stage_color "my-custom-stage")"

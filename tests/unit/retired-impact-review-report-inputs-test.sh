@@ -7,10 +7,10 @@
 #   RT2 [change]: review-report is retired — review_lenses (#2368: the engine
 #                 sums them up; review-aggregator is retired too)
 #                 replaced it (ADR-040 §3)
-#   RT3 [change]: a lens is a stage like any other: the review-lens stage writes
-#                 one job for every lens and gives every lens the same evidence,
-#                 and the lens's question is its persona's (ADR-051 §3); no lens
-#                 text table, no per-lens evidence
+#   RT3 [change]: a lens is a stage like any other: every lens gets the same
+#                 evidence, no per-lens evidence. Each lens's job is its own
+#                 text, kept by the review-lens stage (#2548, ADR-038 amended
+#                 2026-11-15) — not its persona's, and not a table in the code
 #   RT4 [change]: declared inputs are retired — every stage gets every stage's
 #                 latest output (ADR-068 §8): no manifest declares `inputs:`, no
 #                 template wires `feedback:`, and a manifest that still declares
@@ -61,17 +61,19 @@ assert_eq "[RT3] no lens picks its own evidence by name" "" \
     "$(_code_refs '_review_lens_evidence_path|call-graph.json|coverage-map.json|reachability-ablation.json')"
 assert_eq "[RT3] no lens text table" "absent" "$(declare -F _rl_lens_charter >/dev/null 2>&1 && echo present || echo absent)"
 # red-team, not security: the shared severity scale says "a security hole" (#2433).
-_p_sec="$(_rl_build_lens_prompt red-team "EVIDENCE" "CONTEXT" 2>/dev/null)"
 _p_cor="$(_rl_build_lens_prompt correctness "EVIDENCE" "CONTEXT" 2>/dev/null)"
-assert_eq "[RT3] the lens prompt was built" "1" "$([[ -n "$_p_sec" ]] && echo 1 || echo 0)"
-assert_eq "[RT3] every lens gets the same job, but for its name" "${_p_sec//red-team/LENS}" "${_p_cor//correctness/LENS}"
+assert_eq "[RT3] the lens prompt was built" "1" "$([[ -n "$_p_cor" ]] && echo 1 || echo 0)"
+# The persona the correctness lens runs as (#2548): its perspective is who does
+# the job, so it is not in the lens's own text.
 _persp="$(awk '/^[[:space:]]+perspective:/ { sub(/^[[:space:]]+perspective:[[:space:]]*"?/, ""); print substr($0, 1, 40); exit }' \
-    "$REPO_ROOT/plugins/persona/correctness/manifest.yaml")"
+    "$REPO_ROOT/plugins/persona/test-strategist/manifest.yaml")"
 if grep -qF -- "$_persp" <<< "$_p_cor"; then
-    assert_fail "[RT3] the lens's question is its persona's, not in the stage's text" "found: $_persp"
+    assert_fail "[RT3] the lens's job is its own, not its persona's" "found: $_persp"
 else
-    assert_pass "[RT3] the lens's question is its persona's, not in the stage's text"
+    assert_pass "[RT3] the lens's job is its own, not its persona's"
 fi
+assert_contains "[RT3] ...and it is the lens's own text" "$_p_cor" \
+    "$(awk 'NF && !/^#/ { print; exit }' "$REPO_ROOT/plugins/agent/review-lens/lenses/correctness.md" 2>/dev/null || echo '<no correctness job>')"
 
 # ─── RT4 ─────────────────────────────────────────────────────────────────────
 print_test_section "RT4: declared inputs are retired"

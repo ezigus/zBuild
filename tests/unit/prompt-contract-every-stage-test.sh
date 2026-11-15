@@ -25,6 +25,15 @@
 #                ("You are a/the …") or a list of its tools ("You have …"): the engine's rules point at this section as
 #                the whole of the stage's job, so it must say what that job is
 #                first (#1801: plan's job sentence sat 40 lines down)
+#   M1-M6 [change] (#2548, ADR-051 §9 amended): each rule a persona held about
+#                one kind of job is in the prompt of the call that does it —
+#                test-author (the false case, boundaries, an empty result,
+#                values derived not hard-coded), build (no more and no less,
+#                the simplest way, a failing test understood first), issue-
+#                acceptance (a behaviour runs when the program runs; a file
+#                nothing uses), test-author's check (a narrower test does not
+#                do the part), monitor (a failure that says why), design (the
+#                smallest design, the code's own patterns)
 #   E4 [moved]  : (#2363) "read data the way its writer writes it" (#1799) is a
 #                rule about writing code: it left the engine's rules for build,
 #                test-author and the review lenses — engine-blocks-shared-only B4
@@ -99,7 +108,9 @@ EOF
 # #2445: intake's model calls write and check the issue's requirement list.
 _c_intake() { ( ad="$(_fixture intake)"; export ZBUILD_REPO_ROOT="${ad%/state/artifacts}"
     source "$REPO_ROOT/plugins/agent/intake/plugin.sh" >/dev/null 2>&1
-    route_to_model() { [[ -s "$RAW/intake.txt" ]] || printf '%s' "$2" > "$RAW/intake.txt"; printf 'REQUIREMENT: fix the typo\nMISSING: none\n'; }
+    route_to_model() { if [[ "$2" == *"Your job: check a list of requirements"* ]]; then printf '%s' "$2" > "$RAW/intake-check.txt"
+        else [[ -s "$RAW/intake.txt" ]] || printf '%s' "$2" > "$RAW/intake.txt"; fi
+        printf 'REQUIREMENT: RQTYPO-1 fix the typo\nMISSING: none\n'; }
     local _j; _intake_requirements_json_v _j '{"title":"Fix a typo","body":"1. Fix the typo in README.md"}' ) >/dev/null 2>&1; }
 _c_design() { ( ad="$(_fixture design)"; export ZBUILD_REPO_ROOT="${ad%/state/artifacts}"
     source "$REPO_ROOT/plugins/agent/design/plugin.sh" >/dev/null 2>&1
@@ -120,12 +131,6 @@ _c_monitor() { ( ad="$(_fixture monitor)"; export ZBUILD_ARTIFACT_DIR="$ad" ZBUI
     source "$REPO_ROOT/plugins/agent/monitor/plugin.sh" >/dev/null 2>&1
     route_to_model() { printf '%s' "$2" > "$RAW/monitor.txt"; return 1; }
     monitor_stage_run monitor "${ad%/artifacts}/pipeline-state.json" ) >/dev/null 2>&1; }
-_c_security_lens() { ( ad="$(_fixture security-lens)"
-    source "$REPO_ROOT/plugins/agent/security-lens/plugin.sh" >/dev/null 2>&1
-    route_to_model() { printf '%s' "$2" > "$RAW/security-lens.txt"; return 1; }
-    resolve_tier() { printf 'T3'; }
-    printf 'diff --git a/foo.sh b/foo.sh\n+echo hi\n' > "$ad/bundle.txt"
-    _security_lens_run_inner "$ad/bundle.txt" "" "$ad/security.json" "$ad" ) >/dev/null 2>&1; }
 _c_review_lens() { ( ad="$(_fixture review-lens)"
     source "$REPO_ROOT/plugins/agent/review-lens/plugin.sh" >/dev/null 2>&1
     route_to_model() { printf '%s' "$2" > "$RAW/review-lens.txt"; return 1; }
@@ -176,7 +181,7 @@ for _s in "${STAGES[@]}"; do
     declare -F "_c_${_s//-/_}" >/dev/null 2>&1 || _missing+="$_s "
 done
 assert_eq "[E3] every model-calling stage has a composer here" "" "$_missing"
-assert_eq "[E3] the model-calling stages were found (fixture live; 8 since #2369/#2370 retired spec-coverage and spec-correspondence)" "1" "$([[ ${#STAGES[@]} -ge 8 ]] && echo 1 || echo 0)"
+assert_eq "[E3] the model-calling stages were found (fixture live; 7 since #2548 removed the unused security-lens)" "1" "$([[ ${#STAGES[@]} -ge 7 ]] && echo 1 || echo 0)"
 
 SECTIONS=("## From the repo" "## What you own" "## What you judge against" "## Previous work" "## What you must not do" "## Rules for this stage")
 
@@ -218,7 +223,7 @@ _persp=()
 # The personas the stages run as: each manifest's `personas:` block (ADR-051 §2).
 _pinned="$(awk '/^personas:/ { p = 1; next } p && /^[^[:space:]]/ { p = 0 } p && /^  [A-Za-z0-9_-]+:/ { print $2 }' \
     "$REPO_ROOT"/plugins/agent/*/manifest.yaml | sort -u)"
-for _pid in $_pinned generic; do
+for _pid in $_pinned; do
     _pm="$REPO_ROOT/plugins/persona/$_pid/manifest.yaml"
     _pp="$(awk '/^[[:space:]]+perspective:/ { sub(/^[[:space:]]+perspective:[[:space:]]*/, ""); gsub(/^"|"$/, ""); print; exit }' "$_pm")"
     [[ ${#_pp} -ge 30 ]] && _persp+=("${_pp:0:60}")
@@ -246,6 +251,31 @@ for _s in "${STAGES[@]}" test-author-check test-author-check-batch design-covera
     fi
 done
 assert_eq "[E6] every stage's What you own opens with its job" "" "$_bad"
+
+# ─── M1-M6: the job rules a persona held are in the prompts ─────────────────
+_m() {  # <label> <stage capture> <text>
+    assert_contains "$1" "$(cat "$RAW/$2.txt" 2>/dev/null)" "$3"
+}
+_m "[M1] test-author: test the case where a condition is false" test-author "the case where it is false"
+_m "[M1] ...the values at each boundary" test-author "at each boundary"
+_m "[M1] ...a test that finds nothing must fail" test-author "must fail when it finds nothing"
+_m "[M1] ...derive what a test compares against" test-author "never hard-code a value that changes"
+_m "[M2] build: no more and no less than was decided" build "no more and no less"
+_m "[M2] ...the simplest way that works" build "the simplest change"
+_m "[M2] ...a failing test understood before anything else" build "find out why it fails before you change anything else"
+_m "[M2] ...the edge cases the requirements name" build "the edge cases the requirements name"
+_m "[M2] ...a gap between what was asked and what the code can do is said" build "say so in your answer"
+_m "[M3] issue-acceptance: a behaviour runs when the program runs" issue-acceptance "runs when the program runs"
+_m "[M3] ...a new file nothing uses" issue-acceptance "a new file nothing uses"
+_m "[M3] ...a test put off is not a test" issue-acceptance "a test the change puts off"
+_m "[M3] ...behaviour made optional does not meet it" issue-acceptance "behaviour the change makes optional"
+_m "[M4] test-author's check: a narrower test does not do the part" test-author-check-batch "narrower than the part"
+_m "[M5] monitor: a failure that says why" monitor "says why"
+_m "[M5] ...and a failed step's way back" monitor "a way back"
+_m "[M7] intake's check: a listed requirement narrower than the issue misses the rest" intake-check "narrower than the issue's words"
+_m "[M6] design: the smallest design" design "the smallest design"
+_m "[M8] design's coverage check: a requirement too loose for any SPEC to settle is said so" design-coverage "a finding against the requirement"
+_m "[M6] ...the patterns the code already follows" design "patterns the code already follows"
 
 # ─── T1: test-author checks the value itself ────────────────────────────────
 _ta="$(cat "$RAW/test-author.txt" 2>/dev/null)"

@@ -3,8 +3,9 @@
 # runs as that stage's persona (ADR-051, amended 2026-10-12).
 #
 # The persona is found the way ADR-051 §4/§5 says (resolve_persona: the
-# ZBUILD_<STAGE>_PERSONA override, the stage's template pin, the template's
-# default, generic; the target repository's .zbuild/plugins/persona/<id> before
+# ZBUILD_<STAGE>_PERSONA override, the stage's template pin, the manifest's
+# persona for the call, the template's default — none of them naming one, the
+# call runs with no persona (#2548); the target repository's .zbuild/plugins/persona/<id> before
 # the install's). A map element runs as the persona the template names for it,
 # never one guessed from its name. No stage frames a persona.
 #
@@ -34,6 +35,9 @@ _route_persona_prepare() {
     _ROUTE_PERSONA_KEY="$key" _ROUTE_PERSONA_ID="" _ROUTE_PERSONA_TEXT="" _ROUTE_PERSONA_IN_PROMPT=0
     _ROUTE_PERSONA_DESC="" _ROUTE_PERSONA_REDACTED=""
     _ROUTE_PERSONA_ARGS=()
+    # The banner names this call's persona, or none (#2548: no generic one
+    # overwrites the last call's).
+    export ZBUILD_STAGE_IO_PERSONA=""
     [[ -n "${ZBUILD_PLUGIN_DIR:-}" && -n "${ZBUILD_CURRENT_STAGE:-}" ]] || return 0
     local dir manifest desc p fn
     dir="$(resolve_persona "$ZBUILD_CURRENT_STAGE" 2>/dev/null)" || return 0

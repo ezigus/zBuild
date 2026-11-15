@@ -93,6 +93,10 @@ When a requirement refers to another of the issue's items by the issue's own
 name for it (R1, R1–R5), write the ids of the requirements it means instead:
 every later stage sees only this list, never the issue's names.
 
+Read the issue literally, not charitably: a listed requirement narrower than the issue's words —
+fewer of its cases, a weaker condition, some of its files — misses the rest. Name what it misses as
+its own requirement.
+
 A listed item that is not a requirement — a note about how or when to do the
 work, such as the order to do it in or what not to run it alongside, which no
 change to the code can show is met — gets its own line:

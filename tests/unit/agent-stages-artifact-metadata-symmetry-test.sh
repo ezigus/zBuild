@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests: plan/security-lens symmetrically opt-in to producer-side
+# Tests: the Pattern 1 stages (review-lens) opt in to producer-side
 # artifact tagging (#483, ADR-018 Implementation Notes).
 #
 # This is a table-driven sanity check that all Pattern 1 stages export
@@ -29,15 +29,16 @@ print_test_header "agent-stages: artifact metadata symmetry (#483)"
 # Row format: <plugin_id> <expected_artifact_id> <plugin_file>
 # (#979 retired the review agent stage and 2026-10-12 retired impact; their rows
 # were removed. #2363: plan writes plan.json itself — its reply is one line, not
-# the artifact — so it tags nothing.)
+# the artifact — so it tags nothing. #2548 removed security-lens, whose row this
+# was; review-lens is the stage that tags its call.)
 _rows=(
-    "security-lens|security-lens|$REPO_ROOT/plugins/agent/security-lens/plugin.sh"
+    "review-lens|review-lens|$REPO_ROOT/plugins/agent/review-lens/plugin.sh"
 )
 
 for row in "${_rows[@]}"; do
     IFS='|' read -r plugin_id expected_id plugin_file <<<"$row"
     # 1. Grep the plugin file for the export line — pins the literal value.
-    if grep -qE "export ZBUILD_ROUTER_ARTIFACT_ID=${expected_id}\b" "$plugin_file"; then
+    if grep -qE "export ZBUILD_ROUTER_ARTIFACT_ID=\"?${expected_id}\b" "$plugin_file"; then
         assert_pass "$plugin_id exports ZBUILD_ROUTER_ARTIFACT_ID=$expected_id (#483)"
     else
         assert_fail "$plugin_id missing export ZBUILD_ROUTER_ARTIFACT_ID=$expected_id" \

@@ -11,8 +11,12 @@ plugins/agent/design/lib/coverage.sh printf
 plugins/agent/test-author/lib/correspondence.sh
 plugins/agent/review-lens/plugin.sh
 plugins/agent/review-lens/lib/charters.sh
-plugins/agent/security-lens/plugin.sh
-plugins/agent/security-lens/prompts/security.md
+plugins/agent/review-lens/lenses/correctness.md
+plugins/agent/review-lens/lenses/performance.md
+plugins/agent/review-lens/lenses/red-team.md
+plugins/agent/review-lens/lenses/scope.md
+plugins/agent/review-lens/lenses/security.md
+plugins/agent/review-lens/lenses/sre.md
 plugins/tool/test/lib/acceptance-check.sh
 plugins/agent/design/lib/checks.sh printf
 plugins/tool/test/lib/shape-floor-check.sh

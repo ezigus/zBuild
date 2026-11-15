@@ -264,7 +264,8 @@ review_lenses:
   fail_on: [medium, high, critical]
   over: lenses
   # ADR-051 §2: each lens names the persona it runs as; none is inferred
-  # from the lens's name.
+  # from the lens's name. The persona is who does the work; the lens's job is
+  # its own text, plugins/agent/review-lens/lenses/<id>.md (#2548, ADR-038).
   elements:
     - id: security
       persona: security
@@ -273,9 +274,9 @@ review_lenses:
     - id: red-team
       persona: red-team
     - id: correctness
-      persona: correctness
+      persona: test-strategist
     - id: scope
-      persona: scope
+      persona: product-owner
     - id: sre
       persona: sre
   roles: [review_lens]

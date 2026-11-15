@@ -14,7 +14,7 @@
 #                 names for one element, empty for one that names none
 #   ME3 [change]: a map group's own persona pin is not taken from an element's
 #   ME4 [change]: resolve_persona for a map element: its declared persona; an
-#                 element that declares none runs as the stage's pin or generic —
+#                 element that declares none runs as the stage's pin or none (#2548) —
 #                 even when a persona of the element's name exists
 #   ME5 [change]: the startup preflight refuses a persona the template names
 #                 that exists nowhere (stage pin or element), in its default mode
@@ -83,7 +83,7 @@ print_test_section "ME4: resolve_persona for a map element"
 _rp() { ( export ZBUILD_CURRENT_STAGE=lenses_group ZBUILD_MAP_ELEMENT="$1"
           d="$(resolve_persona lenses_group 2>/dev/null)"; printf '%s' "${d##*/}" ); }
 assert_eq "[ME4] a declared persona, whatever the element is called" "security" "$(_rp sec)"
-assert_eq "[ME4] same name as a persona but none declared → generic" "generic" "$(_rp correctness)"
+assert_eq "[ME4] same name as a persona but none declared → none" "" "$(_rp architect)"
 _tpl <<'EOF'
 id: me2
 flow:

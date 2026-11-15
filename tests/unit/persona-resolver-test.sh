@@ -178,13 +178,13 @@ assert_contains "[SPEC-1] find_persona points at plugins/persona/performance/man
 assert_eq "[SPEC-2] resolve_persona_role returns 'a performance engineer'" \
     "a performance engineer" "$(resolve_persona_role performance "$REAL_PROOT")"
 
-# SPEC-3: perspective contains the word 'complexity' (hot-path/complexity framing keyword)
+# SPEC-3: perspective is about work repeated in a loop (#2548: a mindset)
 perf_perspective="$(resolve_persona_perspective performance "$REAL_PROOT")"
 case "$perf_perspective" in
-    *complexity*) perf_persp_ok=1 ;;
+    *loop*) perf_persp_ok=1 ;;
     *)            perf_persp_ok=0 ;;
 esac
-assert_eq "[SPEC-3] performance perspective contains 'complexity'" "1" "$perf_persp_ok"
+assert_eq "[SPEC-3] performance perspective is about work repeated in a loop" "1" "$perf_persp_ok"
 
 # SPEC-4: validate_manifest passes on the live performance manifest
 set +e
@@ -192,34 +192,9 @@ validate_manifest "$perf_mf" >/dev/null 2>&1; rc=$?
 set -e
 assert_eq "[SPEC-4] validate_manifest passes on the live performance manifest" "0" "$rc"
 
-# ─── SPEC-1..SPEC-5: live-tree correctness persona ───────────────────────────
-# These specs exercise the real manifest shipped in the repo (not a fixture).
-
-# SPEC-1: correctness manifest is discoverable from the live plugins tree
-set +e
-corr_mf="$(find_persona correctness "$REAL_PROOT")"; rc=$?
-set -e
-assert_eq "[SPEC-1] find_persona returns 0 for the live correctness persona" "0" "$rc"
-assert_contains "[SPEC-1] find_persona points at plugins/persona/correctness/manifest.yaml" \
-    "$corr_mf" "plugins/persona/correctness/manifest.yaml"
-
-# SPEC-2: role is exactly 'a test strategist'
-assert_eq "[SPEC-2] resolve_persona_role returns 'a test strategist'" \
-    "a test strategist" "$(resolve_persona_role correctness "$REAL_PROOT")"
-
-# SPEC-3: perspective contains the word 'logic errors' (correctness-charter keyword)
-corr_perspective="$(resolve_persona_perspective correctness "$REAL_PROOT")"
-case "$corr_perspective" in
-    *"logic errors"*) corr_persp_ok=1 ;;
-    *)                corr_persp_ok=0 ;;
-esac
-assert_eq "[SPEC-3] correctness perspective contains 'logic errors'" "1" "$corr_persp_ok"
-
-# SPEC-4: validate_manifest passes on the live correctness manifest
-set +e
-validate_manifest "$corr_mf" >/dev/null 2>&1; rc=$?
-set -e
-assert_eq "[SPEC-4] validate_manifest passes on the live correctness manifest" "0" "$rc"
+# The correctness persona is gone (#2548): its text was the correctness lens's
+# job, now plugins/agent/review-lens/lenses/correctness.md, and the lens runs as
+# test-strategist (tests/unit/lens-task-test.sh L1, L4).
 
 # ─── SPEC-1..SPEC-5: live-tree SRE persona ───────────────────────────────────
 # These specs exercise the real manifest shipped in the repo (not a fixture).
@@ -251,35 +226,8 @@ validate_manifest "$sre_mf" >/dev/null 2>&1; rc=$?
 set -e
 assert_eq "[SPEC-4] validate_manifest passes on the live sre manifest" "0" "$rc"
 
-# ─── SPEC-1..SPEC-5: live-tree scope persona ─────────────────────────────────
-# These specs exercise the real manifest shipped in the repo (not a fixture).
-
-# SPEC-1: scope manifest is discoverable from the live plugins tree
-set +e
-scope_mf="$(find_persona scope "$REAL_PROOT")"; rc=$?
-set -e
-assert_eq "[SPEC-1] find_persona returns 0 for the live scope persona" "0" "$rc"
-assert_contains "[SPEC-1] find_persona points at plugins/persona/scope/manifest.yaml" \
-    "$scope_mf" "plugins/persona/scope/manifest.yaml"
-
-# SPEC-2: role is exactly 'a software architect'
-assert_eq "[SPEC-2] resolve_persona_role returns 'a software architect'" \
-    "a software architect" "$(resolve_persona_role scope "$REAL_PROOT")"
-
-# SPEC-3: perspective names the scope the issue names (#2433: no longer warn-only;
-# ADR-051 §9: no plan, which the pipeline no longer has)
-scope_perspective="$(resolve_persona_perspective scope "$REAL_PROOT")"
-case "$scope_perspective" in
-    *"the files or areas its scope names"*) scope_persp_ok=1 ;;
-    *)             scope_persp_ok=0 ;;
-esac
-assert_eq "[SPEC-3] scope perspective names the scope the issue names" "1" "$scope_persp_ok"
-
-# SPEC-4: validate_manifest passes on the live scope manifest
-set +e
-validate_manifest "$scope_mf" >/dev/null 2>&1; rc=$?
-set -e
-assert_eq "[SPEC-4] validate_manifest passes on the live scope manifest" "0" "$rc"
+# The scope persona is gone (#2548): its text was the scope lens's job, now
+# plugins/agent/review-lens/lenses/scope.md, and the lens runs as product-owner.
 
 # ─── SPEC-1[change]: architect perspective opens as a standalone imperative ──
 # Not just "no 'You ' prefix" — also require a non-empty, capitalized opener so
@@ -378,9 +326,10 @@ unset _TPL_SOURCE_FILE 2>/dev/null || true
 set +e
 _generic_dir="$(resolve_persona "build" 2>/dev/null)"; _rp4_rc=$?
 set -e
-assert_eq "[SPEC-4] resolve_persona returns 0 for generic fallback when no binding" "0" "$_rp4_rc"
-assert_contains "[SPEC-4] resolve_persona returns the generic persona dir when no binding" \
-    "$_generic_dir" "generic"
+# #2548 (ADR-051 §5 amended): there is no generic persona; with no binding the
+# call runs with none, even when a persona named generic is installed.
+assert_eq "[SPEC-4] resolve_persona finds nothing when no binding" "1" "$_rp4_rc"
+assert_eq "[SPEC-4] ...and names no persona dir" "" "$_generic_dir"
 
 ZBUILD_PLUGINS_ROOT="$_orig_proot"
 
@@ -501,9 +450,8 @@ export ZBUILD_BUILD_PERSONA="no-such-persona"
 set +e
 _fallback_dir="$(resolve_persona "build" 2>/dev/null)"; _rp5c_rc=$?
 set -e
-assert_eq "[SPEC-5] resolve_persona returns 0 when persona absent from both roots (generic fallback)" "0" "$_rp5c_rc"
-assert_contains "[SPEC-5] persona absent from both roots falls back to generic" \
-    "$_fallback_dir" "generic"
+assert_eq "[SPEC-5] a persona absent from both roots is not found (#2548: no fallback)" "1" "$_rp5c_rc"
+assert_eq "[SPEC-5] ...and none is put in its place" "" "$_fallback_dir"
 
 unset ZBUILD_BUILD_PERSONA 2>/dev/null || true
 unset ZBUILD_REPO_ROOT 2>/dev/null || true
@@ -518,9 +466,11 @@ mkdir -p "$ZBUILD_REPO_ROOT"
 set +e
 _silent_dir="$(resolve_persona "build" 2>/dev/null)"; _rp6_rc=$?
 set -e
-assert_eq "[SPEC-6] resolve_persona returns 0 when repo overlay dir is absent (silent-on-absent)" "0" "$_rp6_rc"
-assert_contains "[SPEC-6] resolver proceeds to generic when overlay dir is absent" \
-    "$_silent_dir" "generic"
+set +e
+_silent_err="$(resolve_persona "build" 2>&1 >/dev/null)"
+set -e
+assert_eq "[SPEC-6] an absent repo overlay dir is silent" "" "$_silent_err"
+assert_eq "[SPEC-6] ...and with no binding no persona is found (#2548)" "1|" "$_rp6_rc|$_silent_dir"
 
 unset ZBUILD_REPO_ROOT 2>/dev/null || true
 ZBUILD_PLUGINS_ROOT="$_orig_proot"

@@ -207,7 +207,7 @@ _words() { local _cw=""; manifest_call_words_v _cw "$REPO_ROOT/plugins/agent/$1/
 for _p in build design test-author; do
     assert_eq "[C6] $_p main: the building set" "$BUILDING" "$(_words "$_p" main)"
 done
-for _p in issue-acceptance review-lens security-lens; do
+for _p in issue-acceptance review-lens; do
     assert_eq "[C6] $_p main: the judging set" "$JUDGING" "$(_words "$_p" main)"
 done
 assert_eq "[C6] design's coverage check: the judging set" "$JUDGING" "$(_words design coverage)"

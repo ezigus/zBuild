@@ -40,11 +40,24 @@ assert_eq "[SPEC-1] intake result filename is intake-result.json (v2 primary, no
 
 # ─── SPEC-2 [change]: a TYPE name is not a filename ───────────────────────────
 # security-lens declared `findings.json` (its outputs[].type) while the file it
-# actually writes is security-findings.json. Same defect class as SPEC-1.
+# actually wrote was security-findings.json. Same defect class as SPEC-1. That
+# plugin is gone (#2548), so a manifest of its shape stands in for it.
 print_test_section "SPEC-2. a type name is not a filename"
-_s2="$(manifest_graph_result_filename "$REPO_ROOT/plugins/agent/security-lens/manifest.yaml" 2>/dev/null || echo "<rc1>")"
-assert_eq "[SPEC-2] security-lens result filename is security-findings.json (not the type findings.json)" \
-    "security-findings.json" "$_s2"
+_s2_dir="$TEST_TEMP_DIR/fx-lens"; mkdir -p "$_s2_dir"
+cat > "$_s2_dir/manifest.yaml" <<'EOF'
+id: fx-lens
+kind: agent
+outputs:
+  - id: findings
+    path: "${artifact_dir}/fx-findings.json"
+    type: findings.json@1
+    format: json
+    required: true
+    primary: true
+EOF
+_s2="$(manifest_graph_result_filename "$_s2_dir/manifest.yaml" 2>/dev/null || echo "<rc1>")"
+assert_eq "[SPEC-2] the result filename is the file it writes, fx-findings.json (not the type findings.json)" \
+    "fx-findings.json" "$_s2"
 
 # ─── SPEC-3 [change]: the field is gone from every manifest ───────────────────
 print_test_section "SPEC-3. provides.artifact_type declared nowhere"
