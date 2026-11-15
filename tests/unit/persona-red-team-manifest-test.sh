@@ -31,13 +31,14 @@ assert_contains "[SPEC-1] find_persona points at the red-team manifest" \
 assert_eq "[SPEC-2] resolve_persona_role returns 'a red-team operator'" \
     "a red-team operator" "$(resolve_persona_role red-team "$REAL_PROOT")"
 
-# SPEC-3: perspective contains 'reviewer' (matches charters.sh red-team charter)
+# SPEC-3: perspective is an attacker's mindset (#2548: the review job is the
+# red-team lens's own text)
 rt_perspective="$(resolve_persona_perspective red-team "$REAL_PROOT")"
 case "$rt_perspective" in
-    *reviewer*) persp_ok=1 ;;
+    *attacker*) persp_ok=1 ;;
     *) persp_ok=0 ;;
 esac
-assert_eq "[SPEC-3] perspective contains 'reviewer'" "1" "$persp_ok"
+assert_eq "[SPEC-3] perspective thinks like an attacker" "1" "$persp_ok"
 
 # SPEC-4: validate_manifest passes
 set +e

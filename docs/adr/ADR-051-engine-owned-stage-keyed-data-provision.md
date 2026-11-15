@@ -1,6 +1,6 @@
 # ADR-051 — Engine-owned, stage-keyed data provision (persona = first instance)
 
-**Status:** Accepted (2026-07-26); amended 2026-10-12 (§3, §6, §7, §8: the provider delivers the persona; no stage frames one); amended 2026-11-14 (§2, §3, §5, §7: each model call runs as the persona its stage's manifest names for it, not listed here; §9: what a perspective holds)
+**Status:** Accepted (2026-07-26); amended 2026-10-12 (§3, §6, §7, §8: the provider delivers the persona; no stage frames one); amended 2026-11-14 (§2, §3, §5, §7: each model call runs as the persona its stage's manifest names for it, not listed here; §9: what a perspective holds); amended 2026-11-15 (#2548, §2 §5 §7 §9: a persona is a role and its mindset, the job is in the call's prompt; there is no generic persona)
 **Issue:** #1303 (Initiative 1.3 — "Personas as Data", #1551)
 **Related:** [ADR-047](ADR-047-stage-agnostic-mechanics.md) (stage-agnostic mechanics),
 [ADR-049](ADR-049-vision-document-standard.md) (generic preamble injection),
@@ -63,10 +63,10 @@ Which persona a stage uses is a **declaration in the template**, not code in a p
 `stage_definitions.<stage>.persona: <id>` (or `persona:` in the stage's own section) for a
 stage, and, for a `type: map` group, each element's own `persona:` — an element carries its
 settings the way a stage does (`elements: - id: <element>` / `persona: <id>`). A persona is never
-inferred from an element's name: an element that names none runs as its stage's pin, else
-`generic` (amended 2026-10-12). Every persona the template names must exist (§4): the startup
+inferred from an element's name: an element that names none runs as its stage's pin, else with
+no persona (amended 2026-10-12; 2026-11-15, #2548: there is no `generic` persona). Every persona the template names must exist (§4): the startup
 preflight refuses a run whose template names one that is in neither the repository's overlay nor
-the install, in its default mode too, so a misspelt id never quietly runs as `generic`. `core/pipeline` treats this as opaque per-stage data via a
+the install, in its default mode too, so a misspelt id never quietly runs as another. `core/pipeline` treats this as opaque per-stage data via a
 name-mangled accessor — a drop-in copy of the existing `template_stage_router_tier`
 (`core/pipeline/template.sh:2596`) / `template_stage_negctl_timeout` (`:2570`) lazy readers, with
 **zero persona semantics in the engine mechanics**. Onboarding a fictitious stage leaves the
@@ -125,7 +125,7 @@ leaked via `ZBUILD_PLUGINS_ROOT` into nested runners — preserving
 
 Mirroring `resolve_tier` (`scripts/lib/tier-resolve.sh:55`):
 `ZBUILD_<STAGE>_PERSONA` env  >  a map element's own `persona:`  >  template `stage_definitions.<stage>.persona` (the
-`main` call's only)  >  the manifest's persona for the call (`personas:`, amended 2026-11-14)  >  **generic default persona**. The first non-empty binding wins; a divergent env override against
+`main` call's only)  >  the manifest's persona for the call (`personas:`, amended 2026-11-14)  >  template `config.persona`  >  **no persona** (amended 2026-11-15, #2548: the `generic` persona, "Implement the task as specified.", was a task, not a role; a call none of these name runs with none). The first non-empty binding wins; a divergent env override against
 a template value is auditable, consistent with `_route_resolve_knob` (`route.sh:457`).
 
 ### 6. The persona goes through redaction (amended 2026-10-12)
@@ -144,8 +144,8 @@ this ADR does not list them: a persona knows nothing of the stages that use it (
 2026-11-14: this section listed template pins, and the list had gone stale — it named stages that no
 longer exist). A stage keeps its own
 job sentence in its own `## What you own` — it is the stage's task, not a persona. A call that names
-no persona runs as `generic`. A review lens keeps its own question as its charter; a lens persona's
-`perspective` is that same question, delivered by the provider.
+no persona runs with none (amended 2026-11-15). Each review lens's job is its own text, kept by the
+review-lens stage (ADR-038, amended 2026-11-15); the persona its element names is who does it.
 
 ### 8. Boundary and breadth
 
@@ -154,19 +154,36 @@ persona a shipped template pins, and no plugin calls `persona_stage_framing` (am
 tier/model/timeout/max_turns/redaction follow the identical declared-data + provider pattern, with
 tier/model codified under EPIC #1308.
 
-### 9. What a perspective holds (amended 2026-11-14)
+### 9. What a perspective holds (amended 2026-11-14; 2026-11-15, #2548)
 
-A perspective says **what to look for**, as rules of thumb: the cases to check, the mistakes to catch,
-how to grade what is found. It is **not an identity**: no "you are a …", no "expert". It speaks of
-**the work, never the pipeline**: no stage, plan, pipeline, manifest or lens, because one persona
-serves every stage that pins it (§1) and words about one stage's work are wrong in the next. A rule
-goes where it holds:
+A persona is **a role someone plays and how that person thinks** — an architect, a tester, an
+attacker — in at most three sentences. It is reusable for **any kind of work**: the red-team persona
+fits a review and a test-writing call alike, because it says how an attacker thinks, not what to do.
+It holds **no job**: no task, no output, no severity scale or grading, no "finding", "flag" or
+"report", no "examine the change". It is still **not an identity line** (no "you are a …", no
+"expert") and still speaks **never of the pipeline** (no stage, plan, pipeline, manifest or lens).
+
+Everything about the job is **in the prompt of the call that does it**: what to look for, what is not
+part of the job, how to grade, and what to return. A rule goes where it holds:
 
 | A rule that… | goes in |
 |---|---|
-| holds for anyone doing that kind of work (test the false case of every condition) | the persona's perspective |
-| is about one stage's output (put a test in the files the issue names) | that stage's `## What you own` |
+| says how a role thinks, whatever the work (an attacker assumes outside input is hostile) | the persona's perspective |
+| says what to do or how to judge in one call's job (test the false case of every condition; a case no caller reaches is not a finding) | that call's prompt — its stage's `## What you own`, or a lens's own job text |
 | a script can check | a check, not a sentence |
+
+*Amended 2026-11-15 (#2548).* The 2026-11-14 text said a perspective "says **what to look for** … how
+to grade what is found", with "rules of thumb for anyone doing that kind of work". That put each
+lens's job, and each stage's working rules, in the personas: five lens personas began "Examine the
+change …" and carried severity examples, `scope` and `correctness` were lens jobs with a role's name,
+and `generic` was a task. A persona written so cannot be reused for other work. Anthropic's guidance is
+to set the role in the system prompt and put everything else, the task's instructions included, in
+the user turn ([system prompts](https://docs.anthropic.com/en/docs/system-prompts)); role-prompting
+guides keep personas short and reuse one across tasks
+([Learn Prompting](https://learnprompting.org/docs/advanced/zero_shot/role_prompting)). The nine
+personas are architect, developer, product-owner, test-strategist, quality-assurance, red-team,
+security, sre and performance; each rule the old perspectives held is now in the prompt of the call
+that needs it.
 
 *Why.* Studies of persona prompts agree that a role or identity line does not make a model more
 accurate, and an expert label can make it less so: Zheng et al. found personas in system prompts gave
@@ -256,12 +273,13 @@ This ADR is the gate for Initiative 1.3; the stories that codify it are `blocked
 
 - §1 (a persona is data: id, role, perspective; the resolvers and the live manifests) → `tests/unit/persona-resolver-test.sh`, `tests/unit/persona-kind-validation-test.sh`
 - §2, §5 (the template pin picks the persona; the env override wins) → `tests/unit/persona-agent-delivery-test.sh` PA2, PA3
-- §2 (a map element names its own persona, never inferred from its name; its stage's pin, else generic, when it names none; every named persona exists or the run is refused at startup; the shipped lenses each name theirs) → `tests/unit/map-element-persona-test.sh` ME1–ME6
-- §3 (a lens is a stage like any other: one job, the same evidence, its question its persona's) → `tests/unit/retired-impact-review-report-inputs-test.sh` RT3
+- §2 (a map element names its own persona, never inferred from its name; its stage's pin, else none, when it names none; every named persona exists or the run is refused at startup; the shipped lenses each name theirs) → `tests/unit/map-element-persona-test.sh` ME1–ME6
+- §3 (a lens is a stage like any other: the same evidence; its job its own text, not its persona's — amended 2026-11-15) → `tests/unit/retired-impact-review-report-inputs-test.sh` RT3; `tests/unit/lens-task-test.sh` L1–L4
 - §3 (the provider delivers the persona: Anthropic's `--agents`/`--agent`; `## Who you are` for a provider that cannot; every loop call; no persona outside a stage; a map element's declared persona) → `tests/unit/persona-agent-delivery-test.sh` PA1, PA2, PA5–PA8
-- §4 (the target repository's `.zbuild/plugins/persona/<id>` before the install's; generic when none) → `tests/unit/persona-agent-delivery-test.sh` PA4; the overlay is never leaked via `ZBUILD_PLUGINS_ROOT` → `tests/unit/plugins-root-hermeticity-test.sh`
+- §4 (the target repository's `.zbuild/plugins/persona/<id>` before the install's; none when it is in neither) → `tests/unit/persona-agent-delivery-test.sh` PA4, PA8; `tests/unit/persona-resolver-test.sh` SPEC-4–SPEC-6; the overlay is never leaked via `ZBUILD_PLUGINS_ROOT` → `tests/unit/plugins-root-hermeticity-test.sh`
 - §6 (the persona passes through the scope redaction, before the prompt's own) → `tests/unit/persona-agent-delivery-test.sh` PA10
 - §7 (a stage's persona is data, not code) → `tests/unit/persona-agent-delivery-test.sh` PA9
 - §2, §3, §5 amendment 2026-11-14 (each call runs as the persona its manifest names; a template pin is the main call's only; a manifest's unknown call or missing persona is refused; the shipped manifests name each call's persona) → `tests/unit/manifest-call-persona-test.sh` MP1–MP6
 - §8 (no stage frames a persona) → `tests/unit/prompt-contract-every-stage-test.sh` E5
 - §9 (a perspective, and the summary sent with it, is no identity line and names nothing of the pipeline) → `tests/unit/persona-perspective-test.sh` P1–P4
+- §2 §5 §7 §9 amendment 2026-11-15 (#2548: a perspective is a role's mindset in at most three sentences and holds no job; the nine roles ship, no correctness, scope or generic; a call none name runs with no persona; each job rule a persona held is in the prompt of the call that needs it) → `tests/unit/persona-perspective-test.sh` P5–P7; `tests/unit/persona-kind-validation-test.sh` SPEC-8; `tests/unit/manifest-call-persona-test.sh` MP3; `tests/unit/map-element-persona-test.sh` ME4; `tests/unit/prompt-contract-every-stage-test.sh` M1–M6

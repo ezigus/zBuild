@@ -15,7 +15,7 @@
 #              manifest does not list, and an entry that is not a persona id
 # MP3 [change] resolve_persona: the call's persona from the manifest
 #              (ZBUILD_ROUTE_CALL, `main` when unset); a template's stage pin
-#              is the `main` call's only; a call with neither runs as generic
+#              is the `main` call's only; a call with neither runs with no persona (#2548)
 # MP4 [change] two calls of one stage, in one shell, each reach the model as
 #              their own persona (the router's persona is worked out per call)
 # MP5 [change] the startup preflight refuses a persona a manifest names that
@@ -102,10 +102,10 @@ assert_eq "[MP2] personas that name the manifest's own calls pass" "0" "$_rc"
 print_test_section "MP3: resolve_persona reads the call's persona"
 _rp() { ( export ZBUILD_PLUGIN_DIR="$PD" ZBUILD_CURRENT_STAGE=mp-agent; [[ -n "$1" ]] && export ZBUILD_ROUTE_CALL="$1"
           [[ -n "${2:-}" ]] && export _TPL_SOURCE_FILE="$2"
-          d="$(resolve_persona mp-agent 2>/dev/null)"; basename "$d" ); }
+          d="$(resolve_persona mp-agent 2>/dev/null)"; printf '%s' "${d##*/}" ); }
 assert_eq "[MP3] no call named → main's persona" "developer" "$(_rp "")"
 assert_eq "[MP3] the check call → its own persona" "quality-assurance" "$(_rp check)"
-assert_eq "[MP3] a call with no persona → generic" "generic" "$(_rp other)"
+assert_eq "[MP3] a call with no persona → none (#2548)" "" "$(_rp other)"
 cat > "$TEST_TEMP_DIR/tpl.yaml" <<'EOF'
 id: mp
 flow:

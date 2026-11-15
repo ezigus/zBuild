@@ -139,7 +139,6 @@ _expect_tier() {  # <plugin> <expected>
 }
 _expect_tier design T2
 _expect_tier intake T1
-_expect_tier security-lens T3
 _expect_tier review-lens T2
 _expect_tier build T2
 

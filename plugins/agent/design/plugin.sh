@@ -224,6 +224,9 @@ _design_stage_run_inner() {
 ## What you own
 ${_framing}
 
+Choose the smallest design that does what the requirements need, and follow the
+patterns the code already follows rather than adding a one-off.
+
 ${_start}
 
 ${_triage}

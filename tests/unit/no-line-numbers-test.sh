@@ -11,7 +11,7 @@
 #
 # L1 [change] the rules every stage gets, building or judging, say: never name
 #             a line number — name the file and the function, or quote the text
-# L2 [change] a lens is not asked for a line (review-lens and security-lens)
+# L2 [change] a lens is not asked for a line (the review lenses, security among them)
 # L3 [change] a lens finding shown under Previous work carries its quote and no
 #             line
 # L4 [change] design's check refuses `file:123` in a decision or a finding, and
@@ -73,7 +73,7 @@ print_test_section "L2: a lens is not asked for a line"
 _lp="$(_rl_build_lens_prompt correctness "diff --git a/a.sh b/a.sh" "")"
 assert_not_contains "[L2] the review lens's report has no line field" "$_lp" '"line"'
 assert_contains "[L2] ...and still asks for a quote" "$_lp" '"quote"'
-_sp="$(cat "$REPO_ROOT/plugins/agent/security-lens/prompts/security.md")"
+_sp="$(_rl_build_lens_prompt security "diff --git a/a.sh b/a.sh" "")"
 assert_not_contains "[L2] the security lens is not asked for file:line" "$_sp" "file:line"
 
 # ── L3 ───────────────────────────────────────────────────────────────────────

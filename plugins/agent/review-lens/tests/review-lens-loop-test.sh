@@ -4,7 +4,8 @@
 #
 #   R1 [change]: the lens charter defines the four severity levels, once, and
 #                asks each finding what would fix it (code, test, design, issue)
-#   R1b [change]: each lens persona gives examples of each level for its lens
+#   R1b [change]: each lens's own job text gives an example of each level for
+#                 that lens (#2548: no longer its persona's)
 #   R2 [change]: with fail_on [medium, high, critical], an introduced medium
 #                finding fails the lens; a low one, or a pre-existing one, does not
 #   R3 [change]: the lens writes its findings to one output per topic: code
@@ -35,6 +36,8 @@ source "$REPO_ROOT/core/plugin-registry/registry.sh"
 PLUGIN_DIR="$REPO_ROOT/plugins/agent/review-lens"
 # shellcheck source=../../../../plugins/agent/review-lens/plugin.sh
 source "$PLUGIN_DIR/plugin.sh"
+# #2548: the made-up lenses below each get a job text.
+zb_test_lens_jobs r2a r2b r2c r3 r3b r7
 
 _RLL_REPLY=""
 # shellcheck disable=SC2329  # invoked by the sourced plugin
@@ -67,13 +70,11 @@ assert_eq "R1: the prompt no longer calls the report advisory" "0" "$(grep -ci '
 
 # ─── R1b ─────────────────────────────────────────────────────────────────────
 for _pn in security performance red-team correctness scope sre; do
-    _pp="$(yaml_get "$REPO_ROOT/plugins/persona/$_pn/manifest.yaml" persona.perspective 2>/dev/null)"
+    _pp="$(cat "$REPO_ROOT/plugins/agent/review-lens/lenses/$_pn.md" 2>/dev/null)"
     for _lv in critical high medium low; do
-        assert_contains "R1b: $_pn gives an example of $_lv" "$_pp" "$_lv — e.g."
+        assert_contains "R1b: $_pn gives an example of $_lv" "$_pp" "- $_lv: "
     done
 done
-assert_eq "R1b: scope no longer says it never blocks" "0" \
-    "$(grep -ci 'never blocking\|WARN ONLY' "$REPO_ROOT/plugins/persona/scope/manifest.yaml" || true)"
 
 # ─── R2 ──────────────────────────────────────────────────────────────────────
 _lens r2a "$(_f medium true code "a realistic case is wrong")"

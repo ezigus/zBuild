@@ -21,7 +21,7 @@
 # J3 [change] a stage with no tools is fresh in every call
 # J4 [change] every judging call composes fresh: intake (both calls), design's
 #             coverage check, test-author's assertion check, issue-acceptance,
-#             review-lens, security-lens, monitor; the building calls (design,
+#             review-lens, monitor; the building calls (design,
 #             test-author's writing call, build) do not
 set -uo pipefail
 
@@ -100,7 +100,6 @@ _site_fresh "design's coverage check" plugins/agent/design/lib/coverage.sh fresh
 _site_fresh "test-author's assertion check" plugins/agent/test-author/lib/correspondence.sh fresh
 _site_fresh "issue-acceptance" plugins/agent/issue-acceptance/plugin.sh fresh
 _site_fresh "review-lens" plugins/agent/review-lens/plugin.sh fresh
-_site_fresh "security-lens" plugins/agent/security-lens/plugin.sh fresh
 _site_fresh "monitor" plugins/agent/monitor/plugin.sh fresh
 _site_fresh "design's writing call" plugins/agent/design/plugin.sh full
 _site_fresh "test-author's writing call" plugins/agent/test-author/plugin.sh full

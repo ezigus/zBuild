@@ -24,7 +24,6 @@ print_test_header "plugin manifest contract audit — ADR-020 (#496)"
 STAGE_MANIFESTS=(
     "plugins/agent/intake/manifest.yaml"
     "plugins/agent/build/manifest.yaml"
-    "plugins/agent/security-lens/manifest.yaml"
     "plugins/tool/test/manifest.yaml"
     "plugins/tool/pr-open/manifest.yaml"
 )

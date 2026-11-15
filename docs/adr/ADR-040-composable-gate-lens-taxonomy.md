@@ -1,6 +1,6 @@
 # ADR-040 — Composable gate / lens taxonomy (the convergence-path invariant)
 
-**Status:** Accepted (2026-06-27)
+**Status:** Accepted (2026-06-27); amended 2026-11-15 (#2548, §3: each lens's job is its own text, ADR-038)
 **Related** — dispositions below are **PLANNED** (declared here, executed in later issues of EPIC #1129 alongside the code that lands the decomposition); **this PR edits no existing ADR**:
 - evolve-planned: ADR-037 (the objective-gate *monolith* decomposes into many first-class `kind: tool` gate stages + a gate-aggregator; ADR-037's two-layer invariant is preserved and made machine-enforced)
 - supersede-planned: ADR-038 (its single-stage packaging of the lens fan-out is replaced by composable `kind: agent` lens stages + a review-aggregator; the lens *content* and evidence-fed contract are kept)
@@ -73,6 +73,8 @@ evidence** per ADR-038 §2 (a lens reads a *different artifact*, not a different
 diff). The lens set is ADR-038's rehomed cq + persona content (security / logic / integration /
 completeness / error-handling / performance / edge-case, the persona plugins, design-decision-honoring,
 assertion-integrity). Each lens is now a first-class stage, not a sub-routine of one review stage.
+Each lens's job is its own text, kept by the review-lens stage; the persona it runs as is who does it
+(ADR-038, amended 2026-11-15, #2548).
 
 ### 4. Review-aggregator → advisory report (never blocks)
 

@@ -54,7 +54,7 @@ _derived_in_scope() {
 
 # #979: mirrors _LC_STAGE_IDS_TO_CHECK in scripts/lib/lint-contract.sh after the
 # compound-quality lattice (test_assessment, cq-*, review) was retired.
-_CURATED=(intake plan design build test acceptance-gate pr deploy validate monitor security-lens)
+_CURATED=(intake plan design build test acceptance-gate pr deploy validate monitor)
 _strangler_ok=1
 for cur in "${_CURATED[@]}"; do
     # deploy/validate/monitor have no manifest yet — skip (nothing to validate).

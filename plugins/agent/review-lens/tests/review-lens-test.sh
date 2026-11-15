@@ -36,6 +36,8 @@ assert_contains "review-lens is discovered" "$discovered" "agent/review-lens"
 
 # shellcheck source=../../../../plugins/agent/review-lens/plugin.sh
 source "$PLUGIN_DIR/plugin.sh"
+# #2548: the made-up lenses below each get a job text.
+zb_test_lens_jobs edge-case integration
 
 # ─── Mocks ───────────────────────────────────────────────────────────────────
 # In-process route_to_model shadow: record the prompt that reaches the model and
@@ -192,14 +194,12 @@ else
     assert_pass "[#1140-9] no coercion vocabulary in review-lens source"
 fi
 
-# ─── SPEC-11/12: a lens's question is its persona's (ADR-051 §3) ─────────────
-# The lens stage writes one job for every lens; the question each lens asks is
-# the perspective of the persona its element names.
-_persp() { awk '/^[[:space:]]+perspective:/ { sub(/^[[:space:]]+perspective:[[:space:]]*/, ""); print; exit }' \
-    "$REPO_ROOT/plugins/persona/$1/manifest.yaml" 2>/dev/null; }
-assert_contains "[#1140-11] the correctness persona asks about logic errors" "$(_persp correctness)" "logic errors"
+# ─── SPEC-11/12: each lens's job is its own text (#2548, ADR-038) ───────────
+# No longer its persona's: the persona is who does the job.
+_job() { cat "$PLUGIN_DIR/lenses/$1.md" 2>/dev/null; }
+assert_contains "[#1140-11] the correctness lens asks about logic" "$(_job correctness)" "logic the change gets wrong"
 # #2433: a scope finding sends the run back like any other lens's — it is no longer warn-only.
-assert_contains "[#1140-12] the scope persona compares the change with the scope the issue names" "$(_persp scope)" "the files or areas its scope names"
+assert_contains "[#1140-12] the scope lens compares the change with the scope the issue names" "$(_job scope)" "the files or areas the issue's scope names"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 

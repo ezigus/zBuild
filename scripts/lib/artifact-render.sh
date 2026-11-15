@@ -513,7 +513,7 @@ render_review_md() {
 # Built-in renderer: render_lens_md (Issue OUT / ADR-015)
 # Input: a single lens result JSON. Tolerates BOTH shapes:
 #   - review-lens normalized: {name, score, findings[]}
-#   - security-lens (compound_quality): {plugin_id, findings[]}  (NO score)
+#   - a result with no score: {plugin_id, findings[]}
 # Renders `#### <name> (score: <score>/10)` (score omitted when absent) + one
 # bullet per finding. jq-guarded + score-optional so it NEVER returns non-zero
 # (a renderer error would re-trigger raw-JSON passthrough in render_artifact).
@@ -650,8 +650,6 @@ register_artifact_renderer "plan"            "render_plan_md"            >/dev/n
 register_artifact_renderer "diff"            "render_diff_md"            >/dev/null 2>&1 || true
 register_artifact_renderer "review"          "render_review_md"          >/dev/null 2>&1 || true
 # Issue OUT: lens artifact ids render to prose (never raw-JSON passthrough).
-# review-lens (review_lenses group) + security-lens (compound_quality) share
-# render_lens_md, which tolerates both the {name,score,findings[]} and the
-# {plugin_id,findings[]} (no score) shapes.
+# review-lens (review_lenses group) renders with render_lens_md, which also
+# tolerates a lens result with no score ({plugin_id,findings[]}).
 register_artifact_renderer "review-lens"     "render_lens_md"            >/dev/null 2>&1 || true
-register_artifact_renderer "security-lens"   "render_lens_md"            >/dev/null 2>&1 || true

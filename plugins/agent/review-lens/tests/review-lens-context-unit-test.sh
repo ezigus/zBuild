@@ -127,7 +127,8 @@ print_test_section "C8/C9: rules and the scope lens"
 # (ADR-067 §8), so a lens no longer declares them.
 assert_eq "[C8] review-lens no longer declares prompt.repo_rules" "" \
     "$(yaml_get "$PLUGIN_DIR/manifest.yaml" "prompt.repo_rules" 2>/dev/null || true)"
-_scope="$(awk '/^[[:space:]]+perspective:/ { sub(/^[[:space:]]+perspective:[[:space:]]*/, ""); print; exit }' "$REPO_ROOT/plugins/persona/scope/manifest.yaml")"
+# #2548: the scope lens's job is its own text, no longer its persona's.
+_scope="$(cat "$PLUGIN_DIR/lenses/scope.md")"
 if grep -qiE "untouched|did not touch" <<< "$_scope"; then
     assert_fail "[C9] the scope lens does not report planned-but-untouched files" "$_scope"
 else
@@ -180,14 +181,16 @@ fi
 
 print_test_section "C13: every default lens compares the change with the issue (#2307)"
 # The lens list is the default template's, read from the file the engine runs.
-_c13_lenses="$(yq -r '.review_lenses.elements[]' "$REPO_ROOT/config/templates/simple.yaml" 2>/dev/null || true)"
+_c13_lenses="$(yq -r '.review_lenses.elements[].id' "$REPO_ROOT/config/templates/simple.yaml" 2>/dev/null || true)"
 if [[ -z "${_c13_lenses//[[:space:]]/}" ]]; then
     assert_fail "[C13] the default template lists its review lenses" "no elements read from simple.yaml"
 fi
 while IFS= read -r _c13; do
     [[ -n "$_c13" ]] || continue
     : > "$PROMPT_F"
-    _review_lens_run_inner "$_c13" "$TEST_TEMP_DIR/scope-manifest.md" "$ART/diff.patch" "$ART/lens-$_c13.json" "$ART" >/dev/null 2>&1 || true
+    # Its own folder: a kept report of another case is not this lens's prompt.
+    _a13="$TEST_TEMP_DIR/c13-$_c13"; mkdir -p "$_a13"; cp "$ART/diff.patch" "$_a13/" 2>/dev/null || true
+    _review_lens_run_inner "$_c13" "$TEST_TEMP_DIR/scope-manifest.md" "$_a13/diff.patch" "$_a13/lens-$_c13.json" "$_a13" >/dev/null 2>&1 || true
     _P13="$(tr '\n' ' ' < "$PROMPT_F" 2>/dev/null | tr -s ' ')"
     [[ -n "${_P13// /}" ]] || { assert_fail "[C13] the $_c13 lens ran and sent a prompt" "no prompt captured"; continue; }
     assert_contains "[C13] the $_c13 lens is told to name any part of the issue the change does not deliver" \

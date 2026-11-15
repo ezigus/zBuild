@@ -349,6 +349,8 @@ An assertion for every requirement below${sup_block:+, and the existing checks l
 
 Each assertion must be able to FAIL: if the requirement were not met, your assertion must not pass. Check the new value or file itself — the output, the field, the file's content — not only that the step finished without an error: a test that only checks that something ran passes on the old code too.
 
+For every condition the code checks, test the case where it is false as well as the one where it is true: a test of only the true case still passes when the condition is deleted. Test the values at each boundary. A test that finds, extracts or lists things must fail when it finds nothing, never pass over an empty set. Derive what a test compares against (a commit, a count, a path) from the code or the setup: never hard-code a value that changes.
+
 A [code] requirement may be one the code from before this change already does — by any route, a fallback included. Then no test of it can fail on that code, and no test you write can change that: do not write a test for it. Report it instead, on its own line:
 <SPEC id>: already_done | WHY: <how the code from before this change already does it> | QUOTE: <file> | <one line of that file, copied as it is>
 The QUOTE is checked in the code from before this change.

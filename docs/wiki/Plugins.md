@@ -13,7 +13,6 @@ One page per **leaf node** (plugin). Each is generated from its `manifest.yaml` 
 | [[plugins/monitor]] | agent | monitor |
 | [[plugins/pr-delivery]] | agent | pr |
 | [[plugins/review-lens]] | agent | review_lens |
-| [[plugins/security-lens]] | agent | security-auditor |
 | [[plugins/spec-acceptance]] | agent | acceptance_gate |
 | [[plugins/validate]] | agent | validate_agent |
 | [[plugins/personas]] | persona | — |

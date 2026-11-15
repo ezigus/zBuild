@@ -31,10 +31,15 @@ _build_render_task_header() {
 _build_compose_instructions() {
     # The persona (ADR-051) reaches the model through the provider, not this
     # text: the stage writes only its own job.
-    local _framing="Your job is to edit the working tree to implement the ORIGINAL TASK
-below. You have Read, Edit, Write, and Bash tools available."
+    local _framing="Your job is to edit the working tree to make the code do what the
+design's steps below decide. You have Read, Edit, Write, and Bash tools available."
     cat <<BUILD_PROMPT
 ${_framing}
+
+### How you write the change
+- Make the code do what was decided for it, no more and no less:
+  the simplest change that makes every requirement's test pass.
+- When a test fails, find out why it fails before you change anything else.
 
 ### How your work is kept
 - You make code changes via Edit/Write/Bash. What you change stays in the

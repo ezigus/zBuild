@@ -90,7 +90,6 @@
 13	tests/unit/prompt-contract-every-stage-test.sh
 13	tests/unit/router-loop-done-variants-test.sh
 13	tests/unit/runner-inter-stage-blank-line-test.sh
-12	plugins/agent/security-lens/tests/security-lens-test.sh
 12	tests/integration/full-pipeline-enforce-mode-test.sh
 12	tests/integration/pipeline-preflight-missing-stage-test.sh
 12	tests/integration/router-loop-stream-capture-test.sh

@@ -711,10 +711,9 @@ _route_call_claude() {
     # covers ZBUILD_RUN_ID + ZBUILD_EVENTS_JSONL leaks that Wave 13 dogfood
     # discovered would otherwise trigger the C6 precondition refusal when
     # the spawned process recurses into route_to_model. The C6 precondition
-    # itself runs in the PARENT scope, not the spawn subshell. The 4 agent
-    # plugins that route via route_to_model (plan, test_assessment, review,
-    # security-lens) all inherit this protection; the build plugin gets the
-    # same protection from route_to_model_loop below.
+    # itself runs in the PARENT scope, not the spawn subshell. Every agent
+    # plugin that routes via route_to_model inherits this protection; the
+    # build plugin gets the same protection from route_to_model_loop below.
     # Wave 15-G (#687): the SYNC (non-loop) form deliberately does NOT use
     # setsid. The sync path has no _route_loop_on_signal handler to forward
     # an operator abort to the spawned claude's session — moving claude

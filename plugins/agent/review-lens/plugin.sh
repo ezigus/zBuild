@@ -330,6 +330,15 @@ _review_lens_run_inner() {
     [[ -n "$evidence" && -s "$evidence" ]] && { IFS= read -r -d '' _rl_patch < "$evidence" || true; }
 
     # ─── Build the single-lens prompt ──────────────────────────────────────
+    # #2548 (ADR-038): a lens with no job of its own reviews nothing.
+    local _rl_job=""
+    if ! _rl_lens_job_v _rl_job "$lens"; then
+        _review_lens_write_result "$out" misconfigured "the ${lens} lens has no job text, so it reviewed nothing"
+        stage_summary_write "$artifact_dir/lens-${lens}-summary.md" "review-lens-${lens}" "skip" \
+            "the ${lens} lens has no job text (plugins/agent/review-lens/lenses/${lens}.md), so it reviewed nothing" \
+            "Advisory lens: no findings were produced. Absence here is not evidence of a clean change."
+        return 0
+    fi
     local prompt; prompt="$(_rl_build_lens_prompt "$lens" "$_rl_change" "$(_rl_context)")"
     # #2464: what the lens judges, before the engine's blocks (whose Previous
     # work names this run's paths) — its kept answer's fingerprint.
@@ -341,7 +350,7 @@ _review_lens_run_inner() {
     local _composed
     # #2458: it judges, so it composes fresh — no notes, and no rule to confirm earlier work.
     if ! _composed="$(stage_prompt_compose_parts --fresh "$prompt")"; then
-        _review_lens_write_result "$out" "degraded" "misconfigured" "prompt_not_composed"
+        _review_lens_write_result "$out" misconfigured "the prompt could not be composed, so this lens reviewed nothing"
         stage_summary_write "$artifact_dir/lens-${lens}-summary.md" "review-lens-${lens}" "skip" \
             "the prompt could not be composed, so this lens reviewed nothing" \
             "Advisory lens: no findings were produced. Absence here is not evidence of a clean change."

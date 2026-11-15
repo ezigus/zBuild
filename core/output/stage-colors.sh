@@ -40,7 +40,6 @@ declare -gA _STAGE_COLORS=(
     [build]="$BLUE"
     [test]="$BLUE"
     [review]="$BLUE"
-    [security-lens]="$BLUE"
 )
 
 # register_stage_color <stage> <color_escape> — runtime extension hook.

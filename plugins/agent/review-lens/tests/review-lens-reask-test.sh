@@ -37,6 +37,8 @@ source "$REPO_ROOT/core/plugin-registry/registry.sh"
 PLUGIN_DIR="$REPO_ROOT/plugins/agent/review-lens"
 # shellcheck source=../../../../plugins/agent/review-lens/plugin.sh
 source "$PLUGIN_DIR/plugin.sh"
+# #2548: the made-up lenses below each get a job text.
+zb_test_lens_jobs l1 l2 l3 l4 l5 l6
 
 # Each call's prompt is kept as prompt-<n>.txt; the reply is the next line of
 # $_RL_REPLIES (a file counter survives the plugin's subshells).
@@ -123,6 +125,7 @@ set -uo pipefail
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 source "$REPO_ROOT/core/plugin-registry/registry.sh"
 source "$PLUGIN_DIR/plugin.sh"
+_RL_LENSES_DIR="$L6_JOBS"
 route_to_model() {
     printf '%s' "$(( $(cat "$L6N") + 1 ))" > "$L6N"
     kill -TERM $$
@@ -131,7 +134,7 @@ route_to_model() {
 _review_lens_run_inner l6 "$L6_SCOPE" "$L6_EVIDENCE" "$L6_ART/lens-l6.json" "$L6_ART" >/dev/null 2>&1
 printf '%s' "$?"
 L6
-_l6rc="$(REPO_ROOT="$REPO_ROOT" PLUGIN_DIR="$PLUGIN_DIR" L6N="$_l6n" L6_SCOPE="$scope_manifest" \
+_l6rc="$(REPO_ROOT="$REPO_ROOT" PLUGIN_DIR="$PLUGIN_DIR" L6N="$_l6n" L6_JOBS="$_RL_LENSES_DIR" L6_SCOPE="$scope_manifest" \
     L6_EVIDENCE="$evidence" L6_ART="$artifact_dir" bash "$_l6" 2>/dev/null)"
 assert_eq "L6: the lens is not asked again after a signal" "1" "$(cat "$_l6n")"
 assert_eq "L6: the lens is interrupted" "interrupted" "$(jq -r '.outcome // empty' "$artifact_dir/lens-l6.json" 2>/dev/null)"

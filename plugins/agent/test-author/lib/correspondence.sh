@@ -60,6 +60,8 @@ For EACH SPEC, judge every part of it against its test, and the test's layout:
 - cleanup: does the test change anything outside its own sandbox — an exported variable, a file outside its own folder, global config or git state — and not put it back?
 - sections: is each part's code under its own heading — a comment, in the language's own form, marking Given, When and Then (and Cleanup, when the test puts something back)? The headings are the only comments you are shown.
 
+A test aimed at the right thing but narrower than the part — fewer of its cases, a weaker check — does not do that part: answer missing, and say what it leaves out.
+
 Answer at least one line for every SPEC, each starting with that SPEC's identifier from its `###` heading, exactly as written there. When its test does every part and is laid out in sections, one line:
 
 <identifier>: ok

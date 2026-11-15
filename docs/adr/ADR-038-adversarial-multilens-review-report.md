@@ -1,6 +1,6 @@
 # ADR-038 — Adversarial multi-lens review report (evidence-fed, advisory)
 
-**Status:** Accepted (2026-06-19); amended 2026-11-09 (#2508: no planned scope is shown to a lens — design writes none)
+**Status:** Accepted (2026-06-19); amended 2026-11-09 (#2508: no planned scope is shown to a lens — design writes none); amended 2026-11-15 (#2548: each lens has its own job text; the persona is who does it)
 **Related** — dispositions below are **PLANNED** (the map lives in ADR-037 §6, executed in I13 / #979); **this PR edits no existing ADR**:
 - peer: ADR-037 (objective gates vs. semantic judgment); EPIC #966
 - supersede-planned: ADR-022, ADR-026
@@ -195,7 +195,7 @@ Verification: `plugins/agent/review-lens/tests/review-lens-context-unit-test.sh`
 (C13: for each lens in `config/templates/simple.yaml`'s `review_lenses`, the
 prompt the plugin sends carries the instruction).
 
-## Amendment (2026-10-12): every lens gets the same evidence; the lens's question is its persona's
+## Amendment (2026-10-12): every lens gets the same evidence; the lens's question is its persona's (its second half withdrawn 2026-11-15, #2548)
 
 §2's per-lens evidence is retired. Nothing produced the per-lens artifacts once review-report went (the
 call graph was its own), and a lens is a stage like any other (ADR-051 §3, amended 2026-10-12): every
@@ -249,3 +249,30 @@ like any lens's.
 Enforced by: `plugins/agent/review-lens/tests/review-lens-loop-test.sh` R1 (the four levels and the fix
 words are in every lens's prompt), R1b (each lens persona gives an example of each level; scope is no
 longer warn-only); `plugins/agent/review-lens/tests/review-lens-test.sh` #1140-12.
+
+## Amendment (2026-11-15, #2548): each lens has its own job; the persona is who does it
+
+The 2026-10-12 amendment made "the question each lens asks … the perspective of the persona its element
+names", and that sentence is withdrawn. A persona is a role and its mindset, reusable for any work
+(ADR-051 §9, amended 2026-11-15), so a lens's job cannot live in it: five lens personas began
+"Examine the change …" with severity examples, and `scope` and `correctness` were lens jobs with a
+role's name. On #1700 run 43663836927, 10 of 15 lens findings had a real quote but a case that cannot
+happen, and only the scope lens said what is not a finding.
+
+- **Each lens's job is its own text**, kept by the review-lens stage at
+  `plugins/agent/review-lens/lenses/<lens>.md` and put in its prompt's `## What you own`. It says what
+  the lens looks for, what is **not** a finding for it, where its problems come from on a real run, and
+  an example of each severity level. The levels themselves are still defined once, for every lens
+  (2026-10-30 amendment).
+- **The template names the lens and, separately, the persona it runs as** (ADR-051 §2). The correctness
+  lens runs as `test-strategist` and the scope lens as `product-owner`.
+- **A lens with no job text reviews nothing**: it ends `misconfigured`, and no model is asked.
+- Every lens still gets the same evidence, and the review-lens stage special-cases no lens in code.
+
+Enforced by: `tests/unit/lens-task-test.sh` L1 (every template lens has its job, with its four parts),
+L2 (a lens's prompt holds its own job; two lenses' prompts differ by more than their names), L3 (a lens
+with no job ends misconfigured, no model asked), L4 (correctness runs as test-strategist, scope as
+product-owner), L5 (the unused `security-lens` plugin is gone, the security lens stays);
+`tests/unit/retired-impact-review-report-inputs-test.sh` RT3 (the job is the lens's own text, not its
+persona's); `plugins/agent/review-lens/tests/review-lens-loop-test.sh` R1b (each lens's job gives an
+example of each level); `plugins/agent/review-lens/tests/review-lens-test.sh` #1140-11, #1140-12.

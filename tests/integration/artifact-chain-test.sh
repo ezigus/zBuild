@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Tests: 3-plugin sequential chain (intake → security-lens → output).
+# Tests: 3-plugin sequential chain (intake → the security review lens → output).
+# #2548: the middle stage was the security-lens plugin, which no template ran; it
+# is now the review-lens stage running as its security lens.
 # Verifies artifact handoffs, event emission, and ordering.
 set -euo pipefail
 
@@ -9,7 +11,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
-print_test_header "artifact chain — intake → security-lens → output (3-plugin sequential)"
+print_test_header "artifact chain — intake → review-lens (security) → output (3-plugin sequential)"
 
 setup_test_env "artifact-chain"
 
@@ -39,8 +41,9 @@ mkdir -p "$STATE_DIR" "$ARTIFACTS_DIR" "$EVENTS_DIR"
 
 # ─── Mock claude to return a valid findings JSON ─────────────────────────────
 # #476: envelope-aware via the shared helper.
+# A lens finding quotes a real line of a real file (ADR-072 §3).
 install_envelope_mock_claude \
-    '{"findings":[{"title":"test","severity":"low","description":"d","recommendation":"r"}]}'
+    '{"score":8,"findings":[{"file":"scripts/lib/helpers.sh","category":"injection","severity":"low","message":"m","quote":"_ZBUILD_HELPERS_LOADED=1","introduced":false,"fix":"code"}]}'
 
 # ─── Write a minimal scope manifest so redaction passes ──────────────────────
 printf '+ ./\n' | atomic_write "$STATE_DIR/scope-manifest.md"
@@ -72,7 +75,7 @@ assert_eq "intake plugin exits 0" "0" "$intake_rc"
 assert_file_exists "intake.md created" "$STATE_DIR/intake.md"
 assert_file_exists "scope-manifest.md created" "$STATE_DIR/scope-manifest.md"
 
-# ─── Stage 2: run security-lens plugin ───────────────────────────────────────
+# ─── Stage 2: run the security review lens ───────────────────────────────────
 # Emit redaction.applied so the router C6 precondition is met
 jq -cn \
     --arg rid "$ZBUILD_RUN_ID" \
@@ -82,25 +85,23 @@ jq -cn \
 
 source "$REPO_ROOT/core/event-bus/event-bus.sh"
 source "$REPO_ROOT/core/router/route.sh"
-source "$REPO_ROOT/plugins/agent/security-lens/plugin.sh"
+source "$REPO_ROOT/plugins/agent/review-lens/plugin.sh"
 
 set +e
-security_lens_run "security-lens" "$STATE_FILE" 2>/dev/null
+( export ZBUILD_MAP_ELEMENT=security ZBUILD_REVIEW_LENS_ID=security ZBUILD_REPO_ROOT="$REPO_ROOT"
+  cd "$REPO_ROOT" && review_lens_run "review-lens" "$STATE_FILE" ) 2>/dev/null
 sl_rc=$?
 set -e
-assert_eq "security-lens plugin exits 0" "0" "$sl_rc"
+assert_eq "review-lens (security) exits 0" "0" "$sl_rc"
 
-# Assert findings.json artifact exists
-findings_file=""
-for f in "$ARTIFACTS_DIR"/*-findings.json; do
-    [[ -f "$f" ]] && findings_file="$f" && break
-done
-assert_file_exists "findings.json artifact created after security-lens" "${findings_file:-$ARTIFACTS_DIR/security-findings.json}"
+# Assert the lens's result artifact exists
+findings_file="$ARTIFACTS_DIR/lens-security.json"
+assert_file_exists "lens-security.json artifact created after the security lens" "$findings_file"
 
 # Assert at least one finding exists
-if [[ -n "$findings_file" && -f "$findings_file" ]]; then
+if [[ -f "$findings_file" ]]; then
     finding_count="$(jq '[.findings // [] | .[]] | length' "$findings_file" 2>/dev/null || echo 0)"
-    assert_gt "security-lens findings.json has at least 1 finding" "$finding_count" "0"
+    assert_gt "lens-security.json has at least 1 finding" "$finding_count" "0"
 fi
 
 # ─── Assert redaction.applied event exists in log ────────────────────────────
@@ -115,28 +116,28 @@ out_rc=$?
 set -e
 assert_eq "output plugin exits 0" "0" "$out_rc"
 
-# ─── Assert plugin.result events appear in intake → security-lens → output order ─
+# ─── Assert plugin.result events appear in intake → review-lens → output order ─
 intake_pos="$(grep -n '"plugin.result"' "$EVENTS_JSONL" 2>/dev/null \
     | grep '"intake"' | head -1 | cut -d: -f1 || echo 0)"
 sl_pos="$(grep -n '"plugin.result"' "$EVENTS_JSONL" 2>/dev/null \
-    | grep '"security-lens"' | head -1 | cut -d: -f1 || echo 0)"
+    | grep '"review-lens"' | head -1 | cut -d: -f1 || echo 0)"
 output_pos="$(grep -n '"plugin.result"' "$EVENTS_JSONL" 2>/dev/null \
     | grep '"output-github-comment"' | head -1 | cut -d: -f1 || echo 0)"
 
 if [[ -n "$intake_pos" && -n "$sl_pos" && "$intake_pos" -gt 0 && "$sl_pos" -gt 0 ]]; then
     if [[ "$intake_pos" -lt "$sl_pos" ]]; then
-        assert_pass "[SPEC-2] event ordering: intake plugin.result before security-lens"
+        assert_pass "[SPEC-2] event ordering: intake plugin.result before review-lens"
     else
-        assert_fail "event ordering: intake plugin.result before security-lens" \
+        assert_fail "event ordering: intake plugin.result before review-lens" \
             "intake line=$intake_pos sl line=$sl_pos"
     fi
-    # Also assert security-lens completes before output-github-comment when
+    # Also assert review-lens completes before output-github-comment when
     # the output event is present (full intake → sl → output chain).
     if [[ -n "$output_pos" && "$output_pos" -gt 0 ]]; then
         if [[ "$sl_pos" -lt "$output_pos" ]]; then
-            assert_pass "event ordering: security-lens plugin.result before output-github-comment"
+            assert_pass "event ordering: review-lens plugin.result before output-github-comment"
         else
-            assert_fail "event ordering: security-lens plugin.result before output-github-comment" \
+            assert_fail "event ordering: review-lens plugin.result before output-github-comment" \
                 "sl line=$sl_pos output line=$output_pos"
         fi
     fi
@@ -145,9 +146,9 @@ else
     intake_complete="$(grep '"plugin.result"' "$EVENTS_JSONL" 2>/dev/null \
         | grep -c '"intake"' || true)"
     sl_complete="$(grep '"plugin.result"' "$EVENTS_JSONL" 2>/dev/null \
-        | grep -c '"security-lens"' || true)"
+        | grep -c '"review-lens"' || true)"
     assert_gt "intake plugin.result emitted" "$intake_complete" "0"
-    assert_gt "security-lens plugin.result emitted" "$sl_complete" "0"
+    assert_gt "review-lens plugin.result emitted" "$sl_complete" "0"
 fi
 
 _test_cleanup_hook() { cleanup_test_env; }

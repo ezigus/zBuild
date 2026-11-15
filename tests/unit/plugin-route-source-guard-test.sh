@@ -250,7 +250,7 @@ done
 # Without this, a typo in _calls_router makes the caller set empty and SPEC-1
 # passes for the worst possible reason — and it earned its keep on this file's
 # first run, catching a SIGPIPE-under-pipefail bug in _calls_router that had
-# silently dropped impact (since retired) from the population. These six call
+# silently dropped impact (since retired) from the population. These call
 # the router; the three fixed by #2060/#2061/#2062 are deliberately NOT listed,
 # because this file must not encode which side of those merges it sits on.
 _KNOWN_CALLERS=(
@@ -258,7 +258,6 @@ _KNOWN_CALLERS=(
     plugins/agent/design/plugin.sh
     plugins/agent/monitor/plugin.sh
     plugins/agent/review-lens/plugin.sh
-    plugins/agent/security-lens/plugin.sh
 )
 _undetected=""
 for _f in "${_KNOWN_CALLERS[@]}"; do

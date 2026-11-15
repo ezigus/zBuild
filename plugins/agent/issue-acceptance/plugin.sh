@@ -114,6 +114,9 @@ judge every requirement the ISSUE states.
 Judge against the issue's own words, not the SPECs: a SPEC that narrowed a
 requirement does not make the narrowed version enough. A requirement met only
 partly — a subset of the cases, a weaker condition, some of the files — is unmet.
+A requirement is met only when the behaviour it asks for
+runs when the program runs: code that nothing calls, or
+a new file nothing uses, does not meet it — say what should call or use it.
 
 An issue contains more than requirements — context, rationale, links, history.
 Those are not requirements. Judge every requirement the issue states, including

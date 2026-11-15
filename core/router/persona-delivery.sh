@@ -3,8 +3,9 @@
 # runs as that stage's persona (ADR-051, amended 2026-10-12).
 #
 # The persona is found the way ADR-051 §4/§5 says (resolve_persona: the
-# ZBUILD_<STAGE>_PERSONA override, the stage's template pin, the template's
-# default, generic; the target repository's .zbuild/plugins/persona/<id> before
+# ZBUILD_<STAGE>_PERSONA override, the stage's template pin, the manifest's
+# persona for the call, the template's default — none of them naming one, the
+# call runs with no persona (#2548); the target repository's .zbuild/plugins/persona/<id> before
 # the install's). A map element runs as the persona the template names for it,
 # never one guessed from its name. No stage frames a persona.
 #

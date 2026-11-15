@@ -17,6 +17,13 @@
 # P3 [change] every shipped persona has a perspective to check
 # P4 [change] a persona's summary, which reaches the model with its perspective
 #             (ADR-051 §3), holds to P1 and P2 too
+# P5 [change] a perspective is a role's mindset, short: at most three sentences
+#             (#2548, ADR-051 §9 amended)
+# P6 [change] a perspective holds no job: no severity scale, no finding, flag,
+#             report or verdict, no "examine the change" — the job is in the
+#             call's prompt (#2548)
+# P7 [change] the shipped personas are roles someone plays: correctness and
+#             scope (jobs) and generic (no persona) are not among them (#2548)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,6 +38,7 @@ print_test_header "a persona's perspective says what to look for (ADR-051 §9)"
 
 _IDENTITY_RE='(^|[^[:alpha:]])(you are (a|an|the)|experts?)([^[:alpha:]]|$)'
 _PIPELINE_RE='(^|[^[:alpha:]])(stages?|plans?|planned|pipelines?|manifests?|lens(es)?)([^[:alpha:]]|$)'
+_JOB_RE='(^|[^[:alpha:]])(severity|critical|findings?|flags?|report(s|ed)?|verdicts?|scores?|examine the change)([^[:alpha:]]|$)'
 
 _n=0
 for _m in "$REPO_ROOT"/plugins/persona/*/manifest.yaml; do
@@ -52,6 +60,18 @@ for _m in "$REPO_ROOT"/plugins/persona/*/manifest.yaml; do
     else
         assert_pass "[P2] $_id's perspective names nothing of the pipeline"
     fi
+    # A sentence ends at . ! or ? followed by a space or the end.
+    _sn="$(grep -oE '[.!?]([[:space:]]|$)' <<< "$_p" | grep -c . || true)"
+    if (( _sn >= 1 && _sn <= 3 )); then
+        assert_pass "[P5] $_id's perspective is at most three sentences"
+    else
+        assert_fail "[P5] $_id's perspective is at most three sentences" "it has $_sn"
+    fi
+    if [[ "$_lp" =~ $_JOB_RE ]]; then
+        assert_fail "[P6] $_id's perspective holds no job" "it has: ${BASH_REMATCH[2]}"
+    else
+        assert_pass "[P6] $_id's perspective holds no job"
+    fi
     _ls="$(tr '[:upper:]' '[:lower:]' <<< "$(yaml_get "$_m" summary 2>/dev/null || true)")"
     if [[ "$_ls" =~ $_IDENTITY_RE || "$_ls" =~ $_PIPELINE_RE ]]; then
         assert_fail "[P4] $_id's summary is no identity line and names nothing of the pipeline" "it has: ${BASH_REMATCH[2]}"
@@ -61,6 +81,10 @@ for _m in "$REPO_ROOT"/plugins/persona/*/manifest.yaml; do
 done
 if [[ $_n -gt 0 ]]; then assert_pass "[P3] the shipped personas were read ($_n)"
 else assert_fail "[P3] the shipped personas were read" "none found"; fi
+
+_shipped="$(cd "$REPO_ROOT/plugins/persona" && printf '%s ' */ | tr -d /)"
+assert_eq "[P7] the shipped personas are the nine roles" \
+    "architect developer performance product-owner quality-assurance red-team security sre test-strategist " "$_shipped"
 
 print_test_results
 exit $((FAIL > 0))

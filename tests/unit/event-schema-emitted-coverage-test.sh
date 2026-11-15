@@ -287,16 +287,10 @@ else
         "no hydrate.* events found in plugins/tool/hydrate/manifest.yaml provides.events"
 fi
 
-# ─── 8. [#1951/SPEC-4] plugin.result absent from security-lens and merge manifests ─
-# plugin.* is an engine-owned namespace (ADR-001 §"Declared events"). Neither
-# security-lens nor merge is entitled to declare plugin.result in their manifests.
-_1951_sl_ev="$(eb_manifest_events "$REPO_ROOT/plugins/agent/security-lens/manifest.yaml")"
-if grep -qxF "plugin.result" <<< "$_1951_sl_ev"; then
-    assert_fail "[#1951/SPEC-4] plugin.result must be absent from plugins/agent/security-lens/manifest.yaml provides.events" \
-        "plugin.result is an engine-owned event (plugin.* namespace); remove it from provides.events"
-else
-    assert_pass "[#1951/SPEC-4] plugin.result is absent from plugins/agent/security-lens/manifest.yaml provides.events"
-fi
+# ─── 8. [#1951/SPEC-4] plugin.result absent from the merge manifest ─────────
+# plugin.* is an engine-owned namespace (ADR-001 §"Declared events"). merge is
+# not entitled to declare plugin.result in its manifest (security-lens, checked
+# here too, was removed by #2548).
 _1951_mg_ev="$(eb_manifest_events "$REPO_ROOT/plugins/tool/merge/manifest.yaml")"
 if grep -qxF "plugin.result" <<< "$_1951_mg_ev"; then
     assert_fail "[#1951/SPEC-4] plugin.result must be absent from plugins/tool/merge/manifest.yaml provides.events" \
@@ -304,19 +298,10 @@ if grep -qxF "plugin.result" <<< "$_1951_mg_ev"; then
 else
     assert_pass "[#1951/SPEC-4] plugin.result is absent from plugins/tool/merge/manifest.yaml provides.events"
 fi
-# Also verify the pre-existing test sub-assertions for plugin.result have been removed.
-# The [SPEC-16] block in security-lens-test.sh previously asserted
-# "manifest provides.events contains plugin.result" — that sub-assertion must be gone.
+# Also verify the pre-existing test sub-assertion for plugin.result has been removed.
 # _1951_file_lacks <file> <text> — 0 when <file> does not contain <text>.
 # A missing file is not clean: it is not there to read (lens review).
 _1951_file_lacks() { [[ -f "$1" ]] && ! grep -qF -- "$2" "$1"; }
-_1951_sl_testfile="$REPO_ROOT/plugins/agent/security-lens/tests/security-lens-test.sh"
-if ! _1951_file_lacks "$_1951_sl_testfile" "manifest provides.events contains plugin.result"; then
-    assert_fail "[#1951/SPEC-4] the [SPEC-16] plugin.result sub-assertion must be absent from security-lens-test.sh" \
-        "old sub-assertion 'manifest provides.events contains plugin.result' is still present in plugins/agent/security-lens/tests/security-lens-test.sh"
-else
-    assert_pass "[#1951/SPEC-4] the [SPEC-16] plugin.result sub-assertion is absent from security-lens-test.sh"
-fi
 # The [SPEC-1] block in merge-v2-result-test.sh previously asserted
 # "manifest provides.events includes plugin.result" — that sub-assertion must be gone.
 _1951_mg_testfile="$REPO_ROOT/tests/unit/merge-v2-result-test.sh"

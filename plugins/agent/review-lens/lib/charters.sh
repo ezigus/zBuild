@@ -2,33 +2,51 @@
 # plugins/agent/review-lens/lib/charters.sh — the review-lens prompt builder.
 #
 # ADR-040 §3: one prompt per lens (ADR-038 §2), each lens a map element of the
-# review-lens stage. A lens is a stage like any other (ADR-051 §3, amended
-# 2026-10-12): this stage writes one job for every lens, and the question a
-# lens asks is its persona's, which the provider delivers — the element names
-# its persona in the template. No lens is special-cased here.
+# review-lens stage. Each lens's job is its own text, lenses/<lens>.md (#2548,
+# ADR-038 amended 2026-11-15): what it looks for, what is not a finding, where
+# its problems come from, and its severity examples. The persona the template
+# names for the element is who does the job, and reaches the model through the
+# provider. No lens is special-cased in code.
 #
 # Sourced library: inherits the caller's pipefail/errexit; do not set them here.
 
 [[ -n "${_ZBUILD_REVIEW_LENS_CHARTERS_LOADED:-}" ]] && return 0
 _ZBUILD_REVIEW_LENS_CHARTERS_LOADED=1
 
+_RL_LENSES_DIR="${BASH_SOURCE[0]%/*}/../lenses"
+
+# _rl_lens_job_v <var> <lens> — the lens's own job text, read in this shell
+# (ADR-065 §5). rc 1 when the lens has none: it reviews nothing.
+_rl_lens_job_v() {
+    local -n _rlj="$1"; local _f="$_RL_LENSES_DIR/$2.md"
+    _rlj=""
+    [[ "$2" =~ ^[a-z0-9][a-z0-9-]*$ && -s "$_f" ]] || return 1
+    IFS= read -r -d '' _rlj < "$_f" || true
+    _rlj="${_rlj%$'\n'}"
+    [[ -n "$_rlj" ]]
+}
+
 # ─── _rl_build_lens_prompt <lens> <change> [context] ───────────────────────
 # One prompt for ONE lens: its findings and a 0-10 score. The severity scale is
-# defined here, once, for every lens (#2433); each persona gives examples.
+# defined here, once, for every lens (#2433); each lens's job gives examples.
 # <context> is what the change was FOR — the issue, its SPECs, the planned
 # scope (#1654, #1845 PR #2213): a lens that sees only the change reads engine-set
 # values as attacker input and cannot tell a defect from what was asked for.
 # The "compare with the issue" paragraph is here, so every lens gets it from one
 # source (#2307).
 _rl_build_lens_prompt() {
-    local lens="$1" evidence="$2" context="${3:-}"
+    local lens="$1" evidence="$2" context="${3:-}" job=""
+    _rl_lens_job_v job "$lens" || job=""
     cat <<PROMPT
 ## What you own
-A report for the "${lens}" lens: each problem you find in the change,
-judged from your own perspective,
-and a score. A problem the change introduced at a severity the template names
-sends the change back for another round, to the stage that can fix it. For each problem, say whether the change INTRODUCED it (or made it
-worse), or whether the code before the change already did the same thing.
+A report for the "${lens}" lens: each problem you find in the change, as this
+lens judges it, and a score.
+
+${job}
+
+A problem the change introduced at a severity the template names sends the
+change back for another round, to the stage that can fix it. For each problem,
+say whether the change INTRODUCED it (or made it worse), or whether the code before the change already did the same thing.
 Compare the change with the issue it was made for. If the change does not
 deliver part of what the issue asked for, report it as a finding: name any part
 of the issue that the change does not deliver, judged as the "${lens}" lens
