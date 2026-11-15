@@ -1,6 +1,6 @@
 # ADR-070 — One fixed list of requirements per issue
 
-**Status:** Accepted (2026-10-05); amended 2026-11-12 (#2527, §1: intake's check is shown each removed item with its words and why, and is never told to name a listed id; §4: design's coverage check takes a quote from the issue's words too); amended 2026-11-08 (#2495, §4: the check looks both ways through the SPECs only, and does not judge the scope); amended 2026-11-09 (#2508, §4: design writes no scope block; what build changes is held to the requirements by issue-acceptance)
+**Status:** Accepted (2026-10-05); amended 2026-11-15 (#2550, §1: an item the issue says not to do is a limit, kept with its "Do not"; intake numbers ids from its check's own count); amended 2026-11-12 (#2527, §1: intake's check is shown each removed item with its words and why, and is never told to name a listed id; §4: design's coverage check takes a quote from the issue's words too); amended 2026-11-08 (#2495, §4: the check looks both ways through the SPECs only, and does not judge the scope); amended 2026-11-09 (#2508, §4: design writes no scope block; what build changes is held to the requirements by issue-acceptance)
 **Issue:** #2306
 **Amends:** ADR-046 (design-gate gains C7), ADR-069 §2 (a requirement line may also carry ` covers: `)
 **Related:** ADR-055 (inter-stage data contract), ADR-040 §5 (spec-coverage judges against the issue), ADR-066 (every ADR statement has a test), ADR-067 (prompts speak plainly)
@@ -176,7 +176,19 @@ On #1805 run 43130129438 two answers that were right were lost to what the check
 - **§1: a `NOT-A-REQUIREMENT:` line for an id the list does not have is asked again with "that is not in the list, so leave that line out"** — never "name only a listed id". Told to name a listed id, the check named `RQRESU-4`, a requirement the issue states, and it left the list.
 - **§4: design's coverage check's quote for an uncovered requirement may be the requirement's words or the issue's,** as issue-acceptance's already may (§4). The check is shown both; it quoted the issue's "(an automatic resume does not count)", which intake had left out of RQFROM-4, and its answer — that no SPEC covered the case — was thrown away.
 
+## Amendment 2026-11-15 (#2550) — §1: a limit keeps its "Do not"
+
+On #1764 run 43735596812 the issue said "Do not build: a check of a CI job's status through the GitHub Actions API; a 'do I still hold the claim' check before each stage". Intake's check found both, but the list stored them as "a check of a CI job's status …" — a thing to build — and design, which never reads the issue, built both.
+
+- **§1: an item the issue says not to do or not to build is a limit**, written `LIMIT: <id> Do not …` by either intake call and kept in the list with `limit: true`. Its words start with "Do not", "Don't" or "Never"; a LIMIT line that does not is asked again. A limit takes an id like a requirement, and is kept, removed and numbered the same way.
+- **§1: a limit is not a requirement.** `acceptance_requirements_list` leaves it out; `acceptance_limits_list` lists the limits. Design is shown them as what the change must not do (ADR-069); issue-acceptance judges each against the change (ADR-072 §3).
+- **§1: a limit stays a limit.** The check may not drop one as `NOT-A-REQUIREMENT` (that line is refused and asked again), and an id keeps its kind from the last list: a limit written back as a `REQUIREMENT:`, or a requirement as a `LIMIT:`, is asked again (lens review on #2550).
+- **§1: intake's summary counts and lists the limits apart** from the requirements. An answer that still breaks a rule after it is asked again ends intake naming that rule.
+- **§1: intake's prompts give each code's highest number** from the function its id check uses (`zb_ids_highest_line_v`, `scripts/lib/item-ids.sh`), and state no rule of their own (ADR-069 §1).
+
 ## Enforced by
+
+- §1 amendment 2026-11-15 (#2550: a limit keeps its "Do not"; the lists; intake's numbers from its check's count) → `tests/unit/limits-test.sh` LM1–LM4, LM9, LM10, LM12; `tests/unit/ids-one-rule-test.sh` N1, N5; `tests/unit/intake-requirements-model-test.sh` I8
 
 - Amendment 2026-11-09 (#2508) §4 → `tests/unit/design-names-no-files-test.sh` N1, N8 (no scope block is asked for or required), N9–N10 (UNCLEAR lines); `tests/unit/issue-acceptance-unasked-test.sh` U1–U4 (the change is held to the requirements)
 - Amendment 2026-11-08 (#2495) §4 → `tests/unit/design-coverage-test.sh` NS1 (the prompt asks for no scope verdict), NS2 (a reply with no scope lines is complete, in one call), NS3 (a scope line is no finding), X3 (the scope is not shown to judge)

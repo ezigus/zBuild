@@ -15,8 +15,9 @@
 #             the finding names the requirement
 # C3 [change] the coverage call is rate-limited: that is design's outcome
 # C4 [guard]  a design that passes both checks: pass, one call of each
-# C5 [change] a design that already fails a scripted check is not sent to the
-#             coverage call, so a coverage call that cannot run never hides the
+# C5 [change] a design that already fails a scripted check is still sent to
+#             the coverage call (#2550: every try returns every problem), and a
+#             coverage call that cannot run still never hides the scripted
 #             findings the next run needs (review on PR #2399)
 set -uo pipefail
 
@@ -133,9 +134,10 @@ assert_eq "[C4] one coverage call" "1" "$JCALLS"
 DESIGNS=("$NO_WIRING"); JUDGE=("rate limited"); JUDGE_RC=1
 _router_rc_classify() { printf -v "$2" '%s' error; printf -v "$3" '%s' router_rate_limited; }
 _run
-assert_eq "[C5] a failed scripted check: no coverage call" "0" "$JCALLS"
+assert_eq "[C5] a failed scripted check: the coverage call still runs" "1" "$JCALLS"
 assert_eq "[C5] ...the outcome is unusable" "unusable" "$OUTCOME"
 assert_contains "[C5] ...and the result keeps the scripted finding" "$FINDINGS" "WIRING"
+assert_contains "[C5] ...and says coverage was not checked" "$FINDINGS" "coverage was not checked"
 unset -f _router_rc_classify
 
 cleanup_test_env

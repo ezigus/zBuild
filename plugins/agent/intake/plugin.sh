@@ -43,8 +43,10 @@ source "$_INTAKE_ROOT/scripts/lib/stage-result.sh"
 _intake_pass_summary_write() {
     local path="$1" issue="$2" req="$3" chg="$4" title="${5:-}" head="" body=""
     if [[ -n "$req" && -s "$req" ]]; then
-        head="$(jq -r '(.requirements // []) | "\(length) requirement(s): \(map(.id) | join(", "))"' "$req" 2>/dev/null || true)"
-        body="$(jq -r '(.requirements // [])[] | "- \(.id): \(.text | gsub("[\r\n]+"; " "))"' "$req" 2>/dev/null || true)"
+        # #2550 (ADR-070 §1): a limit is counted and listed apart.
+        head="$(jq -r '(.requirements // []) | (map(select(.limit != true)) | "\(length) requirement(s): \(map(.id) | join(", "))")
+            + (map(select(.limit == true)) | if length > 0 then "; \(length) limit(s): \(map(.id) | join(", "))" else "" end)' "$req" 2>/dev/null || true)"
+        body="$(jq -r '(.requirements // [])[] | "- \(.id): \(.text | gsub("[\r\n]+"; " "))\(if .limit == true then " (limit)" else "" end)"' "$req" 2>/dev/null || true)"
     fi
     [[ -n "$head" ]] || head="took in the goal for issue #$issue: $title"
     [[ -n "$chg" ]] && body+="${body:+$'\n'}$chg"
@@ -317,7 +319,7 @@ _intake_run_inner() {
     if [[ -n "$fetched_ok" && -n "$_art" ]] && ! _intake_write_requirements "$_art" "$_raw_json"; then
         if [[ -n "${_INTAKE_REQ_OUTCOME:-}" ]]; then
             _intake_write_result "$_art" "$_INTAKE_REQ_OUTCOME" \
-                "the issue's requirements could not be written: a model call ended $_INTAKE_REQ_OUTCOME" "{}" || true
+                "the issue's requirements could not be written: a model call ended $_INTAKE_REQ_OUTCOME${_INTAKE_REQ_WHY:+ — $_INTAKE_REQ_WHY}" "{}" || true
             stage_summary_write "${_intake_art:+$_intake_art/intake-summary.md}" "intake" "error" \
                 "the issue's requirements could not be written ($_INTAKE_REQ_OUTCOME)" ""
             return 1

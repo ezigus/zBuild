@@ -23,6 +23,9 @@
 #             engine can run it again; no list is written
 # I7 [change] checkbox scraping is gone: an issue of checkboxes gets exactly the
 #             model's list
+# I8 [change] an answer that still breaks a rule after it is asked again ends
+#             intake saying which rule (#2550 lens review: "ended unusable"
+#             alone said nothing)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -102,6 +105,15 @@ WRITE_REPLY='REQUIREMENT: RQREAD-1 what the model read'; CHECK_REPLY='MISSING: n
 _intake
 assert_eq "[I7] the list is the model's alone; no checkbox is scraped into it" "what the model read" \
     "$(jq -r '[.requirements[].text] | join("|")' "$_REQ" 2>/dev/null || echo MISSING)"
+
+# ── I8 ───────────────────────────────────────────────────────────────────────
+WRITE_REPLY='LIMIT: RQNCI-1 a CI status check'
+CHECK_REPLY='MISSING: none'
+_intake
+assert_eq "[I8] an answer that breaks a rule twice: unusable" "unusable" "$OUTCOME"
+# This stub answers the re-ask with the check's reply: what it still breaks is
+# that it has no REQUIREMENT: lines.
+assert_contains "[I8] ...and the reason names the rule the last answer broke" "$(jq -r '.reason' "$ARTIFACT_DIR/intake-result.json" 2>/dev/null)" "it has no REQUIREMENT: lines"
 
 cleanup_test_env
 print_test_results

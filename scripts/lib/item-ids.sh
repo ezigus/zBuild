@@ -31,8 +31,76 @@ zb_id_new_form() {
     [[ -n "${2:-}" && "${1:-}" =~ ^(${2}[A-Z][A-Z0-9]{2,3})-([1-9][0-9]*)$ ]]
 }
 
+# _zb_ids_highest_v <assoc> <ids> <prefix> — each code's highest number among
+# <ids> of the new form, into <assoc> (code → number). The one count both the
+# id check and a stage's prompt read (#2550): the prompt states no rule of its
+# own, so the two cannot disagree.
+_zb_ids_highest_v() {
+    local -n _zih="$1"; local id
+    for id in $2; do
+        zb_id_new_form "$id" "$3" || continue
+        (( BASH_REMATCH[2] > ${_zih[${BASH_REMATCH[1]}]:-0} )) && _zih[${BASH_REMATCH[1]}]="${BASH_REMATCH[2]}"
+    done
+    return 0
+}
+
+# zb_test_tag_ids_v <out> <repo> <prefix> — the ids of stage <prefix> that
+# other work tagged in the repository's test folders, as `[<id>]`: a tag is the
+# id alone since #2520, so one another piece of work tagged is taken. Read from
+# the commit this branch started from — a tag this branch added is its own
+# (ADR-069 §11) — or, with none (the default branch itself), from the tree.
+# Done once for a repository and kept for the rest of this shell (#2550).
+_ZB_TAG_IDS_KEY="" _ZB_TAG_IDS=""
+zb_test_tag_ids_v() {
+    local -n _zti="$1"; local repo="$2" px="$3" globs="" t base=""
+    if [[ "$_ZB_TAG_IDS_KEY" == "$repo|$px" ]]; then _zti="$_ZB_TAG_IDS"; return 0; fi
+    _zti=""
+    [[ -n "$repo" && -n "$px" ]] && declare -F zb_test_path_globs_v >/dev/null 2>&1 \
+        && zb_test_path_globs_v globs "$repo"
+    if [[ -n "$globs" ]]; then
+        declare -F zbuild_resolve_merge_base_v >/dev/null 2>&1 \
+            || source "${BASH_SOURCE[0]%/*}/merge-base.sh" 2>/dev/null || true
+        declare -F zbuild_resolve_merge_base_v >/dev/null 2>&1 && zbuild_resolve_merge_base_v base "$repo"
+        # read -a: the globs reach git as written, never expanded by the shell.
+        local -a pats=() where=(--untracked); read -r -a pats <<< "$globs"
+        [[ -n "$base" ]] && where=("$base")
+        while IFS= read -r t; do
+            t="${t#\[}"; t="${t%\]}"
+            [[ -n "$t" && " $_zti " != *" $t "* ]] && _zti+="${_zti:+ }$t"
+        done < <(git -C "$repo" grep -h -o -E "\[${px}[A-Z][A-Z0-9]{2,3}-[0-9]+\]" "${where[@]}" -- "${pats[@]}" 2>/dev/null)
+    fi
+    _ZB_TAG_IDS_KEY="$repo|$px" _ZB_TAG_IDS="$_zti"
+    return 0
+}
+
+# zb_ids_highest_line_v <out> <prev_active> <prev_removed> <prefix> <noun> [used] —
+# the line a stage's prompt gives its model for numbering new ids (#2550,
+# ADR-069 §1): each code's highest number in the last list, removed ones
+# counted, and in [used] (ids tagged in the tests) — what zb_ids_check_v holds a
+# new id to.
+zb_ids_highest_line_v() {
+    local -n _zhl="$1"; local -A _h=(); local c list="" i j t
+    local -a codes=()
+    _zb_ids_highest_v _h "$2 $3 ${6:-}" "$4"
+    # In order, sorted in the shell: no process (ADR-065).
+    codes=("${!_h[@]}")
+    for (( i = 1; i < ${#codes[@]}; i++ )); do
+        t="${codes[i]}"; j=$i
+        while (( j > 0 )) && [[ "${codes[j-1]}" > "$t" ]]; do codes[j]="${codes[j-1]}"; j=$(( j - 1 )); done
+        codes[j]="$t"
+    done
+    for c in ${codes[@]+"${codes[@]}"}; do list+="${list:+, }$c ${_h[$c]}"; done
+    if [[ -z "$list" ]]; then
+        _zhl="No $5 id is taken yet: every code starts at 1 (${4}LOOP-1)."
+    else
+        local _in=""; [[ -n "${6:-}" ]] && _in=", and in the repository's tests"
+        _zhl="The highest number each code has had, removed ones counted$_in: $list. A new $5 with one of these codes takes the next number; a new code starts at 1."
+    fi
+    return 0
+}
+
 # zb_ids_check_v <out> <prev_active> <prev_removed> <new_active> <new_removed>
-#                <text> <prefix> [carry] [tried]
+#                <text> <prefix> [carry] [tried] [used]
 # Every rule an id list breaks, one entry each in array <out> ("<CODE> <id>
 # [<detail>]"); empty when it keeps them all. The lists are space separated:
 #   prev_active/prev_removed  the ids the last list had, and had removed
@@ -46,6 +114,9 @@ zb_id_new_form() {
 #                             keeps them for it)
 #   tried                     ids a try of this run wrote that did not pass: a
 #                             removal may name one (#2482)
+#   used                      ids already tagged in the repository's tests
+#                             (zb_test_tag_ids_v): taken, so a new id is past
+#                             them (#2550)
 # An earlier id not of the new form (R-1, SPEC-1, LOOP-1 from before #2482) is
 # the old numbering: it is given a new id, and needs no REMOVED line.
 zb_ids_check_v() {
@@ -54,11 +125,7 @@ zb_ids_check_v() {
     local id code num seen=" " hi
     local -A _hi=() _k=()
     _zic=()
-    for id in $2 $3; do
-        zb_id_new_form "$id" "$px" || continue
-        code="${BASH_REMATCH[1]}"; num="${BASH_REMATCH[2]}"
-        (( num > ${_hi[$code]:-0} )) && _hi[$code]="$num"
-    done
+    _zb_ids_highest_v _hi "$2 $3 ${10:-}" "$px"
     # How many new ids each code takes: k new ones are exactly the k numbers
     # after its highest, in any order (distinct, so no gap is left).
     for id in $na; do

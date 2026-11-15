@@ -206,6 +206,13 @@ _design_stage_run_inner() {
     # #2035 run 37289704344 kept an untested design in 1 second.
 
     local prompt_input_file="$artifact_dir/design-prompt.txt"
+    # #2550 (ADR-069 §1): new SPEC numbers from the last design that passed,
+    # counted by the function design's id check uses — the prompt states no
+    # rule of its own.
+    local _id_line="" _id_pa="" _id_pr=""
+    [[ -s "$output_design_md" ]] && _dck_block_ids_v _id_pa _id_pr "$(extract_acceptance_block "$output_design_md" 2>/dev/null)"
+    local _id_used=""; zb_test_tag_ids_v _id_used "${repo_root:-${ZBUILD_REPO_ROOT:-$PWD}}" "$_DCK_ID_PREFIX"
+    zb_ids_highest_line_v _id_line "$_id_pa" "$_id_pr" "$_DCK_ID_PREFIX" SPEC "$_id_used"
 
     # The persona (ADR-051) reaches the model through the provider, not this
     # text: the stage writes only its own job.
@@ -251,14 +258,12 @@ The design document MUST include:
    The id describes the SPEC: ${_DCK_ID_PREFIX}, then 3 or 4 capital letters or digits,
    starting with a letter, that say what it is about, a dash, and a number —
    ${_DCK_ID_PREFIX}LOOP-1 for a SPEC about loop state. The id is also the tag its test
-   carries, $(acceptance_spec_tag ${_DCK_ID_PREFIX}LOOP-1 2>/dev/null || printf '[%sLOOP-1]' "$_DCK_ID_PREFIX"), so it must be new to the repository:
-   - A new SPEC's number is one more than the highest number already used
-     with the same letters in any test file in the repository. If tests
-     already hold ${_DCK_ID_PREFIX}LOOP-1 and ${_DCK_ID_PREFIX}LOOP-3, the new one is ${_DCK_ID_PREFIX}LOOP-4, and the
-     next is ${_DCK_ID_PREFIX}LOOP-5.
+   carries, $(acceptance_spec_tag ${_DCK_ID_PREFIX}LOOP-1 2>/dev/null || printf '[%sLOOP-1]' "$_DCK_ID_PREFIX"):
+   - ${_id_line}
    - A SPEC you keep keeps its id.
-   - A SPEC you drop gets a line \`REMOVED: <id> — <why>\`, kept in every later
-     design, so its id is never used again.
+   - REMOVED: only for a SPEC in the last design that passed — one you drop
+     gets a line \`REMOVED: <id> — <why>\`, kept in every later design. An id
+     that only a rejected try wrote is not taken: write no REMOVED line for it.
    - Never use one of the issue's requirement ids as a SPEC id.
    A design written with old ids (SPEC-1, or ids not starting with ${_DCK_ID_PREFIX}) gives
    each SPEC a new id once; the old ids need no REMOVED line.
@@ -373,6 +378,8 @@ DESIGN_PROMPT
     # #2364: found by what it contains.
     local _req_f _reqs; _req_f="$(earlier_requirements "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
     _reqs="$(acceptance_requirements_list "$_req_f")"
+    # #2550 (ADR-070 §1): what the change must not do — no SPEC, no step.
+    local _lims; _lims="$(acceptance_limits_list "$_req_f")"
     # #2482 (ADR-069 §2): the code a [done] claim is checked on, as the judges
     # are shown it (ADR-072 §2). On #1805 run 42293991602 design had only the
     # working copy and took code this branch added for the code from before.
@@ -383,6 +390,7 @@ DESIGN_PROMPT
     local _DESIGN_BASE_DIR="$_base_dir"
     [[ -n "$_base_dir" ]] && printf '\n### The code from before this change\nThe commit this branch started from is a copy at %s. A [done] SPEC is checked\nthere: to see whether the code from before your change already does something,\nopen the file there, not in the working copy — the working copy holds every\nchange this branch made, in this round and in earlier ones.\n' "$_base_dir" >> "$prompt_input_file"
     [[ -n "$_reqs" ]] && printf '\n### Requirements from the issue (each with its id)\n%s\n\nEvery requirement above must be covered by at least one SPEC. End each SPEC line with ` covers: ` and the ids of the requirements it covers, before any ` evidence: ` — for example `'"${_DCK_ID_PREFIX}"'LOOP-1[code]: <behaviour> covers: <requirement ids>`. A requirement the code already meets is covered by a [done] SPEC with evidence.\n' "$_reqs" >> "$prompt_input_file"
+    [[ -n "$_lims" ]] && printf '\n### Limits from the issue — what this change must not do\n%s\n\nWrite no SPEC for a limit, and no step that does what one forbids: a limit is met by not building it, and it is checked against the change once it is made.\n' "$_lims" >> "$prompt_input_file"
 
     # On a later round design REFINES its prior design.md rather than
     # re-creating it. #1825 established that this content is spliced exactly ONCE. #1979 keeps
@@ -528,23 +536,26 @@ ${_dp_limits}")"; then
     _design_show "$output_draft"
 
     # #2369: design checks the working copy — by script, then, when the issue
-    # has numbered requirements and the scripted checks pass, by a second model
-    # call that asks whether the SPECs cover them. A design that already fails
-    # is not sent to it: a coverage call that could not run would hide the
-    # findings the next run needs (review on PR #2399).
+    # has numbered requirements, by a second model call that asks whether the
+    # SPECs cover them. #2550 (ADR-069): every try gets both, so it returns every
+    # problem at once — even when a script check failed. A coverage call that
+    # cannot run does not hide the script findings (review on PR #2399): they
+    # are returned, saying coverage was not checked.
     local -a _fnd=()
     local _v _u
     # #2462: held to the ids of the last design that passed (and, through the
     # requirement list, to the ids the issue's words write).
     _design_checks "$output_draft" "$repo_root" "$_req_f" "$output_design_md"
     for _v in "${_DESIGN_VIOLATIONS[@]}"; do _fnd+=("$(_dck_plain "$_v")"); done
-    if [[ ${#_fnd[@]} -eq 0 && -n "$_reqs" ]] && extract_acceptance_block "$output_draft" >/dev/null 2>&1; then
+    if [[ -n "$_reqs" || -n "$_lims" ]] && extract_acceptance_block "$output_draft" >/dev/null 2>&1; then
         local _dp_ans="" _a
         for _a in ${_DESIGN_ANSWERS[@]+"${_DESIGN_ANSWERS[@]}"}; do
             [[ "$_a" == "design finding "* ]] && _dp_ans+="$_a"$'\n'
         done
-        _design_coverage "$output_draft" "$_reqs" "$tier" "$_dp_ans"
-        if [[ -n "$_DESIGN_COV_OUTCOME" ]]; then
+        _design_coverage "$output_draft" "$_reqs" "$tier" "$_dp_ans" "$_lims"
+        if [[ -n "$_DESIGN_COV_OUTCOME" && ${#_fnd[@]} -gt 0 ]]; then
+            _fnd+=("the check that the design covers the issue could not be run ($_DESIGN_COV_OUTCOME), so coverage was not checked this try")
+        elif [[ -n "$_DESIGN_COV_OUTCOME" ]]; then
             error "_design_stage_run_inner: the coverage check could not be run ($_DESIGN_COV_OUTCOME)"
             _design_write_outcome "$artifact_dir" "$_DESIGN_COV_OUTCOME" "coverage_check_failed"
             stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
@@ -552,8 +563,9 @@ ${_dp_limits}")"; then
                 "The new design is kept as the working copy, unchecked; design.md is unchanged."
             emit_event "plugin.result" "outcome=$_DESIGN_COV_OUTCOME" "plugin=design" "reason=coverage_check_failed"
             return 1
+        else
+            while IFS= read -r _u; do [[ -n "$_u" ]] && _fnd+=("$_u"); done < <(_design_coverage_findings)
         fi
-        while IFS= read -r _u; do [[ -n "$_u" ]] && _fnd+=("$_u"); done < <(_design_coverage_findings)
     fi
 
     # A design that fails its checks cannot be used: `unusable`, so the engine
