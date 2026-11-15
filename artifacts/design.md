@@ -69,7 +69,13 @@ DSADR-3[done]: zbuild_sed_inplace keeps its existing name after this change, so 
   When: scripts/lib/compat.sh is sourced after the probe change
   Then: declare -f zbuild_sed_inplace exits 0 (the function is defined under its original name)
 
-DSBUD-1[no-code]: The fork-budget-test.sh still passes after the probe change; the stat probe runs once at library load, adding no per-atomic_write process cost covers: RQBUD-1
+DSBUD-1[no-code]: The stat probe adds no extra stat process per atomic_write call after the probe change covers: RQBUD-1
+  When: atomic_write is called after helpers.sh is sourced with the load-time stat probe in place
+  Then: the sorted list of system calls during the invocation does not include a second stat (the load-time probe ran once, not per-call)
+
+DSBUD-2[no-code]: tests/e2e/fork-budget-test.sh passes after the probe change covers: RQBUD-1
+  When: tests/e2e/fork-budget-test.sh is run against the modified code
+  Then: the test exits 0
 
 WIRING: none
 ```

@@ -140,17 +140,14 @@ The design document MUST include:
 
    Under its line, each [code] and [done] SPEC says its behaviour in parts, one
    per line, indented ([no-code] may too):
-   - `Given:` the setup the behaviour starts from. Optional; any number.
+   - `Given:` the situation the code is in before the When — never the steps a test takes to get there. Optional; any number.
    - `When:` the one action — exactly one When per SPEC: a second action is a second SPEC.
    - `Then:` something a test can observe after the When — an output, a
      result, a file the code writes, an event. One or more. Never what a file
-     or a test contains.
-   - `And:` adds another line to the Given, Then or Cleanup above it.
-   - `Cleanup:` what must be true again after the test, for anything the
-     Given sets up or a Then says happens that outlives the test — an exported
-     variable, a file outside the test's own folder, global config or git state.
-     Leave it out when nothing outlives the test: the test harness cleans up
-     after every test.
+     or a test contains, and never how a test looks for it.
+   - `And:` adds another line to the Given or Then above it.
+   How a test sets this up, checks it and cleans up after it is the test's, not
+   the requirement's.
 
    The status says what work the requirement needs. Look at the code before you choose:
    - `DSLOOP-1[code]:` — it needs code. Its test must fail on the code as it is before your change, and pass after it.
@@ -177,11 +174,10 @@ The design document MUST include:
 The ```acceptance block format:
 ```acceptance
 DSLOOP-1[code]: <one new behaviour this change introduces>
-  Given: <the setup it starts from>
+  Given: <the situation the code is in>
   When: <the one action>
   Then: <what a test can observe after it>
   And: <another thing a test can observe>
-  Cleanup: <what must be true again after, when the setup or a Then outlives the test>
 DSLOOP-2[no-code]: <a test, config or a refactor that changes no behaviour>
 DSDOCS-1[doc]: <what a doc must tell a reader>
 DSGARD-1[done]: <something the code already does> evidence: scripts/x.sh | run_guard()
@@ -384,6 +380,7 @@ Summary:
 - RQPRO-3: Use the GNU form first (stat -c before stat -f)
 - RQSTT-1: The probe replaces _zb_target_mode_v's second stat call so each mode check runs one stat
 - RQDEL-1: zbuild_stat_size is deleted
+- the requirements are the same as the last run's
 
 ### design (verdict: pass) — your own
 Outputs:
@@ -407,8 +404,8 @@ Summary:
 - DSADR-2 (covers RQADM-2): ADR-009's new probe clause has an Enforced by subsection naming the test files that enforce it
 - DSADR-3 (covers RQADM-3): zbuild_sed_inplace keeps its existing name after this change, so ADR-020's reference to it requires no amendment
 - DSBUD-1 (covers RQBUD-1): The fork-budget-test.sh still passes after the probe change; the stat probe runs once at library load, adding no per-atomic_write process cost
-- answered: acceptance-gate finding 1: not mine — the finding reports that no test file contains assertions tagged with the design's SPEC ids (DSPRB-1 through DSDEL-1, DSADR-3, DSBUD-1). Writing test assertions and tagging them with SPEC ids is the test-author's responsibility, not the design's. My design correctly defines every SPEC with its id, Given/When/Then contract, and `covers:` mapping. The test-author stage is the output that must carry those tags into test files.
-- answered: acceptance-gate finding 2: not mine — the reachability check failing for `scripts/lib/compat.sh` and `scripts/lib/helpers.sh` is a downstream consequence of the same missing test files: without any tagged test assertions, the pipeline has no test to fail when it reverts those files. My `WIRING: none` declaration is correct on its own terms: the probe variables are set and consumed entirely within the library files being modified; no external file calls the new probe behavior directly; external callers reach `zbuild_sed_inplace` and `_zb_target_mode_v` through unchanged function names. `WIRING: none` requires no change.
+- answered: acceptance-gate finding 1: not mine — the finding reports that test files do not carry SPEC tag annotations (e.g. `[DSPRB-1]`). Placing those tags in test files is the test-author's output, not the design's. My design defines every SPEC with its id, Given/When/Then contract, and `covers:` mapping precisely so the test-author can produce correctly-tagged assertions. The design cannot and must not write test files; that is the test-author stage's job.
+- answered: acceptance-gate finding 2: not mine — the WIRING check failing for `scripts/lib/compat.sh` and `scripts/lib/helpers.sh` is a downstream consequence of the test-author not yet having created tagged test files; without a test tagged to those files, the pipeline has nothing to run when it reverts them. `WIRING: none` is correct on its own terms: the probe variables are set and consumed entirely within the library files being modified; no external file calls the new probe behavior directly; external callers reach `zbuild_sed_inplace` and `_zb_target_mode_v` through unchanged function names. The declaration is accurate and requires no change.
 
 Your notes so far (where they disagree with a list or a result elsewhere in this prompt, the list or the result is right):
 # Design Notes — Issue #1700: Probe-Based Tool Selection
@@ -503,31 +500,42 @@ must tell a reader without naming a test file (by rule, design names no test fil
 Design is complete and unchanged from round 2. Findings 1 and 2 from the test stage are
 not mine — they require test-author output (tagged test assertions), not design output.
 
-### test-author (verdict: pass)
+### test-author (verdict: unusable)
 Outputs:
 - test_author_result: /home/runner/work/_temp/zbuild-state/artifacts/test-author-result.json
 
-### test (verdict: fail)
+Findings:
+- test-author finding 1 (opened by test-author): DSBUD-1 Then: the tagged assertion (`"cat mv stat"` sorted-CALLS check in W1) establishes that exactly one stat process runs per `atomic_write` call, covering the second half of the Then ("stat probe runs once at library load, adding no per-atomic_write process cost") — but the first half ("The fork-budget-test.sh still passes") is a claim about a separate test file that the tagged assertion neither runs, calls, nor references; passing the sorted-CALLS assertion does not entail that fork-budget-test.sh as a whole passes
+    DSBUD-1[no-code]: The fork-budget-test.sh still passes after the probe change; the stat probe runs once at library load, adding no per-atomic_write process cost covers: RQBUD-1
+      Then: The fork-budget-test.sh still passes after the probe change; the stat probe runs once at library load, adding no per-atomic_write process cost [FIX IN TEST: the tagged assertion (`"cat mv stat"` sorted-CALLS check in W1) establishes that exactly one stat process runs per `atomic_write` call, covering the second half of the Then ("stat probe runs once at library load, adding no per-atomic_write process cost") — but the first half ("The fork-budget-test.sh still passes") is a claim about a separate test file that the tagged assertion neither runs, calls, nor references; passing the sorted-CALLS assertion does not entail that fork-budget-test.sh as a whole passes — assert this, so the test fails when it is not so]
+
+Its last good output, from an earlier attempt:
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/test-author/iter-2-attempt-1/test-author-result.json
+- /home/runner/work/_temp/zbuild-state/artifacts/attempts/test-author/iter-2-attempt-1/test-author-summary.md
+
+### test (verdict: pass)
 Outputs:
 - acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
 - acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
 
-Findings:
-- acceptance-gate finding 1 (opened by test): DSPRB-1/DSPRB-2/DSPRB-3/DSPRB-4/DSPRB-5/DSDEL-1/DSADR-3/DSBUD-1: no assertion in the test files carries its tag — add one labelled with it
-- acceptance-gate finding 2 (opened by test): scripts/lib/compat.sh/scripts/lib/helpers.sh: no test file carries a requirement's tag, so putting it back could not be checked
-
-### issue-acceptance (verdict: fail)
+### issue-acceptance (verdict: pass)
 Outputs:
 - issue_acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-result.json
 - issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
 
 Summary:
-## issue-acceptance — fail
+## issue-acceptance — pass
 
-- judged the change against the issue: 7 requirement(s) not met or not sure
+- judged the change against the issue: every requirement is met
 
-- see result
-- no finding was open for it
+- every requirement the issue states is met by the change
+- answered: issue-acceptance finding 1: wrong — `tests/unit/platform-probe-test.sh` is confirmed present and the lint passes; the finding does not hold.
+- answered: issue-acceptance finding 2: wrong — DSPRB-1 re-exports `ZBUILD_PLATFORM=macos` after sourcing `compat.sh` and verifies the edit succeeds; the test distinguishes old from new code.
+- answered: issue-acceptance finding 3: wrong — DSPRB-2 injects a mock stat that returns `255` for the `-f` form and asserts the returned mode equals the actual mode, not `255`; the test is differentiating.
+- answered: issue-acceptance finding 4: wrong — DSPRB-1 and DSPRB-2 both source libraries with `ZBUILD_PLATFORM=macos` (the wrong value on Linux CI) and verify correct output; confirmed in the test.
+- answered: issue-acceptance finding 5: wrong — DSPRB-3 inspects `_ZB_STAT_MODE_CMD` immediately after sourcing `helpers.sh` and asserts it contains `-c`; with no probe the variable would be unset and the assertion fails.
+- answered: issue-acceptance finding 6: wrong — DSPRB-4 sets `ZBUILD_PLATFORM=macos` after sourcing, calls `_zb_target_mode_v` once, and asserts the stat-call counter is exactly `1`; confirmed in the test.
+- answered: issue-acceptance finding 7: wrong — DSDEL-1 sources `compat.sh` in a subshell and asserts `declare -f zbuild_stat_size` exits non-zero (`1`); confirmed in the test.
 
 ## What you must not do
 

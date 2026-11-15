@@ -85,7 +85,21 @@ between the implementation stage (which amended ADR-009) and the test-author sta
 (which should have created that file). My DSADR-2[doc] correctly specifies what ADR-009
 must tell a reader without naming a test file (by rule, design names no test files).
 
+## Round 4 fix (test-author finding 1)
+
+DSBUD-1 combined two independent claims into one SPEC body:
+1. "The fork-budget-test.sh still passes" — verifiable only by running the test file
+2. "the stat probe runs once at library load, adding no per-atomic_write process cost" — verifiable by the sorted-CALLS check
+
+The test-author could only tag one assertion against DSBUD-1, leaving claim 1 unverified.
+
+Fix: split DSBUD-1 into two [no-code] SPECs:
+- DSBUD-1: stat probe adds no extra stat process per atomic_write call (the sorted-CALLS check)
+- DSBUD-2: tests/e2e/fork-budget-test.sh exits 0 after the probe change
+
+Both cover RQBUD-1. DSBUD-2 is a new id (DSBUD-1 was the only prior DSBUD id).
+
 ## Status
 
-Design is complete and unchanged from round 2. Findings 1 and 2 from the test stage are
-not mine — they require test-author output (tagged test assertions), not design output.
+Design updated in round 4 to split DSBUD-1. All 10 requirements remain covered.
+SPECs: DSPRB-1 through DSPRB-5, DSDEL-1, DSADR-1, DSADR-2, DSADR-3, DSBUD-1, DSBUD-2.
