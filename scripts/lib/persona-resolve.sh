@@ -79,8 +79,10 @@ resolve_persona() {
     _env_name="ZBUILD_$(printf '%s' "$_stage" | tr '[:lower:]-' '[:upper:]_')_PERSONA"
     local persona_id="${!_env_name:-}"
 
-    # 1b. A map element's own declared persona (ADR-051 §2).
-    if [[ -z "$persona_id" && -n "${ZBUILD_MAP_ELEMENT:-}" ]] \
+    # 1b. A map element's own declared persona (ADR-051 §2) — for the stage's
+    # main call only, as a template pin is (#2552): a call that judges the
+    # element's work is not run as its persona.
+    if [[ -z "$persona_id" && -n "${ZBUILD_MAP_ELEMENT:-}" && "${ZBUILD_ROUTE_CALL:-main}" == main ]] \
         && declare -F template_map_element_persona >/dev/null 2>&1; then
         persona_id="$(template_map_element_persona "$_stage" "$ZBUILD_MAP_ELEMENT" 2>/dev/null || true)"
     fi

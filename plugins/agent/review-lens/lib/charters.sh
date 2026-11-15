@@ -41,7 +41,7 @@ _rl_build_lens_prompt() {
     _rl_lens_job_v job "$lens" || job=""
     cat <<PROMPT
 ## What you own
-A report for the "${lens}" lens: each problem you find in the change, as this
+A report for the "${lens}" lens: each problem in the change you can say what makes happen, and quote the code that shows it, as this
 lens judges it, and a score.
 
 ${job}
@@ -70,12 +70,13 @@ OUTPUT CONTRACT (obey absolutely):
         "severity": "<one of: low, medium, high, critical>",
         "message": "<one-sentence description>",
         "quote": "<the exact text that shows it, copied from the file as it is now, or a line the change removed>",
+        "trigger": "<what makes it happen on a real run — where this lens's problems come from>",
         "introduced": <true if this change introduced or worsened it; false if the code before the change already did this>,
         "fix": "<one of: code, test, design, issue>"
       }
     ]
   }
-- Every finding quotes the text that shows it. The quote is checked against
+- Every finding says what makes it happen on a real run (its trigger), and quotes the text that shows it. The quote is checked against
   its file and the change: a finding whose quote is not there makes the report
   unusable.
 - If you find nothing for this lens, return {"score": 10, "findings": []}.
