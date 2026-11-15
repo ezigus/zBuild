@@ -1,0 +1,5 @@
+{
+  "wiring_files": [
+    "core/pipeline/runner.sh"
+  ]
+}
