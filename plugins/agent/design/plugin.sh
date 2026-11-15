@@ -535,23 +535,26 @@ ${_dp_limits}")"; then
     _design_show "$output_draft"
 
     # #2369: design checks the working copy — by script, then, when the issue
-    # has numbered requirements and the scripted checks pass, by a second model
-    # call that asks whether the SPECs cover them. A design that already fails
-    # is not sent to it: a coverage call that could not run would hide the
-    # findings the next run needs (review on PR #2399).
+    # has numbered requirements, by a second model call that asks whether the
+    # SPECs cover them. #2550 (ADR-069): every try gets both, so it returns every
+    # problem at once — even when a script check failed. A coverage call that
+    # cannot run does not hide the script findings (review on PR #2399): they
+    # are returned, saying coverage was not checked.
     local -a _fnd=()
     local _v _u
     # #2462: held to the ids of the last design that passed (and, through the
     # requirement list, to the ids the issue's words write).
     _design_checks "$output_draft" "$repo_root" "$_req_f" "$output_design_md"
     for _v in "${_DESIGN_VIOLATIONS[@]}"; do _fnd+=("$(_dck_plain "$_v")"); done
-    if [[ ${#_fnd[@]} -eq 0 && -n "$_reqs" ]] && extract_acceptance_block "$output_draft" >/dev/null 2>&1; then
+    if [[ -n "$_reqs" ]] && extract_acceptance_block "$output_draft" >/dev/null 2>&1; then
         local _dp_ans="" _a
         for _a in ${_DESIGN_ANSWERS[@]+"${_DESIGN_ANSWERS[@]}"}; do
             [[ "$_a" == "design finding "* ]] && _dp_ans+="$_a"$'\n'
         done
         _design_coverage "$output_draft" "$_reqs" "$tier" "$_dp_ans" "$_lims"
-        if [[ -n "$_DESIGN_COV_OUTCOME" ]]; then
+        if [[ -n "$_DESIGN_COV_OUTCOME" && ${#_fnd[@]} -gt 0 ]]; then
+            _fnd+=("the check that the design covers the issue could not be run ($_DESIGN_COV_OUTCOME), so coverage was not checked this try")
+        elif [[ -n "$_DESIGN_COV_OUTCOME" ]]; then
             error "_design_stage_run_inner: the coverage check could not be run ($_DESIGN_COV_OUTCOME)"
             _design_write_outcome "$artifact_dir" "$_DESIGN_COV_OUTCOME" "coverage_check_failed"
             stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
@@ -559,8 +562,9 @@ ${_dp_limits}")"; then
                 "The new design is kept as the working copy, unchecked; design.md is unchanged."
             emit_event "plugin.result" "outcome=$_DESIGN_COV_OUTCOME" "plugin=design" "reason=coverage_check_failed"
             return 1
+        else
+            while IFS= read -r _u; do [[ -n "$_u" ]] && _fnd+=("$_u"); done < <(_design_coverage_findings)
         fi
-        while IFS= read -r _u; do [[ -n "$_u" ]] && _fnd+=("$_u"); done < <(_design_coverage_findings)
     fi
 
     # A design that fails its checks cannot be used: `unusable`, so the engine
