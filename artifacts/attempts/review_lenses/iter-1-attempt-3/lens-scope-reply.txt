@@ -1,0 +1,122 @@
+--- reply 1 ---
+{
+  "score": 4,
+  "findings": [
+    {
+      "file": "config/adr-enforcement-baseline.txt",
+      "category": "missing baseline removal",
+      "severity": "critical",
+      "message": "ADR-009 now has an '## Enforced by' section added by this change, but it was not removed from config/adr-enforcement-baseline.txt; CLAUDE.md states the baseline 'only shrinks' as ADRs gain their section, and lint-adr-enforced-by.sh is documented to fail when an ADR in the baseline already has the section.",
+      "quote": "ADR-009-platform-aware-modularity.md",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "docs/adr/ADR-009-platform-aware-modularity.md",
+      "category": "incomplete enforced-by coverage",
+      "severity": "medium",
+      "message": "The 'Enforced by' subsection of the amended ADR-009 clause lists DSPRB-1 through DSPRB-5 and DSDEL-1 from platform-probe-test.sh but omits DSBUD-1 (atomic-write-cost-test.sh) and DSBUD-2 (fork-budget-test.sh), both of which the issue requires to enforce the new probe clause.",
+      "quote": "- `tests/unit/platform-probe-test.sh` — DSPRB-1: ... DSDEL-1: `zbuild_stat_size` is not\n  defined after sourcing `scripts/lib/compat.sh`.",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "tests/unit/platform-probe-test.sh",
+      "category": "missing required test case",
+      "severity": "medium",
+      "message": "The issue's requirements (DSBUD-1) state that platform-probe-test.sh must check that each atomic_write call runs exactly one stat, but the file covers only DSPRB-1 through DSPRB-5, DSDEL-1, and DSADR-3; DSBUD-1 appears only as a label in atomic-write-cost-test.sh.",
+      "quote": "# Covers: DSPRB-1, DSPRB-2, DSPRB-3, DSPRB-4, DSPRB-5, DSDEL-1, DSADR-3",
+      "introduced": true,
+      "fix": "test"
+    },
+    {
+      "file": "tests/e2e/fork-budget-test.sh",
+      "category": "tautological assertion",
+      "severity": "low",
+      "message": "The added DSBUD-2 assertion checks $((FAIL > 0)) against '0', but the test already exits 1 before reaching this assertion if FAIL > 0, so the assertion can never catch a real failure and is always vacuously true when reached.",
+      "quote": "assert_eq \"[DSBUD-2] tests/e2e/fork-budget-test.sh passes (exits 0) after the probe change\" \\\n    \"0\" \"$((FAIL > 0))\"",
+      "introduced": true,
+      "fix": "test"
+    },
+    {
+      "file": "tests/e2e/fork-budget-test.sh",
+      "category": "cosmetic edits beyond scope",
+      "severity": "low",
+      "message": "The change adds Given/When/Then annotation comments throughout fork-budget-test.sh; the issue only required this test to keep passing after the probe change, not to restructure its commentary.",
+      "quote": "# Given — a canary script containing exactly one external exec (dirname) and no other programs",
+      "introduced": true,
+      "fix": "issue"
+    },
+    {
+      "file": "tests/unit/atomic-write-cost-test.sh",
+      "category": "cosmetic edits beyond scope",
+      "severity": "low",
+      "message": "Given/When/Then comments were added throughout atomic-write-cost-test.sh; the issue only asked that the existing atomic_write tests keep passing, not that their commentary be restructured.",
+      "quote": "# Given — an existing file at 644 mode; wrappers record each external command call",
+      "introduced": true,
+      "fix": "issue"
+    }
+  ]
+}
+--- reply 2 ---
+Now I have all accurate quotes. Let me compose the corrected JSON:
+
+{
+  "score": 4,
+  "findings": [
+    {
+      "file": "config/adr-enforcement-baseline.txt",
+      "category": "missing baseline removal",
+      "severity": "critical",
+      "message": "ADR-009 now has an '## Enforced by' section added by this change, but it was not removed from config/adr-enforcement-baseline.txt; CLAUDE.md states the baseline 'only shrinks' as ADRs gain their section, and lint-adr-enforced-by.sh is documented to fail when an ADR in the baseline already has the section.",
+      "quote": "ADR-009-platform-aware-modularity.md",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "docs/adr/ADR-009-platform-aware-modularity.md",
+      "category": "incomplete enforced-by coverage",
+      "severity": "medium",
+      "message": "The 'Enforced by' subsection of the amended ADR-009 clause lists DSPRB-1 through DSPRB-5 and DSDEL-1 from platform-probe-test.sh but omits DSBUD-1 (atomic-write-cost-test.sh) and DSBUD-2 (fork-budget-test.sh), both of which the issue requires to enforce the new probe clause.",
+      "quote": "- `tests/unit/platform-probe-test.sh` — DSPRB-1: `zbuild_sed_inplace` works when\n  `ZBUILD_PLATFORM` is set to a wrong value; DSPRB-2: `_zb_target_mode_v` returns\n  a valid octal mode when `ZBUILD_PLATFORM` is set to a wrong value; DSPRB-3: the\n  stat probe encodes the GNU `-c` form on a GNU host; DSPRB-4: `_zb_target_mode_v`\n  runs exactly one `stat` per call; DSPRB-5: the sed probe variable is set at load\n  time (before any call to `zbuild_sed_inplace`); DSDEL-1: `zbuild_stat_size` is not\n  defined after sourcing `scripts/lib/compat.sh`.",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "tests/unit/platform-probe-test.sh",
+      "category": "missing required test case",
+      "severity": "medium",
+      "message": "The issue's requirements (DSBUD-1) state that platform-probe-test.sh must check that each atomic_write call runs exactly one stat, but the file covers only DSPRB-1 through DSPRB-5, DSDEL-1, and DSADR-3; DSBUD-1 appears only as a label in atomic-write-cost-test.sh.",
+      "quote": "# Covers: DSPRB-1, DSPRB-2, DSPRB-3, DSPRB-4, DSPRB-5, DSDEL-1, DSADR-3",
+      "introduced": true,
+      "fix": "test"
+    },
+    {
+      "file": "tests/e2e/fork-budget-test.sh",
+      "category": "tautological assertion",
+      "severity": "low",
+      "message": "The added DSBUD-2 assertion checks $((FAIL > 0)) against '0', but the test already exits 1 before reaching this assertion if FAIL > 0, so the assertion can never catch a real failure and is always vacuously true when reached.",
+      "quote": "assert_eq \"[DSBUD-2] tests/e2e/fork-budget-test.sh passes (exits 0) after the probe change\" \\",
+      "introduced": true,
+      "fix": "test"
+    },
+    {
+      "file": "tests/e2e/fork-budget-test.sh",
+      "category": "cosmetic edits beyond scope",
+      "severity": "low",
+      "message": "The change adds Given/When/Then annotation comments throughout fork-budget-test.sh; the issue only required this test to keep passing after the probe change, not to restructure its commentary.",
+      "quote": "# Given — a canary script containing exactly one external exec (dirname) and no other programs",
+      "introduced": true,
+      "fix": "issue"
+    },
+    {
+      "file": "tests/unit/atomic-write-cost-test.sh",
+      "category": "cosmetic edits beyond scope",
+      "severity": "low",
+      "message": "Given/When/Then comments were added throughout atomic-write-cost-test.sh; the issue only asked that the existing atomic_write tests keep passing, not that their commentary be restructured.",
+      "quote": "# Given — an existing file at 644 mode; wrappers record each external command call",
+      "introduced": true,
+      "fix": "issue"
+    }
+  ]
+}

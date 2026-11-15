@@ -1,0 +1,120 @@
+--- reply 1 ---
+{
+  "score": 5,
+  "findings": [
+    {
+      "file": "scripts/lib/compat.sh",
+      "category": "logic",
+      "severity": "medium",
+      "message": "`_ZB_SED_INPLACE_ARGS` is declared without `readonly`; an adversary who pre-sets `_ZBUILD_COMPAT_LOADED=1` before sourcing compat.sh causes the idempotency guard to fire and return 0 immediately, leaving `_ZB_SED_INPLACE_ARGS` unset or under attacker control — `zbuild_sed_inplace` then calls `sed` with an empty array expansion (no `-i`), writing to stdout and silently leaving every targeted file unchanged at exit code 0.",
+      "quote": "declare -a _ZB_SED_INPLACE_ARGS",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "scripts/lib/helpers.sh",
+      "category": "logic",
+      "severity": "medium",
+      "message": "`_ZB_STAT_MODE_CMD` is a plain unguarded assignment with no `readonly`; if `_ZBUILD_HELPERS_LOADED` is pre-set before sourcing helpers.sh the idempotency guard fires and the probe never runs, leaving `_ZB_STAT_MODE_CMD` unset — `_zb_target_mode_v` then takes the else branch (`stat -f '%Lp'`) on a GNU host, gets a large filesystem block rather than an octal mode, fails the `^[0-7]{3,4}$` check, and silently sets every file to mode 600 (including files that callers require to be executable).",
+      "quote": "if stat -c '%a' /dev/null >/dev/null 2>&1; then\n    _ZB_STAT_MODE_CMD=\"-c\"\nelse\n    _ZB_STAT_MODE_CMD=\"-f\"\nfi",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "scripts/lib/compat.sh",
+      "category": "logic",
+      "severity": "medium",
+      "message": "The sed probe uses `sed --version` as a proxy for GNU in-place semantics rather than directly testing `-i` behavior; any sed implementation that accepts `--version` but does not support `-i` without a backup-suffix argument will cause the probe to set `_ZB_SED_INPLACE_ARGS=(-i)`, after which every `zbuild_sed_inplace` call either errors visibly or corrupts the target file on that host.",
+      "quote": "if sed --version >/dev/null 2>&1; then\n    _ZB_SED_INPLACE_ARGS=(-i)",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "scripts/lib/helpers.sh",
+      "category": "logic",
+      "severity": "medium",
+      "message": "The stat probe redirects stdout to `/dev/null` and tests only the exit code; a `stat -c '%a'` that exits 0 but emits a non-octal string (e.g., a vendor-patched stat that accepts `-c` with a different format interpretation) sets `_ZB_STAT_MODE_CMD=\"-c\"`, after which every `_zb_target_mode_v` call gets garbage output, fails `^[0-7]{3,4}$`, and silently assigns mode 600 to all files — a correct probe would verify the output matches the octal-mode pattern.",
+      "quote": "if stat -c '%a' /dev/null >/dev/null 2>&1; then",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "scripts/lib/helpers.sh",
+      "category": "logic",
+      "severity": "low",
+      "message": "Removing the two-attempt fallback in `_zb_target_mode_v` (intentional per R2) means that when `_ZB_STAT_MODE_CMD` is unset the function defaults to the BSD form on a GNU host; the old code tested `ZBUILD_PLATFORM == macos` and defaulted to the GNU form when the variable was absent or any other value — a correct choice on GNU — so the guard-bypass regression path is strictly worse than before this change.",
+      "quote": "if [[ \"${_ZB_STAT_MODE_CMD:-}\" == \"-c\" ]]; then\n            _tm=\"$(stat -c '%a' \"$_tm_t\" 2>/dev/null || true)\"\n        else\n            _tm=\"$(stat -f '%Lp' \"$_tm_t\" 2>/dev/null || true)\"",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "docs/adr/ADR-009-platform-aware-modularity.md",
+      "category": "coverage",
+      "severity": "low",
+      "message": "The ADR-009 Enforced-by section names only `tests/unit/platform-probe-test.sh`; `tests/unit/atomic-write-cost-test.sh` carries the `[W1][DSBUD-1]` assertion (exactly one stat per `atomic_write`) but is not listed — DSADR-2 requires the Enforced-by subsection to name all enforcing tests, and `lint-adr-enforced-by.sh` only checks file existence, not completeness, so this gap passes lint.",
+      "quote": "- `tests/unit/platform-probe-test.sh` — DSPRB-1: `zbuild_sed_inplace` works when\n  `ZBUILD_PLATFORM` is set to a wrong value",
+      "introduced": true,
+      "fix": "test"
+    }
+  ]
+}
+--- reply 2 ---
+{
+  "score": 5,
+  "findings": [
+    {
+      "file": "scripts/lib/compat.sh",
+      "category": "logic",
+      "severity": "medium",
+      "message": "If `_ZBUILD_COMPAT_LOADED` is pre-set before the file is sourced the idempotency guard returns 0 immediately, leaving `_ZB_SED_INPLACE_ARGS` unset; `zbuild_sed_inplace` then expands an empty array, calling `sed` without `-i`, writing to stdout and leaving every targeted file silently unchanged at exit code 0.",
+      "quote": "[[ -n \"${_ZBUILD_COMPAT_LOADED:-}\" ]] && return 0",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "scripts/lib/helpers.sh",
+      "category": "logic",
+      "severity": "medium",
+      "message": "If `_ZBUILD_HELPERS_LOADED` is pre-set before the file is sourced the idempotency guard returns 0 immediately, leaving `_ZB_STAT_MODE_CMD` unset; `_zb_target_mode_v` then takes the else branch and calls `stat -f '%Lp'` on a GNU host, gets a large filesystem-block integer, fails the `^[0-7]{3,4}$` check, and silently sets every file to mode 600.",
+      "quote": "[[ -n \"${_ZBUILD_HELPERS_LOADED:-}\" ]] && return 0",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "scripts/lib/compat.sh",
+      "category": "logic",
+      "severity": "medium",
+      "message": "The sed probe uses `sed --version` as a proxy for GNU in-place semantics rather than testing the `-i` flag directly; any sed that accepts `--version` but requires a backup-suffix argument for `-i` will cause the probe to store `(-i)`, after which every `zbuild_sed_inplace` call either errors or corrupts the target file.",
+      "quote": "if sed --version >/dev/null 2>&1; then",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "scripts/lib/helpers.sh",
+      "category": "logic",
+      "severity": "medium",
+      "message": "The stat probe suppresses stdout and tests only the exit code; a `stat -c '%a'` that exits 0 but emits a non-octal string (vendor-patched stat, container shim) sets `_ZB_STAT_MODE_CMD=\"-c\"`, after which every `_zb_target_mode_v` call receives garbage, fails the octal check, and silently assigns mode 600 — a correct probe would capture and validate the output against the octal-mode pattern.",
+      "quote": "if stat -c '%a' /dev/null >/dev/null 2>&1; then",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "scripts/lib/helpers.sh",
+      "category": "logic",
+      "severity": "low",
+      "message": "When `_ZB_STAT_MODE_CMD` is unset (guard bypass or future caller outside the normal load path) the function defaults to the BSD `-f` form on a GNU host; the old code tested `ZBUILD_PLATFORM == macos` and defaulted to the GNU form for any other value, so the unset-variable regression path is strictly worse after this change.",
+      "quote": "if [[ \"${_ZB_STAT_MODE_CMD:-}\" == \"-c\" ]]; then",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "docs/adr/ADR-009-platform-aware-modularity.md",
+      "category": "coverage",
+      "severity": "low",
+      "message": "The `Enforced by` section names only `tests/unit/platform-probe-test.sh`; `tests/unit/atomic-write-cost-test.sh` carries the DSBUD-1 assertion (exactly one stat per `atomic_write`) but is not listed — DSADR-2 requires the subsection to name all enforcing tests, and `lint-adr-enforced-by.sh` checks file existence, not completeness, so the gap passes lint silently.",
+      "quote": "- `tests/unit/platform-probe-test.sh` — DSPRB-1: `zbuild_sed_inplace` works when",
+      "introduced": true,
+      "fix": "test"
+    }
+  ]
+}

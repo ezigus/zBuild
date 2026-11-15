@@ -1,0 +1,14 @@
+--- reply 1 ---
+Based on my analysis of the diff and the actual files:
+
+**`scripts/lib/helpers.sh`**: The load-time `stat -c '%a' /dev/null` probe runs once at source time and stores `-c` or `-f` in `_ZB_STAT_MODE_CMD`. `_zb_target_mode_v` now forks `stat` exactly once per call. Before the change, the Linux path forked `stat -c` and, if the result was not a valid octal mode, forked `stat -f` as a fallback — up to two forks per `atomic_write` on a misconfigured host. The probe eliminates that second fork. The FORK_BUDGET (1760) is unchanged by this diff, confirming the load-time probe's one-time cost is absorbed without raising the ceiling.
+
+**`scripts/lib/compat.sh`**: `sed --version` runs once at load. `zbuild_sed_inplace` goes from a runtime string comparison plus a conditional exec to a single array expansion — strictly cheaper per call.
+
+**`tests/e2e/fork-budget-test.sh`**: The FORK_BUDGET value is not raised. The DSBUD-2 assertion added is a tautology (it checks the same `FAIL` counter the final `exit` already checks), so it adds no new validation power, but it also adds no overhead to the production code path.
+
+No load-time re-probe risk: both `_ZBUILD_HELPERS_LOADED` and `_ZBUILD_COMPAT_LOADED` guards prevent re-sourcing within the same process, so each probe runs at most once per process regardless of how many callers source these files.
+
+No performance regressions introduced.
+
+{"score": 10, "findings": []}
