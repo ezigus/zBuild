@@ -22,6 +22,8 @@
 # P6 [change] a perspective holds no job: no severity scale, no finding, flag,
 #             report or verdict, no "examine the change" — the job is in the
 #             call's prompt (#2548)
+# P8 [change] a persona's summary, which reaches the model too, holds no job
+#             either (#2548)
 # P7 [change] the shipped personas are roles someone plays: correctness and
 #             scope (jobs) and generic (no persona) are not among them (#2548)
 set -uo pipefail
@@ -73,6 +75,11 @@ for _m in "$REPO_ROOT"/plugins/persona/*/manifest.yaml; do
         assert_pass "[P6] $_id's perspective holds no job"
     fi
     _ls="$(tr '[:upper:]' '[:lower:]' <<< "$(yaml_get "$_m" summary 2>/dev/null || true)")"
+    if [[ "$_ls" =~ $_JOB_RE ]]; then
+        assert_fail "[P8] $_id's summary holds no job" "it has: ${BASH_REMATCH[2]}"
+    else
+        assert_pass "[P8] $_id's summary holds no job"
+    fi
     if [[ "$_ls" =~ $_IDENTITY_RE || "$_ls" =~ $_PIPELINE_RE ]]; then
         assert_fail "[P4] $_id's summary is no identity line and names nothing of the pipeline" "it has: ${BASH_REMATCH[2]}"
     else

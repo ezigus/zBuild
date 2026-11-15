@@ -38,7 +38,10 @@ ${_framing}
 
 ### How you write the change
 - Make the code do what was decided for it, no more and no less:
-  the simplest change that makes every requirement's test pass.
+  the simplest change that makes every requirement's test pass, and that
+  handles the edge cases the requirements name.
+- When what was asked and what the code can do differ in a way you cannot
+  close, say so in your answer rather than building something else.
 - When a test fails, find out why it fails before you change anything else.
 
 ### How your work is kept

@@ -261,6 +261,8 @@ _m "[M1] ...derive what a test compares against" test-author "never hard-code a 
 _m "[M2] build: no more and no less than was decided" build "no more and no less"
 _m "[M2] ...the simplest way that works" build "the simplest change"
 _m "[M2] ...a failing test understood before anything else" build "find out why it fails before you change anything else"
+_m "[M2] ...the edge cases the requirements name" build "the edge cases the requirements name"
+_m "[M2] ...a gap between what was asked and what the code can do is said" build "say so in your answer"
 _m "[M3] issue-acceptance: a behaviour runs when the program runs" issue-acceptance "runs when the program runs"
 _m "[M3] ...a new file nothing uses" issue-acceptance "a new file nothing uses"
 _m "[M4] test-author's check: a narrower test does not do the part" test-author-check-batch "narrower than the part"

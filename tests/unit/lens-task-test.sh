@@ -19,6 +19,9 @@
 #             as product-owner — personas that are roles, not lens jobs
 # L5 [change] the unused security-lens plugin is gone; the security lens in
 #             the lens map stays
+# L6 [change] a target repository's own lens has its job in the repository,
+#             .zbuild/lenses/<lens>.md, and one there wins over the install's —
+#             zbuild builds any repository, and a repository may add a lens
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -111,6 +114,18 @@ assert_eq "[L5] plugins/agent/security-lens is gone" "gone" \
     "$([[ -e "$REPO_ROOT/plugins/agent/security-lens" ]] && echo there || echo gone)"
 assert_eq "[L5] the security lens is still in the lens map" "1" \
     "$(_tpl_lenses "$REPO_ROOT/config/templates/simple.yaml" | grep -cx security)"
+
+# ── L6 ───────────────────────────────────────────────────────────────────────
+print_test_section "L6: a repository's own lens"
+TGT="$TEST_TEMP_DIR/target"; mkdir -p "$TGT/.zbuild/lenses"
+printf 'What this lens looks for: TARGET-A11Y-JOB\n' > "$TGT/.zbuild/lenses/accessibility.md"
+printf 'What this lens looks for: TARGET-SECURITY-JOB\n' > "$TGT/.zbuild/lenses/security.md"
+_p_a11y="$(ZBUILD_REPO_ROOT="$TGT" _rl_build_lens_prompt accessibility "EVIDENCE" "CONTEXT" 2>/dev/null)"
+assert_contains "[L6] a lens only the repository has gets its job from the repository" "$_p_a11y" "TARGET-A11Y-JOB"
+_p_sec="$(ZBUILD_REPO_ROOT="$TGT" _rl_build_lens_prompt security "EVIDENCE" "CONTEXT" 2>/dev/null)"
+assert_contains "[L6] the repository's job for a shipped lens wins" "$_p_sec" "TARGET-SECURITY-JOB"
+_p_rt="$(ZBUILD_REPO_ROOT="$TGT" _rl_build_lens_prompt red-team "EVIDENCE" "CONTEXT" 2>/dev/null)"
+assert_contains "[L6] ...and a shipped lens the repository does not have keeps the install's" "$_p_rt" "${_rt_line:-<no red-team job>}"
 
 cleanup_test_env
 print_test_results

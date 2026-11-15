@@ -266,13 +266,17 @@ happen, and only the scope lens said what is not a finding.
   (2026-10-30 amendment).
 - **The template names the lens and, separately, the persona it runs as** (ADR-051 §2). The correctness
   lens runs as `test-strategist` and the scope lens as `product-owner`.
+- **A repository may add or change a lens**: its own `.zbuild/lenses/<lens>.md` is the lens's job, before
+  the install's (zbuild builds any repository; a repository's template may run a lens zbuild does not
+  ship, as it may name its own persona, ADR-051 §4).
 - **A lens with no job text reviews nothing**: it ends `misconfigured`, and no model is asked.
 - Every lens still gets the same evidence, and the review-lens stage special-cases no lens in code.
 
 Enforced by: `tests/unit/lens-task-test.sh` L1 (every template lens has its job, with its four parts),
 L2 (a lens's prompt holds its own job; two lenses' prompts differ by more than their names), L3 (a lens
 with no job ends misconfigured, no model asked), L4 (correctness runs as test-strategist, scope as
-product-owner), L5 (the unused `security-lens` plugin is gone, the security lens stays);
+product-owner), L5 (the unused `security-lens` plugin is gone, the security lens stays), L6 (a
+repository's own lens job, and one that wins over the install's);
 `tests/unit/retired-impact-review-report-inputs-test.sh` RT3 (the job is the lens's own text, not its
 persona's); `plugins/agent/review-lens/tests/review-lens-loop-test.sh` R1b (each lens's job gives an
 example of each level); `plugins/agent/review-lens/tests/review-lens-test.sh` #1140-11, #1140-12.
