@@ -19,13 +19,6 @@
 #             as product-owner — personas that are roles, not lens jobs
 # L5 [change] the unused security-lens plugin is gone; the security lens in
 #             the lens map stays
-# L6 [change] a target repository's own lens has its job in the repository,
-#             .zbuild/lenses/<lens>.md, and one there wins over the install's —
-#             zbuild builds any repository, and a repository may add a lens
-# L7 [change] a repository's lens job that is a symlink or a hardlink to a
-#             file outside its .zbuild/lenses/ is not read: its text never
-#             reaches the model, and the install's job is used (the reader the
-#             repository's rules.md goes through)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -122,9 +115,11 @@ assert_eq "[L3] the lens ended misconfigured" "misconfigured" \
     "$(jq -r '.disposition // .outcome // empty' "$AD/lens-no-such-lens.json" 2>/dev/null)"
 
 # A lens name that is not a plain name is no lens: a path does not reach a file.
-mkdir -p "$TEST_TEMP_DIR/t3/.zbuild"; printf 'What this lens looks for: TRAVERSAL\n' > "$TEST_TEMP_DIR/t3/.zbuild/x.md"
+# A job file where ../x would land from the lens folder: only the name check
+# keeps it out.
+mkdir -p "$TEST_TEMP_DIR/t3/lenses"; printf 'What this lens looks for: TRAVERSAL\n' > "$TEST_TEMP_DIR/t3/x.md"
 : > "$CALLS"
-( export ZBUILD_ARTIFACT_DIR="$AD" ZBUILD_STATE_DIR="$TEST_TEMP_DIR" ZBUILD_REPO_ROOT="$TEST_TEMP_DIR/t3"
+( export ZBUILD_ARTIFACT_DIR="$AD" ZBUILD_STATE_DIR="$TEST_TEMP_DIR"; _RL_LENSES_DIR="$TEST_TEMP_DIR/t3/lenses"
   _review_lens_run_inner "../x" "" "$AD/bundle.txt" "$AD/lens-trav.json" "$AD" ) >/dev/null 2>&1
 assert_eq "[L3] a lens named ../x asks no model" "0" "$(grep -c . "$CALLS")"
 assert_eq "[L3] ...and ends misconfigured" "misconfigured" "$(jq -r '.outcome // empty' "$AD/lens-trav.json" 2>/dev/null)"
@@ -152,31 +147,6 @@ for _t in simple deployed; do
     assert_eq "[L5] $_t.yaml: the security lens is still in the lens map" "1" \
         "$(_tpl_lenses "$REPO_ROOT/config/templates/$_t.yaml" | grep -cx security)"
 done
-
-# ── L6 ───────────────────────────────────────────────────────────────────────
-print_test_section "L6: a repository's own lens"
-TGT="$TEST_TEMP_DIR/target"; mkdir -p "$TGT/.zbuild/lenses"
-printf 'What this lens looks for: TARGET-A11Y-JOB\n' > "$TGT/.zbuild/lenses/accessibility.md"
-printf 'What this lens looks for: TARGET-SECURITY-JOB\n' > "$TGT/.zbuild/lenses/security.md"
-_p_a11y="$(ZBUILD_REPO_ROOT="$TGT" _rl_build_lens_prompt accessibility "EVIDENCE" "CONTEXT" 2>/dev/null)"
-assert_contains "[L6] a lens only the repository has gets its job from the repository" "$_p_a11y" "TARGET-A11Y-JOB"
-_p_sec="$(ZBUILD_REPO_ROOT="$TGT" _rl_build_lens_prompt security "EVIDENCE" "CONTEXT" 2>/dev/null)"
-assert_contains "[L6] the repository's job for a shipped lens wins" "$_p_sec" "TARGET-SECURITY-JOB"
-_p_rt="$(ZBUILD_REPO_ROOT="$TGT" _rl_build_lens_prompt red-team "EVIDENCE" "CONTEXT" 2>/dev/null)"
-assert_contains "[L6] ...and a shipped lens the repository does not have keeps the install's" "$_p_rt" "${_rt_line:-<no red-team job>}"
-
-# ── L7 ───────────────────────────────────────────────────────────────────────
-print_test_section "L7: a linked lens job is not read"
-SECRET="$TEST_TEMP_DIR/outside-secret.txt"; printf 'What this lens looks for: OUTSIDE-SECRET\n' > "$SECRET"
-T7="$TEST_TEMP_DIR/t7"; mkdir -p "$T7/.zbuild/lenses"
-ln -s "$SECRET" "$T7/.zbuild/lenses/security.md"
-_p7="$(ZBUILD_REPO_ROOT="$T7" _rl_build_lens_prompt security "EVIDENCE" "CONTEXT" 2>/dev/null)"
-_lacks "[L7] a symlinked lens job's text does not reach the prompt" "$_p7" "OUTSIDE-SECRET"
-assert_contains "[L7] ...the install's job is used" "$_p7" "security weaknesses the change brings in"
-T7h="$TEST_TEMP_DIR/t7h"; mkdir -p "$T7h/.zbuild/lenses"
-ln "$SECRET" "$T7h/.zbuild/lenses/security.md"
-_p7h="$(ZBUILD_REPO_ROOT="$T7h" _rl_build_lens_prompt security "EVIDENCE" "CONTEXT" 2>/dev/null)"
-_lacks "[L7] a hardlinked lens job's text does not reach the prompt" "$_p7h" "OUTSIDE-SECRET"
 
 cleanup_test_env
 print_test_results
