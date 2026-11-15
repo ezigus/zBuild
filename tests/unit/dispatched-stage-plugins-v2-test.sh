@@ -78,7 +78,8 @@ for _m in "$REPO_ROOT"/plugins/*/*/manifest.yaml; do
 done
 
 # Liveness: the scan must have found both kinds, or it checked nothing.
-if [[ "$_n_stage" -gt 20 && "$_n_exempt" -gt 5 ]]; then
+# 20 since #2548 removed the unused security-lens plugin.
+if [[ "$_n_stage" -ge 20 && "$_n_exempt" -gt 5 ]]; then
     assert_pass "[setup] the scan saw $_n_stage stage plugins and $_n_exempt with no stage result"
 else
     assert_fail "[setup] the scan saw stage plugins and plugins with no stage result" \

@@ -62,7 +62,6 @@ parallel.group.start
 stage.previous_work.written
 plugin.run.start
 redaction.applied
-redaction.applied
 model.route
 model.outcome
 stage.io.captured
