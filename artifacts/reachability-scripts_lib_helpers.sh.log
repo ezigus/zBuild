@@ -1,3 +1,151 @@
+### scripts/lib/helpers.sh reverted tests/e2e/fork-budget-test.sh
+
+[38;2;0;212;255m[1m  fork budget: external execs of a mocked full run (#2151, ADR-065)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-1: a script with one external exec counts exactly 1[0m
+/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.JN4x6W/tests/lib/fork-census.sh: line 26: BASH_XTRACEFD: 7: invalid value for trace file descriptor
+  [38;2;74;222;128m✓[0m [SPEC-1] the canary's one dirname is counted, its builtins are not
+  [38;2;74;222;128m✓[0m [SPEC-1] …and attributed to its call site
+/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.JN4x6W/tests/lib/fork-census.sh: line 26: BASH_XTRACEFD: 7: invalid value for trace file descriptor
+  [38;2;74;222;128m✓[0m [SPEC-1b] words inside an assigned value are not counted
+
+  [38;2;0;212;255mSPEC-5: a marked wait is not counted[0m
+/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.JN4x6W/tests/lib/fork-census.sh: line 26: BASH_XTRACEFD: 7: invalid value for trace file descriptor
+  [38;2;74;222;128m✓[0m [SPEC-5] only the unmarked sleep is counted (3 of 6)
+  [38;2;74;222;128m✓[0m [SPEC-5] …the marked one is listed apart
+
+  [38;2;0;212;255mSPEC-2: the mocked full run under tracing[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] the mocked full run exits 0 under tracing
+  [38;2;74;222;128m✓[0m [SPEC-2] …and produced events.jsonl
+
+  [38;2;0;212;255mSPEC-3/4: liveness floor and the budget[0m
+  processes: 2321 (budget 2356)
+  external execs: 1718 (budget 1760) across 80 source files
+  top call sites:
+      103  event-bus.sh:273                   flock
+       57  git:47                             /usr/bin/git
+       55  helpers.sh:236                     mv
+       55  helpers.sh:220                     cat
+       47  git:36                             /usr/bin/git
+       44  git:16                             /usr/bin/git
+       28  discovery.sh:51                    find
+       27  write-boundary.sh:311              find
+       25  merge-base.sh:55                   git
+       24  helpers.sh:284                     stat
+       18  earlier-output.sh:59               jq
+       17  helpers.sh:72                      mv
+  exempt waits (not counted — their repeat count is elapsed time):
+       12  local_engine.sh:146                sleep
+  by file:
+      204  helpers.sh
+      148  git
+      139  plugin.sh
+      122  artifact-persist.sh
+      103  event-bus.sh
+       87  route.sh
+       51  atomic.sh
+       50  earlier-output.sh
+       44  write-boundary.sh
+       40  attempt-archive.sh
+  [38;2;74;222;128m✓[0m [SPEC-3] the trace is live (80 files, 1718 execs)
+  [38;2;74;222;128m✓[0m [SPEC-6] the worker pool's poll sleep is listed as an exempt wait
+  busiest counted pool line: 1 execs (2 work units)
+  [38;2;74;222;128m✓[0m [SPEC-6] …and no counted pool line runs more than once per work unit (max 1)
+  [38;2;74;222;128m✓[0m [SPEC-7] 2321 processes ≤ PROCESS_BUDGET 2356
+  [38;2;74;222;128m✓[0m [SPEC-4] 1718 external execs ≤ FORK_BUDGET 1760
+  [38;2;74;222;128m✓[0m [SPEC-8] the run with four lenses exits 0 under tracing
+  [38;2;74;222;128m✓[0m [SPEC-8] three more lenses are three more dispatches (9 → 12)
+  [38;2;74;222;128m✓[0m [SPEC-8] plugin manifests are found (43)
+  per dispatch (9 → 12): 426 processes (budget 435, floor 20), 229 execs (budget 240, floor 50)
+  start-up (462 processes, 227 execs over 43 plugins): 11 processes a plugin (budget 11, floor 1), 6 execs (budget 6, floor 1)
+  [38;2;74;222;128m✓[0m [SPEC-8] the start-up is traced (before the first dispatch, 376888)
+  [38;2;74;222;128m✓[0m [SPEC-8] 426 processes a dispatch ≤ DISPATCH_PROCS_BUDGET 435
+  [38;2;74;222;128m✓[0m [SPEC-8] 229 execs a dispatch ≤ DISPATCH_EXECS_BUDGET 240
+  [38;2;74;222;128m✓[0m [SPEC-8] 11 start-up processes a plugin ≤ STARTUP_PROCS_PER_PLUGIN_BUDGET 11
+  [38;2;74;222;128m✓[0m [SPEC-8] 6 start-up execs a plugin ≤ STARTUP_EXECS_PER_PLUGIN_BUDGET 6
+  [38;2;74;222;128m✓[0m [SPEC-8] each floor is below its budget: the goal still ahead
+  [38;2;74;222;128m✓[0m [DSBUD-2] tests/e2e/fork-budget-test.sh passes (exits 0) after the probe change
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 22 tests passed[0m
+
+### scripts/lib/helpers.sh head tests/e2e/fork-budget-test.sh
+
+[38;2;0;212;255m[1m  fork budget: external execs of a mocked full run (#2151, ADR-065)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-1: a script with one external exec counts exactly 1[0m
+/home/runner/.zbuild/repos/ezigus/zBuild/issues/1700/worktree/tests/lib/fork-census.sh: line 26: BASH_XTRACEFD: 7: invalid value for trace file descriptor
+  [38;2;74;222;128m✓[0m [SPEC-1] the canary's one dirname is counted, its builtins are not
+  [38;2;74;222;128m✓[0m [SPEC-1] …and attributed to its call site
+/home/runner/.zbuild/repos/ezigus/zBuild/issues/1700/worktree/tests/lib/fork-census.sh: line 26: BASH_XTRACEFD: 7: invalid value for trace file descriptor
+  [38;2;74;222;128m✓[0m [SPEC-1b] words inside an assigned value are not counted
+
+  [38;2;0;212;255mSPEC-5: a marked wait is not counted[0m
+/home/runner/.zbuild/repos/ezigus/zBuild/issues/1700/worktree/tests/lib/fork-census.sh: line 26: BASH_XTRACEFD: 7: invalid value for trace file descriptor
+  [38;2;74;222;128m✓[0m [SPEC-5] only the unmarked sleep is counted (3 of 6)
+  [38;2;74;222;128m✓[0m [SPEC-5] …the marked one is listed apart
+
+  [38;2;0;212;255mSPEC-2: the mocked full run under tracing[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] the mocked full run exits 0 under tracing
+  [38;2;74;222;128m✓[0m [SPEC-2] …and produced events.jsonl
+
+  [38;2;0;212;255mSPEC-3/4: liveness floor and the budget[0m
+  processes: 2321 (budget 2356)
+  external execs: 1721 (budget 1760) across 80 source files
+  top call sites:
+      103  event-bus.sh:273                   flock
+       57  git:47                             /usr/bin/git
+       55  helpers.sh:247                     mv
+       55  helpers.sh:231                     cat
+       47  git:36                             /usr/bin/git
+       44  git:16                             /usr/bin/git
+       28  discovery.sh:51                    find
+       27  write-boundary.sh:311              find
+       25  merge-base.sh:55                   git
+       24  helpers.sh:291                     stat
+       18  earlier-output.sh:59               jq
+       17  helpers.sh:83                      mv
+  exempt waits (not counted — their repeat count is elapsed time):
+       12  local_engine.sh:146                sleep
+  by file:
+      206  helpers.sh
+      148  git
+      139  plugin.sh
+      122  artifact-persist.sh
+      103  event-bus.sh
+       87  route.sh
+       51  atomic.sh
+       50  earlier-output.sh
+       45  write-boundary.sh
+       40  attempt-archive.sh
+  [38;2;74;222;128m✓[0m [SPEC-3] the trace is live (80 files, 1721 execs)
+  [38;2;74;222;128m✓[0m [SPEC-6] the worker pool's poll sleep is listed as an exempt wait
+  busiest counted pool line: 1 execs (2 work units)
+  [38;2;74;222;128m✓[0m [SPEC-6] …and no counted pool line runs more than once per work unit (max 1)
+  [38;2;74;222;128m✓[0m [SPEC-7] 2321 processes ≤ PROCESS_BUDGET 2356
+  [38;2;74;222;128m✓[0m [SPEC-4] 1721 external execs ≤ FORK_BUDGET 1760
+  [38;2;74;222;128m✓[0m [SPEC-8] the run with four lenses exits 0 under tracing
+  [38;2;74;222;128m✓[0m [SPEC-8] three more lenses are three more dispatches (9 → 12)
+  [38;2;74;222;128m✓[0m [SPEC-8] plugin manifests are found (43)
+  per dispatch (9 → 12): 426 processes (budget 435, floor 20), 230 execs (budget 240, floor 50)
+  start-up (462 processes, 228 execs over 43 plugins): 11 processes a plugin (budget 11, floor 1), 6 execs (budget 6, floor 1)
+  [38;2;74;222;128m✓[0m [SPEC-8] the start-up is traced (before the first dispatch, 376888)
+  [38;2;74;222;128m✓[0m [SPEC-8] 426 processes a dispatch ≤ DISPATCH_PROCS_BUDGET 435
+  [38;2;74;222;128m✓[0m [SPEC-8] 230 execs a dispatch ≤ DISPATCH_EXECS_BUDGET 240
+  [38;2;74;222;128m✓[0m [SPEC-8] 11 start-up processes a plugin ≤ STARTUP_PROCS_PER_PLUGIN_BUDGET 11
+  [38;2;74;222;128m✓[0m [SPEC-8] 6 start-up execs a plugin ≤ STARTUP_EXECS_PER_PLUGIN_BUDGET 6
+  [38;2;74;222;128m✓[0m [SPEC-8] each floor is below its budget: the goal still ahead
+  [38;2;74;222;128m✓[0m [DSBUD-2] tests/e2e/fork-budget-test.sh passes (exits 0) after the probe change
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 22 tests passed[0m
+
 ### scripts/lib/helpers.sh reverted tests/unit/atomic-write-cost-test.sh
 
 [38;2;0;212;255m[1m  atomic_write: what it starts, and what it keeps (ADR-065 §5)[0m
