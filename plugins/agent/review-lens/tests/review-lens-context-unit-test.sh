@@ -61,7 +61,7 @@ PLUGIN_DIR="$REPO_ROOT/plugins/agent/review-lens"
 source "$PLUGIN_DIR/plugin.sh"
 
 PROMPT_F="$TEST_TEMP_DIR/prompt.txt"
-route_to_model() { printf '%s' "$2" > "$PROMPT_F"; printf '%s' '{"score":9,"findings":[]}'; return 0; }
+route_to_model() { zb_test_lens_check_answer "$2" && return 0; printf '%s' "$2" > "$PROMPT_F"; printf '%s' '{"score":9,"findings":[]}'; return 0; }
 
 ART="$TEST_TEMP_DIR/artifacts"; mkdir -p "$ART" "$TEST_TEMP_DIR/stage-inputs"
 printf 'ISSUE-BODY-MARKER migrate the validate plugin to contract v2\n' > "$TEST_TEMP_DIR/intake.md"
@@ -199,7 +199,7 @@ while IFS= read -r _c13; do
 done <<< "$_c13_lenses"
 
 print_test_section "C10: introduced survives the lens's own result file"
-route_to_model() { printf '%s' '{"score":7,"findings":[{"quote":"changed","file":"a.sh","category":"x","severity":"medium","line":3,"message":"OLD-BEHAVIOUR","introduced":false},{"quote":"changed","file":"b.sh","category":"y","severity":"low","line":5,"message":"NEW-THING","introduced":true}]}'; return 0; }
+route_to_model() { zb_test_lens_check_answer "$2" && return 0; printf '%s' '{"score":7,"findings":[{"trigger":"a caller passes this on a normal run","quote":"changed","file":"a.sh","category":"x","severity":"medium","line":3,"message":"OLD-BEHAVIOUR","introduced":false},{"trigger":"a caller passes this on a normal run","quote":"changed","file":"b.sh","category":"y","severity":"low","line":5,"message":"NEW-THING","introduced":true}]}'; return 0; }
 _review_lens_run_inner red-team "$TEST_TEMP_DIR/scope-manifest.md" "$ART/diff.patch" "$ART/lens-red-team.json" "$ART" >/dev/null 2>&1 || true
 assert_eq "[C10] the lens's result keeps introduced:false" "false" \
     "$(jq -r '[.findings[] | select(.message == "OLD-BEHAVIOUR") | .introduced][0] | tostring' "$ART/lens-red-team.json" 2>/dev/null || true)"

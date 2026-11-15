@@ -93,7 +93,7 @@ print_test_section "Q2: design's coverage check"
     source "$REPO_ROOT/plugins/agent/design/plugin.sh"
     export ZBUILD_REPO_ROOT="$XR"
     _N="$TEST_TEMP_DIR/q2-n"; _P="$TEST_TEMP_DIR/q2-p"
-    route_to_model() {
+    route_to_model() { zb_test_lens_check_answer "$2" && return 0;
         local n; n=$(( $(cat "$_N") + 1 )); printf '%s' "$n" > "$_N"; printf '%s' "$2" > "$_P.$n"
         if [[ $n -eq 1 ]]; then printf '%s' "$_R1"; else printf '%s' "${_R2:-$_R1}"; fi
     }
@@ -173,7 +173,7 @@ print_test_section "Q3: test-author's assertion check"
     # shellcheck source=../../plugins/agent/test-author/plugin.sh
     source "$REPO_ROOT/plugins/agent/test-author/plugin.sh"
     _N="$TEST_TEMP_DIR/q3-n"; _P="$TEST_TEMP_DIR/q3-p"
-    route_to_model() {
+    route_to_model() { zb_test_lens_check_answer "$2" && return 0;
         cat >/dev/null
         local n; n=$(( $(cat "$_N") + 1 )); printf '%s' "$n" > "$_N"; printf '%s' "$2" > "$_P.$n"
         if [[ $n -eq 1 ]]; then printf '%s' "$_R1"; else printf '%s' "${_R2:-$_R1}"; fi
@@ -221,7 +221,7 @@ _mk_inputs() {  # <dir> — the issue, its requirements, a design, a diff, a tes
     (
         # shellcheck source=../../plugins/agent/intake/plugin.sh
         source "$REPO_ROOT/plugins/agent/intake/plugin.sh" >/dev/null 2>&1
-        route_to_model() {
+        route_to_model() { zb_test_lens_check_answer "$2" && return 0;
             if [[ "$2" == *"check a list of requirements"* ]]; then printf 'MISSING: none\n'
             else printf 'REQUIREMENT: RQFLAG-1 add a --dry-run flag\nREQUIREMENT: RQCNFG-1 refuse a missing config file\n'; fi
         }
@@ -238,7 +238,7 @@ _mk_inputs() {  # <dir> — the issue, its requirements, a design, a diff, a tes
     source "$REPO_ROOT/scripts/lib/stage-result.sh"
     export ZBUILD_REPO_ROOT="$XR"
     _N="$TEST_TEMP_DIR/q4-n"; _P="$TEST_TEMP_DIR/q4-p"
-    route_to_model() {
+    route_to_model() { zb_test_lens_check_answer "$2" && return 0;
         local n; n=$(( $(cat "$_N") + 1 )); printf '%s' "$n" > "$_N"; printf '%s' "$2" > "$_P.$n"
         if [[ $n -eq 1 ]]; then printf '%s\n' "$_R1"; else printf '%s\n' "${_R2:-$_R1}"; fi
     }
@@ -293,7 +293,7 @@ print_test_section "Q5: a review lens quotes each finding"
     printf '%s\n' 'diff --git a/scripts/cfg.sh b/scripts/cfg.sh' '-refuse_missing_config() { [[ -f "$1" ]] || return 2; }' '+refuse_missing_config() { [[ -r "$1" ]] || return 3; }' > "$ART/diff.patch"
     printf 'scope: all\n' > "$TEST_TEMP_DIR/q5-scope.md"
     _N="$TEST_TEMP_DIR/q5-n"; _P="$TEST_TEMP_DIR/q5-p"
-    route_to_model() {
+    route_to_model() { zb_test_lens_check_answer "$2" && return 0;
         local n; n=$(( $(cat "$_N") + 1 )); printf '%s' "$n" > "$_N"; printf '%s' "$2" > "$_P.$n"
         if [[ $n -eq 1 ]]; then printf '%s' "$_R1"; else printf '%s' "${_R2:-$_R1}"; fi
     }
@@ -303,13 +303,13 @@ print_test_section "Q5: a review lens quotes each finding"
             _review_lens_run_inner red-team "$TEST_TEMP_DIR/q5-scope.md" "$ART/diff.patch" "$ART/lens-red-team.json" "$ART" >/dev/null 2>&1 || true
         jq -r '.outcome // "none"' "$ART/lens-red-team.json" 2>/dev/null
     }
-    _f() { printf '{"score":5,"findings":[{"file":"scripts/cfg.sh","severity":"high","message":"exit code changed","introduced":true,"quote":%s}]}' "$1"; }
+    _f() { printf '{"score":5,"findings":[{"trigger":"a caller passes this on a normal run","file":"scripts/cfg.sh","severity":"high","message":"exit code changed","introduced":true,"quote":%s}]}' "$1"; }
     _R1="$(_f '"[[ -r \"$1\" ]] || return 3"')"; _R2=""
     echo "Q5a|$(_lens)|$(cat "$_N")|$(jq -r '.findings[0].quote // ""' "$ART/lens-red-team.json")"
     echo "Q5p|$([[ "$(cat "$_P.1")" == *'"quote": "<the exact text'* ]] && echo asked)"
     _R1="$(_f '"[[ -f \"$1\" ]] || return 2"')"; _R2=""
     echo "Q5b|$(_lens)"
-    _R1='{"score":5,"findings":[{"file":"scripts/cfg.sh","severity":"high","message":"m","introduced":true}]}'; _R2="$(_f '"[[ -r \"$1\" ]] || return 3"')"
+    _R1='{"score":5,"findings":[{"trigger":"a caller passes this on a normal run","file":"scripts/cfg.sh","severity":"high","message":"m","introduced":true}]}'; _R2="$(_f '"[[ -r \"$1\" ]] || return 3"')"
     echo "Q5c|$(_lens)|$(cat "$_N")|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
     _R1="$(_f '"return 9"')"; _R2=""
     echo "Q5d|$(_lens)|$(cat "$_N")|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"

@@ -37,13 +37,13 @@ export _RL_CALLS="$TEST_TEMP_DIR/route-calls.log"
 export _RL_PROMPT="$TEST_TEMP_DIR/last-prompt.txt"
 : > "$_RL_CALLS"
 # shellcheck disable=SC2329  # invoked indirectly by the sourced plugin
-route_to_model() {
+route_to_model() { zb_test_lens_check_answer "$2" && return 0;
     printf 'call\n' >> "$_RL_CALLS"
     printf '%s' "$2" > "$_RL_PROMPT"
     if [[ "$2" == *'"security" review lens'* ]]; then
-        printf '%s' '{"score":3,"findings":[{"quote":"exec user input","file":"core/y.sh","category":"injection","severity":"CRITICAL","line":10,"message":"shell injection risk"}]}'
+        printf '%s' '{"score":3,"findings":[{"trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/y.sh","category":"injection","severity":"CRITICAL","line":10,"message":"shell injection risk"}]}'
     elif [[ "$2" == *'"performance" review lens'* ]]; then
-        printf '%s' '{"score":8,"findings":[{"quote":"exec user input","file":"core/z.sh","category":"perf","severity":"low","line":3,"message":"repeated read"}]}'
+        printf '%s' '{"score":8,"findings":[{"trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/z.sh","category":"perf","severity":"low","line":3,"message":"repeated read"}]}'
     else
         printf '%s' '{"score":10,"findings":[]}'
     fi
@@ -67,10 +67,10 @@ EOF
 
 # Restore a stable happy-path mock for the v2 tests below (captures prompt).
 # shellcheck disable=SC2329
-route_to_model() {
+route_to_model() { zb_test_lens_check_answer "$2" && return 0;
     printf 'call\n' >> "$_RL_CALLS"
     printf '%s' "$2" > "$_RL_PROMPT"
-    printf '%s' '{"score":7,"findings":[{"quote":"exec user input","file":"core/a.sh","category":"correctness","severity":"high","line":5,"message":"bug found"}]}'
+    printf '%s' '{"score":7,"findings":[{"trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/a.sh","category":"correctness","severity":"high","line":5,"message":"bug found"}]}'
     return 0
 }
 
@@ -161,7 +161,7 @@ assert_eq "[SPEC-1] findings[] present and intact (1 finding)" \
 
 # ─── SPEC-2 [change]: router-failure degrade writes result_contract:2 ─────────
 # shellcheck disable=SC2329
-route_to_model() { printf 'call\n' >> "$_RL_CALLS"; return 2; }
+route_to_model() { zb_test_lens_check_answer "$2" && return 0; printf 'call\n' >> "$_RL_CALLS"; return 2; }
 out_1840_s2="$artifact_dir/lens-1840spec2.json"
 set +e
 _review_lens_run_inner "1840spec2" "$scope_manifest" "$evidence" "$out_1840_s2" "$artifact_dir"
@@ -174,7 +174,7 @@ assert_eq "[SPEC-2] outcome == misconfigured on a router setup failure (rc=2, #2
 
 # ─── SPEC-3 [change]: unparseable-reply degrade writes result_contract:2 ──────
 # shellcheck disable=SC2329
-route_to_model() { printf 'call\n' >> "$_RL_CALLS"; printf '%s' 'not json at all'; return 0; }
+route_to_model() { zb_test_lens_check_answer "$2" && return 0; printf 'call\n' >> "$_RL_CALLS"; printf '%s' 'not json at all'; return 0; }
 out_1840_s3="$artifact_dir/lens-1840spec3.json"
 set +e
 _review_lens_run_inner "1840spec3" "$scope_manifest" "$evidence" "$out_1840_s3" "$artifact_dir"
@@ -190,11 +190,11 @@ assert_eq "[SPEC-3] outcome == unusable on unparseable reply (#2187)" \
 # a second JSON object that fails the schema gate (no .findings array).
 # LAST-wins selects the broken postamble object; schema-gate recovery must find
 # the valid first object — producing a valid lens result, NOT review_lens.unparseable.
-_1840_postamble_resp='{"score":4,"findings":[{"quote":"exec user input","file":"b.sh","severity":"low","line":2,"message":"nit"}]}
+_1840_postamble_resp='{"score":4,"findings":[{"trigger":"a caller passes this on a normal run","quote":"exec user input","file":"b.sh","severity":"low","line":2,"message":"nit"}]}
 Some postamble reasoning text here.
 {"not_a_lens_object":true,"no_findings_key":"wrong"}'
 # shellcheck disable=SC2329
-route_to_model() {
+route_to_model() { zb_test_lens_check_answer "$2" && return 0;
     printf 'call\n' >> "$_RL_CALLS"
     printf '%s' "$_1840_postamble_resp"
     return 0
@@ -232,7 +232,7 @@ _1840_s5_orig_rrtm="$(declare -f _route_resolve_max_turns 2>/dev/null || true)"
 # shellcheck disable=SC2329
 _route_resolve_max_turns() { printf '12'; }
 # shellcheck disable=SC2329
-route_to_model() {
+route_to_model() { zb_test_lens_check_answer "$2" && return 0;
     printf '%s' "$2" > "$_RL_PROMPT"
     printf 'call\n' >> "$_RL_CALLS"
     printf '%s' '{"score":5,"findings":[]}'
@@ -299,7 +299,7 @@ assert_eq "[SPEC-6] _route_resolve_max_turns returns manifest config.router.max_
 # ─── SPEC-8 [guard]: existing advisory degrade behavior unchanged ─────────────
 # Router failure path: rc=0, review_lens.failed emitted, advisory-absence language.
 # shellcheck disable=SC2329
-route_to_model() { printf 'call\n' >> "$_RL_CALLS"; return 2; }
+route_to_model() { zb_test_lens_check_answer "$2" && return 0; printf 'call\n' >> "$_RL_CALLS"; return 2; }
 out_1840_s8f="$artifact_dir/lens-1840spec8fail.json"
 rm -f "$artifact_dir/lens-1840spec8fail-summary.md" 2>/dev/null || true
 : > "$ZBUILD_EVENTS_JSONL"
@@ -322,7 +322,7 @@ else
 fi
 # Unparseable path: rc=0, review_lens.unparseable emitted, advisory-absence language.
 # shellcheck disable=SC2329
-route_to_model() { printf 'call\n' >> "$_RL_CALLS"; printf '%s' 'not json'; return 0; }
+route_to_model() { zb_test_lens_check_answer "$2" && return 0; printf 'call\n' >> "$_RL_CALLS"; printf '%s' 'not json'; return 0; }
 out_1840_s8u="$artifact_dir/lens-1840spec8unparse.json"
 rm -f "$artifact_dir/lens-1840spec8unparse-summary.md" 2>/dev/null || true
 : > "$ZBUILD_EVENTS_JSONL"
@@ -350,10 +350,10 @@ fi
 # reason) must coexist with them. If any v1 field were dropped this block fails on the
 # empty/null result from jq.
 # shellcheck disable=SC2329
-route_to_model() {
+route_to_model() { zb_test_lens_check_answer "$2" && return 0;
     printf 'call\n' >> "$_RL_CALLS"
     printf '%s' "$2" > "$_RL_PROMPT"
-    printf '%s' '{"score":6,"findings":[{"quote":"exec user input","file":"core/b.sh","category":"correctness","severity":"medium","line":3,"message":"null deref"}]}'
+    printf '%s' '{"score":6,"findings":[{"trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/b.sh","category":"correctness","severity":"medium","line":3,"message":"null deref"}]}'
     return 0
 }
 out_1840_s9="$artifact_dir/lens-1840spec9.json"
@@ -422,9 +422,9 @@ fi
 # A lens fails when it found a high or critical problem the change introduced;
 # one the code before the change already had does not fail it.
 # shellcheck disable=SC2329
-route_to_model() {
+route_to_model() { zb_test_lens_check_answer "$2" && return 0;
     printf 'call\n' >> "$_RL_CALLS"
-    printf '%s' '{"score":3,"findings":[{"quote":"exec user input","file":"core/c.sh","category":"injection","severity":"high","line":9,"message":"unquoted eval","introduced":true}]}'
+    printf '%s' '{"score":3,"findings":[{"trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/c.sh","category":"injection","severity":"high","line":9,"message":"unquoted eval","introduced":true}]}'
     return 0
 }
 out_2366_f="$artifact_dir/lens-2366fail.json"
@@ -436,9 +436,9 @@ assert_eq "[#2366] a high problem the change introduced fails the lens" \
 assert_eq "[#2366] ...its findings stay where the aggregator reads them" \
     "1" "$(jq '.findings | length' "$out_2366_f")"
 # shellcheck disable=SC2329
-route_to_model() {
+route_to_model() { zb_test_lens_check_answer "$2" && return 0;
     printf 'call\n' >> "$_RL_CALLS"
-    printf '%s' '{"score":4,"findings":[{"quote":"exec user input","file":"core/c.sh","category":"injection","severity":"critical","line":9,"message":"old eval","introduced":false}]}'
+    printf '%s' '{"score":4,"findings":[{"trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/c.sh","category":"injection","severity":"critical","line":9,"message":"old eval","introduced":false}]}'
     return 0
 }
 out_2366_p="$artifact_dir/lens-2366pre.json"

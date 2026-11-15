@@ -1,6 +1,6 @@
 # ADR-051 — Engine-owned, stage-keyed data provision (persona = first instance)
 
-**Status:** Accepted (2026-07-26); amended 2026-10-12 (§3, §6, §7, §8: the provider delivers the persona; no stage frames one); amended 2026-11-14 (§2, §3, §5, §7: each model call runs as the persona its stage's manifest names for it, not listed here; §9: what a perspective holds); amended 2026-11-15 (#2548, §2 §5 §7 §9: a persona is a role and its mindset, the job is in the call's prompt; there is no generic persona)
+**Status:** Accepted (2026-07-26); amended 2026-10-12 (§3, §6, §7, §8: the provider delivers the persona; no stage frames one); amended 2026-11-14 (§2, §3, §5, §7: each model call runs as the persona its stage's manifest names for it, not listed here; §9: what a perspective holds); amended 2026-11-15 (#2552, §5: a map element's persona is its main call's only); amended 2026-11-15 (#2548, §2 §5 §7 §9: a persona is a role and its mindset, the job is in the call's prompt; there is no generic persona)
 **Issue:** #1303 (Initiative 1.3 — "Personas as Data", #1551)
 **Related:** [ADR-047](ADR-047-stage-agnostic-mechanics.md) (stage-agnostic mechanics),
 [ADR-049](ADR-049-vision-document-standard.md) (generic preamble injection),
@@ -124,7 +124,7 @@ leaked via `ZBUILD_PLUGINS_ROOT` into nested runners — preserving
 ### 5. Resolution precedence
 
 Mirroring `resolve_tier` (`scripts/lib/tier-resolve.sh:55`):
-`ZBUILD_<STAGE>_PERSONA` env  >  a map element's own `persona:`  >  template `stage_definitions.<stage>.persona` (the
+`ZBUILD_<STAGE>_PERSONA` env  >  a map element's own `persona:` (the `main` call's only, amended 2026-11-15, #2552: a call that judges the element's work, such as a lens's `check`, runs as its manifest's persona)  >  template `stage_definitions.<stage>.persona` (the
 `main` call's only)  >  the manifest's persona for the call (`personas:`, amended 2026-11-14)  >  template `config.persona`  >  **no persona** (amended 2026-11-15, #2548: the `generic` persona, "Implement the task as specified.", was a task, not a role; a call none of these name runs with none). The first non-empty binding wins; a divergent env override against
 a template value is auditable, consistent with `_route_resolve_knob` (`route.sh:457`).
 
@@ -285,4 +285,5 @@ This ADR is the gate for Initiative 1.3; the stories that codify it are `blocked
 - §2, §3, §5 amendment 2026-11-14 (each call runs as the persona its manifest names; a template pin is the main call's only; a manifest's unknown call or missing persona is refused; the shipped manifests name each call's persona) → `tests/unit/manifest-call-persona-test.sh` MP1–MP6
 - §8 (no stage frames a persona) → `tests/unit/prompt-contract-every-stage-test.sh` E5
 - §9 (a perspective, and the summary sent with it, is no identity line and names nothing of the pipeline) → `tests/unit/persona-perspective-test.sh` P1–P4
+- §5 amendment 2026-11-15 (#2552: a map element's persona is its main call's only) → `tests/unit/lens-check-test.sh` K6
 - §2 §5 §7 §9 amendment 2026-11-15 (#2548: a perspective is a role's mindset in at most three sentences and holds no job; the nine roles ship, no correctness, scope or generic; a call none name runs with no persona; each job rule a persona held is in the prompt of the call that needs it) → `tests/unit/persona-perspective-test.sh` P5–P8; `tests/unit/persona-kind-validation-test.sh` SPEC-8; `tests/unit/manifest-call-persona-test.sh` MP3; `tests/unit/map-element-persona-test.sh` ME4; `tests/unit/prompt-contract-every-stage-test.sh` M1–M6

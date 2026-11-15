@@ -37,16 +37,16 @@ ART="$TEST_TEMP_DIR/artifacts"; mkdir -p "$ART"
 # #2464 (ADR-072 §3): each finding quotes the change.
 printf 'diff --git a/a.sh b/a.sh\n+x=1\n' > "$ART/diff.patch"; printf 'scope: all\n' > "$TEST_TEMP_DIR/scope-manifest.md"
 _lens() {  # <fail_on> <findings json> — prints the lens's outcome
-    route_to_model() { printf '%s' "{\"score\":7,\"findings\":$_FINDINGS}"; return 0; }
+    route_to_model() { zb_test_lens_check_answer "$2" && return 0; printf '%s' "{\"score\":7,\"findings\":$_FINDINGS}"; return 0; }
     rm -f "$ART/lens-red-team.json"
     _FINDINGS="$2" _TPL_STAGE_FAIL_ON_review_lenses="$1" ZBUILD_CURRENT_STAGE=review_lenses \
         ZBUILD_REVIEW_LENS_ID=red-team \
         _review_lens_run_inner red-team "$TEST_TEMP_DIR/scope-manifest.md" "$ART/diff.patch" "$ART/lens-red-team.json" "$ART" >/dev/null 2>&1 || true
     jq -r '.outcome // "none"' "$ART/lens-red-team.json" 2>/dev/null
 }
-_med='[{"quote":"x=1","file":"a.sh","category":"x","severity":"medium","line":1,"message":"m","introduced":true}]'
-_high_old='[{"quote":"x=1","file":"a.sh","category":"x","severity":"high","line":1,"message":"h","introduced":false}]'
-_high='[{"quote":"x=1","file":"a.sh","category":"x","severity":"high","line":1,"message":"h","introduced":true}]'
+_med='[{"trigger":"a caller passes this on a normal run","quote":"x=1","file":"a.sh","category":"x","severity":"medium","line":1,"message":"m","introduced":true}]'
+_high_old='[{"trigger":"a caller passes this on a normal run","quote":"x=1","file":"a.sh","category":"x","severity":"high","line":1,"message":"h","introduced":false}]'
+_high='[{"trigger":"a caller passes this on a normal run","quote":"x=1","file":"a.sh","category":"x","severity":"high","line":1,"message":"h","introduced":true}]'
 assert_eq "[F2] fail_on medium: a medium problem the change introduced fails" "fail" "$(_lens "medium" "$_med")"
 assert_eq "[F2] fail_on critical: a high problem passes" "pass" "$(_lens "critical" "$_high")"
 assert_eq "[F2] fail_on high: a high problem the change did NOT introduce passes" "pass" "$(_lens "high critical" "$_high_old")"

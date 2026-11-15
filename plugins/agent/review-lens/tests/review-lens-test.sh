@@ -46,13 +46,13 @@ export _RL_CALLS="$TEST_TEMP_DIR/route-calls.log"
 export _RL_PROMPT="$TEST_TEMP_DIR/last-prompt.txt"
 : > "$_RL_CALLS"
 # shellcheck disable=SC2329  # invoked indirectly by the sourced plugin
-route_to_model() {
+route_to_model() { zb_test_lens_check_answer "$2" && return 0;
     printf 'call\n' >> "$_RL_CALLS"
     printf '%s' "$2" > "$_RL_PROMPT"
     if [[ "$2" == *'"security" lens'* ]]; then
-        printf '%s' '{"score":3,"findings":[{"quote":"exec user input","file":"core/y.sh","category":"injection","severity":"CRITICAL","line":10,"message":"shell injection risk"}]}'
+        printf '%s' '{"score":3,"findings":[{"trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/y.sh","category":"injection","severity":"CRITICAL","line":10,"message":"shell injection risk"}]}'
     elif [[ "$2" == *'"performance" lens'* ]]; then
-        printf '%s' '{"score":8,"findings":[{"quote":"exec user input","file":"core/z.sh","category":"perf","severity":"low","line":3,"message":"repeated read"}]}'
+        printf '%s' '{"score":8,"findings":[{"trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/z.sh","category":"perf","severity":"low","line":3,"message":"repeated read"}]}'
     else
         printf '%s' '{"score":10,"findings":[]}'
     fi
@@ -126,7 +126,7 @@ assert_file_exists "[#1140-4] lens result written for empty evidence" "$out_empt
 
 # ─── SPEC-5: unparseable model output degrades to empty + event + rc 0 ───────
 # shellcheck disable=SC2329  # re-defined mock invoked indirectly by the plugin
-route_to_model() { printf 'call\n' >> "$_RL_CALLS"; printf '%s' 'not json at all'; return 0; }
+route_to_model() { zb_test_lens_check_answer "$2" && return 0; printf 'call\n' >> "$_RL_CALLS"; printf '%s' 'not json at all'; return 0; }
 out_bad="$artifact_dir/lens-edge-case.json"
 : > "$_RL_CALLS"
 set +e
@@ -143,7 +143,7 @@ fi
 
 # ─── SPEC-6: router failure (rc!=0) degrades to empty + review_lens.failed ───
 # shellcheck disable=SC2329  # re-defined mock invoked indirectly by the plugin
-route_to_model() { printf 'call\n' >> "$_RL_CALLS"; return 2; }
+route_to_model() { zb_test_lens_check_answer "$2" && return 0; printf 'call\n' >> "$_RL_CALLS"; return 2; }
 out_fail="$artifact_dir/lens-integration.json"
 set +e
 _review_lens_run_inner "integration" "$scope_manifest" "$evidence" "$out_fail" "$artifact_dir"
@@ -158,7 +158,7 @@ else
 fi
 # restore happy mock
 # shellcheck disable=SC2329  # re-defined mock invoked indirectly by the plugin
-route_to_model() {
+route_to_model() { zb_test_lens_check_answer "$2" && return 0;
     printf 'call\n' >> "$_RL_CALLS"; printf '%s' "$2" > "$_RL_PROMPT"
     printf '%s' '{"score":10,"findings":[]}'; return 0
 }

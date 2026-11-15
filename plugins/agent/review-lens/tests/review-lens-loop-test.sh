@@ -41,7 +41,7 @@ zb_test_lens_jobs r2a r2b r2c r3 r3b r7
 
 _RLL_REPLY=""
 # shellcheck disable=SC2329  # invoked by the sourced plugin
-route_to_model() { printf '%s' "$_RLL_REPLY"; }
+route_to_model() { zb_test_lens_check_answer "$2" && return 0; printf '%s' "$_RLL_REPLY"; }
 
 artifact_dir="$TEST_TEMP_DIR/artifacts"; mkdir -p "$artifact_dir"
 scope_manifest="$TEST_TEMP_DIR/scope-manifest.md"; printf '+ core/\n' > "$scope_manifest"
@@ -49,7 +49,7 @@ evidence="$artifact_dir/diff.patch"; printf 'diff --git a/core/x.sh b/core/x.sh\
 export ZBUILD_CURRENT_STAGE=review_lenses
 export _TPL_STAGE_FAIL_ON_review_lenses="medium high critical"
 _f() {   # _f <severity> <introduced> <fix> <message>
-    printf '{"quote":"new line","file":"core/x.sh","line":3,"category":"logic","severity":"%s","introduced":%s,"fix":"%s","message":"%s"}' "$1" "$2" "$3" "$4"
+    printf '{"trigger":"a caller passes this on a normal run","quote":"new line","file":"core/x.sh","line":3,"category":"logic","severity":"%s","introduced":%s,"fix":"%s","message":"%s"}' "$1" "$2" "$3" "$4"
 }
 _lens() {   # _lens <id> <finding-json>... — run one lens on a reply holding those findings
     local id="$1"; shift

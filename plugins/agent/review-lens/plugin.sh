@@ -58,6 +58,8 @@ source "$_RL_ROOT/scripts/lib/acceptance-block.sh"
 source "$_RL_ROOT/core/plugin-registry/registry.sh"
 # shellcheck source=lib/charters.sh
 source "$_RL_DIR/lib/charters.sh"
+# shellcheck source=lib/check.sh
+source "$_RL_DIR/lib/check.sh"
 
 # ─── _review_lens_envelope_schema_ok <json> ──────────────────────────────────
 # Schema gate for _llm_envelope_parse: accepts an object with a .findings array.
@@ -97,9 +99,16 @@ _rl_quote_problem_v() {
     local -n _rqp="$1"; local _rqp_n=0 _rqp_f _rqp_q _rqp_w _rqp_old
     local -a _rqp_bad=()
     _rqp=""; _RL_QUOTE_FILES=()
-    [[ "$2" == *'"file"'* || "$2" == *'"quote"'* || "$2" == *'"message"'* ]] || return 0
-    while IFS=$'\037' read -r -d '' _rqp_f _rqp_q; do
+    # No findings, nothing to check; a finding of any form is read (a plain
+    # string has no quote or trigger — lens review on #2552).
+    [[ "$2" =~ \"findings\"[[:space:]]*:[[:space:]]*\[[[:space:]]*\] || "$2" != *'"findings"'* ]] && return 0
+    while IFS=$'\037' read -r -d '' _rqp_f _rqp_q _rqp_t; do
         _rqp_n=$(( _rqp_n + 1 ))
+        # #2552 (ADR-038): every finding says what makes it happen.
+        # Filler is no trigger (lens review on #2552).
+        local _rqp_tl="${_rqp_t,,}"; _rqp_tl="${_rqp_tl//[[:space:].]/}"
+        [[ -n "$_rqp_tl" && ! "$_rqp_tl" =~ ^(unknown|n/a|na|none|tbd|-+|null|\[\]|\{\})$ ]] \
+            || _rqp_bad+=("finding $_rqp_n has no trigger: say what makes it happen on a real run")
         [[ -n "$_rqp_f" && "$_rqp_f" != unknown ]] && _RL_QUOTE_FILES+=("$4/$_rqp_f")
         if [[ -z "${_rqp_q//[[:space:]]/}" ]]; then _rqp_bad+=("finding $_rqp_n has no quote"); continue; fi
         judge_quote_check_v _rqp_w "$_rqp_f | $_rqp_q" "" "$4" && continue
@@ -114,7 +123,7 @@ _rl_quote_problem_v() {
     # and quote split by a unit separator and ended by a NUL, so a quote keeps
     # its line breaks and every other character as written (#2545). @tsv would
     # double a backslash in the quote.
-    done < <(jq -j '(.findings // [])[]? | [(if type == "object" then (.file // "") else "" end), (if type == "object" then (.quote // "") else "" end)] | map(tostring | gsub("\u001f"; " ")) | join("\u001f") + "\u0000"' <<< "$2" 2>/dev/null)
+    done < <(jq -j '(.findings // [])[]? | [(if type == "object" then (.file // "") else "" end), (if type == "object" then (.quote // "") else "" end), (if type == "object" then (.trigger // "") else "" end)] | map(tostring | gsub("\u001f"; " ")) | join("\u001f") + "\u0000"' <<< "$2" 2>/dev/null)
     [[ ${#_rqp_bad[@]} -gt 0 ]] || return 0
     local IFS=';'; _rqp="${_rqp_bad[*]}"; _rqp="${_rqp//;/; }"
 }
@@ -508,6 +517,8 @@ _review_lens_run_inner() {
               line: (.line // null),
               message: (.message // (.|tostring)),
               quote: (.quote // ""),
+              # #2552: what makes it happen on a real run.
+              trigger: (.trigger // ""),
               # ADR-038 amendment: whether the change introduced it. Kept here —
               # dropping it made every finding count as new (review on #2215).
               introduced: (if .introduced == false then false else true end),
@@ -517,7 +528,7 @@ _review_lens_run_inner() {
                     then (.fix|tostring|ascii_downcase) else "code" end)
             } else {
               file: "unknown", category: "general", severity: "low",
-              line: null, message: (.|tostring), quote: "", introduced: true, fix: "code"
+              line: null, message: (.|tostring), quote: "", trigger: "", introduced: true, fix: "code"
             } end ]
         }' 2>/dev/null || true)"
     if [[ -z "$normalized" ]]; then
@@ -528,6 +539,19 @@ _review_lens_run_inner() {
             "Advisory lens: no findings were produced. Absence here is not evidence of a clean change."
         emit_event "plugin.result" "plugin=review-lens" "lens=$lens" "score=0"
         return 0
+    fi
+
+    # #2552 (ADR-038): a second call tries to knock each finding down; one it
+    # does is kept under knocked_down and reaches no stage.
+    _rl_check_v normalized "$normalized" "$lens" "$out" "$_rl_change" "$_rl_cfp" "$_rl_repo"
+    # A check cut short ends the lens as its own call would (lens review on #2552).
+    if [[ "$_RL_CHECK_RC" -eq 130 ]]; then
+        [[ "${_rl_interrupted:-0}" == "1" ]] || _review_lens_write_result "$out" interrupted "signal_interrupt"
+        return 130
+    fi
+    if [[ "$_RL_CHECK_RC" -eq 10 ]]; then
+        _review_lens_write_result "$out" out_of_turns "the check of the lens's findings ran out of turns"
+        return 10
     fi
 
     # Primary output (manifest provides.outputs, primary:true) is
@@ -552,7 +576,7 @@ _review_lens_run_inner() {
     _rl_route="$(printf '%s' "$normalized" | jq -c --arg on " $_rl_fail_on " --arg n "$lens" '
         def at_fail_on: .severity as $s | ($on | contains(" \($s) "));
         # #2506 (ADR-072 §3): shown with its quote, never a line — lines move.
-        def line: "\($n) lens, \(.severity): \(.message) (\(.file)\(if (.quote | tostring) != "" then ": \"\(.quote | tostring | gsub("[\r\n]+"; " "))\"" else "" end); fix: \(.fix))";
+        def line: "\($n) lens, \(.severity): \(.message) (\(.file)\(if (.quote | tostring) != "" then ": \"\(.quote | tostring | gsub("[\r\n]+"; " "))\"" else "" end); happens when: \(.trigger // "" | tostring | gsub("[\r\n]+"; " ")); fix: \(.fix))";
         # #2491 (ADR-071 §1): a finding the code must fix goes to `change`.
         def routed: {text: line, blocking: at_fail_on} + (if .fix == "code" then {topic: "change-findings"} else {} end);
         [.findings[] | select(.fix == "issue" and at_fail_on)] as $issue
@@ -577,6 +601,12 @@ _review_lens_run_inner() {
     findings_count="$(printf '%s' "$normalized" | jq '.findings | length' 2>/dev/null || echo 0)"
     local _rl_head _rl_body
     _rl_summary_head_v _rl_head "$lens" "$normalized" _rl_body
+    # #2552: what the check knocked down reaches no stage — a person sees it here.
+    if [[ "$normalized" == *'"knocked_down":[{'* ]]; then
+        local _rl_kd; _rl_kd="$(jq -r '.knocked_down[] | "- knocked down by the check: \(.message) — \(.why)"' <<< "$normalized" 2>/dev/null || true)"
+        [[ -n "$_rl_kd" ]] && _rl_body+="${_rl_body:+$'\n'}$_rl_kd"
+    fi
+    [[ -n "$_RL_CHECK_NOTE" ]] && _rl_body+="${_rl_body:+$'\n'}- $_RL_CHECK_NOTE"
     stage_summary_write "$artifact_dir/lens-${lens}-summary.md" "review-lens-${lens}" "$_rl_outcome" \
         "$_rl_head" "${_rl_body:+$_rl_body$'\n'}- score: $score"
     emit_event "plugin.result" "plugin=review-lens" \

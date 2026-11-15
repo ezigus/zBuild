@@ -1562,3 +1562,16 @@ zb_test_lens_jobs() {
     done
     _RL_LENSES_DIR="$_d"
 }
+
+# zb_test_lens_check_answer <prompt> — when <prompt> is a lens's check call
+# (#2552), print "<n>: stands" for each finding it lists, so every finding
+# stands, and return 0; return 1 for any other prompt. A lens stub calls it
+# first: `zb_test_lens_check_answer "$2" && return 0`.
+zb_test_lens_check_answer() {
+    [[ "${1:-}" == *"Your job: for each finding below, try to show that it cannot happen"* ]] || return 1
+    local _l
+    while IFS= read -r _l; do
+        [[ "$_l" =~ ^\#\#\#\ ([0-9]+)$ ]] && printf '%s: stands\n' "${BASH_REMATCH[1]}"
+    done <<< "$1"
+    return 0
+}

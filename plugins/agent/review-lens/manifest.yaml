@@ -55,6 +55,10 @@ provides:
     - judge.kept.saved
     - judge.kept.used
     - judge.kept.stale
+    # #2552 (ADR-038): the check of a lens's findings — what it knocked down,
+    # or that its answer could not be used (every finding then stands).
+    - review_lens.checked
+    - review_lens.check_unusable
 
 config:
   # One outcome (#2366): fail when the lens found a high or critical problem
@@ -76,6 +80,12 @@ config:
 # It judges: it reads the change, and changes nothing.
 calls:
   main: [read-files, read-git, web-search, subagents]
+  # #2552: a second call tries to knock each of the lens's findings down.
+  check: [read-files, read-git, web-search, subagents]
+# ADR-051 §2: the persona each call runs as. The lens's own call runs as the
+# persona its element names in the template; the check is not run as it.
+personas:
+  check: quality-assurance
 
 outputs:
   # #2491 (ADR-071 §1): the verdict, summary and replies name no topic, so they

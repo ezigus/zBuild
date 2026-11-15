@@ -46,7 +46,7 @@ _RQ_DIR="$TEST_TEMP_DIR/calls"
 _rl_reset() { rm -rf "$_RQ_DIR"; mkdir -p "$_RQ_DIR"; printf '0' > "$_RQ_DIR/n"; printf '%s\n' "$@" > "$_RQ_DIR/replies"; }
 _rl_calls() { cat "$_RQ_DIR/n"; }
 # shellcheck disable=SC2329  # invoked by the sourced plugin
-route_to_model() {
+route_to_model() { zb_test_lens_check_answer "$2" && return 0;
     local n; n=$(( $(cat "$_RQ_DIR/n") + 1 )); printf '%s' "$n" > "$_RQ_DIR/n"
     printf '%s' "$2" > "$_RQ_DIR/prompt-$n.txt"
     local r; r="$(sed -n "${n}p" "$_RQ_DIR/replies")"
@@ -61,8 +61,8 @@ evidence="$artifact_dir/diff.patch"
 printf 'diff --git a/core/x.sh b/core/x.sh\n+ new line\n' > "$evidence"
 
 # #1760's breakage: a quoted phrase inside a string, its quotes not escaped.
-BAD='{"score":6,"findings":[{"quote":"new line","file":"core/x.sh","severity":"medium","message":"the message "until.{stage,field,op,value} all required" is wrong","introduced":true}]}'
-GOOD='{"score":6,"findings":[{"quote":"new line","file":"core/x.sh","severity":"low","message":"the message \"until\" is wrong","introduced":true}]}'
+BAD='{"score":6,"findings":[{"trigger":"a caller passes this on a normal run","quote":"new line","file":"core/x.sh","severity":"medium","message":"the message "until.{stage,field,op,value} all required" is wrong","introduced":true}]}'
+GOOD='{"score":6,"findings":[{"trigger":"a caller passes this on a normal run","quote":"new line","file":"core/x.sh","severity":"low","message":"the message \"until\" is wrong","introduced":true}]}'
 
 # ─── L1 ──────────────────────────────────────────────────────────────────────
 _rl_reset "$BAD" "$GOOD"
@@ -126,7 +126,7 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 source "$REPO_ROOT/core/plugin-registry/registry.sh"
 source "$PLUGIN_DIR/plugin.sh"
 _RL_LENSES_DIR="$L6_JOBS"
-route_to_model() {
+route_to_model() { zb_test_lens_check_answer "$2" && return 0;
     printf '%s' "$(( $(cat "$L6N") + 1 ))" > "$L6N"
     kill -TERM $$
     printf '%s' 'not json at all'
