@@ -98,7 +98,7 @@ _rl_quote_problem_v() {
     local -a _rqp_bad=()
     _rqp=""; _RL_QUOTE_FILES=()
     [[ "$2" == *'"file"'* || "$2" == *'"quote"'* || "$2" == *'"message"'* ]] || return 0
-    while IFS=$'\037' read -r _rqp_f _rqp_q; do
+    while IFS=$'\037' read -r -d '' _rqp_f _rqp_q; do
         _rqp_n=$(( _rqp_n + 1 ))
         [[ -n "$_rqp_f" && "$_rqp_f" != unknown ]] && _RL_QUOTE_FILES+=("$4/$_rqp_f")
         if [[ -z "${_rqp_q//[[:space:]]/}" ]]; then _rqp_bad+=("finding $_rqp_n has no quote"); continue; fi
@@ -110,9 +110,11 @@ _rl_quote_problem_v() {
         fi
         [[ -n "${5:-}" ]] && _judge_holds "$5" "$_rqp_q" && continue
         _rqp_bad+=("finding $_rqp_n's quote $_rqp_w")
-    # One line per finding, its file and quote split by a unit separator: @tsv
-    # would double a backslash in the quote.
-    done < <(jq -r '(.findings // [])[]? | [(if type == "object" then (.file // "") else "" end), (if type == "object" then (.quote // "") else "" end)] | map(tostring | gsub("[\n\u001f]"; " ")) | join("\u001f")' <<< "$2" 2>/dev/null)
+    # One record per finding, as tool-hook.sh reads a tool's fields: its file
+    # and quote split by a unit separator and ended by a NUL, so a quote keeps
+    # its line breaks and every other character as written (#2545). @tsv would
+    # double a backslash in the quote.
+    done < <(jq -j '(.findings // [])[]? | [(if type == "object" then (.file // "") else "" end), (if type == "object" then (.quote // "") else "" end)] | map(tostring | gsub("\u001f"; " ")) | join("\u001f") + "\u0000"' <<< "$2" 2>/dev/null)
     [[ ${#_rqp_bad[@]} -gt 0 ]] || return 0
     local IFS=';'; _rqp="${_rqp_bad[*]}"; _rqp="${_rqp//;/; }"
 }
