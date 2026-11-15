@@ -117,6 +117,9 @@ partly — a subset of the cases, a weaker condition, some of the files — is u
 A requirement is met only when the behaviour it asks for
 runs when the program runs: code that nothing calls, or
 a new file nothing uses, does not meet it — say what should call or use it.
+A requirement with a test the change puts off ("to be tested later"), or with
+behaviour the change makes optional (off by default, or skipped when a value
+is missing), is unmet unless the issue asks for it that way.
 
 An issue contains more than requirements — context, rationale, links, history.
 Those are not requirements. Judge every requirement the issue states, including

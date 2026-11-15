@@ -69,14 +69,15 @@ _po_load_repo_file() {
     [[ -f "$override_file" && -s "$override_file" ]] || return 0
 
     # Symlink containment: the override's REAL path must sit strictly under the
-    # target repo's real .zbuild/prompts/. Bare `realpath` only (no GNU-only
+    # target repo's real folder it is named in (.zbuild/prompts/, or
+    # .zbuild/lenses/ for a lens's job, #2548). Bare `realpath` only (no GNU-only
     # -m/-e flags) so BSD and GNU agree. Canonicalizing both sides catches a
     # design-overrides.md symlinked out (→ /etc/passwd) AND a prompts/ dir that
     # is itself a symlink out — neither is caught by the string floor above.
     local real_root real_file expected_dir
     real_root="$(realpath "$repo_root" 2>/dev/null)" || return 0
     real_file="$(realpath "$override_file" 2>/dev/null)" || return 0
-    expected_dir="$real_root/.zbuild/prompts"
+    expected_dir="$real_root/${rel%/*}"
     case "$real_file" in
         "$expected_dir"/*) : ;;
         *) return 0 ;;

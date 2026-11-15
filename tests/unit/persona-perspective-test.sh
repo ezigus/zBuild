@@ -40,7 +40,12 @@ print_test_header "a persona's perspective says what to look for (ADR-051 §9)"
 
 _IDENTITY_RE='(^|[^[:alpha:]])(you are (a|an|the)|experts?)([^[:alpha:]]|$)'
 _PIPELINE_RE='(^|[^[:alpha:]])(stages?|plans?|planned|pipelines?|manifests?|lens(es)?)([^[:alpha:]]|$)'
-_JOB_RE='(^|[^[:alpha:]])(severity|critical|findings?|flags?|report(s|ed)?|verdicts?|scores?|examine the change)([^[:alpha:]]|$)'
+_JOB_RE='(^|[^[:alpha:]])(severity|critical|findings?|flags?|report(s|ed)?|verdicts?|scores?|examine the change|review the (diff|change)|list each)([^[:alpha:]]|$)'
+# A grading scale in other words: two of low, medium and high together.
+_GRADE_RE='(^|[^[:alpha:]])(low|medium|high)([^[:alpha:]].*[^[:alpha:]]|[^[:alpha:]])(low|medium|high)([^[:alpha:]]|$)'
+# A job is an instruction: a sentence that opens with a bare imperative verb. A
+# mindset says how the role thinks ("Thinks …", "Cares …", "Checks …").
+_IMPERATIVE_RE='(^|[.!?][[:space:]]+)(Review|Examine|Write|List|Rate|Judge|Find|Check|Test|Flag|Report|Compare|Read|Make|Implement)[[:space:]]'
 
 _n=0
 for _m in "$REPO_ROOT"/plugins/persona/*/manifest.yaml; do
@@ -71,6 +76,10 @@ for _m in "$REPO_ROOT"/plugins/persona/*/manifest.yaml; do
     fi
     if [[ "$_lp" =~ $_JOB_RE ]]; then
         assert_fail "[P6] $_id's perspective holds no job" "it has: ${BASH_REMATCH[2]}"
+    elif [[ "$_lp" =~ $_GRADE_RE ]]; then
+        assert_fail "[P6] $_id's perspective holds no job" "it grades: ${BASH_REMATCH[0]}"
+    elif [[ "$_p" =~ $_IMPERATIVE_RE ]]; then
+        assert_fail "[P6] $_id's perspective holds no job" "it instructs: ${BASH_REMATCH[2]}"
     else
         assert_pass "[P6] $_id's perspective holds no job"
     fi

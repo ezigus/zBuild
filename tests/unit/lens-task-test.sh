@@ -22,6 +22,10 @@
 # L6 [change] a target repository's own lens has its job in the repository,
 #             .zbuild/lenses/<lens>.md, and one there wins over the install's —
 #             zbuild builds any repository, and a repository may add a lens
+# L7 [change] a repository's lens job that is a symlink or a hardlink to a
+#             file outside its .zbuild/lenses/ is not read: its text never
+#             reaches the model, and the install's job is used (the reader the
+#             repository's rules.md goes through)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,6 +45,9 @@ source "$REPO_ROOT/plugins/agent/review-lens/plugin.sh" 2>/dev/null
 set +e
 
 LENSES="$REPO_ROOT/plugins/agent/review-lens/lenses"
+_lacks() {  # <label> <text> <must-not-hold>
+    if [[ "$2" == *"$3"* ]]; then assert_fail "$1" "it holds: $3"; else assert_pass "$1"; fi
+}
 # The lenses a template runs: the `- id:` elements of its review_lenses group.
 _tpl_lenses() {
     awk '/^review_lenses:/ { g = 1; next } g && /^[^[:space:]#]/ { g = 0 }
@@ -72,7 +79,7 @@ for _t in "$REPO_ROOT"/config/templates/simple.yaml "$REPO_ROOT"/config/template
         assert_eq "[L1] ${_t##*/}: $_l's job says what it looks for, what is not a finding, where its problems come from, and its severity" "" "$_missing"
     done < <(_tpl_lenses "$_t")
 done
-assert_eq "[L1] the templates' lenses were read (fixture live)" "1" "$(( _seen >= 6 ))"
+assert_eq "[L1] the templates' lenses were read: six in each (fixture live)" "1" "$(( _seen >= 12 ))"
 
 # ── L2 ───────────────────────────────────────────────────────────────────────
 print_test_section "L2: a lens's prompt holds its own job"
@@ -82,6 +89,19 @@ _rt_line="$(awk 'NF && !/^#/ { print; exit }' "$LENSES/red-team.md" 2>/dev/null)
 _co_line="$(awk 'NF && !/^#/ { print; exit }' "$LENSES/correctness.md" 2>/dev/null)"
 assert_contains "[L2] red-team's prompt holds red-team's job" "$_p_rt" "${_rt_line:-<no red-team job>}"
 assert_contains "[L2] correctness's prompt holds correctness's job" "$_p_co" "${_co_line:-<no correctness job>}"
+# The whole job reaches the prompt, not only its first line: what is not a
+# finding, and each severity example, for every lens.
+for _l in security performance red-team correctness scope sre; do
+    _pl="$(_rl_build_lens_prompt "$_l" "EVIDENCE" "CONTEXT" 2>/dev/null)"
+    _miss=""
+    while IFS= read -r _line; do
+        case "$_line" in
+            "Not a finding:"|"- critical: "*|"- high: "*|"- medium: "*|"- low: "*|"Where these problems come from: "*)
+                [[ "$_pl" == *"$_line"* ]] || _miss+="[${_line:0:30}] " ;;
+        esac
+    done < "$LENSES/$_l.md"
+    assert_eq "[L2] $_l's prompt holds its whole job: not a finding, where problems come from, each severity" "" "$_miss"
+done
 if [[ "${_p_rt//red-team/LENS}" == "${_p_co//correctness/LENS}" ]]; then
     assert_fail "[L2] two lenses' prompts differ by more than their names" "they are the same"
 else
@@ -101,6 +121,22 @@ assert_eq "[L3] no model was asked" "0" "$(grep -c . "$CALLS")"
 assert_eq "[L3] the lens ended misconfigured" "misconfigured" \
     "$(jq -r '.disposition // .outcome // empty' "$AD/lens-no-such-lens.json" 2>/dev/null)"
 
+# A lens name that is not a plain name is no lens: a path does not reach a file.
+mkdir -p "$TEST_TEMP_DIR/t3/.zbuild"; printf 'What this lens looks for: TRAVERSAL\n' > "$TEST_TEMP_DIR/t3/.zbuild/x.md"
+: > "$CALLS"
+( export ZBUILD_ARTIFACT_DIR="$AD" ZBUILD_STATE_DIR="$TEST_TEMP_DIR" ZBUILD_REPO_ROOT="$TEST_TEMP_DIR/t3"
+  _review_lens_run_inner "../x" "" "$AD/bundle.txt" "$AD/lens-trav.json" "$AD" ) >/dev/null 2>&1
+assert_eq "[L3] a lens named ../x asks no model" "0" "$(grep -c . "$CALLS")"
+assert_eq "[L3] ...and ends misconfigured" "misconfigured" "$(jq -r '.outcome // empty' "$AD/lens-trav.json" 2>/dev/null)"
+
+# The prompt that cannot be composed: the lens reviews nothing, and says so.
+: > "$CALLS"
+( export ZBUILD_ARTIFACT_DIR="$AD" ZBUILD_STATE_DIR="$TEST_TEMP_DIR"
+  stage_prompt_compose_parts() { return 1; }
+  _review_lens_run_inner security "" "$AD/bundle.txt" "$AD/lens-nocompose.json" "$AD" ) >/dev/null 2>&1
+assert_eq "[L3] a prompt that cannot be composed asks no model" "0" "$(grep -c . "$CALLS")"
+assert_eq "[L3] ...and ends misconfigured" "misconfigured" "$(jq -r '.outcome // empty' "$AD/lens-nocompose.json" 2>/dev/null)"
+
 # ── L4 ───────────────────────────────────────────────────────────────────────
 print_test_section "L4: the lenses run as roles"
 for _t in "$REPO_ROOT"/config/templates/simple.yaml "$REPO_ROOT"/config/templates/deployed.yaml; do
@@ -112,8 +148,10 @@ done
 print_test_section "L5: the unused security-lens plugin is gone"
 assert_eq "[L5] plugins/agent/security-lens is gone" "gone" \
     "$([[ -e "$REPO_ROOT/plugins/agent/security-lens" ]] && echo there || echo gone)"
-assert_eq "[L5] the security lens is still in the lens map" "1" \
-    "$(_tpl_lenses "$REPO_ROOT/config/templates/simple.yaml" | grep -cx security)"
+for _t in simple deployed; do
+    assert_eq "[L5] $_t.yaml: the security lens is still in the lens map" "1" \
+        "$(_tpl_lenses "$REPO_ROOT/config/templates/$_t.yaml" | grep -cx security)"
+done
 
 # ── L6 ───────────────────────────────────────────────────────────────────────
 print_test_section "L6: a repository's own lens"
@@ -126,6 +164,19 @@ _p_sec="$(ZBUILD_REPO_ROOT="$TGT" _rl_build_lens_prompt security "EVIDENCE" "CON
 assert_contains "[L6] the repository's job for a shipped lens wins" "$_p_sec" "TARGET-SECURITY-JOB"
 _p_rt="$(ZBUILD_REPO_ROOT="$TGT" _rl_build_lens_prompt red-team "EVIDENCE" "CONTEXT" 2>/dev/null)"
 assert_contains "[L6] ...and a shipped lens the repository does not have keeps the install's" "$_p_rt" "${_rt_line:-<no red-team job>}"
+
+# ── L7 ───────────────────────────────────────────────────────────────────────
+print_test_section "L7: a linked lens job is not read"
+SECRET="$TEST_TEMP_DIR/outside-secret.txt"; printf 'What this lens looks for: OUTSIDE-SECRET\n' > "$SECRET"
+T7="$TEST_TEMP_DIR/t7"; mkdir -p "$T7/.zbuild/lenses"
+ln -s "$SECRET" "$T7/.zbuild/lenses/security.md"
+_p7="$(ZBUILD_REPO_ROOT="$T7" _rl_build_lens_prompt security "EVIDENCE" "CONTEXT" 2>/dev/null)"
+_lacks "[L7] a symlinked lens job's text does not reach the prompt" "$_p7" "OUTSIDE-SECRET"
+assert_contains "[L7] ...the install's job is used" "$_p7" "security weaknesses the change brings in"
+T7h="$TEST_TEMP_DIR/t7h"; mkdir -p "$T7h/.zbuild/lenses"
+ln "$SECRET" "$T7h/.zbuild/lenses/security.md"
+_p7h="$(ZBUILD_REPO_ROOT="$T7h" _rl_build_lens_prompt security "EVIDENCE" "CONTEXT" 2>/dev/null)"
+_lacks "[L7] a hardlinked lens job's text does not reach the prompt" "$_p7h" "OUTSIDE-SECRET"
 
 cleanup_test_env
 print_test_results

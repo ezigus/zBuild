@@ -267,11 +267,14 @@ _m "[M2] ...the edge cases the requirements name" build "the edge cases the requ
 _m "[M2] ...a gap between what was asked and what the code can do is said" build "say so in your answer"
 _m "[M3] issue-acceptance: a behaviour runs when the program runs" issue-acceptance "runs when the program runs"
 _m "[M3] ...a new file nothing uses" issue-acceptance "a new file nothing uses"
+_m "[M3] ...a test put off is not a test" issue-acceptance "a test the change puts off"
+_m "[M3] ...behaviour made optional does not meet it" issue-acceptance "behaviour the change makes optional"
 _m "[M4] test-author's check: a narrower test does not do the part" test-author-check-batch "narrower than the part"
 _m "[M5] monitor: a failure that says why" monitor "says why"
 _m "[M5] ...and a failed step's way back" monitor "a way back"
 _m "[M7] intake's check: a listed requirement narrower than the issue misses the rest" intake-check "narrower than the issue's words"
 _m "[M6] design: the smallest design" design "the smallest design"
+_m "[M8] design's coverage check: a requirement too loose for any SPEC to settle is said so" design-coverage "a finding against the requirement"
 _m "[M6] ...the patterns the code already follows" design "patterns the code already follows"
 
 # ─── T1: test-author checks the value itself ────────────────────────────────

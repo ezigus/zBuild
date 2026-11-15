@@ -14,16 +14,26 @@
 _ZBUILD_REVIEW_LENS_CHARTERS_LOADED=1
 
 _RL_LENSES_DIR="${BASH_SOURCE[0]%/*}/../lenses"
+# The repository's own lens jobs are read like its rules.md: the one reader
+# that refuses a link out of the folder, and caps the size.
+if ! declare -F _po_load_repo_file >/dev/null 2>&1; then
+    # shellcheck source=../../../../scripts/lib/prompt-overrides.sh
+    source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/prompt-overrides.sh"
+fi
 
 # _rl_lens_job_v <var> <lens> — the lens's own job text, read in this shell
 # (ADR-065 §5): the target repository's .zbuild/lenses/<lens>.md, else the
 # install's (ADR-038, amended 2026-11-15: a repository may add or change a
 # lens). rc 1 when the lens has none: it reviews nothing.
 _rl_lens_job_v() {
-    local -n _rlj="$1"; local _f="${ZBUILD_REPO_ROOT:-}/.zbuild/lenses/$2.md"
+    local -n _rlj="$1"; local _f="$_RL_LENSES_DIR/$2.md"
     _rlj=""
     [[ "$2" =~ ^[a-z0-9][a-z0-9-]*$ ]] || return 1
-    [[ -n "${ZBUILD_REPO_ROOT:-}" && -s "$_f" ]] || _f="$_RL_LENSES_DIR/$2.md"
+    # Only a repository that has one pays for the checked read.
+    if [[ -n "${ZBUILD_REPO_ROOT:-}" && -e "$ZBUILD_REPO_ROOT/.zbuild/lenses/$2.md" ]]; then
+        _rlj="$(_po_load_repo_file ".zbuild/lenses/$2.md" "$ZBUILD_REPO_ROOT")"
+        [[ -n "$_rlj" ]] && return 0
+    fi
     [[ -s "$_f" ]] || return 1
     IFS= read -r -d '' _rlj < "$_f" || true
     _rlj="${_rlj%$'\n'}"

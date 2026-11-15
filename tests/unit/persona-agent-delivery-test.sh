@@ -139,6 +139,7 @@ _reset_cap
          ZBUILD_PA_AGENT_PERSONA=no-such-persona
   route_to_model T2 "$PROMPT" >/dev/null 2>&1 )
 assert_eq "[PA4] no persona of that id anywhere → none (#2548)" "" "$(_agent_of "$(_last args)")"
+assert_eq "[PA4] ...and the model is still asked" "1" "$(ls "$CAP" | /usr/bin/grep -c '^args-' || true)"
 
 # ─── PA3: the template pin ───────────────────────────────────────────────────
 print_test_section "PA3: the stage's template pin picks the persona"
@@ -220,6 +221,7 @@ _pa8() {
 }
 assert_eq "[PA8] an element runs as the persona it names" "security" "$(_pa8 sec)"
 assert_eq "[PA8] an element named like a persona but naming none runs with none (#2548)" "" "$(_pa8 architect)"
+assert_eq "[PA8] ...and the model is still asked" "1" "$(ls "$CAP" | /usr/bin/grep -c '^args-' || true)"
 
 # ─── PA9: the manifest names the persona ────────────────────────────────────
 print_test_section "PA9: the real design plugin's call runs as its manifest's persona"
