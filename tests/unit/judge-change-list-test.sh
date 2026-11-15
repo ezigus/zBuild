@@ -18,6 +18,12 @@
 # L5 [change] a lens's quote of a line the change removed is still found
 # L6 [change] with no starting commit known, the judge is pointed at the patch
 #             file, and the patch is not pasted in
+# L7 [change] a lens's quote of several lines, as they are in the file, is
+#             found: no second ask, and the finding stands (#2545)
+# L8 [change] a quote of several lines that is not in the file is still asked
+#             again (#2545)
+# L9 [change] a quote of several lines with a backslash, quote marks, `$` and
+#             a tab, as they are in the file, is found (#2545)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -122,6 +128,23 @@ ANSWER='{"score":4,"findings":[{"file":"core/a.sh","category":"logic","severity"
 : > "$CALLS"; _lens
 assert_eq "[L5] a quote of a line the change removed is found: no second ask" "1" "$(grep -c . "$CALLS")"
 assert_eq "[L5] ...and the finding stands" "1" "$(jq -r '.findings | length' "$LA/lens-correctness.json" 2>/dev/null)"
+
+# ── L7 / L8 ──────────────────────────────────────────────────────────────────
+print_test_section "L7/L8: a lens's quote of several lines (#2545)"
+( cd "$G" && printf 'keep\nFIRST_OF_TWO\n  SECOND_OF_TWO\n' > core/a.sh && git commit -qam fifth ) >/dev/null 2>&1
+ANSWER='{"score":4,"findings":[{"file":"core/a.sh","category":"logic","severity":"medium","message":"two lines","quote":"FIRST_OF_TWO\n  SECOND_OF_TWO","introduced":true,"fix":"code"}]}'
+: > "$CALLS"; _lens
+assert_eq "[L7] a quote of two lines of the file is found: no second ask" "1" "$(grep -c . "$CALLS")"
+assert_eq "[L7] ...and the finding stands" "1" "$(jq -r '.findings | length' "$LA/lens-correctness.json" 2>/dev/null)"
+( cd "$G" && printf 'keep\nFIRST_OF_TWO\n  SECOND_OF_TWO\nx\n' > core/a.sh && git commit -qam sixth ) >/dev/null 2>&1
+ANSWER='{"score":4,"findings":[{"file":"core/a.sh","category":"logic","severity":"medium","message":"two lines","quote":"SECOND_OF_TWO\nFIRST_OF_TWO","introduced":true,"fix":"code"}]}'
+: > "$CALLS"; _lens
+assert_eq "[L8] two lines not in the file, in that order: asked again" "2" "$(grep -c . "$CALLS")"
+( cd "$G" && printf 'keep\nassert_eq "[X] it passes" \\\n\t"0" "$((FAIL > 0))"\n' > core/a.sh && git commit -qam seventh ) >/dev/null 2>&1
+ANSWER='{"score":4,"findings":[{"file":"core/a.sh","category":"logic","severity":"medium","message":"a tautology","quote":"assert_eq \"[X] it passes\" \\\\\n\t\"0\" \"$((FAIL > 0))\"","introduced":true,"fix":"test"}]}'
+: > "$CALLS"; _lens
+assert_eq "[L9] backslash, quote marks, \$ and a tab across two lines: no second ask" "1" "$(grep -c . "$CALLS")"
+assert_eq "[L9] ...and the finding stands" "1" "$(jq -r '.findings | length' "$LA/lens-correctness.json" 2>/dev/null)"
 
 # ── L6 ───────────────────────────────────────────────────────────────────────
 print_test_section "L6: no starting commit known"
