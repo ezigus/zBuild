@@ -19,6 +19,15 @@ _ZBUILD_SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 # shellcheck source=./compat.sh
 source "$_ZBUILD_SCRIPT_DIR/compat.sh"
 
+# The stat form for a file's mode, probed once at load (ADR-009, #1700): GNU
+# `-c '%a'` first, else BSD `-f '%Lp'`. A form is taken only when it answers a
+# mode, so _zb_target_mode_v runs one stat a call, whatever ZBUILD_PLATFORM says.
+if [[ "$(stat -c '%a' /dev/null 2>/dev/null)" =~ ^[0-7]{3,4}$ ]]; then
+    _ZB_STAT_MODE_CMD="-c"
+else
+    _ZB_STAT_MODE_CMD="-f"
+fi
+
 # ─── Colors (NO_COLOR-aware, FORCE_COLOR override) ───────────────────────────
 # FORCE_COLOR=1 wins over the tty check so tests/CI can pin colored output
 # without a real terminal. NO_COLOR still wins over FORCE_COLOR (POSIX-ish
@@ -270,19 +279,16 @@ zb_dirname_v() {
 
 # _zb_target_mode_v <var> <target> — <target>'s permission bits, or 600 for a
 # file that is not there yet (what mktemp gave the temp file before).
+# Uses the load-time stat probe (_ZB_STAT_MODE_CMD) to call stat exactly once
+# per invocation, regardless of $ZBUILD_PLATFORM (ADR-009 probe clause, #1700).
 _zb_target_mode_v() {
     local -n _tm_var="$1"
     local _tm_t="$2" _tm=""
     if [[ -e "$_tm_t" ]]; then
-        # One stat in this platform's flavour, the other only when the answer
-        # is not a mode. GNU reads `stat -f` as "file-system status" and prints
-        # a block to stdout, which the check rejects (review #2229).
-        if [[ "${ZBUILD_PLATFORM:-}" == "macos" ]]; then
-            _tm="$(stat -f '%Lp' "$_tm_t" 2>/dev/null || true)"
-            [[ "$_tm" =~ ^[0-7]{3,4}$ ]] || _tm="$(stat -c '%a' "$_tm_t" 2>/dev/null || true)"
-        else
+        if [[ "${_ZB_STAT_MODE_CMD:-}" == "-c" ]]; then
             _tm="$(stat -c '%a' "$_tm_t" 2>/dev/null || true)"
-            [[ "$_tm" =~ ^[0-7]{3,4}$ ]] || _tm="$(stat -f '%Lp' "$_tm_t" 2>/dev/null || true)"
+        else
+            _tm="$(stat -f '%Lp' "$_tm_t" 2>/dev/null || true)"
         fi
     fi
     [[ "$_tm" =~ ^[0-7]{3,4}$ ]] || _tm=600

@@ -91,7 +91,10 @@ if command -v gstat >/dev/null 2>&1 || stat --version >/dev/null 2>&1; then
     mkdir -p "$TEST_TEMP_DIR/gnu-bin"; ln -sf "$_gnu" "$TEST_TEMP_DIR/gnu-bin/stat"
     T5="$TEST_TEMP_DIR/t5.sh"; printf 'old\n' > "$T5"; chmod 755 "$T5"
     S5="$TEST_TEMP_DIR/s5.tmp"; printf 'new\n' > "$S5"; chmod 600 "$S5"
-    ( PATH="$TEST_TEMP_DIR/gnu-bin:$PATH"; replace_keep_mode "$S5" "$T5" ) >/dev/null 2>&1
+    # The stat form is probed when helpers.sh loads (ADR-009, #1700), so GNU
+    # stat is on the PATH from the load on.
+    ( PATH="$TEST_TEMP_DIR/gnu-bin:$PATH"; unset _ZBUILD_HELPERS_LOADED _ZBUILD_COMPAT_LOADED
+      source "$REPO_ROOT/scripts/lib/helpers.sh"; replace_keep_mode "$S5" "$T5" ) >/dev/null 2>&1
     assert_eq "[P5] with GNU stat the target keeps its mode" "exec" "$(_is_exec "$T5")"
 else
     assert_pass "[P5] skipped — no GNU stat available"
