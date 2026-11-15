@@ -102,7 +102,7 @@ model decides how it reaches the model** (`core/router/persona-delivery.sh`). A 
 run the call as an agent defines `provider_<name>_persona_args` and gets the persona's id, summary
 and `perspective`: Anthropic passes `--agents <json> --agent <id>`. A provider that cannot gets
 the persona as the prompt's first section, `## Who you are`, followed by the stage's contract
-prompt (ADR-067 §8). A review lens is a stage like any other: the review-lens stage writes one job and gives every lens the same evidence, and the question a lens asks is its persona's — there is no lens text table and no per-lens evidence (amended 2026-10-12). Either way, every call of a stage's model loop runs as the persona; a model
+prompt (ADR-067 §8). A review lens is a stage like any other: the review-lens stage writes one job and gives every lens the same evidence, and there is no per-lens evidence (amended 2026-10-12); each lens's job is its own text, kept by the review-lens stage, and the persona its element names is who does it — not the lens's question (amended 2026-11-15, #2548; ADR-038). Either way, every call of a stage's model loop runs as the persona; a model
 call made outside any stage runs as none. `core/pipeline` holds no persona code (ADR-047).
 
 ### 4. Discovery spans the installed tree AND the target-repo overlay
@@ -216,6 +216,9 @@ stage had been merged into design — and issue-acceptance ran as a persona that
   default persona per migrated stage, and a sweep of the four plugin pins into the template.
 - A generic default persona must exactly reproduce each stage's current baseline, or parity
   breaks — this is load-bearing and must be proven by a byte-identical golden (#1317).
+- *Superseded 2026-11-15 (#2548):* there is no generic persona — a call none names runs with no
+  persona — and a lens's job is its own text, not a persona's perspective (§7, §9; ADR-038). The
+  stories below are the history of how the persona system was built.
 
 ## Alternatives considered
 
@@ -276,7 +279,7 @@ This ADR is the gate for Initiative 1.3; the stories that codify it are `blocked
 - §2 (a map element names its own persona, never inferred from its name; its stage's pin, else none, when it names none; every named persona exists or the run is refused at startup; the shipped lenses each name theirs) → `tests/unit/map-element-persona-test.sh` ME1–ME6
 - §3 (a lens is a stage like any other: the same evidence; its job its own text, not its persona's — amended 2026-11-15) → `tests/unit/retired-impact-review-report-inputs-test.sh` RT3; `tests/unit/lens-task-test.sh` L1–L4
 - §3 (the provider delivers the persona: Anthropic's `--agents`/`--agent`; `## Who you are` for a provider that cannot; every loop call; no persona outside a stage; a map element's declared persona) → `tests/unit/persona-agent-delivery-test.sh` PA1, PA2, PA5–PA8
-- §4 (the target repository's `.zbuild/plugins/persona/<id>` before the install's; none when it is in neither) → `tests/unit/persona-agent-delivery-test.sh` PA4, PA8; `tests/unit/persona-resolver-test.sh` SPEC-4–SPEC-6; the overlay is never leaked via `ZBUILD_PLUGINS_ROOT` → `tests/unit/plugins-root-hermeticity-test.sh`
+- §4 (the target repository's `.zbuild/plugins/persona/<id>` before the install's; none when it is in neither) → `tests/unit/persona-agent-delivery-test.sh` PA4, PA8; `tests/unit/persona-resolver-test.sh` SPEC-4 (no binding, no persona), SPEC-5 (named but in neither root, none in its place); the overlay is never leaked via `ZBUILD_PLUGINS_ROOT` → `tests/unit/plugins-root-hermeticity-test.sh`
 - §6 (the persona passes through the scope redaction, before the prompt's own) → `tests/unit/persona-agent-delivery-test.sh` PA10
 - §7 (a stage's persona is data, not code) → `tests/unit/persona-agent-delivery-test.sh` PA9
 - §2, §3, §5 amendment 2026-11-14 (each call runs as the persona its manifest names; a template pin is the main call's only; a manifest's unknown call or missing persona is refused; the shipped manifests name each call's persona) → `tests/unit/manifest-call-persona-test.sh` MP1–MP6

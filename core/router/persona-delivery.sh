@@ -35,6 +35,9 @@ _route_persona_prepare() {
     _ROUTE_PERSONA_KEY="$key" _ROUTE_PERSONA_ID="" _ROUTE_PERSONA_TEXT="" _ROUTE_PERSONA_IN_PROMPT=0
     _ROUTE_PERSONA_DESC="" _ROUTE_PERSONA_REDACTED=""
     _ROUTE_PERSONA_ARGS=()
+    # The banner names this call's persona, or none (#2548: no generic one
+    # overwrites the last call's).
+    export ZBUILD_STAGE_IO_PERSONA=""
     [[ -n "${ZBUILD_PLUGIN_DIR:-}" && -n "${ZBUILD_CURRENT_STAGE:-}" ]] || return 0
     local dir manifest desc p fn
     dir="$(resolve_persona "$ZBUILD_CURRENT_STAGE" 2>/dev/null)" || return 0

@@ -109,7 +109,8 @@ fi
 # shellcheck source=../../scripts/lib/stage-limits.sh
 source "$_ZBUILD_ROOT/scripts/lib/stage-limits.sh" || _zbuild_route_broken "$_ZBUILD_ROOT/scripts/lib/stage-limits.sh"
 # ADR-051 (#1305): resolve_persona + persona_text — resolve a stage persona from
-# the four-step precedence chain (env > template-stage > template-global > generic)
+# the precedence chain (env > map element > template-stage > the manifest's call > template-global;
+# none naming one, no persona — #2548)
 # with two-root discovery (installed tree + per-repo overlay). Sourced here so
 # every routing plugin gets resolve_persona/persona_text by construction.
 source "$_ZBUILD_ROOT/scripts/lib/persona-resolve.sh" || _zbuild_route_broken "$_ZBUILD_ROOT/scripts/lib/persona-resolve.sh"

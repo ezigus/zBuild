@@ -471,7 +471,7 @@ On #1805 run 42556446368 tools were chosen in two places: a stage's main call fr
 4. **Every call passes no MCP server** (`--strict-mcp-config` for Anthropic), whatever its words.
 5. **Who gets what:**
    - build's, design's and test-author's own calls: read-files, edit-files, run-commands, web-search, subagents, todo-list;
-   - every judge — issue-acceptance, review-lens, security-lens, design's coverage check and test-author's assertion check: read-files, read-git, web-search, subagents;
+   - every judge — issue-acceptance, review-lens, design's coverage check and test-author's assertion check: read-files, read-git, web-search, subagents;
    - intake's two calls and monitor's: none.
 6. **The call's PreToolUse hook guards what the words let through** (`core/router/tool-hook.sh`, the hook of ADR-063's 2026-11-08 amendment; its guards ride in its command):
    - **read-git** (without run-commands): the shell runs only `git diff`, `git log`, `git show` and `git status`. `--output`, anything chained or redirected (`;`, `&`, `|`, `$(`, backticks, `<`, `>`, a newline), and any other command are refused, saying what may run. A format string holding `<` or `>` (`git log --format='%an <%ae>'`) is refused with them: the check reads the command as text, and does not tell a quoted `<` from a redirect.

@@ -4,7 +4,7 @@
 # (ADR-051, amended 2026-10-12).
 #
 # The persona is found the way ADR-051 §4/§5 says — the stage's pin, then the
-# template default, then generic; the target repository's
+# template default, else none (#2548); the target repository's
 # .zbuild/plugins/persona/<id> before the install's — and delivered by the
 # provider that calls the model: for Anthropic, `--agents <json> --agent <id>`.
 # A provider that cannot take an agent gets the persona as its own first section
@@ -16,7 +16,10 @@
 #                 perspective is not in the prompt text
 #   PA3 [change]: the stage's template pin picks the persona
 #   PA4 [guard] : the target repository's own persona wins over the install's;
-#                 with no persona of that id anywhere, generic is used
+#                 with no persona of that id anywhere, none is used (#2548)
+#   PA11 [change]: a call that runs with no persona does not show the last
+#                 call's persona in its stage banner (#2548: with no generic
+#                 persona, nothing else overwrites it)
 #   PA5 [change]: a provider that cannot take an agent gets the persona as the
 #                 prompt's first section, "## Who you are"
 #   PA6 [guard] : a model call made outside any stage carries no agent
@@ -253,6 +256,15 @@ _reset_cap
   _route_persona_redact "$ZBUILD_SCOPE_MANIFEST" "" 0
   printf '%s\n' "${_ROUTE_PERSONA_ARGS[@]+"${_ROUTE_PERSONA_ARGS[@]}"}" > "$CAP/args-1" )
 assert_not_contains "[PA10] a persona that cannot be redacted is not sent" "$(cat "$CAP/args-1" 2>/dev/null)" "--agent"
+
+# ─── PA11: the banner names only this call's persona ────────────────────────
+print_test_section "PA11: a call with no persona shows none"
+_pa11="$( export ZBUILD_PLUGIN_DIR="$PD" ZBUILD_STATE_DIR="$STATE" ZBUILD_CURRENT_STAGE=pa-agent
+    export ZBUILD_PA_AGENT_PERSONA=architect; _route_persona_prepare
+    printf '%s|' "${ZBUILD_STAGE_IO_PERSONA:-}"
+    export ZBUILD_PA_AGENT_PERSONA=no-such-persona ZBUILD_ROUTE_CALL=other; _route_persona_prepare
+    printf '%s' "${ZBUILD_STAGE_IO_PERSONA:-}" )"
+assert_eq "[PA11] the first call shows its persona, the second none" "architect|" "$_pa11"
 
 cleanup_test_env
 print_test_results

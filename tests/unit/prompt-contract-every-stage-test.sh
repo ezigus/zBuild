@@ -108,7 +108,9 @@ EOF
 # #2445: intake's model calls write and check the issue's requirement list.
 _c_intake() { ( ad="$(_fixture intake)"; export ZBUILD_REPO_ROOT="${ad%/state/artifacts}"
     source "$REPO_ROOT/plugins/agent/intake/plugin.sh" >/dev/null 2>&1
-    route_to_model() { [[ -s "$RAW/intake.txt" ]] || printf '%s' "$2" > "$RAW/intake.txt"; printf 'REQUIREMENT: fix the typo\nMISSING: none\n'; }
+    route_to_model() { if [[ "$2" == *"Your job: check a list of requirements"* ]]; then printf '%s' "$2" > "$RAW/intake-check.txt"
+        else [[ -s "$RAW/intake.txt" ]] || printf '%s' "$2" > "$RAW/intake.txt"; fi
+        printf 'REQUIREMENT: RQTYPO-1 fix the typo\nMISSING: none\n'; }
     local _j; _intake_requirements_json_v _j '{"title":"Fix a typo","body":"1. Fix the typo in README.md"}' ) >/dev/null 2>&1; }
 _c_design() { ( ad="$(_fixture design)"; export ZBUILD_REPO_ROOT="${ad%/state/artifacts}"
     source "$REPO_ROOT/plugins/agent/design/plugin.sh" >/dev/null 2>&1
@@ -267,6 +269,8 @@ _m "[M3] issue-acceptance: a behaviour runs when the program runs" issue-accepta
 _m "[M3] ...a new file nothing uses" issue-acceptance "a new file nothing uses"
 _m "[M4] test-author's check: a narrower test does not do the part" test-author-check-batch "narrower than the part"
 _m "[M5] monitor: a failure that says why" monitor "says why"
+_m "[M5] ...and a failed step's way back" monitor "a way back"
+_m "[M7] intake's check: a listed requirement narrower than the issue misses the rest" intake-check "narrower than the issue's words"
 _m "[M6] design: the smallest design" design "the smallest design"
 _m "[M6] ...the patterns the code already follows" design "patterns the code already follows"
 

@@ -189,7 +189,8 @@ of the issue the change does not deliver, in its own terms, as a finding. The
 instruction is written once, in the prompt builder (`_rl_build_lens_prompt`,
 `plugins/agent/review-lens/lib/charters.sh`), so it reaches every lens whether
 its charter comes from a persona manifest or the built-in fallback; no charter
-repeats it.
+repeats it. (2026-11-15, #2548: a lens's job is its own text, `lenses/<lens>.md`; the instruction is
+still written once in the prompt builder, beside it.)
 
 Verification: `plugins/agent/review-lens/tests/review-lens-context-unit-test.sh`
 (C13: for each lens in `config/templates/simple.yaml`'s `review_lenses`, the
@@ -200,7 +201,8 @@ prompt the plugin sends carries the instruction).
 §2's per-lens evidence is retired. Nothing produced the per-lens artifacts once review-report went (the
 call graph was its own), and a lens is a stage like any other (ADR-051 §3, amended 2026-10-12): every
 lens judges the same change bundle (§2's merge-base basis), the review-lens stage writes one job for every
-lens, and the question each lens asks is the perspective of the persona its element names. review-report
+lens, and the question each lens asks is the perspective of the persona its element names (withdrawn
+2026-11-15, #2548: each lens's job is its own text — see that amendment). review-report
 and `scripts/lib/call-graph.sh` are retired.
 
 Enforced by: `tests/unit/retired-impact-review-report-inputs-test.sh` RT2 (review-report and the call
@@ -240,14 +242,15 @@ Every lens grades each finding on one scale, defined once in the lens charter
 - `medium`: the change works, but a realistic case gets it wrong, a test does not prove what it claims, or the design leaves a gap that will cause the next bug.
 - `low`: style, wording, a small inefficiency, or hardening against an unlikely case.
 
-Each lens's persona gives examples of each level for that lens; the definitions live only in the charter.
+Each lens gives examples of each level for that lens — in its own job text since 2026-11-15 (#2548), in
+its persona before; the definitions live only in the charter.
 Each finding also says what would fix it — `code`, `test`, `design`, or `issue` (the issue itself is
 wrong: it contradicts an ADR or asks for something that cannot be built as written) — never which stage.
 A word off that list is read as `code`. Scope is no longer warn-only: its findings send the change back
 like any lens's.
 
 Enforced by: `plugins/agent/review-lens/tests/review-lens-loop-test.sh` R1 (the four levels and the fix
-words are in every lens's prompt), R1b (each lens persona gives an example of each level; scope is no
+words are in every lens's prompt), R1b (each lens's job text gives an example of each level, #2548; scope is no
 longer warn-only); `plugins/agent/review-lens/tests/review-lens-test.sh` #1140-12.
 
 ## Amendment (2026-11-15, #2548): each lens has its own job; the persona is who does it

@@ -75,7 +75,7 @@ puts gaps in a prose field; `impact` uses `verdict:"incomplete"`, its own
 vocabulary, not the engine's axis. So today **no stage can be asked "was that
 answer complete?" without reading prose.**
 
-`design`, `monitor`, `review-lens`, `security-lens` and `review-report` do none of
+`design`, `monitor` and `review-lens` (with `security-lens` and `review-report`, since removed) do none of
 it. `design` looks closest but is not: it carries a *prior design* forward
 (`plugin.sh:338`, "refine, do not recreate") — which helps only once an attempt
 has **succeeded at least once**. In run 33548970231 none did, so the carry-forward
@@ -294,7 +294,7 @@ Adoption order, cheapest evidence first:
 
 1. **`design`** — the stage this ADR exists for, and the one whose failure is
    already documented. Early wind-up.
-2. **the advisory lenses** (`review-lens`, `security-lens`, `review-report`) —
+2. **the advisory lenses** (`review-lens`; `security-lens` and `review-report` were removed) —
    cheapest to fix, least costly to get wrong, since they never gate.
 3. **`monitor`**.
 4. **`plan` and `impact`** — retrofit onto §1's shared block and add §3's
