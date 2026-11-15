@@ -40,6 +40,8 @@ _ta_already_done() {
         w=""
         if [[ -z "$base" ]]; then
             w="could not be checked: there is no copy of the code from before this change"
+        # The old code as the repository, and no second copy: the quote is
+        # looked for in the code from before the change only.
         elif judge_quote_check_v w "$quote" "" "$base"; then
             _TA_DONE_IDS+="${_TA_DONE_IDS:+ }$sid"
             _TA_DONE_VERIFIED+="${_TA_DONE_VERIFIED:+$'\n'}$sid: the code from before this change already does this — ${why:-it already does it} — evidence: $quote [FIX IN DESIGN: mark it [done] with this evidence, or say what this change makes different]"
