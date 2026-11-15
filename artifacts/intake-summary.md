@@ -12,3 +12,4 @@
 - RQPRO-3: Use the GNU form first (stat -c before stat -f)
 - RQSTT-1: The probe replaces _zb_target_mode_v's second stat call so each mode check runs one stat
 - RQDEL-1: zbuild_stat_size is deleted
+- the requirements are the same as the last run's
