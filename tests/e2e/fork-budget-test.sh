@@ -339,9 +339,9 @@ else
     assert_fail "[SPEC-7] processes ≤ PROCESS_BUDGET" "${_procs} > ${PROCESS_BUDGET} — a \$( ) around an engine function copies the whole shell; ADR-065 §2: the budget only ratchets down"
 fi
 if (( _total <= FORK_BUDGET )); then
-    assert_pass "[SPEC-4] ${_total} external execs ≤ FORK_BUDGET ${FORK_BUDGET}"
+    assert_pass "[SPEC-4][DSBUD-2] ${_total} external execs ≤ FORK_BUDGET ${FORK_BUDGET}"
 else
-    assert_fail "[SPEC-4] external execs ≤ FORK_BUDGET" "${_total} > ${FORK_BUDGET} — see the call sites above; ADR-065 §2: the budget only ratchets down"
+    assert_fail "[SPEC-4][DSBUD-2] external execs ≤ FORK_BUDGET" "${_total} > ${FORK_BUDGET} — see the call sites above; ADR-065 §2: the budget only ratchets down"
 fi
 
 # SPEC-8 (#2472): the cost in two parts.
