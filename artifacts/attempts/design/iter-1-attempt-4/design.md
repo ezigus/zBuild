@@ -26,15 +26,11 @@ Add `core/claim/claim.sh`:
 
 Wire it into `core/pipeline/runner.sh`:
 - Source at the top alongside `core/state/issue-lock.sh`.
-- Call `zbuild_claim_acquire` immediately after `zbuild_issue_lock_acquire` succeeds, before
-  `_runner_enter_worktree`. On return 1, emit `pipeline.refused.claimed`, print the holder
+- Call `zbuild_claim_acquire` immediately after `zbuild_issue_lock_acquire` succeeds (~line 2452),
+  before `_runner_enter_worktree`. On return 1, emit `pipeline.refused.claimed`, print the holder
   string, and return 1 (same shape as the issue-lock refusal).
 - Call `zbuild_claim_release` in `_runner_abort_trap` immediately after `zbuild_issue_lock_release`,
   using the same `declare -F` guard.
-
-Register `pipeline.refused.claimed` in `config/event-schema.json`:
-- Follows the same pattern as `pipeline.refused.issue_locked` and `pipeline.refused.run_cap`.
-- Required so `tests/unit/event-schema-emitted-coverage-test.sh` does not fail on the new emission.
 
 The "progress comment" referenced by the requirements is this new claim comment, not the
 stage-progress sidecar comment (which is unchanged). It is created at claim-time (before first
@@ -56,7 +52,6 @@ mutex is out of scope (RQMECH-1, RQMECH-2).
 
 ```steps
 - Create core/claim/claim.sh: zbuild_claim_acquire and zbuild_claim_release, with graceful degradation gates (no issue, NO_GITHUB, gh absent/unauthed) | areas: core/claim/claim.sh
-- Register pipeline.refused.claimed in config/event-schema.json following the pattern of pipeline.refused.issue_locked | areas: config/event-schema.json
 - Wire core/claim/claim.sh into runner.sh: source at top; call zbuild_claim_acquire after zbuild_issue_lock_acquire; call zbuild_claim_release in _runner_abort_trap with declare -F guard | areas: core/pipeline/runner.sh
 ```
 
@@ -76,10 +71,6 @@ DSCLA-3[code]: When zbuild:claimed is on the issue, the run exits non-zero witho
   When: zbuild_claim_acquire is called
   Then: it returns 1
   And: runner.sh exits non-zero before any stage is dispatched
-DSCLA-10[code]: When the run refuses to start because zbuild:claimed is on the issue, pipeline.refused.claimed is emitted to the event bus covers: RQCLA-3
-  Given: zbuild:claimed is already on the issue
-  When: a run is started on that issue
-  Then: pipeline.refused.claimed is emitted to the event bus
 DSCLA-4[code]: When zbuild_claim_acquire returns 1, _ZBUILD_CLAIM_HOLDER is set from the holder's claim comment covers: RQCLA-4
   Given: zbuild:claimed is on the issue and a claim comment with the marker exists
   When: zbuild_claim_acquire is called and finds the label present
