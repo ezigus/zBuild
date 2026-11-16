@@ -75,6 +75,9 @@ _ta_drop_stale_tags() {
     re="\\[(#${issue:-0}/)?${_ACCEPTANCE_ID_ERE}\\]"
     local -A _tfl=()
     zb_test_folder_branch_lines_v _tfl "$repo"
+    # #2554: the same lines feed the tag-shape check a moment later: one diff.
+    declare -gA _TA_BRANCH_LINES=(); _TA_BRANCH_LINES_REPO="$repo"
+    for tf in "${!_tfl[@]}"; do _TA_BRANCH_LINES[$tf]="${_tfl[$tf]}"; done
     for tf in "${!_tfl[@]}"; do
         [[ -f "$repo/$tf" ]] || continue
         # The pattern goes in through ENVIRON, not -v: awk processes escapes in
@@ -364,7 +367,7 @@ A test you touch that is not laid out this way — one you update, or one you ad
 
 A test that needs data another part of the code writes — a file, a record, a field, a message — makes it with that code, never by hand: hand-made data holds whatever its author assumed. Find how the existing tests and test helpers already make it, and do the same.
 
-Tag each assertion with the tag shown for its SPEC, exactly as shown, in the assertion's label — e.g. ${_spec_tag1}. A tag on a line this branch added is yours: one whose SPEC is not in this contract is stale from an earlier design — remove the tag and keep the assertion.
+Tag each assertion in its label. Each tag names one SPEC, exactly as shown — e.g. ${_spec_tag1} — and a line holds one tag. An assertion that proves two SPECs is written twice, one line per SPEC, each with its own tag. A tag on a line this branch added is yours: one whose SPEC is not in this contract is stale from an earlier design — remove the tag and keep the assertion.
 
 Some test files may already hold assertions from an earlier attempt at this contract: keep what is right, finish what is missing, fix what is wrong.
 
@@ -388,13 +391,13 @@ REQUIREMENTS:
 ${spec_block}${sup_section}${issue_section}${base_section}
 ## What you must not do
 - Do not read code in the working copy, other than files in the repository's test folders: read the existing code in the copy of the code from before this change. Do not guess at code this change has not written yet; write what the requirement demands of it.
-- Run nothing else: run only a test file of yours that you are told fails, and never the suite or lint. When you finish, the test files you create or change are run on the code from before this change. A test for a requirement that needs code must fail there for the reason you intend, not because of a mistake in the test; one that passes there, or stops before its assertion runs, comes back to you.
+- Run nothing else: run only a test file of yours that you are told fails, and never the suite or lint. When you finish, the test files you create or change are run on the code from before this change. A test for a requirement that needs code must fail there for the reason you intend, not because of a mistake in the test; one that passes there, or prints no line tagged for its SPEC, comes back to you.
 - Change no file outside the test folders: do not write, modify or stub any implementation file.
 - A tag on a line the default branch already has belongs to other work: leave it as it is${sup_block:+, except on the existing checks listed above}.
 EOF
 )"
 
-    _TA_ANSWERS=(); _TA_BEFORE_OPEN=""
+    _TA_ANSWERS=(); _TA_BEFORE_OPEN=""; _TA_BRANCH_LINES_REPO=""
 
     local tier="T2" rc=0
     declare -f resolve_tier >/dev/null 2>&1 && tier="$(resolve_tier test-author "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null || printf 'T2')"
@@ -478,6 +481,8 @@ EOF
     # #2445: the changed test files, run by script on the code from before this
     # change; what it finds is a finding like the check's.
     _ta_before_run "$design" "$repo" "$_ta_sums_before"
+    # #2554 (ADR-036): a tag names one SPEC, one a line.
+    _ta_tag_shape "$design" "$repo"
     # #2464 (ADR-072 §4): its verdicts are kept beside its result.
     _ta_correspondence "$design" "$repo" "$tier" "$art"
     if [[ -n "$_TA_CORR_OUTCOME" ]]; then
@@ -502,6 +507,7 @@ EOF
         return 1
     fi
     _TA_CORR_FINDINGS+=(${_TA_BEFORE_FINDINGS[@]+"${_TA_BEFORE_FINDINGS[@]}"})
+    _TA_CORR_FINDINGS+=(${_TA_TAG_FINDINGS[@]+"${_TA_TAG_FINDINGS[@]}"})
     _TA_CORR_FINDINGS+=(${_TA_DONE_FINDINGS[@]+"${_TA_DONE_FINDINGS[@]}"})
     # #2460 (ADR-054 §6a): what its own check found ends the try `unusable`,
     # the findings in its result: the engine runs test-author again, and the

@@ -124,7 +124,8 @@ zb_test_folder_branch_lines_v() {
     read -ra _gl <<< "$_globs"
     [[ ${#_gl[@]} -gt 0 ]] || return 0
     # A hunk's added lines run on from its "+<start>"; a removed line takes no
-    # number in the new file.
+    # number in the new file. The prefixes and path quoting are set here, so a
+    # user's diff.mnemonicPrefix or diff.noprefix cannot hide a file (#2554).
     while IFS= read -r _l; do
         case "$_l" in
             $'\x01nobase') _ztl=(); return 0 ;;
@@ -133,8 +134,8 @@ zb_test_folder_branch_lines_v() {
             '@@ '*) [[ "$_l" =~ \+([0-9]+) ]] && _n="${BASH_REMATCH[1]}" ;;
             '+'*) [[ -n "$_f" ]] && _ztl[$_f]+="$_n "; _n=$(( _n + 1 )) ;;
         esac
-    done < <(git -C "$_root" diff -U0 --no-color --no-ext-diff --merge-base "origin/$_db" 2>/dev/null \
-        || git -C "$_root" diff -U0 --no-color --no-ext-diff --merge-base "$_db" 2>/dev/null \
+    done < <(git -C "$_root" -c core.quotePath=false diff -U0 --no-color --no-ext-diff --src-prefix=a/ --dst-prefix=b/ --merge-base "origin/$_db" 2>/dev/null \
+        || git -C "$_root" -c core.quotePath=false diff -U0 --no-color --no-ext-diff --src-prefix=a/ --dst-prefix=b/ --merge-base "$_db" 2>/dev/null \
         || printf '\x01nobase\n')
     while IFS= read -r -d '' _f; do
         _zb_test_globs_match "$_f" "${_gl[@]}" && _ztl[$_f]="all"

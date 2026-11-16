@@ -1,6 +1,6 @@
 # ADR-036 — Acceptance-contract teeth (mechanical SPEC↔assertion gate)
 
-**Status:** Accepted (2026-06-17); amended 2026-07-01 (role/strategy split + preconditions);; amended 2026-11-04 (#2467: build and a test that leaves something behind); amended 2026-11-09 (#2508: every level reads a requirement's tests from its tag in the test folders, never from a list design wrote)
+**Status:** Accepted (2026-06-17); amended 2026-11-16 (#2554: a tag names one SPEC, one a line; test-author refuses tag-shaped text for two); amended 2026-07-01 (role/strategy split + preconditions);; amended 2026-11-04 (#2467: build and a test that leaves something behind); amended 2026-11-09 (#2508: every level reads a requirement's tests from its tag in the test folders, never from a list design wrote)
 amended 2026-07-03 (#1218, ADR-046 — Level-1 SPEC-tag-presence shifts LEFT to a PRE-build
 `design-gate`; this post-build acceptance-gate retains Level-2 negative-control/tautology +
 Level-3 reachability, which cannot shift left — they need a built assertion + baseline-vs-HEAD);
@@ -1039,7 +1039,17 @@ build still never edits an acceptance test. When a test leaves something behind 
 
 Design names no files (ADR-069 §11), so no level reads "the declared TESTFILES". Level 1 asks whether a file in the repository's test folders holds the SPEC's tag; Level 2 runs, for each code SPEC, the test-folder files that hold its tag (at HEAD, and overlaid on the merge-base worktree); Level 3 runs every file that holds any of the design's tags. The tags are found once per check (`acceptance_spec_files_v`). A WIRING file is never a test: one in a test folder is refused at design's checks (`WIRING_IS_TEST`, now by the test folders rather than a list). Build stays read-only on every file in the test folders (ADR-030 §8).
 
+## Amendment 2026-11-16 (#2554) — a tag names one SPEC, one a line
+
+On #1764 run 43772987273 test-author tagged one assertion `[DSCLA-1/5]`, because it proved two SPECs. No reader finds `[DSCLA-1]` in it, so the assertion counted for neither, and the message test-author got back guessed at a crash that never happened (ADR-069, amendment 2026-11-16).
+
+- **A tag names one SPEC:** `[<id>]`, or this issue's old `[#<issue>/<id>]`. A line holds one tag. An assertion that proves two SPECs is written twice, one line per SPEC, each with its own tag. test-author's prompt says so.
+- **test-author's own check refuses the rest** (`_ta_tag_shape`, `plugins/agent/test-author/lib/before-run.sh`): on the lines its branch added to its test files (ADR-069 §11 — the lines the stale-tag step reads; a new file is all added), text shaped like a tag for more than one SPEC — a bracket that starts with one of the contract's ids and goes on with `/`, `,` or a space (`[DSCLA-1/5]`, `[DSCLA-1, DSCLA-5]`) — and two tags side by side in one label (`[DSCLA-1] [DSCLA-5]`) are each a finding naming the file, the line and the rule. Text that only mentions an id is left alone: `[[ $id == DSCLA-1 ]]`, a grep for `'\[DSCLA-1\]'`, JSON, the expected text of an assertion, another issue's `[#<n>/<id>]`. At most 10 such findings, then a count of the rest.
+- **The branch's lines are read the same on every machine:** the diff that finds them sets its own prefixes and path quoting, so a user's `diff.mnemonicPrefix`, `diff.noprefix` or external diff cannot hide a file (`zb_test_folder_branch_lines_v`, `scripts/lib/test-paths.sh`).
+
 ## Enforced by
+
+- Amendment 2026-11-16 (#2554: a tag names one SPEC, one a line) → `tests/unit/test-author-before-run-test.sh` B13 (a tag-shaped text naming two SPECs is a finding: file, line, rule), B14 (two tags side by side; one tag a label is no finding), B15 (the prompt), B16 (a new file is checked whole), B17 (only the branch's added lines, at their own numbers), B18 (text that only mentions an id is no finding), B19 (a committed branch line is read whatever the diff settings), B20 (at most 10 findings, then a count)
 
 - Amendment 2026-11-09 (#2508: tests found by their tags) → `tests/unit/design-names-no-files-test.sh` N2–N6; `tests/unit/acceptance-negctl-test.sh` (the negative control runs the files holding a SPEC's tag)
 - Amendment 2026-11-04 (#2467: a test that leaves something behind) → `tests/unit/gwt-format-test.sh` B1

@@ -7,8 +7,10 @@
 # The model writes tests and runs nothing but a test file of its own it is told
 # fails (#2506); whether a test fails where it must is measured here, never
 # taken from the model. A [code] requirement's test must
-# fail on that code; one that passes there, or a file that stops before its
-# assertion runs, is a finding — and only findings send the model round again.
+# fail on that code; one that passes there, or a file whose output holds no
+# line tagged for its SPEC, is a finding — and only findings send the model
+# round again. #2554 (ADR-069): it reads only the tag contract, never a file's
+# exit code (a test file exits with its count of failures, not "stopped").
 #
 # Sourced library: no set -euo pipefail.
 
@@ -88,14 +90,14 @@ _ta_before_run() {
     if ! git -C "$repo" worktree add --detach "$wt" "$base" >/dev/null 2>&1; then
         rm -rf "${wt:?}"; return 0
     fi
-    local log rc sid st v
+    local log sid st v
     local _nf
     for tf in "${changed[@]}"; do
         _nf=${#_TA_BEFORE_FINDINGS[@]}
         mkdir -p "$wt/$(dirname "$tf")"
         cp "$repo/$tf" "$wt/$tf" 2>/dev/null || continue
         log="$(mktemp "$(zbuild_engine_tmpdir)/zb-ta-run.XXXXXX")" || continue
-        rc=0; _negctl_run "$wt/$tf" "$wt" "$log" || rc=$?
+        _negctl_run "$wt/$tf" "$wt" "$log" || true
         while IFS= read -r sid; do
             [[ -n "$sid" ]] || continue
             [[ " ${_brf[$sid]:-} " == *" $tf "* ]] || continue
@@ -106,10 +108,8 @@ _ta_before_run() {
                 _TA_BEFORE_FINDINGS+=("$sid: $tf fails on the code from before this change, which the design says already does this — the test or the [done] is wrong")
             elif [[ "$v" -eq 1 && "$st" != no-code && "$st" != "done" ]]; then
                 _TA_BEFORE_FINDINGS+=("$sid: $tf passes on the code from before this change — a requirement that needs code must have a test that fails there")
-            elif [[ "$v" -eq 2 && "$rc" -ne 0 ]]; then
-                _TA_BEFORE_FINDINGS+=("$sid: $tf stopped before $sid's assertion ran on the code from before this change (exit $rc): $(_ta_log_tail "$log")")
             elif [[ "$v" -eq 2 ]]; then
-                _TA_BEFORE_FINDINGS+=("$sid: $tf holds no assertion tagged $(acceptance_spec_tag "$sid") that ran")
+                _TA_BEFORE_FINDINGS+=("$sid: no line tagged $(acceptance_spec_tag "$sid") appeared in $tf's output on the code from before this change: $(_ta_log_tail "$log")")
             fi
         done < <(acceptance_list_spec_ids "$design" 2>/dev/null || true)
         rm -f "$log"
@@ -125,4 +125,67 @@ _ta_log_tail() {
     local t; t="$(LC_ALL=C sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g' "$1" 2>/dev/null | tail -n 3)"
     t="${t//$'\n'/ | }"
     printf '%s' "${t:0:300}"
+}
+
+# _ta_tag_shape <design_md> <repo> — sets _TA_TAG_FINDINGS (#2554, ADR-036): on
+# the lines this branch added to its test files (ADR-069 §11, the same lines
+# the stale-tag step reads), text shaped like a tag for more than one SPEC —
+# `[DSCLA-1/5]`, `[DSCLA-1, DSCLA-5]` — and two tags side by side in one label.
+# Text that only mentions an id (`[[ $id == X-1 ]]`, `'\[X-1\]'`, JSON) is not
+# shaped like a tag and is left alone. At most 10 findings, then a count.
+_ta_tag_shape() {
+    local design="$1" repo="$2" ids="" id issue="${ZBUILD_ISSUE:-}" tf line n=0 extra=0
+    _TA_TAG_FINDINGS=()
+    while IFS= read -r id; do [[ -n "$id" ]] && ids+="${ids:+ }$id"; done \
+        < <(acceptance_list_spec_ids "$design" 2>/dev/null || true)
+    [[ -n "$ids" ]] || return 0
+    # The tag reader's own rule: this issue's [#<n>/<id>] only for a real issue.
+    [[ "$issue" =~ ^[1-9][0-9]*$ ]] || issue=""
+    local -A _tsl=()
+    if [[ "${_TA_BRANCH_LINES_REPO:-}" == "$repo" ]]; then
+        for tf in "${!_TA_BRANCH_LINES[@]}"; do _tsl[$tf]="${_TA_BRANCH_LINES[$tf]}"; done
+    else
+        zb_test_folder_branch_lines_v _tsl "$repo"
+    fi
+    # The files in a fixed order, so the findings are the same each try.
+    local -a order=(); local i
+    for tf in "${!_tsl[@]}"; do
+        i=${#order[@]}
+        while (( i > 0 )) && [[ "${order[i-1]}" > "$tf" ]]; do order[i]="${order[i-1]}"; i=$((i - 1)); done
+        order[i]="$tf"
+    done
+    for tf in ${order[@]+"${order[@]}"}; do
+        [[ -f "$repo/$tf" ]] || continue
+        while IFS= read -r line; do
+            [[ -n "$line" ]] || continue
+            if (( n < 10 )); then _TA_TAG_FINDINGS+=("$line"); n=$((n + 1)); else extra=$((extra + 1)); fi
+        done < <(LC_ALL=C awk -v ids="$ids" -v issue="$issue" -v f="$tf" -v lines=" ${_tsl[$tf]} " '
+            BEGIN {
+                all = (lines ~ / all /)
+                k = split(ids, a, " ")
+                for (i = 1; i <= k; i++) { ok[a[i]] = 1; alt = alt (alt ? "|" : "") a[i] }
+                bad = "^(#[0-9]+/)?(" alt ")[/, ][A-Za-z0-9#/, -]*$"
+            }
+            function valid(c,    r) {
+                if (c in ok) return 1
+                if (issue != "" && index(c, "#" issue "/") == 1) { r = substr(c, length(issue) + 3); return (r in ok) }
+                return 0
+            }
+            !all && index(lines, " " FNR " ") == 0 { next }
+            {
+                rest = $0; prev = ""
+                while (match(rest, /\[[^][]*\]/)) {
+                    t = substr(rest, RSTART, RLENGTH); c = substr(t, 2, RLENGTH - 2)
+                    v = valid(c); side = (substr(rest, 1, RSTART - 1) ~ /^[ \t]*$/)
+                    if (v && prev != "" && side)
+                        printf "%s line %d holds two tags (%s, %s) — one tag per line: write the assertion once for each SPEC\n", f, FNR, prev, t
+                    if (!v && c ~ bad)
+                        printf "%s line %d: %s is not a tag — a tag names one SPEC: [<id>]. An assertion that proves two SPECs is written twice, one line per SPEC, each with its own tag\n", f, FNR, t
+                    prev = v ? t : ""
+                    rest = substr(rest, RSTART + RLENGTH)
+                }
+            }' "$repo/$tf" 2>/dev/null)
+    done
+    (( extra > 0 )) && _TA_TAG_FINDINGS+=("and $extra more lines like these in the test files — fix each the same way")
+    return 0
 }
