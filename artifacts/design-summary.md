@@ -1,9 +1,10 @@
 ## design — pass
 
-- 15 SPEC(s): DSCLA-1, DSCLA-2, DSCLA-3, DSCLA-9, DSCLA-5, DSCLA-6, DSCLA-7, DSCLA-8, DSCLA-10, DSCLA-11, DSADR-4, DSADR-5, DSADR-6, DSADR-7, DSADR-8
+- 16 SPEC(s): DSCLA-1, DSCLA-2, DSCLA-12, DSCLA-3, DSCLA-9, DSCLA-5, DSCLA-6, DSCLA-7, DSCLA-8, DSCLA-10, DSCLA-11, DSADR-4, DSADR-5, DSADR-6, DSADR-7, DSADR-8
 
-- DSCLA-1 (covers RQCLA-1, RQLAB-1): When an issue-bound run starts and zbuild:claimed is absent, the label is added before the first stage dispatches
-- DSCLA-2 (covers RQCLA-2, RQLAB-2): When a run starts with an issue, the run-status comment identifies the holder; the label name has no hostname
+- DSCLA-1 (covers RQCLA-1, RQLAB-1, RQLAB-2): When an issue-bound run starts and zbuild:claimed is absent, the label is added before the first stage dispatches
+- DSCLA-2 (covers RQCLA-2): When a local run starts with an issue, rsc_render_header embeds the holder in the run-status comment header
+- DSCLA-12 (covers RQCLA-2): When a CI run starts with an issue, the rendered run-status comment header contains the CI run URL as the holder
 - DSCLA-3 (covers RQCLA-3, RQCLA-9): When a run starts on a claimed issue, it refuses with non-zero exit before any stage
 - DSCLA-9 (covers RQCLA-4): When a run is refused because zbuild:claimed is on the issue, the run's output names the holder
 - DSCLA-5 (covers RQCLA-5): On normal pipeline completion, zbuild:claimed is removed from the issue
@@ -17,7 +18,6 @@
 - DSADR-6 (covers RQADR-3): ADR-005 corrects stale content: coordinator selection is not from config/zbuild.yaml, and the engine now has a built-in claim mechanism
 - DSADR-7 (covers RQADR-4): ADR-005 has an ## Enforced by section naming the test or lint that enforces each statement
 - DSADR-8 (covers RQADR-5): ADR-059 §4 tells the reader that cross-machine exclusion is the claim coordinator's job and the admission lock (flock) handles intra-machine serialisation
-- answered: design finding 1: done** — Renamed DSCLA-11 → DSCLA-10 (event-schema coverage SPEC) and DSCLA-12 → DSCLA-11 ([done] run-status SPEC), making them sequential from the DSCLA-9 baseline.
-- answered: design finding 2: done** — Added `REMOVED: DSCLA-4 — RQCLA-4 is fully covered by DSCLA-9, which tests the observable runner output; keeping a separate assertion that _ZBUILD_CLAIM_HOLDER is internally set tests the same interaction path with no additional observable coverage`.
-- answered: design finding 3: done** — Replaced the DSCLA-8 `Then:` clause. It now reads `Then: zbuild_claim_acquire returns 0` and `And: no gh label command is invoked` — both are observable from a mocked `gh`.
-- not answered: test-author finding 1
+- answered: design finding 1: done — Moved RQLAB-2 coverage from DSCLA-2 (where the `And` was unobservable after calling `rsc_render_header`) to DSCLA-1. DSCLA-1's `Then` now reads "gh is called to add exactly the label `zbuild:claimed` to the issue (no hostname component in the label name)". A test mocks `gh` and checks the exact label argument — the label name is directly observable from that call.
+- answered: design finding 2: done — Removed `And: the claim label zbuild:claimed contains no hostname component` from DSCLA-2 and removed `RQLAB-2` from DSCLA-2's covers clause. DSCLA-2 now covers only RQCLA-2 (local render). RQLAB-2 is covered by DSCLA-1 as described above.
+- answered: test-author finding 1: done — DSCLA-2 is now purely the local render case (no hostname And, no RQLAB-2 in covers). DSCLA-12 covers the CI render case. Both explicitly state `When: rsc_render_header is called` and `Then: the rendered header contains <!-- zbuild-holder: ... -->`, so the test must call the renderer and inspect its output for both sub-cases.

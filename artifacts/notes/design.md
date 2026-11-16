@@ -1,4 +1,4 @@
-# Design notes — issue #1764 GitHub label claim (round 9)
+# Design notes — issue #1764 GitHub label claim (round 11)
 
 ## What was read
 
@@ -18,39 +18,25 @@
 - `docs/adr/ADR-059-issue-vs-run-keying.md` — §4 describes flock as exclusivity mechanism.
   Needs amendment per RQADR-5.
 
-## Changes this round (design finding fixes)
+## Changes this round (round 11)
 
-### Finding 1: DSCLA-12 uses wrong number
-The preamble baseline for DSCLA is 9. The two new SPECs in the design were DSCLA-11 and DSCLA-12.
-Sequential from 9 means they should be DSCLA-10 and DSCLA-11.
-FIX: Renamed DSCLA-11 → DSCLA-10 (event-schema coverage SPEC) and DSCLA-12 → DSCLA-11 ([done] run-status SPEC).
+### Design findings 1 & 2: RQLAB-2 unobservable from DSCLA-2's And
 
-### Finding 2: DSCLA-4 missing without REMOVED line
-DSCLA-4 appeared in the last PASSING design (iter-1-attempt-3). It has test assertions in
-`plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh`.
-FIX: Added REMOVED: DSCLA-4 — RQCLA-4 is fully covered by DSCLA-9; keeping a separate
-assertion for the internal variable adds no additional observable coverage.
-The supersedes entry for [DSCLA-4] in the claim-coordinator tests remains valid: those tests
-need to be updated because the holder now comes from the run-status comment, not a separate comment.
+**Root cause**: DSCLA-2's `And: the claim label zbuild:claimed contains no hostname component`
+was placed after `When: rsc_render_header is called`. Calling rsc_render_header produces rendered
+markdown and touches no GitHub label — no test can observe the label name from that call.
 
-### Finding 3: DSCLA-8 Then clause not observable
-"and the run proceeds normally" is not an observable output/event/file.
-FIX: Changed to:
-  Then: zbuild_claim_acquire returns 0
-  And: no gh label command is invoked
-
-### Issue-acceptance finding (not a design finding):
-The issue-acceptance stage flagged two code issues:
-1. `pipeline.refused.claimed` not registered in event-schema.json — this is a code bug (the
-   coder's implementation didn't do what step 4 of the design specifies). The design is correct:
-   it has step 4 and DSCLA-10. NOT a design fix.
-2. plugin.sh sourcing core/claim/claim.sh (circular dependency) — the design never asked for this.
-   Added explicit note in step 1: "plugin.sh must not source core/claim/claim.sh." The design
-   says claim.sh sources the plugin, not the other way around.
+**Fix**:
+- DSCLA-1: add RQLAB-2 to covers; change `Then` to "gh is called to add exactly the label
+  zbuild:claimed to the issue (no hostname component in the label name)". The test mocks `gh`
+  and checks the exact argument — the label name is directly observable.
+- DSCLA-2: remove RQLAB-2 from covers; remove the unobservable `And`; title now says local
+  render only.
+- DSCLA-12 (CI render) was already present from round 10.
 
 ## SPEC codes highest used
-DSCLA: 1-11 (DSCLA-4 removed via REMOVED line; DSCLA-10 = event-schema; DSCLA-11 = [done])
-DSADR: 4-8 (all new this issue)
+DSCLA: 1-12 (DSCLA-4 removed via REMOVED line; DSCLA-10 = event-schema; DSCLA-11 = [done]; DSCLA-12 = CI render case)
+DSADR: 4-8 (all this issue)
 
 ## Key architectural decisions
 

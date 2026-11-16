@@ -71,16 +71,19 @@ the ADR-064 run-status comment (`scripts/lib/run-status-comment.sh`), not a new 
 ```
 
 ```acceptance
-DSCLA-1[code]: When an issue-bound run starts and zbuild:claimed is absent, the label is added before the first stage dispatches covers: RQCLA-1, RQLAB-1
+DSCLA-1[code]: When an issue-bound run starts and zbuild:claimed is absent, the label is added before the first stage dispatches covers: RQCLA-1, RQLAB-1, RQLAB-2
   Given: a run is started with an issue number; zbuild:claimed is not on the issue
   When: the run starts
-  Then: zbuild:claimed is present on the issue
+  Then: gh is called to add exactly the label zbuild:claimed to the issue (no hostname component in the label name)
   And: no stage has yet been dispatched
-DSCLA-2[code]: When a run starts with an issue, the run-status comment identifies the holder; the label name has no hostname covers: RQCLA-2, RQLAB-2
-  Given: a run starts with an issue number
-  When: the run-status comment is first posted to the issue
-  Then: the comment body contains a <!-- zbuild-holder: --> HTML comment with the run_id and machine name (local runs) or the CI run URL (CI runs)
-  And: the claim label zbuild:claimed contains no hostname component
+DSCLA-2[code]: When a local run starts with an issue, rsc_render_header embeds the holder in the run-status comment header covers: RQCLA-2
+  Given: a local run (GITHUB_ACTIONS not true) starts with an issue number; the holder string is run_id=X machine=H
+  When: rsc_render_header is called with the run id and holder string
+  Then: the rendered header contains <!-- zbuild-holder: run_id=<id> machine=<hostname> -->
+DSCLA-12[code]: When a CI run starts with an issue, the rendered run-status comment header contains the CI run URL as the holder covers: RQCLA-2
+  Given: a CI run (GITHUB_ACTIONS=true) starts with an issue number
+  When: rsc_render_header is called with the run id and the CI holder string
+  Then: the rendered header contains <!-- zbuild-holder: <GITHUB_SERVER_URL>/<GITHUB_REPOSITORY>/actions/runs/<GITHUB_RUN_ID> -->
 DSCLA-3[code]: When a run starts on a claimed issue, it refuses with non-zero exit before any stage covers: RQCLA-3, RQCLA-9
   Given: zbuild:claimed is already on the issue
   When: a run is started on that issue
