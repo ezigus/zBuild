@@ -1,5 +1,11 @@
 {
   "wiring_files": [
     "core/pipeline/runner.sh"
-  ]
+  ],
+  "owned_files": {
+    "test-author": [
+      "plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh",
+      "tests/integration/teardown-repeat-signal-test.sh"
+    ]
+  }
 }

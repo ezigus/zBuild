@@ -1,0 +1,3 @@
+# authored_by: test-author
+6e72046229bfbcc8d4baf85ce13f07cfcba3061736e7a567bcbeecea71e5e1eb  plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
+16093c2ba77f647a7e0de072f50abf9dd0715c729e06d3fb9394f9bbd7c9e82b  tests/integration/teardown-repeat-signal-test.sh
