@@ -30,7 +30,7 @@ source "${BASH_SOURCE[0]%/*}/coverage-answer.sh"
 # order (ADR-067 §8). #2470: requirement coverage is asked only when a SPEC
 # changed or a requirement's finding was answered; with [reqs] it is.
 _dcov_prompt_own() {
-    local reqs="${1:-}"
+    local reqs="${1:-}" steps="${2:-}"
     printf 'You are checking whether a DESIGN covers what an ISSUE asked for, SPEC by SPEC.\n'
     [[ -n "$reqs" ]] && cat <<'EOF2'
 
@@ -67,30 +67,50 @@ one line:
 
 <SPEC id>: ok
 
-When something is wrong with it, one line for each thing wrong, and no ok line:
+When something is wrong with it, one line for each thing wrong, and no ok line,
+every one in this form:
 
-<SPEC id>: outside | WHY: <what the issue does not ask for, or how it contradicts it> | QUOTE: <the SPEC's own words that do>
-<SPEC id>: status | DOC: <yes or no> | BEFORE: <yes or no> | WORK: <yes or no> | WHY: <what shows it> | QUOTE: <file> | <one line of it>
-<SPEC id> <part>: untestable | WHY: <why a test cannot observe it> | QUOTE: <that part's own words>
-<SPEC id> <part>: how | WHY: <what it says about how it is built, or how a test sets it up or checks it> | QUOTE: <that part's own words>
-<SPEC id> <part>: contradicts | WHY: <what it cannot be true together with, and where that is> | QUOTE: <that part's own words>
-<SPEC id> <part>: duplicate | WHY: <which SPEC already has this action> | QUOTE: <that part's own words>
+<SPEC id> <line>: <problem> | WHY: <why> | QUOTE: <words from that line>
 
-<part> is the word the part's line starts with: Given, When, Then, And or
-Cleanup. The QUOTE is copied from that line, and says which line it is when the
-SPEC has several.
+<line> is the word the line starts with: Title (the SPEC's first line), Given, When, Then, And or Cleanup.
+The QUOTE is copied from that line, and says which line it is when the SPEC has
+several. <problem> is one of:
 
-status is for a SPEC whose status is not the one its facts give: DOC, BEFORE
-and WORK are the three facts, each yes or no. The QUOTE is a line of the code
-from before this change, or of the document, that shows the fact the status
-gets wrong: when it already behaves this way, the line that does it; when it
-does not, the line that does something else. untestable is only for a Then, or
-an And under a Then: it must be something a test can observe after the When —
-an output, a result, a file the code writes, an event — never what a file or a
-test contains, and never "it works". duplicate is only for the When. how is for
-a part that says how the code is built, or how a test sets something up or
-checks it — a Given names the situation the code is in, never the steps a test
-takes to get there.
+- not-asked — the line commits to something the issue does not ask for, or contradicts it
+- untestable — only for a Then, or an And under a Then: it must be something a
+  test can observe after the When — an output, a result, a file the code
+  writes, an event — never what a file or a test contains, and never "it works"
+- how — the line says how the code is built, or how a test sets something up or
+  checks it; a Given names the situation the code is in, never the steps a test
+  takes to get there
+- contradicts — the line cannot be true together with something else, and WHY
+  says what and where
+- duplicate — only for the When: another SPEC already has this action, and WHY
+  names it
+- new-owner — only on Title: the SPEC builds something new for a job that
+  something in the code from before this change already does; the QUOTE is a
+  line of that existing owner, as <file> | <one line of it>
+- status — only on Title, for a SPEC whose status is not the one its facts give,
+  with the three facts, each yes or no, and a QUOTE from the code instead of the
+  SPEC:
+
+<SPEC id> Title: status | DOC: <yes or no> | BEFORE: <yes or no> | WORK: <yes or no> | WHY: <what shows it> | QUOTE: <file> | <one line of it>
+
+A status QUOTE is a line of the code from before this change, or of the
+document, that shows the fact the status gets wrong: when it already behaves
+this way, the line that does it; when it does not, the line that does
+something else.
+EOF2
+    [[ -n "$steps" ]] && cat <<'EOF2'
+
+One line for the design's steps (its ```steps block): does a step build
+something new — a file, a library, a mechanism — for a job that something in
+the code from before this change already does? Look for it before you answer:
+the plugin kinds in docs/ARCHITECTURE.md, the ADRs for the area, the existing
+plugins and libraries.
+
+Steps: ok
+Steps: new-owner | WHY: <what the steps build, and what already owns that job> | QUOTE: <file> | <one line of the existing owner>
 EOF2
     cat <<'EOF2'
 
@@ -99,7 +119,7 @@ is checked: a quote that is not there makes the answer unusable.
 EOF2
 }
 
-# _dcov_prompt_judge <draft> <shown> [requirements] [others] [done_evidence] [base] [issue] [limits]
+# _dcov_prompt_judge <draft> <shown> [requirements] [others] [done_evidence] [base] [issue] [limits] [terms] [steps]
 # — <shown> the SPECs to judge, in full; [others] the rest, by their first line,
 # given only with [requirements], for what they cover (#2470, ADR-072 §4).
 _dcov_prompt_judge() {
@@ -150,6 +170,9 @@ EOF2
     printf '\nACCEPTANCE — the SPECs to judge, each with its parts:\n'
     printf 'ACCEPTANCE:\n%s\n' "${2:-(none)}"
     # #2550 (ADR-069): a limit is not covered; a SPEC that builds one contradicts it.
+    [[ -n "${10:-}" ]] && printf '\nSTEPS — the design'"'"'s steps, to judge for a new owner:\n%s\n' "${10}"
+    # #2555 (ADR-070): the issue's terms, word for word, as every stage gets them.
+    [[ -n "${9:-}" ]] && printf '\nTERMS — what the issue says each of these words means, and only this. A SPEC that uses a term differently from its definition contradicts it: answer contradicts for the line that does it, quoting it.\n%s\n' "$9"
     [[ -n "${8:-}" ]] && printf '\nLIMITS — what the change must not do. They are not requirements: give them no line. A SPEC that does what a limit forbids contradicts it: answer contradicts for the part that does it, quoting that part.\n%s\n' "$8"
     [[ -n "${3:-}" && -n "${4:-}" ]] && printf '\nOTHER SPECS — judged before and unchanged, shown by their first line for what they cover. Do not answer for them.\n%s\n' "$4"
     [[ -n "${5:-}" ]] && printf "\nTHE [done] SPECS' EVIDENCE — a file and a piece of its text. Open the file\nand read the code around that text, as much as you need:\n%s\n" "$5"
@@ -163,6 +186,19 @@ _dcov_prompt_limits() {
 - Do not rewrite the design.
 - Answer only, in the form above.
 EOF2
+}
+
+# _dcov_steps_v <var> <design_md> — the lines of the design's ```steps block.
+_dcov_steps_v() {
+    local -n _dsv="$1"; local _l _in=0
+    _dsv=""
+    [[ -f "$2" ]] || return 0
+    while IFS= read -r _l || [[ -n "$_l" ]]; do
+        if [[ "$_l" =~ ^'```steps'[[:space:]]*$ ]]; then _in=1; continue; fi
+        [[ $_in -eq 1 && "$_l" =~ ^'```' ]] && break
+        [[ $_in -eq 1 ]] && _dsv+="$_l"$'\n'
+    done < "$2"
+    return 0
 }
 
 # _dcov_specs <acceptance> — every SPEC of the block, read once, into the
@@ -234,6 +270,7 @@ _dcov_disputes_v() {
         _ddv_t="${_ddv_txt[$_ddv_n]:-}"; _ddv_id="${_ddv_t%%[: ]*}"
         if [[ -n "${first[$_ddv_id]+x}" ]]; then _ddv["$_ddv_id"]+="$_ddv_a"$'\n'
         elif [[ -n "${req_text[$_ddv_id]+x}" ]]; then _ddv["requirements"]+="$_ddv_a"$'\n'
+        elif [[ "$_ddv_id" == Steps ]]; then _ddv["steps"]+="$_ddv_a"$'\n'
         else
             for _ddv_k in ${ids[@]+"${ids[@]}"} requirements; do _ddv["$_ddv_k"]+="$_ddv_a"$'\n'; done
         fi
@@ -253,9 +290,9 @@ _dcov_disputes_v() {
 # call is given the draft by its path and, in full, only the SPECs it judges.
 # rc 0 always.
 _design_coverage() {
-    local design_md="$1" reqs="$2" tier="${3:-T2}" answers="${4:-}" lims="${5:-}"
+    local design_md="$1" reqs="$2" tier="${3:-T2}" answers="${4:-}" lims="${5:-}" terms="${6:-}"
     _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_STATUS_WRONG=(); _DESIGN_COV_OUTCOME=""
-    _DESIGN_PART_WRONG=(); _DESIGN_COV_FINDINGS=()
+    _DESIGN_PART_WRONG=(); _DESIGN_COV_FINDINGS=(); _DESIGN_NEW_OWNER=()
     local acc; acc="$(extract_acceptance_block "$design_md" 2>/dev/null || true)"
     [[ -n "$acc" ]] || return 0
 
@@ -289,11 +326,18 @@ _design_coverage() {
     for id in ${ids[@]+"${ids[@]}"}; do
         _dcov_ev_items_v _evi "${ev[$id]:-}" "$base"
         _ev_all+="$_evi"; _all+="${render[$id]}"$'\n'
-        judge_fp_v _fpv "$eng"$'\n'"$id"$'\n'"${render[$id]}"$'\n'"$_evi"$'\n'"$base_sha"$'\n'"${disp[$id]:-}"$'\n'"$lims"
+        judge_fp_v _fpv "$eng"$'\n'"$id"$'\n'"${render[$id]}"$'\n'"$_evi"$'\n'"$base_sha"$'\n'"${disp[$id]:-}"$'\n'"$lims"$'\n'"$terms"
         fps["$id"]="$_fpv"
     done
-    judge_fp_v _fpv "$eng"$'\n'"$reqs"$'\n'"$_all"$'\n'"$_ev_all"$'\n'"$base_sha"$'\n'"${disp[requirements]:-}"$'\n'"$lims"
+    judge_fp_v _fpv "$eng"$'\n'"$reqs"$'\n'"$_all"$'\n'"$_ev_all"$'\n'"$base_sha"$'\n'"${disp[requirements]:-}"$'\n'"$lims"$'\n'"$terms"
     fps["requirements"]="$_fpv"
+    # #2555 (ADR-072 §3): the design's steps are an item of their own, judged
+    # for a new owner where one exists, and judged again only when they change.
+    local steps=""; _dcov_steps_v steps "$design_md"
+    if [[ -n "$steps" ]]; then
+        judge_fp_v _fpv "$eng"$'\n'steps$'\n'"$steps"$'\n'"$base_sha"$'\n'"${disp[steps]:-}"
+        fps["steps"]="$_fpv"
+    fi
     [[ -n "$kf" ]] && judge_kept_get_all_v kept "$kf" fps disp
 
     # A kept answer is read as it was given; one that no longer reads is judged again.
@@ -310,6 +354,8 @@ _design_coverage() {
     done
     local reqs_asked=""
     [[ -n "${kept["requirements"]+x}" ]] || { want+=requirements$'\n'; reqs_asked="$reqs"; }
+    local steps_asked=""
+    [[ -n "$steps" && -z "${kept["steps"]+x}" ]] && { want+=steps$'\n'; steps_asked="$steps"; }
     if [[ -z "$want" ]]; then
         _dcov_parse "$kept_raw" "$kept_want"
         _dcov_findings_build
@@ -320,7 +366,7 @@ _design_coverage() {
     [[ -n "$reqs_asked" ]] && issue="$(earlier_issue_text "${artifact_dir:-${ZBUILD_ARTIFACT_DIR:-}}" "${state_dir:-}" 2>/dev/null || true)"
     for k in "${!disp[@]}"; do [[ $'\n'"$want" == *$'\n'"$k"$'\n'* ]] && _disp_shown+="${disp[$k]}"; done
     # #2458: it judges, so it composes fresh — no notes, and no rule to confirm earlier work.
-    if ! framed="$(stage_prompt_compose_text --fresh "$(_dcov_prompt_own "$reqs_asked")" "$(_dcov_prompt_judge "$design_md" "${shown%$'\n'}" "$reqs_asked" "${others%$'\n'}" "$done_ev" "$base" "$issue" "$lims")$(judge_disputes_block "$_disp_shown")" "$(_dcov_prompt_limits)")"; then
+    if ! framed="$(stage_prompt_compose_text --fresh "$(_dcov_prompt_own "$reqs_asked" "$steps_asked")" "$(_dcov_prompt_judge "$design_md" "${shown%$'\n'}" "$reqs_asked" "${others%$'\n'}" "$done_ev" "$base" "$issue" "$lims" "$terms" "$steps_asked")$(judge_disputes_block "$_disp_shown")" "$(_dcov_prompt_limits)")"; then
         _DESIGN_COV_OUTCOME=misconfigured
         return 0
     fi
@@ -387,8 +433,17 @@ _design_coverage() {
     done <<< "$want"
     [[ -n "$kf" ]] && judge_kept_put_all "$kf" put putfp deps
     if [[ -n "$need" ]]; then
-        _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_STATUS_WRONG=(); _DESIGN_PART_WRONG=()
-        _DESIGN_COV_OUTCOME=unusable
+        # #2555 (R6): what the usable items found still reaches design, with a
+        # note naming what was not judged; with nothing found, it cannot be used.
+        local _why_left="$_DCOV_PROBLEM"
+        _dcov_parse "$kept_raw$new_raw" "$kept_want$new_want"
+        _dcov_findings_build
+        if [[ ${#_DESIGN_COV_FINDINGS[@]} -eq 0 ]]; then
+            _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_STATUS_WRONG=(); _DESIGN_PART_WRONG=(); _DESIGN_NEW_OWNER=()
+            _DESIGN_COV_OUTCOME=unusable
+            return 0
+        fi
+        _DESIGN_COV_FINDINGS+=("the check could not judge $(_dcov_need_names "$need"): $_why_left — it is judged again on the next try")
         return 0
     fi
     # The verdict is every item's answer: the kept ones and this call's.

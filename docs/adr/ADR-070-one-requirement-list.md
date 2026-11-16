@@ -1,6 +1,6 @@
 # ADR-070 — One fixed list of requirements per issue
 
-**Status:** Accepted (2026-10-05); amended 2026-11-15 (#2550, §1: an item the issue says not to do is a limit, kept with its "Do not"; intake numbers ids from its check's own count); amended 2026-11-12 (#2527, §1: intake's check is shown each removed item with its words and why, and is never told to name a listed id; §4: design's coverage check takes a quote from the issue's words too); amended 2026-11-08 (#2495, §4: the check looks both ways through the SPECs only, and does not judge the scope); amended 2026-11-09 (#2508, §4: design writes no scope block; what build changes is held to the requirements by issue-acceptance)
+**Status:** Accepted (2026-10-05); amended 2026-11-16 (#2555, §1: an issue's ## Terms section reaches every stage word for word); amended 2026-11-15 (#2550, §1: an item the issue says not to do is a limit, kept with its "Do not"; intake numbers ids from its check's own count); amended 2026-11-12 (#2527, §1: intake's check is shown each removed item with its words and why, and is never told to name a listed id; §4: design's coverage check takes a quote from the issue's words too); amended 2026-11-08 (#2495, §4: the check looks both ways through the SPECs only, and does not judge the scope); amended 2026-11-09 (#2508, §4: design writes no scope block; what build changes is held to the requirements by issue-acceptance)
 **Issue:** #2306
 **Amends:** ADR-046 (design-gate gains C7), ADR-069 §2 (a requirement line may also carry ` covers: `)
 **Related:** ADR-055 (inter-stage data contract), ADR-040 §5 (spec-coverage judges against the issue), ADR-066 (every ADR statement has a test), ADR-067 (prompts speak plainly)
@@ -186,7 +186,16 @@ On #1764 run 43735596812 the issue said "Do not build: a check of a CI job's sta
 - **§1: intake's summary counts and lists the limits apart** from the requirements. An answer that still breaks a rule after it is asked again ends intake naming that rule.
 - **§1: intake's prompts give each code's highest number** from the function its id check uses (`zb_ids_highest_line_v`, `scripts/lib/item-ids.sh`), and state no rule of their own (ADR-069 §1).
 
+## Amendment 2026-11-16 (#2555) — §1: an issue's terms travel with its requirements, word for word
+
+On #1764 run 43772987273 the issue said "that run's progress comment (ADR-064)". Intake's requirement kept "the run's progress comment" and dropped "(ADR-064)", which said which comment. Design, which never sees the issue, defined it as a new comment, and the coverage check, with only design's definition before it, answered "covered" on every try.
+
+- **§1: intake copies the issue's `## Terms` section word for word** into its list, as `terms`, with no model (`_ireq_terms_v`, `plugins/agent/intake/lib/requirements.sh`): the lines under a `## Terms` or `### Terms` heading (any case, a colon allowed), up to the next heading. A heading inside a code fence is text, and a CRLF body's carriage returns are dropped. An issue with none has no `terms`. A list kept from an earlier run gets the terms of the issue as it is now.
+- **§1: every stage that is shown the requirements is shown the terms** (`acceptance_terms_v`, which forks nothing for a list without terms): design, its coverage check, test-author and issue-acceptance. Design is told to use each term as the issue defines it; the coverage check is told that a SPEC using a term differently from its definition contradicts it.
+
 ## Enforced by
+
+- §1 amendment 2026-11-16 (#2555: an issue's terms travel word for word) → `tests/unit/issue-terms-test.sh` TM1 (copied word for word, no model), TM2 (none without a section), TM3 (a kept list gets them; the reader), TM4 (design's prompt), TM5 (the coverage check, and contradicts for a term used differently), TM6 (test-author's and issue-acceptance's prompts), TM7 (CRLF, a `#` line in a fence, `## Terms:`, `## TERMS`, a heading inside a fence)
 
 - §1 amendment 2026-11-15 (#2550: a limit keeps its "Do not"; the lists; intake's numbers from its check's count) → `tests/unit/limits-test.sh` LM1–LM4, LM9, LM10, LM12; `tests/unit/ids-one-rule-test.sh` N1, N5; `tests/unit/intake-requirements-model-test.sh` I8
 

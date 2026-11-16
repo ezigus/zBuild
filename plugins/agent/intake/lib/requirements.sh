@@ -304,6 +304,29 @@ _ireq_input_fp_v() {
     judge_fp_v _iif "$_iif_e"$'\n'"$2"$'\n'"$_iif_t"
 }
 
+# _ireq_terms_v <var> <issue_text> — the issue's ## Terms section, word for
+# word, with no model (#2555, ADR-070): the lines under a `## Terms` or
+# `### Terms` heading (any case, a colon allowed), up to the next heading,
+# without the blank lines around them. A heading inside a code fence is text,
+# and a carriage return (a CRLF body) is dropped.
+_ireq_terms_v() {
+    local -n _itv="$1"; local _l _in=0 _fence=0 _out="" _re='^##(#)?[[:space:]]+[Tt][Ee][Rr][Mm][Ss]:?[[:space:]]*$'
+    _itv=""
+    while IFS= read -r _l || [[ -n "$_l" ]]; do
+        _l="${_l%$'\r'}"
+        if [[ "$_l" == '```'* ]]; then
+            _fence=$(( 1 - _fence ))
+        elif (( ! _fence )); then
+            if (( ! _in )); then [[ "$_l" =~ $_re ]] && _in=1; continue; fi
+            [[ "$_l" =~ ^\#{1,3}[[:space:]] ]] && break
+        fi
+        (( _in )) && _out+="$_l"$'\n'
+    done <<< "$2"
+    while [[ "$_out" == $'\n'* ]]; do _out="${_out#$'\n'}"; done
+    while [[ "$_out" == *$'\n' ]]; do _out="${_out%$'\n'}"; done
+    _itv="$_out"
+}
+
 # _intake_requirements_json_v <var> <issue_json> — requirements.json for an
 # issue fetched as {title, body}, written and checked by the model, into <var>.
 # The last run's list (_INTAKE_PREV_REQ_JSON) is where it starts. rc 1, with
@@ -315,6 +338,7 @@ _intake_requirements_json_v() {
     local issue prompt i listed
     local -a ids=() texts=() rm_ids=() rm_why=()
     issue="$(_ireq_issue_text "${1:-}")"
+    local _terms=""; _ireq_terms_v _terms "$issue"
     # #2477: an unchanged issue under the same engine and instructions gives the
     # same list, so the last one is kept and no model is asked.
     local _ifp=""; _INTAKE_REQ_KEPT=""
@@ -322,6 +346,10 @@ _intake_requirements_json_v() {
     if [[ -n "$_ifp" && "${_INTAKE_PREV_REQ_JSON:-}" =~ \"input_fp\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" \
           && "${BASH_REMATCH[1]}" == "$_ifp" ]]; then
         _irj="$_INTAKE_PREV_REQ_JSON"; _INTAKE_REQ_KEPT=1
+        # #2555: a list kept from before terms were copied gets them now.
+        if [[ -n "$_terms" || "$_irj" == *'"terms"'* ]]; then
+            _irj="$(jq -c --arg t "$_terms" 'if $t == "" then del(.terms) else . + {terms: $t} end' <<< "$_irj" 2>/dev/null || printf '%s' "$_irj")"
+        fi
         _INTAKE_REQ_CHANGES='{"added":[],"removed":[]}'
         declare -F emit_event >/dev/null 2>&1 && emit_event "intake.requirements.kept" "plugin=intake" 2>/dev/null
         return 0
@@ -388,7 +416,7 @@ _intake_requirements_json_v() {
         _new+=$'\n'
     done
     for i in "${!rm_ids[@]}"; do _rm+="${rm_ids[i]}"$'\x1f'"${_IREQ_PREV_TEXT[${rm_ids[i]}]:-${_txt_of[${rm_ids[i]}]:-}}"$'\x1f'"${rm_why[i]}"$'\n'; done
-    _irj="$(jq -nc --arg n "$_new" --arg r "$_rm" --arg iss "$_iss" --arg fp "$_ifp" --argjson carry "$_IREQ_PREV_REMOVED_JSON" '
+    _irj="$(jq -nc --arg n "$_new" --arg r "$_rm" --arg iss "$_iss" --arg fp "$_ifp" --arg terms "$_terms" --argjson carry "$_IREQ_PREV_REMOVED_JSON" '
         def rows($s): $s | split("\n") | map(select(length > 0) | split("\u001f")
             | map(gsub("[[:cntrl:]]"; " ") | gsub("^\\s+|\\s+$"; "")));
         (rows($r) | map({id: .[0], text: .[1], reason: .[2]})) as $now
@@ -396,7 +424,8 @@ _intake_requirements_json_v() {
            requirements: (rows($n) | map({id: .[0], text: .[1]} + (if .[2] == "L" then {limit: true} else {} end))),
            removed: ($carry + $now),
            issue_ids: ($iss | split("\n") | map(select(length > 0)))}
-        + (if $fp != "" then {input_fp: $fp} else {} end)')"
+        + (if $fp != "" then {input_fp: $fp} else {} end)
+        + (if $terms != "" then {terms: $terms} else {} end)')"
     [[ -n "$_irj" ]] || return 1
     # #2460, #2462: what changed since the last list, by id.
     if [[ -n "${_INTAKE_PREV_REQ_JSON:-}" ]]; then

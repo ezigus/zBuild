@@ -86,7 +86,7 @@ _P="$(tr -s '[:space:]' ' ' < "$_P_FILE")"
 assert_contains "[S1] the facts: is it a document" "$_P" "Is it a change to a document only? Then it is [doc]."
 assert_contains "[S1] ...does the old code already behave so, a fallback included" "$_P" "does the code from before this change already behave as the SPEC says — by any route, a fallback included? If not, it is [code]."
 assert_contains "[S1] ...is work still needed" "$_P" "is work still needed that changes no behaviour — a test, a config, a refactor? Then it is [no-code]; if none, it is [done]."
-assert_contains "[S1] the answer's form" "$_P" "<SPEC id>: status | DOC: <yes or no> | BEFORE: <yes or no> | WORK: <yes or no> | WHY: <what shows it> | QUOTE: <file> | <one line of it>"
+assert_contains "[S1] the answer's form" "$_P" "<SPEC id> Title: status | DOC: <yes or no> | BEFORE: <yes or no> | WORK: <yes or no> | WHY: <what shows it> | QUOTE: <file> | <one line of it>"
 if [[ "$_P" == *done_wrong* ]]; then assert_fail "[S1] done_wrong is gone" "the prompt still asks for done_wrong"
 else assert_pass "[S1] done_wrong is gone"; fi
 D2="$TEST_TEMP_DIR/design-nodone.md"
@@ -97,32 +97,32 @@ assert_contains "[S2] told where the code from before the change is, with no [do
     "$(tr -s '[:space:]' ' ' < "$_P_FILE")" "The code from before this change is a copy at $BASE"
 
 print_test_section "S3–S8: the status the facts give"
-_run "$(_reply_with MODE-1 "MODE-1: status | DOC: no | BEFORE: yes | WORK: no | WHY: its fallback already returns a valid mode | QUOTE: $QOLD")"
+_run "$(_reply_with MODE-1 "MODE-1 Title: status | DOC: no | BEFORE: yes | WORK: no | WHY: its fallback already returns a valid mode | QUOTE: $QOLD")"
 assert_eq "[S3] [code] the old code already does: one entry" "1" "${#_DESIGN_STATUS_WRONG[@]}"
 assert_contains "[S3] ...the finding says it is [done]" "$FX" "it is [done], not [code]"
 assert_contains "[S3] ...with what shows it" "$FX" "its fallback already returns a valid mode"
 
-_run "$(_reply_with MODE-2 "MODE-2: status | DOC: no | BEFORE: no | WORK: yes | WHY: nothing counts stat calls yet | QUOTE: $QOLD")"
+_run "$(_reply_with MODE-2 "MODE-2 Title: status | DOC: no | BEFORE: no | WORK: yes | WHY: nothing counts stat calls yet | QUOTE: $QOLD")"
 assert_contains "[S4] [no-code] the old code does not do → [code]" "$FX" "it is [code], not [no-code]"
 
-_run "$(_reply_with MODE-1 "MODE-1: status | DOC: yes | BEFORE: no | WORK: yes | WHY: it is the guide's sentence | QUOTE: docs/guide.md | The probe runs once at load.")"
+_run "$(_reply_with MODE-1 "MODE-1 Title: status | DOC: yes | BEFORE: no | WORK: yes | WHY: it is the guide's sentence | QUOTE: docs/guide.md | The probe runs once at load.")"
 assert_contains "[S5] [code] that is a document only → [doc]" "$FX" "it is [doc], not [code]"
 
-_run "$(_reply_with MODE-2 "MODE-2: status | DOC: no | BEFORE: yes | WORK: no | WHY: the budget test passes on the old code and nothing needs doing | QUOTE: $QOLD")"
+_run "$(_reply_with MODE-2 "MODE-2 Title: status | DOC: no | BEFORE: yes | WORK: no | WHY: the budget test passes on the old code and nothing needs doing | QUOTE: $QOLD")"
 assert_contains "[S6] [no-code] already true, no work → [done]" "$FX" "it is [done], not [no-code]"
 
-_run "$(_reply_with MODE-3 "MODE-3: status | DOC: no | BEFORE: no | WORK: yes | WHY: it runs stat twice when the first form fails | QUOTE: $QOLD")"
+_run "$(_reply_with MODE-3 "MODE-3 Title: status | DOC: no | BEFORE: no | WORK: yes | WHY: it runs stat twice when the first form fails | QUOTE: $QOLD")"
 assert_contains "[S7] [done] the old code does not do → [code]" "$FX" "it is [code], not [done]"
 
-_run "$(_reply_with MODE-1 "MODE-1: status | DOC: no | BEFORE: yes | WORK: yes | WHY: it already behaves so; only a refactor is asked | QUOTE: $QOLD")"
+_run "$(_reply_with MODE-1 "MODE-1 Title: status | DOC: no | BEFORE: yes | WORK: yes | WHY: it already behaves so; only a refactor is asked | QUOTE: $QOLD")"
 assert_contains "[S8] [code] already behaving so, work left → [no-code]" "$FX" "it is [no-code], not [code]"
 
 print_test_section "S9–S11: answers that cannot be used"
-_run "$(_reply_with MODE-1 "MODE-1: status | DOC: no | BEFORE: no | WORK: yes | WHY: it needs code | QUOTE: $QOLD")"
+_run "$(_reply_with MODE-1 "MODE-1 Title: status | DOC: no | BEFORE: no | WORK: yes | WHY: it needs code | QUOTE: $QOLD")"
 assert_eq "[S9] facts that give the SPEC's own status: unusable" "unusable" "$_DESIGN_COV_OUTCOME"
-_run "$(_reply_with MODE-1 "MODE-1: status | DOC: no | BEFORE: maybe | WORK: no | WHY: unsure | QUOTE: $QOLD")"
+_run "$(_reply_with MODE-1 "MODE-1 Title: status | DOC: no | BEFORE: maybe | WORK: no | WHY: unsure | QUOTE: $QOLD")"
 assert_eq "[S10] a fact that is not yes or no: unusable" "unusable" "$_DESIGN_COV_OUTCOME"
-_run "$(_reply_with MODE-1 "MODE-1: status | DOC: no | BEFORE: yes | WORK: no | WHY: it does | QUOTE: scripts/x.sh | no such line here")"
+_run "$(_reply_with MODE-1 "MODE-1 Title: status | DOC: no | BEFORE: yes | WORK: no | WHY: it does | QUOTE: scripts/x.sh | no such line here")"
 assert_eq "[S11] a quote not in the code: unusable" "unusable" "$_DESIGN_COV_OUTCOME"
 
 cleanup_test_env

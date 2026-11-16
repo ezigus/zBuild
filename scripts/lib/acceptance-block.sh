@@ -411,6 +411,11 @@ acceptance_limits_list() {
     jq -r '.requirements[]? | select(.limit == true) | "- \(.id): \(.text)"' "$f" 2>/dev/null || true
 }
 
+# acceptance_terms_v <var> <requirements.json> — the issue's ## Terms, word for word (#2555, ADR-070); no fork without them.
+acceptance_terms_v() {
+    local -n _atv="$1"; local _atc=""; _atv=""; [[ -n "${2:-}" && -s "$2" ]] || return 0
+    IFS= read -r -d '' _atc < "$2" || true; [[ "$_atc" == *'"terms"'* ]] && _atv="$(jq -r '.terms // empty' "$2" 2>/dev/null)"; return 0; }
+
 # acceptance_spec_text <design_md> <spec_id>  (#1978)
 # Echoes what the SPEC REQUIRES — the prose after `SPEC-n[tag]:` — with no id,
 # no tag, and (#2304) no evidence. Empty when the id is absent or the block is
