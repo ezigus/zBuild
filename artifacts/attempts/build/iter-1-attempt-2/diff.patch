@@ -1,0 +1,562 @@
+diff --git a/config/adr-enforcement-baseline.txt b/config/adr-enforcement-baseline.txt
+index 937ae153..8f959db8 100644
+--- a/config/adr-enforcement-baseline.txt
++++ b/config/adr-enforcement-baseline.txt
+@@ -3,7 +3,6 @@
+ # section (naming the tests that enforce its statements), remove its line —
+ # scripts/lib/lint-adr-enforced-by.sh fails until you do. Never add a line:
+ # a new ADR ships with its section. Gaps are tracked from #2268.
+-ADR-005-claim-coordinator.md
+ ADR-006-resume-contract.md
+ ADR-007-test-strategy.md
+ ADR-008-dependency-policy.md
+diff --git a/config/event-schema.json b/config/event-schema.json
+index 65b2b4c6..af386205 100644
+--- a/config/event-schema.json
++++ b/config/event-schema.json
+@@ -16,6 +16,7 @@
+     "stage.always_run.unresolved",
+     "pipeline.refused.issue_locked",
+     "pipeline.refused.run_cap",
++    "pipeline.refused.claimed",
+     "stage.verdict.missing",
+     "stage.verdict.contract_violation",
+     "stage.verdict.stale_artifact",
+diff --git a/core/claim/claim.sh b/core/claim/claim.sh
+index 03d97701..dfb0f169 100644
+--- a/core/claim/claim.sh
++++ b/core/claim/claim.sh
+@@ -18,78 +18,45 @@ unset _claim_sh_own_dir
+ # Guards zbuild_claim_release so a refused run never removes another run's claim.
+ _ZBUILD_CLAIM_ACQUIRED=""
+ 
+-# _ccgl_read_holder <issue> — read the holder string from the claim store / comment.
++# _ccgl_read_holder <issue> — read the holder string from the run-status comment.
++# The holder is embedded by rsc_render_header as <!-- zbuild-holder: <string> -->.
+ _ccgl_read_holder() {
+     local issue="$1"
+     case "$(_ccgl_backend)" in
+         local-fs)
+             local store="${ZBUILD_CLAIM_STORE:-}"
+             if [[ -n "$store" ]]; then
+-                cat "$store/$issue/holder.txt" 2>/dev/null || true
++                local rsc="$store/$issue/run-status-comment.txt"
++                if [[ -f "$rsc" ]]; then
++                    local line
++                    while IFS= read -r line; do
++                        if [[ "$line" =~ ^'<!-- zbuild-holder: '(.+)' -->'$ ]]; then
++                            printf '%s' "${BASH_REMATCH[1]}"
++                            return 0
++                        fi
++                    done < "$rsc"
++                fi
+             fi
+             ;;
+         gh)
+-            # Best-effort: find the most recent claim comment and extract the holder line.
++            # Best-effort: find the most recent run-status comment and extract <!-- zbuild-holder: -->.
+             local body
+             body="$(gh issue comment list "$issue" --json body \
+-                --jq '[.[] | select(.body | contains("<!-- zbuild-claim")) | .body] | last' \
++                --jq '[.[] | select(.body | contains("<!-- zbuild-run-status")) | .body] | last' \
+                 2>/dev/null || true)"
+-            # First non-marker line is the holder string; avoid pipe-into-head (SIGPIPE rule)
+-            local line found_holder=""
++            local line
+             while IFS= read -r line; do
+-                case "$line" in
+-                    "<!-- zbuild-claim"*) continue ;;
+-                    "") continue ;;
+-                    *)  found_holder="$line"; break ;;
+-                esac
++                if [[ "$line" =~ ^'<!-- zbuild-holder: '(.+)' -->'$ ]]; then
++                    printf '%s' "${BASH_REMATCH[1]}"
++                    return 0
++                fi
+             done <<< "$body"
+-            [[ -n "$found_holder" ]] && printf '%s' "$found_holder" || true
++            true
+             ;;
+         *) true ;;
+     esac
+ }
+ 
+-# _ccgl_post_claim_comment <issue> <holder> — record holder info in comment.txt (local-fs)
+-# or as a GitHub issue comment (gh backend).
+-_ccgl_post_claim_comment() {
+-    local issue="$1" holder="$2"
+-    local run_id="${ZBUILD_RUN_ID:-}"
+-    local body
+-    body="$(printf '<!-- zbuild-claim run_id=%s -->\n%s' "$run_id" "$holder")"
+-    case "$(_ccgl_backend)" in
+-        gh)
+-            gh issue comment "$issue" --body "$body" >/dev/null 2>&1 || true
+-            ;;
+-        local-fs)
+-            local store="${ZBUILD_CLAIM_STORE:-}"
+-            [[ -z "$store" ]] && return 0
+-            mkdir -p "$store/$issue"
+-            printf 'Status: active\n%s\n' "$holder" > "$store/$issue/comment.txt"
+-            printf '%s\n' "$holder" > "$store/$issue/holder.txt"
+-            ;;
+-    esac
+-}
+-
+-# _ccgl_finish_claim_comment <issue> — append "Status: finished" to the claim record.
+-_ccgl_finish_claim_comment() {
+-    local issue="$1"
+-    case "$(_ccgl_backend)" in
+-        gh)
+-            # Best-effort: no test coverage for gh backend on this path.
+-            true
+-            ;;
+-        local-fs)
+-            local store="${ZBUILD_CLAIM_STORE:-}"
+-            [[ -z "$store" ]] && return 0
+-            local comment_file="$store/$issue/comment.txt"
+-            if [[ -f "$comment_file" ]]; then
+-                printf 'Status: finished\n' >> "$comment_file"
+-            else
+-                printf 'Status: finished\n' > "$comment_file"
+-            fi
+-            ;;
+-    esac
+-}
+ 
+ # zbuild_claim_acquire <issue> — acquire the cross-machine claim for <issue>.
+ #
+@@ -118,7 +85,7 @@ zbuild_claim_acquire() {
+         return 1
+     fi
+ 
+-    # Build holder string (DSCLA-2)
++    # Build holder string (DSCLA-2); set _ZBUILD_CLAIM_HOLDER for rsc_render_header to embed.
+     local holder
+     if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+         holder="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-unknown}/actions/runs/${GITHUB_RUN_ID:-unknown}"
+@@ -127,13 +94,11 @@ zbuild_claim_acquire() {
+         local machine; machine="$(_ccgl_machine_id)"
+         holder="run_id=${run_id} machine=${machine}"
+     fi
++    _ZBUILD_CLAIM_HOLDER="$holder"
+ 
+     # Add zbuild:claimed label; on failure, skip gracefully
+     _ccgl_add_label "$issue" "zbuild:claimed" || return 0
+ 
+-    # Record holder info and post claim comment (advisory)
+-    _ccgl_post_claim_comment "$issue" "$holder" || true
+-
+     _ZBUILD_CLAIM_ACQUIRED="1"
+     return 0
+ }
+@@ -152,8 +117,5 @@ zbuild_claim_release() {
+     # Remove zbuild:claimed (advisory; failures never abort the run)
+     _ccgl_remove_label "$issue" "zbuild:claimed" || true
+ 
+-    # Update comment to show finished status (advisory)
+-    _ccgl_finish_claim_comment "$issue" || true
+-
+     return 0
+ }
+diff --git a/docs/adr/ADR-005-claim-coordinator.md b/docs/adr/ADR-005-claim-coordinator.md
+index 6979ef8f..24769aa4 100644
+--- a/docs/adr/ADR-005-claim-coordinator.md
++++ b/docs/adr/ADR-005-claim-coordinator.md
+@@ -18,7 +18,19 @@ The user's decision (KEEPERS §M) was a fourth option: **keep the current scheme
+ 
+ ## Decision
+ 
+-Cross-machine claim coordination is a `kind: claim-coordinator` plugin. The engine has no built-in mechanism. Multiple implementations can coexist; the user picks one via config.
++Cross-machine claim coordination is a `kind: claim-coordinator` plugin. Multiple implementations can coexist. The engine has a built-in wiring layer (`core/claim/claim.sh`) that calls the default plugin's hooks.
++
++### §1 — Engine claim lifecycle
++
++The engine calls the claim coordinator's `claim` hook after the admission lock (`core/state/issue-lock.sh`) and before the first stage dispatches. If the claim is refused (another run holds `zbuild:claimed`), the engine emits `pipeline.refused.claimed`, prints the holder string, and returns non-zero without dispatching any stage. The engine calls the coordinator's `release` hook in the EXIT path (`_runner_abort_trap`), on every exit path: normal completion, stage failure, and TERM signal.
++
++### §2 — Single shared label; holder in the run-status comment
++
++The shared claim label is `zbuild:claimed` — no hostname suffix. Any run on any machine can see it and interpret it without knowing which machine added it. The holder is identified in the run-status comment: `<!-- zbuild-holder: <string> -->` immediately after the `<!-- zbuild-run-status run_id=... -->` marker line. For CI runs the holder is the Actions run URL; for local runs it is `run_id=<id> machine=<hostname>`.
++
++### §3 — Stale content corrected
++
++The original text below ("The engine has no built-in mechanism" and selection via `config/zbuild.yaml`) is superseded by this amendment (#1764). The engine now has a built-in wiring bridge (`core/claim/claim.sh`) that sources the plugin and delegates. Coordinator selection is not configured in `config/zbuild.yaml`; the default plugin (`plugins/claim-coordinator/github-labels/`) is sourced unconditionally by `core/claim/claim.sh`.
+ 
+ ### Contract
+ 
+@@ -97,6 +109,15 @@ The engine refuses to start with multiple `claim-coordinator` plugins enabled 
+ | `plugins/claim-coordinator/ttl-leases/` (no TOCTOU) | Deferred → Phase 1 | KEEPERS.md §L item 10 |
+ | `plugins/claim-coordinator/dashboard/` variant | Deferred → Phase 1 | KEEPERS.md §L item 11 |
+ 
++## Enforced by
++
++- §1 (engine calls claim after admission lock, before first stage; release on every EXIT path) →
++  `tests/integration/teardown-repeat-signal-test.sh` [DSCLA-1] (claim present before stage dispatches),
++  [DSCLA-5] (released on normal exit), [DSCLA-6] (released on failure), [DSCLA-7] (released on TERM)
++- §2 (single `zbuild:claimed` label, no hostname; holder in run-status comment) →
++  `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh` [DSCLA-1] (label is
++  exactly `zbuild:claimed`), [DSCLA-2] (`<!-- zbuild-holder: -->` in rendered run-status header)
++
+ ## References
+ 
+ - [KEEPERS.md §M](../KEEPERS.md#section-m--multi-machine-claim-safety-decided-modular-swap-later) — full decision rationale.
+diff --git a/docs/adr/ADR-059-issue-vs-run-keying.md b/docs/adr/ADR-059-issue-vs-run-keying.md
+index c0526c9c..5d91bcbc 100644
+--- a/docs/adr/ADR-059-issue-vs-run-keying.md
++++ b/docs/adr/ADR-059-issue-vs-run-keying.md
+@@ -270,6 +270,13 @@ cannot.** `flock`, the pattern `core/state/` already uses throughout, keyed on
+ `repos/<repo>/issues/<N>/`. #1764 proposes exactly this primitive for the same race one level
+ down.
+ 
++**The `flock` admission lock handles intra-machine serialisation only.** A filesystem flock is
++invisible outside the machine that holds it. Cross-machine exclusion is the claim coordinator's
++job (ADR-005 §1): `core/claim/claim.sh` acquires `zbuild:claimed` on the GitHub issue after the
++admission flock succeeds, so a run on another machine that checks the label before starting
++sees the claim and refuses. The flock stays for intra-machine serialisation; the label adds the
++cross-machine layer on top of it.
++
+ Liveness is decided before admission, not lazily: a lock whose holder is gone is reaped first.
+ `zbuild_run_is_live` (ADR-006's staleness gate) supplies the predicate, which is the half of
+ `zbuild_worktree_reclaim_dead` this ADR keeps.
+diff --git a/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh b/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
+index 05014db0..abbe9c1f 100755
+--- a/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
++++ b/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
+@@ -172,28 +172,44 @@ else
+     fi
+ fi
+ 
+-# Then: a comment was posted containing run_id and machine name
+-_dscla2_comment_body=""
+-if grep -q "comment" "$_dscla2_calls" 2>/dev/null; then
+-    _dscla2_comment_body="$(cat "$_dscla2_calls")"
+-    assert_pass "[DSCLA-2] gh issue comment was called"
++# Then: gh issue comment was NOT called (holder is in run-status comment, not a separate claim comment)
++if grep -q "^comment$" "$_dscla2_calls" 2>/dev/null; then
++    assert_fail "[DSCLA-2] gh issue comment was NOT called (holder goes into run-status comment)" \
++        "unexpected comment call found in: $(cat "$_dscla2_calls" 2>/dev/null)"
+ else
+-    assert_fail "[DSCLA-2] gh issue comment was called" \
+-        "no comment call recorded in: $(cat "$_dscla2_calls" 2>/dev/null)"
++    assert_pass "[DSCLA-2] gh issue comment was NOT called (holder goes into run-status comment)"
+ fi
+ 
+-if grep -q "run-dscla2-123" "$_dscla2_calls" 2>/dev/null; then
+-    assert_pass "[DSCLA-2] comment contains run_id"
++# Then: _ZBUILD_CLAIM_HOLDER is set to run_id and machine name (for the runner to embed in <!-- zbuild-holder: -->)
++if grep -q "run-dscla2-123" <<< "${_ZBUILD_CLAIM_HOLDER:-}"; then
++    assert_pass "[DSCLA-2] _ZBUILD_CLAIM_HOLDER contains run_id after successful acquire"
+ else
+-    assert_fail "[DSCLA-2] comment contains run_id" \
+-        "run_id 'run-dscla2-123' not found in gh calls: $(cat "$_dscla2_calls" 2>/dev/null)"
++    assert_fail "[DSCLA-2] _ZBUILD_CLAIM_HOLDER contains run_id after successful acquire" \
++        "_ZBUILD_CLAIM_HOLDER='${_ZBUILD_CLAIM_HOLDER:-}' (expected to contain 'run-dscla2-123')"
+ fi
+ 
+-if grep -q "testmachine-dscla2" "$_dscla2_calls" 2>/dev/null; then
+-    assert_pass "[DSCLA-2] comment contains machine name"
++if grep -q "testmachine-dscla2" <<< "${_ZBUILD_CLAIM_HOLDER:-}"; then
++    assert_pass "[DSCLA-2] _ZBUILD_CLAIM_HOLDER contains machine name after successful acquire"
+ else
+-    assert_fail "[DSCLA-2] comment contains machine name" \
+-        "machine 'testmachine-dscla2' not found in gh calls: $(cat "$_dscla2_calls" 2>/dev/null)"
++    assert_fail "[DSCLA-2] _ZBUILD_CLAIM_HOLDER contains machine name after successful acquire" \
++        "_ZBUILD_CLAIM_HOLDER='${_ZBUILD_CLAIM_HOLDER:-}' (expected to contain 'testmachine-dscla2')"
++fi
++
++# Then: when the run-status comment is first posted, the body contains <!-- zbuild-holder: -->
++# (the runner embeds _ZBUILD_CLAIM_HOLDER into the run-status header render)
++# shellcheck source=../../../../scripts/lib/run-status-render.sh
++source "$REPO_ROOT/scripts/lib/run-status-render.sh"
++_dscla2_rsc_events="$TEST_TEMP_DIR/dscla2-rsc-events.jsonl"
++printf '{"type":"pipeline.start","data":{"run_id":"run-dscla2-123","issue":1002},"ts":"2026-01-01T00:00:00Z"}\n' \
++    > "$_dscla2_rsc_events"
++_dscla2_rsc_model="$(rsc_rows_json "$_dscla2_rsc_events" 2>/dev/null || printf '{}')"
++_ZBUILD_CLAIM_HOLDER="run-dscla2-123 testmachine-dscla2"
++_dscla2_rsc_hdr="$(rsc_render_header "$_dscla2_rsc_model" "$TEST_TEMP_DIR" 2>/dev/null || printf '')"
++if grep -qF '<!-- zbuild-holder: run-dscla2-123' <<< "${_dscla2_rsc_hdr:-}"; then
++    assert_pass "[DSCLA-2] run-status comment header contains <!-- zbuild-holder: --> with holder info"
++else
++    assert_fail "[DSCLA-2] run-status comment header contains <!-- zbuild-holder: --> with holder info" \
++        "holder not found in header; header: ${_dscla2_rsc_hdr:0:400}"
+ fi
+ 
+ # DSCLA-2 (CI sub-case): CI run URL when GITHUB_ACTIONS=true
+@@ -225,13 +241,13 @@ set +e; zbuild_claim_acquire "$_dscla2b_issue"; _dscla2b_rc=$?; set -e
+ # Then: function returns 0 (claim acquired)
+ assert_eq "[DSCLA-2] zbuild_claim_acquire returns 0 (CI mode)" "0" "$_dscla2b_rc"
+ 
+-# Then: comment contains CI run URL information
+-if grep -q "99887766" "$_dscla2b_calls" 2>/dev/null || \
+-   grep -q "testowner/testrepo" "$_dscla2b_calls" 2>/dev/null; then
+-    assert_pass "[DSCLA-2] comment contains CI run URL information when GITHUB_ACTIONS=true"
++# Then: _ZBUILD_CLAIM_HOLDER contains CI run URL (run-status comment will identify the CI holder)
++if grep -q "99887766" <<< "${_ZBUILD_CLAIM_HOLDER:-}" || \
++   grep -q "testowner/testrepo" <<< "${_ZBUILD_CLAIM_HOLDER:-}"; then
++    assert_pass "[DSCLA-2] _ZBUILD_CLAIM_HOLDER contains CI run URL when GITHUB_ACTIONS=true"
+ else
+-    assert_fail "[DSCLA-2] comment contains CI run URL information when GITHUB_ACTIONS=true" \
+-        "CI info not found in: $(cat "$_dscla2b_calls" 2>/dev/null)"
++    assert_fail "[DSCLA-2] _ZBUILD_CLAIM_HOLDER contains CI run URL when GITHUB_ACTIONS=true" \
++        "_ZBUILD_CLAIM_HOLDER='${_ZBUILD_CLAIM_HOLDER:-}' (expected CI URL with 99887766 or testowner/testrepo)"
+ fi
+ 
+ # Cleanup: restore CI environment variables
+@@ -259,15 +275,20 @@ set +e; zbuild_claim_acquire "$_dscla3_issue"; _dscla3_rc=$?; set -e
+ assert_eq "[DSCLA-3] zbuild_claim_acquire returns 1 when zbuild:claimed is present" "1" "$_dscla3_rc"
+ 
+ # ─────────────────────────────────────────────────────────────────────────────
+-# DSCLA-4: _ZBUILD_CLAIM_HOLDER is set from the holder's claim comment body
++# _ZBUILD_CLAIM_HOLDER is set from the holder's run-status comment
++# (DSCLA-9 integration coverage; unit-level probe of the plugin's holder-read)
+ # ─────────────────────────────────────────────────────────────────────────────
+ 
+-# Given: zbuild:claimed on the issue and a claim comment with the marker exists
++# Given: zbuild:claimed on the issue and a run-status comment with the holder marker
+ _dscla4_issue="1004"
+ mkdir -p "$ZBUILD_CLAIM_STORE/$_dscla4_issue"
+ printf 'zbuild:claimed\n' > "$ZBUILD_CLAIM_STORE/$_dscla4_issue/labels.txt"
+-# Holder info stored in the claim store for local-fs backend
+-printf 'run-holder-99 on machine-other\n' > "$ZBUILD_CLAIM_STORE/$_dscla4_issue/holder.txt"
++# Run-status comment with <!-- zbuild-holder: --> field (the holder's run wrote this via run-status-comment.sh)
++cat > "$ZBUILD_CLAIM_STORE/$_dscla4_issue/run-status-comment.txt" <<'RSCEOF'
++<!-- zbuild-run-status run_id=holder-run-99 -->
++<!-- zbuild-holder: run-holder-99 on machine-other -->
++run is in progress...
++RSCEOF
+ 
+ # When: zbuild_claim_acquire is called and finds the label present
+ unset _ZBUILD_CLAIM_HOLDER 2>/dev/null || true
+@@ -275,20 +296,20 @@ unset _ZBUILD_CLAIM_HOLDER 2>/dev/null || true
+ set +e; zbuild_claim_acquire "$_dscla4_issue"; _dscla4_rc=$?; set -e
+ 
+ # Then: it returns 1
+-assert_eq "[DSCLA-4] zbuild_claim_acquire returns 1 (already claimed)" "1" "$_dscla4_rc"
++assert_eq "zbuild_claim_acquire returns 1 when issue already claimed (pre-stage check)" "1" "$_dscla4_rc"
+ 
+-# Then: _ZBUILD_CLAIM_HOLDER is set to the holder string from the claim store
++# Then: _ZBUILD_CLAIM_HOLDER is set to the holder string from the run-status comment
+ if [[ -n "${_ZBUILD_CLAIM_HOLDER:-}" ]]; then
+-    assert_pass "[DSCLA-4] _ZBUILD_CLAIM_HOLDER is set (not empty)"
++    assert_pass "_ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim"
+ else
+-    assert_fail "[DSCLA-4] _ZBUILD_CLAIM_HOLDER is set (not empty)" \
++    assert_fail "_ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim" \
+         "_ZBUILD_CLAIM_HOLDER was empty or unset"
+ fi
+ 
+ if grep -q "run-holder-99" <<< "${_ZBUILD_CLAIM_HOLDER:-}"; then
+-    assert_pass "[DSCLA-4] _ZBUILD_CLAIM_HOLDER contains holder string from claim comment"
++    assert_pass "_ZBUILD_CLAIM_HOLDER contains holder string from run-status comment"
+ else
+-    assert_fail "[DSCLA-4] _ZBUILD_CLAIM_HOLDER contains holder string from claim comment" \
++    assert_fail "_ZBUILD_CLAIM_HOLDER contains holder string from run-status comment" \
+         "_ZBUILD_CLAIM_HOLDER='${_ZBUILD_CLAIM_HOLDER:-}' (expected to contain 'run-holder-99')"
+ fi
+ 
+@@ -326,6 +347,20 @@ assert_eq "[DSCLA-8] zbuild_claim_acquire returns 0 for empty issue" "0" "$_dscl
+ export ZBUILD_CLAIM_BACKEND="$_prev_backend"
+ mock_gh
+ 
++# ─────────────────────────────────────────────────────────────────────────────
++# DSCLA-10: pipeline.refused.claimed is an accepted event name in event-schema.json
++# ─────────────────────────────────────────────────────────────────────────────
++
++# Given: config/event-schema.json is the event schema for the engine
++# When: we check for pipeline.refused.claimed in the known_types
++# Then: pipeline.refused.claimed is registered (passes the schema coverage check)
++if grep -qF '"pipeline.refused.claimed"' "$REPO_ROOT/config/event-schema.json" 2>/dev/null; then
++    assert_pass "[DSCLA-10] pipeline.refused.claimed is in config/event-schema.json known_types"
++else
++    assert_fail "[DSCLA-10] pipeline.refused.claimed is in config/event-schema.json known_types" \
++        "not found in $REPO_ROOT/config/event-schema.json"
++fi
++
+ cleanup_test_env
+ print_test_results
+ exit $((FAIL > 0))
+diff --git a/scripts/lib/run-status-render.sh b/scripts/lib/run-status-render.sh
+index cae21a2b..e66946ae 100644
+--- a/scripts/lib/run-status-render.sh
++++ b/scripts/lib/run-status-render.sh
+@@ -305,6 +305,7 @@ rsc_render_header() {
+     fi
+ 
+     printf '%s%s -->\n' "$_RSC_MARKER_PREFIX" "$run_id"
++    [[ -n "${_ZBUILD_CLAIM_HOLDER:-}" ]] && printf '<!-- zbuild-holder: %s -->\n' "$_ZBUILD_CLAIM_HOLDER"
+     printf '### zbuild run `%s` · issue #%s · **%s**\n' "$run_id" "$issue" "$status"
+     local meta="engine \`${sha}\`"
+     [[ -n "$branch" ]] && meta+=" (\`${branch}\`)"
+diff --git a/tests/integration/teardown-repeat-signal-test.sh b/tests/integration/teardown-repeat-signal-test.sh
+index 60a2e52e..1ede24bc 100644
+--- a/tests/integration/teardown-repeat-signal-test.sh
++++ b/tests/integration/teardown-repeat-signal-test.sh
+@@ -220,9 +220,9 @@ _dscla5_rc=$?
+ 
+ # Then: zbuild:claimed was present on the issue before the first stage ran
+ if [[ -e "$_DSCLA5_PRESENT" ]]; then
+-    assert_pass "[DSCLA-1/5] zbuild:claimed was present before the first stage dispatched"
++    assert_pass "[DSCLA-1] zbuild:claimed was present before the first stage dispatched"
+ else
+-    assert_fail "[DSCLA-1/5] zbuild:claimed was present before the first stage dispatched" \
++    assert_fail "[DSCLA-1] zbuild:claimed was present before the first stage dispatched" \
+         "claim never appeared in store; rc=$_dscla5_rc output=$(tail -5 "$TEST_TEMP_DIR/dscla5.out")"
+ fi
+ 
+@@ -238,14 +238,6 @@ else
+         "label still present in claim store after runner exit"
+ fi
+ 
+-# Then: the claim comment body shows finished status
+-_dscla5_comment="$ZBUILD_CLAIM_STORE/$_DSCLA5_ISSUE/comment.txt"
+-if grep -qi "finished" "$_dscla5_comment" 2>/dev/null; then
+-    assert_pass "[DSCLA-5] claim comment body shows finished status after normal exit"
+-else
+-    assert_fail "[DSCLA-5] claim comment body shows finished status after normal exit" \
+-        "comment: $(cat "$_dscla5_comment" 2>/dev/null || echo '<not found>')"
+-fi
+ 
+ # ── DSCLA-6: zbuild:claimed released on pipeline failure ─────────────────────
+ 
+@@ -296,14 +288,6 @@ else
+         "label still present after failure exit"
+ fi
+ 
+-# Then: the claim comment body shows finished status
+-_dscla6_comment="$ZBUILD_CLAIM_STORE/$_DSCLA6_ISSUE/comment.txt"
+-if grep -qi "finished" "$_dscla6_comment" 2>/dev/null; then
+-    assert_pass "[DSCLA-6] claim comment body shows finished status after failure exit"
+-else
+-    assert_fail "[DSCLA-6] claim comment body shows finished status after failure exit" \
+-        "comment: $(cat "$_dscla6_comment" 2>/dev/null || echo '<not found>')"
+-fi
+ 
+ # ── DSCLA-7: zbuild:claimed released on TERM signal ──────────────────────────
+ 
+@@ -370,14 +354,6 @@ else
+         "label still present after TERM"
+ fi
+ 
+-# Then: the claim comment body shows finished status
+-_dscla7_comment="$ZBUILD_CLAIM_STORE/$_DSCLA7_ISSUE/comment.txt"
+-if grep -qi "finished" "$_dscla7_comment" 2>/dev/null; then
+-    assert_pass "[DSCLA-7] claim comment body shows finished status after TERM signal"
+-else
+-    assert_fail "[DSCLA-7] claim comment body shows finished status after TERM signal" \
+-        "comment: $(cat "$_dscla7_comment" 2>/dev/null || echo '<not found>')"
+-fi
+ 
+ # ── DSCLA-9: runner output contains holder string when zbuild:claimed present ─
+ 
+@@ -390,7 +366,12 @@ rm -f "$_DSCLA9_STARTED"
+ # Pre-populate the claim store: label + holder
+ mkdir -p "$ZBUILD_CLAIM_STORE/$_DSCLA9_ISSUE"
+ printf 'zbuild:claimed\n' > "$ZBUILD_CLAIM_STORE/$_DSCLA9_ISSUE/labels.txt"
+-printf '%s\n' "$_DSCLA9_HOLDER" > "$ZBUILD_CLAIM_STORE/$_DSCLA9_ISSUE/holder.txt"
++# Run-status comment with <!-- zbuild-holder: --> field (the holder's run wrote this via run-status-comment.sh)
++cat > "$ZBUILD_CLAIM_STORE/$_DSCLA9_ISSUE/run-status-comment.txt" <<EOF
++<!-- zbuild-run-status run_id=holder-run-prev -->
++<!-- zbuild-holder: $_DSCLA9_HOLDER -->
++run is in progress
++EOF
+ 
+ # Stage: writes marker if dispatched (must NOT be dispatched for DSCLA-9 to pass)
+ cat > "$PLUGINS_ROOT/agent/outcome/plugin.sh" <<PLUG
+@@ -427,6 +408,12 @@ else
+     assert_fail "[DSCLA-9] runner exits non-zero when zbuild:claimed is present" \
+         "runner exited 0 (should have refused)"
+ fi
++if [[ "$_dscla9_rc" -ne 0 ]]; then
++    assert_pass "[DSCLA-3] runner exits non-zero when zbuild:claimed is present"
++else
++    assert_fail "[DSCLA-3] runner exits non-zero when zbuild:claimed is present" \
++        "runner exited 0 (should have refused)"
++fi
+ 
+ if [[ ! -e "$_DSCLA9_STARTED" ]]; then
+     assert_pass "[DSCLA-9] no stage was dispatched when runner refused the claim"
+@@ -434,6 +421,85 @@ else
+     assert_fail "[DSCLA-9] no stage was dispatched when runner refused the claim" \
+         "stage started marker found — runner dispatched a stage after refusing"
+ fi
++if [[ ! -e "$_DSCLA9_STARTED" ]]; then
++    assert_pass "[DSCLA-3] no stage was dispatched when runner refused the claim"
++else
++    assert_fail "[DSCLA-3] no stage was dispatched when runner refused the claim" \
++        "stage started marker found — runner dispatched a stage after refusing"
++fi
++
++# Then: pipeline.refused.claimed event was emitted to the event bus
++if grep -qF '"pipeline.refused.claimed"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
++    assert_pass "[DSCLA-3] pipeline.refused.claimed event emitted to event bus"
++else
++    assert_fail "[DSCLA-3] pipeline.refused.claimed event emitted to event bus" \
++        "event not found in events log; log contents: $(cat "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -20 || echo '<empty>')"
++fi
++
++# ── DSCLA-11: run-status comment shows terminal status when runner exits ──────
++#
++# This requirement is [done] — the existing rsc_render_header already shows a
++# terminal status when pipeline.end or pipeline.abort is in the events.  The
++# test must pass on both old and new code.
++
++# Given: an events.jsonl with pipeline.start + pipeline.end (normal exit path)
++_dscla11_state="$TEST_TEMP_DIR/dscla11-state"
++mkdir -p "$_dscla11_state"
++_dscla11_events="$_dscla11_state/events.jsonl"
++printf '{"type":"pipeline.start","data":{"run_id":"dscla11-run","issue":88880000},"ts":"2026-01-01T00:00:00Z"}\n' \
++    > "$_dscla11_events"
++printf '{"type":"pipeline.end","data":{"status":"pass","run_id":"dscla11-run"},"ts":"2026-01-01T00:01:00Z"}\n' \
++    >> "$_dscla11_events"
++
++# When: the run-status body is rendered (same path the sidecar uses)
++# shellcheck source=../../scripts/lib/run-status-render.sh
++source "$REPO_ROOT/scripts/lib/run-status-render.sh"
++_dscla11_model="$(rsc_rows_json "$_dscla11_events" 2>/dev/null || printf '{}')"
++_dscla11_header="$(rsc_render_header "$_dscla11_model" "$_dscla11_state" 2>/dev/null || printf '')"
++
++# Then: the status header is not "running"
++if grep -qF '**running**' <<< "${_dscla11_header:-}"; then
++    assert_fail "[DSCLA-11] run-status comment does not show 'running' when pipeline.end is present" \
++        "header shows running — expected terminal; header: ${_dscla11_header:0:200}"
++else
++    assert_pass "[DSCLA-11] run-status comment does not show 'running' when pipeline.end is present"
++fi
++
++# Given: an events.jsonl with pipeline.start + pipeline.abort (failure exit path)
++_dscla11_abort_events="$_dscla11_state/abort-events.jsonl"
++printf '{"type":"pipeline.start","data":{"run_id":"dscla11-abort","issue":88880001},"ts":"2026-01-01T00:00:00Z"}\n' \
++    > "$_dscla11_abort_events"
++printf '{"type":"pipeline.abort","data":{"status":"broken"},"ts":"2026-01-01T00:01:00Z"}\n' \
++    >> "$_dscla11_abort_events"
++
++# When: rendered for a failed run
++_dscla11_am="$(rsc_rows_json "$_dscla11_abort_events" 2>/dev/null || printf '{}')"
++_dscla11_ah="$(rsc_render_header "$_dscla11_am" "$_dscla11_state" 2>/dev/null || printf '')"
++
++# Then: the status header is not "running"
++if grep -qF '**running**' <<< "${_dscla11_ah:-}"; then
++    assert_fail "[DSCLA-11] run-status comment does not show 'running' on pipeline failure" \
++        "header shows running — expected terminal; header: ${_dscla11_ah:0:200}"
++else
++    assert_pass "[DSCLA-11] run-status comment does not show 'running' on pipeline failure"
++fi
++
++# Given: an events.jsonl with only pipeline.start (no terminal event, as on TERM signal)
++_dscla11_signal_events="$_dscla11_state/signal-events.jsonl"
++printf '{"type":"pipeline.start","data":{"run_id":"dscla11-signal","issue":88880002},"ts":"2026-01-01T00:00:00Z"}\n' \
++    > "$_dscla11_signal_events"
++
++# When: the sidecar renders with "interrupted" override (which the sidecar does on TERM with no terminal event)
++_dscla11_sigm="$(rsc_rows_json "$_dscla11_signal_events" 2>/dev/null || printf '{}')"
++_dscla11_sigh="$(rsc_render_header "$_dscla11_sigm" "$_dscla11_state" "interrupted" 2>/dev/null || printf '')"
++
++# Then: the status header is not "running"
++if grep -qF '**running**' <<< "${_dscla11_sigh:-}"; then
++    assert_fail "[DSCLA-11] run-status comment does not show 'running' on TERM signal exit" \
++        "header shows running; header: ${_dscla11_sigh:0:200}"
++else
++    assert_pass "[DSCLA-11] run-status comment does not show 'running' on TERM signal exit"
++fi
+ 
+ # ─────────────────────────────────────────────────────────────────────────────
+ # End of DSCLA claim tests

@@ -1,62 +1,50 @@
-# Build Notes — #1764 GitHub Label Claim
+# Build Notes — #1764 GitHub Label Claim (iteration 2 — COMPLETE)
 
-## What needs doing
+## Status: COMPLETE — all tests pass
 
-1. Create `core/claim/claim.sh` — defines `zbuild_claim_acquire` and `zbuild_claim_release`
-   using the backend primitives from `plugins/claim-coordinator/github-labels/plugin.sh`.
+## Changes made this iteration
 
-2. At end of `plugin.sh` — source `core/claim/claim.sh` so unit test gets functions.
+### config/event-schema.json
+- Added `"pipeline.refused.claimed"` to `known_types` (after `pipeline.refused.run_cap`)
+- Fixes: test finding 1, DSCLA-10
 
-3. In `runner.sh`:
-   - Source `core/claim/claim.sh` after issue-lock.sh (~line 31)
-   - Add `zbuild_claim_acquire` call after issue lock block (~line 2453)
-   - Add `zbuild_claim_release` call in `_runner_abort_trap` after issue lock release (~line 2675)
+### config/adr-enforcement-baseline.txt
+- Removed `ADR-005-claim-coordinator.md` now that ADR-005 has an `## Enforced by` section
 
-## Key behaviors
+### core/claim/claim.sh
+- Fixed `_ccgl_read_holder` for local-fs: now reads `run-status-comment.txt` and extracts
+  `<!-- zbuild-holder: ... -->` line instead of reading `holder.txt`
+- Fixed `_ccgl_read_holder` for gh: looks for `<!-- zbuild-run-status` comments instead of
+  `<!-- zbuild-claim` markers
+- Added `_ZBUILD_CLAIM_HOLDER="$holder"` on successful acquire (needed by DSCLA-2)
+- Removed `_ccgl_post_claim_comment` and `_ccgl_finish_claim_comment` functions (holder goes in
+  run-status comment via rsc_render_header, not in a separate gh issue comment)
+- Removed `_ccgl_post_claim_comment` call from `zbuild_claim_acquire`
+- Removed `_ccgl_finish_claim_comment` call from `zbuild_claim_release`
 
-### zbuild_claim_acquire <issue>
-- Empty issue / "0" → return 0 (DSCLA-8)
-- Backend error → return 0 gracefully
-- "zbuild:claimed" in labels → read holder.txt → set _ZBUILD_CLAIM_HOLDER → return 1 (DSCLA-3/4)
-- Not present → add "zbuild:claimed", write holder info, return 0 (DSCLA-1)
-  - local-fs: writes labels.txt (zbuild:claimed), comment.txt, holder.txt
-  - gh: calls `gh issue edit --add-label zbuild:claimed` + `gh issue comment --body <holder>` (DSCLA-2)
-- Holder string:
-  - CI (GITHUB_ACTIONS=true): "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-  - Local: "run_id=<ZBUILD_RUN_ID> machine=<machine>"
+### scripts/lib/run-status-render.sh
+- Added `<!-- zbuild-holder: ... -->` output in `rsc_render_header` after the run_id marker line
+  (only when `_ZBUILD_CLAIM_HOLDER` is non-empty)
 
-### zbuild_claim_release <issue>
-- Empty issue / "0" → return 0
-- _ZBUILD_CLAIM_ACQUIRED not set → return 0 (don't release a claim we didn't acquire)
-- Remove "zbuild:claimed" from labels (DSCLA-5/6/7)
-- Write "Status: finished" to comment.txt (DSCLA-5/6/7)
+### docs/adr/ADR-005-claim-coordinator.md
+- Added §1 (engine calls claim after admission lock and before first stage; release in EXIT path)
+- Added §2 (single `zbuild:claimed` label; holder in run-status comment)
+- Added §3 (corrects stale content: selection not from config/zbuild.yaml; engine now has built-in mechanism)
+- Added `## Enforced by` section naming tests per statement
 
-## Runner.sh wiring
+### docs/adr/ADR-059-issue-vs-run-keying.md
+- Added paragraph to §4 noting that the admission flock handles intra-machine serialisation only;
+  cross-machine exclusion is the claim coordinator's job (ADR-005 §1)
 
-After issue lock block (line 2452 ends the block):
-```bash
-# Cross-machine claim
-if declare -F zbuild_claim_acquire >/dev/null 2>&1; then
-    if ! zbuild_claim_acquire "${_runner_issue:-}"; then
-        eb_emit_event "pipeline.refused.claimed" ...
-        error "... ${_ZBUILD_CLAIM_HOLDER:-unknown}"
-        zbuild_issue_lock_release || true
-        zbuild_run_cap_release || true
-        return 1
-    fi
-fi
-```
+## Test results
+- plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: 26/26 pass
+- tests/integration/teardown-repeat-signal-test.sh: 21/21 pass
+- tests/unit/event-schema-emitted-coverage-test.sh: 23/23 pass
+- All shape-floor tests: pass
 
-In _runner_abort_trap, after zbuild_issue_lock_release (line 2674):
-```bash
-if declare -F zbuild_claim_release >/dev/null 2>&1; then
-    zbuild_claim_release "${_runner_issue:-}" || true
-fi
-```
-
-## SIGPIPE rules
-- Use `grep -q ... <<< "$var"` (here-string), never `echo | grep -q`
-- No `| head` in .sh files
-
-## Status
-- IN PROGRESS: writing code
+## Open issue-acceptance finding 2 (circular source)
+issue-acceptance finding 2 flags that plugin.sh sources core/claim/claim.sh. The design says
+"plugin.sh must not source claim.sh." However the unit test (claim-coordinator-unit-test.sh)
+sources only plugin.sh and then calls zbuild_claim_acquire. Without the circular source, the test
+would fail because zbuild_claim_acquire is defined in claim.sh. The test file is read-only for
+this stage. Answered as "not mine — requires a change to the read-only test file."
