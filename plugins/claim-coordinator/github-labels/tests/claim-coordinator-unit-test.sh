@@ -196,7 +196,9 @@ else
         "machine 'testmachine-dscla2' not found in gh calls: $(cat "$_dscla2_calls" 2>/dev/null)"
 fi
 
-# DSCLA-2: CI run URL when GITHUB_ACTIONS=true
+# DSCLA-2 (CI sub-case): CI run URL when GITHUB_ACTIONS=true
+
+# Given: gh backend with GITHUB_ACTIONS=true; run URL variables set
 _dscla2b_issue="1002b"
 _dscla2b_calls="$TEST_TEMP_DIR/gh-calls-dscla2b.txt"
 : > "$_dscla2b_calls"
@@ -216,10 +218,14 @@ export GITHUB_RUN_ID="99887766"
 export GITHUB_SERVER_URL="https://github.com"
 export GITHUB_REPOSITORY="testowner/testrepo"
 
+# When: zbuild_claim_acquire is called with the issue number
 : > "$ZBUILD_EVENTS_JSONL"
 set +e; zbuild_claim_acquire "$_dscla2b_issue"; _dscla2b_rc=$?; set -e
+
+# Then: function returns 0 (claim acquired)
 assert_eq "[DSCLA-2] zbuild_claim_acquire returns 0 (CI mode)" "0" "$_dscla2b_rc"
 
+# Then: comment contains CI run URL information
 if grep -q "99887766" "$_dscla2b_calls" 2>/dev/null || \
    grep -q "testowner/testrepo" "$_dscla2b_calls" 2>/dev/null; then
     assert_pass "[DSCLA-2] comment contains CI run URL information when GITHUB_ACTIONS=true"
@@ -228,6 +234,7 @@ else
         "CI info not found in: $(cat "$_dscla2b_calls" 2>/dev/null)"
 fi
 
+# Cleanup: restore CI environment variables
 unset GITHUB_ACTIONS GITHUB_RUN_ID GITHUB_SERVER_URL GITHUB_REPOSITORY 2>/dev/null || true
 
 # Restore local-fs backend for subsequent tests
@@ -315,7 +322,7 @@ assert_eq "[DSCLA-8] no gh calls made for empty issue" "0" "$_dscla8_call_count"
 # Then: function returns 0
 assert_eq "[DSCLA-8] zbuild_claim_acquire returns 0 for empty issue" "0" "$_dscla8_rc"
 
-# Restore backend
+# Cleanup: restore previous backend and plain gh mock
 export ZBUILD_CLAIM_BACKEND="$_prev_backend"
 mock_gh
 
