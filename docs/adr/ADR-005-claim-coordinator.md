@@ -18,7 +18,19 @@ The user's decision (KEEPERS §M) was a fourth option: **keep the current scheme
 
 ## Decision
 
-Cross-machine claim coordination is a `kind: claim-coordinator` plugin. The engine has no built-in mechanism. Multiple implementations can coexist; the user picks one via config.
+Cross-machine claim coordination is a `kind: claim-coordinator` plugin. Multiple implementations can coexist. The engine has a built-in wiring layer (`core/claim/claim.sh`) that calls the default plugin's hooks.
+
+### §1 — Engine claim lifecycle
+
+The engine calls the claim coordinator's `claim` hook after the admission lock (`core/state/issue-lock.sh`) and before the first stage dispatches. If the claim is refused (another run holds `zbuild:claimed`), the engine emits `pipeline.refused.claimed`, prints the holder string, and returns non-zero without dispatching any stage. The engine calls the coordinator's `release` hook in the EXIT path (`_runner_abort_trap`), on every exit path: normal completion, stage failure, and TERM signal.
+
+### §2 — Single shared label; holder in the run-status comment
+
+The shared claim label is `zbuild:claimed` — no hostname suffix. Any run on any machine can see it and interpret it without knowing which machine added it. The holder is identified in the run-status comment: `<!-- zbuild-holder: <string> -->` immediately after the `<!-- zbuild-run-status run_id=... -->` marker line. For CI runs the holder is the Actions run URL; for local runs it is `run_id=<id> machine=<hostname>`.
+
+### §3 — Stale content corrected
+
+The original text below ("The engine has no built-in mechanism" and selection via `config/zbuild.yaml`) is superseded by this amendment (#1764). The engine now has a built-in wiring bridge (`core/claim/claim.sh`) that sources the plugin and delegates. Coordinator selection is not configured in `config/zbuild.yaml`; the default plugin (`plugins/claim-coordinator/github-labels/`) is sourced unconditionally by `core/claim/claim.sh`.
 
 ### Contract
 
@@ -96,6 +108,15 @@ The engine refuses to start with multiple `claim-coordinator` plugins enabled �
 | TOCTOU window documented in plugin README | Implemented | `plugins/claim-coordinator/github-labels/README.md` |
 | `plugins/claim-coordinator/ttl-leases/` (no TOCTOU) | Deferred → Phase 1 | KEEPERS.md §L item 10 |
 | `plugins/claim-coordinator/dashboard/` variant | Deferred → Phase 1 | KEEPERS.md §L item 11 |
+
+## Enforced by
+
+- §1 (engine calls claim after admission lock, before first stage; release on every EXIT path) →
+  `tests/integration/teardown-repeat-signal-test.sh` [DSCLA-1] (claim present before stage dispatches),
+  [DSCLA-5] (released on normal exit), [DSCLA-6] (released on failure), [DSCLA-7] (released on TERM)
+- §2 (single `zbuild:claimed` label, no hostname; holder in run-status comment) →
+  `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh` [DSCLA-1] (label is
+  exactly `zbuild:claimed`), [DSCLA-2] (`<!-- zbuild-holder: -->` in rendered run-status header)
 
 ## References
 

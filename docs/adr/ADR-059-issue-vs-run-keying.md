@@ -270,6 +270,13 @@ cannot.** `flock`, the pattern `core/state/` already uses throughout, keyed on
 `repos/<repo>/issues/<N>/`. #1764 proposes exactly this primitive for the same race one level
 down.
 
+**The `flock` admission lock handles intra-machine serialisation only.** A filesystem flock is
+invisible outside the machine that holds it. Cross-machine exclusion is the claim coordinator's
+job (ADR-005 §1): `core/claim/claim.sh` acquires `zbuild:claimed` on the GitHub issue after the
+admission flock succeeds, so a run on another machine that checks the label before starting
+sees the claim and refuses. The flock stays for intra-machine serialisation; the label adds the
+cross-machine layer on top of it.
+
 Liveness is decided before admission, not lazily: a lock whose holder is gone is reaped first.
 `zbuild_run_is_live` (ADR-006's staleness gate) supplies the predicate, which is the half of
 `zbuild_worktree_reclaim_dead` this ADR keeps.
