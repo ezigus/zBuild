@@ -17,7 +17,9 @@
 #             that goes back to the model, naming the requirement and the file;
 #             still so when the rounds run out: outcome fail, the finding listed
 # B3 [guard]  a test that fails there, as it must, is no finding: outcome pass
-# B4 [change] a test file that stops before its assertion runs is a finding
+# B4 [change] a test file whose output holds no line tagged for its SPEC is a
+#             finding that says only that: "no line tagged [<id>] appeared in
+#             <file>'s output" — never a guess at why (#2554, ADR-069)
 # B5 [change] only the files the call created or changed are run: a test file
 #             it left as it was is not
 # B6 [change] the prompt lists, found by script, each test file and the
@@ -38,6 +40,25 @@
 #             not fail before; a design whose every requirement is done still
 #             calls the model; a [done] test that passes on the old code is no
 #             finding, and one that fails there is (the old code is said to do it)
+# B12 [change] #1764 run 43772987273: a file that runs to the end with failures
+#             and tags its assertion [SPEC-1/2] gets the plain finding, whatever
+#             its exit code, and no "stopped before" (#2554, ADR-069)
+# B13 [change] text shaped like a tag that names more than one SPEC is a finding
+#             naming the file, the line and the rule (#2554, ADR-036)
+# B14 [change] two tags side by side in one label are a finding naming the line
+#             (ADR-036); tags in two arguments of one line are not
+# B16 [change] a test file the call created (not in git yet) is checked whole
+# B17 [guard]  a line the default branch already has is other work's: two tags
+#             or an odd tag there is no finding (ADR-036)
+# B18 [guard]  test code that only mentions a tag is no finding: a grep for
+#             '\[SPEC-1\]', a [[ … == SPEC-1 ]] test, the expected text of an
+#             assertion naming another tag, another issue's [#9/SPEC-1]
+# B19 [change] a committed line on the branch (test-author's try 2) is checked,
+#             whatever the user's diff settings (mnemonicPrefix, an external
+#             diff) — review on #2554
+# B20 [change] at most 10 tag findings, then "and N more"
+# B15 [change] the prompt says each tag names one SPEC, one per line, and an
+#             assertion proving two SPECs is written twice (ADR-036)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -61,6 +82,10 @@ _body() {
         passes) printf '#!/usr/bin/env bash\nprintf "  ✓ %%s it holds\\n" "%s"\n' "$2" ;;
         fails)  printf '#!/usr/bin/env bash\nprintf "  ✗ %%s it holds\\n" "%s"\nexit 1\n' "$2" ;;
         crash)  printf '#!/usr/bin/env bash\nsource ./no-such-helper.sh || exit 2\nprintf "  ✓ %%s it holds\\n" "%s"\n' "$2" ;;
+        # #1764 run 43772987273: the SPEC's tag sits in a comment, the assertion
+        # is tagged for two SPECs, and the file runs to the end (exit = failures).
+        mistag) printf '#!/usr/bin/env bash\n# Then — %s an empty input returns rc 1\nprintf "  ✗ %%s it holds\\n" "[SPEC-1/2]"\nexit 12\n' "$2" ;;
+        twotags) printf '#!/usr/bin/env bash\nprintf "  ✗ %%s it holds\\n" "%s [SPEC-2]"\nexit 1\n' "$2" ;;
     esac
 }
 # The author's model: round n writes tests/a-test.sh as ${WRITE[n-1]} (the last
@@ -83,9 +108,12 @@ _run() {
     rm -rf "$TEST_TEMP_DIR/run" "$TEST_TEMP_DIR"/author-*
     local d="$TEST_TEMP_DIR/run"; R="$d/repo"; A="$d/state/artifacts"
     mkdir -p "$A" "$R/tests"
-    _body passes "$T2" > "$R/tests/b-test.sh"
+    # The issue's own test files are its branch's (ADR-069 §11): main has
+    # none, the branch adds them.
     ( cd "$R" && git init -q -b main . && git config user.email t@e.st && git config user.name t \
-        && : > tests/a-test.sh && git add -A && git commit -q -m seed ) >/dev/null 2>&1
+        && : > README && git add -A && git commit -q -m seed && git checkout -q -b work ) >/dev/null 2>&1
+    _body passes "$T2" > "$R/tests/b-test.sh"
+    ( cd "$R" && : > tests/a-test.sh && git add -A && git commit -q -m tests ) >/dev/null 2>&1
     printf '{"schema_version":1}' > "$d/state/pipeline-state.json"
     if [[ -n "${DESIGN_MD:-}" ]]; then printf '%s\n' "$DESIGN_MD" > "$A/design.md"; else
     cat > "$A/design.md" <<'MD'
@@ -139,8 +167,9 @@ assert_contains "[B2] ...the file, and that it passes on the code from before th
 
 # ── B4 ───────────────────────────────────────────────────────────────────────
 WRITE=(crash fails); _run
-assert_contains "[B4] a file that stops before its assertion runs is a finding (in the result, #2460)" \
-    "$FINDINGS" "tests/a-test.sh stopped before"
+assert_contains "[B4] a file whose output holds no line tagged for its SPEC is a finding (in the result, #2460)" \
+    "$FINDINGS" "SPEC-1: no line tagged $T1 appeared in tests/a-test.sh's output on the code from before this change"
+assert_eq "[B4] ...that guesses no cause: no \"stopped before\"" "0" "$(grep -c 'stopped before' <<< "$FINDINGS" || true)"
 
 # ── B5 ───────────────────────────────────────────────────────────────────────
 # b-test.sh passes on the old code, but it is [no-code] and the call did not
@@ -215,6 +244,77 @@ WRITE=(fails); _run
 assert_contains "[B11] a [done] test that fails on the old code is a finding" "$FINDINGS" \
     "SPEC-1: tests/a-test.sh fails on the code from before this change, which the design says already does this"
 unset DESIGN_MD
+
+# ── B12 / B13 / B14 / B15 ────────────────────────────────────────────────────
+print_test_section "B12-B15: a tag names one SPEC, and the before-run says only what it saw"
+WRITE=(mistag); _run
+assert_contains "[B12] a file that runs to the end, its assertion tagged [SPEC-1/2]: the plain finding" "$FINDINGS" \
+    "SPEC-1: no line tagged $T1 appeared in tests/a-test.sh's output on the code from before this change"
+assert_eq "[B12] ...whatever its exit code: no \"stopped before\"" "0" "$(grep -c 'stopped before' <<< "$FINDINGS" || true)"
+assert_eq "[B12] ...and no exit code read into it" "0" "$(grep -c '(exit ' <<< "$FINDINGS" || true)"
+assert_contains "[B13] text shaped like a tag naming two SPECs is a finding: file, line, rule" "$FINDINGS" \
+    "tests/a-test.sh line 3: [SPEC-1/2] is not a tag — a tag names one SPEC: [<id>]. An assertion that proves two SPECs is written twice, one line per SPEC, each with its own tag"
+assert_eq "[B13] ...and the try is unusable, for the next try to fix" "unusable" "$OUTCOME"
+WRITE=(twotags); _run
+assert_contains "[B14] two tags on one line are a finding naming the line" "$FINDINGS" \
+    "tests/a-test.sh line 2 holds two tags ($T1, [SPEC-2]) — one tag per line: write the assertion once for each SPEC"
+WRITE=(fails); _run
+assert_eq "[B14] a file with one good tag a line has no tag finding" "pass" "$OUTCOME"
+_AP="$(tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/author-prompt-1" 2>/dev/null)"
+assert_contains "[B15] the prompt: each tag names one SPEC, one per line" "$_AP" \
+    "Each tag names one SPEC, exactly as shown — e.g. $T1 — and a line holds one tag."
+assert_contains "[B15] ...an assertion proving two SPECs is written twice" "$_AP" \
+    "An assertion that proves two SPECs is written twice, one line per SPEC, each with its own tag."
+assert_eq "[B15] ...and it no longer says a test may stop before its assertion runs" "0" \
+    "$(grep -c 'stops before its assertion runs' <<< "$_AP" || true)"
+
+# ── B16 / B17 / B18 / B19 / B20 ──────────────────────────────────────────────
+_d16="$TEST_TEMP_DIR/b16"; R16="$_d16/repo"; mkdir -p "$R16/tests"
+printf 'assert_eq "%s %s" x x\nassert_eq "[SPEC-1/2] old" x x\n' "$T1" "$T2" > "$R16/tests/old-test.sh"
+( cd "$R16" && git init -q -b main . && git config user.email t@e.st && git config user.name t \
+    && git add -A && git commit -q -m seed && git checkout -q -b work ) >/dev/null 2>&1
+printf 'assert_eq "[SPEC-2, SPEC-1] new" x x\n' > "$R16/tests/new-test.sh"
+printf '```acceptance\nSPEC-1[code]: x\nSPEC-2[code]: y\n```\n' > "$_d16/design.md"
+_shape() { _ta_tag_shape "$_d16/design.md" "$R16"; _tf="$(printf '%s\n' ${_TA_TAG_FINDINGS[@]+"${_TA_TAG_FINDINGS[@]}"})"; }
+_shape
+assert_contains "[B16] a new test file, not in git yet, is checked whole" "$_tf" \
+    "tests/new-test.sh line 1: [SPEC-2, SPEC-1] is not a tag"
+assert_eq "[B17] lines the default branch already has give no finding" "0" "$(grep -c 'old-test.sh' <<< "$_tf" || true)"
+
+rm -f "$R16/tests/new-test.sh"
+cat > "$R16/tests/ok-test.sh" <<'SH'
+n=$(grep -c '\[SPEC-1\]' <<< "$out")
+if [[ "$id" == SPEC-1 ]]; then :; fi
+assert_contains "[SPEC-2] msg" "$out" "[SPEC-1] appeared"
+assert_eq "[#9/SPEC-1] another issue's tag" x x
+printf '{"covers":["SPEC-1","SPEC-2"]}' > "$f"
+v="${_brf[SPEC-1]}"; assert_eq "[SPEC-2] arr" "$v" x
+assert_contains "[SPEC-1] output names its tag" "$out" "[SPEC-1]"
+SH
+_shape
+assert_eq "[B18] test code that only mentions a tag gives no finding" "" "$_tf"
+
+rm -f "$R16/tests/ok-test.sh"
+printf 'assert_eq "[SPEC-1/2] committed" x x\n' > "$R16/tests/c-test.sh"
+( cd "$R16" && git add -A && git commit -q -m try1 \
+    && git config diff.mnemonicPrefix true && git config diff.external false ) >/dev/null 2>&1
+_shape
+assert_contains "[B19] a committed branch line is checked, whatever the diff settings" "$_tf" \
+    "tests/c-test.sh line 1: [SPEC-1/2] is not a tag"
+( cd "$R16" && git config --unset diff.mnemonicPrefix; git config --unset diff.external ) >/dev/null 2>&1
+
+# C3 (review on #2554): only the lines the branch added, at their own numbers.
+rm -f "$R16/tests/c-test.sh"; ( cd "$R16" && git add -A && git commit -q -m clean ) >/dev/null 2>&1
+printf 'assert_eq "x" x x\nassert_eq "y" x x\nassert_eq "[SPEC-2/1] added" x x\n' >> "$R16/tests/old-test.sh"
+_shape
+assert_eq "[B17] a changed default-branch file: one finding, on the line the branch added" \
+    "tests/old-test.sh line 5: [SPEC-2/1] is not a tag" "${_tf%% — *}"
+( cd "$R16" && git checkout -q -- tests/old-test.sh ) >/dev/null 2>&1
+
+for _i in $(seq 1 15); do printf 'assert_eq "[SPEC-1/%s] x" x x\n' "$_i"; done > "$R16/tests/many-test.sh"
+_shape
+assert_eq "[B20] at most 10 tag findings…" "11" "${#_TA_TAG_FINDINGS[@]}"
+assert_contains "[B20] …then one saying how many more" "$_tf" "and 5 more lines like these"
 
 cleanup_test_env
 print_test_results
