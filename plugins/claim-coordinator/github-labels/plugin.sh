@@ -247,3 +247,11 @@ claim_coordinator_list_claims() {
     esac
     return 0
 }
+
+# Source the cross-machine claim layer (zbuild_claim_acquire / zbuild_claim_release).
+# Resolved relative to this file so the path works whether sourced from runner.sh,
+# a unit test, or any other caller.
+_ccgl_plugin_dir="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
+# shellcheck source=../../../core/claim/claim.sh
+source "$_ccgl_plugin_dir/../../../core/claim/claim.sh"
+unset _ccgl_plugin_dir
