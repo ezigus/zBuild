@@ -227,11 +227,24 @@ else
 fi
 
 # Then: zbuild:claimed is absent from the issue after normal exit
-if ! grep -Fxq "zbuild:claimed" "$ZBUILD_CLAIM_STORE/$_DSCLA5_ISSUE/labels.txt" 2>/dev/null; then
+# (gate on acquisition: if the claim was never added, release cannot be verified)
+if [[ ! -e "$_DSCLA5_PRESENT" ]]; then
+    assert_fail "[DSCLA-5] zbuild:claimed was never acquired — cannot verify release" \
+        "claim never appeared in store; rc=$_dscla5_rc output=$(tail -5 "$TEST_TEMP_DIR/dscla5.out")"
+elif ! grep -Fxq "zbuild:claimed" "$ZBUILD_CLAIM_STORE/$_DSCLA5_ISSUE/labels.txt" 2>/dev/null; then
     assert_pass "[DSCLA-5] zbuild:claimed absent after normal pipeline completion"
 else
     assert_fail "[DSCLA-5] zbuild:claimed absent after normal pipeline completion" \
         "label still present in claim store after runner exit"
+fi
+
+# Then: the claim comment body shows finished status
+_dscla5_comment="$ZBUILD_CLAIM_STORE/$_DSCLA5_ISSUE/comment.txt"
+if grep -qi "finished" "$_dscla5_comment" 2>/dev/null; then
+    assert_pass "[DSCLA-5] claim comment body shows finished status after normal exit"
+else
+    assert_fail "[DSCLA-5] claim comment body shows finished status after normal exit" \
+        "comment: $(cat "$_dscla5_comment" 2>/dev/null || echo '<not found>')"
 fi
 
 # ── DSCLA-6: zbuild:claimed released on pipeline failure ─────────────────────
@@ -272,11 +285,24 @@ else
 fi
 
 # Then: zbuild:claimed is absent after failure exit
-if ! grep -Fxq "zbuild:claimed" "$ZBUILD_CLAIM_STORE/$_DSCLA6_ISSUE/labels.txt" 2>/dev/null; then
+# (gate on acquisition: if the claim was never added, release cannot be verified)
+if [[ ! -e "$_DSCLA6_PRESENT" ]]; then
+    assert_fail "[DSCLA-6] zbuild:claimed was never acquired — cannot verify release" \
+        "claim never appeared in store; rc=$_dscla6_rc output=$(tail -5 "$TEST_TEMP_DIR/dscla6.out")"
+elif ! grep -Fxq "zbuild:claimed" "$ZBUILD_CLAIM_STORE/$_DSCLA6_ISSUE/labels.txt" 2>/dev/null; then
     assert_pass "[DSCLA-6] zbuild:claimed absent after pipeline failure"
 else
     assert_fail "[DSCLA-6] zbuild:claimed absent after pipeline failure" \
         "label still present after failure exit"
+fi
+
+# Then: the claim comment body shows finished status
+_dscla6_comment="$ZBUILD_CLAIM_STORE/$_DSCLA6_ISSUE/comment.txt"
+if grep -qi "finished" "$_dscla6_comment" 2>/dev/null; then
+    assert_pass "[DSCLA-6] claim comment body shows finished status after failure exit"
+else
+    assert_fail "[DSCLA-6] claim comment body shows finished status after failure exit" \
+        "comment: $(cat "$_dscla6_comment" 2>/dev/null || echo '<not found>')"
 fi
 
 # ── DSCLA-7: zbuild:claimed released on TERM signal ──────────────────────────
@@ -333,11 +359,24 @@ else
 fi
 
 # Then: zbuild:claimed is absent after TERM exit
-if ! grep -Fxq "zbuild:claimed" "$ZBUILD_CLAIM_STORE/$_DSCLA7_ISSUE/labels.txt" 2>/dev/null; then
+# (gate on acquisition: if the claim was never added, release cannot be verified)
+if [[ ! -e "$_DSCLA7_PRESENT" ]]; then
+    assert_fail "[DSCLA-7] zbuild:claimed was never acquired — cannot verify release after TERM" \
+        "claim never appeared in store"
+elif ! grep -Fxq "zbuild:claimed" "$ZBUILD_CLAIM_STORE/$_DSCLA7_ISSUE/labels.txt" 2>/dev/null; then
     assert_pass "[DSCLA-7] zbuild:claimed absent after TERM signal"
 else
     assert_fail "[DSCLA-7] zbuild:claimed absent after TERM signal" \
         "label still present after TERM"
+fi
+
+# Then: the claim comment body shows finished status
+_dscla7_comment="$ZBUILD_CLAIM_STORE/$_DSCLA7_ISSUE/comment.txt"
+if grep -qi "finished" "$_dscla7_comment" 2>/dev/null; then
+    assert_pass "[DSCLA-7] claim comment body shows finished status after TERM signal"
+else
+    assert_fail "[DSCLA-7] claim comment body shows finished status after TERM signal" \
+        "comment: $(cat "$_dscla7_comment" 2>/dev/null || echo '<not found>')"
 fi
 
 # ── DSCLA-9: runner output contains holder string when zbuild:claimed present ─
