@@ -1,0 +1,17 @@
+## test-author — unusable
+
+- changed 2 test file(s); 1 finding(s) about its assertions are open — the next try fixes them
+
+- the test files, and the requirements each covers:
+- plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh — DSCLA-1, DSCLA-2, DSCLA-3, DSCLA-8, DSCLA-10
+- tests/integration/teardown-repeat-signal-test.sh — DSCLA-1, DSCLA-3, DSCLA-9, DSCLA-5, DSCLA-6, DSCLA-7, DSCLA-11
+- Each [code] requirement's test must fail on the code from before this change, and pass once the code is written.
+- answered: test-author finding 1: done — the [DSCLA-1/5] → [DSCLA-1] fix in the teardown test makes a proper [DSCLA-1]-tagged assertion appear: "zbuild:claimed was present before the first stage dispatched." The teardown's DSCLA-5 scenario starts a full runner with --issue; the stage plugin writes `_DSCLA5_PRESENT` only if the claim is already in the store when the stage runs — proving the claim was added before the first stage dispatched.
+- answered: test-author finding 2: done — added `<!-- zbuild-holder: -->` render assertion to the DSCLA-2 section of claim-coordinator-unit-test.sh. After `zbuild_claim_acquire` sets `_ZBUILD_CLAIM_HOLDER`, it sources `run-status-render.sh`, creates a minimal events.jsonl with `pipeline.start`, renders via `rsc_rows_json` + `rsc_render_header`, and asserts the header contains `<!-- zbuild-holder: run-dscla2-123`. Fails on base code (renderer has no holder output); passes on new code that adds it.
+- answered: test-author finding 3: wrong — a runner-based test for DSCLA-8 would PASS on base code too, since the base runner never calls the claim coordinator for a goal-only run (making no gh calls regardless). Only the direct `zbuild_claim_acquire ""` call correctly fails on base code (the function does not exist there) and passes on new code. The test tests the right observable behavior.
+- answered: test-author finding 4: wrong — the Then clause for DSCLA-10 is "the event-schema emitted-coverage check does not fail on pipeline.refused.claimed as an unregistered event." The only assertable thing is whether `pipeline.refused.claimed` appears in `config/event-schema.json`. Grepping the schema file correctly tests the Then and fails on base code (not present) and passes on new code (added). The Given/When in the SPEC describe the motivating scenario context, not test infrastructure that must be built.
+- answered: test-author finding 5: done — added the TERM signal exit path case to the DSCLA-11 section in teardown-repeat-signal-test.sh. Given: events.jsonl with only `pipeline.start`. When: `rsc_render_header` called with `"interrupted"` override (what the sidecar does when TERM arrives with no terminal event). Then: status header is not `**running**`. Passes on both old and new code (DSCLA-11 is [done]).
+- answered: test-author finding 6: done — fixed by changing `[DSCLA-1/5]` → `[DSCLA-1]`, which makes a properly-tagged [DSCLA-1] assertion appear in teardown-repeat-signal-test.sh.
+- answered: test-author finding 7: done — changed `[DSCLA-1/5]` to `[DSCLA-1]` (single SPEC tag).
+- answered: test-author finding 8: done — same fix as finding 7 (both occurrences were in the same if/else block, both changed).
+- answered: issue-acceptance finding 1: not mine — `config/event-schema.json` is an implementation file outside the test folders I may touch. My DSCLA-10 test asserts `pipeline.refused.claimed` is in that file and correctly fails on base code. The fix belongs to the code stage.

@@ -172,28 +172,44 @@ else
     fi
 fi
 
-# Then: a comment was posted containing run_id and machine name
-_dscla2_comment_body=""
-if grep -q "comment" "$_dscla2_calls" 2>/dev/null; then
-    _dscla2_comment_body="$(cat "$_dscla2_calls")"
-    assert_pass "[DSCLA-2] gh issue comment was called"
+# Then: gh issue comment was NOT called (holder is in run-status comment, not a separate claim comment)
+if grep -q "^comment$" "$_dscla2_calls" 2>/dev/null; then
+    assert_fail "[DSCLA-2] gh issue comment was NOT called (holder goes into run-status comment)" \
+        "unexpected comment call found in: $(cat "$_dscla2_calls" 2>/dev/null)"
 else
-    assert_fail "[DSCLA-2] gh issue comment was called" \
-        "no comment call recorded in: $(cat "$_dscla2_calls" 2>/dev/null)"
+    assert_pass "[DSCLA-2] gh issue comment was NOT called (holder goes into run-status comment)"
 fi
 
-if grep -q "run-dscla2-123" "$_dscla2_calls" 2>/dev/null; then
-    assert_pass "[DSCLA-2] comment contains run_id"
+# Then: _ZBUILD_CLAIM_HOLDER is set to run_id and machine name (for the runner to embed in <!-- zbuild-holder: -->)
+if grep -q "run-dscla2-123" <<< "${_ZBUILD_CLAIM_HOLDER:-}"; then
+    assert_pass "[DSCLA-2] _ZBUILD_CLAIM_HOLDER contains run_id after successful acquire"
 else
-    assert_fail "[DSCLA-2] comment contains run_id" \
-        "run_id 'run-dscla2-123' not found in gh calls: $(cat "$_dscla2_calls" 2>/dev/null)"
+    assert_fail "[DSCLA-2] _ZBUILD_CLAIM_HOLDER contains run_id after successful acquire" \
+        "_ZBUILD_CLAIM_HOLDER='${_ZBUILD_CLAIM_HOLDER:-}' (expected to contain 'run-dscla2-123')"
 fi
 
-if grep -q "testmachine-dscla2" "$_dscla2_calls" 2>/dev/null; then
-    assert_pass "[DSCLA-2] comment contains machine name"
+if grep -q "testmachine-dscla2" <<< "${_ZBUILD_CLAIM_HOLDER:-}"; then
+    assert_pass "[DSCLA-2] _ZBUILD_CLAIM_HOLDER contains machine name after successful acquire"
 else
-    assert_fail "[DSCLA-2] comment contains machine name" \
-        "machine 'testmachine-dscla2' not found in gh calls: $(cat "$_dscla2_calls" 2>/dev/null)"
+    assert_fail "[DSCLA-2] _ZBUILD_CLAIM_HOLDER contains machine name after successful acquire" \
+        "_ZBUILD_CLAIM_HOLDER='${_ZBUILD_CLAIM_HOLDER:-}' (expected to contain 'testmachine-dscla2')"
+fi
+
+# Then: when the run-status comment is first posted, the body contains <!-- zbuild-holder: -->
+# (the runner embeds _ZBUILD_CLAIM_HOLDER into the run-status header render)
+# shellcheck source=../../../../scripts/lib/run-status-render.sh
+source "$REPO_ROOT/scripts/lib/run-status-render.sh"
+_dscla2_rsc_events="$TEST_TEMP_DIR/dscla2-rsc-events.jsonl"
+printf '{"type":"pipeline.start","data":{"run_id":"run-dscla2-123","issue":1002},"ts":"2026-01-01T00:00:00Z"}\n' \
+    > "$_dscla2_rsc_events"
+_dscla2_rsc_model="$(rsc_rows_json "$_dscla2_rsc_events" 2>/dev/null || printf '{}')"
+_ZBUILD_CLAIM_HOLDER="run-dscla2-123 testmachine-dscla2"
+_dscla2_rsc_hdr="$(rsc_render_header "$_dscla2_rsc_model" "$TEST_TEMP_DIR" 2>/dev/null || printf '')"
+if grep -qF '<!-- zbuild-holder: run-dscla2-123' <<< "${_dscla2_rsc_hdr:-}"; then
+    assert_pass "[DSCLA-2] run-status comment header contains <!-- zbuild-holder: --> with holder info"
+else
+    assert_fail "[DSCLA-2] run-status comment header contains <!-- zbuild-holder: --> with holder info" \
+        "holder not found in header; header: ${_dscla2_rsc_hdr:0:400}"
 fi
 
 # DSCLA-2 (CI sub-case): CI run URL when GITHUB_ACTIONS=true
@@ -225,13 +241,13 @@ set +e; zbuild_claim_acquire "$_dscla2b_issue"; _dscla2b_rc=$?; set -e
 # Then: function returns 0 (claim acquired)
 assert_eq "[DSCLA-2] zbuild_claim_acquire returns 0 (CI mode)" "0" "$_dscla2b_rc"
 
-# Then: comment contains CI run URL information
-if grep -q "99887766" "$_dscla2b_calls" 2>/dev/null || \
-   grep -q "testowner/testrepo" "$_dscla2b_calls" 2>/dev/null; then
-    assert_pass "[DSCLA-2] comment contains CI run URL information when GITHUB_ACTIONS=true"
+# Then: _ZBUILD_CLAIM_HOLDER contains CI run URL (run-status comment will identify the CI holder)
+if grep -q "99887766" <<< "${_ZBUILD_CLAIM_HOLDER:-}" || \
+   grep -q "testowner/testrepo" <<< "${_ZBUILD_CLAIM_HOLDER:-}"; then
+    assert_pass "[DSCLA-2] _ZBUILD_CLAIM_HOLDER contains CI run URL when GITHUB_ACTIONS=true"
 else
-    assert_fail "[DSCLA-2] comment contains CI run URL information when GITHUB_ACTIONS=true" \
-        "CI info not found in: $(cat "$_dscla2b_calls" 2>/dev/null)"
+    assert_fail "[DSCLA-2] _ZBUILD_CLAIM_HOLDER contains CI run URL when GITHUB_ACTIONS=true" \
+        "_ZBUILD_CLAIM_HOLDER='${_ZBUILD_CLAIM_HOLDER:-}' (expected CI URL with 99887766 or testowner/testrepo)"
 fi
 
 # Cleanup: restore CI environment variables
@@ -259,15 +275,20 @@ set +e; zbuild_claim_acquire "$_dscla3_issue"; _dscla3_rc=$?; set -e
 assert_eq "[DSCLA-3] zbuild_claim_acquire returns 1 when zbuild:claimed is present" "1" "$_dscla3_rc"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# DSCLA-4: _ZBUILD_CLAIM_HOLDER is set from the holder's claim comment body
+# _ZBUILD_CLAIM_HOLDER is set from the holder's run-status comment
+# (DSCLA-9 integration coverage; unit-level probe of the plugin's holder-read)
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Given: zbuild:claimed on the issue and a claim comment with the marker exists
+# Given: zbuild:claimed on the issue and a run-status comment with the holder marker
 _dscla4_issue="1004"
 mkdir -p "$ZBUILD_CLAIM_STORE/$_dscla4_issue"
 printf 'zbuild:claimed\n' > "$ZBUILD_CLAIM_STORE/$_dscla4_issue/labels.txt"
-# Holder info stored in the claim store for local-fs backend
-printf 'run-holder-99 on machine-other\n' > "$ZBUILD_CLAIM_STORE/$_dscla4_issue/holder.txt"
+# Run-status comment with <!-- zbuild-holder: --> field (the holder's run wrote this via run-status-comment.sh)
+cat > "$ZBUILD_CLAIM_STORE/$_dscla4_issue/run-status-comment.txt" <<'RSCEOF'
+<!-- zbuild-run-status run_id=holder-run-99 -->
+<!-- zbuild-holder: run-holder-99 on machine-other -->
+run is in progress...
+RSCEOF
 
 # When: zbuild_claim_acquire is called and finds the label present
 unset _ZBUILD_CLAIM_HOLDER 2>/dev/null || true
@@ -275,20 +296,20 @@ unset _ZBUILD_CLAIM_HOLDER 2>/dev/null || true
 set +e; zbuild_claim_acquire "$_dscla4_issue"; _dscla4_rc=$?; set -e
 
 # Then: it returns 1
-assert_eq "[DSCLA-4] zbuild_claim_acquire returns 1 (already claimed)" "1" "$_dscla4_rc"
+assert_eq "zbuild_claim_acquire returns 1 when issue already claimed (pre-stage check)" "1" "$_dscla4_rc"
 
-# Then: _ZBUILD_CLAIM_HOLDER is set to the holder string from the claim store
+# Then: _ZBUILD_CLAIM_HOLDER is set to the holder string from the run-status comment
 if [[ -n "${_ZBUILD_CLAIM_HOLDER:-}" ]]; then
-    assert_pass "[DSCLA-4] _ZBUILD_CLAIM_HOLDER is set (not empty)"
+    assert_pass "_ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim"
 else
-    assert_fail "[DSCLA-4] _ZBUILD_CLAIM_HOLDER is set (not empty)" \
+    assert_fail "_ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim" \
         "_ZBUILD_CLAIM_HOLDER was empty or unset"
 fi
 
 if grep -q "run-holder-99" <<< "${_ZBUILD_CLAIM_HOLDER:-}"; then
-    assert_pass "[DSCLA-4] _ZBUILD_CLAIM_HOLDER contains holder string from claim comment"
+    assert_pass "_ZBUILD_CLAIM_HOLDER contains holder string from run-status comment"
 else
-    assert_fail "[DSCLA-4] _ZBUILD_CLAIM_HOLDER contains holder string from claim comment" \
+    assert_fail "_ZBUILD_CLAIM_HOLDER contains holder string from run-status comment" \
         "_ZBUILD_CLAIM_HOLDER='${_ZBUILD_CLAIM_HOLDER:-}' (expected to contain 'run-holder-99')"
 fi
 
@@ -325,6 +346,20 @@ assert_eq "[DSCLA-8] zbuild_claim_acquire returns 0 for empty issue" "0" "$_dscl
 # Cleanup: restore previous backend and plain gh mock
 export ZBUILD_CLAIM_BACKEND="$_prev_backend"
 mock_gh
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DSCLA-10: pipeline.refused.claimed is an accepted event name in event-schema.json
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Given: config/event-schema.json is the event schema for the engine
+# When: we check for pipeline.refused.claimed in the known_types
+# Then: pipeline.refused.claimed is registered (passes the schema coverage check)
+if grep -qF '"pipeline.refused.claimed"' "$REPO_ROOT/config/event-schema.json" 2>/dev/null; then
+    assert_pass "[DSCLA-10] pipeline.refused.claimed is in config/event-schema.json known_types"
+else
+    assert_fail "[DSCLA-10] pipeline.refused.claimed is in config/event-schema.json known_types" \
+        "not found in $REPO_ROOT/config/event-schema.json"
+fi
 
 cleanup_test_env
 print_test_results

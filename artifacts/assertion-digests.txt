@@ -1,3 +1,3 @@
 # authored_by: test-author
-6e72046229bfbcc8d4baf85ce13f07cfcba3061736e7a567bcbeecea71e5e1eb  plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
-16093c2ba77f647a7e0de072f50abf9dd0715c729e06d3fb9394f9bbd7c9e82b  tests/integration/teardown-repeat-signal-test.sh
+54cc1809cf7e33923350a351801e91518b0af7330979d79687be0b74a101f040  plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
+d35aa6ad7d3011a015b33e8bcda76de0760bb87e00ceb7d5e7a26e75d73d2769  tests/integration/teardown-repeat-signal-test.sh
