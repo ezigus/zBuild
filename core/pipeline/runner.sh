@@ -29,6 +29,8 @@ source "$_ZBUILD_ROOT/core/state/atomic.sh"
 source "$_ZBUILD_ROOT/core/state/resume.sh"
 # shellcheck source=../state/issue-lock.sh
 source "$_ZBUILD_ROOT/core/state/issue-lock.sh"
+# shellcheck source=../claim/claim.sh
+source "$_ZBUILD_ROOT/core/claim/claim.sh"
 # shellcheck source=../state/run-cap.sh
 source "$_ZBUILD_ROOT/core/state/run-cap.sh"
 # shellcheck source=../state/layout.sh
@@ -2532,6 +2534,20 @@ main() {
             return 1
         fi
     fi
+    # Cross-machine soft claim via zbuild:claimed GitHub label (ADR-005 / #1764).
+    # Runs after the intra-machine flock so the intra-machine guard still wins.
+    if declare -F zbuild_claim_acquire >/dev/null 2>&1; then
+        if ! zbuild_claim_acquire "${_runner_issue:-}"; then
+            eb_emit_event "pipeline.refused.claimed" \
+                "issue=${_runner_issue:-}" "holder=${_ZBUILD_CLAIM_HOLDER:-unknown}" \
+                2>/dev/null || true
+            error "issue ${_runner_issue:-} is already claimed: ${_ZBUILD_CLAIM_HOLDER:-unknown}"
+            # The exit trap is not set yet; release resources explicitly.
+            zbuild_issue_lock_release || true
+            zbuild_run_cap_release || true
+            return 1
+        fi
+    fi
 
     # ADR-052 (#1640): LAST thing before any stage runs. Everything above is
     # engine bookkeeping that belongs in the main checkout (state, events,
@@ -2753,6 +2769,10 @@ main() {
         # still belong to this run.
         if declare -F zbuild_issue_lock_release >/dev/null 2>&1; then
             zbuild_issue_lock_release || true
+        fi
+        # Cross-machine claim release (ADR-005 / #1764): advisory, never fails the run.
+        if declare -F zbuild_claim_release >/dev/null 2>&1; then
+            zbuild_claim_release "${_runner_issue:-}" || true
         fi
         if declare -F zbuild_run_cap_release >/dev/null 2>&1; then
             zbuild_run_cap_release || true
