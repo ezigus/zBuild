@@ -305,6 +305,7 @@ rsc_render_header() {
     fi
 
     printf '%s%s -->\n' "$_RSC_MARKER_PREFIX" "$run_id"
+    [[ -n "${_ZBUILD_CLAIM_HOLDER:-}" ]] && printf '<!-- zbuild-holder: %s -->\n' "$_ZBUILD_CLAIM_HOLDER"
     printf '### zbuild run `%s` · issue #%s · **%s**\n' "$run_id" "$issue" "$status"
     local meta="engine \`${sha}\`"
     [[ -n "$branch" ]] && meta+=" (\`${branch}\`)"
