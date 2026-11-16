@@ -195,6 +195,23 @@ else
         "_ZBUILD_CLAIM_HOLDER='${_ZBUILD_CLAIM_HOLDER:-}' (expected to contain 'testmachine-dscla2')"
 fi
 
+# Then: when the run-status comment is first posted, the body contains <!-- zbuild-holder: -->
+# (the runner embeds _ZBUILD_CLAIM_HOLDER into the run-status header render)
+# shellcheck source=../../../../scripts/lib/run-status-render.sh
+source "$REPO_ROOT/scripts/lib/run-status-render.sh"
+_dscla2_rsc_events="$TEST_TEMP_DIR/dscla2-rsc-events.jsonl"
+printf '{"type":"pipeline.start","data":{"run_id":"run-dscla2-123","issue":1002},"ts":"2026-01-01T00:00:00Z"}\n' \
+    > "$_dscla2_rsc_events"
+_dscla2_rsc_model="$(rsc_rows_json "$_dscla2_rsc_events" 2>/dev/null || printf '{}')"
+_ZBUILD_CLAIM_HOLDER="run-dscla2-123 testmachine-dscla2"
+_dscla2_rsc_hdr="$(rsc_render_header "$_dscla2_rsc_model" "$TEST_TEMP_DIR" 2>/dev/null || printf '')"
+if grep -qF '<!-- zbuild-holder: run-dscla2-123' <<< "${_dscla2_rsc_hdr:-}"; then
+    assert_pass "[DSCLA-2] run-status comment header contains <!-- zbuild-holder: --> with holder info"
+else
+    assert_fail "[DSCLA-2] run-status comment header contains <!-- zbuild-holder: --> with holder info" \
+        "holder not found in header; header: ${_dscla2_rsc_hdr:0:400}"
+fi
+
 # DSCLA-2 (CI sub-case): CI run URL when GITHUB_ACTIONS=true
 
 # Given: gh backend with GITHUB_ACTIONS=true; run URL variables set
