@@ -220,9 +220,9 @@ _dscla5_rc=$?
 
 # Then: zbuild:claimed was present on the issue before the first stage ran
 if [[ -e "$_DSCLA5_PRESENT" ]]; then
-    assert_pass "[DSCLA-1/5] zbuild:claimed was present before the first stage dispatched"
+    assert_pass "[DSCLA-1] zbuild:claimed was present before the first stage dispatched"
 else
-    assert_fail "[DSCLA-1/5] zbuild:claimed was present before the first stage dispatched" \
+    assert_fail "[DSCLA-1] zbuild:claimed was present before the first stage dispatched" \
         "claim never appeared in store; rc=$_dscla5_rc output=$(tail -5 "$TEST_TEMP_DIR/dscla5.out")"
 fi
 
@@ -482,6 +482,23 @@ if grep -qF '**running**' <<< "${_dscla11_ah:-}"; then
         "header shows running — expected terminal; header: ${_dscla11_ah:0:200}"
 else
     assert_pass "[DSCLA-11] run-status comment does not show 'running' on pipeline failure"
+fi
+
+# Given: an events.jsonl with only pipeline.start (no terminal event, as on TERM signal)
+_dscla11_signal_events="$_dscla11_state/signal-events.jsonl"
+printf '{"type":"pipeline.start","data":{"run_id":"dscla11-signal","issue":88880002},"ts":"2026-01-01T00:00:00Z"}\n' \
+    > "$_dscla11_signal_events"
+
+# When: the sidecar renders with "interrupted" override (which the sidecar does on TERM with no terminal event)
+_dscla11_sigm="$(rsc_rows_json "$_dscla11_signal_events" 2>/dev/null || printf '{}')"
+_dscla11_sigh="$(rsc_render_header "$_dscla11_sigm" "$_dscla11_state" "interrupted" 2>/dev/null || printf '')"
+
+# Then: the status header is not "running"
+if grep -qF '**running**' <<< "${_dscla11_sigh:-}"; then
+    assert_fail "[DSCLA-11] run-status comment does not show 'running' on TERM signal exit" \
+        "header shows running; header: ${_dscla11_sigh:0:200}"
+else
+    assert_pass "[DSCLA-11] run-status comment does not show 'running' on TERM signal exit"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
