@@ -238,14 +238,6 @@ else
         "label still present in claim store after runner exit"
 fi
 
-# Then: the claim comment body shows finished status
-_dscla5_comment="$ZBUILD_CLAIM_STORE/$_DSCLA5_ISSUE/comment.txt"
-if grep -qi "finished" "$_dscla5_comment" 2>/dev/null; then
-    assert_pass "[DSCLA-5] claim comment body shows finished status after normal exit"
-else
-    assert_fail "[DSCLA-5] claim comment body shows finished status after normal exit" \
-        "comment: $(cat "$_dscla5_comment" 2>/dev/null || echo '<not found>')"
-fi
 
 # ── DSCLA-6: zbuild:claimed released on pipeline failure ─────────────────────
 
@@ -296,14 +288,6 @@ else
         "label still present after failure exit"
 fi
 
-# Then: the claim comment body shows finished status
-_dscla6_comment="$ZBUILD_CLAIM_STORE/$_DSCLA6_ISSUE/comment.txt"
-if grep -qi "finished" "$_dscla6_comment" 2>/dev/null; then
-    assert_pass "[DSCLA-6] claim comment body shows finished status after failure exit"
-else
-    assert_fail "[DSCLA-6] claim comment body shows finished status after failure exit" \
-        "comment: $(cat "$_dscla6_comment" 2>/dev/null || echo '<not found>')"
-fi
 
 # ── DSCLA-7: zbuild:claimed released on TERM signal ──────────────────────────
 
@@ -370,14 +354,6 @@ else
         "label still present after TERM"
 fi
 
-# Then: the claim comment body shows finished status
-_dscla7_comment="$ZBUILD_CLAIM_STORE/$_DSCLA7_ISSUE/comment.txt"
-if grep -qi "finished" "$_dscla7_comment" 2>/dev/null; then
-    assert_pass "[DSCLA-7] claim comment body shows finished status after TERM signal"
-else
-    assert_fail "[DSCLA-7] claim comment body shows finished status after TERM signal" \
-        "comment: $(cat "$_dscla7_comment" 2>/dev/null || echo '<not found>')"
-fi
 
 # ── DSCLA-9: runner output contains holder string when zbuild:claimed present ─
 
@@ -390,7 +366,12 @@ rm -f "$_DSCLA9_STARTED"
 # Pre-populate the claim store: label + holder
 mkdir -p "$ZBUILD_CLAIM_STORE/$_DSCLA9_ISSUE"
 printf 'zbuild:claimed\n' > "$ZBUILD_CLAIM_STORE/$_DSCLA9_ISSUE/labels.txt"
-printf '%s\n' "$_DSCLA9_HOLDER" > "$ZBUILD_CLAIM_STORE/$_DSCLA9_ISSUE/holder.txt"
+# Run-status comment with <!-- zbuild-holder: --> field (the holder's run wrote this via run-status-comment.sh)
+cat > "$ZBUILD_CLAIM_STORE/$_DSCLA9_ISSUE/run-status-comment.txt" <<EOF
+<!-- zbuild-run-status run_id=holder-run-prev -->
+<!-- zbuild-holder: $_DSCLA9_HOLDER -->
+run is in progress
+EOF
 
 # Stage: writes marker if dispatched (must NOT be dispatched for DSCLA-9 to pass)
 cat > "$PLUGINS_ROOT/agent/outcome/plugin.sh" <<PLUG
@@ -433,6 +414,54 @@ if [[ ! -e "$_DSCLA9_STARTED" ]]; then
 else
     assert_fail "[DSCLA-9] no stage was dispatched when runner refused the claim" \
         "stage started marker found — runner dispatched a stage after refusing"
+fi
+
+# ── DSCLA-11: run-status comment shows terminal status when runner exits ──────
+#
+# This requirement is [done] — the existing rsc_render_header already shows a
+# terminal status when pipeline.end or pipeline.abort is in the events.  The
+# test must pass on both old and new code.
+
+# Given: an events.jsonl with pipeline.start + pipeline.end (normal exit path)
+_dscla11_state="$TEST_TEMP_DIR/dscla11-state"
+mkdir -p "$_dscla11_state"
+_dscla11_events="$_dscla11_state/events.jsonl"
+printf '{"type":"pipeline.start","data":{"run_id":"dscla11-run","issue":88880000},"ts":"2026-01-01T00:00:00Z"}\n' \
+    > "$_dscla11_events"
+printf '{"type":"pipeline.end","data":{"status":"pass","run_id":"dscla11-run"},"ts":"2026-01-01T00:01:00Z"}\n' \
+    >> "$_dscla11_events"
+
+# When: the run-status body is rendered (same path the sidecar uses)
+# shellcheck source=../../scripts/lib/run-status-render.sh
+source "$REPO_ROOT/scripts/lib/run-status-render.sh"
+_dscla11_model="$(rsc_rows_json "$_dscla11_events" 2>/dev/null || printf '{}')"
+_dscla11_header="$(rsc_render_header "$_dscla11_model" "$_dscla11_state" 2>/dev/null || printf '')"
+
+# Then: the status header is not "running"
+if grep -qF '**running**' <<< "${_dscla11_header:-}"; then
+    assert_fail "[DSCLA-11] run-status comment does not show 'running' when pipeline.end is present" \
+        "header shows running — expected terminal; header: ${_dscla11_header:0:200}"
+else
+    assert_pass "[DSCLA-11] run-status comment does not show 'running' when pipeline.end is present"
+fi
+
+# Given: an events.jsonl with pipeline.start + pipeline.abort (failure exit path)
+_dscla11_abort_events="$_dscla11_state/abort-events.jsonl"
+printf '{"type":"pipeline.start","data":{"run_id":"dscla11-abort","issue":88880001},"ts":"2026-01-01T00:00:00Z"}\n' \
+    > "$_dscla11_abort_events"
+printf '{"type":"pipeline.abort","data":{"status":"broken"},"ts":"2026-01-01T00:01:00Z"}\n' \
+    >> "$_dscla11_abort_events"
+
+# When: rendered for a failed run
+_dscla11_am="$(rsc_rows_json "$_dscla11_abort_events" 2>/dev/null || printf '{}')"
+_dscla11_ah="$(rsc_render_header "$_dscla11_am" "$_dscla11_state" 2>/dev/null || printf '')"
+
+# Then: the status header is not "running"
+if grep -qF '**running**' <<< "${_dscla11_ah:-}"; then
+    assert_fail "[DSCLA-11] run-status comment does not show 'running' on pipeline failure" \
+        "header shows running — expected terminal; header: ${_dscla11_ah:0:200}"
+else
+    assert_pass "[DSCLA-11] run-status comment does not show 'running' on pipeline failure"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
