@@ -108,7 +108,7 @@ MD
 J="$TEST_TEMP_DIR/j.out"
 assert_contains "[J1] the check is shown each part, as written" "$(_l "$J" J1)" "And: the test file contains both cases"
 assert_contains "[J1] ...and asked for one line for a SPEC that is fine" "$(_l "$J" J1)" "<SPEC id>: ok"
-assert_contains "[J1] ...and one for each part that is not" "$(_l "$J" J1)" "<SPEC id> <part>: untestable"
+assert_contains "[J1] ...and one for each part that is not" "$(_l "$J" J1)" "untestable — only for a Then, or an And under a Then"
 assert_eq "[J9] the tests' all-ok judge answers every part (review on #2469)" "|0" "$(_l "$J" J9)"
 assert_eq "[J2] every part ok: nothing found, one call" "0||1" "$(_l "$J" J2)"
 assert_contains "[J3] a SPEC with no line is asked again" "$(_l "$J" J3)" "2||"

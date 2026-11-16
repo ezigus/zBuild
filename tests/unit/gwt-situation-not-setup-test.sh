@@ -93,7 +93,7 @@ MD
 J="$TEST_TEMP_DIR/j.out"
 if [[ "$(_l "$J" G3)" == *needs_cleanup* ]]; then assert_fail "[G3] the check no longer asks needs_cleanup" "it still does"
 else assert_pass "[G3] the check no longer asks needs_cleanup"; fi
-assert_contains "[G3] its how covers how a test sets it up or checks it" "$(_l "$J" G3)" "<SPEC id> <part>: how | WHY: <what it says about how it is built, or how a test sets it up or checks it>"
+assert_contains "[G3] its how covers how a test sets it up or checks it" "$(_l "$J" G3)" "how — the line says how the code is built, or how a test sets something up or"
 assert_eq "[G4] a needs_cleanup answer cannot be used" "unusable" "$(_l "$J" G4)"
 assert_contains "[G5] a Given that says how a test sets it up is a finding" "$(_l "$J" G5)" "  Given: ZBUILD_PLATFORM=macos is exported before scripts/lib/compat.sh is sourced [FIX IN DESIGN:"
 assert_contains "[G5] ...whose fix names the situation, not the test's steps" "$(_l "$J" G5)" "say the situation, the action, or what can be seen — not how it is built or how a test does it"

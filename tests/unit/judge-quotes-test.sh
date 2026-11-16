@@ -139,10 +139,10 @@ DONE_WRONG: none"; _R2=""; _cov
     _R1=$'RQRQST-1: covered\nRQRQST-2: uncovered | WHY: x | QUOTE: "accept a flag"\nDSWORK-1: ok\nDSCNFG-1: ok\n'"$_sc"; _R2=""; _cov
     echo "Q2e|$(cat "$_N")|$_DESIGN_COV_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
 
-    _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-1: ok\nDSCNFG-1: status | DOC: no | BEFORE: no | WORK: yes | WHY: it returns 2 only when the file is absent | QUOTE: scripts/cfg.sh | [[ -f "$1" ]] || return 2\n'"$_sc"; _R2=""; _cov
+    _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-1: ok\nDSCNFG-1 Title: status | DOC: no | BEFORE: no | WORK: yes | WHY: it returns 2 only when the file is absent | QUOTE: scripts/cfg.sh | [[ -f "$1" ]] || return 2\n'"$_sc"; _R2=""; _cov
     echo "Q2f|${#_DESIGN_STATUS_WRONG[@]}|${_DESIGN_STATUS_WRONG[0]:-}|$_DESIGN_COV_OUTCOME"
 
-    _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-1: status | DOC: no | BEFORE: no | WORK: yes | WHY: x | QUOTE: scripts/cfg.sh | line one\nDSCNFG-1: ok\n'"$_sc"; _R2="$_R1"; _cov
+    _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-1 Title: status | DOC: no | BEFORE: no | WORK: yes | WHY: x | QUOTE: scripts/cfg.sh | line one\nDSCNFG-1: ok\n'"$_sc"; _R2="$_R1"; _cov
     echo "Q2h|$_DESIGN_COV_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
 
     _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-1: ok\nDSCNFG-1: ok\nSCOPE: scripts/thing.sh: ok\nSCOPE: scripts/telemetry.sh: outside | WHY: the issue asks for no telemetry\n'; _R2=""; _cov

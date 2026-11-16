@@ -111,7 +111,7 @@ print_test_section "F3-F6: design's check"
     _fresh; _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-2: ok\nDSFRSH-1 Then: how | WHY: x | QUOTE: "it is started again"\n'; _R2="$_R1"; _cov
     echo "F2d|$_DESIGN_COV_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
     # F5: a SPEC-level verdict marks the SPEC's own line; an uncovered requirement is one line.
-    _fresh; _R1=$'RQRQST-1: covered\nRQRQST-2: uncovered | WHY: nothing reads the flag from the config file | QUOTE: "read the flag"\nDSWORK-2: ok\nDSFRSH-1: outside | WHY: the issue asks for no fresh start | QUOTE: "a new run starts from the first stage"\n'; _R2=""; _cov
+    _fresh; _R1=$'RQRQST-1: covered\nRQRQST-2: uncovered | WHY: nothing reads the flag from the config file | QUOTE: "read the flag"\nDSWORK-2: ok\nDSFRSH-1 Title: not-asked | WHY: the issue asks for no fresh start | QUOTE: "a new run starts from the first stage"\n'; _R2=""; _cov
     echo "F5b|$(_design_coverage_findings | tr '\n\036' '~~')"
 
     # F6: answers kept per SPEC.

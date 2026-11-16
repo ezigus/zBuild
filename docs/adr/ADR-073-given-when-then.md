@@ -1,6 +1,6 @@
 # ADR-073 — A requirement and its test are written as Given/When/Then, and every part is judged
 
-**Status:** Accepted (2026-11-04); amended 2026-11-04 (#2470, §1 §2 §5 §6: a SPEC is shown with its parts as design wrote them; design is told which SPECs it keeps are still on one line; a finding shows the failing SPEC whole, marked where to fix it; the checks answer per SPEC); amended 2026-11-05 (#2474, §6: an untestable SPEC ends the round; the check sees the section headings)
+**Status:** Accepted (2026-11-04); amended 2026-11-16 (#2555, §5: every problem the check finds names the line it is about; outside is not-asked); amended 2026-11-04 (#2470, §1 §2 §5 §6: a SPEC is shown with its parts as design wrote them; design is told which SPECs it keeps are still on one line; a finding shows the failing SPEC whole, marked where to fix it; the checks answer per SPEC); amended 2026-11-05 (#2474, §6: an untestable SPEC ends the round; the check sees the section headings)
 **Issue:** #2467 (#1805 run 41757933766)
 **Amends:** ADR-031 (the form of a SPEC), ADR-069 §1 (a [code] or [done] SPEC has parts), ADR-072 §3 (the checks answer a line per part), ADR-036 (build's three ways with a test that leaves something behind)
 **Related:** ADR-068 §3 (a `misconfigured` result ends the run), ADR-071, ADR-066 (every ADR statement has a test)
@@ -101,7 +101,18 @@ On #1700 run 43617030653 design wrote "ZBUILD_PLATFORM=macos is exported before 
 - **§5: design's check has no `needs_cleanup`;** its `how` covers a part that says how a test sets something up or checks it, and the finding says to name the situation, the action or what can be seen.
 - **§6: test-author's test puts back what it changes outside its own sandbox** — an exported variable, a file outside its folder, global config or git state — under its Cleanup section, and its check judges that from the test: `<identifier> cleanup: missing | WHY: … | QUOTE: <test file> | <line>`, a finding on the test.
 
+## Amendment 2026-11-16 (#2555) — §5: one form for every problem the check finds
+
+On #1764 run 43772987273 design's check wrote `DSCLA-10 Then: outside`: a part's line, on a verdict whose form named no part. The answer was refused twice and thrown away, and design was told only "the check could not be run" — it never learned the issue did not ask for that event, and changed nothing.
+
+- **§5: every problem has one form:** `<SPEC id> <line>: <problem> | WHY: … | QUOTE: <words from that line>`, where `<line>` is `Title` (the SPEC's first line), `Given`, `When`, `Then`, `And` or `Cleanup`. A SPEC with nothing wrong is `<SPEC id>: ok`.
+- **`outside` is renamed `not-asked`** and names the line whose words commit to what the issue does not ask for, or contradict it: on a part's line it marks that line; on `Title`, the first line. **`status`** is only on `Title`, with its DOC, BEFORE and WORK facts and a quote from the code. `contradicts` may also be on `Title`, and `new-owner` only there (ADR-072 §3).
+- **The old forms are refused** — `<SPEC id>: outside`, `<SPEC id>: status` — and the re-ask says to write the problem on the line it is about. `status` on any line but `Title` is refused.
+- **A reply's `<id> Title:` and `Steps:` lines each start a unit** of their own (`_ZB_RU_START`, `scripts/lib/reply-units.sh`), as a part's line does.
+
 ## Enforced by
+
+- §5 amendment 2026-11-16 (#2555: one form for every problem) → `tests/unit/design-one-form-test.sh` F1 (the form in the prompt; no outside), F2 (not-asked on a part's line marks it, with its WHY), F3 (on Title, the first line), F4 (status on Title), F5 (the old forms refused, the re-ask names the line), F6 (status off Title refused), F9 (a reply's `<id> Title:` and `Steps:` lines each start a unit); `tests/unit/design-status-check-test.sh` S1–S11 and `tests/unit/design-coverage-test.sh` X1, X2, X4, X5 (in the new form)
 
 - §1 §5 §6 amendment 2026-11-14 (#2543: Given is the situation; Cleanup is the test's; how covers test steps) → `tests/unit/gwt-situation-not-setup-test.sh` G1–G7; `tests/unit/gwt-format-test.sh` D1, P2; `tests/unit/gwt-judges-test.sh` J6, J7
 

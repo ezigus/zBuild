@@ -161,6 +161,9 @@ $2
 ${7:+
 LIMITS — what the change must not do:
 $7
+}${8:+
+TERMS — what the issue says each of these words means, and only this:
+$8
 }
 THE CHANGE:
 $3
@@ -280,18 +283,18 @@ issue_acceptance_run() {
 
     local _task _framed
     # #2306 (ADR-070 §4): the issue's requirements as intake numbered them.
-    local _reqs="" _lims="" _req_f=""
+    local _reqs="" _lims="" _terms="" _req_f=""
     _req_f="$(earlier_requirements "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
     declare -F acceptance_requirements_list >/dev/null 2>&1 && _reqs="$(acceptance_requirements_list "$_req_f")"
-    # #2550 (ADR-072 §3): what the change must not do, judged against it.
-    declare -F acceptance_limits_list >/dev/null 2>&1 && _lims="$(acceptance_limits_list "$_req_f")"
+    # #2550 (ADR-072 §3): what the change must not do; #2555 (ADR-070): the issue's terms, word for word.
+    declare -F acceptance_limits_list >/dev/null 2>&1 && { _lims="$(acceptance_limits_list "$_req_f")"; acceptance_terms_v _terms "$_req_f"; }
     # #2464 (ADR-072 §4 §5): the answer is kept while what it judged is
     # unchanged; a stage's `wrong` answer to one of its findings is judged
     # again, shown to the judge.
     local _ans=""; judge_answers_to_v _ans "$art" issue-acceptance
     local kf="${art%/}/issue-acceptance-judged.json" eng fp kept="" _root_q="$_root"
     judge_engine_v eng
-    judge_fp_v fp "$eng"$'\n'"$issue"$'\n'"$_reqs"$'\n'"$_lims"$'\n'"$acc"$'\n'"$_change_fp"$'\n'"$test_verdict"$'\n'"$_ans"
+    judge_fp_v fp "$eng"$'\n'"$issue"$'\n'"$_reqs"$'\n'"$_lims"$'\n'"$_terms"$'\n'"$acc"$'\n'"$_change_fp"$'\n'"$test_verdict"$'\n'"$_ans"
     judge_kept_get_v kept "$kf" issue "$fp" "${_ans:+1}"
     if [[ -n "$kept" ]]; then
         _ia_parse "$kept" "$_reqs" "$issue" "$_root_q" "$_lims"
@@ -303,7 +306,7 @@ issue_acceptance_run() {
         fi
     fi
 
-    _task="$(_ia_prompt "$issue" "${acc:-<none>}" "${change:-<no change found>}" "${test_verdict:-unknown}" "$_reqs" "$(judge_disputes_block "$_ans")" "$_lims")"
+    _task="$(_ia_prompt "$issue" "${acc:-<none>}" "${change:-<no change found>}" "${test_verdict:-unknown}" "$_reqs" "$(judge_disputes_block "$_ans")" "$_lims" "$_terms")"
     _framed="$_task"
     # ADR-067 §8: the stage's three parts and the engine's blocks, in the one
     # prompt order. A prompt that cannot be composed is not sent.

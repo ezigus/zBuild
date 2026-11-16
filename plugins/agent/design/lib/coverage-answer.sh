@@ -22,18 +22,40 @@ _ZBUILD_DESIGN_COVERAGE_ANSWER_LOADED=1
 _dcov_parse() {
     local raw="$1" want=$'\n'"$2"$'\n'
     _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_STATUS_WRONG=(); _DCOV_PROBLEM=""
-    _DESIGN_PART_WRONG=(); _DCOV_LINES=(); _DCOV_QUOTED=()
+    _DESIGN_PART_WRONG=(); _DCOV_LINES=(); _DCOV_QUOTED=(); _DESIGN_NEW_OWNER=()
     local -A seen=()
     local -a bad=()
-    local l id rest word why quote w qp key reqs_asked=0
+    local l id rest word why quote w qp key reqs_asked=0 steps_asked=0 steps_seen=0
     [[ "$want" == *$'\nrequirements\n'* ]] && reqs_asked=1
+    [[ "$want" == *$'\nsteps\n'* ]] && steps_asked=1
     while IFS= read -r l; do
         judge_reply_line_v l "$l"
-        if [[ "$l" =~ ^([A-Za-z0-9]+-[0-9]+)[[:space:]]+(Given|When|Then|And|Cleanup)([[:space:]]+[0-9]+)?[*\`_]*:[[:space:]]*([a-z_]+)(.*)$ ]]; then
+        # #2555 (ADR-073): the design's steps, judged with the requirements.
+        if [[ "$l" =~ ^Steps[*\`_]*:[[:space:]]*([a-z_-]+)(.*)$ ]]; then
+            (( steps_asked )) || continue
+            steps_seen=1; _DCOV_LINES["steps"]+="$l"$'\n'
+            word="${BASH_REMATCH[1]}"; _dcov_why_quote "${BASH_REMATCH[2]}"
+            case "$word" in
+                ok) ;;
+                new-owner)
+                    if [[ -z "$quote" ]]; then bad+=("Steps has no QUOTE"); continue; fi
+                    # The existing owner is in the code from before the change only.
+                    judge_quote_check_v w "$quote" "" "${base:-$repo}" "${base:-$repo}" || { bad+=("Steps' quote $w in the code from before this change"); continue; }
+                    judge_quote_path_v qp "$quote" "$repo" "$base"; [[ -n "$qp" ]] && _DCOV_QUOTED["steps"]+="$qp"$'\n'
+                    _DESIGN_NEW_OWNER+=("${why:-something already owns this job}"$'\t'"$quote") ;;
+                *) bad+=("Steps is ok or new-owner, not $word") ;;
+            esac
+            continue
+        fi
+        if [[ "$l" =~ ^([A-Za-z0-9]+-[0-9]+)[[:space:]]+(Title|Given|When|Then|And|Cleanup)([[:space:]]+[0-9]+)?[*\`_]*:[[:space:]]*([a-z_-]+)(.*)$ ]]; then
             id="${BASH_REMATCH[1]}"
             [[ -n "${first[$id]+x}" && "$want" == *$'\n'"$id"$'\n'* ]] || continue
             seen["$id"]=1; _DCOV_LINES["$id"]+="$l"$'\n'
-            _dcov_part_line "$id" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]// /}" "${BASH_REMATCH[4]}" "${BASH_REMATCH[5]}"
+            if [[ "${BASH_REMATCH[2]}" == Title ]]; then
+                _dcov_title_line "$id" "${BASH_REMATCH[4]}" "${BASH_REMATCH[5]}"
+            else
+                _dcov_part_line "$id" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]// /}" "${BASH_REMATCH[4]}" "${BASH_REMATCH[5]}"
+            fi
             continue
         fi
         [[ "$l" =~ ^([A-Za-z0-9]+-[0-9]+)[*\`_]*:[[:space:]]*([a-z_]+)(.*)$ ]] || continue
@@ -58,22 +80,8 @@ _dcov_parse() {
         fi
         case "$word" in
             ok) ;;
-            outside|status)
-                # #2543 (ADR-072, ADR-069): a status line gives three facts; the
-                # status they give is worked out here, never taken from the judge.
-                local right=""
-                if [[ "$word" == status ]]; then
-                    _dcov_status_from_facts_v right "$rest" || { bad+=("$id's status line $right"); continue; }
-                    if [[ "$right" == "${st[$id]:-code}" ]]; then
-                        bad+=("$id's facts give [$right], its own status: a status line is only for a SPEC whose status is wrong"); continue
-                    fi
-                fi
-                if [[ -z "$quote" ]]; then bad+=("$id has no QUOTE"); continue; fi
-                judge_quote_check_v w "$quote" "${text[$id]}" "$repo" "$base" || { bad+=("$id's quote $w"); continue; }
-                judge_quote_path_v qp "$quote" "$repo" "$base"; [[ -n "$qp" ]] && _DCOV_QUOTED["$id"]+="$qp"$'\n'
-                if [[ "$word" == outside ]]; then _DESIGN_OUTSIDE+=("$id"$'\t'"${why:-the issue does not ask for it}"$'\t'"$quote")
-                else _DESIGN_STATUS_WRONG+=("$id"$'\t'"$right"$'\t'"${st[$id]:-code}"$'\t'"${why:-its facts say so}"$'\t'"$quote"); fi ;;
-            *) bad+=("$id is a SPEC: it is ok, outside or status, not $word") ;;
+            # #2555 (ADR-073): every problem names the line it is about.
+            *) bad+=("$id: a problem is written on the line it is about: $id Title: … or $id Then: …") ;;
         esac
     done <<< "$raw"
     local -a missing=()
@@ -83,6 +91,7 @@ _dcov_parse() {
     for id in ${ids[@]+"${ids[@]}"}; do
         [[ "$want" == *$'\n'"$id"$'\n'* && -z "${seen[$id]+x}" ]] && missing+=("$id")
     done
+    (( steps_asked && ! steps_seen )) && missing+=("Steps")
     [[ ${#missing[@]} -gt 0 ]] && bad=("it has no line for ${missing[*]}" ${bad[@]+"${bad[@]}"})
     if [[ ${#bad[@]} -gt 0 ]]; then
         local IFS=';'; _DCOV_PROBLEM="${bad[*]}"; _DCOV_PROBLEM="${_DCOV_PROBLEM//;/; }"
@@ -126,10 +135,47 @@ _dcov_need_names() {
     local _dn_k _dn_out="" _dn_req=""
     while IFS= read -r _dn_k; do
         [[ -n "$_dn_k" ]] || continue
-        if [[ "$_dn_k" == requirements ]]; then _dn_req=1; else _dn_out+="${_dn_out:+, }$_dn_k"; fi
+        if [[ "$_dn_k" == requirements ]]; then _dn_req=1
+        elif [[ "$_dn_k" == steps ]]; then _dn_out+="${_dn_out:+, }the Steps line"
+        else _dn_out+="${_dn_out:+, }$_dn_k"; fi
     done <<< "$1"
     [[ -n "$_dn_req" ]] && _dn_out+="${_dn_out:+, }every requirement"
     printf '%s' "$_dn_out"
+}
+
+# _dcov_title_line <id> <verdict> <rest> — a problem with a SPEC's first line
+# (#2555, ADR-073): not-asked or contradicts, its QUOTE from that line; status,
+# its three facts and a QUOTE from the code. Read in _dcov_parse's scope.
+_dcov_title_line() {
+    local id="$1" word="$2" why quote w qp right=""
+    _dcov_why_quote "$3"
+    case "$word" in
+        not-asked|contradicts|status|new-owner) ;;
+        ok) return 0 ;;
+        *) bad+=("$id Title is not-asked, contradicts or status, not $word"); return 0 ;;
+    esac
+    # #2543 (ADR-072, ADR-069): a status line gives three facts; the status they
+    # give is worked out here, never taken from the judge.
+    if [[ "$word" == status ]]; then
+        _dcov_status_from_facts_v right "$3" || { bad+=("$id's status line $right"); return 0; }
+        if [[ "$right" == "${st[$id]:-code}" ]]; then
+            bad+=("$id's facts give [$right], its own status: a status line is only for a SPEC whose status is wrong"); return 0
+        fi
+    fi
+    if [[ -z "$quote" ]]; then bad+=("$id Title has no QUOTE"); return 0; fi
+    if [[ "$word" == new-owner ]]; then
+        judge_quote_check_v w "$quote" "" "${base:-$repo}" "${base:-$repo}" || { bad+=("$id Title's quote $w in the code from before this change"); return 0; }
+    else
+        judge_quote_check_v w "$quote" "${text[$id]}" "$repo" "$base" || { bad+=("$id Title's quote $w"); return 0; }
+    fi
+    judge_quote_path_v qp "$quote" "$repo" "$base"; [[ -n "$qp" ]] && _DCOV_QUOTED["$id"]+="$qp"$'\n'
+    case "$word" in
+        not-asked)   _DESIGN_OUTSIDE+=("$id"$'\t'"${why:-the issue does not ask for it}"$'\t'"$quote") ;;
+        contradicts) _DESIGN_OUTSIDE+=("$id"$'\t'"${why:-it contradicts the issue}"$'\t'"$quote"$'\t'contradicts) ;;
+        new-owner)   _DESIGN_OUTSIDE+=("$id"$'\t'"${why:-something already owns this job}"$'\t'"$quote"$'\t'new-owner) ;;
+        status)      _DESIGN_STATUS_WRONG+=("$id"$'\t'"$right"$'\t'"${st[$id]:-code}"$'\t'"${why:-its facts say so}"$'\t'"$quote") ;;
+    esac
+    return 0
 }
 
 # _dcov_status_from_facts_v <var> <rest> — the status a status line's three
@@ -170,8 +216,9 @@ _dcov_part_line() {
     _dcov_why_quote "$5"
     [[ "$word" == ok ]] && return 0
     case "$word" in
-        untestable|how|duplicate|contradicts) ;;
-        *) bad+=("$id $pw is a part: it is ok, untestable, how, contradicts or duplicate, not $word"); return 0 ;;
+        not-asked|untestable|how|duplicate|contradicts) ;;
+        status) bad+=("$id $pw: status is only on Title"); return 0 ;;
+        *) bad+=("$id $pw is a line: it is ok, not-asked, untestable, how, contradicts or duplicate, not $word"); return 0 ;;
     esac
     if [[ -n "$num" && "$pw" != And && -n "${ptext[$id $pw $num]+x}" ]]; then
         cand="$pw $num"
@@ -214,7 +261,8 @@ _dcov_fix_v() {
         how)           _dfx="$3 — say the situation, the action, or what can be seen — not how it is built or how a test does it" ;;
         contradicts)   _dfx="$3 — it cannot be true together with that; make them agree" ;;
         duplicate)     _dfx="$3 — another SPEC has this action; keep one of them" ;;
-        outside)       _dfx="$3 — the issue does not ask for this; take it out, or make it what the issue asks" ;;
+        not-asked)     _dfx="$3 — the issue does not ask for this; take it out, or make it what the issue asks" ;;
+        new-owner)     _dfx="$3 — it builds a new owner where one exists: $4; build on it, or say why it cannot" ;;
         status:*)
             local _dfr="${2#status:}"; _dfr="${_dfr%%:*}"; local _dfo="${2##*:}"
             case "$_dfr" in
@@ -239,7 +287,14 @@ _dcov_findings_build() {
         _DESIGN_COV_FINDINGS+=("${x%%: *} is not covered: ${x#*: } [FIX IN DESIGN: add or widen a SPEC so it covers this]")
     done
     local -a spec_level=()
-    for x in ${_DESIGN_OUTSIDE[@]+"${_DESIGN_OUTSIDE[@]}"}; do spec_level+=("outside"$'\t'"$x"); done
+    local _ox _oid _ow _oq _ok
+    for x in ${_DESIGN_OUTSIDE[@]+"${_DESIGN_OUTSIDE[@]}"}; do
+        IFS=$'\t' read -r _oid _ow _oq _ok <<< "$x"
+        spec_level+=("${_ok:-not-asked}"$'\t'"$_oid"$'\t'"$_ow"$'\t'"$_oq")
+    done
+    for x in ${_DESIGN_NEW_OWNER[@]+"${_DESIGN_NEW_OWNER[@]}"}; do
+        _DESIGN_COV_FINDINGS+=("Steps: the design's steps build a new owner where one exists: ${x%%$'\t'*} — ${x#*$'\t'} [FIX IN DESIGN: build on what exists, or say in the design why it cannot]")
+    done
     local _sr _so
     for x in ${_DESIGN_STATUS_WRONG[@]+"${_DESIGN_STATUS_WRONG[@]}"}; do
         IFS=$'\t' read -r _id _sr _so _w _q <<< "$x"

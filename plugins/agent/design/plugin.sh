@@ -348,6 +348,11 @@ tests/unit/foo-test.sh [SPEC-3]: \`verdict\` is now the v2 result's status key, 
 Updating those checks to the new behaviour is part of writing the tests. Omit
 the block when no existing check changes meaning.
 
+Before you add a file or a mechanism, find what already owns the job: the
+plugin kinds in docs/ARCHITECTURE.md, the ADRs for the area, the existing plugins
+and libraries. Build on it, not beside it. Name in the design what you found and
+why you used it or not.
+
 A requirement you do not understand — the issue could mean either of two
 things — is not guessed in silence. Write one line for it in the design,
 outside the fenced blocks:
@@ -380,6 +385,8 @@ DESIGN_PROMPT
     _reqs="$(acceptance_requirements_list "$_req_f")"
     # #2550 (ADR-070 §1): what the change must not do — no SPEC, no step.
     local _lims; _lims="$(acceptance_limits_list "$_req_f")"
+    # #2555 (ADR-070): the issue's own terms, word for word.
+    local _terms; acceptance_terms_v _terms "$_req_f"
     # #2482 (ADR-069 §2): the code a [done] claim is checked on, as the judges
     # are shown it (ADR-072 §2). On #1805 run 42293991602 design had only the
     # working copy and took code this branch added for the code from before.
@@ -390,6 +397,7 @@ DESIGN_PROMPT
     local _DESIGN_BASE_DIR="$_base_dir"
     [[ -n "$_base_dir" ]] && printf '\n### The code from before this change\nThe commit this branch started from is a copy at %s. A [done] SPEC is checked\nthere: to see whether the code from before your change already does something,\nopen the file there, not in the working copy — the working copy holds every\nchange this branch made, in this round and in earlier ones.\n' "$_base_dir" >> "$prompt_input_file"
     [[ -n "$_reqs" ]] && printf '\n### Requirements from the issue (each with its id)\n%s\n\nEvery requirement above must be covered by at least one SPEC. End each SPEC line with ` covers: ` and the ids of the requirements it covers, before any ` evidence: ` — for example `'"${_DCK_ID_PREFIX}"'LOOP-1[code]: <behaviour> covers: <requirement ids>`. A requirement the code already meets is covered by a [done] SPEC with evidence.\n' "$_reqs" >> "$prompt_input_file"
+    [[ -n "$_terms" ]] && printf '\n### Terms from the issue — each means this, and only this\n%s\n\nUse each term as the issue defines it here, in every SPEC and step.\n' "$_terms" >> "$prompt_input_file"
     [[ -n "$_lims" ]] && printf '\n### Limits from the issue — what this change must not do\n%s\n\nWrite no SPEC for a limit, and no step that does what one forbids: a limit is met by not building it, and it is checked against the change once it is made.\n' "$_lims" >> "$prompt_input_file"
 
     # On a later round design REFINES its prior design.md rather than
@@ -552,7 +560,7 @@ ${_dp_limits}")"; then
         for _a in ${_DESIGN_ANSWERS[@]+"${_DESIGN_ANSWERS[@]}"}; do
             [[ "$_a" == "design finding "* ]] && _dp_ans+="$_a"$'\n'
         done
-        _design_coverage "$output_draft" "$_reqs" "$tier" "$_dp_ans" "$_lims"
+        _design_coverage "$output_draft" "$_reqs" "$tier" "$_dp_ans" "$_lims" "$_terms"
         if [[ -n "$_DESIGN_COV_OUTCOME" && ${#_fnd[@]} -gt 0 ]]; then
             _fnd+=("the check that the design covers the issue could not be run ($_DESIGN_COV_OUTCOME), so coverage was not checked this try")
         elif [[ -n "$_DESIGN_COV_OUTCOME" ]]; then
