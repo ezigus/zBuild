@@ -2,45 +2,11 @@
 > zbuild@0.1.0 test
 > bash tests/run-all.sh
 
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.yisxBz/tests/unit/event-schema-emitted-coverage-test.sh
-
-  event-schema emitted-⊆-composed known types (all plugins + core)
-
-  ✗ emitted type 'pipeline.refused.claimed' is in the composed known set
-    not in config/event-schema.json nor any manifest's provides.events
-  ✓ [SPEC-1717-1] every plugin-emitted event is declared in that plugin's own manifest
-  ✓ [SPEC-1717-3] acceptance.gate.wiring_not_on_path is declared by spec-acceptance itself
-  ✓ [SPEC-5] redaction.marker_neutralized is registered in event-schema.json known_types
-  ✓ [#2032] cycle.member_unfinished.suppressed_convergence is registered in event-schema.json known_types
-  ✓ [#1951/SPEC-1] event-schema.json carries no event in a plugin-owned namespace
-  ✓ [#1951/SPEC-2] no plugin manifest declares an event in an engine-owned namespace
-  ✓ [#1951/SPEC-3] persist.* events are absent from config/event-schema.json known_types
-  ✓ [#1951/SPEC-3] hydrate.* events are absent from config/event-schema.json known_types
-  ✓ [#1951/SPEC-3] persist plugin manifest declares at least one persist.* event (canonical declaration)
-  ✓ [#1951/SPEC-3] hydrate plugin manifest declares at least one hydrate.* event (canonical declaration)
-  ✓ [#1951/SPEC-4] plugin.result is absent from plugins/tool/merge/manifest.yaml provides.events
-  ✓ [#1951/SPEC-4] the [SPEC-1] plugin.result sub-assertion is absent from merge-v2-result-test.sh
-  ✓ [#1951/R2] plugin.<name>.* is the engine's for every plugin but pr-open
-  ✓ [#1951/R2] pr-open keeps plugin.pr_open.*
-  ✓ [#1951/R3] the engine's namespaces are read from ADR-001, not a list in this test
-  ✓ [#1951/R3] … including a namespace with a digit
-  ✓ [#1951/R2] an exception's namespace may carry a digit
-  ✓ [#1951/R1] a namespace is an event's first part, so a three-part event still claims it
-  ✓ [#1951/R1] engine config carries only the namespaces ADR-001 gives the engine
-  ✓ [#1951/R1] … and an engine namespace is not flagged
-  ✓ [#1951/SPEC-4] a test file that is missing is not taken as clean
-  ✓ [#1951/SPEC-6] the hardcoded plugin-namespace guard variable is absent from this file
-
-
-  1 of 23 tests failed
-
-  ✗ emitted type 'pipeline.refused.claimed' is in the composed known set
-
-unit: 608/609 passed (4 skipped)
+unit: 609/609 passed (4 skipped)
 integration: 263/263 passed
 e2e: 10/10 passed
 golden: 1/1 passed
 mutation: 25/25 passed
 lint: 1/1 passed
 
-total: 908/909 passed (4 skipped)
+total: 909/909 passed (4 skipped)

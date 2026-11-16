@@ -18,21 +18,23 @@
   [38;2;74;222;128m✓[0m [DSCLA-2] zbuild_claim_acquire returns 0 (claim acquired via gh)
   [38;2;74;222;128m✓[0m [DSCLA-2] gh called with zbuild:claimed label
   [38;2;74;222;128m✓[0m [DSCLA-2] label has no hostname component (machine-specific label not used)
-  [38;2;74;222;128m✓[0m [DSCLA-2] gh issue comment was called
-  [38;2;74;222;128m✓[0m [DSCLA-2] comment contains run_id
-  [38;2;74;222;128m✓[0m [DSCLA-2] comment contains machine name
+  [38;2;74;222;128m✓[0m [DSCLA-2] gh issue comment was NOT called (holder goes into run-status comment)
+  [38;2;74;222;128m✓[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains run_id after successful acquire
+  [38;2;74;222;128m✓[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains machine name after successful acquire
+  [38;2;74;222;128m✓[0m [DSCLA-2] run-status comment header contains <!-- zbuild-holder: --> with holder info
   [38;2;74;222;128m✓[0m [DSCLA-2] zbuild_claim_acquire returns 0 (CI mode)
-  [38;2;74;222;128m✓[0m [DSCLA-2] comment contains CI run URL information when GITHUB_ACTIONS=true
+  [38;2;74;222;128m✓[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains CI run URL when GITHUB_ACTIONS=true
   [38;2;74;222;128m✓[0m [DSCLA-3] zbuild_claim_acquire returns 1 when zbuild:claimed is present
-  [38;2;74;222;128m✓[0m [DSCLA-4] zbuild_claim_acquire returns 1 (already claimed)
-  [38;2;74;222;128m✓[0m [DSCLA-4] _ZBUILD_CLAIM_HOLDER is set (not empty)
-  [38;2;74;222;128m✓[0m [DSCLA-4] _ZBUILD_CLAIM_HOLDER contains holder string from claim comment
+  [38;2;74;222;128m✓[0m zbuild_claim_acquire returns 1 when issue already claimed (pre-stage check)
+  [38;2;74;222;128m✓[0m _ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim
+  [38;2;74;222;128m✓[0m _ZBUILD_CLAIM_HOLDER contains holder string from run-status comment
   [38;2;74;222;128m✓[0m [DSCLA-8] no gh calls made for empty issue
   [38;2;74;222;128m✓[0m [DSCLA-8] zbuild_claim_acquire returns 0 for empty issue
+  [38;2;74;222;128m✓[0m [DSCLA-10] pipeline.refused.claimed is in config/event-schema.json known_types
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 24 tests passed[0m
+  [38;2;74;222;128m[1mAll 26 tests passed[0m
 
 ### core/pipeline/runner.sh head plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
 
@@ -54,21 +56,23 @@
   [38;2;74;222;128m✓[0m [DSCLA-2] zbuild_claim_acquire returns 0 (claim acquired via gh)
   [38;2;74;222;128m✓[0m [DSCLA-2] gh called with zbuild:claimed label
   [38;2;74;222;128m✓[0m [DSCLA-2] label has no hostname component (machine-specific label not used)
-  [38;2;74;222;128m✓[0m [DSCLA-2] gh issue comment was called
-  [38;2;74;222;128m✓[0m [DSCLA-2] comment contains run_id
-  [38;2;74;222;128m✓[0m [DSCLA-2] comment contains machine name
+  [38;2;74;222;128m✓[0m [DSCLA-2] gh issue comment was NOT called (holder goes into run-status comment)
+  [38;2;74;222;128m✓[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains run_id after successful acquire
+  [38;2;74;222;128m✓[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains machine name after successful acquire
+  [38;2;74;222;128m✓[0m [DSCLA-2] run-status comment header contains <!-- zbuild-holder: --> with holder info
   [38;2;74;222;128m✓[0m [DSCLA-2] zbuild_claim_acquire returns 0 (CI mode)
-  [38;2;74;222;128m✓[0m [DSCLA-2] comment contains CI run URL information when GITHUB_ACTIONS=true
+  [38;2;74;222;128m✓[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains CI run URL when GITHUB_ACTIONS=true
   [38;2;74;222;128m✓[0m [DSCLA-3] zbuild_claim_acquire returns 1 when zbuild:claimed is present
-  [38;2;74;222;128m✓[0m [DSCLA-4] zbuild_claim_acquire returns 1 (already claimed)
-  [38;2;74;222;128m✓[0m [DSCLA-4] _ZBUILD_CLAIM_HOLDER is set (not empty)
-  [38;2;74;222;128m✓[0m [DSCLA-4] _ZBUILD_CLAIM_HOLDER contains holder string from claim comment
+  [38;2;74;222;128m✓[0m zbuild_claim_acquire returns 1 when issue already claimed (pre-stage check)
+  [38;2;74;222;128m✓[0m _ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim
+  [38;2;74;222;128m✓[0m _ZBUILD_CLAIM_HOLDER contains holder string from run-status comment
   [38;2;74;222;128m✓[0m [DSCLA-8] no gh calls made for empty issue
   [38;2;74;222;128m✓[0m [DSCLA-8] zbuild_claim_acquire returns 0 for empty issue
+  [38;2;74;222;128m✓[0m [DSCLA-10] pipeline.refused.claimed is in config/event-schema.json known_types
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 24 tests passed[0m
+  [38;2;74;222;128m[1mAll 26 tests passed[0m
 
 ### core/pipeline/runner.sh reverted tests/integration/teardown-repeat-signal-test.sh
 
@@ -81,47 +85,50 @@
   [38;2;74;222;128m✓[0m [T4a] release finishes under repeated TERM
   [38;2;74;222;128m✓[0m [T4b] persist runs under repeated TERM
   [38;2;74;222;128m✓[0m [T5] the stage is not run again
-  [38;2;248;113;113m✗[0m [DSCLA-1/5] zbuild:claimed was present before the first stage dispatched
-    [2mclaim never appeared in store; rc=0 output=/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.tH5Tn0/core/plugin-registry/lifecycle.sh: line 212: 1000758 Killed                  ( trap '' TERM; exec {_RUNNER_ERR_FD}>&- || true; _wdg_lim="${_RUNNER_MAX_RUN_S}"; _wdg_pgid="${_RUNNER_RUN_PGID}"; _wdg_runner_pid="${_RUNNER_SELF_PID}"; sleep "$_wdg_lim" || exit 0; _zbuild_arm_abort_sentinel timed_out 2> /dev/null || true; kill -TERM -- "-${_wdg_pgid}" 2> /dev/null || true; sleep 10 || exit 0; _wdg_self="${BASHPID}"; while IFS= read -r _wdg_child; do ⏎     [[ "$_wdg_child" == "$_wdg_self" ]] && continue; if [[ -n "$_wdg_child" ]]; then ⏎         kill -KILL "$_wdg_child" 2> /dev/null || true; ⏎     fi; ⏎ done < <(pgrep -P "$_wdg_runner_pid" 2> /dev/null) ) > /dev/null 2>&1[0m
+  [38;2;248;113;113m✗[0m [DSCLA-1] zbuild:claimed was present before the first stage dispatched
+    [2mclaim never appeared in store; rc=0 output=/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RMBFcU/core/plugin-registry/lifecycle.sh: line 212: 998021 Killed                  ( trap '' TERM; exec {_RUNNER_ERR_FD}>&- || true; _wdg_lim="${_RUNNER_MAX_RUN_S}"; _wdg_pgid="${_RUNNER_RUN_PGID}"; _wdg_runner_pid="${_RUNNER_SELF_PID}"; sleep "$_wdg_lim" || exit 0; _zbuild_arm_abort_sentinel timed_out 2> /dev/null || true; kill -TERM -- "-${_wdg_pgid}" 2> /dev/null || true; sleep 10 || exit 0; _wdg_self="${BASHPID}"; while IFS= read -r _wdg_child; do ⏎     [[ "$_wdg_child" == "$_wdg_self" ]] && continue; if [[ -n "$_wdg_child" ]]; then ⏎         kill -KILL "$_wdg_child" 2> /dev/null || true; ⏎     fi; ⏎ done < <(pgrep -P "$_wdg_runner_pid" 2> /dev/null) ) > /dev/null 2>&1[0m
   [38;2;248;113;113m✗[0m [DSCLA-5] zbuild:claimed was never acquired — cannot verify release
-    [2mclaim never appeared in store; rc=0 output=/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.tH5Tn0/core/plugin-registry/lifecycle.sh: line 212: 1000758 Killed                  ( trap '' TERM; exec {_RUNNER_ERR_FD}>&- || true; _wdg_lim="${_RUNNER_MAX_RUN_S}"; _wdg_pgid="${_RUNNER_RUN_PGID}"; _wdg_runner_pid="${_RUNNER_SELF_PID}"; sleep "$_wdg_lim" || exit 0; _zbuild_arm_abort_sentinel timed_out 2> /dev/null || true; kill -TERM -- "-${_wdg_pgid}" 2> /dev/null || true; sleep 10 || exit 0; _wdg_self="${BASHPID}"; while IFS= read -r _wdg_child; do ⏎     [[ "$_wdg_child" == "$_wdg_self" ]] && continue; if [[ -n "$_wdg_child" ]]; then ⏎         kill -KILL "$_wdg_child" 2> /dev/null || true; ⏎     fi; ⏎ done < <(pgrep -P "$_wdg_runner_pid" 2> /dev/null) ) > /dev/null 2>&1[0m
-  [38;2;248;113;113m✗[0m [DSCLA-5] claim comment body shows finished status after normal exit
-    [2mcomment: <not found>[0m
+    [2mclaim never appeared in store; rc=0 output=/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RMBFcU/core/plugin-registry/lifecycle.sh: line 212: 998021 Killed                  ( trap '' TERM; exec {_RUNNER_ERR_FD}>&- || true; _wdg_lim="${_RUNNER_MAX_RUN_S}"; _wdg_pgid="${_RUNNER_RUN_PGID}"; _wdg_runner_pid="${_RUNNER_SELF_PID}"; sleep "$_wdg_lim" || exit 0; _zbuild_arm_abort_sentinel timed_out 2> /dev/null || true; kill -TERM -- "-${_wdg_pgid}" 2> /dev/null || true; sleep 10 || exit 0; _wdg_self="${BASHPID}"; while IFS= read -r _wdg_child; do ⏎     [[ "$_wdg_child" == "$_wdg_self" ]] && continue; if [[ -n "$_wdg_child" ]]; then ⏎         kill -KILL "$_wdg_child" 2> /dev/null || true; ⏎     fi; ⏎ done < <(pgrep -P "$_wdg_runner_pid" 2> /dev/null) ) > /dev/null 2>&1[0m
   [38;2;248;113;113m✗[0m [DSCLA-6] zbuild:claimed was present during failure run
-    [2mclaim never appeared in store; rc=1 output=/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.tH5Tn0/core/plugin-registry/lifecycle.sh: line 212: 1001300 Killed                  ( trap '' TERM; exec {_RUNNER_ERR_FD}>&- || true; _wdg_lim="${_RUNNER_MAX_RUN_S}"; _wdg_pgid="${_RUNNER_RUN_PGID}"; _wdg_runner_pid="${_RUNNER_SELF_PID}"; sleep "$_wdg_lim" || exit 0; _zbuild_arm_abort_sentinel timed_out 2> /dev/null || true; kill -TERM -- "-${_wdg_pgid}" 2> /dev/null || true; sleep 10 || exit 0; _wdg_self="${BASHPID}"; while IFS= read -r _wdg_child; do ⏎     [[ "$_wdg_child" == "$_wdg_self" ]] && continue; if [[ -n "$_wdg_child" ]]; then ⏎         kill -KILL "$_wdg_child" 2> /dev/null || true; ⏎     fi; ⏎ done < <(pgrep -P "$_wdg_runner_pid" 2> /dev/null) ) > /dev/null 2>&1[0m
+    [2mclaim never appeared in store; rc=1 output=/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RMBFcU/core/plugin-registry/lifecycle.sh: line 212: 998560 Killed                  ( trap '' TERM; exec {_RUNNER_ERR_FD}>&- || true; _wdg_lim="${_RUNNER_MAX_RUN_S}"; _wdg_pgid="${_RUNNER_RUN_PGID}"; _wdg_runner_pid="${_RUNNER_SELF_PID}"; sleep "$_wdg_lim" || exit 0; _zbuild_arm_abort_sentinel timed_out 2> /dev/null || true; kill -TERM -- "-${_wdg_pgid}" 2> /dev/null || true; sleep 10 || exit 0; _wdg_self="${BASHPID}"; while IFS= read -r _wdg_child; do ⏎     [[ "$_wdg_child" == "$_wdg_self" ]] && continue; if [[ -n "$_wdg_child" ]]; then ⏎         kill -KILL "$_wdg_child" 2> /dev/null || true; ⏎     fi; ⏎ done < <(pgrep -P "$_wdg_runner_pid" 2> /dev/null) ) > /dev/null 2>&1[0m
   [38;2;248;113;113m✗[0m [DSCLA-6] zbuild:claimed was never acquired — cannot verify release
-    [2mclaim never appeared in store; rc=1 output=/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.tH5Tn0/core/plugin-registry/lifecycle.sh: line 212: 1001300 Killed                  ( trap '' TERM; exec {_RUNNER_ERR_FD}>&- || true; _wdg_lim="${_RUNNER_MAX_RUN_S}"; _wdg_pgid="${_RUNNER_RUN_PGID}"; _wdg_runner_pid="${_RUNNER_SELF_PID}"; sleep "$_wdg_lim" || exit 0; _zbuild_arm_abort_sentinel timed_out 2> /dev/null || true; kill -TERM -- "-${_wdg_pgid}" 2> /dev/null || true; sleep 10 || exit 0; _wdg_self="${BASHPID}"; while IFS= read -r _wdg_child; do ⏎     [[ "$_wdg_child" == "$_wdg_self" ]] && continue; if [[ -n "$_wdg_child" ]]; then ⏎         kill -KILL "$_wdg_child" 2> /dev/null || true; ⏎     fi; ⏎ done < <(pgrep -P "$_wdg_runner_pid" 2> /dev/null) ) > /dev/null 2>&1[0m
-  [38;2;248;113;113m✗[0m [DSCLA-6] claim comment body shows finished status after failure exit
-    [2mcomment: <not found>[0m
+    [2mclaim never appeared in store; rc=1 output=/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RMBFcU/core/plugin-registry/lifecycle.sh: line 212: 998560 Killed                  ( trap '' TERM; exec {_RUNNER_ERR_FD}>&- || true; _wdg_lim="${_RUNNER_MAX_RUN_S}"; _wdg_pgid="${_RUNNER_RUN_PGID}"; _wdg_runner_pid="${_RUNNER_SELF_PID}"; sleep "$_wdg_lim" || exit 0; _zbuild_arm_abort_sentinel timed_out 2> /dev/null || true; kill -TERM -- "-${_wdg_pgid}" 2> /dev/null || true; sleep 10 || exit 0; _wdg_self="${BASHPID}"; while IFS= read -r _wdg_child; do ⏎     [[ "$_wdg_child" == "$_wdg_self" ]] && continue; if [[ -n "$_wdg_child" ]]; then ⏎         kill -KILL "$_wdg_child" 2> /dev/null || true; ⏎     fi; ⏎ done < <(pgrep -P "$_wdg_runner_pid" 2> /dev/null) ) > /dev/null 2>&1[0m
   [38;2;248;113;113m✗[0m [DSCLA-7] zbuild:claimed was present before stage started
     [2mclaim never appeared in store[0m
   [38;2;248;113;113m✗[0m [DSCLA-7] zbuild:claimed was never acquired — cannot verify release after TERM
     [2mclaim never appeared in store[0m
-  [38;2;248;113;113m✗[0m [DSCLA-7] claim comment body shows finished status after TERM signal
-    [2mcomment: <not found>[0m
   [38;2;248;113;113m✗[0m [DSCLA-9] runner output contains holder string when zbuild:claimed is present
-    [2mholder 'run-holder-9abc on machine-other' not found in: ▸ merge_policy: auto_unless_flagged ⏎  ⏎ ✗ Pipeline cannot start — stage manifests break the contract: ⏎  ⏎   outcome: SUMMARY_MISSING (id=-) ⏎     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9) ⏎  ⏎ Fix: edit the relevant plugin manifest (plugins/*/manifest.yaml) ⏎      or the active template (config/templates/<id>.yaml). ⏎      See docs/adr/ADR-020-inter-stage-data-contract.md. ⏎  ⏎   ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast. ⏎  ⏎ ▸ Pipeline started — run_id=20261116002233-1001960 issue=90001767 goal= template=claim-test engine=04e5c3a(HEAD) ⏎  ⏎  ⏎ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ outcome ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 00:22:34 UTC ⏎  ⏎  ⏎ ▸ Running stage: outcome  (started 00:22:34 UTC) ⏎ ✓ Stage outcome complete  (finished 00:22:34 UTC · 0.2s) ⏎  ⏎ ══════════════════════════ pipeline.end ═══════════════════════════ 00:22:34 UTC ⏎ ✓ Pipeline complete: status=complete run_id=20261116002233-1001960 issue=90001767 (took 0.5s) ⏎ ✓ Pipeline complete — run_id=20261116002233-1001960 ⏎ /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.tH5Tn0/core/plugin-registry/lifecycle.sh: line 212: 1002279 Killed                  ( trap '' TERM; exec {_RUNNER_ERR_FD}>&- || true; _wdg_lim="${_RUNNER_MAX_RUN_S}"; _wdg_pgid="${_RUNNER_RUN_PGID}"; _wdg_runner_pid="${_RUNNER_SELF_PID}"; sleep "$_wdg_lim" || exit 0; _zbuild_arm_abort_sentinel timed_out 2> /dev/null || true; kill -TERM -- "-${_wdg_pgid}" 2> /dev/null || true; sleep 10 || exit 0; _wdg_self="${BASHPID}"; while IFS= read -r _wdg_child; do ⏎     [[ "$_wdg_child" == "$_wdg_self" ]] && continue; if [[ -n "$_wdg_child" ]]; then ⏎         kill -KILL "$_wdg_child" 2> /dev/null || true; ⏎     fi; ⏎ done < <(pgrep -P "$_wdg_runner_pid" 2> /dev/null) ) > /dev/null 2>&1[0m
+    [2mholder 'run-holder-9abc on machine-other' not found in: ▸ merge_policy: auto_unless_flagged ⏎  ⏎ ✗ Pipeline cannot start — stage manifests break the contract: ⏎  ⏎   outcome: SUMMARY_MISSING (id=-) ⏎     stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9) ⏎  ⏎ Fix: edit the relevant plugin manifest (plugins/*/manifest.yaml) ⏎      or the active template (config/templates/<id>.yaml). ⏎      See docs/adr/ADR-020-inter-stage-data-contract.md. ⏎  ⏎   ZBUILD_CONTRACT_VALIDATOR=warn — continuing despite violations. Set =enforce to fail-fast. ⏎  ⏎ ▸ Pipeline started — run_id=20261116231914-999216 issue=90001767 goal= template=claim-test engine=04e5c3a(HEAD) ⏎  ⏎  ⏎ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ outcome ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 23:19:15 UTC ⏎  ⏎  ⏎ ▸ Running stage: outcome  (started 23:19:15 UTC) ⏎ ✓ Stage outcome complete  (finished 23:19:15 UTC · 0.3s) ⏎  ⏎ ══════════════════════════ pipeline.end ═══════════════════════════ 23:19:15 UTC ⏎ ✓ Pipeline complete: status=complete run_id=20261116231914-999216 issue=90001767 (took 0.6s) ⏎ ✓ Pipeline complete — run_id=20261116231914-999216 ⏎ /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RMBFcU/core/plugin-registry/lifecycle.sh: line 212: 999540 Killed                  ( trap '' TERM; exec {_RUNNER_ERR_FD}>&- || true; _wdg_lim="${_RUNNER_MAX_RUN_S}"; _wdg_pgid="${_RUNNER_RUN_PGID}"; _wdg_runner_pid="${_RUNNER_SELF_PID}"; sleep "$_wdg_lim" || exit 0; _zbuild_arm_abort_sentinel timed_out 2> /dev/null || true; kill -TERM -- "-${_wdg_pgid}" 2> /dev/null || true; sleep 10 || exit 0; _wdg_self="${BASHPID}"; while IFS= read -r _wdg_child; do ⏎     [[ "$_wdg_child" == "$_wdg_self" ]] && continue; if [[ -n "$_wdg_child" ]]; then ⏎         kill -KILL "$_wdg_child" 2> /dev/null || true; ⏎     fi; ⏎ done < <(pgrep -P "$_wdg_runner_pid" 2> /dev/null) ) > /dev/null 2>&1[0m
   [38;2;248;113;113m✗[0m [DSCLA-9] runner exits non-zero when zbuild:claimed is present
+    [2mrunner exited 0 (should have refused)[0m
+  [38;2;248;113;113m✗[0m [DSCLA-3] runner exits non-zero when zbuild:claimed is present
     [2mrunner exited 0 (should have refused)[0m
   [38;2;248;113;113m✗[0m [DSCLA-9] no stage was dispatched when runner refused the claim
     [2mstage started marker found — runner dispatched a stage after refusing[0m
+  [38;2;248;113;113m✗[0m [DSCLA-3] no stage was dispatched when runner refused the claim
+    [2mstage started marker found — runner dispatched a stage after refusing[0m
+  [38;2;248;113;113m✗[0m [DSCLA-3] pipeline.refused.claimed event emitted to event bus
+    [2mevent not found in events log; log contents: {"ts":"2026-11-16T23:19:14.585Z","run_id":"","issue":0,"type":"memory.backend.init","plugin":"","kind":"","data":{"backend":"sqlite","plugin_dir":"/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RMBFcU/plugins/tool/memory-sqlite"},"schema_version":1} ⏎ {"ts":"2026-11-16T23:19:14.862Z","run_id":"","issue":0,"type":"pipeline.preflight.fail","plugin":"","kind":"","data":{"reason":"contract_violation","violation_count":"1","mode":"warn"},"schema_version":1} ⏎ {"ts":"2026-11-16T23:19:14.970Z","run_id":"","issue":0,"type":"pipeline.init","plugin":"","kind":"","data":{"run_id":"20261116231914-999216","issue":"90001767","state_file":"/home/runner/work/_temp/zbuild-state/scratch/test/teardown-repeat-signal.PI7BdR/cscenario-dscla9/state/pipeline-state.json"},"schema_version":1} ⏎ {"ts":"2026-11-16T23:19:15.056Z","run_id":"20261116231914-999216","issue":90001767,"type":"pipeline.branch.ready","plugin":"","kind":"","data":{"branch":"zbuild/issue-90001767","outcome":"created","start":"65f5ee9f634529f33c44eadf8b7bfa805428a952","ahead_count":"0"},"schema_version":1} ⏎ {"ts":"2026-11-16T23:19:15.152Z","run_id":"20261116231914-999216","issue":90001767,"type":"pipeline.start","plugin":"","kind":"","data":{"run_id":"20261116231914-999216","issue":"90001767","engine_sha":"04e5c3adaf01e0563f3a502676b1658ce2cdd57b","engine_branch":"HEAD"},"schema_version":1} ⏎ {"ts":"2026-11-16T23:19:15.167Z","run_id":"20261116231914-999216","issue":90001767,"type":"stage.start","plugin":"","kind":"","data":{"stage":"outcome"},"schema_version":1} ⏎ {"ts":"2026-11-16T23:19:15.314Z","run_id":"20261116231914-999216","issue":90001767,"type":"stage.previous_work.written","plugin":"outcome","kind":"agent","data":{"stage":"outcome","stages":"0","failing":"0"},"schema_version":1,"stage":"outcome","seq":"1"} ⏎ {"ts":"2026-11-16T23:19:15.328Z","run_id":"20261116231914-999216","issue":90001767,"type":"plugin.run.start","plugin":"outcome","kind":"agent","data":{"plugin":"outcome","kind":"agent"},"schema_version":1,"stage":"outcome","seq":"1"} ⏎ {"ts":"2026-11-16T23:19:15.378Z","run_id":"20261116231914-999216","issue":90001767,"type":"plugin.run.complete","plugin":"outcome","kind":"agent","data":{"plugin":"outcome","kind":"agent"},"schema_version":1,"stage":"outcome","seq":"1"} ⏎ {"ts":"2026-11-16T23:19:15.488Z","run_id":"20261116231914-999216","issue":90001767,"type":"stage.complete","plugin":"","kind":"","data":{"stage":"outcome","verdict":"pass"},"schema_version":1,"stage":"outcome","seq":"1"} ⏎ {"ts":"2026-11-16T23:19:15.554Z","run_id":"20261116231914-999216","issue":90001767,"type":"artifact.snapshot.saved","plugin":"","kind":"","data":{"stage":"outcome","issue":"90001767","skipped":"0"},"schema_version":1,"stage":"outcome","seq":"1"} ⏎ {"ts":"2026-11-16T23:19:15.591Z","run_id":"20261116231914-999216","issue":90001767,"type":"pipeline.end","plugin":"","kind":"","data":{"status":"success","run_id":"20261116231914-999216","issue":"90001767"},"schema_version":1}[0m
+  [38;2;74;222;128m✓[0m [DSCLA-11] run-status comment does not show 'running' when pipeline.end is present
+  [38;2;74;222;128m✓[0m [DSCLA-11] run-status comment does not show 'running' on pipeline failure
+  [38;2;74;222;128m✓[0m [DSCLA-11] run-status comment does not show 'running' on TERM signal exit
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m12 of 18 tests failed[0m
+  [38;2;248;113;113m[1m12 of 21 tests failed[0m
 
-  [38;2;248;113;113m✗[0m [DSCLA-1/5] zbuild:claimed was present before the first stage dispatched
+  [38;2;248;113;113m✗[0m [DSCLA-1] zbuild:claimed was present before the first stage dispatched
   [38;2;248;113;113m✗[0m [DSCLA-5] zbuild:claimed was never acquired — cannot verify release
-  [38;2;248;113;113m✗[0m [DSCLA-5] claim comment body shows finished status after normal exit
   [38;2;248;113;113m✗[0m [DSCLA-6] zbuild:claimed was present during failure run
   [38;2;248;113;113m✗[0m [DSCLA-6] zbuild:claimed was never acquired — cannot verify release
-  [38;2;248;113;113m✗[0m [DSCLA-6] claim comment body shows finished status after failure exit
   [38;2;248;113;113m✗[0m [DSCLA-7] zbuild:claimed was present before stage started
   [38;2;248;113;113m✗[0m [DSCLA-7] zbuild:claimed was never acquired — cannot verify release after TERM
-  [38;2;248;113;113m✗[0m [DSCLA-7] claim comment body shows finished status after TERM signal
   [38;2;248;113;113m✗[0m [DSCLA-9] runner output contains holder string when zbuild:claimed is present
   [38;2;248;113;113m✗[0m [DSCLA-9] runner exits non-zero when zbuild:claimed is present
+  [38;2;248;113;113m✗[0m [DSCLA-3] runner exits non-zero when zbuild:claimed is present
   [38;2;248;113;113m✗[0m [DSCLA-9] no stage was dispatched when runner refused the claim
+  [38;2;248;113;113m✗[0m [DSCLA-3] no stage was dispatched when runner refused the claim
+  [38;2;248;113;113m✗[0m [DSCLA-3] pipeline.refused.claimed event emitted to event bus
 
 ### core/pipeline/runner.sh head tests/integration/teardown-repeat-signal-test.sh
 
@@ -134,20 +141,23 @@
   [38;2;74;222;128m✓[0m [T4a] release finishes under repeated TERM
   [38;2;74;222;128m✓[0m [T4b] persist runs under repeated TERM
   [38;2;74;222;128m✓[0m [T5] the stage is not run again
-  [38;2;74;222;128m✓[0m [DSCLA-1/5] zbuild:claimed was present before the first stage dispatched
+  [38;2;74;222;128m✓[0m [DSCLA-1] zbuild:claimed was present before the first stage dispatched
   [38;2;74;222;128m✓[0m [DSCLA-5] zbuild:claimed absent after normal pipeline completion
-  [38;2;74;222;128m✓[0m [DSCLA-5] claim comment body shows finished status after normal exit
   [38;2;74;222;128m✓[0m [DSCLA-6] zbuild:claimed was present during failure run
   [38;2;74;222;128m✓[0m [DSCLA-6] zbuild:claimed absent after pipeline failure
-  [38;2;74;222;128m✓[0m [DSCLA-6] claim comment body shows finished status after failure exit
   [38;2;74;222;128m✓[0m [DSCLA-7] zbuild:claimed was present before stage started
   [38;2;74;222;128m✓[0m [DSCLA-7] zbuild:claimed absent after TERM signal
-  [38;2;74;222;128m✓[0m [DSCLA-7] claim comment body shows finished status after TERM signal
   [38;2;74;222;128m✓[0m [DSCLA-9] runner output contains holder string when zbuild:claimed is present
   [38;2;74;222;128m✓[0m [DSCLA-9] runner exits non-zero when zbuild:claimed is present
+  [38;2;74;222;128m✓[0m [DSCLA-3] runner exits non-zero when zbuild:claimed is present
   [38;2;74;222;128m✓[0m [DSCLA-9] no stage was dispatched when runner refused the claim
+  [38;2;74;222;128m✓[0m [DSCLA-3] no stage was dispatched when runner refused the claim
+  [38;2;74;222;128m✓[0m [DSCLA-3] pipeline.refused.claimed event emitted to event bus
+  [38;2;74;222;128m✓[0m [DSCLA-11] run-status comment does not show 'running' when pipeline.end is present
+  [38;2;74;222;128m✓[0m [DSCLA-11] run-status comment does not show 'running' on pipeline failure
+  [38;2;74;222;128m✓[0m [DSCLA-11] run-status comment does not show 'running' on TERM signal exit
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 18 tests passed[0m
+  [38;2;74;222;128m[1mAll 21 tests passed[0m
 
