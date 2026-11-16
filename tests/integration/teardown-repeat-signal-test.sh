@@ -408,12 +408,32 @@ else
     assert_fail "[DSCLA-9] runner exits non-zero when zbuild:claimed is present" \
         "runner exited 0 (should have refused)"
 fi
+if [[ "$_dscla9_rc" -ne 0 ]]; then
+    assert_pass "[DSCLA-3] runner exits non-zero when zbuild:claimed is present"
+else
+    assert_fail "[DSCLA-3] runner exits non-zero when zbuild:claimed is present" \
+        "runner exited 0 (should have refused)"
+fi
 
 if [[ ! -e "$_DSCLA9_STARTED" ]]; then
     assert_pass "[DSCLA-9] no stage was dispatched when runner refused the claim"
 else
     assert_fail "[DSCLA-9] no stage was dispatched when runner refused the claim" \
         "stage started marker found — runner dispatched a stage after refusing"
+fi
+if [[ ! -e "$_DSCLA9_STARTED" ]]; then
+    assert_pass "[DSCLA-3] no stage was dispatched when runner refused the claim"
+else
+    assert_fail "[DSCLA-3] no stage was dispatched when runner refused the claim" \
+        "stage started marker found — runner dispatched a stage after refusing"
+fi
+
+# Then: pipeline.refused.claimed event was emitted to the event bus
+if grep -qF '"pipeline.refused.claimed"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
+    assert_pass "[DSCLA-3] pipeline.refused.claimed event emitted to event bus"
+else
+    assert_fail "[DSCLA-3] pipeline.refused.claimed event emitted to event bus" \
+        "event not found in events log; log contents: $(cat "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -20 || echo '<empty>')"
 fi
 
 # ── DSCLA-11: run-status comment shows terminal status when runner exits ──────
