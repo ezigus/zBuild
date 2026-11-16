@@ -250,8 +250,33 @@ else
         "_ZBUILD_CLAIM_HOLDER='${_ZBUILD_CLAIM_HOLDER:-}' (expected CI URL with 99887766 or testowner/testrepo)"
 fi
 
+# ─────────────────────────────────────────────────────────────────────────────
+# DSCLA-12: CI run URL as holder in rendered run-status comment header
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Given: a CI run (GITHUB_ACTIONS=true) starts with an issue number
+# GITHUB_ACTIONS, GITHUB_RUN_ID, GITHUB_SERVER_URL, GITHUB_REPOSITORY are set above
+_dscla12_events="$TEST_TEMP_DIR/dscla12-events.jsonl"
+printf '{"type":"pipeline.start","data":{"run_id":"run-dscla12","issue":1012},"ts":"2026-01-01T00:00:00Z"}\n' \
+    > "$_dscla12_events"
+_dscla12_model="$(rsc_rows_json "$_dscla12_events" 2>/dev/null || printf '{}')"
+
+# When: rsc_render_header is called with the run id and the CI holder string
+_dscla12_ci_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+_ZBUILD_CLAIM_HOLDER="$_dscla12_ci_url"
+_dscla12_hdr="$(rsc_render_header "$_dscla12_model" "$TEST_TEMP_DIR" 2>/dev/null || printf '')"
+
+# Then: the rendered header contains <!-- zbuild-holder: <CI_URL> -->
+if grep -qF "<!-- zbuild-holder: $_dscla12_ci_url" <<< "${_dscla12_hdr:-}"; then
+    assert_pass "[DSCLA-12] rendered header contains <!-- zbuild-holder: CI_URL -->"
+else
+    assert_fail "[DSCLA-12] rendered header contains <!-- zbuild-holder: CI_URL -->" \
+        "CI holder not found in header; expected '<!-- zbuild-holder: $_dscla12_ci_url'; header: ${_dscla12_hdr:0:400}"
+fi
+
 # Cleanup: restore CI environment variables
 unset GITHUB_ACTIONS GITHUB_RUN_ID GITHUB_SERVER_URL GITHUB_REPOSITORY 2>/dev/null || true
+unset _ZBUILD_CLAIM_HOLDER 2>/dev/null || true
 
 # Restore local-fs backend for subsequent tests
 export ZBUILD_CLAIM_BACKEND="local-fs"
