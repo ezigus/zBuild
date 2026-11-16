@@ -1,0 +1,109 @@
+### DSCLA-4 baseline plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
+
+[38;2;0;212;255m[1m  plugin: claim-coordinator/github-labels — local-fs backend[0m
+[2m  ══════════════════════════════════════════[0m
+
+{"acquired": true, "lease_id": "test-machine-1:42"}
+  [38;2;74;222;128m✓[0m claim_coordinator_claim → rc=0
+  [38;2;74;222;128m✓[0m claim store file created after claim
+  [38;2;74;222;128m✓[0m claimed label contains 'claimed:' prefix
+  [38;2;74;222;128m✓[0m claim_coordinator_release → rc=0
+  [38;2;74;222;128m✓[0m claimed label removed after release
+  [38;2;74;222;128m✓[0m list_claims returns [] after release
+{"acquired": true, "lease_id": "test-machine-1:99"}
+  [38;2;74;222;128m✓[0m claim_coordinator_heartbeat → rc=0
+/home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.rVHxVw/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: line 89: zbuild_claim_acquire: command not found
+  [38;2;248;113;113m✗[0m [DSCLA-1] zbuild_claim_acquire returns 0 (claim acquired)
+    [2mexpected: 0, got: 127[0m
+  [38;2;248;113;113m✗[0m [DSCLA-1] zbuild:claimed label is present in claim store
+    [2m<file missing>[0m
+  [38;2;248;113;113m✗[0m [DSCLA-1] label name is exactly zbuild:claimed (no hostname)
+    [2m<file missing>[0m
+/home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.rVHxVw/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: line 150: zbuild_claim_acquire: command not found
+  [38;2;248;113;113m✗[0m [DSCLA-2] zbuild_claim_acquire returns 0 (claim acquired via gh)
+    [2mexpected: 0, got: 127[0m
+  [38;2;248;113;113m✗[0m [DSCLA-2] gh called with zbuild:claimed label
+    [2mcalls recorded: [0m
+  [38;2;74;222;128m✓[0m [DSCLA-2] label has no hostname component (machine-specific label not used)
+  [38;2;248;113;113m✗[0m [DSCLA-2] gh issue comment was called
+    [2mno comment call recorded in: [0m
+  [38;2;248;113;113m✗[0m [DSCLA-2] comment contains run_id
+    [2mrun_id 'run-dscla2-123' not found in gh calls: [0m
+  [38;2;248;113;113m✗[0m [DSCLA-2] comment contains machine name
+    [2mmachine 'testmachine-dscla2' not found in gh calls: [0m
+/home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.rVHxVw/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: line 223: zbuild_claim_acquire: command not found
+  [38;2;248;113;113m✗[0m [DSCLA-2] zbuild_claim_acquire returns 0 (CI mode)
+    [2mexpected: 0, got: 127[0m
+  [38;2;248;113;113m✗[0m [DSCLA-2] comment contains CI run URL information when GITHUB_ACTIONS=true
+    [2mCI info not found in: [0m
+/home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.rVHxVw/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: line 256: zbuild_claim_acquire: command not found
+  [38;2;248;113;113m✗[0m [DSCLA-3] zbuild_claim_acquire returns 1 when zbuild:claimed is present
+    [2mexpected: 1, got: 127[0m
+/home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.rVHxVw/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: line 275: zbuild_claim_acquire: command not found
+  [38;2;248;113;113m✗[0m [DSCLA-4] zbuild_claim_acquire returns 1 (already claimed)
+    [2mexpected: 1, got: 127[0m
+  [38;2;248;113;113m✗[0m [DSCLA-4] _ZBUILD_CLAIM_HOLDER is set (not empty)
+    [2m_ZBUILD_CLAIM_HOLDER was empty or unset[0m
+  [38;2;248;113;113m✗[0m [DSCLA-4] _ZBUILD_CLAIM_HOLDER contains holder string from claim comment
+    [2m_ZBUILD_CLAIM_HOLDER='' (expected to contain 'run-holder-99')[0m
+/home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.rVHxVw/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: line 316: zbuild_claim_acquire: command not found
+  [38;2;74;222;128m✓[0m [DSCLA-8] no gh calls made for empty issue
+  [38;2;248;113;113m✗[0m [DSCLA-8] zbuild_claim_acquire returns 0 for empty issue
+    [2mexpected: 0, got: 127[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m15 of 24 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [DSCLA-1] zbuild_claim_acquire returns 0 (claim acquired)
+  [38;2;248;113;113m✗[0m [DSCLA-1] zbuild:claimed label is present in claim store
+  [38;2;248;113;113m✗[0m [DSCLA-1] label name is exactly zbuild:claimed (no hostname)
+  [38;2;248;113;113m✗[0m [DSCLA-2] zbuild_claim_acquire returns 0 (claim acquired via gh)
+  [38;2;248;113;113m✗[0m [DSCLA-2] gh called with zbuild:claimed label
+  [38;2;248;113;113m✗[0m [DSCLA-2] gh issue comment was called
+  [38;2;248;113;113m✗[0m [DSCLA-2] comment contains run_id
+  [38;2;248;113;113m✗[0m [DSCLA-2] comment contains machine name
+  [38;2;248;113;113m✗[0m [DSCLA-2] zbuild_claim_acquire returns 0 (CI mode)
+  [38;2;248;113;113m✗[0m [DSCLA-2] comment contains CI run URL information when GITHUB_ACTIONS=true
+  [38;2;248;113;113m✗[0m [DSCLA-3] zbuild_claim_acquire returns 1 when zbuild:claimed is present
+  [38;2;248;113;113m✗[0m [DSCLA-4] zbuild_claim_acquire returns 1 (already claimed)
+  [38;2;248;113;113m✗[0m [DSCLA-4] _ZBUILD_CLAIM_HOLDER is set (not empty)
+  [38;2;248;113;113m✗[0m [DSCLA-4] _ZBUILD_CLAIM_HOLDER contains holder string from claim comment
+  [38;2;248;113;113m✗[0m [DSCLA-8] zbuild_claim_acquire returns 0 for empty issue
+
+### DSCLA-4 head plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
+
+[38;2;0;212;255m[1m  plugin: claim-coordinator/github-labels — local-fs backend[0m
+[2m  ══════════════════════════════════════════[0m
+
+{"acquired": true, "lease_id": "test-machine-1:42"}
+  [38;2;74;222;128m✓[0m claim_coordinator_claim → rc=0
+  [38;2;74;222;128m✓[0m claim store file created after claim
+  [38;2;74;222;128m✓[0m claimed label contains 'claimed:' prefix
+  [38;2;74;222;128m✓[0m claim_coordinator_release → rc=0
+  [38;2;74;222;128m✓[0m claimed label removed after release
+  [38;2;74;222;128m✓[0m list_claims returns [] after release
+{"acquired": true, "lease_id": "test-machine-1:99"}
+  [38;2;74;222;128m✓[0m claim_coordinator_heartbeat → rc=0
+  [38;2;74;222;128m✓[0m [DSCLA-1] zbuild_claim_acquire returns 0 (claim acquired)
+  [38;2;74;222;128m✓[0m [DSCLA-1] zbuild:claimed label is present in claim store
+  [38;2;74;222;128m✓[0m [DSCLA-1] label name is exactly zbuild:claimed (no hostname)
+  [38;2;74;222;128m✓[0m [DSCLA-2] zbuild_claim_acquire returns 0 (claim acquired via gh)
+  [38;2;74;222;128m✓[0m [DSCLA-2] gh called with zbuild:claimed label
+  [38;2;74;222;128m✓[0m [DSCLA-2] label has no hostname component (machine-specific label not used)
+  [38;2;74;222;128m✓[0m [DSCLA-2] gh issue comment was called
+  [38;2;74;222;128m✓[0m [DSCLA-2] comment contains run_id
+  [38;2;74;222;128m✓[0m [DSCLA-2] comment contains machine name
+  [38;2;74;222;128m✓[0m [DSCLA-2] zbuild_claim_acquire returns 0 (CI mode)
+  [38;2;74;222;128m✓[0m [DSCLA-2] comment contains CI run URL information when GITHUB_ACTIONS=true
+  [38;2;74;222;128m✓[0m [DSCLA-3] zbuild_claim_acquire returns 1 when zbuild:claimed is present
+  [38;2;74;222;128m✓[0m [DSCLA-4] zbuild_claim_acquire returns 1 (already claimed)
+  [38;2;74;222;128m✓[0m [DSCLA-4] _ZBUILD_CLAIM_HOLDER is set (not empty)
+  [38;2;74;222;128m✓[0m [DSCLA-4] _ZBUILD_CLAIM_HOLDER contains holder string from claim comment
+  [38;2;74;222;128m✓[0m [DSCLA-8] no gh calls made for empty issue
+  [38;2;74;222;128m✓[0m [DSCLA-8] zbuild_claim_acquire returns 0 for empty issue
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 24 tests passed[0m
+
