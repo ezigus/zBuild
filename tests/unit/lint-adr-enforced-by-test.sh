@@ -175,6 +175,24 @@ else
         "ADR-001 still listed in $BASELINE; remove the entry once the ## Enforced by section is added"
 fi
 
+# ── [#1764/DSADR-7] ADR-005 carries an ## Enforced by section and is removed
+# from the enforcement baseline.
+# Must fail on base code (ADR-005 is in baseline, lacks ## Enforced by section);
+# must pass after this change (section added, baseline entry removed).
+ADR_005_CC="$REPO_ROOT/docs/adr/ADR-005-claim-coordinator.md"
+if grep -q '## Enforced by' "$ADR_005_CC" 2>/dev/null; then
+    assert_pass "[#1764/DSADR-7] ADR-005-claim-coordinator.md carries an ## Enforced by section"
+else
+    assert_fail "[#1764/DSADR-7] ADR-005-claim-coordinator.md must carry an ## Enforced by section" \
+        "no '## Enforced by' found in $ADR_005_CC"
+fi
+if ! grep -q 'ADR-005' "$BASELINE" 2>/dev/null; then
+    assert_pass "[#1764/DSADR-7] ADR-005-claim-coordinator.md is not in config/adr-enforcement-baseline.txt"
+else
+    assert_fail "[#1764/DSADR-7] ADR-005-claim-coordinator.md must be removed from config/adr-enforcement-baseline.txt" \
+        "ADR-005 still listed in $BASELINE; remove the entry once the ## Enforced by section is added"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
