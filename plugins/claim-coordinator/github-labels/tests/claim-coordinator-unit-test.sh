@@ -258,10 +258,11 @@ set +e; zbuild_claim_acquire "$_dscla3_issue"; _dscla3_rc=$?; set -e
 assert_eq "[DSCLA-3] zbuild_claim_acquire returns 1 when zbuild:claimed is present" "1" "$_dscla3_rc"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# DSCLA-4: _ZBUILD_CLAIM_HOLDER is set from the holder's claim comment body
+# _ZBUILD_CLAIM_HOLDER is set from the holder's run-status comment
+# (DSCLA-9 integration coverage; unit-level probe of the plugin's holder-read)
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Given: zbuild:claimed on the issue and a claim comment with the marker exists
+# Given: zbuild:claimed on the issue and a run-status comment with the holder marker
 _dscla4_issue="1004"
 mkdir -p "$ZBUILD_CLAIM_STORE/$_dscla4_issue"
 printf 'zbuild:claimed\n' > "$ZBUILD_CLAIM_STORE/$_dscla4_issue/labels.txt"
@@ -278,20 +279,20 @@ unset _ZBUILD_CLAIM_HOLDER 2>/dev/null || true
 set +e; zbuild_claim_acquire "$_dscla4_issue"; _dscla4_rc=$?; set -e
 
 # Then: it returns 1
-assert_eq "[DSCLA-4] zbuild_claim_acquire returns 1 (already claimed)" "1" "$_dscla4_rc"
+assert_eq "zbuild_claim_acquire returns 1 when issue already claimed (pre-stage check)" "1" "$_dscla4_rc"
 
-# Then: _ZBUILD_CLAIM_HOLDER is set to the holder string from the claim store
+# Then: _ZBUILD_CLAIM_HOLDER is set to the holder string from the run-status comment
 if [[ -n "${_ZBUILD_CLAIM_HOLDER:-}" ]]; then
-    assert_pass "[DSCLA-4] _ZBUILD_CLAIM_HOLDER is set (not empty)"
+    assert_pass "_ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim"
 else
-    assert_fail "[DSCLA-4] _ZBUILD_CLAIM_HOLDER is set (not empty)" \
+    assert_fail "_ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim" \
         "_ZBUILD_CLAIM_HOLDER was empty or unset"
 fi
 
 if grep -q "run-holder-99" <<< "${_ZBUILD_CLAIM_HOLDER:-}"; then
-    assert_pass "[DSCLA-4] _ZBUILD_CLAIM_HOLDER contains holder string from run-status comment"
+    assert_pass "_ZBUILD_CLAIM_HOLDER contains holder string from run-status comment"
 else
-    assert_fail "[DSCLA-4] _ZBUILD_CLAIM_HOLDER contains holder string from run-status comment" \
+    assert_fail "_ZBUILD_CLAIM_HOLDER contains holder string from run-status comment" \
         "_ZBUILD_CLAIM_HOLDER='${_ZBUILD_CLAIM_HOLDER:-}' (expected to contain 'run-holder-99')"
 fi
 
