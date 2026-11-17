@@ -1,0 +1,54 @@
+NEGCTL PASS DSCLA-1
+      design : When an issue-bound run starts and zbuild:claimed is absent, the label is added before the first sta…
+      asserts: assert_eq "[DSCLA-1] zbuild_claim_acquire returns 0 when zbuild:claimed is absent" "0" "$_dscla1_rc"
+NEGCTL PASS DSCLA-2
+      design : When a local run starts with an issue, rsc_render_header embeds the holder in the run-status comment…
+      asserts: assert_eq "[DSCLA-2] zbuild_claim_acquire returns 0 (claim acquired via gh)" "0" "$_dscla2_rc"
+NEGCTL PASS DSCLA-12
+      design : When a CI run starts with an issue, the rendered run-status comment header contains the CI run URL a…
+      asserts: assert_pass "[DSCLA-12] rendered header contains <!-- zbuild-holder: CI_URL -->"
+NEGCTL PASS DSCLA-3
+      design : When a run starts on a claimed issue, it refuses with non-zero exit before any stage
+      asserts: assert_eq "[DSCLA-3] zbuild_claim_acquire returns 1 when zbuild:claimed is present" "1" "$_dscla3_rc…
+NEGCTL PASS DSCLA-9
+      design : When a run is refused because zbuild:claimed is on the issue, the run's output names the holder
+      asserts: assert_pass "[DSCLA-9] runner output contains holder string when zbuild:claimed is present"
+NEGCTL PASS DSCLA-5
+      design : On normal pipeline completion, zbuild:claimed is removed from the issue
+      asserts: assert_fail "[DSCLA-5] zbuild:claimed was never acquired — cannot verify release"          "claim ne…
+NEGCTL PASS DSCLA-6
+      design : On pipeline failure, zbuild:claimed is removed from the issue
+      asserts: assert_pass "[DSCLA-6] zbuild:claimed was present during failure run"
+NEGCTL PASS DSCLA-7
+      design : On TERM signal, zbuild:claimed is removed from the issue
+      asserts: assert_pass "[DSCLA-7] zbuild:claimed was present before stage started"
+NEGCTL PASS DSCLA-8
+      design : A run with no issue number makes no claim and calls no coordinator hook
+      asserts: assert_eq "[DSCLA-8] no gh calls made for empty issue" "0" "$_dscla8_call_count"
+NEGCTL PASS DSCLA-10
+      design : The event-schema emitted-coverage check does not reject pipeline.refused.claimed as an unknown event
+      asserts: assert_pass "[DSCLA-10] pipeline.refused.claimed is in config/event-schema.json known_types"
+NEGCTL SKIP DSCLA-11 already_done
+      design : The run-status comment shows terminal status when the runner exits on any path
+      asserts: assert_fail "[DSCLA-11] run-status comment does not show 'running' when pipeline.end is present"    …
+NEGCTL SKIP DSADR-4 doc
+      design : ADR-005 tells the reader that the engine calls the claim coordinator's claim hook after the admissio…
+      asserts: <none found>
+NEGCTL SKIP DSADR-5 doc
+      design : ADR-005 tells the reader that the shared claim label is zbuild:claimed (no hostname) and that the ho…
+      asserts: <none found>
+NEGCTL SKIP DSADR-6 doc
+      design : ADR-005 corrects stale content: coordinator selection is not from config/zbuild.yaml, and the engine…
+      asserts: <none found>
+NEGCTL SKIP DSADR-7 doc
+      design : ADR-005 has an ## Enforced by section naming the test or lint that enforces each statement
+      asserts: assert_pass "[#1764/DSADR-7] ADR-005-claim-coordinator.md carries an ## Enforced by section"
+NEGCTL SKIP DSADR-8 doc
+      design : ADR-059 §4 tells the reader that cross-machine exclusion is the claim coordinator's job and the admi…
+      asserts: <none found>
+REACHABILITY PASS core/pipeline/runner.sh
+REACHABILITY PASS change config/adr-enforcement-baseline.txt
+REACHABILITY PASS change config/event-schema.json
+REACHABILITY PASS change core/claim/claim.sh
+REACHABILITY PASS change plugins/claim-coordinator/github-labels/plugin.sh
+REACHABILITY PASS change scripts/lib/run-status-render.sh

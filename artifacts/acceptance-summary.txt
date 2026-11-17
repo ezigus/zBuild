@@ -1,4 +1,3 @@
-the acceptance check failed — config/shape-change-paths.txt was put back to its old version on its own and every test still passed, so no test checks what this change does to it — add a test that fails without the change to it
 NEGCTL PASS DSCLA-1
       design : When an issue-bound run starts and zbuild:claimed is absent, the label is added before the first sta…
       asserts: assert_eq "[DSCLA-1] zbuild_claim_acquire returns 0 when zbuild:claimed is absent" "0" "$_dscla1_rc"
@@ -27,7 +26,7 @@ NEGCTL PASS DSCLA-8
       design : A run with no issue number makes no claim and calls no coordinator hook
       asserts: assert_eq "[DSCLA-8] no gh calls made for empty issue" "0" "$_dscla8_call_count"
 NEGCTL PASS DSCLA-10
-      design : pipeline.refused.claimed is an accepted event name that passes the schema coverage check
+      design : The event-schema emitted-coverage check does not reject pipeline.refused.claimed as an unknown event
       asserts: assert_pass "[DSCLA-10] pipeline.refused.claimed is in config/event-schema.json known_types"
 NEGCTL SKIP DSCLA-11 already_done
       design : The run-status comment shows terminal status when the runner exits on any path
@@ -50,7 +49,6 @@ NEGCTL SKIP DSADR-8 doc
 REACHABILITY PASS core/pipeline/runner.sh
 REACHABILITY PASS change config/adr-enforcement-baseline.txt
 REACHABILITY PASS change config/event-schema.json
-REACHABILITY FAIL untested_change config/shape-change-paths.txt
 REACHABILITY PASS change core/claim/claim.sh
 REACHABILITY PASS change plugins/claim-coordinator/github-labels/plugin.sh
 REACHABILITY PASS change scripts/lib/run-status-render.sh
