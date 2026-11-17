@@ -1,103 +1,76 @@
 # Test Author Notes — DSCLA tests (issue 1764)
 
-## Status: COMPLETE (pass 5)
+## Status: COMPLETE (pass 8)
 
-## Changes in pass 5
+## Changes in pass 8
 
-### 1. `tests/integration/teardown-repeat-signal-test.sh`
-- Fixed `[DSCLA-1/5]` split-tag → `[DSCLA-1]` (findings 6, 7, 8).
-  The assertion "zbuild:claimed was present before the first stage dispatched" is a
-  DSCLA-1 assertion only (claim added before first stage dispatch). DSCLA-5 release
-  is proven by the separate assertion immediately below.
-- Added DSCLA-11 signal exit path test (finding 5):
-  Given: events.jsonl with pipeline.start only (no terminal event, as on TERM).
-  When: rendered with "interrupted" override (what the sidecar does on TERM).
-  Then: status header is not "running".
-  Passes on both old and new code (DSCLA-11 is [done]).
+### plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
 
-### 2. `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh`
-- Added `<!-- zbuild-holder: -->` render assertion for DSCLA-2 (finding 2):
-  After zbuild_claim_acquire sets _ZBUILD_CLAIM_HOLDER, sources run-status-render.sh,
-  creates a minimal events.jsonl with pipeline.start, renders via rsc_rows_json +
-  rsc_render_header, checks the header contains `<!-- zbuild-holder: run-dscla2-123`.
-  FAILS on base code (rsc_render_header doesn't output <!-- zbuild-holder: -->).
-  PASSES on new code (which adds the holder embedding to rsc_render_header).
+1. **DSCLA-2 render sub-test section structure**: The rsc_render_header render block
+   previously sat under a `# Then:` comment label with no `# Given:` / `# When:`. Now
+   the block has explicit:
+   - `# Given: a local run (GITHUB_ACTIONS not true)…` before the setup
+   - `# When: rsc_render_header is called with the run id and holder string` right before
+     the `rsc_render_header` call
+   - `# Then:` block already present (kept as-is)
 
-## Answers to open findings
+2. **DSCLA-12 grep includes closing `-->`**: Changed
+   `grep -qF "<!-- zbuild-holder: $_dscla12_ci_url"` to
+   `grep -qF "<!-- zbuild-holder: $_dscla12_ci_url -->"` and updated the fail message
+   to include `-->`. Without the closing marker the assertion passes when the comment
+   is malformed (opening marker present, closing absent).
 
-- finding 1 (DSCLA-1 "no stage dispatched" missing from unit test):
-  DONE — fixing [DSCLA-1/5] → [DSCLA-1] in the teardown test makes the [DSCLA-1]
-  assertion appear. That assertion ("zbuild:claimed was present before the first
-  stage dispatched") proves the claim was added before the stage ran, which is
-  exactly "no stage dispatched before claim". The teardown test starts a full
-  runner, so the stage dispatch is real.
+## Findings answered this pass
 
-- finding 2 (DSCLA-2 missing <!-- zbuild-holder: --> assertion):
-  DONE — added render assertion to claim-coordinator-unit-test.sh.
+- **test-author finding 1 (DSCLA-2 section layout)**: done — rsc_render_header call now
+  has its own `# Given:` and `# When: rsc_render_header is called with the run id and
+  holder string` section labels above it; the `# Then:` block already existed.
 
-- finding 3 (DSCLA-8 Given/When should be a runner start):
-  WRONG — a runner-based test for DSCLA-8 would PASS on base code too (the base
-  runner also makes no claim for goal-only runs — it never calls the coordinator
-  at all). The direct zbuild_claim_acquire "" call is the only approach that fails
-  on base code (function doesn't exist on base code) and passes on new code.
+- **test-author finding 2 (DSCLA-12 missing `-->`)**: done — added ` -->` to the
+  `grep -qF` pattern and updated the assert_fail message to include `-->`.
 
-- finding 4 (DSCLA-10 Given/When should set up zbuild:claimed and run the runner):
-  WRONG — the Then clause for DSCLA-10 is "the event-schema emitted-coverage check
-  does not fail on pipeline.refused.claimed as an unregistered event." The only
-  assertable thing is whether pipeline.refused.claimed appears in config/event-schema.json.
-  The Given/When in the SPEC describe the motivating scenario, but the test for
-  the Then clause is correctly a grep of the schema file. It FAILS on base code
-  (not in schema) and PASSES on new code (added to schema).
+- **test-author finding 3 (DSCLA-10 Given/When)**: wrong — the SPEC's `Then` says
+  "the event-schema emitted-coverage check does not fail on pipeline.refused.claimed
+  as an unregistered event". The coverage check IS "is the event in the JSON file?"
+  Grepping the file is the correct test. The Given/When describe motivation; the
+  assertion is at the right level.
 
-- finding 5 (DSCLA-11 signal exit path not covered):
-  DONE — added the signal path case to the DSCLA-11 section.
+- **acceptance-gate finding 1 (baseline reversion)**: wrong — when the baseline is
+  reverted to its old version (ADR-005 present), running
+  `tests/unit/lint-adr-enforced-by-test.sh` produces 2 failures:
+  `[A7] the real tree passes` (lint fails because ADR-005 has `## Enforced by` but is
+  still in the baseline) and `[#1764/DSADR-7] ADR-005… must be removed from the
+  baseline`. Both fire correctly. The finding was opened against an earlier version of
+  the test file.
 
-- finding 6 (DSCLA-1 no [DSCLA-1] tag in teardown test):
-  DONE — fixed by changing [DSCLA-1/5] → [DSCLA-1].
+- **issue-acceptance finding 1 (RQCLA-2 integration gap)**: not mine — the DSCLA-2
+  SPEC says "When: rsc_render_header is called with the run id and holder string". My
+  test correctly calls `rsc_render_header` in-process with `_ZBUILD_CLAIM_HOLDER` set
+  and asserts the output format. The gap (sidecar spawned before `_ZBUILD_CLAIM_HOLDER`
+  is set in `runner.sh`) is a code-stage defect in `core/pipeline/runner.sh`, not a
+  test-author gap.
 
-- finding 7, 8 ([DSCLA-1/5] is not a valid tag):
-  DONE — changed to [DSCLA-1].
+## Full SPEC coverage
 
-## Verified SPEC coverage
+- DSCLA-1: unit test (gh called with zbuild:claimed, no hostname)
+           + teardown [DSCLA-1] (claim present when first stage ran)
+- DSCLA-2: unit test (rsc_render_header with `run_id=X machine=H` → full comment format)
+- DSCLA-12: unit test (CI URL in `<!-- zbuild-holder: CI_URL -->` with closing `-->`)
+- DSCLA-3: unit test + teardown (non-zero exit, no stage, pipeline.refused.claimed event)
+- DSCLA-5: teardown (zbuild:claimed absent after normal completion)
+- DSCLA-6: teardown (zbuild:claimed absent after failure)
+- DSCLA-7: teardown (zbuild:claimed absent after TERM)
+- DSCLA-8: unit test (zbuild_claim_acquire "" → 0, no gh calls)
+- DSCLA-9: teardown (holder in output, non-zero exit, no stage dispatched)
+- DSCLA-10: unit test (pipeline.refused.claimed in config/event-schema.json)
+- DSCLA-11: teardown (non-running status on all exit paths)
+- DSADR-7: lint-adr-enforced-by-test.sh (ADR-005 has `## Enforced by`, not in baseline)
 
-All SPECs covered:
-- DSCLA-1: unit test (zbuild_claim_acquire → 0, zbuild:claimed in store, no hostname)
-           + teardown [DSCLA-1] (claim present when first stage ran = added before dispatch)
-- DSCLA-2: unit test (no gh comment, _ZBUILD_CLAIM_HOLDER set with run_id + machine,
-           CI sub-case with URL, <!-- zbuild-holder: --> in render output, no hostname suffix)
-- DSCLA-3: unit test (zbuild_claim_acquire → 1) + teardown (non-zero exit, no stage,
-           pipeline.refused.claimed event) — all [DSCLA-3]
-- DSCLA-5: teardown (zbuild:claimed absent after normal completion) [DSCLA-5]
-- DSCLA-6: teardown (zbuild:claimed absent after failure) [DSCLA-6]
-- DSCLA-7: teardown (zbuild:claimed absent after TERM) [DSCLA-7]
-- DSCLA-8: unit test (zbuild_claim_acquire "" → 0, no gh calls) [DSCLA-8]
-- DSCLA-9: teardown (holder in output, non-zero exit, no stage dispatched) [DSCLA-9]
-- DSCLA-10: unit test (pipeline.refused.claimed in config/event-schema.json) [DSCLA-10]
-- DSCLA-11: teardown (normal exit, failure exit, TERM signal — all show non-running) [DSCLA-11]
+## Test files
 
-## Open issues (not mine)
-
-- `tests/unit/event-schema-emitted-coverage-test.sh` fails because `pipeline.refused.claimed`
-  is not yet in `config/event-schema.json`. This is an implementation file I cannot touch.
-  My DSCLA-10 test asserts its presence and correctly fails on base code. The fix belongs
-  to the code stage.
-
-- `issue-acceptance finding 1`: pipeline.refused.claimed not in config/event-schema.json —
-  not mine (config/event-schema.json is an implementation file outside test folders).
-
-## Interface assumptions for new code
-
-New function `zbuild_claim_acquire <issue>`:
-- Returns 0 (success): writes `zbuild:claimed` to labels.txt; sets `_ZBUILD_CLAIM_HOLDER`
-- Returns 1 (already claimed): reads holder from run-status-comment.txt (local-fs) or
-  gh API (gh backend), extracting `<!-- zbuild-holder: VALUE -->` field; sets `_ZBUILD_CLAIM_HOLDER`
-- Returns 0 (early exit): when issue argument is empty
-
-Runner.sh (new code):
-- Calls zbuild_claim_acquire after admission lock, before first stage dispatch
-- On return 1: emits `pipeline.refused.claimed` event, outputs holder string, exits non-zero
-- In EXIT trap: calls coordinator release hook to remove zbuild:claimed
-
-run-status-render.sh (new code):
-- rsc_render_header reads `_ZBUILD_CLAIM_HOLDER` from env and outputs
-  `<!-- zbuild-holder: VALUE -->` in the comment header when non-empty
+- `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh`
+  DSCLA-1, DSCLA-2, DSCLA-3, DSCLA-8, DSCLA-10, DSCLA-12
+- `tests/integration/teardown-repeat-signal-test.sh`
+  DSCLA-1, DSCLA-3, DSCLA-5, DSCLA-6, DSCLA-7, DSCLA-9, DSCLA-11
+- `tests/unit/lint-adr-enforced-by-test.sh`
+  [#1764/DSADR-7]
