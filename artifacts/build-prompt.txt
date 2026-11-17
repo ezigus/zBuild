@@ -237,10 +237,12 @@ the ADR-064 run-status comment (`scripts/lib/run-status-comment.sh`), not a new 
 These tests were written before your code. Make them pass by changing code only. Each requirement below is checked by the assertion labelled with its tag (for SPEC-1 of this issue: [SPEC-1]).
 - plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
 - tests/integration/teardown-repeat-signal-test.sh
+- tests/unit/lint-adr-enforced-by-test.sh
 
 What each SPEC requires:
-- [DSCLA-1] When an issue-bound run starts and zbuild:claimed is absent, the label is added before the first stage dispatches — Given: a run is started with an issue number; zbuild:claimed is not on the issue — When: the run starts — Then: zbuild:claimed is present on the issue — And: no stage has yet been dispatched
-- [DSCLA-2] When a run starts with an issue, the run-status comment identifies the holder; the label name has no hostname — Given: a run starts with an issue number — When: the run-status comment is first posted to the issue — Then: the comment body contains a <!-- zbuild-holder: --> HTML comment with the run_id and machine name (local runs) or the CI run URL (CI runs) — And: the claim label zbuild:claimed contains no hostname component
+- [DSCLA-1] When an issue-bound run starts and zbuild:claimed is absent, the label is added before the first stage dispatches — Given: a run is started with an issue number; zbuild:claimed is not on the issue — When: the run starts — Then: gh is called to add exactly the label zbuild:claimed to the issue (no hostname component in the label name) — And: no stage has yet been dispatched
+- [DSCLA-2] When a local run starts with an issue, rsc_render_header embeds the holder in the run-status comment header — Given: a local run (GITHUB_ACTIONS not true) starts with an issue number; the holder string is run_id=X machine=H — When: rsc_render_header is called with the run id and holder string — Then: the rendered header contains <!-- zbuild-holder: run_id=<id> machine=<hostname> -->
+- [DSCLA-12] When a CI run starts with an issue, the rendered run-status comment header contains the CI run URL as the holder — Given: a CI run (GITHUB_ACTIONS=true) starts with an issue number — When: rsc_render_header is called with the run id and the CI holder string — Then: the rendered header contains <!-- zbuild-holder: <GITHUB_SERVER_URL>/<GITHUB_REPOSITORY>/actions/runs/<GITHUB_RUN_ID> -->
 - [DSCLA-3] When a run starts on a claimed issue, it refuses with non-zero exit before any stage — Given: zbuild:claimed is already on the issue — When: a run is started on that issue — Then: the run exits non-zero — And: no stage is dispatched — And: pipeline.refused.claimed is emitted to the event bus
 - [DSCLA-9] When a run is refused because zbuild:claimed is on the issue, the run's output names the holder — Given: zbuild:claimed is on the issue; the existing run-status comment contains a <!-- zbuild-holder: --> field with the holder string — When: the run exits after finding zbuild:claimed on the issue — Then: the run's stdout or stderr output contains the holder string from the <!-- zbuild-holder: --> field
 - [DSCLA-5] On normal pipeline completion, zbuild:claimed is removed from the issue — Given: the claim was acquired at run start — When: the pipeline completes normally — Then: zbuild:claimed is absent from the issue
@@ -256,9 +258,11 @@ What each SPEC requires:
 
 ### REQUIREMENTS YOUR CODE MUST MEET
 Your change is done when the test for every requirement below passes.
-- [DSCLA-1] When an issue-bound run starts and zbuild:claimed is absent, the label is added before the first stage dispatches — Given: a run is started with an issue number; zbuild:claimed is not on the issue — When: the run starts — Then: zbuild:claimed is present on the issue — And: no stage has yet been dispatched
+- [DSCLA-1] When an issue-bound run starts and zbuild:claimed is absent, the label is added before the first stage dispatches — Given: a run is started with an issue number; zbuild:claimed is not on the issue — When: the run starts — Then: gh is called to add exactly the label zbuild:claimed to the issue (no hostname component in the label name) — And: no stage has yet been dispatched
   → its test is already written; make it pass
-- [DSCLA-2] When a run starts with an issue, the run-status comment identifies the holder; the label name has no hostname — Given: a run starts with an issue number — When: the run-status comment is first posted to the issue — Then: the comment body contains a <!-- zbuild-holder: --> HTML comment with the run_id and machine name (local runs) or the CI run URL (CI runs) — And: the claim label zbuild:claimed contains no hostname component
+- [DSCLA-2] When a local run starts with an issue, rsc_render_header embeds the holder in the run-status comment header — Given: a local run (GITHUB_ACTIONS not true) starts with an issue number; the holder string is run_id=X machine=H — When: rsc_render_header is called with the run id and holder string — Then: the rendered header contains <!-- zbuild-holder: run_id=<id> machine=<hostname> -->
+  → its test is already written; make it pass
+- [DSCLA-12] When a CI run starts with an issue, the rendered run-status comment header contains the CI run URL as the holder — Given: a CI run (GITHUB_ACTIONS=true) starts with an issue number — When: rsc_render_header is called with the run id and the CI holder string — Then: the rendered header contains <!-- zbuild-holder: <GITHUB_SERVER_URL>/<GITHUB_REPOSITORY>/actions/runs/<GITHUB_RUN_ID> -->
   → its test is already written; make it pass
 - [DSCLA-3] When a run starts on a claimed issue, it refuses with non-zero exit before any stage — Given: zbuild:claimed is already on the issue — When: a run is started on that issue — Then: the run exits non-zero — And: no stage is dispatched — And: pipeline.refused.claimed is emitted to the event bus
   → its test is already written; make it pass
@@ -291,7 +295,7 @@ Your change is done when the test for every requirement below passes.
 The latest output of every stage that has run, as far as it is about what
 your job takes (ask, tests, change, requirement-findings, code-findings and change-findings), with where to find it. Use what your job needs.
 
-Files this issue's work has changed so far: core/claim/claim.sh, core/pipeline/runner.sh, plugins/claim-coordinator/github-labels/plugin.sh, plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh, tests/integration/teardown-repeat-signal-test.sh
+Files this issue's work has changed so far: config/adr-enforcement-baseline.txt, config/event-schema.json, core/claim/claim.sh, core/pipeline/runner.sh, docs/adr/ADR-005-claim-coordinator.md, docs/adr/ADR-059-issue-vs-run-keying.md, plugins/claim-coordinator/github-labels/plugin.sh, plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh, scripts/lib/run-status-render.sh, tests/integration/teardown-repeat-signal-test.sh, tests/unit/lint-adr-enforced-by-test.sh
 
 ### intake (verdict: pass)
 Outputs:
@@ -344,10 +348,11 @@ Outputs:
 Summary:
 ## design — pass
 
-- 15 SPEC(s): DSCLA-1, DSCLA-2, DSCLA-3, DSCLA-9, DSCLA-5, DSCLA-6, DSCLA-7, DSCLA-8, DSCLA-10, DSCLA-11, DSADR-4, DSADR-5, DSADR-6, DSADR-7, DSADR-8
+- 16 SPEC(s): DSCLA-1, DSCLA-2, DSCLA-12, DSCLA-3, DSCLA-9, DSCLA-5, DSCLA-6, DSCLA-7, DSCLA-8, DSCLA-10, DSCLA-11, DSADR-4, DSADR-5, DSADR-6, DSADR-7, DSADR-8
 
-- DSCLA-1 (covers RQCLA-1, RQLAB-1): When an issue-bound run starts and zbuild:claimed is absent, the label is added before the first stage dispatches
-- DSCLA-2 (covers RQCLA-2, RQLAB-2): When a run starts with an issue, the run-status comment identifies the holder; the label name has no hostname
+- DSCLA-1 (covers RQCLA-1, RQLAB-1, RQLAB-2): When an issue-bound run starts and zbuild:claimed is absent, the label is added before the first stage dispatches
+- DSCLA-2 (covers RQCLA-2): When a local run starts with an issue, rsc_render_header embeds the holder in the run-status comment header
+- DSCLA-12 (covers RQCLA-2): When a CI run starts with an issue, the rendered run-status comment header contains the CI run URL as the holder
 - DSCLA-3 (covers RQCLA-3, RQCLA-9): When a run starts on a claimed issue, it refuses with non-zero exit before any stage
 - DSCLA-9 (covers RQCLA-4): When a run is refused because zbuild:claimed is on the issue, the run's output names the holder
 - DSCLA-5 (covers RQCLA-5): On normal pipeline completion, zbuild:claimed is removed from the issue
@@ -361,10 +366,9 @@ Summary:
 - DSADR-6 (covers RQADR-3): ADR-005 corrects stale content: coordinator selection is not from config/zbuild.yaml, and the engine now has a built-in claim mechanism
 - DSADR-7 (covers RQADR-4): ADR-005 has an ## Enforced by section naming the test or lint that enforces each statement
 - DSADR-8 (covers RQADR-5): ADR-059 §4 tells the reader that cross-machine exclusion is the claim coordinator's job and the admission lock (flock) handles intra-machine serialisation
-- answered: design finding 1: done** — Renamed DSCLA-11 → DSCLA-10 (event-schema coverage SPEC) and DSCLA-12 → DSCLA-11 ([done] run-status SPEC), making them sequential from the DSCLA-9 baseline.
-- answered: design finding 2: done** — Added `REMOVED: DSCLA-4 — RQCLA-4 is fully covered by DSCLA-9, which tests the observable runner output; keeping a separate assertion that _ZBUILD_CLAIM_HOLDER is internally set tests the same interaction path with no additional observable coverage`.
-- answered: design finding 3: done** — Replaced the DSCLA-8 `Then:` clause. It now reads `Then: zbuild_claim_acquire returns 0` and `And: no gh label command is invoked` — both are observable from a mocked `gh`.
-- not answered: test-author finding 1
+- answered: design finding 1: done — Moved RQLAB-2 coverage from DSCLA-2 (where the `And` was unobservable after calling `rsc_render_header`) to DSCLA-1. DSCLA-1's `Then` now reads "gh is called to add exactly the label `zbuild:claimed` to the issue (no hostname component in the label name)". A test mocks `gh` and checks the exact label argument — the label name is directly observable from that call.
+- answered: design finding 2: done — Removed `And: the claim label zbuild:claimed contains no hostname component` from DSCLA-2 and removed `RQLAB-2` from DSCLA-2's covers clause. DSCLA-2 now covers only RQCLA-2 (local render). RQLAB-2 is covered by DSCLA-1 as described above.
+- answered: test-author finding 1: done — DSCLA-2 is now purely the local render case (no hostname And, no RQLAB-2 in covers). DSCLA-12 covers the CI render case. Both explicitly state `When: rsc_render_header is called` and `Then: the rendered header contains <!-- zbuild-holder: ... -->`, so the test must call the renderer and inspect its output for both sub-cases.
 
 ### test-author (verdict: fail)
 Outputs:
@@ -373,21 +377,18 @@ Outputs:
 Summary:
 ## test-author — unusable
 
-- changed 2 test file(s); 1 finding(s) about its assertions are open — the next try fixes them
+- changed 1 test file(s); 2 finding(s) about its assertions are open — the next try fixes them
 
 - the test files, and the requirements each covers:
-- plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh — DSCLA-1, DSCLA-2, DSCLA-3, DSCLA-8, DSCLA-10
+- plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh — DSCLA-1, DSCLA-2, DSCLA-12, DSCLA-3, DSCLA-8, DSCLA-10
 - tests/integration/teardown-repeat-signal-test.sh — DSCLA-1, DSCLA-3, DSCLA-9, DSCLA-5, DSCLA-6, DSCLA-7, DSCLA-11
+- tests/unit/lint-adr-enforced-by-test.sh — DSADR-7
 - Each [code] requirement's test must fail on the code from before this change, and pass once the code is written.
-- answered: test-author finding 1: done — the [DSCLA-1/5] → [DSCLA-1] fix in the teardown test makes a proper [DSCLA-1]-tagged assertion appear: "zbuild:claimed was present before the first stage dispatched." The teardown's DSCLA-5 scenario starts a full runner with --issue; the stage plugin writes `_DSCLA5_PRESENT` only if the claim is already in the store when the stage runs — proving the claim was added before the first stage dispatched.
-- answered: test-author finding 2: done — added `<!-- zbuild-holder: -->` render assertion to the DSCLA-2 section of claim-coordinator-unit-test.sh. After `zbuild_claim_acquire` sets `_ZBUILD_CLAIM_HOLDER`, it sources `run-status-render.sh`, creates a minimal events.jsonl with `pipeline.start`, renders via `rsc_rows_json` + `rsc_render_header`, and asserts the header contains `<!-- zbuild-holder: run-dscla2-123`. Fails on base code (renderer has no holder output); passes on new code that adds it.
-- answered: test-author finding 3: wrong — a runner-based test for DSCLA-8 would PASS on base code too, since the base runner never calls the claim coordinator for a goal-only run (making no gh calls regardless). Only the direct `zbuild_claim_acquire ""` call correctly fails on base code (the function does not exist there) and passes on new code. The test tests the right observable behavior.
-- answered: test-author finding 4: wrong — the Then clause for DSCLA-10 is "the event-schema emitted-coverage check does not fail on pipeline.refused.claimed as an unregistered event." The only assertable thing is whether `pipeline.refused.claimed` appears in `config/event-schema.json`. Grepping the schema file correctly tests the Then and fails on base code (not present) and passes on new code (added). The Given/When in the SPEC describe the motivating scenario context, not test infrastructure that must be built.
-- answered: test-author finding 5: done — added the TERM signal exit path case to the DSCLA-11 section in teardown-repeat-signal-test.sh. Given: events.jsonl with only `pipeline.start`. When: `rsc_render_header` called with `"interrupted"` override (what the sidecar does when TERM arrives with no terminal event). Then: status header is not `**running**`. Passes on both old and new code (DSCLA-11 is [done]).
-- answered: test-author finding 6: done — fixed by changing `[DSCLA-1/5]` → `[DSCLA-1]`, which makes a properly-tagged [DSCLA-1] assertion appear in teardown-repeat-signal-test.sh.
-- answered: test-author finding 7: done — changed `[DSCLA-1/5]` to `[DSCLA-1]` (single SPEC tag).
-- answered: test-author finding 8: done — same fix as finding 7 (both occurrences were in the same if/else block, both changed).
-- answered: issue-acceptance finding 1: not mine — `config/event-schema.json` is an implementation file outside the test folders I may touch. My DSCLA-10 test asserts `pipeline.refused.claimed` is in that file and correctly fails on base code. The fix belongs to the code stage.
+- answered: test-author finding 1: done — the DSCLA-2 render sub-test block now has explicit `# Given: a local run (GITHUB_ACTIONS not true)…` and `# When: rsc_render_header is called with the run id and holder string` section labels above the `rsc_render_header` call, separating it from the `zbuild_claim_acquire` When section.
+- answered: test-author finding 2: done — DSCLA-12 grep changed from `grep -qF "<!-- zbuild-holder: $_dscla12_ci_url"` to `grep -qF "<!-- zbuild-holder: $_dscla12_ci_url -->"` and the assert_fail message updated to include `-->`. The assertion now fails if the closing comment marker is absent.
+- answered: test-author finding 3: wrong — the SPEC says "Given: the run is started with `--goal` and no `--issue`; Then: zbuild_claim_acquire returns 0; And: no gh label command is invoked." At unit level the engine calls `zbuild_claim_acquire ""` when no issue is given. Testing the function directly with `""` is the correct unit assertion for this SPEC, and it fails if the function returns non-zero or invokes gh.
+- answered: acceptance-gate finding 1: wrong — when `config/adr-enforcement-baseline.txt` is reverted to its old version (with ADR-005 present) while the working copy retains ADR-005's new `## Enforced by` section, `tests/unit/lint-adr-enforced-by-test.sh` produces two failures: `[A7] the real tree passes` (lint detects the stale baseline entry) and `[#1764/DSADR-7] ADR-005-claim-coordinator.md must be removed from config/adr-enforcement-baseline.txt`. Verified by running the test with the reverted baseline — 2 of 29 tests failed. The finding was valid when opened against an earlier iteration of the test file.
+- answered: issue-acceptance finding 1: not mine — the DSCLA-2 SPEC says "When: rsc_render_header is called with the run id and holder string; Then: the rendered header contains `<!-- zbuild-holder: run_id=<id> machine=<hostname> -->`". My test calls `rsc_render_header` in-process with `_ZBUILD_CLAIM_HOLDER` set and verifies the full comment format. The integration gap described — `_ZBUILD_CLAIM_HOLDER` set after the sidecar is spawned in `runner.sh` — is an implementation defect in `core/pipeline/runner.sh` that the code stage must fix; it is not a test-author gap.
 
 ### build (verdict: pass) — your own
 Outputs:
@@ -398,74 +399,71 @@ Outputs:
 Summary:
 ## build — pass
 
-- changed core/claim/claim.sh, core/pipeline/runner.sh, plugins/claim-coordinator/github-labels/plugin.sh (+187 / -0)
+- changed config/adr-enforcement-baseline.txt, config/event-schema.json, core/claim/claim.sh, docs/adr/ADR-005-claim-coordinator.md, docs/adr/ADR-059-issue-vs-run-keying.md, scripts/lib/run-status-render.sh (+53 / -62)
 
 - over 1 pass(es), 1 iteration(s)
-- no finding was open for it
+- answered: test finding 1: done — added `"pipeline.refused.claimed"` to `known_types` in `config/event-schema.json`
+- answered: shape-floor finding 1: wrong — `tests/golden/full-pipeline/event-sequence.golden` lists events from a normal pipeline run; `pipeline.refused.claimed` only fires on a refused run, never in a normal run. The golden file is correct as-is.
+- answered: shape-floor finding 2: wrong — `tests/golden/parity/event-sequence.golden` lists events from a normal parity run; `pipeline.refused.claimed` only fires on a refused run. The golden file is correct as-is.
+- answered: shape-floor finding 3: wrong — `tests/unit/template-simple-yaml-test.sh` checks the stage list from `simple.yaml`; this change adds nothing to that template. Test passes unchanged.
+- answered: shape-floor finding 4: wrong — `tests/unit/template-resolvability-preflight-test.sh` checks template resolvability, unaffected by a new event in event-schema.json. Test passes unchanged.
+- answered: shape-floor finding 5: wrong — `tests/unit/shape-floor-summary-plain-test.sh` checks the shape-floor mechanism itself, not event-schema counts. Test passes unchanged.
+- answered: shape-floor finding 6: wrong — `tests/unit/shape-floor-content-stable-test.sh` checks that an unchanged floor file stays stable; it doesn't reference event-schema counts. Test passes unchanged.
+- answered: shape-floor finding 7: wrong — `tests/unit/core-pipeline-template-test.sh` checks pipeline template logic, unaffected by a new event entry. Test passes unchanged.
+- answered: issue-acceptance finding 1: done — added `"pipeline.refused.claimed"` to `config/event-schema.json` `known_types`; `tests/unit/event-schema-emitted-coverage-test.sh` now passes all 23 assertions.
+- answered: issue-acceptance finding 2: not mine — removing the source of `core/claim/claim.sh` from `plugin.sh` would break the unit test `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh`, which sources only `plugin.sh` and then calls `zbuild_claim_acquire` (defined in `claim.sh`). The test file is read-only for this stage; the test-author stage must add an explicit `source "$REPO_ROOT/core/claim/claim.sh"` to the test so the coupling in `plugin.sh` can be removed.
 
 Your notes so far (where they disagree with a list or a result elsewhere in this prompt, the list or the result is right):
-# Build Notes — #1764 GitHub Label Claim
+# Build Notes — #1764 GitHub Label Claim (iteration 2 — COMPLETE)
 
-## What needs doing
+## Status: COMPLETE — all tests pass
 
-1. Create `core/claim/claim.sh` — defines `zbuild_claim_acquire` and `zbuild_claim_release`
-   using the backend primitives from `plugins/claim-coordinator/github-labels/plugin.sh`.
+## Changes made this iteration
 
-2. At end of `plugin.sh` — source `core/claim/claim.sh` so unit test gets functions.
+### config/event-schema.json
+- Added `"pipeline.refused.claimed"` to `known_types` (after `pipeline.refused.run_cap`)
+- Fixes: test finding 1, DSCLA-10
 
-3. In `runner.sh`:
-   - Source `core/claim/claim.sh` after issue-lock.sh (~line 31)
-   - Add `zbuild_claim_acquire` call after issue lock block (~line 2453)
-   - Add `zbuild_claim_release` call in `_runner_abort_trap` after issue lock release (~line 2675)
+### config/adr-enforcement-baseline.txt
+- Removed `ADR-005-claim-coordinator.md` now that ADR-005 has an `## Enforced by` section
 
-## Key behaviors
+### core/claim/claim.sh
+- Fixed `_ccgl_read_holder` for local-fs: now reads `run-status-comment.txt` and extracts
+  `<!-- zbuild-holder: ... -->` line instead of reading `holder.txt`
+- Fixed `_ccgl_read_holder` for gh: looks for `<!-- zbuild-run-status` comments instead of
+  `<!-- zbuild-claim` markers
+- Added `_ZBUILD_CLAIM_HOLDER="$holder"` on successful acquire (needed by DSCLA-2)
+- Removed `_ccgl_post_claim_comment` and `_ccgl_finish_claim_comment` functions (holder goes in
+  run-status comment via rsc_render_header, not in a separate gh issue comment)
+- Removed `_ccgl_post_claim_comment` call from `zbuild_claim_acquire`
+- Removed `_ccgl_finish_claim_comment` call from `zbuild_claim_release`
 
-### zbuild_claim_acquire <issue>
-- Empty issue / "0" → return 0 (DSCLA-8)
-- Backend error → return 0 gracefully
-- "zbuild:claimed" in labels → read holder.txt → set _ZBUILD_CLAIM_HOLDER → return 1 (DSCLA-3/4)
-- Not present → add "zbuild:claimed", write holder info, return 0 (DSCLA-1)
-  - local-fs: writes labels.txt (zbuild:claimed), comment.txt, holder.txt
-  - gh: calls `gh issue edit --add-label zbuild:claimed` + `gh issue comment --body <holder>` (DSCLA-2)
-- Holder string:
-  - CI (GITHUB_ACTIONS=true): "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-  - Local: "run_id=<ZBUILD_RUN_ID> machine=<machine>"
+### scripts/lib/run-status-render.sh
+- Added `<!-- zbuild-holder: ... -->` output in `rsc_render_header` after the run_id marker line
+  (only when `_ZBUILD_CLAIM_HOLDER` is non-empty)
 
-### zbuild_claim_release <issue>
-- Empty issue / "0" → return 0
-- _ZBUILD_CLAIM_ACQUIRED not set → return 0 (don't release a claim we didn't acquire)
-- Remove "zbuild:claimed" from labels (DSCLA-5/6/7)
-- Write "Status: finished" to comment.txt (DSCLA-5/6/7)
+### docs/adr/ADR-005-claim-coordinator.md
+- Added §1 (engine calls claim after admission lock and before first stage; release in EXIT path)
+- Added §2 (single `zbuild:claimed` label; holder in run-status comment)
+- Added §3 (corrects stale content: selection not from config/zbuild.yaml; engine now has built-in mechanism)
+- Added `## Enforced by` section naming tests per statement
 
-## Runner.sh wiring
+### docs/adr/ADR-059-issue-vs-run-keying.md
+- Added paragraph to §4 noting that the admission flock handles intra-machine serialisation only;
+  cross-machine exclusion is the claim coordinator's job (ADR-005 §1)
 
-After issue lock block (line 2452 ends the block):
-```bash
-# Cross-machine claim
-if declare -F zbuild_claim_acquire >/dev/null 2>&1; then
-    if ! zbuild_claim_acquire "${_runner_issue:-}"; then
-        eb_emit_event "pipeline.refused.claimed" ...
-        error "... ${_ZBUILD_CLAIM_HOLDER:-unknown}"
-        zbuild_issue_lock_release || true
-        zbuild_run_cap_release || true
-        return 1
-    fi
-fi
-```
+## Test results
+- plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: 26/26 pass
+- tests/integration/teardown-repeat-signal-test.sh: 21/21 pass
+- tests/unit/event-schema-emitted-coverage-test.sh: 23/23 pass
+- All shape-floor tests: pass
 
-In _runner_abort_trap, after zbuild_issue_lock_release (line 2674):
-```bash
-if declare -F zbuild_claim_release >/dev/null 2>&1; then
-    zbuild_claim_release "${_runner_issue:-}" || true
-fi
-```
-
-## SIGPIPE rules
-- Use `grep -q ... <<< "$var"` (here-string), never `echo | grep -q`
-- No `| head` in .sh files
-
-## Status
-- IN PROGRESS: writing code
+## Open issue-acceptance finding 2 (circular source)
+issue-acceptance finding 2 flags that plugin.sh sources core/claim/claim.sh. The design says
+"plugin.sh must not source claim.sh." However the unit test (claim-coordinator-unit-test.sh)
+sources only plugin.sh and then calls zbuild_claim_acquire. Without the circular source, the test
+would fail because zbuild_claim_acquire is defined in claim.sh. The test file is read-only for
+this stage. Answered as "not mine — requires a change to the read-only test file."
 
 ### test (verdict: fail)
 Outputs:
@@ -473,85 +471,27 @@ Outputs:
 - acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
 - shape_floor_detail: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-detail.md
 - shape_floor_result: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-result.json
-- test_errors: /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log
 - test_failures_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-failures-summary.md
 - test_output_log: /home/runner/work/_temp/zbuild-state/artifacts/test-output.log
 - test_results: /home/runner/work/_temp/zbuild-state/artifacts/test-results.json
 - test_timing: /home/runner/work/_temp/zbuild-state/artifacts/test-timing.log
 
 Findings:
-- test finding 1 (opened by test): tests/unit/event-schema-emitted-coverage-test.sh fails: ✗ emitted type 'pipeline.refused.claimed' is in the composed known set — not in config/event-schema.json nor any manifest's provides.events (and 1 more failing check in this file)
-- shape-floor finding 1 (opened by test): tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 2 (opened by test): tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 3 (opened by test): tests/unit/template-simple-yaml-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 4 (opened by test): tests/unit/template-resolvability-preflight-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 5 (opened by test): tests/unit/shape-floor-summary-plain-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 6 (opened by test): tests/unit/shape-floor-content-stable-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 7 (opened by test): tests/unit/core-pipeline-template-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- acceptance-gate finding 1 (opened by test): config/adr-enforcement-baseline.txt was put back to its old version on its own and every test still passed, so no test checks what this change does to it — add a test that fails without the change to it
 
 Summary:
 # Test stage summary
 
-- failed: tests/unit/event-schema-emitted-coverage-test.sh
-- verdict: fail
-- passed: 908
-- failed: 1
-- exit_code: 1
+- all 909 tests passed
+- verdict: pass
+- passed: 909
+- failed: 0
+- exit_code: 0
 
-## Failing files
-
-- tests/unit/event-schema-emitted-coverage-test.sh — ✗ emitted type 'pipeline.refused.claimed' is in the composed known set — not in config/event-schema.json nor any manifest's provides.events (and 1 more failing check in this file)
-
-## Failing lines (extracted)
-
-```
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.yisxBz/tests/unit/event-schema-emitted-coverage-test.sh
-  ✓ [#1951/R1] … and an engine namespace is not flagged
-  ✓ [#1951/SPEC-4] a test file that is missing is not taken as clean
-  ✓ [#1951/SPEC-6] the hardcoded plugin-namespace guard variable is absent from this file
-  1 of 23 tests failed
-  ✗ emitted type 'pipeline.refused.claimed' is in the composed known set
-```
+The suite ran to completion with no failing assertions.
 
 ## The checks of this run
-- the shape floor failed: missing_floor_files
-
-Errors it hit (last 4096B of /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log):
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.yisxBz/tests/unit/event-schema-emitted-coverage-test.sh
-
-[38;2;0;212;255m[1m  event-schema emitted-⊆-composed known types (all plugins + core)[0m
-[2m  ══════════════════════════════════════════[0m
-
-  [38;2;248;113;113m✗[0m emitted type 'pipeline.refused.claimed' is in the composed known set
-    [2mnot in config/event-schema.json nor any manifest's provides.events[0m
-  [38;2;74;222;128m✓[0m [SPEC-1717-1] every plugin-emitted event is declared in that plugin's own manifest
-  [38;2;74;222;128m✓[0m [SPEC-1717-3] acceptance.gate.wiring_not_on_path is declared by spec-acceptance itself
-  [38;2;74;222;128m✓[0m [SPEC-5] redaction.marker_neutralized is registered in event-schema.json known_types
-  [38;2;74;222;128m✓[0m [#2032] cycle.member_unfinished.suppressed_convergence is registered in event-schema.json known_types
-  [38;2;74;222;128m✓[0m [#1951/SPEC-1] event-schema.json carries no event in a plugin-owned namespace
-  [38;2;74;222;128m✓[0m [#1951/SPEC-2] no plugin manifest declares an event in an engine-owned namespace
-  [38;2;74;222;128m✓[0m [#1951/SPEC-3] persist.* events are absent from config/event-schema.json known_types
-  [38;2;74;222;128m✓[0m [#1951/SPEC-3] hydrate.* events are absent from config/event-schema.json known_types
-  [38;2;74;222;128m✓[0m [#1951/SPEC-3] persist plugin manifest declares at least one persist.* event (canonical declaration)
-  [38;2;74;222;128m✓[0m [#1951/SPEC-3] hydrate plugin manifest declares at least one hydrate.* event (canonical declaration)
-  [38;2;74;222;128m✓[0m [#1951/SPEC-4] plugin.result is absent from plugins/tool/merge/manifest.yaml provides.events
-  [38;2;74;222;128m✓[0m [#1951/SPEC-4] the [SPEC-1] plugin.result sub-assertion is absent from merge-v2-result-test.sh
-  [38;2;74;222;128m✓[0m [#1951/R2] plugin.<name>.* is the engine's for every plugin but pr-open
-  [38;2;74;222;128m✓[0m [#1951/R2] pr-open keeps plugin.pr_open.*
-  [38;2;74;222;128m✓[0m [#1951/R3] the engine's namespaces are read from ADR-001, not a list in this test
-  [38;2;74;222;128m✓[0m [#1951/R3] … including a namespace with a digit
-  [38;2;74;222;128m✓[0m [#1951/R2] an exception's namespace may carry a digit
-  [38;2;74;222;128m✓[0m [#1951/R1] a namespace is an event's first part, so a three-part event still claims it
-  [38;2;74;222;128m✓[0m [#1951/R1] engine config carries only the namespaces ADR-001 gives the engine
-  [38;2;74;222;128m✓[0m [#1951/R1] … and an engine namespace is not flagged
-  [38;2;74;222;128m✓[0m [#1951/SPEC-4] a test file that is missing is not taken as clean
-  [38;2;74;222;128m✓[0m [#1951/SPEC-6] the hardcoded plugin-namespace guard variable is absent from this file
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;248;113;113m[1m1 of 23 tests failed[0m
-
-  [38;2;248;113;113m✗[0m emitted type 'pipeline.refused.claimed' is in the composed known set
+- the acceptance check failed: the acceptance check failed — config/adr-enforcement-baseline.txt was put back to its old version on its own and every test still passed, so no test checks what this change does to it — add a test that fails without the change to it
 
 ### issue-acceptance (verdict: fail)
 Outputs:
@@ -559,16 +499,15 @@ Outputs:
 - issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
 
 Findings:
-- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: RQCLA-3: The refusal exits non-zero before any stage dispatches, but the accompanying emission `eb_emit_event "pipeline.refused.claimed"` is not registered in `config/event-schema.json` (which carries `pipeline.refused.issue_locked` and `pipeline.refused.run_cap` but not `pipeline.refused.claimed`) and is not in any plugin's `manifest.yaml`. `tests/unit/event-schema-emitted-coverage-test.sh` fails on this directly. — core/pipeline/runner.sh | eb_emit_event "pipeline.refused.claimed". What would settle it: a change that meets this requirement in full.
-- issue-acceptance finding 2 (opened by issue-acceptance): The change does this and no requirement asks for it: plugins/claim-coordinator/github-labels/plugin.sh now sources core/claim/claim.sh at the bottom, creating a circular source chain (claim.sh → plugin.sh → claim.sh, broken only by ZBUILD_CLAIM_SH_LOADED). No ISSUE REQUIREMENT asks plugin.sh to source claim.sh; it is needed only so the unit test, which sources plugin.sh directly, can call zbuild_claim_acquire.: No requirement names this coupling in plugin.sh; a test that needed it could source both files explicitly instead. — plugins/claim-coordinator/github-labels/plugin.sh | source "$_ccgl_plugin_dir/../../../core/claim/claim.sh". What would settle it: the change without this part, or a requirement that asks for it.
+- issue-acceptance finding 1 (opened by issue-acceptance): The issue requires this and the change does not meet it: RQCLA-2: `_ZBUILD_CLAIM_HOLDER` is set by `zbuild_claim_acquire` (in `core/claim/claim.sh`) AFTER the run-status sidecar is already spawned (`_runner_status_comment_spawn` at line ~2381 of `main()`, before the claim at line ~2456). The sidecar is a separate `exec bash` process and cannot see `_ZBUILD_CLAIM_HOLDER`—it is not exported, and was not set at spawn time. When the sidecar calls `rsc_render_header`, `${_ZBUILD_CLAIM_HOLDER:-}` is empty, so `<!-- zbuild-holder: -->` is never inserted. The test (`claim-coordinator-unit-test.sh` DSCLA-2) only calls `rsc_render_header` directly in-process with the variable manually set; it does not test the sidecar's ability to include the holder, so the gap is invisible to CI. — core/claim/claim.sh | _ZBUILD_CLAIM_HOLDER="$holder". What would settle it: a change that meets this requirement in full.
 
 Summary:
 ## issue-acceptance — fail
 
-- judged the change against the issue: 1 requirement(s) not met or not sure, 1 part(s) of the change no requirement asks for
+- judged the change against the issue: 1 requirement(s) not met or not sure
 
 - see result
-- no finding was open for it
+- answered: acceptance-gate finding 1: not mine — no ISSUE REQUIREMENT asks for the removal of `ADR-005-claim-coordinator.md` from `config/adr-enforcement-baseline.txt` to itself be tested. RQADR-4 (the `## Enforced by` section existing) is met; the baseline removal is a correct follow-on housekeeping step, but covering it with a test is a test-author task, not a product-owner judgment.
 
 ## What you must not do
 
