@@ -58,6 +58,22 @@ _ccgl_read_holder() {
 }
 
 
+# zbuild_claim_build_holder — set and export _ZBUILD_CLAIM_HOLDER for this run.
+# Must be called before the run-status sidecar is spawned (see runner.sh) so the
+# sidecar inherits the holder string via its environment and rsc_render_header can
+# embed it in <!-- zbuild-holder: --> (ADR-005 §2 / #1764).
+# zbuild_claim_acquire calls this automatically on the success path.
+zbuild_claim_build_holder() {
+    if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+        _ZBUILD_CLAIM_HOLDER="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-unknown}/actions/runs/${GITHUB_RUN_ID:-unknown}"
+    else
+        local run_id="${ZBUILD_RUN_ID:-}"
+        local machine; machine="$(_ccgl_machine_id)"
+        _ZBUILD_CLAIM_HOLDER="run_id=${run_id} machine=${machine}"
+    fi
+    export _ZBUILD_CLAIM_HOLDER
+}
+
 # zbuild_claim_acquire <issue> — acquire the cross-machine claim for <issue>.
 #
 # Sets _ZBUILD_CLAIM_HOLDER (global) and returns:
@@ -85,16 +101,11 @@ zbuild_claim_acquire() {
         return 1
     fi
 
-    # Build holder string (DSCLA-2); set _ZBUILD_CLAIM_HOLDER for rsc_render_header to embed.
-    local holder
-    if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
-        holder="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-unknown}/actions/runs/${GITHUB_RUN_ID:-unknown}"
-    else
-        local run_id="${ZBUILD_RUN_ID:-}"
-        local machine; machine="$(_ccgl_machine_id)"
-        holder="run_id=${run_id} machine=${machine}"
-    fi
-    _ZBUILD_CLAIM_HOLDER="$holder"
+    # Build and export holder string (DSCLA-2 / ADR-005 §2).
+    # zbuild_claim_build_holder is also called in runner.sh before the sidecar
+    # spawn so the sidecar inherits _ZBUILD_CLAIM_HOLDER; calling it again here
+    # keeps the in-process value consistent after the acquire.
+    zbuild_claim_build_holder
 
     # Add zbuild:claimed label; on failure, skip gracefully
     _ccgl_add_label "$issue" "zbuild:claimed" || return 0
