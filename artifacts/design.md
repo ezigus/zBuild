@@ -127,10 +127,10 @@ DSCLA-8[code]: A run with no issue number makes no claim and calls no coordinato
   When: the run starts
   Then: zbuild_claim_acquire returns 0
   And: no gh label command is invoked
-DSCLA-10[code]: pipeline.refused.claimed is an accepted event name that passes the schema coverage check covers: RQCLA-10
-  Given: zbuild:claimed is on the issue
-  When: the run is refused and emits pipeline.refused.claimed
-  Then: the event-schema emitted-coverage check does not fail on pipeline.refused.claimed as an unregistered event
+DSCLA-10[code]: The event-schema emitted-coverage check does not reject pipeline.refused.claimed as an unknown event covers: RQCLA-10
+  Given: runner.sh emits pipeline.refused.claimed during a run refusal
+  When: the event-schema emitted-coverage check runs against the codebase
+  Then: the check exits without reporting pipeline.refused.claimed as an unregistered event name
 DSCLA-11[done]: The run-status comment shows terminal status when the runner exits on any path covers: RQCLA-5, RQCLA-6, RQCLA-7 evidence: scripts/lib/run-status-render.sh | rsc_finalize_body() {
   When: the runner exits on any path (normal, failure, or signal)
   Then: the run-status comment's status header is not "running"
