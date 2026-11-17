@@ -11,4 +11,3 @@ core/pipeline/runner.sh
 core/pipeline/cycle-orchestrator.sh
 core/dispatch/*.sh
 config/event-schema.json
-core/claim/claim.sh
