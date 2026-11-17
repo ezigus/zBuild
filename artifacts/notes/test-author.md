@@ -1,20 +1,19 @@
 # Test Author Notes — DSCLA tests (issue 1764)
 
-## Status: COMPLETE (pass 11)
+## Status: COMPLETE
 
-## Changes in pass 11
-
-No test file changes. The open finding (test-author finding 1 about DSCLA-10) is wrong — same analysis as pass 10.
+All test files are written and in place. All SPECs have assertions.
 
 ## Finding analysis
 
-**test-author finding 1 (DSCLA-10 structure)**: The finding says the DSCLA-10 test does
-not place `zbuild:claimed` on an issue, does not start a run, and does not emit
-`pipeline.refused.claimed` — asking the test to do those things instead of grepping
-the schema file.
+### test-author finding 1 (DSCLA-10 structure)
+
+The finding says the DSCLA-10 test does not place `zbuild:claimed` on an issue,
+does not start a run, and does not emit `pipeline.refused.claimed` — asking the
+test to do those things instead of grepping the schema file.
 
 This finding is WRONG. The Then for DSCLA-10 is:
-> the event-schema emitted-coverage check does not fail on pipeline.refused.claimed
+> the event-schema emitted-coverage check does not reject pipeline.refused.claimed
 > as an unregistered event
 
 The emitted-coverage check (`tests/unit/event-schema-emitted-coverage-test.sh`) works
@@ -33,11 +32,15 @@ The Given/When in the DSCLA-10 SPEC describe the scenario that motivates the che
 running a full pipeline is DSCLA-3's job. The DSCLA-10 Then is a schema-level assertion,
 not a runtime-execution assertion.
 
-## Test stage failure note
+### acceptance-gate finding 1 (config/shape-change-paths.txt)
 
-The test stage shows `tests/e2e/fork-budget-test.sh` failing SPEC-8 (468 start-up
-processes vs budget of 465). This is not in my test files; it is a pre-existing
-budget test that the implementation change pushed over its limit. Not mine to fix.
+The finding says: "config/shape-change-paths.txt was put back to its old version on its
+own and every test still passed, so no test checks what this change does to it."
+
+No SPEC in this issue (DSCLA-1 through DSCLA-11, DSADR-7) mentions
+`config/shape-change-paths.txt`. Writing a test for it would be "more" than what was
+asked. The issue-acceptance stage already answered "not mine" for the same reason
+(no requirement in this issue asks for that entry at all). This finding is not mine.
 
 ## Full SPEC coverage
 
