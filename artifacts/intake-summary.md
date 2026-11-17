@@ -21,11 +21,4 @@
 - RQADR-5: Amend ADR-059 §4 to note that cross-machine exclusion is the claim coordinator's job, and the admission lock stays for one machine
 - RQMECH-1: Do not build a check of a CI job's status through the GitHub Actions API (limit)
 - RQMECH-2: Do not build a "do I still hold the claim" check before each stage (limit)
-- the requirements changed since the last run:
-  - added: RQCLA-9 When the `zbuild:claimed` label is present, the run emits the `pipeline.refused.claimed` event
-  - added: RQCLA-10 The `pipeline.refused.claimed` event is registered in `config/event-schema.json`
-  - added: RQADR-1 Amend ADR-005 (claim coordinator) with: the engine calls the coordinator `claim` after the admission lock and before the first stage, and `release` in the EXIT path
-  - added: RQADR-2 Amend ADR-005 with: the single shared label, and that the holder is in the run-status comment
-  - added: RQADR-3 Amend ADR-005 to correct the stale parts: selection is not from `config/zbuild.yaml`, and "the engine has no built-in mechanism" no longer holds once the engine calls the coordinator
-  - added: RQADR-4 The ADR-005 amendments must include an `## Enforced by` section naming the tests that enforce each statement
-  - added: RQADR-5 Amend ADR-059 §4 to note that cross-machine exclusion is the claim coordinator's job, and the admission lock stays for one machine
+- the issue is unchanged since the last run: its requirements were kept, with no model call
