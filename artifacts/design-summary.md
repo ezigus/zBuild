@@ -18,5 +18,4 @@
 - DSADR-6 (covers RQADR-3): ADR-005 corrects stale content: coordinator selection is not from config/zbuild.yaml, and the engine now has a built-in claim mechanism
 - DSADR-7 (covers RQADR-4): ADR-005 has an ## Enforced by section naming the test or lint that enforces each statement
 - DSADR-8 (covers RQADR-5): ADR-059 §4 tells the reader that cross-machine exclusion is the claim coordinator's job and the admission lock (flock) handles intra-machine serialisation
-- answered: test-author finding 1: not mine — The finding is about the test file's internal section headings (a missing `# Then:` heading in the test code). My design spec DSCLA-2 correctly specifies `Given:`, `When:`, and `Then:` sections. How the test author marks those sections inside the test file is the test author's job, not the design's.
-- answered: test-author finding 2: not mine — The finding is about the test file's internal section headings (the `And: no stage is dispatched` assertion appearing under a `# Then:` heading with no separate `# And:` marker). My design spec DSCLA-3 correctly specifies the `Then:` and `And:` lines. How the test author structures headings inside the test file is the test author's job, not the design's.
+- no finding was open for it

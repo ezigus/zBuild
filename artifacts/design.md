@@ -29,24 +29,35 @@ adds a machine-readable `<!-- zbuild-holder: ... -->` HTML comment immediately a
   `<!-- zbuild-holder: -->` line into a returned holder string.
 - Change `claim_coordinator_release` to remove `zbuild:claimed` (no machine suffix).
 - The `_ccgl_*` backend helpers remain and are used by the amended public functions.
-- `plugin.sh` must not source `core/claim/claim.sh` — that would create a circular dependency.
+- `plugin.sh` must not source `core/claim/claim.sh` — that would create a circular dependency
+  and add a startup `$(cd ...)` subshell in plugin.sh's load path.
 
 **New `core/claim/claim.sh`** (thin wiring bridge — no reimplemented logic):
-- Sources `plugins/claim-coordinator/github-labels/plugin.sh`.
-- `zbuild_claim_acquire <issue>`: skip if issue is empty; calls `claim_coordinator_claim`; on
-  `acquired=false`, sets `_ZBUILD_CLAIM_HOLDER` from the returned holder string and returns 1;
-  on success, sets `_ZBUILD_CLAIM_ACQUIRED` and returns 0. Backend errors return 0 (graceful).
+- Sources `plugins/claim-coordinator/github-labels/plugin.sh` using `$_ZBUILD_ROOT` (already
+  set by runner.sh before claim.sh is sourced) — not via a `$(cd ...)` subshell. Tests that
+  source claim.sh must set `_ZBUILD_ROOT` before sourcing it.
+- `zbuild_claim_build_holder`: builds and exports `_ZBUILD_CLAIM_HOLDER`; uses `${HOSTNAME}`
+  (bash built-in variable) for the machine name — never calls the external `hostname` command,
+  which would fork an extra process during startup.
+- `zbuild_claim_acquire <issue>`: skip if issue is empty; calls `_ccgl_read_labels` / `_ccgl_add_label`
+  / `_ccgl_read_holder` from the loaded plugin; on conflict, sets `_ZBUILD_CLAIM_HOLDER` from
+  the extracted holder string and returns 1; on success, sets `_ZBUILD_CLAIM_ACQUIRED` and
+  returns 0. Backend errors return 0 (graceful).
 - `zbuild_claim_release <issue>`: skip if issue is empty or `_ZBUILD_CLAIM_ACQUIRED` is unset;
-  calls `claim_coordinator_release` (advisory).
+  calls `_ccgl_remove_label` (advisory).
 
 **Wire into `core/pipeline/runner.sh`**: source `core/claim/claim.sh` at top (alongside
-`core/state/issue-lock.sh`); call `zbuild_claim_acquire` right after `zbuild_issue_lock_acquire`
-succeeds; on return 1, emit `pipeline.refused.claimed`, print holder, return 1 (same shape as
-issue-lock refusal); call `zbuild_claim_release` in `_runner_abort_trap` after
-`zbuild_issue_lock_release`, using `declare -F` guard.
+`core/state/issue-lock.sh`); call `zbuild_claim_build_holder` before the sidecar spawn so the
+sidecar inherits `_ZBUILD_CLAIM_HOLDER`; call `zbuild_claim_acquire` right after
+`zbuild_issue_lock_acquire` succeeds; on return 1, emit `pipeline.refused.claimed`, print holder,
+return 1 (same shape as issue-lock refusal); call `zbuild_claim_release` in `_runner_abort_trap`
+after `zbuild_issue_lock_release`, using `declare -F` guard.
 
 **Register `pipeline.refused.claimed`** in `config/event-schema.json` (follows pattern of
 `pipeline.refused.issue_locked`).
+
+**Register `core/claim/claim.sh`** in `config/shape-change-paths.txt`. Future changes to the
+claim bridge can alter what events runner.sh emits; the shape floor should detect them.
 
 **Amend ADR-005** per RQADR-1 through RQADR-4.
 
@@ -57,15 +68,20 @@ CI URL — in the comment body, not the label (RQLAB-2). Check-then-label is not
 two racing machines may both succeed. Known limitation; a strict mutex is out of scope (RQMECH-1,
 RQMECH-2).
 
+Startup process budget: the two new source calls (plugin.sh, claim.sh) are `source` builtins
+(no forks); `zbuild_claim_build_holder` uses `${HOSTNAME}` (bash built-in, no fork); no `$(cd ...)`
+subshells on the load path. Net startup-process cost of this change: 0.
+
 UNCLEAR: RQADR-2 | "the holder is in the run-status comment" — which comment is this? | Assumed:
 the ADR-064 run-status comment (`scripts/lib/run-status-comment.sh`), not a new one.
 
 ```steps
-- Amend plugins/claim-coordinator/github-labels/plugin.sh: change claim_coordinator_claim to use zbuild:claimed (single shared label, no machine suffix); change claim_coordinator_release to remove zbuild:claimed; add holder extraction from run-status comment on claim conflict; plugin.sh must not source core/claim/claim.sh | areas: plugins/claim-coordinator/github-labels/plugin.sh
+- Amend plugins/claim-coordinator/github-labels/plugin.sh: change claim_coordinator_claim to use zbuild:claimed (single shared label, no machine suffix); change claim_coordinator_release to remove zbuild:claimed; add holder extraction from run-status comment on claim conflict; remove any back-reference source of core/claim/claim.sh (circular dependency; also eliminates the _ccgl_plugin_dir=$(cd ...) subshell) | areas: plugins/claim-coordinator/github-labels/plugin.sh
 - Edit scripts/lib/run-status-render.sh: add <!-- zbuild-holder: CI_URL --> (CI) or <!-- zbuild-holder: run_id=X machine=H --> (local) in rsc_render_header after the run_id marker printf | areas: scripts/lib/run-status-render.sh
-- Create core/claim/claim.sh: thin wiring bridge that sources the plugin and delegates; zbuild_claim_acquire calls claim_coordinator_claim and sets _ZBUILD_CLAIM_HOLDER on conflict; zbuild_claim_release calls claim_coordinator_release; graceful degradation gates (no issue, NO_GITHUB, gh absent) | areas: core/claim/claim.sh
+- Create core/claim/claim.sh: thin wiring bridge; source plugin.sh using $\_ZBUILD\_ROOT (not $(cd ...) subshell); zbuild_claim_build_holder uses ${HOSTNAME} bash variable (not external hostname); zbuild_claim_acquire calls _ccgl_read_labels/_ccgl_add_label/_ccgl_read_holder; zbuild_claim_release calls _ccgl_remove_label; graceful degradation (no issue, backend error) | areas: core/claim/claim.sh
 - Register pipeline.refused.claimed in config/event-schema.json following the pattern of pipeline.refused.issue_locked | areas: config/event-schema.json
-- Wire core/claim/claim.sh into runner.sh: source at top; call zbuild_claim_acquire after zbuild_issue_lock_acquire; emit event + print holder + return 1 on refusal; call zbuild_claim_release in _runner_abort_trap with declare -F guard | areas: core/pipeline/runner.sh
+- Add core/claim/claim.sh to config/shape-change-paths.txt so future changes to the claim bridge trigger the shape floor | areas: config/shape-change-paths.txt
+- Wire core/claim/claim.sh into runner.sh: source at top; call zbuild_claim_build_holder before sidecar spawn; call zbuild_claim_acquire after zbuild_issue_lock_acquire; emit event + print holder + return 1 on refusal; call zbuild_claim_release in _runner_abort_trap with declare -F guard | areas: core/pipeline/runner.sh
 - Amend docs/adr/ADR-005-claim-coordinator.md: add §1 (engine calls claim/release after admission lock and before first stage, and release in EXIT path), §2 (single zbuild:claimed label; holder in run-status comment), §3 (stale content: selection not from config/zbuild.yaml; engine now has built-in mechanism), and ## Enforced by section naming tests per statement | areas: docs/adr/ADR-005-claim-coordinator.md
 - Amend docs/adr/ADR-059-issue-vs-run-keying.md §4: note that cross-machine exclusion is the claim coordinator's job and the admission flock stays for intra-machine serialisation | areas: docs/adr/ADR-059-issue-vs-run-keying.md
 ```
