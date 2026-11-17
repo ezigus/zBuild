@@ -216,8 +216,10 @@ else
         "_ZBUILD_CLAIM_HOLDER='${_ZBUILD_CLAIM_HOLDER:-}' (expected to contain 'testmachine-dscla2')"
 fi
 
-# Then: when the run-status comment is first posted, the body contains <!-- zbuild-holder: -->
-# (the runner embeds _ZBUILD_CLAIM_HOLDER into the run-status header render)
+# DSCLA-2 (render sub-test): rsc_render_header embeds the holder in the run-status comment header
+
+# Given: a local run (GITHUB_ACTIONS not true) starts with an issue number;
+#        the holder string is run_id=run-dscla2-123 machine=testmachine-dscla2
 # shellcheck source=../../../../scripts/lib/run-status-render.sh
 source "$REPO_ROOT/scripts/lib/run-status-render.sh"
 _dscla2_rsc_events="$TEST_TEMP_DIR/dscla2-rsc-events.jsonl"
@@ -225,6 +227,8 @@ printf '{"type":"pipeline.start","data":{"run_id":"run-dscla2-123","issue":1002}
     > "$_dscla2_rsc_events"
 _dscla2_rsc_model="$(rsc_rows_json "$_dscla2_rsc_events" 2>/dev/null || printf '{}')"
 _ZBUILD_CLAIM_HOLDER="run_id=run-dscla2-123 machine=testmachine-dscla2"
+
+# When: rsc_render_header is called with the run id and holder string
 _dscla2_rsc_hdr="$(rsc_render_header "$_dscla2_rsc_model" "$TEST_TEMP_DIR" 2>/dev/null || printf '')"
 if grep -qF '<!-- zbuild-holder: run_id=run-dscla2-123 machine=testmachine-dscla2 -->' <<< "${_dscla2_rsc_hdr:-}"; then
     assert_pass "[DSCLA-2] run-status comment header contains <!-- zbuild-holder: run_id=<id> machine=<hostname> -->"
@@ -288,11 +292,11 @@ _ZBUILD_CLAIM_HOLDER="$_dscla12_ci_url"
 _dscla12_hdr="$(rsc_render_header "$_dscla12_model" "$TEST_TEMP_DIR" 2>/dev/null || printf '')"
 
 # Then: the rendered header contains <!-- zbuild-holder: <CI_URL> -->
-if grep -qF "<!-- zbuild-holder: $_dscla12_ci_url" <<< "${_dscla12_hdr:-}"; then
+if grep -qF "<!-- zbuild-holder: $_dscla12_ci_url -->" <<< "${_dscla12_hdr:-}"; then
     assert_pass "[DSCLA-12] rendered header contains <!-- zbuild-holder: CI_URL -->"
 else
     assert_fail "[DSCLA-12] rendered header contains <!-- zbuild-holder: CI_URL -->" \
-        "CI holder not found in header; expected '<!-- zbuild-holder: $_dscla12_ci_url'; header: ${_dscla12_hdr:0:400}"
+        "CI holder not found in header; expected '<!-- zbuild-holder: $_dscla12_ci_url -->'; header: ${_dscla12_hdr:0:400}"
 fi
 
 # Cleanup: restore CI environment variables
