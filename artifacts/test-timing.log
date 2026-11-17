@@ -7819,3 +7819,298 @@ cpu 111 210 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.
 file 295 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.cFq3E7/tests/golden/golden-contracts-test.sh
 tier 359 golden
 tier 175268 lint
+run 5 targeted
+cpu 11398 18003 tests/integration/core-pipeline-runner-test.sh
+file 38445 tests/integration/core-pipeline-runner-test.sh
+cpu 763 1301 tests/integration/full-pipeline-sigint-test.sh
+file 1963 tests/integration/full-pipeline-sigint-test.sh
+cpu 1005 1758 tests/integration/sigint-aborts-pipeline-test.sh
+file 2528 tests/integration/sigint-aborts-pipeline-test.sh
+cpu 763 1283 tests/integration/sigterm-aborts-pipeline-test.sh
+file 1978 tests/integration/sigterm-aborts-pipeline-test.sh
+cpu 454 549 tests/e2e/zbuild-cli-verbs-test.sh
+file 1025 tests/e2e/zbuild-cli-verbs-test.sh
+cpu 177 313 plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
+file 1349 plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
+cpu 806 2295 tests/integration/acceptance-every-change-tested-test.sh
+file 3226 tests/integration/acceptance-every-change-tested-test.sh
+cpu 2067 2720 tests/integration/artifact-contract-test.sh
+file 6816 tests/integration/artifact-contract-test.sh
+cpu 2380 4256 tests/integration/artifact-snapshot-runner-test.sh
+file 6996 tests/integration/artifact-snapshot-runner-test.sh
+cpu 1526 2611 tests/integration/build-test-cycle-targeted-rerun-test.sh
+file 4083 tests/integration/build-test-cycle-targeted-rerun-test.sh
+cpu 283 392 tests/integration/cli-platform-scope-flags-test.sh
+file 711 tests/integration/cli-platform-scope-flags-test.sh
+cpu 7284 7199 tests/integration/build-test-cycle-fallthrough-to-review-test.sh
+file 14441 tests/integration/build-test-cycle-fallthrough-to-review-test.sh
+cpu 5835 9518 tests/integration/always-run-exit-paths-test.sh
+file 22127 tests/integration/always-run-exit-paths-test.sh
+cpu 2094 2539 tests/integration/core-pipeline-strategy-test.sh
+file 4890 tests/integration/core-pipeline-strategy-test.sh
+cpu 205 337 tests/integration/core-state-resume-exec-test.sh
+file 568 tests/integration/core-state-resume-exec-test.sh
+cpu 4962 7363 tests/integration/core-pipeline-cycle-orchestrator-test.sh
+file 14814 tests/integration/core-pipeline-cycle-orchestrator-test.sh
+cpu 1339 2444 tests/integration/cycle-abort-when-no-match-converges-test.sh
+file 3935 tests/integration/cycle-abort-when-no-match-converges-test.sh
+cpu 3741 5149 tests/integration/core-pipeline-verdict-indicators-test.sh
+file 12182 tests/integration/core-pipeline-verdict-indicators-test.sh
+cpu 691 1170 tests/integration/cycle-exit-when-success-test.sh
+file 2034 tests/integration/cycle-exit-when-success-test.sh
+cpu 3175 3683 tests/integration/cycle-blocked-real-artifact-test.sh
+file 7698 tests/integration/cycle-blocked-real-artifact-test.sh
+cpu 2055 3250 tests/integration/cycle-member-unfinished-no-convergence-test.sh
+file 5786 tests/integration/cycle-member-unfinished-no-convergence-test.sh
+cpu 3238 4762 tests/integration/cycle-gate-unavailable-aborts-run-test.sh
+file 8492 tests/integration/cycle-gate-unavailable-aborts-run-test.sh
+cpu 651 1200 tests/integration/cycle-nested-outer-converges-test.sh
+file 1900 tests/integration/cycle-nested-outer-converges-test.sh
+cpu 537 777 tests/integration/cycle-orchestrator-abort-when-test.sh
+file 1394 tests/integration/cycle-orchestrator-abort-when-test.sh
+cpu 2669 4006 tests/integration/cycle-rate-limit-aborts-run-test.sh
+file 7018 tests/integration/cycle-rate-limit-aborts-run-test.sh
+cpu 712 1373 tests/integration/cycle-seq-deep-nesting-test.sh
+file 2149 tests/integration/cycle-seq-deep-nesting-test.sh
+cpu 1080 798 tests/integration/deployed-template-e2e-test.sh
+file 1924 tests/integration/deployed-template-e2e-test.sh
+cpu 1415 2411 tests/integration/design-pipeline-test.sh
+file 6239 tests/integration/design-pipeline-test.sh
+cpu 1569 2128 tests/integration/dispatch-rc-signal-boundary-test.sh
+file 4705 tests/integration/dispatch-rc-signal-boundary-test.sh
+cpu 16715 24321 tests/integration/cycle-acceptance-terminal-failure-test.sh
+file 42102 tests/integration/cycle-acceptance-terminal-failure-test.sh
+cpu 18128 25277 tests/integration/cycle-on-max-pipeline-continues-test.sh
+file 41632 tests/integration/cycle-on-max-pipeline-continues-test.sh
+cpu 4663 6963 tests/integration/engine-run-branch-test.sh
+file 16054 tests/integration/engine-run-branch-test.sh
+cpu 2622 4682 tests/integration/from-stage-rehydrate-test.sh
+file 7723 tests/integration/from-stage-rehydrate-test.sh
+cpu 3898 6058 tests/integration/from-stage-resume-guard-test.sh
+file 10624 tests/integration/from-stage-resume-guard-test.sh
+cpu 8249 16386 tests/integration/from-stage-in-cycle-test.sh
+file 26654 tests/integration/from-stage-in-cycle-test.sh
+cpu 1138 1908 tests/integration/full-pipeline-seq-cardinal-test.sh
+file 4293 tests/integration/full-pipeline-seq-cardinal-test.sh
+cpu 3647 1610 tests/integration/full-pipeline-enforce-mode-test.sh
+file 5258 tests/integration/full-pipeline-enforce-mode-test.sh
+cpu 118 266 tests/integration/hard-kill-sweep-e2e-test.sh
+file 632 tests/integration/hard-kill-sweep-e2e-test.sh
+cpu 2824 5450 tests/integration/full-pipeline-cycle-seq-3level-test.sh
+file 8675 tests/integration/full-pipeline-cycle-seq-3level-test.sh
+cpu 358 560 tests/integration/install-copy-flow-test.sh
+file 1286 tests/integration/install-copy-flow-test.sh
+cpu 1035 1539 tests/integration/leaf-dispatch-role-bound-verdict-test.sh
+file 3235 tests/integration/leaf-dispatch-role-bound-verdict-test.sh
+cpu 2335 3374 tests/integration/map-members-reported-test.sh
+file 6656 tests/integration/map-members-reported-test.sh
+cpu 3401 6166 tests/integration/leaf-contract-violation-halts-test.sh
+file 10364 tests/integration/leaf-contract-violation-halts-test.sh
+cpu 3060 1084 tests/integration/orch-backend-misconfigured-test.sh
+file 4352 tests/integration/orch-backend-misconfigured-test.sh
+cpu 5760 4553 tests/integration/pipeline-preflight-missing-stage-test.sh
+file 20981 tests/integration/pipeline-preflight-missing-stage-test.sh
+cpu 7042 12070 tests/integration/per-run-state-isolation-test.sh
+file 26871 tests/integration/per-run-state-isolation-test.sh
+cpu 139 386 tests/integration/prior-work-reuse-integration-test.sh
+file 549 tests/integration/prior-work-reuse-integration-test.sh
+cpu 154 277 tests/integration/resume-24h-boundary-test.sh
+file 424 tests/integration/resume-24h-boundary-test.sh
+cpu 13346 22619 tests/integration/leaf-verdict-halts-test.sh
+file 37170 tests/integration/leaf-verdict-halts-test.sh
+cpu 1490 2203 tests/integration/pipeline-resume-test.sh
+file 4422 tests/integration/pipeline-resume-test.sh
+cpu 2040 3327 tests/integration/resume-after-sigint-test.sh
+file 5600 tests/integration/resume-after-sigint-test.sh
+cpu 1501 2478 tests/integration/resume-after-run-timeout-test.sh
+file 5958 tests/integration/resume-after-run-timeout-test.sh
+cpu 1200 2065 tests/integration/resume-latest-link-test.sh
+file 3425 tests/integration/resume-latest-link-test.sh
+cpu 3740 6695 tests/integration/resume-entry-points-test.sh
+file 10857 tests/integration/resume-entry-points-test.sh
+cpu 2573 4630 tests/integration/resume-fresh-run-test.sh
+file 7632 tests/integration/resume-fresh-run-test.sh
+cpu 1628 2888 tests/integration/resume-rehydrate-test.sh
+file 4756 tests/integration/resume-rehydrate-test.sh
+cpu 3212 5763 tests/integration/resume-rehydrate-paths-test.sh
+file 9423 tests/integration/resume-rehydrate-paths-test.sh
+cpu 2659 3731 tests/integration/run-cap-runner-test.sh
+file 8258 tests/integration/run-cap-runner-test.sh
+cpu 5082 4907 tests/integration/runner-cycle-on-max-halt-test.sh
+file 9998 tests/integration/runner-cycle-on-max-halt-test.sh
+cpu 947 1950 tests/integration/runner-exports-state-dir-test.sh
+file 3797 tests/integration/runner-exports-state-dir-test.sh
+cpu 142576 34800 tests/e2e/fork-budget-test.sh
+file 179923 tests/e2e/fork-budget-test.sh
+cpu 10473 15129 tests/integration/run-status-comment-runner-test.sh
+file 22347 tests/integration/run-status-comment-runner-test.sh
+cpu 1706 2512 tests/integration/runner-init-state-abort-test.sh
+file 5126 tests/integration/runner-init-state-abort-test.sh
+cpu 1320 2227 tests/integration/runner-job-control-regression-test.sh
+file 4208 tests/integration/runner-job-control-regression-test.sh
+cpu 3570 5768 tests/integration/runner-job-control-abort-test.sh
+file 10728 tests/integration/runner-job-control-abort-test.sh
+cpu 1553 1793 tests/integration/runner-state-file-issue-cross-check-test.sh
+file 4149 tests/integration/runner-state-file-issue-cross-check-test.sh
+cpu 428 363 tests/integration/self-host-snapshot-tracks-tree-test.sh
+file 741 tests/integration/self-host-snapshot-tracks-tree-test.sh
+cpu 3470 5474 tests/integration/run-timed-out-test.sh
+file 35883 tests/integration/run-timed-out-test.sh
+cpu 1460 1420 tests/integration/test-author-router-dispatch-test.sh
+file 2881 tests/integration/test-author-router-dispatch-test.sh
+cpu 481 639 tests/integration/worktree-ownership-test.sh
+file 1077 tests/integration/worktree-ownership-test.sh
+cpu 3077 5700 tests/integration/state-root-isolation-test.sh
+file 11740 tests/integration/state-root-isolation-test.sh
+cpu 256 787 tests/unit/artifact-persist-test.sh
+file 971 tests/unit/artifact-persist-test.sh
+cpu 234 411 tests/unit/attempt-archive-test.sh
+file 581 tests/unit/attempt-archive-test.sh
+cpu 3874 6377 tests/integration/teardown-repeat-signal-test.sh
+file 14215 tests/integration/teardown-repeat-signal-test.sh
+cpu 138 231 tests/unit/cli-mcp-flags-test.sh
+file 365 tests/unit/cli-mcp-flags-test.sh
+cpu 136 208 tests/unit/cli-session-flags-test.sh
+file 339 tests/unit/cli-session-flags-test.sh
+cpu 1435 1480 tests/unit/call-tools-test.sh
+file 2749 tests/unit/call-tools-test.sh
+cpu 138 171 tests/unit/core-contract-version-test.sh
+file 307 tests/unit/core-contract-version-test.sh
+cpu 677 774 tests/unit/clock-dirname-cost-test.sh
+file 1331 tests/unit/clock-dirname-cost-test.sh
+cpu 341 322 tests/unit/core-output-stage-io-blank-line-spacing-test.sh
+file 579 tests/unit/core-output-stage-io-blank-line-spacing-test.sh
+cpu 1373 1073 tests/unit/core-pipeline-runner-stage-timestamps-test.sh
+file 2248 tests/unit/core-pipeline-runner-stage-timestamps-test.sh
+cpu 2526 1691 tests/unit/core-pipeline-runner-stage-banner-goldens-test.sh
+file 3819 tests/unit/core-pipeline-runner-stage-banner-goldens-test.sh
+cpu 723 510 tests/unit/core-pipeline-strategy-test.sh
+file 1053 tests/unit/core-pipeline-strategy-test.sh
+cpu 96 115 tests/unit/cycle-on-max-continue-pipeline-status-test.sh
+file 206 tests/unit/cycle-on-max-continue-pipeline-status-test.sh
+cpu 1993 1370 tests/unit/design-all-checks-test.sh
+file 3313 tests/unit/design-all-checks-test.sh
+cpu 3848 6880 tests/integration/worktree-run-isolation-test.sh
+file 14485 tests/integration/worktree-run-isolation-test.sh
+cpu 76 113 tests/unit/dispatch-disposition-wiring-test.sh
+file 185 tests/unit/dispatch-disposition-wiring-test.sh
+cpu 78 220 tests/unit/dispatch-rc-guard-test.sh
+file 247 tests/unit/dispatch-rc-guard-test.sh
+cpu 582 1004 tests/unit/engine-stage-reports-test.sh
+file 1646 tests/unit/engine-stage-reports-test.sh
+cpu 45 121 tests/unit/env-scrub-test.sh
+file 162 tests/unit/env-scrub-test.sh
+cpu 55 121 tests/unit/exit-path-teardown-budget-guard-test.sh
+file 171 tests/unit/exit-path-teardown-budget-guard-test.sh
+cpu 8965 14981 tests/integration/runner-release-exit-paths-test.sh
+file 36450 tests/integration/runner-release-exit-paths-test.sh
+cpu 685 1606 tests/unit/head-on-run-branch-test.sh
+file 2456 tests/unit/head-on-run-branch-test.sh
+cpu 3741 5293 tests/unit/design-timeout-exhaustion-halt-1261-test.sh
+file 9357 tests/unit/design-timeout-exhaustion-halt-1261-test.sh
+cpu 1032 1288 tests/unit/issue-acceptance-unasked-test.sh
+file 2447 tests/unit/issue-acceptance-unasked-test.sh
+cpu 447 439 tests/unit/leaf-dispatch-verdict-resolution-parity-test.sh
+file 962 tests/unit/leaf-dispatch-verdict-resolution-parity-test.sh
+cpu 762 243 tests/unit/lint-adr-enforced-by-test.sh
+file 1053 tests/unit/lint-adr-enforced-by-test.sh
+cpu 674 496 tests/unit/leaf-resolvability-prewarm-test.sh
+file 1204 tests/unit/leaf-resolvability-prewarm-test.sh
+cpu 139 201 tests/unit/lint-multiline-test.sh
+file 367 tests/unit/lint-multiline-test.sh
+cpu 1537 1624 tests/unit/layout-writer-test.sh
+file 3683 tests/unit/layout-writer-test.sh
+cpu 7519 2895 tests/unit/discovery-cold-lookup-test.sh
+file 10832 tests/unit/discovery-cold-lookup-test.sh
+cpu 322 291 tests/unit/mechanics-yaml-registry-test.sh
+file 634 tests/unit/mechanics-yaml-registry-test.sh
+cpu 1819 1625 tests/unit/manifest-call-persona-test.sh
+file 3569 tests/unit/manifest-call-persona-test.sh
+cpu 1629 983 tests/unit/map-element-persona-test.sh
+file 2686 tests/unit/map-element-persona-test.sh
+cpu 1373 1172 tests/unit/no-line-numbers-test.sh
+file 2341 tests/unit/no-line-numbers-test.sh
+cpu 376 776 tests/unit/prior-work-reuse-contract-test.sh
+file 1145 tests/unit/prior-work-reuse-contract-test.sh
+cpu 85 190 tests/unit/process-group-isolation-test.sh
+file 472 tests/unit/process-group-isolation-test.sh
+cpu 213 293 tests/unit/result-read-memo-test.sh
+file 494 tests/unit/result-read-memo-test.sh
+cpu 114 201 tests/unit/orch-kill-uses-pg-kill-guard-test.sh
+file 3049 tests/unit/orch-kill-uses-pg-kill-guard-test.sh
+cpu 608 823 tests/unit/requires-core-resolution-test.sh
+file 1414 tests/unit/requires-core-resolution-test.sh
+cpu 534 534 tests/unit/retired-impact-review-report-inputs-test.sh
+file 1106 tests/unit/retired-impact-review-report-inputs-test.sh
+cpu 3179 5775 tests/unit/manifest-index-test.sh
+file 8205 tests/unit/manifest-index-test.sh
+cpu 706 746 tests/unit/run-open-items-test.sh
+file 1533 tests/unit/run-open-items-test.sh
+cpu 458 368 tests/unit/runner-abort-banner-stderr-test.sh
+file 849 tests/unit/runner-abort-banner-stderr-test.sh
+cpu 3908 2259 tests/unit/resume-default-test.sh
+file 6388 tests/unit/resume-default-test.sh
+cpu 2902 3258 tests/unit/run-limit-precedence-test.sh
+file 6429 tests/unit/run-limit-precedence-test.sh
+cpu 1782 2699 tests/unit/run-watchdog-clean-exit-test.sh
+file 4774 tests/unit/run-watchdog-clean-exit-test.sh
+cpu 463 394 tests/unit/runner-cycle-entry-banner-description-test.sh
+file 879 tests/unit/runner-cycle-entry-banner-description-test.sh
+cpu 948 2715 tests/unit/runner-contract-lib-seam-test.sh
+file 3695 tests/unit/runner-contract-lib-seam-test.sh
+cpu 65 114 tests/unit/runner-cycle-set-e-guard-test.sh
+file 192 tests/unit/runner-cycle-set-e-guard-test.sh
+cpu 478 350 tests/unit/runner-cycle-iter-divider-hierarchical-test.sh
+file 844 tests/unit/runner-cycle-iter-divider-hierarchical-test.sh
+cpu 175 279 tests/unit/runner-map-parallel-stage-envelope-test.sh
+file 478 tests/unit/runner-map-parallel-stage-envelope-test.sh
+cpu 524 591 tests/unit/runner-engine-provenance-test.sh
+file 1185 tests/unit/runner-engine-provenance-test.sh
+cpu 850 599 tests/unit/runner-inter-stage-blank-line-test.sh
+file 1535 tests/unit/runner-inter-stage-blank-line-test.sh
+cpu 506 363 tests/unit/runner-post-stage-capability-test.sh
+file 898 tests/unit/runner-post-stage-capability-test.sh
+cpu 454 355 tests/unit/runner-signal-rearm-test.sh
+file 840 tests/unit/runner-signal-rearm-test.sh
+cpu 1663 1195 tests/unit/runner-render-cycle-divider-test.sh
+file 2939 tests/unit/runner-render-cycle-divider-test.sh
+cpu 1086 429 tests/unit/runner-startup-preflight-test.sh
+file 1554 tests/unit/runner-startup-preflight-test.sh
+cpu 499 512 tests/unit/runner-status-comment-hook-test.sh
+file 2132 tests/unit/runner-status-comment-hook-test.sh
+cpu 4216 4706 tests/unit/runner-stage-dispatch-eb-emit-guard-test.sh
+file 9157 tests/unit/runner-stage-dispatch-eb-emit-guard-test.sh
+cpu 72 100 tests/unit/scope-governance-test.sh
+file 183 tests/unit/scope-governance-test.sh
+cpu 573 1081 tests/unit/shape-floor-content-stable-test.sh
+file 1748 tests/unit/shape-floor-content-stable-test.sh
+cpu 195 310 tests/unit/shape-floor-summary-plain-test.sh
+file 543 tests/unit/shape-floor-summary-plain-test.sh
+cpu 3139 3319 tests/unit/runner-unit-test.sh
+file 7199 tests/unit/runner-unit-test.sh
+cpu 9204 5520 tests/unit/runner-pipeline-end-test.sh
+file 15072 tests/unit/runner-pipeline-end-test.sh
+cpu 374 1038 tests/unit/shape-floor-test.sh
+file 1596 tests/unit/shape-floor-test.sh
+cpu 704 818 tests/unit/stage-housekeeping-cost-test.sh
+file 1594 tests/unit/stage-housekeeping-cost-test.sh
+cpu 733 1312 tests/unit/stage-work-saved-test.sh
+file 2170 tests/unit/stage-work-saved-test.sh
+cpu 39 120 tests/unit/test-output-sanitize-test.sh
+file 135 tests/unit/test-output-sanitize-test.sh
+cpu 601 1028 tests/unit/test-kill-tree-test.sh
+file 2584 tests/unit/test-kill-tree-test.sh
+cpu 1816 662 tests/unit/unclear-questions-shown-test.sh
+file 2564 tests/unit/unclear-questions-shown-test.sh
+cpu 3347 2717 tests/unit/template-resolvability-preflight-test.sh
+file 6256 tests/unit/template-resolvability-preflight-test.sh
+cpu 171 283 tests/unit/write-boundary-window-test.sh
+file 497 tests/unit/write-boundary-window-test.sh
+cpu 259 470 tests/unit/yaml-get-cache-test.sh
+file 763 tests/unit/yaml-get-cache-test.sh
+cpu 1557 5054 tests/unit/timeout-cmd-test.sh
+file 6830 tests/unit/timeout-cmd-test.sh
+cpu 14534 13711 tests/unit/runner-cycle-rc-action-mapping-test.sh
+file 28636 tests/unit/runner-cycle-rc-action-mapping-test.sh
+cpu 1800 2446 tests/unit/vision-admission-gate-test.sh
+file 5189 tests/unit/vision-admission-gate-test.sh

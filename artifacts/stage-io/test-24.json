@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "run_id": "20261116212112-2496",
+  "stage": "test",
+  "kind": "command",
+  "seq": 24,
+  "input": "npm\\ test",
+  "output": "unit 146/147 · FAIL: unit (exit 1)",
+  "exit_code": 1,
+  "duration_ms": 312779,
+  "metadata": {
+    "cwd": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Pq7hhb",
+    "verdict": "fail",
+    "passed": "146",
+    "failed": "1",
+    "exit_code": "1"
+  },
+  "ts": "2026-11-17T01:16:22Z"
+}
