@@ -68,45 +68,66 @@ set +e; claim_coordinator_heartbeat "99"; rc=$?; set -e
 assert_eq "claim_coordinator_heartbeat → rc=0" "0" "$rc"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# DSCLA-1: zbuild_claim_acquire adds zbuild:claimed (not claimed:<machine>)
-# when no claim is present, and returns 0
+# DSCLA-1: gh is called to add exactly zbuild:claimed when no claim is present
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Given: local-fs backend, issue 1001 has no existing claim
+# Given: a run is started with an issue number; zbuild:claimed is not on the issue
 _dscla1_issue="1001"
-mkdir -p "$ZBUILD_CLAIM_STORE/$_dscla1_issue"
-# Ensure labels.txt is absent or empty
-rm -f "$ZBUILD_CLAIM_STORE/$_dscla1_issue/labels.txt"
+_dscla1_calls="$TEST_TEMP_DIR/gh-calls-dscla1.txt"
+: > "$_dscla1_calls"
+
+# gh mock: records every invocation; returns no labels (zbuild:claimed absent)
+cat > "$TEST_TEMP_DIR/bin/gh" <<MOCK
+#!/usr/bin/env bash
+printf '%s\n' "\$@" >> "$_dscla1_calls"
+case "\${1:-}:\${2:-}:\${3:-}" in
+    issue:view:*)
+        echo ""
+        ;;
+    issue:edit:*)
+        ;;
+    *)
+        ;;
+esac
+exit 0
+MOCK
+chmod +x "$TEST_TEMP_DIR/bin/gh"
+
+export ZBUILD_CLAIM_BACKEND="gh"
+unset GITHUB_ACTIONS 2>/dev/null || true
+export ZBUILD_RUN_ID="${ZBUILD_RUN_ID:-test-run-dscla1}"
+export ZBUILD_CLAIM_MACHINE_ID="test-machine-dscla1"
 
 # Tight backoff so this test completes quickly
 export ZBUILD_CLAIM_BACKOFF_MIN_MS=5
 export ZBUILD_CLAIM_BACKOFF_MAX_MS=15
 
-export ZBUILD_RUN_ID="${ZBUILD_RUN_ID:-test-run-dscla1}"
-
-# When: zbuild_claim_acquire is called with the issue number
+# When: the run starts (zbuild_claim_acquire is called with the issue number)
 : > "$ZBUILD_EVENTS_JSONL"
 set +e; zbuild_claim_acquire "$_dscla1_issue"; _dscla1_rc=$?; set -e
 
 # Then: function returns 0 (claim acquired)
-assert_eq "[DSCLA-1] zbuild_claim_acquire returns 0 (claim acquired)" "0" "$_dscla1_rc"
+assert_eq "[DSCLA-1] zbuild_claim_acquire returns 0 when zbuild:claimed is absent" "0" "$_dscla1_rc"
 
-# Then: the zbuild:claimed label is present on the issue
-_dscla1_lf="$ZBUILD_CLAIM_STORE/$_dscla1_issue/labels.txt"
-if grep -Fxq "zbuild:claimed" "$_dscla1_lf" 2>/dev/null; then
-    assert_pass "[DSCLA-1] zbuild:claimed label is present in claim store"
+# Then: gh is called to add the label zbuild:claimed to the issue
+if grep -qF "zbuild:claimed" "$_dscla1_calls" 2>/dev/null; then
+    assert_pass "[DSCLA-1] gh is called to add zbuild:claimed to the issue"
 else
-    assert_fail "[DSCLA-1] zbuild:claimed label is present in claim store" \
-        "$(cat "$_dscla1_lf" 2>/dev/null || echo '<file missing>')"
+    assert_fail "[DSCLA-1] gh is called to add zbuild:claimed to the issue" \
+        "calls recorded: $(cat "$_dscla1_calls" 2>/dev/null || echo '<empty>')"
 fi
 
-# Then: the label is the constant zbuild:claimed with no hostname component
-if grep -q "^zbuild:claimed$" "$_dscla1_lf" 2>/dev/null; then
-    assert_pass "[DSCLA-1] label name is exactly zbuild:claimed (no hostname)"
+# Then: the label name is exactly zbuild:claimed — no hostname component (not claimed:<machine>)
+if ! grep -qE "claimed:[a-zA-Z0-9_-]" "$_dscla1_calls" 2>/dev/null; then
+    assert_pass "[DSCLA-1] label is exactly zbuild:claimed with no hostname suffix"
 else
-    assert_fail "[DSCLA-1] label name is exactly zbuild:claimed (no hostname)" \
-        "$(cat "$_dscla1_lf" 2>/dev/null || echo '<file missing>')"
+    assert_fail "[DSCLA-1] label is exactly zbuild:claimed with no hostname suffix" \
+        "hostname-specific label found: $(grep -oE 'claimed:[a-zA-Z0-9_-]+' "$_dscla1_calls" 2>/dev/null || echo '<none>')"
 fi
+
+# Cleanup: restore local-fs backend and plain gh mock for subsequent tests
+export ZBUILD_CLAIM_BACKEND="local-fs"
+mock_gh
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DSCLA-2: claim comment names holder; label has no hostname
@@ -203,12 +224,12 @@ _dscla2_rsc_events="$TEST_TEMP_DIR/dscla2-rsc-events.jsonl"
 printf '{"type":"pipeline.start","data":{"run_id":"run-dscla2-123","issue":1002},"ts":"2026-01-01T00:00:00Z"}\n' \
     > "$_dscla2_rsc_events"
 _dscla2_rsc_model="$(rsc_rows_json "$_dscla2_rsc_events" 2>/dev/null || printf '{}')"
-_ZBUILD_CLAIM_HOLDER="run-dscla2-123 testmachine-dscla2"
+_ZBUILD_CLAIM_HOLDER="run_id=run-dscla2-123 machine=testmachine-dscla2"
 _dscla2_rsc_hdr="$(rsc_render_header "$_dscla2_rsc_model" "$TEST_TEMP_DIR" 2>/dev/null || printf '')"
-if grep -qF '<!-- zbuild-holder: run-dscla2-123' <<< "${_dscla2_rsc_hdr:-}"; then
-    assert_pass "[DSCLA-2] run-status comment header contains <!-- zbuild-holder: --> with holder info"
+if grep -qF '<!-- zbuild-holder: run_id=run-dscla2-123 machine=testmachine-dscla2 -->' <<< "${_dscla2_rsc_hdr:-}"; then
+    assert_pass "[DSCLA-2] run-status comment header contains <!-- zbuild-holder: run_id=<id> machine=<hostname> -->"
 else
-    assert_fail "[DSCLA-2] run-status comment header contains <!-- zbuild-holder: --> with holder info" \
+    assert_fail "[DSCLA-2] run-status comment header contains <!-- zbuild-holder: run_id=<id> machine=<hostname> -->" \
         "holder not found in header; header: ${_dscla2_rsc_hdr:0:400}"
 fi
 
