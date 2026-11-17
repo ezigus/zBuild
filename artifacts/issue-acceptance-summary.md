@@ -1,6 +1,6 @@
-## issue-acceptance — pass
+## issue-acceptance — fail
 
-- judged the change against the issue: every requirement is met
+- judged the change against the issue: 0 requirement(s) not met or not sure, 2 part(s) of the change no requirement asks for
 
-- every requirement the issue states is met by the change
+- see result
 - no finding was open for it
