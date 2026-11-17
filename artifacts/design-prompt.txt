@@ -421,10 +421,10 @@ DSCLA-8[code]: A run with no issue number makes no claim and calls no coordinato
   When: the run starts
   Then: zbuild_claim_acquire returns 0
   And: no gh label command is invoked
-DSCLA-10[code]: pipeline.refused.claimed is an accepted event name that passes the schema coverage check covers: RQCLA-10
-  Given: zbuild:claimed is on the issue
-  When: the run is refused and emits pipeline.refused.claimed
-  Then: the event-schema emitted-coverage check does not fail on pipeline.refused.claimed as an unregistered event
+DSCLA-10[code]: The event-schema emitted-coverage check does not reject pipeline.refused.claimed as an unknown event covers: RQCLA-10
+  Given: runner.sh emits pipeline.refused.claimed during a run refusal
+  When: the event-schema emitted-coverage check runs against the codebase
+  Then: the check exits without reporting pipeline.refused.claimed as an unregistered event name
 DSCLA-11[done]: The run-status comment shows terminal status when the runner exits on any path covers: RQCLA-5, RQCLA-6, RQCLA-7 evidence: scripts/lib/run-status-render.sh | rsc_finalize_body() {
   When: the runner exits on any path (normal, failure, or signal)
   Then: the run-status comment's status header is not "running"
@@ -501,18 +501,20 @@ Outputs:
 - work_steps: /home/runner/work/_temp/zbuild-state/artifacts/design-steps.json
 
 Findings:
-- design finding 1 (opened by design): DSCLA-10: 2 parts to fix
-    DSCLA-10[code]: pipeline.refused.claimed is present in config/event-schema.json covers: RQCLA-10
-      When: config/event-schema.json is read [FIX IN DESIGN: "config/event-schema.json is read" says how a test performs the check (opens and reads a file), not a system action or trigger that the software responds to — say the situation, the action, or what can be seen — not how it is built or how a test does it]
-      Then: pipeline.refused.claimed is present among the registered event names [FIX IN DESIGN: "pipeline.refused.claimed is present among the registered event names" asserts what a static config file contains, not an output, result, or event the code produces after a system action; the instructions exclude "what a file or a test contains" from a valid Then — say what a test can see the code do after the When]
+- design finding 1 (opened by design): RQADR-4 is not covered: DSADR-7 extends the §1 Enforced by bullet to add DSCLA-3 and DSCLA-9, but no SPEC demands DSCLA-12 be added to the §2 Enforced by bullet; the amended ADR-005 §2 states "For CI runs the holder is the Actions run URL" — a new statement whose enforcing test is DSCLA-12 — yet the working-tree §2 bullet names only DSCLA-1 and DSCLA-2; DSADR-7 is silent about adding DSCLA-12, and no other SPEC covers it — must include an `## Enforced by` section naming the tests that enforce each statement [FIX IN DESIGN: add or widen a SPEC so it covers this]
+- design finding 2 (opened by design): DSCLA-10: 2 parts to fix
+    DSCLA-10[code]: pipeline.refused.claimed is registered in config/event-schema.json covers: RQCLA-10
+      When: config/event-schema.json is searched for the string "pipeline.refused.claimed" [FIX IN DESIGN: "config/event-schema.json is searched for the string" describes the method a test uses to inspect a file, not a system action whose observable result can be checked — say the situation, the action, or what can be seen — not how it is built or how a test does it]
+      Then: the string "pipeline.refused.claimed" is found in the file [FIX IN DESIGN: "the string … is found in the file" is what a file contains; a Then must be an observable output, result, or event, never what a file contains — say what a test can see the code do after the When]
 
 Summary:
 ## design — fail
 
-- the design fails 1 check(s)
+- the design fails 2 check(s)
 
 The findings are in design's result. This try is kept as the working copy for the next run; design.md is unchanged.
-- answered: test-author finding 1: done — DSCLA-10 rewritten. The original SPEC described an end-to-end run-refusal scenario (set up `zbuild:claimed`, refuse run, check schema coverage), but RQCLA-10 simply requires the event be registered in `config/event-schema.json`. The test-author's direct schema check is correct for the requirement. DSCLA-10 now reads: When config/event-schema.json is read, Then pipeline.refused.claimed is present among the registered event names. No Given needed; the [code] status is kept because adding the entry to the schema file is a code step (test fails on old code where it is absent).
+- answered: test-author finding 1: done — Rewrote DSCLA-10 as `[code]` with simplified Given/When/Then: `When: config/event-schema.json is searched for the string "pipeline.refused.claimed"` / `Then: the string "pipeline.refused.claimed" is found in the file`. This matches the grep-of-JSON-file approach; no coverage tool invocation required. The SPEC is `[code]` because the string is absent from the file before the change.
+- not answered: design finding 1
 
 Its last good output, from an earlier attempt:
 - /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-3-attempt-1/design-steps.json
@@ -545,37 +547,52 @@ Summary of that output:
 - answered: test-author finding 2: not mine — The finding is about the test file's internal section headings (the `And: no stage is dispatched` assertion appearing under a `# Then:` heading with no separate `# And:` marker). My design spec DSCLA-3 correctly specifies the `Then:` and `And:` lines. How the test author structures headings inside the test file is the test author's job, not the design's.
 
 Your notes so far (where they disagree with a list or a result elsewhere in this prompt, the list or the result is right):
-# Design notes — issue #1764 GitHub label claim (round 13)
+# Design notes — issue #1764 GitHub label claim (round 16)
 
 ## What was changed this round
 
-**DSCLA-10 rewritten** (test-author finding 1):
+### DSCLA-10: [no-code] → [code] with simplified Given/When/Then (test-author finding 1)
+The design-stage finding requires [code] (string absent from config/event-schema.json before this
+change). The [code] SPEC now has Given/When/Then that matches the test-author's grep approach:
+  When: config/event-schema.json is searched for the string "pipeline.refused.claimed"
+  Then: the string "pipeline.refused.claimed" is found in the file
+No "Given" (the JSON file existing is not a setup condition). The previous [code] version framed
+it around the coverage check tool; that was wrong because the observable assertion is about the
+file, not the tool's exit.
 
-The test-author found DSCLA-10's Given/When/Then described a full run-refusal scenario (set up
-zbuild:claimed on the issue, run is refused, event is emitted, schema coverage check passes),
-but RQCLA-10 simply requires the event be *registered* in `config/event-schema.json`. The
-test-author's implementation — grep config/event-schema.json for pipeline.refused.claimed — is
-correct for the requirement. The overcomplicated SPEC was blocking the test-author.
+### ADR-005 step: extended §1 Enforced by for §1(c) (issue-acceptance finding / RQADR-4)
+The working-tree ADR-005 already has §1–§3 and a partial ## Enforced by section. The existing §1
+bullet listed only DSCLA-1,5,6,7 (acquire and release). The design step now says to EXTEND the
+§1 bullet to also include §1(c)'s tests: DSCLA-3 (non-zero exit, no stage, event emitted) and
+DSCLA-9 (refused output names holder). Also adds DSCLA-12 to the §2 bullet.
 
-Fixed: removed the Given block; When is now "config/event-schema.json is read"; Then is now
-"pipeline.refused.claimed is present among the registered event names". Status stays [code]
-because adding the entry to config/event-schema.json is a code step (test fails on old code
-where the entry is absent and passes after it is added).
+### DSADR-7 updated to match
+The doc SPEC now explicitly names DSCLA-3 and DSCLA-9 as the enforcing tests for §1(c).
 
-## Round 12 findings (all resolved)
-
-### Fork budget: 3 extra startup processes (resolved round 12)
-- claim.sh uses `$_ZBUILD_ROOT` instead of `$(cd ...)` → 0 extra subshell
-- plugin.sh back-reference source removed → no `_ccgl_plugin_dir=$(cd ...)` subshell
-- zbuild_claim_build_holder uses `${HOSTNAME}` bash built-in (no fork)
-- Net extra startup processes: 0
-
-### Shape floor: claim.sh not registered (resolved round 12)
-- Added step: "Add core/claim/claim.sh to config/shape-change-paths.txt"
+### ADR-059 step: Enforced by for §4 cross-machine statement
+Issue-acceptance says no requirement asks for it, but CLAUDE.md mandates an Enforced by entry for
+every new/changed statement. The step stays. The §4 cross-machine text is already in the
+working-tree ADR-059; the missing Enforced by entry for it needs to be added.
 
 ## SPEC codes highest used
 DSCLA: 1-12 (DSCLA-4 removed via REMOVED line; DSCLA-10 = event-schema; DSCLA-11 = [done]; DSCLA-12 = CI render case)
 DSADR: 4-8 (all this issue)
+
+## ADR state in working tree
+
+### ADR-005 (working tree)
+Already has §1 (acquire, refuse, release lifecycle), §2 (single label, holder in comment),
+§3 (stale correction), and a partial ## Enforced by with:
+- §1 bullet: DSCLA-1, DSCLA-5, DSCLA-6, DSCLA-7 (missing §1(c): DSCLA-3, DSCLA-9)
+- §2 bullet: DSCLA-1, DSCLA-2 (missing DSCLA-12)
+
+Design step extends §1 and §2 bullets. That is the RQADR-4 fix.
+
+### ADR-059 (working tree)
+Already has §4 cross-machine text: "Cross-machine exclusion is the claim coordinator's job
+(ADR-005 §1): core/claim/claim.sh acquires zbuild:claimed..."
+## Enforced by section has §2/§4 amendment entry and others but no entry for the §4 cross-machine
+statement. Design step adds it, naming DSCLA-3.
 
 ## Key architectural decisions
 
@@ -596,6 +613,15 @@ No `$(cd ...)` subshell in either claim.sh or plugin.sh's load path.
 ADR-064 comment (scripts/lib/run-status-comment.sh), not a new one.
 Holder added via `<!-- zbuild-holder: -->` HTML comment in `rsc_render_header`.
 
+### ADR-005 §1 three-statement breakdown
+(a) engine calls claim after admission lock, before first stage → DSCLA-1, DSCLA-5/6/7
+(b) engine releases in every EXIT path → DSCLA-5, DSCLA-6, DSCLA-7
+(c) on conflict: emit pipeline.refused.claimed, print holder, return non-zero, no stage → DSCLA-3, DSCLA-9
+
+### ADR-059 §4 Enforced by
+New statement "cross-machine exclusion is the coordinator's job" → DSCLA-3.
+No requirement names this Enforced by entry; CLAUDE.md's rule mandates it for new statements.
+
 ## UNCLEAR
 RQADR-2: "holder is in the run-status comment." Assumed: ADR-064 comment
 (scripts/lib/run-status-comment.sh), not a new comment.
@@ -605,17 +631,17 @@ Outputs:
 - test_author_result: /home/runner/work/_temp/zbuild-state/artifacts/test-author-result.json
 
 Findings:
-- test-author finding 1 (opened by test-author): DSCLA-10 Given: the test does not set up zbuild:claimed on any issue; the block's own Given comment is about the schema file, not the issue label; When: the test does not refuse a run and does not emit pipeline.refused.claimed; it greps config/event-schema.json directly
-    DSCLA-10[code]: pipeline.refused.claimed is an accepted event name that passes the schema coverage check covers: RQCLA-10
-      Given: zbuild:claimed is on the issue [FIX IN TEST: the test does not set up zbuild:claimed on any issue; the block's own Given comment is about the schema file, not the issue label — set this up in the test]
-      When: the run is refused and emits pipeline.refused.claimed [FIX IN TEST: the test does not refuse a run and does not emit pipeline.refused.claimed; it greps config/event-schema.json directly — do this in the test]
-      Then: the event-schema emitted-coverage check does not fail on pipeline.refused.claimed as an unregistered event
+- test-author finding 1 (opened by test-author): DSCLA-10 Given: the test does not set up runner.sh emitting pipeline.refused.claimed during a run refusal; the only setup before the assertions is restoring the claim backend and resetting the gh mock (cleanup from DSCLA-8); When: the test does not invoke the event-schema emitted-coverage check (`tests/unit/event-schema-emitted-coverage-test.sh`) or any equivalent script against the codebase; it runs `grep -qF '"pipeline.refused.claimed"' "$REPO_ROOT/config/event-schema.json"` directly; Then: the test does not run the check and does not observe whether it exits without reporting the event as unregistered; it asserts that the literal string is present in the JSON file, which is a precondition for the check's behaviour, not an observation of the check's exit or output
+    DSCLA-10[code]: The event-schema emitted-coverage check does not reject pipeline.refused.claimed as an unknown event covers: RQCLA-10
+      Given: runner.sh emits pipeline.refused.claimed during a run refusal [FIX IN TEST: the test does not set up runner.sh emitting pipeline.refused.claimed during a run refusal; the only setup before the assertions is restoring the claim backend and resetting the gh mock (cleanup from DSCLA-8) — set this up in the test]
+      When: the event-schema emitted-coverage check runs against the codebase [FIX IN TEST: the test does not invoke the event-schema emitted-coverage check (`tests/unit/event-schema-emitted-coverage-test.sh`) or any equivalent script against the codebase; it runs `grep -qF '"pipeline.refused.claimed"' "$REPO_ROOT/config/event-schema.json"` directly — do this in the test]
+      Then: the check exits without reporting pipeline.refused.claimed as an unregistered event name [FIX IN TEST: the test does not run the check and does not observe whether it exits without reporting the event as unregistered; it asserts that the literal string is present in the JSON file, which is a precondition for the check's behaviour, not an observation of the check's exit or output — assert this, so the test fails when it is not so]
 
 Its last good output, from an earlier attempt:
 - /home/runner/work/_temp/zbuild-state/artifacts/attempts/test-author/iter-3-attempt-3/test-author-result.json
 - /home/runner/work/_temp/zbuild-state/artifacts/attempts/test-author/iter-3-attempt-3/test-author-summary.md
 
-### test (verdict: fail)
+### test (verdict: pass)
 Outputs:
 - acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
 - acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
@@ -628,10 +654,10 @@ Outputs:
 Summary:
 ## issue-acceptance — fail
 
-- judged the change against the issue: 0 requirement(s) not met or not sure, 1 part(s) of the change no requirement asks for
+- judged the change against the issue: 1 requirement(s) not met or not sure, 1 part(s) of the change no requirement asks for
 
 - see result
-- answered: acceptance-gate finding 1: not mine — the finding is correct: no test verifies that `core/claim/claim.sh` belongs in `config/shape-change-paths.txt`. As shown above under UNASKED, no requirement in this issue asks for that entry at all. Fixing it means either removing the entry or writing a test for it — both are code changes that belong to the build stage, not to this read-only acceptance judgment.
+- no finding was open for it
 
 ## What you must not do
 
