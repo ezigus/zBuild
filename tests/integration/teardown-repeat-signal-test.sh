@@ -415,6 +415,7 @@ else
         "runner exited 0 (should have refused)"
 fi
 
+# And: no stage was dispatched
 if [[ ! -e "$_DSCLA9_STARTED" ]]; then
     assert_pass "[DSCLA-9] no stage was dispatched when runner refused the claim"
 else
