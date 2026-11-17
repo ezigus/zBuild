@@ -1,81 +1,12 @@
-skip non-test: tests/golden/parity/run-fixture.sh
-skip non-test: tests/lib/test-helpers.sh
-skip non-test: tests/mutation/pipeline-contracts.md
-skip non-test: tests/mutation/run-status-comment.md
-skip non-test: tests/mutation/runner-fail-closed-mutations.md
-unit: FAIL tests/e2e/fork-budget-test.sh
 
-  fork budget: external execs of a mocked full run (#2151, ADR-065)
+> zbuild@0.1.0 test
+> bash tests/run-all.sh
 
+unit: 609/609 passed (4 skipped)
+integration: 263/263 passed
+e2e: 10/10 passed
+golden: 1/1 passed
+mutation: 25/25 passed
+lint: 1/1 passed
 
-  SPEC-1: a script with one external exec counts exactly 1
-/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Pq7hhb/tests/lib/fork-census.sh: line 26: BASH_XTRACEFD: 7: invalid value for trace file descriptor
-  ✓ [SPEC-1] the canary's one dirname is counted, its builtins are not
-  ✓ [SPEC-1] …and attributed to its call site
-/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Pq7hhb/tests/lib/fork-census.sh: line 26: BASH_XTRACEFD: 7: invalid value for trace file descriptor
-  ✓ [SPEC-1b] words inside an assigned value are not counted
-
-  SPEC-5: a marked wait is not counted
-/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Pq7hhb/tests/lib/fork-census.sh: line 26: BASH_XTRACEFD: 7: invalid value for trace file descriptor
-  ✓ [SPEC-5] only the unmarked sleep is counted (3 of 6)
-  ✓ [SPEC-5] …the marked one is listed apart
-
-  SPEC-2: the mocked full run under tracing
-  ✓ [SPEC-2] the mocked full run exits 0 under tracing
-  ✓ [SPEC-2] …and produced events.jsonl
-
-  SPEC-3/4: liveness floor and the budget
-  processes: 2442 (budget 2465)
-  external execs: 1814 (budget 1852) across 83 source files
-  top call sites:
-      109  event-bus.sh:273                   flock
-       57  git:47                             /usr/bin/git
-       56  helpers.sh:245                     mv
-       56  helpers.sh:229                     cat
-       48  git:36                             /usr/bin/git
-       44  git:16                             /usr/bin/git
-       28  discovery.sh:51                    find
-       27  write-boundary.sh:311              find
-       27  merge-base.sh:55                   git
-       24  helpers.sh:289                     stat
-       18  earlier-output.sh:59               jq
-       17  helpers.sh:81                      mv
-  exempt waits (not counted — their repeat count is elapsed time):
-       34  local_engine.sh:146                sleep
-  by file:
-      209  helpers.sh
-      149  git
-      145  plugin.sh
-      122  artifact-persist.sh
-      115  route.sh
-      109  event-bus.sh
-       51  atomic.sh
-       50  earlier-output.sh
-       44  write-boundary.sh
-       40  attempt-archive.sh
-  ✓ [SPEC-3] the trace is live (83 files, 1814 execs)
-  ✓ [SPEC-6] the worker pool's poll sleep is listed as an exempt wait
-  busiest counted pool line: 1 execs (2 work units)
-  ✓ [SPEC-6] …and no counted pool line runs more than once per work unit (max 1)
-  ✓ [SPEC-7] 2442 processes ≤ PROCESS_BUDGET 2465
-  ✓ [SPEC-4] 1814 external execs ≤ FORK_BUDGET 1852
-  ✓ [SPEC-8] the run with four lenses exits 0 under tracing
-  ✓ [SPEC-8] three more lenses are three more dispatches (9 → 12)
-  ✓ [SPEC-8] plugin manifests are found (39)
-  per dispatch (9 → 12): 516 processes (budget 543, floor 20), 310 execs (budget 330, floor 50)
-  start-up (468 processes, 232 execs over 39 plugins): 12 processes a plugin (budget 11, floor 1), 6 execs (budget 6, floor 1)
-  ✓ [SPEC-8] the start-up is traced (before the first dispatch, 363393)
-  ✓ [SPEC-8] 516 processes a dispatch ≤ DISPATCH_PROCS_BUDGET 543
-  ✓ [SPEC-8] 310 execs a dispatch ≤ DISPATCH_EXECS_BUDGET 330
-  ✗ [SPEC-8] 468 start-up processes ≤ STARTUP_PROCS_BUDGET 465
-    expected: 1, got: 0
-  ✓ [SPEC-8] 232 start-up execs ≤ STARTUP_EXECS_BUDGET 234
-  start-up per plugin: 12 processes (target 11), 6 execs (target 6)
-  ✓ [SPEC-8] each floor is below its budget: the goal still ahead
-
-
-  1 of 21 tests failed
-
-  ✗ [SPEC-8] 468 start-up processes ≤ STARTUP_PROCS_BUDGET 465
-
-unit: 146/147 passed
+total: 909/909 passed (4 skipped)

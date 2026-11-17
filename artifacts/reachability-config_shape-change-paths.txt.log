@@ -1,0 +1,218 @@
+### config/shape-change-paths.txt reverted plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
+
+[38;2;0;212;255m[1m  plugin: claim-coordinator/github-labels — local-fs backend[0m
+[2m  ══════════════════════════════════════════[0m
+
+{"acquired": true, "lease_id": "test-machine-1:42"}
+  [38;2;74;222;128m✓[0m claim_coordinator_claim → rc=0
+  [38;2;74;222;128m✓[0m claim store file created after claim
+  [38;2;74;222;128m✓[0m claimed label contains 'claimed:' prefix
+  [38;2;74;222;128m✓[0m claim_coordinator_release → rc=0
+  [38;2;74;222;128m✓[0m claimed label removed after release
+  [38;2;74;222;128m✓[0m list_claims returns [] after release
+{"acquired": true, "lease_id": "test-machine-1:99"}
+  [38;2;74;222;128m✓[0m claim_coordinator_heartbeat → rc=0
+  [38;2;74;222;128m✓[0m [DSCLA-1] zbuild_claim_acquire returns 0 when zbuild:claimed is absent
+  [38;2;74;222;128m✓[0m [DSCLA-1] gh is called to add zbuild:claimed to the issue
+  [38;2;74;222;128m✓[0m [DSCLA-1] label is exactly zbuild:claimed with no hostname suffix
+  [38;2;74;222;128m✓[0m [DSCLA-2] zbuild_claim_acquire returns 0 (claim acquired via gh)
+  [38;2;74;222;128m✓[0m [DSCLA-2] gh called with zbuild:claimed label
+  [38;2;74;222;128m✓[0m [DSCLA-2] label has no hostname component (machine-specific label not used)
+  [38;2;74;222;128m✓[0m [DSCLA-2] gh issue comment was NOT called (holder goes into run-status comment)
+  [38;2;74;222;128m✓[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains run_id after successful acquire
+  [38;2;74;222;128m✓[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains machine name after successful acquire
+  [38;2;74;222;128m✓[0m [DSCLA-2] run-status comment header contains <!-- zbuild-holder: run_id=<id> machine=<hostname> -->
+  [38;2;74;222;128m✓[0m [DSCLA-2] zbuild_claim_acquire returns 0 (CI mode)
+  [38;2;74;222;128m✓[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains CI run URL when GITHUB_ACTIONS=true
+  [38;2;74;222;128m✓[0m [DSCLA-12] rendered header contains <!-- zbuild-holder: CI_URL -->
+  [38;2;74;222;128m✓[0m [DSCLA-3] zbuild_claim_acquire returns 1 when zbuild:claimed is present
+  [38;2;74;222;128m✓[0m zbuild_claim_acquire returns 1 when issue already claimed (pre-stage check)
+  [38;2;74;222;128m✓[0m _ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim
+  [38;2;74;222;128m✓[0m _ZBUILD_CLAIM_HOLDER contains holder string from run-status comment
+  [38;2;74;222;128m✓[0m [DSCLA-8] no gh calls made for empty issue
+  [38;2;74;222;128m✓[0m [DSCLA-8] zbuild_claim_acquire returns 0 for empty issue
+  [38;2;74;222;128m✓[0m [DSCLA-10] pipeline.refused.claimed is in config/event-schema.json known_types
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 27 tests passed[0m
+
+### config/shape-change-paths.txt head plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
+
+[38;2;0;212;255m[1m  plugin: claim-coordinator/github-labels — local-fs backend[0m
+[2m  ══════════════════════════════════════════[0m
+
+{"acquired": true, "lease_id": "test-machine-1:42"}
+  [38;2;74;222;128m✓[0m claim_coordinator_claim → rc=0
+  [38;2;74;222;128m✓[0m claim store file created after claim
+  [38;2;74;222;128m✓[0m claimed label contains 'claimed:' prefix
+  [38;2;74;222;128m✓[0m claim_coordinator_release → rc=0
+  [38;2;74;222;128m✓[0m claimed label removed after release
+  [38;2;74;222;128m✓[0m list_claims returns [] after release
+{"acquired": true, "lease_id": "test-machine-1:99"}
+  [38;2;74;222;128m✓[0m claim_coordinator_heartbeat → rc=0
+  [38;2;74;222;128m✓[0m [DSCLA-1] zbuild_claim_acquire returns 0 when zbuild:claimed is absent
+  [38;2;74;222;128m✓[0m [DSCLA-1] gh is called to add zbuild:claimed to the issue
+  [38;2;74;222;128m✓[0m [DSCLA-1] label is exactly zbuild:claimed with no hostname suffix
+  [38;2;74;222;128m✓[0m [DSCLA-2] zbuild_claim_acquire returns 0 (claim acquired via gh)
+  [38;2;74;222;128m✓[0m [DSCLA-2] gh called with zbuild:claimed label
+  [38;2;74;222;128m✓[0m [DSCLA-2] label has no hostname component (machine-specific label not used)
+  [38;2;74;222;128m✓[0m [DSCLA-2] gh issue comment was NOT called (holder goes into run-status comment)
+  [38;2;74;222;128m✓[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains run_id after successful acquire
+  [38;2;74;222;128m✓[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains machine name after successful acquire
+  [38;2;74;222;128m✓[0m [DSCLA-2] run-status comment header contains <!-- zbuild-holder: run_id=<id> machine=<hostname> -->
+  [38;2;74;222;128m✓[0m [DSCLA-2] zbuild_claim_acquire returns 0 (CI mode)
+  [38;2;74;222;128m✓[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains CI run URL when GITHUB_ACTIONS=true
+  [38;2;74;222;128m✓[0m [DSCLA-12] rendered header contains <!-- zbuild-holder: CI_URL -->
+  [38;2;74;222;128m✓[0m [DSCLA-3] zbuild_claim_acquire returns 1 when zbuild:claimed is present
+  [38;2;74;222;128m✓[0m zbuild_claim_acquire returns 1 when issue already claimed (pre-stage check)
+  [38;2;74;222;128m✓[0m _ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim
+  [38;2;74;222;128m✓[0m _ZBUILD_CLAIM_HOLDER contains holder string from run-status comment
+  [38;2;74;222;128m✓[0m [DSCLA-8] no gh calls made for empty issue
+  [38;2;74;222;128m✓[0m [DSCLA-8] zbuild_claim_acquire returns 0 for empty issue
+  [38;2;74;222;128m✓[0m [DSCLA-10] pipeline.refused.claimed is in config/event-schema.json known_types
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 27 tests passed[0m
+
+### config/shape-change-paths.txt reverted tests/integration/teardown-repeat-signal-test.sh
+
+[38;2;0;212;255m[1m  a second signal during teardown does not cut it short (ADR-054 §7)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [T1] release finishes despite a second TERM
+  [38;2;74;222;128m✓[0m [T2] persist still runs after it
+  [38;2;74;222;128m✓[0m [T3] the run ends through its handler under repeated TERM (rc 1)
+  [38;2;74;222;128m✓[0m [T4a] release finishes under repeated TERM
+  [38;2;74;222;128m✓[0m [T4b] persist runs under repeated TERM
+  [38;2;74;222;128m✓[0m [T5] the stage is not run again
+  [38;2;74;222;128m✓[0m [DSCLA-1] zbuild:claimed was present before the first stage dispatched
+  [38;2;74;222;128m✓[0m [DSCLA-5] zbuild:claimed absent after normal pipeline completion
+  [38;2;74;222;128m✓[0m [DSCLA-6] zbuild:claimed was present during failure run
+  [38;2;74;222;128m✓[0m [DSCLA-6] zbuild:claimed absent after pipeline failure
+  [38;2;74;222;128m✓[0m [DSCLA-7] zbuild:claimed was present before stage started
+  [38;2;74;222;128m✓[0m [DSCLA-7] zbuild:claimed absent after TERM signal
+  [38;2;74;222;128m✓[0m [DSCLA-9] runner output contains holder string when zbuild:claimed is present
+  [38;2;74;222;128m✓[0m [DSCLA-9] runner exits non-zero when zbuild:claimed is present
+  [38;2;74;222;128m✓[0m [DSCLA-3] runner exits non-zero when zbuild:claimed is present
+  [38;2;74;222;128m✓[0m [DSCLA-9] no stage was dispatched when runner refused the claim
+  [38;2;74;222;128m✓[0m [DSCLA-3] no stage was dispatched when runner refused the claim
+  [38;2;74;222;128m✓[0m [DSCLA-3] pipeline.refused.claimed event emitted to event bus
+  [38;2;74;222;128m✓[0m [DSCLA-11] run-status comment does not show 'running' when pipeline.end is present
+  [38;2;74;222;128m✓[0m [DSCLA-11] run-status comment does not show 'running' on pipeline failure
+  [38;2;74;222;128m✓[0m [DSCLA-11] run-status comment does not show 'running' on TERM signal exit
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 21 tests passed[0m
+
+### config/shape-change-paths.txt head tests/integration/teardown-repeat-signal-test.sh
+
+[38;2;0;212;255m[1m  a second signal during teardown does not cut it short (ADR-054 §7)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [T1] release finishes despite a second TERM
+  [38;2;74;222;128m✓[0m [T2] persist still runs after it
+  [38;2;74;222;128m✓[0m [T3] the run ends through its handler under repeated TERM (rc 1)
+  [38;2;74;222;128m✓[0m [T4a] release finishes under repeated TERM
+  [38;2;74;222;128m✓[0m [T4b] persist runs under repeated TERM
+  [38;2;74;222;128m✓[0m [T5] the stage is not run again
+  [38;2;74;222;128m✓[0m [DSCLA-1] zbuild:claimed was present before the first stage dispatched
+  [38;2;74;222;128m✓[0m [DSCLA-5] zbuild:claimed absent after normal pipeline completion
+  [38;2;74;222;128m✓[0m [DSCLA-6] zbuild:claimed was present during failure run
+  [38;2;74;222;128m✓[0m [DSCLA-6] zbuild:claimed absent after pipeline failure
+  [38;2;74;222;128m✓[0m [DSCLA-7] zbuild:claimed was present before stage started
+  [38;2;74;222;128m✓[0m [DSCLA-7] zbuild:claimed absent after TERM signal
+  [38;2;74;222;128m✓[0m [DSCLA-9] runner output contains holder string when zbuild:claimed is present
+  [38;2;74;222;128m✓[0m [DSCLA-9] runner exits non-zero when zbuild:claimed is present
+  [38;2;74;222;128m✓[0m [DSCLA-3] runner exits non-zero when zbuild:claimed is present
+  [38;2;74;222;128m✓[0m [DSCLA-9] no stage was dispatched when runner refused the claim
+  [38;2;74;222;128m✓[0m [DSCLA-3] no stage was dispatched when runner refused the claim
+  [38;2;74;222;128m✓[0m [DSCLA-3] pipeline.refused.claimed event emitted to event bus
+  [38;2;74;222;128m✓[0m [DSCLA-11] run-status comment does not show 'running' when pipeline.end is present
+  [38;2;74;222;128m✓[0m [DSCLA-11] run-status comment does not show 'running' on pipeline failure
+  [38;2;74;222;128m✓[0m [DSCLA-11] run-status comment does not show 'running' on TERM signal exit
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 21 tests passed[0m
+
+### config/shape-change-paths.txt reverted tests/unit/lint-adr-enforced-by-test.sh
+
+[38;2;0;212;255m[1m  every ADR names the tests that enforce it (#2268)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [A1] a live ADR with no section fails
+  [38;2;74;222;128m✓[0m [A1] the failure names the ADR
+  [38;2;74;222;128m✓[0m [A2] a named test that does not exist fails
+  [38;2;74;222;128m✓[0m [A2] the failure names the missing file
+  [38;2;74;222;128m✓[0m [A3] a section naming existing tests passes
+  [38;2;74;222;128m✓[0m [A4] superseded and deprecated ADRs need no section
+  [38;2;74;222;128m✓[0m [A5] a baseline entry for an ADR that now has its section fails
+  [38;2;74;222;128m✓[0m [A5] it says to remove the entry
+  [38;2;74;222;128m✓[0m [A6] a baseline entry with no ADR fails
+  [38;2;74;222;128m✓[0m [A6] it names the stale entry
+  [38;2;74;222;128m✓[0m [A7] the real tree passes
+  [38;2;74;222;128m✓[0m [A8] the issue form requires the ADR § field
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-011 carries an ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-017 carries an ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-011.md is not in the enforcement baseline (it has its section)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-017.md is not in the enforcement baseline (it has its section)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-011 ## Enforced by: every § statement maps to a test file (5 statement(s))
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-017 ## Enforced by: every § statement maps to a test file (7 statement(s))
+  [38;2;74;222;128m✓[0m [A9] a section that names no test fails
+  [38;2;74;222;128m✓[0m [A9] it says the section names no test
+  [38;2;74;222;128m✓[0m [A11] a missing .github file named in the section fails
+  [38;2;74;222;128m✓[0m [A11] it names the missing file
+  [38;2;74;222;128m✓[0m [A10] a superseded ADR left in the baseline fails
+  [38;2;74;222;128m✓[0m [A10] it says to remove the entry
+  [38;2;74;222;128m✓[0m [#1951/SPEC-5] ADR-001-plugin-contract.md carries an ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1951/SPEC-5] ADR-001 ## Enforced by names tests/unit/event-schema-emitted-coverage-test.sh
+  [38;2;74;222;128m✓[0m [#1951/SPEC-5] ADR-001-plugin-contract.md is not in config/adr-enforcement-baseline.txt
+  [38;2;74;222;128m✓[0m [#1764/DSADR-7] ADR-005-claim-coordinator.md carries an ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1764/DSADR-7] ADR-005-claim-coordinator.md is not in config/adr-enforcement-baseline.txt
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 29 tests passed[0m
+
+### config/shape-change-paths.txt head tests/unit/lint-adr-enforced-by-test.sh
+
+[38;2;0;212;255m[1m  every ADR names the tests that enforce it (#2268)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [A1] a live ADR with no section fails
+  [38;2;74;222;128m✓[0m [A1] the failure names the ADR
+  [38;2;74;222;128m✓[0m [A2] a named test that does not exist fails
+  [38;2;74;222;128m✓[0m [A2] the failure names the missing file
+  [38;2;74;222;128m✓[0m [A3] a section naming existing tests passes
+  [38;2;74;222;128m✓[0m [A4] superseded and deprecated ADRs need no section
+  [38;2;74;222;128m✓[0m [A5] a baseline entry for an ADR that now has its section fails
+  [38;2;74;222;128m✓[0m [A5] it says to remove the entry
+  [38;2;74;222;128m✓[0m [A6] a baseline entry with no ADR fails
+  [38;2;74;222;128m✓[0m [A6] it names the stale entry
+  [38;2;74;222;128m✓[0m [A7] the real tree passes
+  [38;2;74;222;128m✓[0m [A8] the issue form requires the ADR § field
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-011 carries an ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-017 carries an ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-011.md is not in the enforcement baseline (it has its section)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-017.md is not in the enforcement baseline (it has its section)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-011 ## Enforced by: every § statement maps to a test file (5 statement(s))
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-017 ## Enforced by: every § statement maps to a test file (7 statement(s))
+  [38;2;74;222;128m✓[0m [A9] a section that names no test fails
+  [38;2;74;222;128m✓[0m [A9] it says the section names no test
+  [38;2;74;222;128m✓[0m [A11] a missing .github file named in the section fails
+  [38;2;74;222;128m✓[0m [A11] it names the missing file
+  [38;2;74;222;128m✓[0m [A10] a superseded ADR left in the baseline fails
+  [38;2;74;222;128m✓[0m [A10] it says to remove the entry
+  [38;2;74;222;128m✓[0m [#1951/SPEC-5] ADR-001-plugin-contract.md carries an ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1951/SPEC-5] ADR-001 ## Enforced by names tests/unit/event-schema-emitted-coverage-test.sh
+  [38;2;74;222;128m✓[0m [#1951/SPEC-5] ADR-001-plugin-contract.md is not in config/adr-enforcement-baseline.txt
+  [38;2;74;222;128m✓[0m [#1764/DSADR-7] ADR-005-claim-coordinator.md carries an ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1764/DSADR-7] ADR-005-claim-coordinator.md is not in config/adr-enforcement-baseline.txt
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 29 tests passed[0m
+
