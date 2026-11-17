@@ -2455,6 +2455,14 @@ main() {
         # Operator pinned an events location → respect + export as-is.
         export ZBUILD_EVENTS_DIR ZBUILD_EVENTS_JSONL
     fi
+    # #1764 / ADR-005 §2: pre-build and export _ZBUILD_CLAIM_HOLDER before spawning
+    # the sidecar so the sidecar inherits it. The sidecar is a separate exec bash
+    # process; it cannot see variables set after the fork. zbuild_claim_acquire
+    # (called after the sidecar spawns) calls zbuild_claim_build_holder again, but
+    # only the parent process sees that update.
+    if declare -F zbuild_claim_build_holder >/dev/null 2>&1; then
+        zbuild_claim_build_holder
+    fi
     # #2131: the run-status comment sidecar — after the events path is fixed,
     # before the issue lock (so it never inherits the lock fd), from the target
     # repo (the runner has not entered the worktree yet). Never on a dry run.
