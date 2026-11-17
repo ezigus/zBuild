@@ -8,11 +8,9 @@
 [[ -n "${_ZBUILD_CLAIM_SH_LOADED:-}" ]] && return 0
 _ZBUILD_CLAIM_SH_LOADED=1
 
-# Resolve the backend plugin's path relative to this file (core/claim/ → ../../plugins/...)
-_claim_sh_own_dir="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
+# Use $_ZBUILD_ROOT (set by runner.sh before sourcing claim.sh) — no $(cd ...) fork on load path
 # shellcheck source=../../plugins/claim-coordinator/github-labels/plugin.sh
-source "$_claim_sh_own_dir/../../plugins/claim-coordinator/github-labels/plugin.sh"
-unset _claim_sh_own_dir
+source "$_ZBUILD_ROOT/plugins/claim-coordinator/github-labels/plugin.sh"
 
 # Global: set by zbuild_claim_acquire when it successfully adds zbuild:claimed.
 # Guards zbuild_claim_release so a refused run never removes another run's claim.
@@ -68,8 +66,9 @@ zbuild_claim_build_holder() {
         _ZBUILD_CLAIM_HOLDER="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-unknown}/actions/runs/${GITHUB_RUN_ID:-unknown}"
     else
         local run_id="${ZBUILD_RUN_ID:-}"
-        local machine; machine="$(_ccgl_machine_id)"
-        _ZBUILD_CLAIM_HOLDER="run_id=${run_id} machine=${machine}"
+        # ${ZBUILD_CLAIM_MACHINE_ID:-${HOSTNAME}}: ZBUILD_CLAIM_MACHINE_ID overrides for tests;
+        # ${HOSTNAME} is a bash built-in — no external hostname command, no fork (ADR-005 §2)
+        _ZBUILD_CLAIM_HOLDER="run_id=${run_id} machine=${ZBUILD_CLAIM_MACHINE_ID:-${HOSTNAME}}"
     fi
     export _ZBUILD_CLAIM_HOLDER
 }
