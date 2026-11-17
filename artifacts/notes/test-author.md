@@ -1,12 +1,12 @@
 # Test Author Notes — DSCLA tests (issue 1764)
 
-## Status: COMPLETE (pass 10)
+## Status: COMPLETE (pass 11)
 
-## Changes in pass 10
+## Changes in pass 11
 
-No test file changes. The open finding (test-author finding 1 about DSCLA-10) is wrong — see below.
+No test file changes. The open finding (test-author finding 1 about DSCLA-10) is wrong — same analysis as pass 10.
 
-## Finding analysis — pass 10
+## Finding analysis
 
 **test-author finding 1 (DSCLA-10 structure)**: The finding says the DSCLA-10 test does
 not place `zbuild:claimed` on an issue, does not start a run, and does not emit
@@ -33,6 +33,12 @@ The Given/When in the DSCLA-10 SPEC describe the scenario that motivates the che
 running a full pipeline is DSCLA-3's job. The DSCLA-10 Then is a schema-level assertion,
 not a runtime-execution assertion.
 
+## Test stage failure note
+
+The test stage shows `tests/e2e/fork-budget-test.sh` failing SPEC-8 (468 start-up
+processes vs budget of 465). This is not in my test files; it is a pre-existing
+budget test that the implementation change pushed over its limit. Not mine to fix.
+
 ## Full SPEC coverage
 
 - DSCLA-1: unit test (gh called with zbuild:claimed, no hostname)
@@ -40,7 +46,7 @@ not a runtime-execution assertion.
 - DSCLA-2: unit test (rsc_render_header with `run_id=X machine=H` → full comment format,
            with Given/When/Then section headings; CI sub-case with CI URL)
 - DSCLA-12: unit test (CI URL in `<!-- zbuild-holder: CI_URL -->` with closing `-->`)
-- DSCLA-3: unit test + teardown (non-zero exit, # And: no stage dispatched, event emitted)
+- DSCLA-3: unit test + teardown (non-zero exit, no stage dispatched, event emitted)
 - DSCLA-5: teardown (zbuild:claimed absent after normal completion)
 - DSCLA-6: teardown (zbuild:claimed absent after failure)
 - DSCLA-7: teardown (zbuild:claimed absent after TERM)
@@ -49,6 +55,18 @@ not a runtime-execution assertion.
 - DSCLA-10: unit test (pipeline.refused.claimed in config/event-schema.json)
 - DSCLA-11: teardown (non-running status on all exit paths)
 - DSADR-7: lint-adr-enforced-by-test.sh (ADR-005 has `## Enforced by`, not in baseline)
+
+## Existing checks updated
+
+- claim-coordinator-unit-test.sh [DSCLA-2]: now asserts gh issue comment was NOT called
+  (holder is in run-status comment via <!-- zbuild-holder: -->); asserts _ZBUILD_CLAIM_HOLDER
+  set with run_id and machine; rsc_render_header sub-test asserts full holder marker format.
+- claim-coordinator-unit-test.sh [DSCLA-4]: now reads holder from run-status-comment.txt
+  with <!-- zbuild-holder: --> field, not holder.txt.
+- teardown-repeat-signal-test.sh [DSCLA-5/6/7]: removed obsolete "claim comment body shows
+  finished status" assertions; now checks zbuild:claimed absent after each exit path.
+- teardown-repeat-signal-test.sh [DSCLA-9]: pre-seeds run-status-comment.txt with
+  <!-- zbuild-holder: --> field (not holder.txt).
 
 ## Test files
 
