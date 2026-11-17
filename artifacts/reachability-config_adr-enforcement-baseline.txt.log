@@ -12,18 +12,19 @@
   [38;2;74;222;128m✓[0m list_claims returns [] after release
 {"acquired": true, "lease_id": "test-machine-1:99"}
   [38;2;74;222;128m✓[0m claim_coordinator_heartbeat → rc=0
-  [38;2;74;222;128m✓[0m [DSCLA-1] zbuild_claim_acquire returns 0 (claim acquired)
-  [38;2;74;222;128m✓[0m [DSCLA-1] zbuild:claimed label is present in claim store
-  [38;2;74;222;128m✓[0m [DSCLA-1] label name is exactly zbuild:claimed (no hostname)
+  [38;2;74;222;128m✓[0m [DSCLA-1] zbuild_claim_acquire returns 0 when zbuild:claimed is absent
+  [38;2;74;222;128m✓[0m [DSCLA-1] gh is called to add zbuild:claimed to the issue
+  [38;2;74;222;128m✓[0m [DSCLA-1] label is exactly zbuild:claimed with no hostname suffix
   [38;2;74;222;128m✓[0m [DSCLA-2] zbuild_claim_acquire returns 0 (claim acquired via gh)
   [38;2;74;222;128m✓[0m [DSCLA-2] gh called with zbuild:claimed label
   [38;2;74;222;128m✓[0m [DSCLA-2] label has no hostname component (machine-specific label not used)
   [38;2;74;222;128m✓[0m [DSCLA-2] gh issue comment was NOT called (holder goes into run-status comment)
   [38;2;74;222;128m✓[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains run_id after successful acquire
   [38;2;74;222;128m✓[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains machine name after successful acquire
-  [38;2;74;222;128m✓[0m [DSCLA-2] run-status comment header contains <!-- zbuild-holder: --> with holder info
+  [38;2;74;222;128m✓[0m [DSCLA-2] run-status comment header contains <!-- zbuild-holder: run_id=<id> machine=<hostname> -->
   [38;2;74;222;128m✓[0m [DSCLA-2] zbuild_claim_acquire returns 0 (CI mode)
   [38;2;74;222;128m✓[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains CI run URL when GITHUB_ACTIONS=true
+  [38;2;74;222;128m✓[0m [DSCLA-12] rendered header contains <!-- zbuild-holder: CI_URL -->
   [38;2;74;222;128m✓[0m [DSCLA-3] zbuild_claim_acquire returns 1 when zbuild:claimed is present
   [38;2;74;222;128m✓[0m zbuild_claim_acquire returns 1 when issue already claimed (pre-stage check)
   [38;2;74;222;128m✓[0m _ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim
@@ -34,7 +35,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 26 tests passed[0m
+  [38;2;74;222;128m[1mAll 27 tests passed[0m
 
 ### config/adr-enforcement-baseline.txt head plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
 
@@ -50,18 +51,19 @@
   [38;2;74;222;128m✓[0m list_claims returns [] after release
 {"acquired": true, "lease_id": "test-machine-1:99"}
   [38;2;74;222;128m✓[0m claim_coordinator_heartbeat → rc=0
-  [38;2;74;222;128m✓[0m [DSCLA-1] zbuild_claim_acquire returns 0 (claim acquired)
-  [38;2;74;222;128m✓[0m [DSCLA-1] zbuild:claimed label is present in claim store
-  [38;2;74;222;128m✓[0m [DSCLA-1] label name is exactly zbuild:claimed (no hostname)
+  [38;2;74;222;128m✓[0m [DSCLA-1] zbuild_claim_acquire returns 0 when zbuild:claimed is absent
+  [38;2;74;222;128m✓[0m [DSCLA-1] gh is called to add zbuild:claimed to the issue
+  [38;2;74;222;128m✓[0m [DSCLA-1] label is exactly zbuild:claimed with no hostname suffix
   [38;2;74;222;128m✓[0m [DSCLA-2] zbuild_claim_acquire returns 0 (claim acquired via gh)
   [38;2;74;222;128m✓[0m [DSCLA-2] gh called with zbuild:claimed label
   [38;2;74;222;128m✓[0m [DSCLA-2] label has no hostname component (machine-specific label not used)
   [38;2;74;222;128m✓[0m [DSCLA-2] gh issue comment was NOT called (holder goes into run-status comment)
   [38;2;74;222;128m✓[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains run_id after successful acquire
   [38;2;74;222;128m✓[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains machine name after successful acquire
-  [38;2;74;222;128m✓[0m [DSCLA-2] run-status comment header contains <!-- zbuild-holder: --> with holder info
+  [38;2;74;222;128m✓[0m [DSCLA-2] run-status comment header contains <!-- zbuild-holder: run_id=<id> machine=<hostname> -->
   [38;2;74;222;128m✓[0m [DSCLA-2] zbuild_claim_acquire returns 0 (CI mode)
   [38;2;74;222;128m✓[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains CI run URL when GITHUB_ACTIONS=true
+  [38;2;74;222;128m✓[0m [DSCLA-12] rendered header contains <!-- zbuild-holder: CI_URL -->
   [38;2;74;222;128m✓[0m [DSCLA-3] zbuild_claim_acquire returns 1 when zbuild:claimed is present
   [38;2;74;222;128m✓[0m zbuild_claim_acquire returns 1 when issue already claimed (pre-stage check)
   [38;2;74;222;128m✓[0m _ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim
@@ -72,7 +74,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 26 tests passed[0m
+  [38;2;74;222;128m[1mAll 27 tests passed[0m
 
 ### config/adr-enforcement-baseline.txt reverted tests/integration/teardown-repeat-signal-test.sh
 
@@ -135,4 +137,89 @@
 [2m  ──────────────────────────────────────────[0m
 
   [38;2;74;222;128m[1mAll 21 tests passed[0m
+
+### config/adr-enforcement-baseline.txt reverted tests/unit/lint-adr-enforced-by-test.sh
+
+[38;2;0;212;255m[1m  every ADR names the tests that enforce it (#2268)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [A1] a live ADR with no section fails
+  [38;2;74;222;128m✓[0m [A1] the failure names the ADR
+  [38;2;74;222;128m✓[0m [A2] a named test that does not exist fails
+  [38;2;74;222;128m✓[0m [A2] the failure names the missing file
+  [38;2;74;222;128m✓[0m [A3] a section naming existing tests passes
+  [38;2;74;222;128m✓[0m [A4] superseded and deprecated ADRs need no section
+  [38;2;74;222;128m✓[0m [A5] a baseline entry for an ADR that now has its section fails
+  [38;2;74;222;128m✓[0m [A5] it says to remove the entry
+  [38;2;74;222;128m✓[0m [A6] a baseline entry with no ADR fails
+  [38;2;74;222;128m✓[0m [A6] it names the stale entry
+  [38;2;248;113;113m✗[0m [A7] the real tree passes
+    [2mexpected: 0, got: 1[0m
+lint-adr-enforced-by: ADR-005-claim-coordinator.md now has its '## Enforced by' section — remove it from config/adr-enforcement-baseline.txt
+lint-adr-enforced-by: 1 problem(s) among 70 live ADR(s)
+  [38;2;74;222;128m✓[0m [A8] the issue form requires the ADR § field
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-011 carries an ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-017 carries an ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-011.md is not in the enforcement baseline (it has its section)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-017.md is not in the enforcement baseline (it has its section)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-011 ## Enforced by: every § statement maps to a test file (5 statement(s))
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-017 ## Enforced by: every § statement maps to a test file (7 statement(s))
+  [38;2;74;222;128m✓[0m [A9] a section that names no test fails
+  [38;2;74;222;128m✓[0m [A9] it says the section names no test
+  [38;2;74;222;128m✓[0m [A11] a missing .github file named in the section fails
+  [38;2;74;222;128m✓[0m [A11] it names the missing file
+  [38;2;74;222;128m✓[0m [A10] a superseded ADR left in the baseline fails
+  [38;2;74;222;128m✓[0m [A10] it says to remove the entry
+  [38;2;74;222;128m✓[0m [#1951/SPEC-5] ADR-001-plugin-contract.md carries an ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1951/SPEC-5] ADR-001 ## Enforced by names tests/unit/event-schema-emitted-coverage-test.sh
+  [38;2;74;222;128m✓[0m [#1951/SPEC-5] ADR-001-plugin-contract.md is not in config/adr-enforcement-baseline.txt
+  [38;2;74;222;128m✓[0m [#1764/DSADR-7] ADR-005-claim-coordinator.md carries an ## Enforced by section
+  [38;2;248;113;113m✗[0m [#1764/DSADR-7] ADR-005-claim-coordinator.md must be removed from config/adr-enforcement-baseline.txt
+    [2mADR-005 still listed in /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.RQIWiS/config/adr-enforcement-baseline.txt; remove the entry once the ## Enforced by section is added[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m2 of 29 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [A7] the real tree passes
+  [38;2;248;113;113m✗[0m [#1764/DSADR-7] ADR-005-claim-coordinator.md must be removed from config/adr-enforcement-baseline.txt
+
+### config/adr-enforcement-baseline.txt head tests/unit/lint-adr-enforced-by-test.sh
+
+[38;2;0;212;255m[1m  every ADR names the tests that enforce it (#2268)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [A1] a live ADR with no section fails
+  [38;2;74;222;128m✓[0m [A1] the failure names the ADR
+  [38;2;74;222;128m✓[0m [A2] a named test that does not exist fails
+  [38;2;74;222;128m✓[0m [A2] the failure names the missing file
+  [38;2;74;222;128m✓[0m [A3] a section naming existing tests passes
+  [38;2;74;222;128m✓[0m [A4] superseded and deprecated ADRs need no section
+  [38;2;74;222;128m✓[0m [A5] a baseline entry for an ADR that now has its section fails
+  [38;2;74;222;128m✓[0m [A5] it says to remove the entry
+  [38;2;74;222;128m✓[0m [A6] a baseline entry with no ADR fails
+  [38;2;74;222;128m✓[0m [A6] it names the stale entry
+  [38;2;74;222;128m✓[0m [A7] the real tree passes
+  [38;2;74;222;128m✓[0m [A8] the issue form requires the ADR § field
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-011 carries an ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-017 carries an ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-011.md is not in the enforcement baseline (it has its section)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-017.md is not in the enforcement baseline (it has its section)
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-011 ## Enforced by: every § statement maps to a test file (5 statement(s))
+  [38;2;74;222;128m✓[0m [#1801/SPEC-7] ADR-017 ## Enforced by: every § statement maps to a test file (7 statement(s))
+  [38;2;74;222;128m✓[0m [A9] a section that names no test fails
+  [38;2;74;222;128m✓[0m [A9] it says the section names no test
+  [38;2;74;222;128m✓[0m [A11] a missing .github file named in the section fails
+  [38;2;74;222;128m✓[0m [A11] it names the missing file
+  [38;2;74;222;128m✓[0m [A10] a superseded ADR left in the baseline fails
+  [38;2;74;222;128m✓[0m [A10] it says to remove the entry
+  [38;2;74;222;128m✓[0m [#1951/SPEC-5] ADR-001-plugin-contract.md carries an ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1951/SPEC-5] ADR-001 ## Enforced by names tests/unit/event-schema-emitted-coverage-test.sh
+  [38;2;74;222;128m✓[0m [#1951/SPEC-5] ADR-001-plugin-contract.md is not in config/adr-enforcement-baseline.txt
+  [38;2;74;222;128m✓[0m [#1764/DSADR-7] ADR-005-claim-coordinator.md carries an ## Enforced by section
+  [38;2;74;222;128m✓[0m [#1764/DSADR-7] ADR-005-claim-coordinator.md is not in config/adr-enforcement-baseline.txt
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 29 tests passed[0m
 

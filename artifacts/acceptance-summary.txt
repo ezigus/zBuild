@@ -1,10 +1,12 @@
-the acceptance check failed — config/adr-enforcement-baseline.txt was put back to its old version on its own and every test still passed, so no test checks what this change does to it — add a test that fails without the change to it
 NEGCTL PASS DSCLA-1
       design : When an issue-bound run starts and zbuild:claimed is absent, the label is added before the first sta…
-      asserts: assert_eq "[DSCLA-1] zbuild_claim_acquire returns 0 (claim acquired)" "0" "$_dscla1_rc"
+      asserts: assert_eq "[DSCLA-1] zbuild_claim_acquire returns 0 when zbuild:claimed is absent" "0" "$_dscla1_rc"
 NEGCTL PASS DSCLA-2
-      design : When a run starts with an issue, the run-status comment identifies the holder; the label name has no…
+      design : When a local run starts with an issue, rsc_render_header embeds the holder in the run-status comment…
       asserts: assert_eq "[DSCLA-2] zbuild_claim_acquire returns 0 (claim acquired via gh)" "0" "$_dscla2_rc"
+NEGCTL PASS DSCLA-12
+      design : When a CI run starts with an issue, the rendered run-status comment header contains the CI run URL a…
+      asserts: assert_pass "[DSCLA-12] rendered header contains <!-- zbuild-holder: CI_URL -->"
 NEGCTL PASS DSCLA-3
       design : When a run starts on a claimed issue, it refuses with non-zero exit before any stage
       asserts: assert_eq "[DSCLA-3] zbuild_claim_acquire returns 1 when zbuild:claimed is present" "1" "$_dscla3_rc…
@@ -40,12 +42,12 @@ NEGCTL SKIP DSADR-6 doc
       asserts: <none found>
 NEGCTL SKIP DSADR-7 doc
       design : ADR-005 has an ## Enforced by section naming the test or lint that enforces each statement
-      asserts: <none found>
+      asserts: assert_pass "[#1764/DSADR-7] ADR-005-claim-coordinator.md carries an ## Enforced by section"
 NEGCTL SKIP DSADR-8 doc
       design : ADR-059 §4 tells the reader that cross-machine exclusion is the claim coordinator's job and the admi…
       asserts: <none found>
 REACHABILITY PASS core/pipeline/runner.sh
-REACHABILITY FAIL untested_change config/adr-enforcement-baseline.txt
+REACHABILITY PASS change config/adr-enforcement-baseline.txt
 REACHABILITY PASS change config/event-schema.json
 REACHABILITY PASS change core/claim/claim.sh
 REACHABILITY PASS change plugins/claim-coordinator/github-labels/plugin.sh

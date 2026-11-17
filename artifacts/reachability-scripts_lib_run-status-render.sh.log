@@ -12,19 +12,21 @@
   [38;2;74;222;128m✓[0m list_claims returns [] after release
 {"acquired": true, "lease_id": "test-machine-1:99"}
   [38;2;74;222;128m✓[0m claim_coordinator_heartbeat → rc=0
-  [38;2;74;222;128m✓[0m [DSCLA-1] zbuild_claim_acquire returns 0 (claim acquired)
-  [38;2;74;222;128m✓[0m [DSCLA-1] zbuild:claimed label is present in claim store
-  [38;2;74;222;128m✓[0m [DSCLA-1] label name is exactly zbuild:claimed (no hostname)
+  [38;2;74;222;128m✓[0m [DSCLA-1] zbuild_claim_acquire returns 0 when zbuild:claimed is absent
+  [38;2;74;222;128m✓[0m [DSCLA-1] gh is called to add zbuild:claimed to the issue
+  [38;2;74;222;128m✓[0m [DSCLA-1] label is exactly zbuild:claimed with no hostname suffix
   [38;2;74;222;128m✓[0m [DSCLA-2] zbuild_claim_acquire returns 0 (claim acquired via gh)
   [38;2;74;222;128m✓[0m [DSCLA-2] gh called with zbuild:claimed label
   [38;2;74;222;128m✓[0m [DSCLA-2] label has no hostname component (machine-specific label not used)
   [38;2;74;222;128m✓[0m [DSCLA-2] gh issue comment was NOT called (holder goes into run-status comment)
   [38;2;74;222;128m✓[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains run_id after successful acquire
   [38;2;74;222;128m✓[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains machine name after successful acquire
-  [38;2;248;113;113m✗[0m [DSCLA-2] run-status comment header contains <!-- zbuild-holder: --> with holder info
-    [2mholder not found in header; header: <!-- zbuild-run-status run_id=run-dscla2-123 --> ⏎ ### zbuild run `run-dscla2-123` · issue #1002 · **running** ⏎ engine `` · started 7:00 PM ET · ceiling 1:00 AM ET (past ceiling) · updated 6:19 PM ET · [run log](https://github.com/ezigus/zBuild/actions/runs/43959139598)[0m
+  [38;2;248;113;113m✗[0m [DSCLA-2] run-status comment header contains <!-- zbuild-holder: run_id=<id> machine=<hostname> -->
+    [2mholder not found in header; header: <!-- zbuild-run-status run_id=run-dscla2-123 --> ⏎ ### zbuild run `run-dscla2-123` · issue #1002 · **running** ⏎ engine `` · started 7:00 PM ET · ceiling 1:00 AM ET (past ceiling) · updated 7:53 PM ET · [run log](https://github.com/ezigus/zBuild/actions/runs/43959139598)[0m
   [38;2;74;222;128m✓[0m [DSCLA-2] zbuild_claim_acquire returns 0 (CI mode)
   [38;2;74;222;128m✓[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains CI run URL when GITHUB_ACTIONS=true
+  [38;2;248;113;113m✗[0m [DSCLA-12] rendered header contains <!-- zbuild-holder: CI_URL -->
+    [2mCI holder not found in header; expected '<!-- zbuild-holder: https://github.com/testowner/testrepo/actions/runs/99887766 -->'; header: <!-- zbuild-run-status run_id=run-dscla12 --> ⏎ ### zbuild run `run-dscla12` · issue #1012 · **running** ⏎ engine `` · started 7:00 PM ET · ceiling 1:00 AM ET (past ceiling) · updated 7:53 PM ET · [run log](https://github.com/testowner/testrepo/actions/runs/99887766)[0m
   [38;2;74;222;128m✓[0m [DSCLA-3] zbuild_claim_acquire returns 1 when zbuild:claimed is present
   [38;2;74;222;128m✓[0m zbuild_claim_acquire returns 1 when issue already claimed (pre-stage check)
   [38;2;74;222;128m✓[0m _ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim
@@ -35,9 +37,10 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 26 tests failed[0m
+  [38;2;248;113;113m[1m2 of 27 tests failed[0m
 
-  [38;2;248;113;113m✗[0m [DSCLA-2] run-status comment header contains <!-- zbuild-holder: --> with holder info
+  [38;2;248;113;113m✗[0m [DSCLA-2] run-status comment header contains <!-- zbuild-holder: run_id=<id> machine=<hostname> -->
+  [38;2;248;113;113m✗[0m [DSCLA-12] rendered header contains <!-- zbuild-holder: CI_URL -->
 
 ### scripts/lib/run-status-render.sh head plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
 
@@ -53,18 +56,19 @@
   [38;2;74;222;128m✓[0m list_claims returns [] after release
 {"acquired": true, "lease_id": "test-machine-1:99"}
   [38;2;74;222;128m✓[0m claim_coordinator_heartbeat → rc=0
-  [38;2;74;222;128m✓[0m [DSCLA-1] zbuild_claim_acquire returns 0 (claim acquired)
-  [38;2;74;222;128m✓[0m [DSCLA-1] zbuild:claimed label is present in claim store
-  [38;2;74;222;128m✓[0m [DSCLA-1] label name is exactly zbuild:claimed (no hostname)
+  [38;2;74;222;128m✓[0m [DSCLA-1] zbuild_claim_acquire returns 0 when zbuild:claimed is absent
+  [38;2;74;222;128m✓[0m [DSCLA-1] gh is called to add zbuild:claimed to the issue
+  [38;2;74;222;128m✓[0m [DSCLA-1] label is exactly zbuild:claimed with no hostname suffix
   [38;2;74;222;128m✓[0m [DSCLA-2] zbuild_claim_acquire returns 0 (claim acquired via gh)
   [38;2;74;222;128m✓[0m [DSCLA-2] gh called with zbuild:claimed label
   [38;2;74;222;128m✓[0m [DSCLA-2] label has no hostname component (machine-specific label not used)
   [38;2;74;222;128m✓[0m [DSCLA-2] gh issue comment was NOT called (holder goes into run-status comment)
   [38;2;74;222;128m✓[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains run_id after successful acquire
   [38;2;74;222;128m✓[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains machine name after successful acquire
-  [38;2;74;222;128m✓[0m [DSCLA-2] run-status comment header contains <!-- zbuild-holder: --> with holder info
+  [38;2;74;222;128m✓[0m [DSCLA-2] run-status comment header contains <!-- zbuild-holder: run_id=<id> machine=<hostname> -->
   [38;2;74;222;128m✓[0m [DSCLA-2] zbuild_claim_acquire returns 0 (CI mode)
   [38;2;74;222;128m✓[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains CI run URL when GITHUB_ACTIONS=true
+  [38;2;74;222;128m✓[0m [DSCLA-12] rendered header contains <!-- zbuild-holder: CI_URL -->
   [38;2;74;222;128m✓[0m [DSCLA-3] zbuild_claim_acquire returns 1 when zbuild:claimed is present
   [38;2;74;222;128m✓[0m zbuild_claim_acquire returns 1 when issue already claimed (pre-stage check)
   [38;2;74;222;128m✓[0m _ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim
@@ -75,5 +79,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 26 tests passed[0m
+  [38;2;74;222;128m[1mAll 27 tests passed[0m
 
