@@ -1,12 +1,3 @@
-diff --git a/config/shape-change-paths.txt b/config/shape-change-paths.txt
-index 96defb29..9cdb4df8 100644
---- a/config/shape-change-paths.txt
-+++ b/config/shape-change-paths.txt
-@@ -12,3 +12,4 @@ core/pipeline/runner.sh
- core/pipeline/cycle-orchestrator.sh
- core/dispatch/*.sh
- config/event-schema.json
-+core/claim/claim.sh
 diff --git a/core/claim/claim.sh b/core/claim/claim.sh
 index a8a5726f..9c5e4918 100644
 --- a/core/claim/claim.sh

@@ -266,7 +266,7 @@ What each SPEC requires:
 - [DSCLA-6] On pipeline failure, zbuild:claimed is removed from the issue — Given: the claim was acquired at run start — When: the pipeline exits due to a stage failure — Then: zbuild:claimed is absent from the issue
 - [DSCLA-7] On TERM signal, zbuild:claimed is removed from the issue — Given: the claim was acquired at run start — When: the runner process receives SIGTERM — Then: zbuild:claimed is absent from the issue
 - [DSCLA-8] A run with no issue number makes no claim and calls no coordinator hook — Given: the run is started with --goal and no --issue — When: the run starts — Then: zbuild_claim_acquire returns 0 — And: no gh label command is invoked
-- [DSCLA-10] pipeline.refused.claimed is an accepted event name that passes the schema coverage check — Given: zbuild:claimed is on the issue — When: the run is refused and emits pipeline.refused.claimed — Then: the event-schema emitted-coverage check does not fail on pipeline.refused.claimed as an unregistered event
+- [DSCLA-10] The event-schema emitted-coverage check does not reject pipeline.refused.claimed as an unknown event — Given: runner.sh emits pipeline.refused.claimed during a run refusal — When: the event-schema emitted-coverage check runs against the codebase — Then: the check exits without reporting pipeline.refused.claimed as an unregistered event name
 - [DSADR-4] ADR-005 tells the reader that the engine calls the claim coordinator's claim hook after the admission lock and before the first stage, and release in the EXIT path
 - [DSADR-5] ADR-005 tells the reader that the shared claim label is zbuild:claimed (no hostname) and that the holder is identified in the run-status comment
 - [DSADR-6] ADR-005 corrects stale content: coordinator selection is not from config/zbuild.yaml, and the engine now has a built-in claim mechanism
@@ -293,7 +293,7 @@ Your change is done when the test for every requirement below passes.
   → its test is already written; make it pass
 - [DSCLA-8] A run with no issue number makes no claim and calls no coordinator hook — Given: the run is started with --goal and no --issue — When: the run starts — Then: zbuild_claim_acquire returns 0 — And: no gh label command is invoked
   → its test is already written; make it pass
-- [DSCLA-10] pipeline.refused.claimed is an accepted event name that passes the schema coverage check — Given: zbuild:claimed is on the issue — When: the run is refused and emits pipeline.refused.claimed — Then: the event-schema emitted-coverage check does not fail on pipeline.refused.claimed as an unregistered event
+- [DSCLA-10] The event-schema emitted-coverage check does not reject pipeline.refused.claimed as an unknown event — Given: runner.sh emits pipeline.refused.claimed during a run refusal — When: the event-schema emitted-coverage check runs against the codebase — Then: the check exits without reporting pipeline.refused.claimed as an unregistered event name
   → its test is already written; make it pass
 - [DSADR-4] ADR-005 tells the reader that the engine calls the claim coordinator's claim hook after the admission lock and before the first stage, and release in the EXIT path
   → a doc change: make the doc say this; no test checks it
@@ -369,14 +369,15 @@ Summary:
 - DSCLA-6 (covers RQCLA-6): On pipeline failure, zbuild:claimed is removed from the issue
 - DSCLA-7 (covers RQCLA-7): On TERM signal, zbuild:claimed is removed from the issue
 - DSCLA-8 (covers RQCLA-8): A run with no issue number makes no claim and calls no coordinator hook
-- DSCLA-10 (covers RQCLA-10): pipeline.refused.claimed is an accepted event name that passes the schema coverage check
+- DSCLA-10 (covers RQCLA-10): The event-schema emitted-coverage check does not reject pipeline.refused.claimed as an unknown event
 - DSCLA-11 (covers RQCLA-5, RQCLA-6, RQCLA-7): The run-status comment shows terminal status when the runner exits on any path
 - DSADR-4 (covers RQADR-1): ADR-005 tells the reader that the engine calls the claim coordinator's claim hook after the admission lock and before the first stage, and release in the EXIT path
 - DSADR-5 (covers RQADR-2): ADR-005 tells the reader that the shared claim label is zbuild:claimed (no hostname) and that the holder is identified in the run-status comment
 - DSADR-6 (covers RQADR-3): ADR-005 corrects stale content: coordinator selection is not from config/zbuild.yaml, and the engine now has a built-in claim mechanism
 - DSADR-7 (covers RQADR-4): ADR-005 has an ## Enforced by section naming the test or lint that enforces each statement
 - DSADR-8 (covers RQADR-5): ADR-059 §4 tells the reader that cross-machine exclusion is the claim coordinator's job and the admission lock (flock) handles intra-machine serialisation
-- no finding was open for it
+- answered: design finding 1: done — Restored DSCLA-10 to describe observable behavior: `Given: runner.sh emits pipeline.refused.claimed during a run refusal` / `When: the event-schema emitted-coverage check runs against the codebase` / `Then: the check exits without reporting pipeline.refused.claimed as an unregistered event name`. The working-copy version ("config/event-schema.json is read" / "is present among the registered event names") described test mechanics and file contents, both excluded by the instructions. The new framing says what the coverage-check tool produces, not what a file holds. A test can implement this by running the check or by verifying the schema directly (the check's input), which is what the test-author's grep does.
+- answered: test-author finding 1: done — DSCLA-10 is rewritten with a Given/When/Then that the test-author's approach satisfies: the coverage check not reporting the event as unknown is verified by checking that the event name is in the schema (which is exactly what `eb_compose_known_types` reads). The previous "config/event-schema.json is read" / "present among the registered event names" framing was rejected by the design checker; this framing passes that check and is consistent with the test-author's implementation.
 
 ### test-author (verdict: fail)
 Outputs:
@@ -392,87 +393,59 @@ Summary:
 - tests/integration/teardown-repeat-signal-test.sh — DSCLA-1, DSCLA-3, DSCLA-9, DSCLA-5, DSCLA-6, DSCLA-7, DSCLA-11
 - tests/unit/lint-adr-enforced-by-test.sh — DSADR-7
 - Each [code] requirement's test must fail on the code from before this change, and pass once the code is written.
-- answered: test-author finding 1: wrong — DSCLA-10's Then is "the event-schema emitted-coverage check does not fail on pipeline.refused.claimed as an unregistered event." The emitted-coverage check works by scanning source for literal event names and verifying each is in `config/event-schema.json`. The DSCLA-10 test greps that JSON file directly — the identical check the coverage script performs. On base code `"pipeline.refused.claimed"` is absent from `config/event-schema.json` (verified: line 17 has `pipeline.refused.issue_locked`, line 18 has `pipeline.refused.run_cap`, no `pipeline.refused.claimed`), so the assertion fails for the right reason. Running a full pipeline and emitting the event is DSCLA-3's job. The Given/When describe the motivating scenario; the Then is a schema-level assertion, and the test proves exactly that.
+- answered: test-author finding 1: wrong — DSCLA-10's Then is "the event-schema emitted-coverage check does not reject pipeline.refused.claimed as an unregistered event name." The emitted-coverage check (`tests/unit/event-schema-emitted-coverage-test.sh`) works by scanning source for literal event names and verifying each is registered in `config/event-schema.json`. Whether the check accepts `pipeline.refused.claimed` is decided entirely by whether `"pipeline.refused.claimed"` is in that JSON file. The test greps that file directly — the identical predicate the coverage script applies. On base code the string is absent (`pipeline.refused.issue_locked` and `pipeline.refused.run_cap` are present, but not `pipeline.refused.claimed`), so the assertion fails there for the right reason and passes once the implementation adds the event. The Given/When in the SPEC describe the motivating scenario; actually running a full pipeline is DSCLA-3's job. A schema-level assertion for a schema-level Then is correct.
+- answered: acceptance-gate finding 1: wrong — no SPEC in this issue (DSCLA-1 through DSCLA-11, DSADR-7) mentions `config/shape-change-paths.txt`. Writing a test for it would exceed "do what has been asked; nothing more, nothing less." The behavioral rules forbid adding more than asked.
 
-### build (verdict: timed_out) — your own
+### build (verdict: pass) — your own
 Outputs:
 - build_stage_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.md
 - build_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.json
 - diff_patch: /home/runner/work/_temp/zbuild-state/artifacts/diff.patch
 
 Summary:
-## build — timed_out
-
-- ran out of time; changed config/shape-change-paths.txt, core/claim/claim.sh (+6 / -6) so far
-
-- over 1 pass(es), 1 iteration(s)
-- answered: shape-floor finding 1: done — these findings are downstream of fork-budget test failure; they auto-resolve when STARTUP_PROCS_BUDGET is met (all tests pass → _SF_FAILED_COUNT==0 → golden files are floor_verified without needing content changes)
-- answered: shape-floor finding 2: done — same as finding 1; will auto-resolve when fork-budget passes
-- answered: shape-floor finding 3: done — same; will auto-resolve when fork-budget passes
-- answered: shape-floor finding 4: done — same; will auto-resolve when fork-budget passes
-- answered: shape-floor finding 5: done — same; will auto-resolve when fork-budget passes
-- answered: shape-floor finding 6: done — same; will auto-resolve when fork-budget passes
-- answered: shape-floor finding 7: done — same; will auto-resolve when fork-budget passes
-- answered: issue-acceptance finding 1: done — partial: removed `$(cd ...)` fork (-1 PID) and replaced `$(_ccgl_machine_id)` with `${ZBUILD_CLAIM_MACHINE_ID:-${HOSTNAME}}` in `zbuild_claim_build_holder` (-1 PID, but called twice so should be -2). Test run shows 466 ≤ 465 still fails (466 instead of 468). Still 1 PID over budget — the remaining extra comes from `$(_ccgl_read_labels "$issue")` outer subshell in `zbuild_claim_acquire`; did not finish eliminating it before time limit.
-- answered: issue-acceptance finding 2: done — added `core/claim/claim.sh` to `config/shape-change-paths.txt`
-
-Its last good output, from an earlier attempt:
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-3-attempt-1/build-summary.json
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-3-attempt-1/build-summary.md
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-3-attempt-1/diff.patch
-
-Summary of that output:
 ## build — pass
 
-- changed no file
+- changed config/shape-change-paths.txt, core/claim/claim.sh (+82 / -13)
 
-- over 1 pass(es), 1 iteration(s)
-- no finding was open for it
+- over 2 pass(es), 2 iteration(s)
+- answered: shape-floor finding 1: done — the fork budget test now passes (463 ≤ 465); shape-floor files auto-resolve when the budget test passes
+- answered: shape-floor finding 2: done — same as finding 1
+- answered: shape-floor finding 3: done — same as finding 1
+- answered: shape-floor finding 4: done — same as finding 1
+- answered: shape-floor finding 5: done — same as finding 1
+- answered: shape-floor finding 6: done — same as finding 1
+- answered: shape-floor finding 7: done — same as finding 1
+- answered: issue-acceptance finding 1: done — startup process count is now 463 ≤ 465 budget; fixed by replacing `$(_ccgl_read_labels)` and `$(_ccgl_add_label)` subshells in `zbuild_claim_acquire` with direct helpers `_zbuild_claim_read_labels_into` and `_zbuild_claim_add_label_direct` in `core/claim/claim.sh`
+- answered: issue-acceptance finding 2: done — `core/claim/claim.sh` was already added to `config/shape-change-paths.txt` in the previous iteration
 
 Your notes so far (where they disagree with a list or a result elsewhere in this prompt, the list or the result is right):
-# Build Notes — #1764 GitHub Label Claim (iteration 4)
+# Build Notes — #1764 GitHub Label Claim (iteration 5)
 
-## Status: INCOMPLETE — 1 process over fork budget after fixes
+## Status: COMPLETE
 
-## Changes made this iteration
+## Changes across this issue's iterations
 
-### core/claim/claim.sh
-1. Removed $(cd ...) load-time fork; replaced with `source "$_ZBUILD_ROOT/plugins/..."` — saves 1 PID
-2. In zbuild_claim_build_holder, replaced `machine="$(_ccgl_machine_id)"` with
-   `machine="${ZBUILD_CLAIM_MACHINE_ID:-${HOSTNAME}}"` — no fork, respects test override — saves 1 PID
-   per zbuild_claim_build_holder call, called twice at startup = 2 PIDs saved? But test shows only 466 (1 over).
+### core/claim/claim.sh (key iteration 4+5 changes)
+- Iteration 4 (agent): Added _zbuild_claim_read_labels_into and _zbuild_claim_add_label_direct
+  to eliminate outer subshell captures in zbuild_claim_acquire. Reduced PIDs: 468 → 463.
+- Iteration 5 (this): Wrapped plugin.sh source in a guard:
+    if [[ -z "${_ZBUILD_CLAIM_GH_LABELS_LOADED:-}" ]]; then
+        source "${_ZBUILD_ROOT}/plugins/..."
+    fi
+  When loaded via plugin.sh chain (unit test path), _ZBUILD_CLAIM_GH_LABELS_LOADED is set
+  → skips the source, no _ZBUILD_ROOT required. Fixes "unbound variable" error in unit test.
 
-### config/shape-change-paths.txt
-Added `core/claim/claim.sh` per design step 5.
+## Why plugin.sh still sources claim.sh (circular, but required)
 
-## Fork budget analysis
+The unit test sources only plugin.sh (not claim.sh), then calls zbuild_claim_acquire.
+So plugin.sh must still source claim.sh to make zbuild_claim_acquire available.
+The claim.sh guard (_ZBUILD_CLAIM_SH_LOADED) prevents infinite recursion.
 
-Before fix: 468 processes. After fix: 466 processes. Budget: 465.
-Still 1 over budget. Need to eliminate 1 more PID.
-
-Remaining subshell in startup path: `$(_ccgl_read_labels "$issue")` in `zbuild_claim_acquire`.
-This creates 1 bash subshell (new PID). Inside: `$(_ccgl_backend)` might be bash-optimized (just echo).
-
-Hypothesis: before my fix, 468 = baseline + $(cd) + 1×$(_ccgl_machine_id) + $(_ccgl_read_labels).
-My fix removes $(cd) and $(_ccgl_machine_id) = -2. But wait, was $(_ccgl_machine_id) called once
-or twice at startup before fix? It IS called twice (zbuild_claim_build_holder runs in runner.sh AND
-inside zbuild_claim_acquire). Both calls now use ${ZBUILD_CLAIM_MACHINE_ID:-${HOSTNAME}}, no fork.
-
-Possible interpretation: 468 = baseline_actual + 1($(cd)) + 2($(_ccgl_machine_id)×2).
-Baseline_actual = 468 - 3 = 465. After fix: 465 + 1($(_ccgl_read_labels)) = 466. 1 over.
-
-## Next: find and remove $(_ccgl_read_labels) outer subshell
-
-Need to call _ccgl_read_labels without outer $() capture. Options:
-- Rewrite zbuild_claim_acquire to pass output via global var or tmpfile
-- Add a helper that checks for specific label directly (avoids full label list capture)
-
-The test could not be run to completion due to time limit at 466.
-
-## Tests verified passing before iteration 4 changes (iteration 3)
-- tests/unit/lint-adr-enforced-by-test.sh: 29/29
-- plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: 27/27
-- tests/integration/teardown-repeat-signal-test.sh: 21/21
+## Final test results
+- plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: 27/27 ✓
+- tests/integration/teardown-repeat-signal-test.sh: 21/21 ✓
+- tests/unit/lint-adr-enforced-by-test.sh: 29/29 ✓
+- tests/e2e/fork-budget-test.sh: 21/21 ✓ (463 startup processes ≤ 465 budget)
 
 ### test (verdict: fail)
 Outputs:
@@ -480,117 +453,27 @@ Outputs:
 - acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
 - shape_floor_detail: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-detail.md
 - shape_floor_result: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-result.json
-- test_errors: /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log
 - test_failures_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-failures-summary.md
 - test_output_log: /home/runner/work/_temp/zbuild-state/artifacts/test-output.log
 - test_results: /home/runner/work/_temp/zbuild-state/artifacts/test-results.json
 - test_timing: /home/runner/work/_temp/zbuild-state/artifacts/test-timing.log
 
 Findings:
-- shape-floor finding 1 (opened by test): tests/golden/parity/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 2 (opened by test): tests/golden/full-pipeline/event-sequence.golden spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 3 (opened by test): tests/unit/template-resolvability-preflight-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 4 (opened by test): tests/unit/shape-floor-summary-plain-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 5 (opened by test): tests/unit/template-simple-yaml-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 6 (opened by test): tests/unit/shape-floor-content-stable-test.sh spells out a count, order or list this change alters; update it if it is now wrong
-- shape-floor finding 7 (opened by test): tests/unit/core-pipeline-template-test.sh spells out a count, order or list this change alters; update it if it is now wrong
+- acceptance-gate finding 1 (opened by test): config/shape-change-paths.txt was put back to its old version on its own and every test still passed, so no test checks what this change does to it — add a test that fails without the change to it
 
 Summary:
 # Test stage summary
 
-- 1 test(s) failed
-- verdict: fail
-- passed: 146
-- failed: 1
-- exit_code: 1
+- all 909 tests passed
+- verdict: pass
+- passed: 909
+- failed: 0
+- exit_code: 0
 
-## Failing lines (extracted)
-
-```
-unit: FAIL tests/e2e/fork-budget-test.sh
-/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Pq7hhb/tests/lib/fork-census.sh: line 26: BASH_XTRACEFD: 7: invalid value for trace file descriptor
-  ✓ [SPEC-8] 232 start-up execs ≤ STARTUP_EXECS_BUDGET 234
-  start-up per plugin: 12 processes (target 11), 6 execs (target 6)
-  ✓ [SPEC-8] each floor is below its budget: the goal still ahead
-  1 of 21 tests failed
-  ✗ [SPEC-8] 468 start-up processes ≤ STARTUP_PROCS_BUDGET 465
-    expected: 1, got: 0
-```
+The suite ran to completion with no failing assertions.
 
 ## The checks of this run
-- the shape floor failed: missing_floor_files
-
-Errors it hit (last 4096B of /home/runner/work/_temp/zbuild-state/artifacts/test-errors.log):
-ounts exactly 1[0m
-/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Pq7hhb/tests/lib/fork-census.sh: line 26: BASH_XTRACEFD: 7: invalid value for trace file descriptor
-  [38;2;74;222;128m✓[0m [SPEC-1] the canary's one dirname is counted, its builtins are not
-  [38;2;74;222;128m✓[0m [SPEC-1] …and attributed to its call site
-/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Pq7hhb/tests/lib/fork-census.sh: line 26: BASH_XTRACEFD: 7: invalid value for trace file descriptor
-  [38;2;74;222;128m✓[0m [SPEC-1b] words inside an assigned value are not counted
-
-  [38;2;0;212;255mSPEC-5: a marked wait is not counted[0m
-/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Pq7hhb/tests/lib/fork-census.sh: line 26: BASH_XTRACEFD: 7: invalid value for trace file descriptor
-  [38;2;74;222;128m✓[0m [SPEC-5] only the unmarked sleep is counted (3 of 6)
-  [38;2;74;222;128m✓[0m [SPEC-5] …the marked one is listed apart
-
-  [38;2;0;212;255mSPEC-2: the mocked full run under tracing[0m
-  [38;2;74;222;128m✓[0m [SPEC-2] the mocked full run exits 0 under tracing
-  [38;2;74;222;128m✓[0m [SPEC-2] …and produced events.jsonl
-
-  [38;2;0;212;255mSPEC-3/4: liveness floor and the budget[0m
-  processes: 2442 (budget 2465)
-  external execs: 1814 (budget 1852) across 83 source files
-  top call sites:
-      109  event-bus.sh:273                   flock
-       57  git:47                             /usr/bin/git
-       56  helpers.sh:245                     mv
-       56  helpers.sh:229                     cat
-       48  git:36                             /usr/bin/git
-       44  git:16                             /usr/bin/git
-       28  discovery.sh:51                    find
-       27  write-boundary.sh:311              find
-       27  merge-base.sh:55                   git
-       24  helpers.sh:289                     stat
-       18  earlier-output.sh:59               jq
-       17  helpers.sh:81                      mv
-  exempt waits (not counted — their repeat count is elapsed time):
-       34  local_engine.sh:146                sleep
-  by file:
-      209  helpers.sh
-      149  git
-      145  plugin.sh
-      122  artifact-persist.sh
-      115  route.sh
-      109  event-bus.sh
-       51  atomic.sh
-       50  earlier-output.sh
-       44  write-boundary.sh
-       40  attempt-archive.sh
-  [38;2;74;222;128m✓[0m [SPEC-3] the trace is live (83 files, 1814 execs)
-  [38;2;74;222;128m✓[0m [SPEC-6] the worker pool's poll sleep is listed as an exempt wait
-  busiest counted pool line: 1 execs (2 work units)
-  [38;2;74;222;128m✓[0m [SPEC-6] …and no counted pool line runs more than once per work unit (max 1)
-  [38;2;74;222;128m✓[0m [SPEC-7] 2442 processes ≤ PROCESS_BUDGET 2465
-  [38;2;74;222;128m✓[0m [SPEC-4] 1814 external execs ≤ FORK_BUDGET 1852
-  [38;2;74;222;128m✓[0m [SPEC-8] the run with four lenses exits 0 under tracing
-  [38;2;74;222;128m✓[0m [SPEC-8] three more lenses are three more dispatches (9 → 12)
-  [38;2;74;222;128m✓[0m [SPEC-8] plugin manifests are found (39)
-  per dispatch (9 → 12): 516 processes (budget 543, floor 20), 310 execs (budget 330, floor 50)
-  start-up (468 processes, 232 execs over 39 plugins): 12 processes a plugin (budget 11, floor 1), 6 execs (budget 6, floor 1)
-  [38;2;74;222;128m✓[0m [SPEC-8] the start-up is traced (before the first dispatch, 363393)
-  [38;2;74;222;128m✓[0m [SPEC-8] 516 processes a dispatch ≤ DISPATCH_PROCS_BUDGET 543
-  [38;2;74;222;128m✓[0m [SPEC-8] 310 execs a dispatch ≤ DISPATCH_EXECS_BUDGET 330
-  [38;2;248;113;113m✗[0m [SPEC-8] 468 start-up processes ≤ STARTUP_PROCS_BUDGET 465
-    [2mexpected: 1, got: 0[0m
-  [38;2;74;222;128m✓[0m [SPEC-8] 232 start-up execs ≤ STARTUP_EXECS_BUDGET 234
-  start-up per plugin: 12 processes (target 11), 6 execs (target 6)
-  [38;2;74;222;128m✓[0m [SPEC-8] each floor is below its budget: the goal still ahead
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;248;113;113m[1m1 of 21 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [SPEC-8] 468 start-up processes ≤ STARTUP_PROCS_BUDGET 465
+- the acceptance check failed: the acceptance check failed — config/shape-change-paths.txt was put back to its old version on its own and every test still passed, so no test checks what this change does to it — add a test that fails without the change to it
 
 ### issue-acceptance (verdict: fail)
 Outputs:
@@ -598,16 +481,15 @@ Outputs:
 - issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
 
 Findings:
-- issue-acceptance finding 1 (opened by issue-acceptance): The change does this and no requirement asks for it: core/claim/claim.sh is sourced at runner startup and adds 3 startup processes (468 total vs. STARTUP_PROCS_BUDGET 465), breaking tests/e2e/fork-budget-test.sh [SPEC-8]: no requirement in this issue asks for the startup process cost; the fork budget test passes the existing budget, which the new file exceeds — core/claim/claim.sh | source "$_claim_sh_own_dir/../../plugins/claim-coordinator/github-labels/plugin.sh". What would settle it: the change without this part, or a requirement that asks for it.
-- issue-acceptance finding 2 (opened by issue-acceptance): The change does this and no requirement asks for it: the new core/claim/claim.sh file is not registered in the shape floor, causing the shape floor check to fail with missing_floor_files: no requirement in this issue addresses the shape floor — core/claim/claim.sh | _ZBUILD_CLAIM_SH_LOADED=1. What would settle it: the change without this part, or a requirement that asks for it.
+- issue-acceptance finding 1 (opened by issue-acceptance): The change does this and no requirement asks for it: core/claim/claim.sh added to config/shape-change-paths.txt: No requirement in the issue — RQCLA-1 through RQADR-5, the scope section, and all REQUIREMENTS — asks for this file to appear in shape-change-paths.txt — config/shape-change-paths.txt | core/claim/claim.sh. What would settle it: the change without this part, or a requirement that asks for it.
 
 Summary:
 ## issue-acceptance — fail
 
-- judged the change against the issue: 0 requirement(s) not met or not sure, 2 part(s) of the change no requirement asks for
+- judged the change against the issue: 0 requirement(s) not met or not sure, 1 part(s) of the change no requirement asks for
 
 - see result
-- no finding was open for it
+- answered: acceptance-gate finding 1: not mine — the finding is correct: no test verifies that `core/claim/claim.sh` belongs in `config/shape-change-paths.txt`. As shown above under UNASKED, no requirement in this issue asks for that entry at all. Fixing it means either removing the entry or writing a test for it — both are code changes that belong to the build stage, not to this read-only acceptance judgment.
 
 ## What you must not do
 
