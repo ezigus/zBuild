@@ -1,127 +1,177 @@
-diff --git a/core/claim/claim.sh b/core/claim/claim.sh
-index a8a5726f..9c5e4918 100644
---- a/core/claim/claim.sh
-+++ b/core/claim/claim.sh
-@@ -8,11 +8,14 @@
- [[ -n "${_ZBUILD_CLAIM_SH_LOADED:-}" ]] && return 0
- _ZBUILD_CLAIM_SH_LOADED=1
+diff --git a/docs/adr/ADR-005-claim-coordinator.md b/docs/adr/ADR-005-claim-coordinator.md
+index 24769aa4..f8f97dd1 100644
+--- a/docs/adr/ADR-005-claim-coordinator.md
++++ b/docs/adr/ADR-005-claim-coordinator.md
+@@ -113,10 +113,14 @@ The engine refuses to start with multiple `claim-coordinator` plugins enabled 
  
--# Resolve the backend plugin's path relative to this file (core/claim/ → ../../plugins/...)
--_claim_sh_own_dir="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
--# shellcheck source=../../plugins/claim-coordinator/github-labels/plugin.sh
--source "$_claim_sh_own_dir/../../plugins/claim-coordinator/github-labels/plugin.sh"
--unset _claim_sh_own_dir
-+# Source plugin.sh for _ccgl_* backend helpers.
-+# When loaded via plugin.sh's own source chain (unit-test path), _ZBUILD_CLAIM_GH_LABELS_LOADED
-+# is already set — skip to avoid re-loading and to avoid requiring $_ZBUILD_ROOT in that path.
-+# When loaded directly by runner.sh, _ZBUILD_ROOT is set before we are sourced.
-+if [[ -z "${_ZBUILD_CLAIM_GH_LABELS_LOADED:-}" ]]; then
-+    # shellcheck source=../../plugins/claim-coordinator/github-labels/plugin.sh
-+    source "${_ZBUILD_ROOT}/plugins/claim-coordinator/github-labels/plugin.sh"
+ - §1 (engine calls claim after admission lock, before first stage; release on every EXIT path) →
+   `tests/integration/teardown-repeat-signal-test.sh` [DSCLA-1] (claim present before stage dispatches),
+-  [DSCLA-5] (released on normal exit), [DSCLA-6] (released on failure), [DSCLA-7] (released on TERM)
++  [DSCLA-5] (released on normal exit), [DSCLA-6] (released on failure), [DSCLA-7] (released on TERM);
++  §1(c) (refused: non-zero exit, no stage dispatched, event emitted) →
++  `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh` [DSCLA-3],
++  `tests/integration/teardown-repeat-signal-test.sh` [DSCLA-9] (refused output names holder)
+ - §2 (single `zbuild:claimed` label, no hostname; holder in run-status comment) →
+   `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh` [DSCLA-1] (label is
+-  exactly `zbuild:claimed`), [DSCLA-2] (`<!-- zbuild-holder: -->` in rendered run-status header)
++  exactly `zbuild:claimed`), [DSCLA-2] (`<!-- zbuild-holder: -->` in rendered run-status header),
++  [DSCLA-12] (CI holder `<!-- zbuild-holder: CI_URL -->` in rendered run-status header)
+ 
+ ## References
+ 
+diff --git a/docs/adr/ADR-059-issue-vs-run-keying.md b/docs/adr/ADR-059-issue-vs-run-keying.md
+index 5d91bcbc..f9f99419 100644
+--- a/docs/adr/ADR-059-issue-vs-run-keying.md
++++ b/docs/adr/ADR-059-issue-vs-run-keying.md
+@@ -451,6 +451,9 @@ committed, stash ablates nothing and reports a false pass.
+ 
+ ## Enforced by
+ 
++- §4 (cross-machine exclusion is the claim coordinator's job; the admission lock handles intra-machine serialisation) →
++  `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh` [DSCLA-3]
++  (a run is refused when another machine holds `zbuild:claimed` on the issue)
+ - §2/§4 amendment 2026-11-14 (#2541: a tree git no longer lists is reclaimed, under the lock and age guards) → `tests/unit/cleanup-forgotten-trees-test.sh` G1–G5
+ 
+ - `tests/unit/worktree-sparse-legacy-test.sh` — §2 per-worktree sparse-checkout: acquire and
+diff --git a/plugins/claim-coordinator/github-labels/README.md b/plugins/claim-coordinator/github-labels/README.md
+index 5a1938ef..205a9ee2 100644
+--- a/plugins/claim-coordinator/github-labels/README.md
++++ b/plugins/claim-coordinator/github-labels/README.md
+@@ -6,7 +6,7 @@
+ 
+ ## Purpose
+ 
+-Default cross-machine claim coordinator for the zbuild daemon. Uses GitHub issue labels (`claimed:<machine>`) as the distributed claim mechanism so multiple daemon instances can coordinate over a shared repository without a central lock server.
++Default cross-machine claim coordinator for the zbuild daemon. Uses a single shared GitHub issue label (`zbuild:claimed`) as the distributed claim mechanism so multiple daemon instances can coordinate over a shared repository without a central lock server. The holder is identified in the run-status comment (`<!-- zbuild-holder: ... -->`), not in the label name.
+ 
+ ## Contract (ADR-005)
+ 
+@@ -22,14 +22,14 @@ Default cross-machine claim coordinator for the zbuild daemon. Uses GitHub issue
+ The `claim` hook has a documented TOCTOU window between label-add and re-verify. Mitigated by:
+ 
+ 1. Random backoff 300–1100 ms before re-read
+-2. Re-read drops the claim if multiple `claimed:*` labels are observed on the issue
++2. Re-read drops the claim if `zbuild:claimed` was not successfully added (eventual consistency window)
+ 
+ ## Environment variables
+ 
+ | Variable | Default | Description |
+ |---|---|---|
+ | `ZBUILD_CLAIM_BACKEND` | `gh` | Backend: `gh` (GitHub API) or `local-fs` (flock-serialised filesystem, for tests) |
+-| `ZBUILD_CLAIM_MACHINE_ID` | `$(hostname)` | Override machine identity used in the claim label |
++| `ZBUILD_CLAIM_MACHINE_ID` | `${HOSTNAME}` | Override machine identity; affects the holder string in the run-status comment only, not the label name |
+ | `ZBUILD_CLAIM_BACKOFF_MIN_MS` | `300` | Minimum backoff (ms) before re-verify after label-add |
+ | `ZBUILD_CLAIM_BACKOFF_MAX_MS` | `1100` | Maximum backoff (ms) before re-verify |
+ | `ZBUILD_CLAIM_FLOCK_TIMEOUT_SEC` | `5` | flock wait timeout for local-fs backend |
+diff --git a/tests/integration/teardown-repeat-signal-test.sh b/tests/integration/teardown-repeat-signal-test.sh
+index abbe87aa..10f1f0d1 100644
+--- a/tests/integration/teardown-repeat-signal-test.sh
++++ b/tests/integration/teardown-repeat-signal-test.sh
+@@ -502,6 +502,107 @@ else
+     assert_pass "[DSCLA-11] run-status comment does not show 'running' on TERM signal exit"
+ fi
+ 
++# ── DSCLA-13: second SIGTERM during abort trap does not prevent claim release ──
++#
++# Tests that when _runner_abort_trap blocks SIGTERM (via trap '' TERM) and a
++# second SIGTERM arrives while zbuild_claim_release is executing inside the
++# trap, zbuild:claimed is still removed from the issue.
++#
++# This test FAILS on base code: runner.sh never calls zbuild_claim_acquire,
++# so zbuild:claimed is never added to the claim store, and the acquisition
++# gate assertion fails.
++
++# Given: the claim was acquired at run start (issue 90001769)
++_DSCLA13_ISSUE="90001769"
++_DSCLA13_PRESENT="$TEST_TEMP_DIR/dscla13-claim-present"
++_DSCLA13_STARTED="$TEST_TEMP_DIR/dscla13-stage-started"
++_DSCLA13_ABORT_ENTERED="$TEST_TEMP_DIR/dscla13-abort-entered"
++rm -f "$_DSCLA13_PRESENT" "$_DSCLA13_STARTED" "$_DSCLA13_ABORT_ENTERED"
++
++# Add a template with an always-run teardown stage to the claim repo.
++# The teardown stage's entry marker confirms we are inside _runner_abort_trap
++# with SIGTERM already blocked, so the second SIGTERM lands during trap execution.
++cat > "$_CLAIM_REPO/.zbuild/templates/claim-dscla13.yaml" <<'CLAIMTPL'
++id: claim-dscla13
++extends: simple
++flow:
++  - outcome
++always_run:
++  - release
++outcome:
++  gate: auto
++release:
++  gate: auto
++  roles: [teardown]
++  timeout_s: 30
++CLAIMTPL
++(cd "$_CLAIM_REPO" && git add .zbuild && git commit -qm "add claim-dscla13 template") \
++    >/dev/null 2>&1
++
++# Outcome: gate on zbuild:claimed being present, write started, sleep until SIGTERM
++cat > "$PLUGINS_ROOT/agent/outcome/plugin.sh" <<PLUG
++outcome_run() {
++    if grep -Fxq "zbuild:claimed" "$ZBUILD_CLAIM_STORE/$_DSCLA13_ISSUE/labels.txt" 2>/dev/null; then
++        : > "$_DSCLA13_PRESENT"
++    fi
++    : > "$_DSCLA13_STARTED"
++    sleep 60
++    return 0
++}
++PLUG
++
++# Teardown (release stage): write abort-entered marker, then sleep 3 s.
++# While it sleeps the second SIGTERM arrives; zbuild_claim_release also
++# executes in _runner_abort_trap alongside this stage.
++cat > "$PLUGINS_ROOT/tool/teardown/plugin.sh" <<PLUG
++teardown_run() { : > "$_DSCLA13_ABORT_ENTERED"; sleep 3; return 0; }
++PLUG
++
++_claim_prep "dscla13"
++
++# When: the runner process receives a first SIGTERM (enters _runner_abort_trap,
++# blocks SIGTERM via trap '' TERM), then a second SIGTERM arrives while
++# zbuild_claim_release is executing inside _runner_abort_trap.
++( cd "$_CLAIM_REPO" && exec bash "$RUNNER" \
++    --issue "$_DSCLA13_ISSUE" --no-resume \
++    --template claim-dscla13 ) \
++    > "$TEST_TEMP_DIR/dscla13.out" 2>&1 &
++_DSCLA13_PID=$!
++
++# Wait for outcome stage to start: zbuild_claim_acquire fired before first stage
++for _ in $(seq 1 300); do [[ -e "$_DSCLA13_STARTED" ]] && break; sleep 0.1; done
++
++# Given: the runner has entered _runner_abort_trap and blocked SIGTERM via trap '' TERM
++kill -TERM "$_DSCLA13_PID" 2>/dev/null || true
++
++# Wait for the teardown (release) stage to enter: we are inside _runner_abort_trap
++for _ in $(seq 1 300); do [[ -e "$_DSCLA13_ABORT_ENTERED" ]] && break; sleep 0.1; done
++
++# When: second SIGTERM arrives while zbuild_claim_release is executing inside the trap
++kill -TERM "$_DSCLA13_PID" 2>/dev/null || true
++
++for _ in $(seq 1 600); do kill -0 "$_DSCLA13_PID" 2>/dev/null || break; sleep 0.1; done
++kill -KILL "$_DSCLA13_PID" 2>/dev/null || true
++wait "$_DSCLA13_PID" 2>/dev/null || true
++
++# Setup check: outcome stage started (first SIGTERM arrived while outcome was running)
++if [[ ! -e "$_DSCLA13_STARTED" ]]; then
++    assert_fail "[setup-DSCLA-13] outcome stage started before first SIGTERM" \
++        "$(tail -10 "$TEST_TEMP_DIR/dscla13.out")"
 +fi
- 
- # Global: set by zbuild_claim_acquire when it successfully adds zbuild:claimed.
- # Guards zbuild_claim_release so a refused run never removes another run's claim.
-@@ -68,12 +71,73 @@ zbuild_claim_build_holder() {
-         _ZBUILD_CLAIM_HOLDER="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-unknown}/actions/runs/${GITHUB_RUN_ID:-unknown}"
-     else
-         local run_id="${ZBUILD_RUN_ID:-}"
--        local machine; machine="$(_ccgl_machine_id)"
--        _ZBUILD_CLAIM_HOLDER="run_id=${run_id} machine=${machine}"
-+        # ${ZBUILD_CLAIM_MACHINE_ID:-${HOSTNAME}}: ZBUILD_CLAIM_MACHINE_ID overrides for tests;
-+        # ${HOSTNAME} is a bash built-in — no external hostname command, no fork (ADR-005 §2)
-+        _ZBUILD_CLAIM_HOLDER="run_id=${run_id} machine=${ZBUILD_CLAIM_MACHINE_ID:-${HOSTNAME}}"
-     fi
-     export _ZBUILD_CLAIM_HOLDER
- }
- 
-+# _zbuild_claim_read_labels_into <varname> <issue>
-+# Read the current labels for <issue> into the named variable — no outer subshell,
-+# no $(_ccgl_backend) fork (uses ${ZBUILD_CLAIM_BACKEND:-gh} directly).
-+# Returns 0 on success (variable set, possibly empty); 1 on backend error.
-+_zbuild_claim_read_labels_into() {
-+    local _varname="$1" _issue="$2"
-+    case "${ZBUILD_CLAIM_BACKEND:-gh}" in
-+        gh)
-+            local _out
-+            if ! _out="$(gh issue view "$_issue" --json labels \
-+                    --jq '.labels[].name' 2>/dev/null)"; then
-+                return 1
-+            fi
-+            printf -v "$_varname" '%s' "$_out"
-+            return 0
-+            ;;
-+        local-fs)
-+            local _store="${ZBUILD_CLAIM_STORE:-}"
-+            local _f="$_store/$_issue/labels.txt"
-+            local _content=""
-+            if [[ -f "$_f" ]]; then
-+                local _line
-+                while IFS= read -r _line; do
-+                    _content+="${_line}"$'\n'
-+                done < "$_f"
-+            fi
-+            printf -v "$_varname" '%s' "$_content"
-+            return 0
-+            ;;
-+        *) return 1 ;;
-+    esac
-+}
 +
-+# _zbuild_claim_add_label_direct <issue> <label>
-+# Add a label to an issue — no $(_ccgl_backend) fork (uses ${ZBUILD_CLAIM_BACKEND:-gh}).
-+_zbuild_claim_add_label_direct() {
-+    local _issue="$1" _label="$2"
-+    case "${ZBUILD_CLAIM_BACKEND:-gh}" in
-+        gh)
-+            gh issue edit "$_issue" --add-label "$_label" >/dev/null 2>&1
-+            ;;
-+        local-fs)
-+            local _store="${ZBUILD_CLAIM_STORE:-}"
-+            [[ -n "$_store" ]] || return 1
-+            local _f="$_store/$_issue/labels.txt"
-+            mkdir -p "$_store/$_issue"
-+            local _timeout="${ZBUILD_CLAIM_FLOCK_TIMEOUT_SEC:-5}"
-+            (
-+                exec 9>"${_f}.lock"
-+                flock -w "$_timeout" 9 || exit 1
-+                touch "$_f"
-+                if ! grep -Fxq "$_label" "$_f"; then
-+                    echo "$_label" >> "$_f"
-+                fi
-+            )
-+            ;;
-+        *) return 1 ;;
-+    esac
-+}
++# Then: zbuild:claimed is absent from the issue after the runner exits
++# Gate on acquisition: if claim was never acquired (base code), report that
++if [[ ! -e "$_DSCLA13_PRESENT" ]]; then
++    assert_fail "[DSCLA-13] zbuild:claimed was never acquired — cannot verify release after second SIGTERM" \
++        "claim never appeared in store; output=$(tail -5 "$TEST_TEMP_DIR/dscla13.out")"
++elif ! grep -Fxq "zbuild:claimed" "$ZBUILD_CLAIM_STORE/$_DSCLA13_ISSUE/labels.txt" 2>/dev/null; then
++    assert_pass "[DSCLA-13] zbuild:claimed absent after second SIGTERM during abort trap"
++else
++    assert_fail "[DSCLA-13] zbuild:claimed absent after second SIGTERM during abort trap" \
++        "label still present in claim store after runner exit with second SIGTERM"
++fi
 +
- # zbuild_claim_acquire <issue> — acquire the cross-machine claim for <issue>.
- #
- # Sets _ZBUILD_CLAIM_HOLDER (global) and returns:
-@@ -89,9 +153,11 @@ zbuild_claim_acquire() {
-     # Empty issue or goal-only run (issue=0) → no-op (DSCLA-8)
-     [[ -z "$issue" || "$issue" == "0" ]] && return 0
- 
--    # Read current labels; on backend error, skip gracefully
-+    # Read current labels; on backend error, skip gracefully.
-+    # Uses _zbuild_claim_read_labels_into to avoid a $(_ccgl_read_labels) subshell
-+    # and the $(_ccgl_backend) fork inside it (ADR-065 §6, #1764).
-     local existing
--    if ! existing="$(_ccgl_read_labels "$issue")"; then
-+    if ! _zbuild_claim_read_labels_into existing "$issue"; then
-         return 0
-     fi
- 
-@@ -107,8 +173,10 @@ zbuild_claim_acquire() {
-     # keeps the in-process value consistent after the acquire.
-     zbuild_claim_build_holder
- 
--    # Add zbuild:claimed label; on failure, skip gracefully
--    _ccgl_add_label "$issue" "zbuild:claimed" || return 0
-+    # Add zbuild:claimed label; on failure, skip gracefully.
-+    # Uses _zbuild_claim_add_label_direct to avoid the $(_ccgl_backend) fork
-+    # inside _ccgl_add_label (ADR-065 §6, #1764).
-+    _zbuild_claim_add_label_direct "$issue" "zbuild:claimed" || return 0
- 
-     _ZBUILD_CLAIM_ACQUIRED="1"
-     return 0
+ # ─────────────────────────────────────────────────────────────────────────────
+ # End of DSCLA claim tests
+ # ─────────────────────────────────────────────────────────────────────────────
