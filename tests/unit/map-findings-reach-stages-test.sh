@@ -84,7 +84,7 @@ DESIGN="$(_pw design)"
 # ── M1 / M2 ──────────────────────────────────────────────────────────────────
 print_test_section "M1/M2: build is shown every lens's findings it takes"
 assert_contains "[M1] build is shown the correctness lens's code finding" "$BUILD" "CORR-CODE resume starts one round early"
-assert_contains "[M1] …labelled by its file, as the open items name it" "$BUILD" "lens-correctness-code finding 1"
+assert_contains "[M1] …labelled by its file, as the open items name it" "$BUILD" "lens-correctness-change finding 1"
 assert_contains "[M2] build is shown the correctness lens's design finding" "$BUILD" "CORR-DESIGN the SPEC names the wrong iteration"
 
 # ── M3 ───────────────────────────────────────────────────────────────────────
@@ -100,7 +100,7 @@ assert_not_contains "[M4] …nor the security lens's" "$BUILD" "review-lens-secu
 # ── M5 ───────────────────────────────────────────────────────────────────────
 print_test_section "M5: the first member too"
 assert_contains "[M5] build is shown the security lens's code finding as a finding" "$BUILD" \
-    "lens-security-code finding 1 (opened by review_lenses): security lens, high: SEC-CODE the issue is read unchecked"
+    "lens-security-change finding 1 (opened by review_lenses): security lens, high: SEC-CODE the issue is read unchecked"
 
 # ── M6 ───────────────────────────────────────────────────────────────────────
 print_test_section "M6: the summary count"

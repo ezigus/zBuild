@@ -140,6 +140,8 @@ acceptance-reachability.sh  env-scrub.sh  impact-prefilter.sh
 merge-base.sh  shape-floor.sh
 ```
 
+*(2026-11-16, #2556: `shape-floor.sh` is gone with the shape floor — ADR-040.)*
+
 All eight are under `scripts/lib`. Nothing in `core/` is in the set, so `core/pipeline/verdict.sh`, `core/plugin-registry/lifecycle.sh` and `core/router/route.sh` are **not** self-graded and gate 2 fires for none of them — which is what let #1918 change the dispatch seam without tripping it. Run it:
 
 ```bash

@@ -976,7 +976,6 @@ outputs:
     format: json
     required: true
     primary: true
-    finding_topics: none
 EOF
     local _outcome=pass _srl
     [[ "$exit_code" -ne 0 ]] && _outcome=broken

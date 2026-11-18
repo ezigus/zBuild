@@ -219,12 +219,16 @@ _ag_build_reason() {
     printf 'the acceptance check failed — %s' "$out"
 }
 
-# _ag_reason_findings_json <failure...> — the gate's numbered findings, one per
-# kind of problem (#2271). #2452 (ADR-071 §1): a finding about the code or a
-# test is code-findings, so it reaches the stages that change those and not
-# design; a finding about the requirements keeps the result's topic.
-_ag_reason_findings_json() {
-    _AG_REASON_LINES=1 _ag_build_reason "$@" | stage_findings_json
+# _ag_route_findings <result_file> <failure...> — the gate's numbered findings,
+# one per kind of problem (#2271), printed for its own result. #2556 (ADR-071
+# §1): each goes to an output of its topic beside <result_file> — one about the
+# code or a test to <name>-code-result.json, the rest, about the requirements,
+# to <name>-requirement-result.json — so it reaches only the stages that take
+# that topic.
+_ag_route_findings() {
+    local _agr_f="$1" _agr_n; shift
+    _agr_n="${_agr_f##*/}"; _agr_n="${_agr_n%-result.json}"
+    _AG_REASON_LINES=1 _ag_build_reason "$@" | stage_findings_route "${_agr_f%/*}" "$_agr_n" requirement-findings
 }
 
 # The lib functions acceptance_gate_run calls. One undefined after loading means
@@ -260,7 +264,8 @@ _ag_fail_load() {
     local failures_json reason fnd
     failures_json="$(printf 'gate_load_failed:%s\n' $problems | jq -R . | jq -sc .)"
     reason="$(_ag_build_reason "gate_load_failed:${problems// /, }")"
-    fnd="$(printf '%s\n' "${reason#the acceptance check failed — }" | stage_findings_json)"
+    local _agl_n="${result_file##*/}"; _agl_n="${_agl_n%-result.json}"
+    fnd="$(printf '%s\n' "${reason#the acceptance check failed — }" | stage_findings_route "$(dirname "$result_file")" "$_agl_n" requirement-findings)"
     _ag_write_result "$result_file" broken "$reason" \
         "$(jq -cn --argjson f "$failures_json" --argjson fnd "${fnd:-[]}" \
             '{severity:"terminal",failures:$f,data:{findings:$fnd}}')"
@@ -287,7 +292,10 @@ _ag_write_result() {
 # the gate no-ops instead of hard-failing — this is what makes it safe to
 # compose into repos that do not use SPEC.
 _ag_noop_precondition_unmet() {
-    local result_file="$1" pc="$2"
+    local result_file="$1" pc="$2" _agp_n
+    # #2556: a check that did not run leaves no findings by topic of an earlier try.
+    _agp_n="${result_file##*/}"; _agp_n="${_agp_n%-result.json}"
+    stage_findings_route "$(dirname "$result_file")" "$_agp_n" requirement-findings < /dev/null >/dev/null
     _ag_write_result "$result_file" pass "precondition_unmet" \
         "$(jq -cn --arg pc "$pc" '{precondition:$pc,severity:"none",failures:[]}')"
     local _summary_dir; _summary_dir="$(dirname "$result_file")"

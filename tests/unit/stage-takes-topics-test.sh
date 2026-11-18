@@ -67,7 +67,7 @@ _producer() {
     mkdir -p "$PROOT/tool/$s"
     {
         printf 'id: %s\nname: %s\nkind: tool\nversion: 0.0.1\nhooks:\n  run: x_run\noutputs:\n' "$s" "$s"
-        printf '  - id: %s_result\n    path: ${artifact_dir}/%s-result.json\n    type: json\n    required: true\n    primary: true\n    finding_topics: none\n' "$u" "$s"
+        printf '  - id: %s_result\n    path: ${artifact_dir}/%s-result.json\n    type: json\n    required: true\n    primary: true\n' "$u" "$s"
         [[ -n "$tl" ]] && printf '%s\n' "$tl"
         printf '  - id: %s_summary\n    path: ${artifact_dir}/%s-summary.md\n    type: text\n    required: false\n    summary: true\n' "$u" "$s"
         [[ -n "$tl" ]] && printf '%s\n' "$tl"
@@ -94,7 +94,7 @@ _consumer() {
         printf 'id: %s\nname: %s\nkind: agent\nversion: 0.0.1\n' "$s" "$s"
         [[ -n "$takes" ]] && printf '%s' "$takes"
         printf 'hooks:\n  run: x_run\noutputs:\n'
-        printf '  - id: %s_result\n    path: ${artifact_dir}/%s-result.json\n    type: json\n    required: true\n    primary: true\n    finding_topics: none\n    topic: ask\n' "$u" "$s"
+        printf '  - id: %s_result\n    path: ${artifact_dir}/%s-result.json\n    type: json\n    required: true\n    primary: true\n    topic: ask\n' "$u" "$s"
     } > "$PROOT/agent/$s/manifest.yaml"
     printf 'x_run() { return 0; }\n' > "$PROOT/agent/$s/plugin.sh"
 }
@@ -184,7 +184,7 @@ _valid() {
         printf 'id: v\nname: v\nkind: tool\nversion: 0.0.1\n'
         [[ -n "$2" ]] && printf '%s\n' "$2"
         printf 'provides:\n  result_contract: 3\nhooks:\n  run: x_run\noutputs:\n'
-        printf '  - id: v_result\n    path: ${artifact_dir}/v-result.json\n    type: json\n    required: true\n    primary: true\n    finding_topics: none\n    topic: %s\n    description: x\n' "$3"
+        printf '  - id: v_result\n    path: ${artifact_dir}/v-result.json\n    type: json\n    required: true\n    primary: true\n    topic: %s\n    description: x\n' "$3"
     } > "$1/manifest.yaml"
     printf 'x_run() { return 0; }\n' > "$1/plugin.sh"
 }
@@ -229,14 +229,15 @@ assert_eq "[T7] test-author: its checker is test-findings, its list of tests is 
     "$(_topics_of "$REPO_ROOT/plugins/agent/test-author/manifest.yaml")"
 assert_eq "[T7] build: change; its answers that a test is wrong are code-findings (#2441)" "diff_patch=change build_summary=change build_tests=code-findings build_stage_summary=change " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/build/manifest.yaml")"
-assert_eq "[T7] test: the suite is code-findings, the acceptance check requirement-findings" \
-    "test_errors=code-findings test_results=code-findings test_failures_summary=code-findings test_output_log=code-findings test_timing=code-findings shape_floor_result=code-findings shape_floor_detail=code-findings acceptance_result=requirement-findings acceptance_detail=requirement-findings acceptance_errors=requirement-findings " \
+# #2556 (ADR-071 §1): each result names no topic; one output per topic holds its findings.
+assert_eq "[T7] test: the suite's findings by topic, the acceptance check's by topic" \
+    "test_errors=code-findings test_results= test_failures_summary= test_output_log=code-findings test_timing=code-findings test_code=code-findings test_change=change-findings acceptance_result= acceptance_requirement=requirement-findings acceptance_code=code-findings acceptance_detail=requirement-findings acceptance_errors=requirement-findings " \
     "$(_topics_of "$REPO_ROOT/plugins/tool/test/manifest.yaml")"
-assert_eq "[T7] issue-acceptance: requirement-findings" \
-    "issue_acceptance_result=requirement-findings issue_acceptance_summary=requirement-findings " \
+assert_eq "[T7] issue-acceptance: one output per topic; its result and summary name none" \
+    "issue_acceptance_result= issue_acceptance_summary= issue_acceptance_requirement=requirement-findings issue_acceptance_code=code-findings issue_acceptance_change=change-findings " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/issue-acceptance/manifest.yaml")"
 # #2491: its verdict, summary and replies reach no stage; its findings do.
-assert_eq "[T7] review-lens: only its findings have a topic" "lens_result= review_lens_summary= review_lens_code=code-findings review_lens_design=requirement-findings review_lens_replies= " \
+assert_eq "[T7] review-lens: only its findings have a topic" "lens_result= review_lens_summary= review_lens_code=code-findings review_lens_change=change-findings review_lens_design=requirement-findings review_lens_replies= " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/review-lens/manifest.yaml")"
 # Every model stage composes its prompt through stage_prompt_compose*; each one
 # declares takes:.

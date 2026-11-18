@@ -1,0 +1,13 @@
+# The run's shape tests (#2556, ADR-040). One test file per line, from the
+# repository root. Lines starting with `#` are comments.
+#
+# When a change touches a file on config/shape-change-paths.txt, the test stage
+# always runs every test listed here, a targeted rerun included: these are the
+# tests that pin the run's stage order and its event sequence, and their result
+# is the answer to whether the change kept them true.
+tests/e2e/parity-local-vs-ci-test.sh
+tests/golden/golden-contracts-test.sh
+tests/unit/template-always-run-test.sh
+tests/unit/core-pipeline-template-test.sh
+tests/unit/template-resolvability-preflight-test.sh
+tests/unit/template-simple-yaml-test.sh

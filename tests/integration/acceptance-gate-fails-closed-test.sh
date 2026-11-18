@@ -12,7 +12,7 @@
 #   F3: the #1752 shape — the libs load, a helper moved out is gone, the
 #       negative control reports on no requirement → fail, not pass
 #   F4: a whole-run skip still names each SPEC → still a pass (guard)
-#   F5: shape-floor: its library's own dependency is missing → fail
+#   (F5 went with the shape floor, #2556)
 #   F6: build's secret scan: merge-base.sh is missing → broken, not clean (#2371)
 #   F7: the reason names every file that did not load
 set -euo pipefail
@@ -159,24 +159,6 @@ printf '%s\n' '```acceptance' 'SPEC-1: test-only' 'TESTFILES:' 'tests/feature-te
 _run_gate "$R4"
 assert_eq "[F4] a test-only change (no_prod_delta for SPEC-1) still passes" "pass" \
     "$(jq -r .outcome <<<"$RESULT")"
-
-# ── F5: shape-floor — its library's dependency is missing ────────────────────
-print_test_section "F5: shape-floor fails when its library's dependency does not load"
-W5="$TEST_TEMP_DIR/w5"; mkdir -p "$W5/artifacts"
-L5="$(_lib_without f5 merge-base.sh)"
-set +e
-(
-    export ZBUILD_CONTRACT_LIB_DIR="$L5" ZBUILD_REPO_ROOT="$R0"
-    unset _ZBUILD_SHAPE_FLOOR_PLUGIN_LOADED _SF_LOADED _ZBUILD_MERGE_BASE_LOADED
-    # shellcheck disable=SC1090
-    source "$REPO_ROOT/plugins/tool/test/plugin.sh"
-    shape_floor_run "shape-floor" "$W5/state.json"
-) >/dev/null 2>&1
-set -e
-_J5="$(cat "$W5/artifacts/shape-floor-result.json" 2>/dev/null || echo '{}')"
-# #2366: a stage that could not run says so as its outcome — broken.
-assert_eq "[F5] shape-floor outcome broken" "broken" "$(jq -r .outcome <<<"$_J5")"
-assert_eq "[F5] shape-floor reason library_load_failure" "library_load_failure" "$(jq -r .reason <<<"$_J5")"
 
 # ── F6: build's secret scan — merge-base.sh is missing (#2371) ───────────────
 print_test_section "F6: build's secret scan is broken when merge-base.sh does not load"

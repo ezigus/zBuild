@@ -20,28 +20,74 @@ _ZBUILD_STAGE_SUMMARY_SH_LOADED=1
 # #2271 (ADR-068): a check lists what it found as numbered items in its result
 # (`data.findings`), so later stages can answer each one and the check that
 # opened it can close it. Blank lines are skipped; numbering starts at 1.
-# #2452 (ADR-071 §1): a line "<topic><TAB><text>" is a finding with its own
-# topic, so it reaches only the stages that take that topic. Only the five
-# topic words count; any other line is a finding with no topic, kept whole.
 # #2470: a finding of several lines (a SPEC shown whole) comes as one line with
-# its lines joined by a record separator (\x1e), and keeps them.
-_ZB_FINDING_TOPICS='^(ask|tests|change|requirement-findings|code-findings|change-findings|test-findings)\t'
+# its lines joined by a record separator (\x1e), and keeps them. #2556 (ADR-071
+# §1): a finding names no topic of its own — its output's topic decides who
+# reads it; a stage with findings for several topics writes them with
+# stage_findings_route.
 stage_findings_json() {
-    jq -R -s -c --arg re "$_ZB_FINDING_TOPICS" \
-        '[ split("\n")[] | sub("^\\s+"; "") | sub("\\s+$"; "") | select(length > 0) ]
-         | to_entries
-         | map(.value as $v | {n: (.key + 1)}
-               + if ($v | test($re)) then {text: ($v | sub("^[^\t]+\t"; "")), topic: ($v | split("\t")[0])}
-                 else {text: $v} end
-               | .text |= gsub("\u001e"; "\n"))' 2>/dev/null || printf '[]'
+    jq -R -s -c '[ split("\n")[] | sub("^\\s+"; "") | sub("\\s+$"; "") | select(length > 0) ]
+         | to_entries | map({n: (.key + 1), text: (.value | gsub("\u001e"; "\n"))})' 2>/dev/null || printf '[]'
 }
 
-# stage_findings_lines <result.json> — the result's findings as the lines
-# stage_findings_json takes, each topic kept; a word outside the five is dropped.
-stage_findings_lines() {
-    jq -r --arg re "$_ZB_FINDING_TOPICS" '(.data.findings // [])[]? | select(type == "object")
-        | (.text // "" | tostring | gsub("[\r\n]+"; " ")) as $t
-        | if ((if (.topic | type) == "string" then .topic else "" end) + "\t" | test($re)) then "\(.topic)\t\($t)" else $t end' "$1" 2>/dev/null || true
+# The topics a finding line may be routed to, and each one's word in its file's
+# name: <name>-<word>-result.json.
+_ZB_FINDING_TOPICS='^(requirement-findings|code-findings|change-findings|test-findings)\t'
+
+# stage_findings_route <dir> <name> <default-topic> — reads finding lines on
+# stdin, "<topic><TAB><text>" or "<text>" (the default topic); writes each
+# topic's findings, numbered, to <dir>/<name>-<word>-result.json (the topic
+# without "-findings"), with no verdict of its own, and removes the file of a
+# topic that has none; prints every finding, numbered and naming no topic, for
+# the stage's own result (#2556, ADR-071 §1).
+stage_findings_route() {
+    local dir="$1" name="$2" def="$3" _in="" _l _w _j _all="[]"
+    IFS= read -r -d '' _in || true
+    local -A _sfr_has=()
+    local -a _sfr_gone=()
+    # No findings: no jq — only the files of an earlier try are removed, and
+    # rm runs only when there is one (ADR-065).
+    if [[ -z "${_in//[[:space:]]/}" ]]; then
+        for _w in requirement code change test; do
+            [[ -e "$dir/$name-$_w-result.json" ]] && _sfr_gone+=("$dir/$name-$_w-result.json")
+        done
+        [[ ${#_sfr_gone[@]} -gt 0 ]] && rm -f "${_sfr_gone[@]}"
+        printf '[]'; return 0
+    fi
+    while IFS=$'\t' read -r _w _j; do
+        [[ -n "$_w" ]] || continue
+        if [[ "$_w" == ALL ]]; then _all="$_j"; continue; fi
+        # Counted as written only once it is: a file that could not be
+        # written is removed below, never left from an earlier try.
+        atomic_write "$dir/$name-$_w-result.json" <<< "$_j" 2>/dev/null && _sfr_has[$_w]=1
+    done < <(jq -R -s -r --arg d "$def" --arg re "$_ZB_FINDING_TOPICS" '
+        [ split("\n")[] | sub("^\\s+"; "") | sub("\\s+$"; "") | select(length > 0)
+          | if test($re) then {t: split("\t")[0], x: sub("^[^\t]+\t"; "")} else {t: $d, x: .} end
+          | .x |= gsub("\u001e"; "\n") ] as $l
+        | ([$l[].t] | unique[] | . as $t
+           | "\($t | sub("-findings$"; ""))\t" + ({data: {findings: ([$l[] | select(.t == $t) | .x] | to_entries | map({n: (.key + 1), text: .value}))}} | tojson)),
+          "ALL\t" + ($l | to_entries | map({n: (.key + 1), text: .value.x}) | tojson)' <<< "$_in" 2>/dev/null)
+    for _w in requirement code change test; do
+        [[ -z "${_sfr_has[$_w]:-}" && -e "$dir/$name-$_w-result.json" ]] && _sfr_gone+=("$dir/$name-$_w-result.json")
+    done
+    [[ ${#_sfr_gone[@]} -gt 0 ]] && rm -f "${_sfr_gone[@]}"
+    printf '%s' "$_all"
+}
+
+# stage_findings_routed_lines <dir> <name> <default-topic> — the findings
+# stage_findings_route wrote, read back as the lines it takes, so a stage that
+# adds to them keeps each one's topic.
+stage_findings_routed_lines() {
+    local _w _f; local -a _fs=()
+    for _w in requirement code change test; do
+        _f="$1/$2-$_w-result.json"; [[ -s "$_f" ]] && _fs+=("$_f")
+    done
+    [[ ${#_fs[@]} -gt 0 ]] || return 0
+    # One jq for every file: each finding with its file's topic, the default's bare.
+    jq -r --arg d "$3" '(input_filename | capture("-(?<w>[a-z]+)-result\\.json$").w + "-findings") as $t
+        | (.data.findings // [])[]? | (.text | tostring | gsub("[\r\n]+"; " ")) as $x
+        | if $t == $d then $x else "\($t)\t\($x)" end' "${_fs[@]}" 2>/dev/null
+    return 0
 }
 
 # ─── stage_summary_write <path> <stage> <verdict> <reason> [body] ────────────

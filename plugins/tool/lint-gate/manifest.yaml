@@ -41,7 +41,6 @@ config:
 outputs:
   - id: lint_result
     path: "${artifact_dir}/lint-result.json"
-    finding_topics: none
     type: lint-result.json@1
     format: json
     required: true

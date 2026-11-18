@@ -72,6 +72,10 @@ _setup() {
     export ZBUILD_STAGE_INPUTS="$_S/stage-inputs.json" ZBUILD_ARTIFACT_DIR="$_A" ZBUILD_REPO_ROOT="$_S"
 }
 _res() { jq -r "$1" "$_A/issue-acceptance-result.json" 2>/dev/null || echo MISSING; }
+# _out <word> — the texts of issue-acceptance's output for one topic (#2556).
+_out() { jq -r '[.data.findings[]?.text] | join(" || ")' "$_A/issue-acceptance-$1-result.json" 2>/dev/null; }
+# _mf_topic <output id> — the topic issue-acceptance's manifest gives that output.
+_mf_topic() { awk -v id="$1" '$0 ~ "- id: " id "$" {f=1; next} f && /^  - id:/ {f=0} f && /topic:/ {print $2; exit}' "$PLUGIN_DIR/manifest.yaml"; }
 _run() { : > "$_IA_PROMPT"; : > "$_IA_CALLS"; issue_acceptance_run "issue-acceptance" "$_S/pipeline-state.json" >/dev/null 2>&1; }
 
 print_test_section "U1: the prompt asks the reverse question"
@@ -88,13 +92,12 @@ _IA_ANSWER=$'MET: --from-stage starts the run at that stage\nUNASKED: it drops t
 _run
 assert_eq "[U2] the change does not pass" "fail" "$(_res .outcome)"
 assert_eq "[U2] one finding" "1" "$(_res '.data.findings | length')"
-assert_eq "[U2] its topic is change-findings (build takes it)" "change-findings" "$(_res '.data.findings[0].topic')"
+assert_contains "[U2] it is in the change output (build takes it)" "$(_out change)" "it drops the rule that --from-stage needs --resume"
 assert_contains "[U2] the finding names the part" "$(_res '.data.findings[0].text')" "it drops the rule that --from-stage needs --resume"
 assert_contains "[U2] ...and the code that shows it" "$(_res '.data.findings[0].text')" 'runner.sh | resume_required=0'
 assert_eq "[U2] it is kept apart from the unmet requirements" "0" "$(_res '.data.unmet | length')"
 assert_eq "[U2] ...as an unasked part" "1" "$(_res '.data.unasked | length')"
-assert_eq "[U2] the manifest lets the result name change-findings" "1" \
-    "$(grep -cE '^[[:space:]]+finding_topics:.*change-findings' "$PLUGIN_DIR/manifest.yaml" || true)"
+assert_eq "[U2] the manifest gives that output the topic change-findings" "change-findings" "$(_mf_topic issue_acceptance_change)"
 
 print_test_section "U3: none is no finding"
 _setup u3
@@ -116,14 +119,12 @@ _setup u5
 _IA_ANSWER=$'MET: --from-stage starts the run at that stage\nUNASKED: it changes an old test | WHY: no requirement asks for it | QUOTE: tests/unit/r-test.sh | assert_eq "[R8] shown as code" x y\nUNASKED: it drops the rule | WHY: no requirement asks to drop it | QUOTE: runner.sh | resume_required=0'
 _run
 assert_eq "[U5] two findings" "2" "$(_res '.data.findings | length')"
-assert_eq "[U5] the one in a test file is code-findings (test-author takes it)" "code-findings" \
-    "$(_res '[.data.findings[] | select(.text | contains("it changes an old test"))][0].topic')"
-assert_eq "[U5] the one in another file stays change-findings" "change-findings" \
-    "$(_res '[.data.findings[] | select(.text | contains("it drops the rule"))][0].topic')"
+assert_contains "[U5] the one in a test file is in the code output (test-author takes it)" "$(_out code)" "it changes an old test"
+assert_contains "[U5] the one in another file stays in the change output" "$(_out change)" "it drops the rule"
+assert_eq "[U5] ...and only it" "1" "$(jq -r '.data.findings | length' "$_A/issue-acceptance-change-result.json" 2>/dev/null)"
 assert_eq "[U5] the unasked list holds both, without any mark" "0" \
     "$(_res '[.data.unasked[] | select(startswith("["))] | length')"
-assert_eq "[U5] the manifest lets the result name code-findings" "1" \
-    "$(grep -cE '^[[:space:]]+finding_topics:.*code-findings' "$PLUGIN_DIR/manifest.yaml" || true)"
+assert_eq "[U5] the manifest gives the code output the topic code-findings" "code-findings" "$(_mf_topic issue_acceptance_code)"
 
 print_test_results
 exit $((FAIL > 0))
