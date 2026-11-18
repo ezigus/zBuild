@@ -41,6 +41,14 @@ source "$REPO_ROOT/tests/lib/test-helpers.sh"
 print_test_header "resume-after-run-timeout: watchdog armed from resumed run's wall-clock start (#1944 SPEC-4)"
 setup_test_env "resume-after-run-timeout"
 
+# #2563 (ADR-054 §11, ADR-062): `timeout` here behaves like Ubuntu 26.04's Rust
+# coreutils one — it dies on a TERM sent to it, and on expiry signals only its
+# direct child — so the engine is checked without relying on GNU `timeout`.
+_STUB_BIN="$TEST_TEMP_DIR/stub-timeout-bin"; mkdir -p "$_STUB_BIN"
+ln -sf "$REPO_ROOT/tests/lib/timeout-child-only-stub.sh" "$_STUB_BIN/timeout"
+ln -sf "$REPO_ROOT/tests/lib/timeout-child-only-stub.sh" "$_STUB_BIN/gtimeout"
+export PATH="$_STUB_BIN:$PATH"
+
 # ─── P1: get_resume_recommendation returns manual_resume_only for timed_out ──
 print_test_section "[#1944/SPEC-4] P1: get_resume_recommendation(timed_out) = manual_resume_only"
 

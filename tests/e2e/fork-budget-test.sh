@@ -134,7 +134,7 @@ setup_test_env "fork-budget"
 # lens's findings — a second model call per lens that has findings — which the
 # fixture now runs (one low finding). Measured on macOS: 1852 execs (was 1760). It ratchets down
 # from here.
-FORK_BUDGET=1852
+FORK_BUDGET=1850
 # PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
 # the programs above plus each `$( )` subshell, a copy of the whole engine shell
 # that FORK_BUDGET cannot see. Ratchets down only, like FORK_BUDGET. History:
@@ -184,7 +184,7 @@ FORK_BUDGET=1852
 # lens's findings — a second model call per lens that has findings — which the
 # fixture now runs (one low finding). Measured on macOS: 2465 processes (was 2356). It ratchets down
 # from here.
-PROCESS_BUDGET=2465
+PROCESS_BUDGET=2463
 # The run's cost in two parts (ADR-065 §6, #2472). Each budget ratchets down
 # like the totals; each floor is the goal, an estimate, measured again when
 # reached. History: 505 / 298 a dispatch, 12 / 7 a plugin at start-up (#2472 —

@@ -1,6 +1,6 @@
 # ADR-054: Stage Contract
 
-**Status:** Accepted (2026-08-09)
+**Status:** Accepted (2026-08-09); amended 2026-11-18 (#2563: the run watchdog signals only the runner's own tree)
 **Date:** 2026-08-09
 **Issue:** #1820
 **Amended:** 2026-11-08 (#2493) — §7: a signal that arrives while a signal handler runs is ignored, never handled inside it (Amendment at the end).
@@ -643,7 +643,15 @@ ended any other way and changed nothing left no trace in the events or the log.
 
 `router_timeout` also covers a call that ended after its hook told it its time was up (ADR-063, amended 2026-11-14): its done word answers that it was told to stop, not that the work is done. It is `timed_out`, and the engine runs the stage's next try.
 
+## Amendment 2026-11-18 (#2563) — §11: the watchdog signals only the runner's own tree
+
+GitHub's `ubuntu-latest` moved to Ubuntu 26.04, whose Rust coreutils `timeout` dies on a TERM sent to it. The watchdog sent its TERM to the runner's whole process group, and when the runner is not a group leader that group holds whatever started it. Under `timeout 25 bash runner.sh` the caller saw 143, not the runner's 1; under a plain test shell, the TERM ended the test itself.
+
+- **§11: when the per-run wall-clock limit (max_run_s) is reached, the watchdog signals the runner and the processes the runner started** — found by parent, the watchdog left out — never the runner's process group. It lists that whole tree before any signal (`_lc_tree`, as `plugin_stop_running` reads it — a stage shell that dies on TERM would otherwise orphan its children before they were found), then TERMs the runner and the tree in one call; the runner's trap writes `timed_out`, dispatches the always-run stages and exits 1; after the grace it KILLs what the runner started, not the runner. A parent that shares the runner's group gets no signal.
+
 ## Enforced by
+
+- §11 amendment 2026-11-18 (#2563: only the runner's own tree) → `tests/integration/run-timed-out-test.sh` P1–P4 and `tests/integration/resume-after-run-timeout-test.sh` P4, P5 (a process a trap-less stage started is ended), both run under `tests/lib/timeout-child-only-stub.sh` (a `timeout` that dies on TERM and signals only its child)
 
 - §6 amendment 2026-11-14 (#2543: a call told its time is up ends router_timeout) → `tests/unit/route-time-up-not-done-test.sh` T1, T3, T5
 

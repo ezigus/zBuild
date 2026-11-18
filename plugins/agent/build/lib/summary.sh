@@ -446,7 +446,7 @@ _build_guard_false_completion() {
         rc=0
         # #2108: stdin is this loop's TESTFILE list — a file that reads it
         # would eat the rest of the roster; the fresh shell hands it /dev/null.
-        ( _zbuild_make_fresh_shell; ${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"} bash "$abs" ) >/dev/null 2>&1 || rc=$?
+        ( _zbuild_make_fresh_shell; zb_timeout_run _ACCEPTANCE_TOUT bash "$abs" ) >/dev/null 2>&1 || rc=$?
         case "$rc" in
             0) ;;
             124|137|143) warn "build: false-completion probe of $tf hit its bound (rc=$rc) — inconclusive, not red" ;;

@@ -1,6 +1,6 @@
 # ADR-062: The engine reclaims; stages stop declaring cleanup hooks
 
-**Status:** Accepted (2026-08-31)
+**Status:** Accepted (2026-08-31); amended 2026-11-18 (#2563: a spawn whose tree must die owns its group)
 **Date:** 2026-08-31
 **Supersedes:** ADR-054 §7's per-stage `cleanup(scope)` dispatch, and the `plugins/tool/teardown` stage that invokes it
 **Amends:** ADR-056 (the lifecycle becomes `run` only), ADR-058 §1 (`runtime/` gains the writer its definition already promised)
@@ -127,3 +127,11 @@ The correction reverses the direction: the engine cannot observe a group that do
 §4's ordering held up exactly as written. `tool/test`'s hook was the only mechanism in the tree that had ever killed a stage's children; retiring it before the engine worked would have removed the one thing that functioned and replaced it with one that never had.
 
 `tests/integration/hard-kill-sweep-e2e-test.sh` is the discriminating test, and it is now real: it SIGKILLs the runner, confirms the suite outlives it, and asserts the next sweep frees it. It does not skip when it cannot stage the scenario — a skip here is indistinguishable from the mechanism being broken.
+
+## Amendment 2026-11-18 (#2563) — a spawn whose tree must die owns its group
+
+Ubuntu 26.04's Rust coreutils `timeout -k` KILLs only its direct child. `scripts/run-mutation.sh` relied on GNU `timeout` signalling the whole group, so a mutant's test whose child ignores TERM left that child running.
+
+- **A spawn whose whole tree must die on a timeout runs in a process group of its own** (`set -m` at the spawn site, #2056), and the spawner KILLs that group once the spawn returns, whatever the `timeout` binary did — `zb_timeout_run` (`scripts/lib/timeout-cmd.sh`). Every site that runs a test file under a timeout uses it: `run-tests.sh`, `run-mutation.sh`, the acceptance check's negative control and reachability runs, and build's own test run. The model call (`core/router/route.sh`) already kills the group it creates, and the `gh` call (`gh-automation.sh`) starts no child that ignores TERM; both are left as they are.
+
+Enforced by: `tests/unit/timeout-group-run-test.sh` G1 (a grandchild that ignores TERM is gone), G2 (the command's status comes back), G3 (no other site runs a command under the timeout prefix itself); `tests/unit/run-mutation-kill-grace-test.sh` SPEC-1 — each run under `tests/lib/timeout-child-only-stub.sh` (a `timeout` that KILLs only its direct child).
