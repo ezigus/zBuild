@@ -2914,18 +2914,16 @@ main() {
     # ── ADR-054 §11 (#1944): arm the run-level watchdog ─────────────────────
     # The watchdog is a background subshell that sleeps for the resolved limit,
     # then writes `timed_out` to the abort sentinel and sends SIGTERM to the
-    # runner's process group. The EXIT trap kills the watchdog on clean exit.
+    # runner and every process the runner started. The EXIT trap kills the
+    # watchdog on clean exit.
     #
-    # Raw kill (not zbuild_pg_kill): the watchdog IS in the runner's process
-    # group, so zbuild_pg_kill's self-group guard would refuse the kill.
+    # #2563 (ADR-054 §11): never the runner's process group. When the runner is
+    # not a group leader, that group holds whatever started it — a `timeout`
+    # wrapper, a CI step's shell — and a TERM to it ended the caller (Ubuntu
+    # 26.04's `timeout` dies on it, 143) or the caller's whole test.
     # First-wins: the sentinel write happens BEFORE the signal, so if the
     # runner's SIGTERM trap calls _zbuild_arm_abort_sentinel "sigterm", ADR-025
     # first-wins preserves `timed_out` over that later write.
-    local _RUNNER_RUN_PGID=""
-    if command -v ps >/dev/null 2>&1; then
-        _RUNNER_RUN_PGID="$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')" || _RUNNER_RUN_PGID="$$"
-    fi
-    [[ -z "$_RUNNER_RUN_PGID" ]] && _RUNNER_RUN_PGID="$$"
     local _RUNNER_SELF_PID="$$"
     (
         # Ignore SIGTERM so the watchdog survives its own PG-wide TERM and
@@ -2940,25 +2938,43 @@ main() {
         # destination, which breaks always-run dispatch on SPEC-5 exit paths.
         exec {_RUNNER_ERR_FD}>&- || true
         _wdg_lim="${_RUNNER_MAX_RUN_S}"
-        _wdg_pgid="${_RUNNER_RUN_PGID}"
         _wdg_runner_pid="${_RUNNER_SELF_PID}"
         sleep "$_wdg_lim" || exit 0
         # Arm the sentinel BEFORE signalling so first-wins preserves timed_out.
         _zbuild_arm_abort_sentinel timed_out 2>/dev/null || true
-        kill -TERM -- "-${_wdg_pgid}" 2>/dev/null || true
-        sleep 10 || exit 0
-        # KILL escalation: target only children of the runner process (not the
-        # runner itself) so the runner's deferred SIGTERM trap fires after the
-        # stage is killed and the runner exits cleanly with rc=1, not rc=137.
-        # A PG-wide KILL also hits the runner process, preventing the EXIT trap
-        # from writing the timed_out state and dispatching always-run stages.
         _wdg_self="${BASHPID}"
-        while IFS= read -r _wdg_child; do
-            [[ "$_wdg_child" == "$_wdg_self" ]] && continue
-            if [[ -n "$_wdg_child" ]]; then
-                kill -KILL "$_wdg_child" 2>/dev/null || true
-            fi
-        done < <(pgrep -P "$_wdg_runner_pid" 2>/dev/null)
+        # #2563: the runner's tree — the runner and every process under it, by
+        # parent, listed whole BEFORE any signal (a stage shell that dies on
+        # TERM would otherwise orphan its children before the walk reached
+        # them) and without this watchdog's own subtree (_lc_tree, as
+        # plugin_stop_running reads it).
+        _wdg_list() {
+            local _all _p _skip=" " _c
+            _all="$(_lc_tree "$_wdg_runner_pid" 2>/dev/null)"
+            for _c in $(_lc_tree "$_wdg_self" 2>/dev/null); do _skip+="$_c "; done
+            for _p in $_all; do [[ "$_skip" == *" $_p "* ]] || printf '%s ' "$_p"; done
+        }
+        # One kill for the runner and all it started: its trap runs at once,
+        # not after the stage it waits on has already died and been read as an
+        # error. With no pgrep the tree cannot be listed; then the runner's own
+        # group, when it leads one (it holds nothing but what it started).
+        _wdg_pids="$(_wdg_list)"
+        if command -v pgrep >/dev/null 2>&1 || ! kill -0 -- "-${_wdg_runner_pid}" 2>/dev/null; then
+            # shellcheck disable=SC2086  # a list of pids
+            kill -TERM ${_wdg_pids:-$_wdg_runner_pid} 2>/dev/null || true
+        else
+            kill -TERM -- "-${_wdg_runner_pid}" 2>/dev/null || true
+        fi
+        sleep 10 || exit 0
+        # KILL escalation: only what the runner started (not the runner
+        # itself), so the runner's deferred SIGTERM trap fires after the stage
+        # is killed and the runner exits cleanly with rc=1, not rc=137 — a KILL
+        # to the runner would stop its EXIT trap writing the timed_out state and
+        # dispatching the always-run stages.
+        for _wdg_child in $(_wdg_list); do
+            [[ "$_wdg_child" == "$_wdg_runner_pid" ]] && continue
+            kill -KILL "$_wdg_child" 2>/dev/null || true
+        done
     ) >/dev/null 2>&1 &
     _RUNNER_WATCHDOG_PID=$!
 

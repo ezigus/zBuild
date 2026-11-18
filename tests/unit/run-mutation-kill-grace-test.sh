@@ -22,6 +22,13 @@ source "$REPO_ROOT/tests/lib/test-helpers.sh"
 print_test_header "run-mutation.sh — a mutant test that ignores TERM cannot hang the tier"
 setup_test_env "run-mutation-kill-grace"
 
+# #2563 (ADR-054 §11, ADR-062): `timeout` here behaves like Ubuntu 26.04's Rust
+# coreutils one — it dies on a TERM sent to it, and on expiry signals only its
+# direct child — so the engine is checked without relying on GNU `timeout`.
+_STUB_BIN="$TEST_TEMP_DIR/stub-timeout-bin"; mkdir -p "$_STUB_BIN"
+ln -sf "$REPO_ROOT/tests/lib/timeout-child-only-stub.sh" "$_STUB_BIN/timeout"
+ln -sf "$REPO_ROOT/tests/lib/timeout-child-only-stub.sh" "$_STUB_BIN/gtimeout"
+export PATH="$_STUB_BIN:$PATH"
 TOUT=""
 for _t in gtimeout timeout; do command -v "$_t" >/dev/null 2>&1 && { TOUT="$_t"; break; }; done
 if [[ -z "$TOUT" ]]; then

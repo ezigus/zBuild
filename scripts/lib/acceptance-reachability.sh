@@ -69,9 +69,14 @@ _reachability_run() {
     while IFS= read -r -d '' _tok; do runner+=("$_tok"); done \
         < <(_acceptance_build_run_cmd "$template" "$testfile")
     _acceptance_timeout_prefix "$timeout_s"
-    if [[ ${#_ACCEPTANCE_TOUT[@]} -gt 0 ]]; then
-        runner=("${_ACCEPTANCE_TOUT[@]}" "${runner[@]}")
-    fi
+    # #2563 (ADR-062): the run gets its own process group, killed after it
+    # (zb_timeout_run in the _run_once below, which reads this prefix). The
+    # prefix is read unguarded, as before: a timeout helper that did not load
+    # leaves it unset, and under set -u the check stops there — nothing run is
+    # nothing checked (ADR-036, the gate fails closed; a test is never run
+    # unbounded).
+    local -a _acc_run_tout=()
+    if [[ ${#_ACCEPTANCE_TOUT[@]} -gt 0 ]]; then _acc_run_tout=("${_ACCEPTANCE_TOUT[@]}"); fi
     _acceptance_run_cached "$testfile" "$logfile" _reachability_run_once "$cwd" "${runner[@]}"
 }
 
@@ -87,7 +92,7 @@ _reachability_run_once() {
         # `inert_wiring`; the two gate runners must execute a file in ONE
         # environment or their verdicts cannot be compared (and, later, shared).
         _zbuild_make_fresh_shell
-        "${runner[@]}"
+        zb_timeout_run _acc_run_tout "${runner[@]}"
     )
 }
 

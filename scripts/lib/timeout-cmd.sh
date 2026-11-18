@@ -61,3 +61,22 @@ _acceptance_timeout_prefix() {
     _ACCEPTANCE_TOUT+=("$timeout_s")
     return 0
 }
+
+# zb_timeout_run <prefix-array-name> <cmd...> — #2563 (ADR-062): <cmd> under the
+# timeout prefix held in <prefix-array-name> (empty: no timeout), in a process
+# group of its own (set -m, #2056), and that group KILLed once it returns — not
+# every `timeout` signals more than its direct child (Ubuntu 26.04's does not),
+# so a grandchild that ignores TERM would outlive it. Its rc is the command's;
+# job control is left as it was found. <cmd> is a program, not a function.
+zb_timeout_run() {
+    local -n _ztr_t="$1"; shift
+    local _ztr_pg _ztr_rc=0 _ztr_m=""
+    [[ $- == *m* ]] && _ztr_m=1
+    set -m
+    ( exec ${_ztr_t[@]+"${_ztr_t[@]}"} "$@" ) &
+    _ztr_pg=$!
+    [[ -n "$_ztr_m" ]] || set +m
+    wait "$_ztr_pg" || _ztr_rc=$?
+    kill -KILL -- "-$_ztr_pg" 2>/dev/null || true
+    return "$_ztr_rc"
+}

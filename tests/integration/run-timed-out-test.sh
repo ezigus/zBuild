@@ -9,12 +9,14 @@
 #   persist execute on every timed-out exit path.
 #
 # Phases:
+#   (#2563: run under a `timeout` that behaves like Ubuntu 26.04's — see below)
 #   P1 — basic timeout: slow stage hits the watchdog; status=timed_out, event
 #        fields correct; runner exits non-zero within the limit
 #   P2 — one timer for the whole run: fast-one completes, fast-two is
 #        in-flight when the watchdog fires; both stages saw the same watchdog
 #        (the same process), so it is the run's timer from its start, not one
 #        reset per stage. No elapsed time is read (#2510)
+#   P5 — (#2563) a process a trap-less stage started is ended too
 #   P3 — TERM-ignore: a stage that traps and ignores SIGTERM is dead within
 #        TERM + 10 s (KILL escalation)
 #   P4 — release and persist run: always_run release + persist stages execute
@@ -32,6 +34,14 @@ source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "run-timed-out: wall-clock limit watchdog fires and ends run correctly (#1944)"
 setup_test_env "run-timed-out"
+
+# #2563 (ADR-054 §11, ADR-062): `timeout` here behaves like Ubuntu 26.04's Rust
+# coreutils one — it dies on a TERM sent to it, and on expiry signals only its
+# direct child — so the engine is checked without relying on GNU `timeout`.
+_STUB_BIN="$TEST_TEMP_DIR/stub-timeout-bin"; mkdir -p "$_STUB_BIN"
+ln -sf "$REPO_ROOT/tests/lib/timeout-child-only-stub.sh" "$_STUB_BIN/timeout"
+ln -sf "$REPO_ROOT/tests/lib/timeout-child-only-stub.sh" "$_STUB_BIN/gtimeout"
+export PATH="$_STUB_BIN:$PATH"
 export ZBUILD_CONTRACT_VALIDATOR=warn
 
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
@@ -326,6 +336,38 @@ if [[ -f "$TERM_IGNORED_PID_FILE" ]]; then
             assert_pass "[#1944/SPEC-1] P3: TERM-ignoring stage process is dead (PID $_ignore_pid killed)"
         fi
     fi
+fi
+
+# ── P5: a stage's grandchild ends too (#2563, review) ───────────────────────
+print_test_section "P5: what a stage started is ended when the limit is reached"
+rm -f "$STATE_FILE" "$EVENTS_JSONL"
+GRANDCHILD_PID_FILE="$TEST_TEMP_DIR/grandchild-pid"
+rm -f "$GRANDCHILD_PID_FILE"
+# The stage's shell sets no trap, so a TERM ends it at once; the process it
+# started writes its own pid. A watchdog that signals as it walks finds the
+# grandchild only after its parent died and it moved to init — and misses it.
+cat > "$PLUGINS_ROOT/agent/slow-stage/plugin.sh" <<PLUG
+slow_stage_run() {
+    : > "${SLOW_STAGE_STARTED}"
+    bash -c 'printf "%s\n" "\$\$" > "${GRANDCHILD_PID_FILE}"; exec sleep 600' &
+    wait
+    $(mock_result_line slow-stage)
+    return 0
+}
+PLUG
+p5_rc=0
+( cd "$OVERLAY_REPO" && ZBUILD_MAX_RUN_S=2 timeout 90 bash "$RUNNER" \
+    --template timeout-single --goal "run-timed-out test p5 grandchild" ) \
+    >"$TEST_TEMP_DIR/p5.stdout" 2>"$TEST_TEMP_DIR/p5.stderr" \
+    || p5_rc=$?
+assert_eq "[#2563] P5: runner exits 1" "1" "$p5_rc"
+_gc_pid="$(cat "$GRANDCHILD_PID_FILE" 2>/dev/null || true)"
+assert_eq "[#2563] P5: the grandchild wrote its pid" "yes" "$([[ "$_gc_pid" =~ ^[0-9]+$ ]] && echo yes || echo no)"
+if [[ "$_gc_pid" =~ ^[0-9]+$ ]] && kill -0 "$_gc_pid" 2>/dev/null; then
+    assert_fail "[#2563] P5: the stage's grandchild is gone after the run" "PID $_gc_pid is still alive"
+    kill -KILL "$_gc_pid" 2>/dev/null || true
+else
+    assert_pass "[#2563] P5: the stage's grandchild is gone after the run"
 fi
 
 # ── P4: release AND persist stages run on timed-out exit path ───────────────

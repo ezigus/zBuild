@@ -177,9 +177,9 @@ _rt_run_inner() {
   # never turn a green run red.
   if [[ -z "${ZBUILD_TEST_TIMING_FILE:-}" ]]; then
     if [[ -n "${3:-}" ]]; then
-      "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null 8>"$3" >"$2" 2>&1
+      zb_timeout_run _rt_tout bash "$1" </dev/null 3>/dev/null 8>"$3" >"$2" 2>&1
     else
-      "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null >"$2" 2>&1
+      zb_timeout_run _rt_tout bash "$1" </dev/null 3>/dev/null >"$2" 2>&1
     fi
     return
   fi
@@ -210,9 +210,9 @@ _rt_run_inner() {
   _c0="$(tail -1 "$_cpuf" 2>/dev/null || true)"
   _t0="$EPOCHREALTIME"
   if [[ -n "${3:-}" ]]; then
-    "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null 8>"$3" >"$2" 2>&1 || _rc=$?
+    zb_timeout_run _rt_tout bash "$1" </dev/null 3>/dev/null 8>"$3" >"$2" 2>&1 || _rc=$?
   else
-    "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null >"$2" 2>&1 || _rc=$?
+    zb_timeout_run _rt_tout bash "$1" </dev/null 3>/dev/null >"$2" 2>&1 || _rc=$?
   fi
   _t1="$EPOCHREALTIME"
   times > "$_cpuf" 2>/dev/null || true

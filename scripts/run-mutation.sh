@@ -115,7 +115,8 @@ fi
 # TERM is followed by KILL after a grace, as run-tests.sh does: a test that
 # ignores TERM (on purpose — runner-status-comment-hook-test's SPEC-5 child)
 # otherwise holds the tier forever; on #1850 a suite ran 8h57m that way.
-# timeout signals the whole process group, so the KILL reaches that child too.
+# #2563: the test runs in a group of its own and that group is killed after
+# it returns — not every `timeout` signals more than its direct child.
 _MUT_KILL_GRACE="${ZBUILD_MUTATION_KILL_GRACE:-10}"
 [[ "$_MUT_KILL_GRACE" =~ ^[0-9]+$ ]] || _MUT_KILL_GRACE=10
 # The binary and the -k probe come from the shared helper (#1752); a binary
@@ -342,9 +343,13 @@ _run_one_mutant_in_worktree() {
 
     # Run targeted test; expect NON-ZERO (caught). stdin from /dev/null so a
     # `read`-blocked test gets EOF; fd3→/dev/null mirrors the #586 stage-io guard.
+    # #2563 (ADR-062): the test runs in a process group of its own (set -m,
+    # #2056), and whatever the timeout left in it is killed once it returns —
+    # a `timeout` that signals only its direct child (Ubuntu 26.04's) would
+    # otherwise leave a grandchild that ignores TERM running.
     local test_rc
     set +e
-    ( cd "$wt" && "${_mut_tout[@]}" bash -c "$test_code" ) </dev/null >/dev/null 2>&1 3>/dev/null
+    ( cd "$wt" && zb_timeout_run _mut_tout bash -c "$test_code" ) </dev/null >/dev/null 2>&1 3>/dev/null
     test_rc=$?
     set -e
 
