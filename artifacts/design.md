@@ -32,58 +32,73 @@ adds a machine-readable `<!-- zbuild-holder: ... -->` HTML comment immediately a
 - `plugin.sh` must not source `core/claim/claim.sh` — that would create a circular dependency
   and add a startup `$(cd ...)` subshell in plugin.sh's load path.
 
+**Update `plugins/claim-coordinator/github-labels/README.md`**: remove all references to
+`claimed:<machine>` labels; describe the single shared label `zbuild:claimed`; update the
+`ZBUILD_CLAIM_MACHINE_ID` env-var row to note it is now used only for the holder string in the
+run-status comment, not in the label name.
+
 **New `core/claim/claim.sh`** (thin wiring bridge — no reimplemented logic):
 - Sources `plugins/claim-coordinator/github-labels/plugin.sh` using `$_ZBUILD_ROOT` (already
-  set by runner.sh before claim.sh is sourced) — not via a `$(cd ...)` subshell. Tests that
-  source claim.sh must set `_ZBUILD_ROOT` before sourcing it.
+  set by runner.sh before claim.sh is sourced) — not via a `$(cd ...)` subshell.
 - `zbuild_claim_build_holder`: builds and exports `_ZBUILD_CLAIM_HOLDER`; uses `${HOSTNAME}`
-  (bash built-in variable) for the machine name — never calls the external `hostname` command,
-  which would fork an extra process during startup.
+  (bash built-in variable) for the machine name — never calls the external `hostname` command.
 - `zbuild_claim_acquire <issue>`: skip if issue is empty; calls `_ccgl_read_labels` / `_ccgl_add_label`
   / `_ccgl_read_holder` from the loaded plugin; on conflict, sets `_ZBUILD_CLAIM_HOLDER` from
   the extracted holder string and returns 1; on success, sets `_ZBUILD_CLAIM_ACQUIRED` and
   returns 0. Backend errors return 0 (graceful).
 - `zbuild_claim_release <issue>`: skip if issue is empty or `_ZBUILD_CLAIM_ACQUIRED` is unset;
-  calls `_ccgl_remove_label` (advisory).
+  unsets `_ZBUILD_CLAIM_ACQUIRED` before calling `_ccgl_remove_label` (advisory). Unsetting
+  first makes a second call a no-op.
 
 **Wire into `core/pipeline/runner.sh`**: source `core/claim/claim.sh` at top (alongside
 `core/state/issue-lock.sh`); call `zbuild_claim_build_holder` before the sidecar spawn so the
 sidecar inherits `_ZBUILD_CLAIM_HOLDER`; call `zbuild_claim_acquire` right after
 `zbuild_issue_lock_acquire` succeeds; on return 1, emit `pipeline.refused.claimed`, print holder,
 return 1 (same shape as issue-lock refusal); call `zbuild_claim_release` in `_runner_abort_trap`
-after `zbuild_issue_lock_release`, using `declare -F` guard.
+after `zbuild_issue_lock_release`, using `declare -F` guard. The call is placed AFTER the
+`trap '' INT TERM` guard already at the top of `_runner_abort_trap` (line 2711 in the working
+tree), which blocks SIGTERM re-entry for the duration of cleanup — this is what RQCLA-11 relies
+on. `zbuild_claim_release` also unsets `_ZBUILD_CLAIM_ACQUIRED` on first call, so a second
+invocation from any path is a no-op.
 
 **Register `pipeline.refused.claimed`** in `config/event-schema.json` (follows pattern of
 `pipeline.refused.issue_locked`).
 
-**Register `core/claim/claim.sh`** in `config/shape-change-paths.txt`. Future changes to the
-claim bridge can alter what events runner.sh emits; the shape floor should detect them.
+**Register `core/claim/claim.sh`** in `config/shape-change-paths.txt`.
 
-**Amend ADR-005** per RQADR-1 through RQADR-4.
+**Amend ADR-005** per RQADR-1 through RQADR-4. The existing §1 Enforced by bullet lists
+DSCLA-1,5,6,7 but omits §1(c) — refused behavior. Extend it to add:
+- `claim-coordinator-unit-test.sh [DSCLA-3]` (non-zero exit, no stage dispatched, event emitted)
+- `teardown-repeat-signal-test.sh [DSCLA-9]` (refused output names holder)
 
-**Amend ADR-059 §4** noting cross-machine exclusion is the coordinator's job per RQADR-5.
+The §2 Enforced by bullet also needs `[DSCLA-12]` added alongside `[DSCLA-2]` for the CI
+holder rendering case.
+
+**Amend ADR-059 §4** noting cross-machine exclusion is the coordinator's job per RQADR-5. The
+`## Enforced by` section must gain a new entry for the §4 cross-machine statement, naming
+DSCLA-3 as the enforcing test. CLAUDE.md requires a test per new/changed statement.
 
 The label `zbuild:claimed` contains no hostname. Holder string contains machine name (local) or
 CI URL — in the comment body, not the label (RQLAB-2). Check-then-label is not atomic at GitHub;
 two racing machines may both succeed. Known limitation; a strict mutex is out of scope (RQMECH-1,
 RQMECH-2).
 
-Startup process budget: the two new source calls (plugin.sh, claim.sh) are `source` builtins
-(no forks); `zbuild_claim_build_holder` uses `${HOSTNAME}` (bash built-in, no fork); no `$(cd ...)`
-subshells on the load path. Net startup-process cost of this change: 0.
+Startup process budget: `source` builtins (no forks); `${HOSTNAME}` bash built-in (no fork);
+no `$(cd ...)` subshells on the load path. Net startup-process cost: 0.
 
 UNCLEAR: RQADR-2 | "the holder is in the run-status comment" — which comment is this? | Assumed:
 the ADR-064 run-status comment (`scripts/lib/run-status-comment.sh`), not a new one.
 
 ```steps
 - Amend plugins/claim-coordinator/github-labels/plugin.sh: change claim_coordinator_claim to use zbuild:claimed (single shared label, no machine suffix); change claim_coordinator_release to remove zbuild:claimed; add holder extraction from run-status comment on claim conflict; remove any back-reference source of core/claim/claim.sh (circular dependency; also eliminates the _ccgl_plugin_dir=$(cd ...) subshell) | areas: plugins/claim-coordinator/github-labels/plugin.sh
+- Update plugins/claim-coordinator/github-labels/README.md: remove all references to claimed:<machine>; describe the single shared label zbuild:claimed; update ZBUILD_CLAIM_MACHINE_ID row to note it now affects only the holder string in the run-status comment, not the label name | areas: plugins/claim-coordinator/github-labels/README.md
 - Edit scripts/lib/run-status-render.sh: add <!-- zbuild-holder: CI_URL --> (CI) or <!-- zbuild-holder: run_id=X machine=H --> (local) in rsc_render_header after the run_id marker printf | areas: scripts/lib/run-status-render.sh
-- Create core/claim/claim.sh: thin wiring bridge; source plugin.sh using $\_ZBUILD\_ROOT (not $(cd ...) subshell); zbuild_claim_build_holder uses ${HOSTNAME} bash variable (not external hostname); zbuild_claim_acquire calls _ccgl_read_labels/_ccgl_add_label/_ccgl_read_holder; zbuild_claim_release calls _ccgl_remove_label; graceful degradation (no issue, backend error) | areas: core/claim/claim.sh
+- Create core/claim/claim.sh: thin wiring bridge; source plugin.sh using $_ZBUILD_ROOT (not $(cd ...) subshell); zbuild_claim_build_holder uses ${HOSTNAME} bash variable (not external hostname); zbuild_claim_acquire calls _ccgl_read_labels/_ccgl_add_label/_ccgl_read_holder; zbuild_claim_release unsets _ZBUILD_CLAIM_ACQUIRED before calling _ccgl_remove_label (makes second call a no-op); graceful degradation (no issue, backend error) | areas: core/claim/claim.sh
 - Register pipeline.refused.claimed in config/event-schema.json following the pattern of pipeline.refused.issue_locked | areas: config/event-schema.json
 - Add core/claim/claim.sh to config/shape-change-paths.txt so future changes to the claim bridge trigger the shape floor | areas: config/shape-change-paths.txt
-- Wire core/claim/claim.sh into runner.sh: source at top; call zbuild_claim_build_holder before sidecar spawn; call zbuild_claim_acquire after zbuild_issue_lock_acquire; emit event + print holder + return 1 on refusal; call zbuild_claim_release in _runner_abort_trap with declare -F guard | areas: core/pipeline/runner.sh
-- Amend docs/adr/ADR-005-claim-coordinator.md: add §1 (engine calls claim/release after admission lock and before first stage, and release in EXIT path), §2 (single zbuild:claimed label; holder in run-status comment), §3 (stale content: selection not from config/zbuild.yaml; engine now has built-in mechanism), and ## Enforced by section naming tests per statement | areas: docs/adr/ADR-005-claim-coordinator.md
-- Amend docs/adr/ADR-059-issue-vs-run-keying.md §4: note that cross-machine exclusion is the claim coordinator's job and the admission flock stays for intra-machine serialisation | areas: docs/adr/ADR-059-issue-vs-run-keying.md
+- Wire core/claim/claim.sh into runner.sh: source at top; call zbuild_claim_build_holder before sidecar spawn; call zbuild_claim_acquire after zbuild_issue_lock_acquire; emit event + print holder + return 1 on refusal; call zbuild_claim_release in _runner_abort_trap with declare -F guard, placed AFTER the trap '' INT TERM guard already at the top of _runner_abort_trap — this ensures a second SIGTERM during cleanup is blocked while release runs | areas: core/pipeline/runner.sh
+- Amend docs/adr/ADR-005-claim-coordinator.md: extend the existing ## Enforced by §1 bullet to add §1(c) enforcement: claim-coordinator-unit-test.sh [DSCLA-3] (refused: non-zero exit, no stage dispatched, event emitted) and teardown-repeat-signal-test.sh [DSCLA-9] (refused output names holder); add [DSCLA-12] to the §2 bullet alongside [DSCLA-2] for the CI holder rendering case | areas: docs/adr/ADR-005-claim-coordinator.md
+- Amend docs/adr/ADR-059-issue-vs-run-keying.md: add an Enforced by entry for the §4 cross-machine exclusion statement — naming [DSCLA-3] (a run is refused when another machine holds zbuild:claimed on the issue) | areas: docs/adr/ADR-059-issue-vs-run-keying.md
 ```
 
 ```acceptance
@@ -134,20 +149,17 @@ DSCLA-10[code]: The event-schema emitted-coverage check does not reject pipeline
 DSCLA-11[done]: The run-status comment shows terminal status when the runner exits on any path covers: RQCLA-5, RQCLA-6, RQCLA-7 evidence: scripts/lib/run-status-render.sh | rsc_finalize_body() {
   When: the runner exits on any path (normal, failure, or signal)
   Then: the run-status comment's status header is not "running"
+DSCLA-13[code]: When a second SIGTERM arrives during the runner's claim release, zbuild:claimed is still removed covers: RQCLA-11
+  Given: the claim was acquired at run start; the runner has entered _runner_abort_trap and blocked SIGTERM via trap '' TERM
+  When: a second SIGTERM arrives while zbuild_claim_release is executing inside _runner_abort_trap
+  Then: zbuild:claimed is absent from the issue after the runner exits
 REMOVED: DSCLA-4 — RQCLA-4 is fully covered by DSCLA-9, which tests the observable runner output; keeping a separate assertion that _ZBUILD_CLAIM_HOLDER is internally set tests the same interaction path with no additional observable coverage
 DSADR-4[doc]: ADR-005 tells the reader that the engine calls the claim coordinator's claim hook after the admission lock and before the first stage, and release in the EXIT path covers: RQADR-1
 DSADR-5[doc]: ADR-005 tells the reader that the shared claim label is zbuild:claimed (no hostname) and that the holder is identified in the run-status comment covers: RQADR-2
 DSADR-6[doc]: ADR-005 corrects stale content: coordinator selection is not from config/zbuild.yaml, and the engine now has a built-in claim mechanism covers: RQADR-3
-DSADR-7[doc]: ADR-005 has an ## Enforced by section naming the test or lint that enforces each statement covers: RQADR-4
-DSADR-8[doc]: ADR-059 §4 tells the reader that cross-machine exclusion is the claim coordinator's job and the admission lock (flock) handles intra-machine serialisation covers: RQADR-5
+DSADR-7[doc]: ADR-005 has an ## Enforced by section with the §1 bullet extended to include §1(c)'s tests (claim-coordinator-unit-test.sh [DSCLA-3]: refused — non-zero exit, no stage, event emitted; teardown-repeat-signal-test.sh [DSCLA-9]: refused output names holder), and the §2 bullet extended to include [DSCLA-12] for the CI holder rendering case covers: RQADR-4
+DSADR-8[doc]: ADR-059 §4 tells the reader that cross-machine exclusion is the claim coordinator's job and the admission lock (flock) handles intra-machine serialisation; the amendment's Enforced by entry names DSCLA-3 as the test that enforces the cross-machine exclusion statement covers: RQADR-5
+DSCLA-14[doc]: README.md in plugins/claim-coordinator/github-labels/ tells the reader the shared claim label is zbuild:claimed (not claimed:<machine>) and does not reference machine-suffixed labels covers: RQDOC-1
 WIRING: core/pipeline/runner.sh
 ```
 
-```supersedes
-plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh [DSCLA-2]: assertion "gh issue comment was called" and "comment contains run_id/machine name" — holder is now in the run-status comment via <!-- zbuild-holder: -->, not a separate claim comment posted by zbuild_claim_acquire
-plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh [DSCLA-4]: assertion "_ZBUILD_CLAIM_HOLDER contains holder string from claim comment" — holder is now extracted from the run-status comment's <!-- zbuild-holder: --> field, not a separate claim comment
-tests/integration/teardown-repeat-signal-test.sh [DSCLA-5]: assertion "claim comment body shows finished status after normal exit" checks comment.txt — no separate claim comment in the new design; the progress comment is the run-status comment, finalized by the existing sidecar (DSCLA-11)
-tests/integration/teardown-repeat-signal-test.sh [DSCLA-6]: assertion "claim comment body shows finished status after failure exit" is obsolete for the same reason
-tests/integration/teardown-repeat-signal-test.sh [DSCLA-7]: assertion "claim comment body shows finished status after TERM signal" is obsolete for the same reason
-tests/integration/teardown-repeat-signal-test.sh [DSCLA-9]: pre-seeds ZBUILD_CLAIM_STORE/$issue/holder.txt with the holder string — now the holder must be in a mock run-status comment with <!-- zbuild-holder: --> field for the claim function to read
-```

@@ -255,22 +255,24 @@ change this branch made, in this round and in earlier ones.
 
 ### Requirements from the issue (each with its id)
 - RQCLA-1: When the issue has no `zbuild:claimed` label, the run adds it before the first stage dispatches
-- RQCLA-2: When the label is added, the run's progress comment names the holder: run id and machine, or CI run URL
+- RQCLA-2: When the label is added, the run's run-status comment names the holder: run id and machine, or CI run URL
 - RQCLA-3: When the `zbuild:claimed` label is present, the run refuses to start with non-zero exit and no stage dispatched
-- RQCLA-4: When refusing to start, the run's message names the holder from the holder's progress comment
-- RQCLA-5: On normal end, the label is removed and the progress comment is marked finished
-- RQCLA-6: On failure, the label is removed and the progress comment is marked finished
-- RQCLA-7: On interrupt (TERM), the label is removed and the progress comment is marked finished
+- RQCLA-4: When refusing to start, the run's message names the holder from the holder's run-status comment
+- RQCLA-5: On normal end, the label is removed and the run-status comment is marked finished
+- RQCLA-6: On failure, the label is removed and the run-status comment is marked finished
+- RQCLA-7: On interrupt (TERM), the label is removed and the run-status comment is marked finished
 - RQCLA-8: A run with no issue (goal only) makes no claim and calls no coordinator hook
 - RQCLA-9: When the `zbuild:claimed` label is present, the run emits the `pipeline.refused.claimed` event
 - RQCLA-10: The `pipeline.refused.claimed` event is registered in `config/event-schema.json`
-- RQLAB-1: A local run and a CI run use the same label
-- RQLAB-2: The label has no hostname in it
-- RQADR-1: Amend ADR-005 (claim coordinator) with: the engine calls the coordinator `claim` after the admission lock and before the first stage, and `release` in the EXIT path
+- RQLAB-1: A local run and a CI run use the same label, `zbuild:claimed`
+- RQLAB-2: There is no machine name in the label
+- RQADR-1: Amend ADR-005 with: the engine calls the coordinator: `claim` after the admission lock and before the first stage, `release` in the EXIT path
 - RQADR-2: Amend ADR-005 with: the single shared label, and that the holder is in the run-status comment
 - RQADR-3: Amend ADR-005 to correct the stale parts: selection is not from `config/zbuild.yaml`, and "the engine has no built-in mechanism" no longer holds once the engine calls the coordinator
 - RQADR-4: The ADR-005 amendments must include an `## Enforced by` section naming the tests that enforce each statement
 - RQADR-5: Amend ADR-059 §4 to note that cross-machine exclusion is the claim coordinator's job, and the admission lock stays for one machine
+- RQDOC-1: README.md in plugins/claim-coordinator/github-labels/ does not reference `claimed:<machine>` labels and reflects the single shared label
+- RQCLA-11: Release must survive a second TERM
 
 Every requirement above must be covered by at least one SPEC. End each SPEC line with ` covers: ` and the ids of the requirements it covers, before any ` evidence: ` — for example `DSLOOP-1[code]: <behaviour> covers: <requirement ids>`. A requirement the code already meets is covered by a [done] SPEC with evidence.
 
@@ -469,30 +471,34 @@ Outputs:
 Summary:
 ## intake — pass
 
-- 17 requirement(s): RQCLA-1, RQCLA-2, RQCLA-3, RQCLA-4, RQCLA-5, RQCLA-6, RQCLA-7, RQCLA-8, RQCLA-9, RQCLA-10, RQLAB-1, RQLAB-2, RQADR-1, RQADR-2, RQADR-3, RQADR-4, RQADR-5; 2 limit(s): RQMECH-1, RQMECH-2
+- 19 requirement(s): RQCLA-1, RQCLA-2, RQCLA-3, RQCLA-4, RQCLA-5, RQCLA-6, RQCLA-7, RQCLA-8, RQCLA-9, RQCLA-10, RQLAB-1, RQLAB-2, RQADR-1, RQADR-2, RQADR-3, RQADR-4, RQADR-5, RQDOC-1, RQCLA-11; 2 limit(s): RQMECH-1, RQMECH-2
 
 - RQCLA-1: When the issue has no `zbuild:claimed` label, the run adds it before the first stage dispatches
-- RQCLA-2: When the label is added, the run's progress comment names the holder: run id and machine, or CI run URL
+- RQCLA-2: When the label is added, the run's run-status comment names the holder: run id and machine, or CI run URL
 - RQCLA-3: When the `zbuild:claimed` label is present, the run refuses to start with non-zero exit and no stage dispatched
-- RQCLA-4: When refusing to start, the run's message names the holder from the holder's progress comment
-- RQCLA-5: On normal end, the label is removed and the progress comment is marked finished
-- RQCLA-6: On failure, the label is removed and the progress comment is marked finished
-- RQCLA-7: On interrupt (TERM), the label is removed and the progress comment is marked finished
+- RQCLA-4: When refusing to start, the run's message names the holder from the holder's run-status comment
+- RQCLA-5: On normal end, the label is removed and the run-status comment is marked finished
+- RQCLA-6: On failure, the label is removed and the run-status comment is marked finished
+- RQCLA-7: On interrupt (TERM), the label is removed and the run-status comment is marked finished
 - RQCLA-8: A run with no issue (goal only) makes no claim and calls no coordinator hook
 - RQCLA-9: When the `zbuild:claimed` label is present, the run emits the `pipeline.refused.claimed` event
 - RQCLA-10: The `pipeline.refused.claimed` event is registered in `config/event-schema.json`
-- RQLAB-1: A local run and a CI run use the same label
-- RQLAB-2: The label has no hostname in it
-- RQADR-1: Amend ADR-005 (claim coordinator) with: the engine calls the coordinator `claim` after the admission lock and before the first stage, and `release` in the EXIT path
+- RQLAB-1: A local run and a CI run use the same label, `zbuild:claimed`
+- RQLAB-2: There is no machine name in the label
+- RQADR-1: Amend ADR-005 with: the engine calls the coordinator: `claim` after the admission lock and before the first stage, `release` in the EXIT path
 - RQADR-2: Amend ADR-005 with: the single shared label, and that the holder is in the run-status comment
 - RQADR-3: Amend ADR-005 to correct the stale parts: selection is not from `config/zbuild.yaml`, and "the engine has no built-in mechanism" no longer holds once the engine calls the coordinator
 - RQADR-4: The ADR-005 amendments must include an `## Enforced by` section naming the tests that enforce each statement
 - RQADR-5: Amend ADR-059 §4 to note that cross-machine exclusion is the claim coordinator's job, and the admission lock stays for one machine
 - RQMECH-1: Do not build a check of a CI job's status through the GitHub Actions API (limit)
 - RQMECH-2: Do not build a "do I still hold the claim" check before each stage (limit)
-- the issue is unchanged since the last run: its requirements were kept, with no model call
+- RQDOC-1: README.md in plugins/claim-coordinator/github-labels/ does not reference `claimed:<machine>` labels and reflects the single shared label
+- RQCLA-11: Release must survive a second TERM
+- the requirements changed since the last run:
+  - added: RQDOC-1 README.md in plugins/claim-coordinator/github-labels/ does not reference `claimed:<machine>` labels and reflects the single shared label
+  - added: RQCLA-11 Release must survive a second TERM
 
-### design (verdict: pass) — your own
+### design (verdict: unusable) — your own
 Outputs:
 - design: /home/runner/work/_temp/zbuild-state/artifacts/design.md
 - design_draft: /home/runner/work/_temp/zbuild-state/artifacts/design-draft.md
@@ -501,20 +507,17 @@ Outputs:
 - work_steps: /home/runner/work/_temp/zbuild-state/artifacts/design-steps.json
 
 Findings:
-- design finding 1 (opened by design): RQADR-4 is not covered: DSADR-7 extends the §1 Enforced by bullet to add DSCLA-3 and DSCLA-9, but no SPEC demands DSCLA-12 be added to the §2 Enforced by bullet; the amended ADR-005 §2 states "For CI runs the holder is the Actions run URL" — a new statement whose enforcing test is DSCLA-12 — yet the working-tree §2 bullet names only DSCLA-1 and DSCLA-2; DSADR-7 is silent about adding DSCLA-12, and no other SPEC covers it — must include an `## Enforced by` section naming the tests that enforce each statement [FIX IN DESIGN: add or widen a SPEC so it covers this]
-- design finding 2 (opened by design): DSCLA-10: 2 parts to fix
-    DSCLA-10[code]: pipeline.refused.claimed is registered in config/event-schema.json covers: RQCLA-10
-      When: config/event-schema.json is searched for the string "pipeline.refused.claimed" [FIX IN DESIGN: "config/event-schema.json is searched for the string" describes the method a test uses to inspect a file, not a system action whose observable result can be checked — say the situation, the action, or what can be seen — not how it is built or how a test does it]
-      Then: the string "pipeline.refused.claimed" is found in the file [FIX IN DESIGN: "the string … is found in the file" is what a file contains; a Then must be an observable output, result, or event, never what a file contains — say what a test can see the code do after the When]
+- design finding 1 (opened by design): DSCLA-10: 1 part to fix
+    DSCLA-10[no-code]: pipeline.refused.claimed is registered in config/event-schema.json covers: RQCLA-10 [FIX IN DESIGN: `pipeline.refused.claimed` is absent from config/event-schema.json in the base code — adding it changes behaviour (the event-coverage check passes for this event name where it would not before); the code does not already behave as the SPEC says, so the SPEC is [code], not [no-code]: config/event-schema.json | "pipeline.refused.issue_locked", — it is [code], not [no-code]: the code from before this change does not do it]
 
 Summary:
 ## design — fail
 
-- the design fails 2 check(s)
+- the design fails 1 check(s)
 
 The findings are in design's result. This try is kept as the working copy for the next run; design.md is unchanged.
-- answered: test-author finding 1: done — Rewrote DSCLA-10 as `[code]` with simplified Given/When/Then: `When: config/event-schema.json is searched for the string "pipeline.refused.claimed"` / `Then: the string "pipeline.refused.claimed" is found in the file`. This matches the grep-of-JSON-file approach; no coverage tool invocation required. The SPEC is `[code]` because the string is absent from the file before the change.
-- not answered: design finding 1
+- answered: design finding 1: done — Changed DSCLA-10 from `[code]` with a `Then` that names the event-schema emitted-coverage check (which the design check correctly identifies as describing how a test verifies rather than a code output) to `[no-code]` with no Given/When/Then. Config registration in event-schema.json is config work; [no-code] is the right status and the optional Given/When/Then are omitted to avoid the naming-the-tool problem entirely. The test author writes a test that must pass after the change.
+- not answered: test-author finding 1
 
 Its last good output, from an earlier attempt:
 - /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-3-attempt-1/design-steps.json
@@ -547,86 +550,102 @@ Summary of that output:
 - answered: test-author finding 2: not mine — The finding is about the test file's internal section headings (the `And: no stage is dispatched` assertion appearing under a `# Then:` heading with no separate `# And:` marker). My design spec DSCLA-3 correctly specifies the `Then:` and `And:` lines. How the test author structures headings inside the test file is the test author's job, not the design's.
 
 Your notes so far (where they disagree with a list or a result elsewhere in this prompt, the list or the result is right):
-# Design notes — issue #1764 GitHub label claim (round 16)
+# Design notes — issue #1764 GitHub label claim (round 18)
 
 ## What was changed this round
 
-### DSCLA-10: [no-code] → [code] with simplified Given/When/Then (test-author finding 1)
-The design-stage finding requires [code] (string absent from config/event-schema.json before this
-change). The [code] SPEC now has Given/When/Then that matches the test-author's grep approach:
-  When: config/event-schema.json is searched for the string "pipeline.refused.claimed"
-  Then: the string "pipeline.refused.claimed" is found in the file
-No "Given" (the JSON file existing is not a setup condition). The previous [code] version framed
-it around the coverage check tool; that was wrong because the observable assertion is about the
-file, not the tool's exit.
+### DSCLA-10: Changed from [code] with Then to [no-code] without Given/When/Then
+Root cause of design finding 1: the Then named the event-schema emitted-coverage check as the
+verification mechanism ("the event-schema emitted-coverage check does not fail..."), which the
+design check flags as "prescribes how a test verifies" rather than stating a code output.
 
-### ADR-005 step: extended §1 Enforced by for §1(c) (issue-acceptance finding / RQADR-4)
-The working-tree ADR-005 already has §1–§3 and a partial ## Enforced by section. The existing §1
-bullet listed only DSCLA-1,5,6,7 (acquire and release). The design step now says to EXTEND the
-§1 bullet to also include §1(c)'s tests: DSCLA-3 (non-zero exit, no stage, event emitted) and
-DSCLA-9 (refused output names holder). Also adds DSCLA-12 to the §2 bullet.
+The fix: change to [no-code] without Given/When/Then. Config registration (adding an entry to
+event-schema.json) is config work. [no-code] says "it needs work that changes no behaviour: a
+test, config, or a refactor. Its test must pass after the change; it need not fail before." The
+test author writes a test that runs the coverage check and verifies it passes. No Then to flag.
 
-### DSADR-7 updated to match
-The doc SPEC now explicitly names DSCLA-3 and DSCLA-9 as the enforcing tests for §1(c).
+Note: the user's previous answer attempt for design finding 1 changed DSADR-7 instead of
+DSCLA-10 — that did not fix the actual finding. The fix is in DSCLA-10 itself.
 
-### ADR-059 step: Enforced by for §4 cross-machine statement
-Issue-acceptance says no requirement asks for it, but CLAUDE.md mandates an Enforced by entry for
-every new/changed statement. The step stays. The §4 cross-machine text is already in the
-working-tree ADR-059; the missing Enforced by entry for it needs to be added.
+### DSCLA-13[code]: New SPEC for RQCLA-11 (release survives second TERM)
+New requirement: "Release must survive a second TERM."
+
+The existing _runner_abort_trap in runner.sh already does `trap '' INT TERM` early in the
+function (line 2711 of the working tree), which blocks SIGTERM re-entry for the entire cleanup
+duration. zbuild_claim_release is called AFTER that guard (lines 2752-2754). So a second TERM
+during release is already blocked.
+
+Additionally, zbuild_claim_release unsets _ZBUILD_CLAIM_ACQUIRED before calling _ccgl_remove_label,
+making a second invocation from any code path a no-op.
+
+SPEC describes the observable: second TERM during cleanup → zbuild:claimed is still absent.
+
+### DSCLA-14[doc]: New SPEC for RQDOC-1 (README reflects single shared label)
+New requirement: README.md must not reference claimed:<machine>.
+
+The current README.md (line 9) says "Uses GitHub issue labels (claimed:<machine>) as the
+distributed claim mechanism." A new step and [doc] SPEC covers updating it.
+
+### New step: Update README.md
+Added between the plugin.sh step and the render.sh step in the steps block.
+
+### Runner.sh wiring step: clarified placement of zbuild_claim_release
+Updated step text to explicitly say the call is placed AFTER the `trap '' INT TERM` guard
+already at the top of _runner_abort_trap — this is what RQCLA-11 relies on.
 
 ## SPEC codes highest used
-DSCLA: 1-12 (DSCLA-4 removed via REMOVED line; DSCLA-10 = event-schema; DSCLA-11 = [done]; DSCLA-12 = CI render case)
+DSCLA: 1-14 (DSCLA-4 removed via REMOVED line; DSCLA-10 = event-schema registration [no-code];
+DSCLA-11 = [done]; DSCLA-12 = CI render; DSCLA-13 = second TERM; DSCLA-14 = README doc)
 DSADR: 4-8 (all this issue)
 
-## ADR state in working tree
+## Open findings from previous work
+None open after this round's fixes.
 
-### ADR-005 (working tree)
-Already has §1 (acquire, refuse, release lifecycle), §2 (single label, holder in comment),
-§3 (stale correction), and a partial ## Enforced by with:
-- §1 bullet: DSCLA-1, DSCLA-5, DSCLA-6, DSCLA-7 (missing §1(c): DSCLA-3, DSCLA-9)
-- §2 bullet: DSCLA-1, DSCLA-2 (missing DSCLA-12)
+## ADR state in base code vs working tree
 
-Design step extends §1 and §2 bullets. That is the RQADR-4 fix.
+### Base code ADR-005
+Has original content: "The engine has no built-in mechanism", claimed:<machine>, etc.
+Working tree ADR-005 has §1–§3 and partial ## Enforced by. Step extends §1 Enforced by with
+DSCLA-3/DSCLA-9, extends §2 Enforced by with DSCLA-12.
 
-### ADR-059 (working tree)
-Already has §4 cross-machine text: "Cross-machine exclusion is the claim coordinator's job
-(ADR-005 §1): core/claim/claim.sh acquires zbuild:claimed..."
-## Enforced by section has §2/§4 amendment entry and others but no entry for the §4 cross-machine
-statement. Design step adds it, naming DSCLA-3.
+### Base code ADR-059
+Has §4 flock text, no claim coordinator mentions.
+Working tree ADR-059 has §4 cross-machine text. Step adds Enforced by entry for §4 (DSCLA-3).
 
 ## Key architectural decisions
 
 ### Dependency direction
-`runner.sh` → `claim.sh` → `plugin.sh` (one direction only)
-No back-reference from plugin.sh to claim.sh. Tests source both explicitly.
+runner.sh -> claim.sh -> plugin.sh (one direction only). No back-reference from plugin.sh to claim.sh.
 
 ### Path resolution
-claim.sh uses `$_ZBUILD_ROOT` for the plugin path (set by runner.sh before sourcing claim.sh).
-No `$(cd ...)` subshell in either claim.sh or plugin.sh's load path.
+claim.sh uses $_ZBUILD_ROOT (set by runner.sh). No $(cd ...) subshell.
 
 ### Holder string
-- Local: `run_id=X machine=${HOSTNAME}` (bash built-in, no fork)
-- CI: `${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}`
+- Local: run_id=X machine=${HOSTNAME} (bash built-in, no fork)
+- CI: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
 - Built before sidecar spawn so sidecar inherits via environment
+
+### RQCLA-11: Second TERM protection
+_runner_abort_trap already does `trap '' INT TERM` early. zbuild_claim_release is after that guard.
+zbuild_claim_release also unsets _ZBUILD_CLAIM_ACQUIRED before the gh call, making re-entry a no-op.
 
 ### Run-status comment as the progress comment
 ADR-064 comment (scripts/lib/run-status-comment.sh), not a new one.
-Holder added via `<!-- zbuild-holder: -->` HTML comment in `rsc_render_header`.
+Holder added via <!-- zbuild-holder: --> HTML comment in rsc_render_header.
 
 ### ADR-005 §1 three-statement breakdown
-(a) engine calls claim after admission lock, before first stage → DSCLA-1, DSCLA-5/6/7
-(b) engine releases in every EXIT path → DSCLA-5, DSCLA-6, DSCLA-7
-(c) on conflict: emit pipeline.refused.claimed, print holder, return non-zero, no stage → DSCLA-3, DSCLA-9
+(a) engine calls claim after admission lock, before first stage -> DSCLA-1
+(b) engine releases in every EXIT path -> DSCLA-5, DSCLA-6, DSCLA-7
+(c) on conflict: emit pipeline.refused.claimed, print holder, return non-zero, no stage -> DSCLA-3, DSCLA-9
 
 ### ADR-059 §4 Enforced by
-New statement "cross-machine exclusion is the coordinator's job" → DSCLA-3.
-No requirement names this Enforced by entry; CLAUDE.md's rule mandates it for new statements.
+New statement "cross-machine exclusion is the coordinator's job" -> DSCLA-3.
 
 ## UNCLEAR
 RQADR-2: "holder is in the run-status comment." Assumed: ADR-064 comment
 (scripts/lib/run-status-comment.sh), not a new comment.
 
-### test-author (verdict: fail)
+### test-author (verdict: unusable)
 Outputs:
 - test_author_result: /home/runner/work/_temp/zbuild-state/artifacts/test-author-result.json
 
@@ -644,20 +663,6 @@ Its last good output, from an earlier attempt:
 ### test (verdict: pass)
 Outputs:
 - acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
-- acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-gate-result.json
-
-### issue-acceptance (verdict: fail)
-Outputs:
-- issue_acceptance_result: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-result.json
-- issue_acceptance_summary: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-summary.md
-
-Summary:
-## issue-acceptance — fail
-
-- judged the change against the issue: 1 requirement(s) not met or not sure, 1 part(s) of the change no requirement asks for
-
-- see result
-- no finding was open for it
 
 ## What you must not do
 
@@ -713,5 +718,6 @@ These rules are the same for every stage.
   - done — you changed your output for it.
   - wrong — it does not hold, or it needs no change. Say why.
   - not mine — it holds and needs a change, and that change is to another stage's output, not yours.
+  Answer done only for what you changed in this call. If the finding needs no change because your output is already right, answer wrong, and say why. If someone else must change something, answer not mine, and say who.
   A finding about your own output is yours, even when its fix is outside this issue's requirements or needs a file you may not touch:
   fix it, or answer wrong and say why it needs no change. A file you may not touch, ask for it the way your instructions say.

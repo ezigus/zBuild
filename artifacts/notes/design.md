@@ -1,75 +1,83 @@
-# Design notes — issue #1764 GitHub label claim (round 17)
+# Design notes — issue #1764 GitHub label claim (round 19)
 
-## What was changed this round
+## Critical fix this round: DSCLA-10 restored to [code] with Given/When/Then
 
-### DSCLA-10: Reverted to iter-3-attempt-1 formulation (design check violation fix)
-The design-draft for round 16 had:
-  When: config/event-schema.json is searched for the string "pipeline.refused.claimed"
-  Then: the string "pipeline.refused.claimed" is found in the file
-The Then violates the SPEC rule "never what a file contains." Reverted to iter-3-attempt-1
-version that passed the design check:
-  Given: zbuild:claimed is on the issue
-  When: the run is refused and emits pipeline.refused.claimed
-  Then: the event-schema emitted-coverage check does not fail on pipeline.refused.claimed as an unregistered event
-This is an observable behavior (the check's pass/fail), not file content.
+Design finding 1 from the rejected run said DSCLA-10 was [no-code] but must be [code].
+In the design-draft.md before this round, line 145 had `DSCLA-10[no-code]`.
+Fixed to [code] with Given/When/Then (matches the passing iter-3-attempt-1 version):
+- Given: runner.sh emits pipeline.refused.claimed during a run refusal
+- When: the event-schema emitted-coverage check runs against the codebase
+- Then: the check exits without reporting pipeline.refused.claimed as an unregistered event name
 
-### DSADR-7: Extended to cover §2 Enforced by with DSCLA-12 (design finding 1 fix)
-Previous DSADR-7 only mentioned §1(c) with DSCLA-3/DSCLA-9. The design check found it silent
-about adding DSCLA-12 to the §2 Enforced by bullet. DSADR-7 now explicitly says the ## Enforced
-by section in ADR-005 must name DSCLA-12 for the §2 CI-holder case.
+The design checker requires [code] because adding pipeline.refused.claimed to event-schema.json
+changes behaviour: the coverage check passes for this event name where it would fail before.
 
-## Open findings from previous work
+The previous round's answer tried to change to [no-code] — the design checker rejected that.
+Going back to [code] with Given/When/Then is the correct fix.
 
-### issue-acceptance finding 2 (ADR-059 Enforced by "unasked")
-The issue-acceptance says no requirement asks for the Enforced by entry in ADR-059 for the §4
-cross-machine statement. CLAUDE.md requires "A new or changed statement ships with its test in the
-same PR." Since RQADR-5 adds a new §4 statement, CLAUDE.md mandates the Enforced by entry.
-The design retains this in DSADR-8 and the ADR-059 step. The design prose calls this out explicitly.
+## Supersedes block removed
 
-## SPEC codes highest used
-DSCLA: 1-12 (DSCLA-4 removed via REMOVED line; DSCLA-10 = event-schema; DSCLA-11 = [done]; DSCLA-12 = CI render case)
-DSADR: 4-8 (all this issue)
+All supersedes entries were stale. Verified against actual test files:
+- claim-coordinator-unit-test.sh: DSCLA-2 assertions say "gh issue comment was NOT called"
+  (already aligned — no separate claim comment)
+- claim-coordinator-unit-test.sh: no DSCLA-4 assertions exist (DSCLA-4 was REMOVED)
+- teardown-repeat-signal-test.sh: DSCLA-5/6/7 assertions check zbuild:claimed absence (correct)
+- teardown-repeat-signal-test.sh: DSCLA-9 reads holder from run-status comment mock (correct)
+Since all tests are already correctly aligned with the design, supersedes block is empty → removed.
 
-## ADR state in base code vs working tree
+## New requirements handled (RQDOC-1, RQCLA-11)
 
-### Base code ADR-005
-Has original content: "The engine has no built-in mechanism", claimed:<machine>, etc.
-Working tree ADR-005 (from previous build iteration) has §1-§3 and partial ## Enforced by.
-The Enforced by is missing DSCLA-3/DSCLA-9 from §1 bullet and DSCLA-12 from §2 bullet.
-The design step and DSADR-7 now explicitly cover all three.
+DSCLA-13[code] covers RQCLA-11: second TERM during release doesn't prevent label removal.
+Mechanism: _runner_abort_trap already does `trap '' INT TERM` early (blocks SIGTERM re-entry
+for entire cleanup); zbuild_claim_release also unsets _ZBUILD_CLAIM_ACQUIRED before backend
+call (makes second call a no-op). Both layers work together.
 
-### Base code ADR-059
-Has §4 flock text but no claim coordinator mentions. No cross-machine Enforced by entry.
-Working tree ADR-059 has §4 cross-machine text but Enforced by is missing for that statement.
-The design step adds the Enforced by entry for §4 (required by CLAUDE.md).
+DSCLA-14[doc] covers RQDOC-1: README.md must not reference claimed:<machine>.
+Current README base code line 9 says "claimed:<machine>". Step and doc SPEC added.
 
-## Key architectural decisions
+## test-author finding 1: not mine
 
-### Dependency direction
-runner.sh -> claim.sh -> plugin.sh (one direction only)
-No back-reference from plugin.sh to claim.sh. Tests source both explicitly.
+The finding says the DSCLA-10 test uses grep on the JSON file instead of running the coverage
+check. All items are tagged "FIX IN TEST." The design SPEC correctly specifies Given/When/Then.
+The test author must rewrite the DSCLA-10 test to run the coverage check, not check file content.
 
-### Path resolution
-claim.sh uses $_ZBUILD_ROOT (set by runner.sh). No $(cd ...) subshell.
+## SPEC code highest used
+- DSCLA: 1-14 (DSCLA-4 REMOVED; DSCLA-10=[code]; DSCLA-11=[done]; DSCLA-12=CI render;
+  DSCLA-13=second TERM; DSCLA-14=README doc)
+- DSADR: 4-8
 
-### Holder string
-- Local: run_id=X machine=${HOSTNAME} (bash built-in, no fork)
-- CI: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
-- Built before sidecar spawn so sidecar inherits via environment
+## Requirements coverage (complete)
+- RQCLA-1: DSCLA-1
+- RQCLA-2: DSCLA-2, DSCLA-12
+- RQCLA-3: DSCLA-3
+- RQCLA-4: DSCLA-9
+- RQCLA-5: DSCLA-5, DSCLA-11
+- RQCLA-6: DSCLA-6, DSCLA-11
+- RQCLA-7: DSCLA-7, DSCLA-11
+- RQCLA-8: DSCLA-8
+- RQCLA-9: DSCLA-3
+- RQCLA-10: DSCLA-10
+- RQCLA-11: DSCLA-13
+- RQLAB-1: DSCLA-1
+- RQLAB-2: DSCLA-1
+- RQADR-1: DSADR-4
+- RQADR-2: DSADR-5
+- RQADR-3: DSADR-6
+- RQADR-4: DSADR-7
+- RQADR-5: DSADR-8
+- RQDOC-1: DSCLA-14
 
-### Run-status comment as the progress comment
-ADR-064 comment (scripts/lib/run-status-comment.sh), not a new one.
-Holder added via <!-- zbuild-holder: --> HTML comment in rsc_render_header.
+## Key architectural decisions (unchanged from prior rounds)
 
-### ADR-005 §1 three-statement breakdown
-(a) engine calls claim after admission lock, before first stage -> DSCLA-1
-(b) engine releases in every EXIT path -> DSCLA-5, DSCLA-6, DSCLA-7
-(c) on conflict: emit pipeline.refused.claimed, print holder, return non-zero, no stage -> DSCLA-3, DSCLA-9
+Dependency direction: runner.sh -> claim.sh -> plugin.sh (one direction only).
+Path resolution: claim.sh uses $_ZBUILD_ROOT (set by runner.sh). No $(cd ...) subshell.
+Holder string: Local: run_id=X machine=${HOSTNAME} (bash built-in, no fork).
+  CI: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}.
+  Built before sidecar spawn so sidecar inherits via environment.
+RQCLA-11: _runner_abort_trap `trap '' INT TERM` guard blocks SIGTERM re-entry.
+  zbuild_claim_release unsets _ZBUILD_CLAIM_ACQUIRED before gh call (no-op on re-entry).
+Run-status comment: ADR-064 comment (scripts/lib/run-status-comment.sh), not a new one.
+  Holder added via <!-- zbuild-holder: --> HTML comment in rsc_render_header.
 
-### ADR-059 §4 Enforced by
-New statement "cross-machine exclusion is the coordinator's job" -> DSCLA-3.
-No requirement names this but CLAUDE.md mandates it for new/changed statements.
-
-## UNCLEAR
-RQADR-2: "holder is in the run-status comment." Assumed: ADR-064 comment
-(scripts/lib/run-status-comment.sh), not a new comment.
+## UNCLEAR (unchanged)
+RQADR-2: "holder is in the run-status comment." Assumed: ADR-064 comment, not a new one.
