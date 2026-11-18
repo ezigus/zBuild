@@ -502,6 +502,107 @@ else
     assert_pass "[DSCLA-11] run-status comment does not show 'running' on TERM signal exit"
 fi
 
+# ── DSCLA-13: second SIGTERM during abort trap does not prevent claim release ──
+#
+# Tests that when _runner_abort_trap blocks SIGTERM (via trap '' TERM) and a
+# second SIGTERM arrives while zbuild_claim_release is executing inside the
+# trap, zbuild:claimed is still removed from the issue.
+#
+# This test FAILS on base code: runner.sh never calls zbuild_claim_acquire,
+# so zbuild:claimed is never added to the claim store, and the acquisition
+# gate assertion fails.
+
+# Given: the claim was acquired at run start (issue 90001769)
+_DSCLA13_ISSUE="90001769"
+_DSCLA13_PRESENT="$TEST_TEMP_DIR/dscla13-claim-present"
+_DSCLA13_STARTED="$TEST_TEMP_DIR/dscla13-stage-started"
+_DSCLA13_ABORT_ENTERED="$TEST_TEMP_DIR/dscla13-abort-entered"
+rm -f "$_DSCLA13_PRESENT" "$_DSCLA13_STARTED" "$_DSCLA13_ABORT_ENTERED"
+
+# Add a template with an always-run teardown stage to the claim repo.
+# The teardown stage's entry marker confirms we are inside _runner_abort_trap
+# with SIGTERM already blocked, so the second SIGTERM lands during trap execution.
+cat > "$_CLAIM_REPO/.zbuild/templates/claim-dscla13.yaml" <<'CLAIMTPL'
+id: claim-dscla13
+extends: simple
+flow:
+  - outcome
+always_run:
+  - release
+outcome:
+  gate: auto
+release:
+  gate: auto
+  roles: [teardown]
+  timeout_s: 30
+CLAIMTPL
+(cd "$_CLAIM_REPO" && git add .zbuild && git commit -qm "add claim-dscla13 template") \
+    >/dev/null 2>&1
+
+# Outcome: gate on zbuild:claimed being present, write started, sleep until SIGTERM
+cat > "$PLUGINS_ROOT/agent/outcome/plugin.sh" <<PLUG
+outcome_run() {
+    if grep -Fxq "zbuild:claimed" "$ZBUILD_CLAIM_STORE/$_DSCLA13_ISSUE/labels.txt" 2>/dev/null; then
+        : > "$_DSCLA13_PRESENT"
+    fi
+    : > "$_DSCLA13_STARTED"
+    sleep 60
+    return 0
+}
+PLUG
+
+# Teardown (release stage): write abort-entered marker, then sleep 3 s.
+# While it sleeps the second SIGTERM arrives; zbuild_claim_release also
+# executes in _runner_abort_trap alongside this stage.
+cat > "$PLUGINS_ROOT/tool/teardown/plugin.sh" <<PLUG
+teardown_run() { : > "$_DSCLA13_ABORT_ENTERED"; sleep 3; return 0; }
+PLUG
+
+_claim_prep "dscla13"
+
+# When: the runner process receives a first SIGTERM (enters _runner_abort_trap,
+# blocks SIGTERM via trap '' TERM), then a second SIGTERM arrives while
+# zbuild_claim_release is executing inside _runner_abort_trap.
+( cd "$_CLAIM_REPO" && exec bash "$RUNNER" \
+    --issue "$_DSCLA13_ISSUE" --no-resume \
+    --template claim-dscla13 ) \
+    > "$TEST_TEMP_DIR/dscla13.out" 2>&1 &
+_DSCLA13_PID=$!
+
+# Wait for outcome stage to start: zbuild_claim_acquire fired before first stage
+for _ in $(seq 1 300); do [[ -e "$_DSCLA13_STARTED" ]] && break; sleep 0.1; done
+
+# Given: the runner has entered _runner_abort_trap and blocked SIGTERM via trap '' TERM
+kill -TERM "$_DSCLA13_PID" 2>/dev/null || true
+
+# Wait for the teardown (release) stage to enter: we are inside _runner_abort_trap
+for _ in $(seq 1 300); do [[ -e "$_DSCLA13_ABORT_ENTERED" ]] && break; sleep 0.1; done
+
+# When: second SIGTERM arrives while zbuild_claim_release is executing inside the trap
+kill -TERM "$_DSCLA13_PID" 2>/dev/null || true
+
+for _ in $(seq 1 600); do kill -0 "$_DSCLA13_PID" 2>/dev/null || break; sleep 0.1; done
+kill -KILL "$_DSCLA13_PID" 2>/dev/null || true
+wait "$_DSCLA13_PID" 2>/dev/null || true
+
+# Setup check: outcome stage started (first SIGTERM arrived while outcome was running)
+if [[ ! -e "$_DSCLA13_STARTED" ]]; then
+    assert_fail "[setup-DSCLA-13] outcome stage started before first SIGTERM" \
+        "$(tail -10 "$TEST_TEMP_DIR/dscla13.out")"
+fi
+
+# Then: zbuild:claimed is absent from the issue after the runner exits
+# Gate on acquisition: if claim was never acquired (base code), report that
+if [[ ! -e "$_DSCLA13_PRESENT" ]]; then
+    assert_fail "[DSCLA-13] zbuild:claimed was never acquired — cannot verify release after second SIGTERM" \
+        "claim never appeared in store; output=$(tail -5 "$TEST_TEMP_DIR/dscla13.out")"
+elif ! grep -Fxq "zbuild:claimed" "$ZBUILD_CLAIM_STORE/$_DSCLA13_ISSUE/labels.txt" 2>/dev/null; then
+    assert_pass "[DSCLA-13] zbuild:claimed absent after second SIGTERM during abort trap"
+else
+    assert_fail "[DSCLA-13] zbuild:claimed absent after second SIGTERM during abort trap" \
+        "label still present in claim store after runner exit with second SIGTERM"
+fi
+
 # ─────────────────────────────────────────────────────────────────────────────
 # End of DSCLA claim tests
 # ─────────────────────────────────────────────────────────────────────────────
