@@ -51,6 +51,11 @@ elif grep -q "Your job: for each finding below, try to show that it cannot happe
     # the check of a lens's findings (#2552): the one finding stands.
     jq -n --arg r '1: stands' \
        '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
+elif grep -q "Your job: for each design step below" <<< "$prompt"; then
+    # the check of build's answers to the design's steps (#2565): the line
+    # build quoted for the one step does it.
+    jq -n --arg r '1: does' \
+       '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
 elif grep -q 'A report for the ' <<< "$prompt"; then
     # a review lens (#1842): a real lens result for the engine to hand on, as in
     # production. #2552: one low finding the code already had, so the check of
@@ -90,7 +95,8 @@ elif grep -q "LOOP_COMPLETE" <<< "$prompt"; then
     # #2508: outside the test folders — build may change no file in them.
     mkdir -p "$PWD/fixtures"
     printf 'parity-fixture\n' > "$PWD/fixtures/parity-fixture.txt"
-    jq -n --arg r $'Created fixture file.\nLOOP_COMPLETE' \
+    # #2565: and answers the design's one step with the line it added.
+    jq -n --arg r $'Created fixture file.\nstep 1: done — QUOTE: fixtures/parity-fixture.txt | parity-fixture\nLOOP_COMPLETE' \
        '{result:$r, total_cost_usd:0.001, usage:{input_tokens:5, output_tokens:3}}'
 else
     # any other call: a short answer.

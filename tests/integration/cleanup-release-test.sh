@@ -173,7 +173,7 @@ else
     assert_fail "[SPEC-3] zero per-stage cleanup hooks remain (ADR-062 §3)" \
         "still declared by: $_spec3_hooks"
 fi
-if grep -qE '^test_cleanup\(\)' "$REPO_ROOT/plugins/tool/test/plugin.sh"; then
+if grep -qE '^test_cleanup\(\)' "$REPO_ROOT/plugins/tool/test/plugin.sh" "$REPO_ROOT"/plugins/tool/test/lib/*.sh; then
     assert_fail "[SPEC-3] the retired hook function is gone, not merely undeclared" \
         "test_cleanup still defined — dead contract surface that reads as live"
 else

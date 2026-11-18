@@ -59,6 +59,14 @@ provides:
     - build.scope.inscope_preserved
     - build.authored_testfiles.restored
     - build.scratch.cleaned
+    # #2565 (ADR-072 §3): the check of build's answers to the design's steps —
+    # how many it judged and refused, or that its answer could not be used.
+    - build.steps.checked
+    - build.steps.check_unusable
+    # ADR-072 §4: a kept answer saved, used instead of a call, or found stale.
+    - judge.kept.saved
+    - judge.kept.used
+    - judge.kept.stale
 
 config:
   tier_default: T2
@@ -76,10 +84,14 @@ config:
 # tools in zbuild's words; the provider turns them into its own.
 calls:
   main: [read-files, edit-files, run-commands, web-search, subagents, todo-list]
+  # #2565: a second call says whether each line build quoted for a design step
+  # does what the step says. It reads, and changes nothing.
+  check: [read-files, read-git]
 # ADR-051 §2: the persona each call runs as — a call that judges work is
 # not run as the persona that wrote it.
 personas:
   main: developer
+  check: quality-assurance
 
 outputs:
   - id: diff_patch

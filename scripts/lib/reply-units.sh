@@ -15,8 +15,9 @@ _ZBUILD_REPLY_UNITS_LOADED=1
 # -, then a colon — `SPEC-3:` too), an ANSWER, LOOP_COMPLETE, a list item, a
 # heading or a code fence. Markdown emphasis or a quote mark may come first.
 # #2467: a check's line about one part of a SPEC — `FRSH-1 Then:`,
-# `FRSH-1 And:`, `FRSH-1 sections:`, `FRSH-1 cleanup:` (#2543), an old `FRSH-1 Then 2:` — starts a unit too, as do `FRSH-1 Title:` and `Steps:` (#2555).
-_ZB_RU_START='^[[:space:]>*_`]*([A-Z][A-Z0-9_-]*:|[A-Z][A-Z0-9_]*-[0-9]+[[:space:]]+(Title|Given|When|Then|And|Cleanup|sections|cleanup)([[:space:]]+[0-9]+)?:|Steps:|[Aa][Nn][Ss][Ww][Ee][Rr][[:space:]]|LOOP_COMPLETE|#|```|[-*+][[:space:]]|[0-9]+[.)][[:space:]])'
+# `FRSH-1 And:`, `FRSH-1 sections:`, `FRSH-1 cleanup:` (#2543), an old `FRSH-1 Then 2:` — starts a unit too, as do `FRSH-1 Title:` and `Steps:` (#2555),
+# and build's answer to a design step, `step 2:` (#2565).
+_ZB_RU_START='^[[:space:]>*_`]*([A-Z][A-Z0-9_-]*:|[A-Z][A-Z0-9_]*-[0-9]+[[:space:]]+(Title|Given|When|Then|And|Cleanup|sections|cleanup)([[:space:]]+[0-9]+)?:|Steps:|[Ss][Tt][Ee][Pp][[:space:]]+[0-9]+[[:space:]]*:|[Aa][Nn][Ss][Ww][Ee][Rr][[:space:]]|LOOP_COMPLETE|#|```|[-*+][[:space:]]|[0-9]+[.)][[:space:]])'
 _ZB_RU_ITEM='^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]+(.*)$'
 _ZB_RU_KEY_ONLY='^[[:space:]>*_`]*([A-Z][A-Z0-9_-]*):[[:space:]*_`]*$'
 
@@ -47,6 +48,7 @@ zb_reply_plain_v() {
 judge_reply_line_v() {
     local -n _jrl="$1"
     local _jr_l="$2" _jr_head="$2" _jr_rest="" _jr_why="" _jr_quote="" _jr_has_w=0 _jr_has_q=0 _jr_a
+    local _jr_ins="" _jr_has_i=0
     if [[ "$_jr_l" == *WHY* ]]; then
         _jr_a="${_jr_l#*WHY}"
         [[ "$_jr_a" =~ ^[*_\`]*:(.*)$ ]] && { _jr_head="${_jr_l%%WHY*}"; _jr_rest="${BASH_REMATCH[1]}"; _jr_has_w=1; }
@@ -61,15 +63,26 @@ judge_reply_line_v() {
         _jr_a="${_jr_head##*QUOTE}"
         [[ "$_jr_a" =~ ^[*_\`]*:(.*)$ ]] && { _jr_head="${_jr_head%QUOTE*}"; _jr_quote="${BASH_REMATCH[1]}"; _jr_has_q=1; }
     fi
+    # #2565 (ADR-073 §5): INSTEAD: is a separator too, after WHY or, with no
+    # WHY, after the head.
+    if (( _jr_has_w )) && [[ "$_jr_why" == *INSTEAD* ]]; then
+        _jr_a="${_jr_why##*INSTEAD}"
+        [[ "$_jr_a" =~ ^[*_\`]*:(.*)$ ]] && { _jr_why="${_jr_why%INSTEAD*}"; _jr_ins="${BASH_REMATCH[1]}"; _jr_has_i=1; }
+    elif (( ! _jr_has_w )) && [[ "$_jr_head" == *INSTEAD* ]]; then
+        _jr_a="${_jr_head##*INSTEAD}"
+        [[ "$_jr_a" =~ ^[*_\`]*:(.*)$ ]] && { _jr_head="${_jr_head%INSTEAD*}"; _jr_ins="${BASH_REMATCH[1]}"; _jr_has_i=1; }
+    fi
     zb_reply_plain_v _jr_head "$_jr_head"
     _jr_head="${_jr_head#"${_jr_head%%[![:space:]>#|+-]*}"}"
     [[ "$_jr_head" =~ ^[0-9]+[.\)][[:space:]]+(.*)$ ]] && _jr_head="${BASH_REMATCH[1]}"
     _judge_reply_trim_v _jr_head "$_jr_head"; _judge_reply_trim_v _jr_why "$_jr_why"; _judge_reply_trim_v _jr_quote "$_jr_quote"
+    (( _jr_has_i )) && _judge_reply_trim_v _jr_ins "$_jr_ins"
     # A table row's cells: the first border after the id is its colon.
     [[ "$_jr_head" != *:* && "$_jr_head" == *" | "* ]] && _jr_head="${_jr_head/ | /: }"
     _jr_head="${_jr_head//|/ }"; while [[ "$_jr_head" == *"  "* ]]; do _jr_head="${_jr_head//  / }"; done
     _jrl="$_jr_head"
     (( _jr_has_w )) && _jrl+=" | WHY: $_jr_why"
+    (( _jr_has_i )) && _jrl+=" | INSTEAD: $_jr_ins"
     (( _jr_has_q )) && _jrl+=" | QUOTE: $_jr_quote"
     return 0
 }

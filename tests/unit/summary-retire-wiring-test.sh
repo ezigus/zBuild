@@ -119,7 +119,7 @@ else
     assert_pass "[SPEC-3] _build_read_prior_gate is gone"
 fi
 
-if grep -qF '_design_read_design_gate_feedback' "$REPO_ROOT/plugins/agent/design/plugin.sh" 2>/dev/null; then
+if grep -qF '_design_read_design_gate_feedback' "$REPO_ROOT/plugins/agent/design/plugin.sh" "$REPO_ROOT"/plugins/agent/design/lib/*.sh 2>/dev/null; then
     assert_fail "[SPEC-3] _design_read_design_gate_feedback is gone" "the reader survives"
 else
     assert_pass "[SPEC-3] _design_read_design_gate_feedback is gone"

@@ -104,11 +104,11 @@ print_test_section "F3-F6: design's check"
     _fresh; _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSFRSH-1: ok\n'; _R2="$OK"; _cov
     echo "F6b|$(cat "$_N")|$_DESIGN_COV_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
     # F2/F5: a part named by its word and a quote; the quote picks the And.
-    _fresh; _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-2: ok\nDSFRSH-1 Then: untestable | WHY: a test cannot see what is skipped from outside | QUOTE: "no stage is skipped"\n'; _R2=""; _cov
+    _fresh; _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-2: ok\nDSFRSH-1 Then: untestable | WHY: a test cannot see what is skipped from outside | INSTEAD: the event the run emits | QUOTE: "no stage is skipped"\n'; _R2=""; _cov
     _fx="$(_design_coverage_findings)"
     echo "F5a|$(grep -c . <<< "$_fx")|$(tr '\n\036' '~~' <<< "$_fx")"
     # ...a quote in none of its Thens is asked again.
-    _fresh; _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-2: ok\nDSFRSH-1 Then: how | WHY: x | QUOTE: "it is started again"\n'; _R2="$_R1"; _cov
+    _fresh; _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-2: ok\nDSFRSH-1 Then: how | WHY: x | INSTEAD: the event the run emits | QUOTE: "it is started again"\n'; _R2="$_R1"; _cov
     echo "F2d|$_DESIGN_COV_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
     # F5: a SPEC-level verdict marks the SPEC's own line; an uncovered requirement is one line.
     _fresh; _R1=$'RQRQST-1: covered\nRQRQST-2: uncovered | WHY: nothing reads the flag from the config file | QUOTE: "read the flag"\nDSWORK-2: ok\nDSFRSH-1 Title: not-asked | WHY: the issue asks for no fresh start | QUOTE: "a new run starts from the first stage"\n'; _R2=""; _cov

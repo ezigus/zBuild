@@ -61,6 +61,8 @@ attempt_latest_copy() {
 #   P<TAB><raw path>   every declared output path, unresolved
 #   S<TAB><basename>   an output marked `summary: true` — narrative, never work
 #   X<TAB><basename>   the result file (`primary: true`) — what the try did
+#   H<TAB><raw path>   an output marked `handoff: true` — where a try that
+#                      changed nothing hands its findings on (#2565)
 #   R                  capabilities.writes_repository: true
 # A dispatch asks three times (fingerprint before, fingerprint after, archive),
 # so the last manifest's answer is kept; manifests do not change during a run.
@@ -70,21 +72,21 @@ _ATT_FACTS=""
 # in the stage's own process, three times a dispatch.
 _attempt_manifest_facts_read_v() {
     local -n _amf="$1"
-    local line l in_out=0 in_cap=0 p="" s=0 x=0 out=""
+    local line l in_out=0 in_cap=0 p="" s=0 x=0 h=0 out=""
     [[ -f "$2" && -r "$2" ]] || { _amf=""; return 0; }
     while IFS= read -r line || [[ -n "$line" ]]; do
         if [[ "$line" =~ ^outputs:[[:space:]]*$ ]]; then in_out=1; in_cap=0; continue; fi
         if [[ "$line" =~ ^capabilities:[[:space:]]*$ || "$line" =~ ^[a-zA-Z_] ]]; then
-            if [[ -n "$p" ]]; then out+="P"$'\t'"$p"$'\n'; (( s )) && out+="S"$'\t'"${p##*/}"$'\n'; (( x )) && out+="X"$'\t'"${p##*/}"$'\n'; fi
-            p=""; s=0; x=0
+            if [[ -n "$p" ]]; then out+="P"$'\t'"$p"$'\n'; (( s )) && out+="S"$'\t'"${p##*/}"$'\n'; (( x )) && out+="X"$'\t'"${p##*/}"$'\n'; (( h )) && out+="H"$'\t'"$p"$'\n'; fi
+            p=""; s=0; x=0; h=0
             if [[ "$line" =~ ^capabilities:[[:space:]]*$ ]]; then in_cap=1; in_out=0; continue; fi
             in_out=0; in_cap=0
         fi
         (( in_cap )) && [[ "$line" =~ ^[[:space:]]+writes_repository:[[:space:]]*true[[:space:]]*(#.*)?$ ]] && out+="R"$'\n'
         (( in_out )) || continue
         if [[ "$line" =~ ^[[:space:]]*-[[:space:]]+id: ]]; then
-            if [[ -n "$p" ]]; then out+="P"$'\t'"$p"$'\n'; (( s )) && out+="S"$'\t'"${p##*/}"$'\n'; (( x )) && out+="X"$'\t'"${p##*/}"$'\n'; fi
-            p=""; s=0; x=0
+            if [[ -n "$p" ]]; then out+="P"$'\t'"$p"$'\n'; (( s )) && out+="S"$'\t'"${p##*/}"$'\n'; (( x )) && out+="X"$'\t'"${p##*/}"$'\n'; (( h )) && out+="H"$'\t'"$p"$'\n'; fi
+            p=""; s=0; x=0; h=0
         fi
         if [[ "$line" =~ ^[[:space:]]+path:[[:space:]]* ]]; then
             l="${line:${#BASH_REMATCH[0]}}"
@@ -93,8 +95,9 @@ _attempt_manifest_facts_read_v() {
         fi
         [[ "$line" =~ ^[[:space:]]+summary:[[:space:]]*true ]] && s=1
         [[ "$line" =~ ^[[:space:]]+primary:[[:space:]]*true ]] && x=1
+        [[ "$line" =~ ^[[:space:]]+handoff:[[:space:]]*true ]] && h=1
     done < "$2"
-    if [[ -n "$p" ]]; then out+="P"$'\t'"$p"$'\n'; (( s )) && out+="S"$'\t'"${p##*/}"$'\n'; (( x )) && out+="X"$'\t'"${p##*/}"$'\n'; fi
+    if [[ -n "$p" ]]; then out+="P"$'\t'"$p"$'\n'; (( s )) && out+="S"$'\t'"${p##*/}"$'\n'; (( x )) && out+="X"$'\t'"${p##*/}"$'\n'; (( h )) && out+="H"$'\t'"$p"$'\n'; fi
     while [[ "$out" == *$'\n' ]]; do out="${out%$'\n'}"; done
     _amf="$out"
 }

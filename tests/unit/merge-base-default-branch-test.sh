@@ -245,7 +245,7 @@ fi
 # last of which is how it appeared where the sentence wrapped mid-chain.
 _MB6_CHAIN='(→|\|)[[:space:]]*`?HEAD~1|HEAD~1`?[[:space:]]*\)'
 for _doc in "scripts/lib/merge-base.sh" "plugins/tool/test/manifest.yaml" \
-            "plugins/tool/test/plugin.sh" \
+            "plugins/tool/test/plugin.sh" "plugins/tool/test/lib/run.sh" "plugins/tool/test/lib/suite.sh" \
             "docs/wiki/plugins/spec-acceptance.md"; do
     if grep -qE "$_MB6_CHAIN" "$REPO_ROOT/$_doc"; then
         assert_fail "[MB-6] $_doc still documents HEAD~1 as a candidate in the chain" \

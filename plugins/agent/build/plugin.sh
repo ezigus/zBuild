@@ -72,6 +72,8 @@ source "$_BUILD_DIR/lib/commit.sh"
 source "$_BUILD_DIR/lib/summary.sh"
 # shellcheck source=lib/round.sh
 source "$_BUILD_DIR/lib/round.sh"
+# shellcheck source=lib/steps.sh
+source "$_BUILD_DIR/lib/steps.sh"
 # #2364: earlier work is found by what it contains, never by which stage made it.
 # shellcheck source=../../../scripts/lib/earlier-output.sh
 source "$_BUILD_ROOT/scripts/lib/earlier-output.sh"
@@ -179,6 +181,8 @@ _build_stage_run_inner() {
     # #2445: the work steps design wrote, when it wrote any.
     local plan_json="{}"
     [[ -n "$plan_json_path" && -s "$plan_json_path" ]] && plan_json="$(cat "$plan_json_path")"
+    # #2565: build answers each of them.
+    _build_steps_load "$plan_json"
 
     local _acceptance_testfiles="" _acceptance_spec_ids="" _design_decisions=""
     _build_load_context
@@ -205,6 +209,8 @@ _build_stage_run_inner() {
 
     local _build_instructions
     _build_instructions="$(_build_compose_instructions)"
+    local _steps_ask; _build_steps_instructions_v _steps_ask
+    [[ -n "$_steps_ask" ]] && _build_instructions+=$'\n\n'"$_steps_ask"
 
     _build_compose_prompt_body "$prompt_input_file" "$_task_header" "$plan_payload" \
         "$_build_instructions" "$_design_decisions" "$_acceptance_testfiles" \
@@ -415,7 +421,8 @@ _build_stage_run_inner() {
     # #2476 (ADR-064 §4): the line names what changed; how it got there is below.
     local _sum_head; _build_summary_head_v _sum_head "$build_verdict" "$terminated_reason" \
         "$lines_added" "$lines_removed" "$files_changed_json"
-    local _sum_ans=""; zb_answers_summary_v _sum_ans _BUILD_ANSWERS
+    local _sum_ans="" _sum_steps=""; zb_answers_summary_v _sum_ans _BUILD_ANSWERS
+    _build_steps_summary_v _sum_steps; [[ -n "$_sum_steps" ]] && _sum_ans+=$'\n'"$_sum_steps"
     stage_summary_write "$artifact_dir/build-summary.md" "build" "$build_verdict" "$_sum_head" \
         "$(printf -- '- over %s pass(es), %s iteration(s)' "$_BUILD_ROUND_PASSES" "$(_build_round_total_iterations "$iterations")"
            # #2508: what it changed in the test folders, or that is off limits

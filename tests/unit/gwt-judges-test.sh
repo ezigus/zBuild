@@ -82,22 +82,22 @@ MD
     _R1="$R"; _R2="$OK"; _cov
     echo "J3|$(cat "$_N")|$_DESIGN_COV_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
     # #2470: a part is named by its word; the quote picks the line.
-    _R1="$R"$'FRSH-1 And: untestable | WHY: a test cannot observe what a file contains | QUOTE: "the test file contains both cases"\n'; _R2=""; _cov
+    _R1="$R"$'FRSH-1 And: untestable | WHY: a test cannot observe what a file contains | INSTEAD: the event the run emits | QUOTE: "the test file contains both cases"\n'; _R2=""; _cov
     echo "J4|$(_design_coverage_findings | tr '\n\036' '~~')|$_DESIGN_COV_OUTCOME"
-    _R1="$R"$'FRSH-1 When: untestable | WHY: x | QUOTE: "it is started again"\n'; _R2="$_R1"; _cov
+    _R1="$R"$'FRSH-1 When: untestable | WHY: x | INSTEAD: the event the run emits | QUOTE: "it is started again"\n'; _R2="$_R1"; _cov
     echo "J5|$_DESIGN_COV_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
     _R1="$R"$'FRSH-1 Then: duplicate | WHY: x | QUOTE: "every stage is dispatched"\n'; _R2="$_R1"; _cov
     echo "J5b|$_DESIGN_COV_OUTCOME"
-    _R1="$R"$'FRSH-1 When: how | WHY: it names the call, not what happens | QUOTE: "it is started again"\n'; _R2=""; _cov
+    _R1="$R"$'FRSH-1 When: how | WHY: it names the call, not what happens | INSTEAD: the event the run emits | QUOTE: "it is started again"\n'; _R2=""; _cov
     echo "J6|$(_design_coverage_findings | tr '\n\036' '~~')"
     _R1="$R"$'FRSH-1: needs_cleanup | WHY: the run it sets up stays in the state folder | QUOTE: "a run whose stages all completed"\n'; _R2=""; _cov
     echo "J7|$_DESIGN_COV_OUTCOME"
-    _R1="$R"$'FRSH-1 Then: untestable | WHY: x | QUOTE: "it is started again"\n'; _R2="$_R1"; _cov
+    _R1="$R"$'FRSH-1 Then: untestable | WHY: x | INSTEAD: the event the run emits | QUOTE: "it is started again"\n'; _R2="$_R1"; _cov
     echo "J8|$(cat "$_N")|$_DESIGN_COV_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
     # #2527: no quote marks, or curly ones, and the quote still picks its line.
-    _R1="$R"$'FRSH-1 And: untestable | WHY: a test cannot observe what a file contains | QUOTE: the test file contains both cases\n'; _R2=""; _cov
+    _R1="$R"$'FRSH-1 And: untestable | WHY: a test cannot observe what a file contains | INSTEAD: the event the run emits | QUOTE: the test file contains both cases\n'; _R2=""; _cov
     echo "J10|$(_design_coverage_findings | tr '\n\036' '~~')|$_DESIGN_COV_OUTCOME|$(cat "$_N")"
-    _R1="$R"$'FRSH-1 When: how | WHY: it names the call, not what happens | QUOTE: “it is started again”'$'\n'; _R2=""; _cov
+    _R1="$R"$'FRSH-1 When: how | WHY: it names the call, not what happens | INSTEAD: the event the run emits | QUOTE: “it is started again”'$'\n'; _R2=""; _cov
     echo "J11|$(_design_coverage_findings | tr '\n\036' '~~')|$_DESIGN_COV_OUTCOME|$(cat "$_N")"
     # Review on #2469: the tests' stand-in for a judge that finds nothing answers
     # every part of a SPEC with parts, as the real judge is asked to.

@@ -130,7 +130,7 @@ print_test_section "2. plugin.sh source has no git apply on diff.patch"
 # (audit trail of the removal) are explicitly allowed.
 PLUGIN_SRC="$REPO_ROOT/plugins/tool/test/plugin.sh"
 # Strip comments + blank lines, then grep for `git apply` invocations.
-_NONCOMMENT="$(grep -vE '^[[:space:]]*(#|$)' "$PLUGIN_SRC")"
+_NONCOMMENT="$(grep -hvE '^[[:space:]]*(#|$)' "$PLUGIN_SRC" "${PLUGIN_SRC%/*}"/lib/*.sh)"
 if printf '%s\n' "$_NONCOMMENT" | grep -E 'git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+)?apply\b' >/dev/null 2>&1; then
     assert_fail "plugin.sh contains no 'git apply' call (non-comment)" \
         "found: $(printf '%s\n' "$_NONCOMMENT" | grep -nE 'git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+)?apply\b' | head -3)"

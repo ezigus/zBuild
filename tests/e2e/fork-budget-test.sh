@@ -134,7 +134,13 @@ setup_test_env "fork-budget"
 # lens's findings — a second model call per lens that has findings — which the
 # fixture now runs (one low finding). Measured on macOS: 1852 execs (was 1760). It ratchets down
 # from here.
-FORK_BUDGET=1830
+# #2565 (user's decision): raised once, to the measured cost of build's step
+# judge — a model call asking whether each design step's quoted line does the
+# step — which the fixture now runs; the router reading a reply and a tier in
+# one jq each paid back part of it. Measured on macOS: 2404 processes and 1868
+# execs in all (was 2368 and 1830); 467 processes and 306 execs a dispatch
+# (was 501 and 327). It ratchets down from here.
+FORK_BUDGET=1868
 # PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
 # the programs above plus each `$( )` subshell, a copy of the whole engine shell
 # that FORK_BUDGET cannot see. Ratchets down only, like FORK_BUDGET. History:
@@ -184,7 +190,13 @@ FORK_BUDGET=1830
 # lens's findings — a second model call per lens that has findings — which the
 # fixture now runs (one low finding). Measured on macOS: 2465 processes (was 2356). It ratchets down
 # from here.
-PROCESS_BUDGET=2368
+# #2565 (user's decision): raised once, to the measured cost of build's step
+# judge — a model call asking whether each design step's quoted line does the
+# step — which the fixture now runs; the router reading a reply and a tier in
+# one jq each paid back part of it. Measured on macOS: 2404 processes and 1868
+# execs in all (was 2368 and 1830); 467 processes and 306 execs a dispatch
+# (was 501 and 327). It ratchets down from here.
+PROCESS_BUDGET=2404
 # The run's cost in two parts (ADR-065 §6, #2472). Each budget ratchets down
 # like the totals; each floor is the goal, an estimate, measured again when
 # reached. History: 505 / 298 a dispatch, 12 / 7 a plugin at start-up (#2472 —
@@ -229,9 +241,15 @@ PROCESS_BUDGET=2368
 # dispatch), a lens writes its routed results from one jq, and the shape floor
 # is gone. Measured on macOS (with #2563): 2368 processes and 1830 execs in all, 501
 # processes and 327 execs a dispatch, 428 start-up processes and 232 execs.
-DISPATCH_PROCS_BUDGET=501
+# #2565 (user's decision): raised once, to the measured cost of build's step
+# judge — a model call asking whether each design step's quoted line does the
+# step — which the fixture now runs; the router reading a reply and a tier in
+# one jq each paid back part of it. Measured on macOS: 2404 processes and 1868
+# execs in all (was 2368 and 1830); 467 processes and 306 execs a dispatch
+# (was 501 and 327). It ratchets down from here.
+DISPATCH_PROCS_BUDGET=467
 DISPATCH_PROCS_FLOOR=20
-DISPATCH_EXECS_BUDGET=327
+DISPATCH_EXECS_BUDGET=306
 DISPATCH_EXECS_FLOOR=50
 STARTUP_PROCS_PER_PLUGIN_BUDGET=11
 STARTUP_PROCS_PER_PLUGIN_FLOOR=1

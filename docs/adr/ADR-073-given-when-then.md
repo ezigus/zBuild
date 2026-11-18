@@ -110,7 +110,16 @@ On #1764 run 43772987273 design's check wrote `DSCLA-10 Then: outside`: a part's
 - **The old forms are refused** — `<SPEC id>: outside`, `<SPEC id>: status` — and the re-ask says to write the problem on the line it is about. `status` on any line but `Title` is refused.
 - **A reply's `<id> Title:` and `Steps:` lines each start a unit** of their own (`_ZB_RU_START`, `scripts/lib/reply-units.sh`), as a part's line does.
 
+## Amendment 2026-11-18 (#2565) — §5: a refused part names what would be accepted; a requirement nothing could observe stops the run
+
+On #1764 runs 43959139598 and 44090911022 the check refused every wording of one Then ("what a file contains", "how a test checks") and never said what it would accept. Design flipped wordings until it ran out of tries.
+
+- An `untestable` or `how` line also says what the line could say instead: `<SPEC id> <line>: untestable | WHY: <why> | INSTEAD: <what a test could observe after the When instead> | QUOTE: <words from that line>`. A line without INSTEAD cannot be used and is asked again. Design's finding carries it.
+- A requirement nothing a test could observe would show met is answered `<requirement id>: none | WHY: <why> | QUOTE: <its words>`. It is not design's to fix: design stops `misconfigured`, naming the requirement and why, for the issue's owner. This replaces "say so in its WHY" for such a requirement.
+
 ## Enforced by
+
+- §5 amendment 2026-11-18 (#2565: INSTEAD; none) → `tests/unit/design-check-instead-test.sh` I1 (both forms in the prompt), I2 (INSTEAD reaches design), I3 (an untestable or how line without INSTEAD is asked again), I4 (none is read), I6 (a bold INSTEAD is read), I5 (none stops design misconfigured, naming the requirement and why)
 
 - §5 amendment 2026-11-16 (#2555: one form for every problem) → `tests/unit/design-one-form-test.sh` F1 (the form in the prompt; no outside), F2 (not-asked on a part's line marks it, with its WHY), F3 (on Title, the first line), F4 (status on Title), F5 (the old forms refused, the re-ask names the line), F6 (status off Title refused), F9 (a reply's `<id> Title:` and `Steps:` lines each start a unit); `tests/unit/design-status-check-test.sh` S1–S11 and `tests/unit/design-coverage-test.sh` X1, X2, X4, X5 (in the new form)
 

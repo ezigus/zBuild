@@ -75,6 +75,7 @@
     "cycle.member.dispatch.start",
     "cycle.member.dispatch.complete",
     "stage.retry",
+    "stage.findings.handed_on",
     "cycle.member.disposition.halt",
     "cycle.member.timeout",
     "cycle.member.timeout_abandoned",

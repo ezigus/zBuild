@@ -22,10 +22,10 @@ _ZBUILD_DESIGN_COVERAGE_ANSWER_LOADED=1
 _dcov_parse() {
     local raw="$1" want=$'\n'"$2"$'\n'
     _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_STATUS_WRONG=(); _DCOV_PROBLEM=""
-    _DESIGN_PART_WRONG=(); _DCOV_LINES=(); _DCOV_QUOTED=(); _DESIGN_NEW_OWNER=()
+    _DESIGN_PART_WRONG=(); _DCOV_LINES=(); _DCOV_QUOTED=(); _DESIGN_NEW_OWNER=(); _DESIGN_REQ_NONE=()
     local -A seen=()
     local -a bad=()
-    local l id rest word why quote w qp key reqs_asked=0 steps_asked=0 steps_seen=0
+    local l id rest word why quote instead w qp key reqs_asked=0 steps_asked=0 steps_seen=0
     [[ "$want" == *$'\nrequirements\n'* ]] && reqs_asked=1
     [[ "$want" == *$'\nsteps\n'* ]] && steps_asked=1
     while IFS= read -r l; do
@@ -74,7 +74,14 @@ _dcov_parse() {
                     # issue-acceptance reads them; intake may have left some out.
                     judge_quote_check_v w "$quote" "${req_text[$id]}"$'\n'"${issue:-}" "$repo" "$base" || { bad+=("$id's quote $w"); continue; }
                     _DESIGN_UNCOVERED+=("$id: ${why:-no SPEC covers it} — $quote") ;;
-                *) bad+=("$id is a requirement: it is covered or uncovered, not $word") ;;
+                # #2565 (ADR-073 §5): nothing a test could observe settles it —
+                # the issue's owner fixes it; design cannot.
+                none)
+                    if [[ -z "$why" ]]; then bad+=("$id: none has no WHY"); continue; fi
+                    if [[ -z "$quote" ]]; then bad+=("$id has no QUOTE"); continue; fi
+                    judge_quote_check_v w "$quote" "${req_text[$id]}"$'\n'"${issue:-}" "$repo" "$base" || { bad+=("$id's quote $w"); continue; }
+                    _DESIGN_REQ_NONE+=("$id: $why") ;;
+                *) bad+=("$id is a requirement: it is covered, uncovered or none, not $word") ;;
             esac
             continue
         fi
@@ -147,7 +154,7 @@ _dcov_need_names() {
 # (#2555, ADR-073): not-asked or contradicts, its QUOTE from that line; status,
 # its three facts and a QUOTE from the code. Read in _dcov_parse's scope.
 _dcov_title_line() {
-    local id="$1" word="$2" why quote w qp right=""
+    local id="$1" word="$2" why quote instead w qp right=""
     _dcov_why_quote "$3"
     case "$word" in
         not-asked|contradicts|status|new-owner) ;;
@@ -197,10 +204,15 @@ _dcov_status_from_facts_v() {
     else _dsf="done"; fi
 }
 
-# _dcov_why_quote <rest> — a line's WHY and QUOTE, into the caller's why and quote.
+# _dcov_why_quote <rest> — a line's WHY, INSTEAD and QUOTE, into the caller's why,
+# instead and quote.
 _dcov_why_quote() {
-    why=""; quote=""
-    if [[ "$1" == *"| WHY:"* ]]; then why="${1#*| WHY:}"; why="${why%%| QUOTE:*}"; fi
+    why=""; quote=""; instead=""
+    if [[ "$1" == *"| WHY:"* ]]; then why="${1#*| WHY:}"; why="${why%%| QUOTE:*}"; why="${why%%| INSTEAD:*}"; fi
+    if [[ "$1" == *"| INSTEAD:"* ]]; then
+        instead="${1#*| INSTEAD:}"; instead="${instead%%| QUOTE:*}"
+        instead="${instead#"${instead%%[![:space:]]*}"}"; instead="${instead%"${instead##*[![:space:]]}"}"
+    fi
     why="${why#"${why%%[![:space:]]*}"}"; why="${why%"${why##*[![:space:]]}"}"
     [[ "$1" == *"| QUOTE:"* ]] && { quote="${1#*| QUOTE:}"; quote="${quote#"${quote%%[![:space:]]*}"}"; quote="${quote%"${quote##*[![:space:]]}"}"; }
     return 0
@@ -212,7 +224,7 @@ _dcov_why_quote() {
 # when the SPEC has several (#2470, ADR-073 §5). An old label with a number
 # (Then 2) is still read.
 _dcov_part_line() {
-    local id="$1" pw="$2" num="$3" word="$4" why quote lab="" cand="" c kind
+    local id="$1" pw="$2" num="$3" word="$4" why quote instead lab="" cand="" c kind
     _dcov_why_quote "$5"
     [[ "$word" == ok ]] && return 0
     case "$word" in
@@ -248,6 +260,11 @@ _dcov_part_line() {
     kind="${lab%% *}"
     [[ "$word" == untestable && "$kind" != Then ]] && { bad+=("$id $pw: untestable is only for a Then, or an And under one"); return 0; }
     [[ "$word" == duplicate && "$kind" != When ]] && { bad+=("$id $pw: duplicate is only for the When"); return 0; }
+    # #2565 (ADR-073 §5): a refused wording says what would be accepted.
+    if [[ "$word" == untestable || "$word" == how ]]; then
+        [[ -n "$instead" ]] || { bad+=("$id $pw: $word has no INSTEAD — say what a test could observe after the When instead"); return 0; }
+        why+=$'\x1f'"$instead"
+    fi
     _DESIGN_PART_WRONG+=("$word"$'\t'"$id $lab"$'\t'"${why:-}"$'\t'"$quote")
     return 0
 }
@@ -256,9 +273,13 @@ _dcov_part_line() {
 # check found, as the bracket on the line it is about says it.
 _dcov_fix_v() {
     local -n _dfx="$1"
+    # #2565: an untestable or how <why> carries, after a unit separator, what a
+    # test could observe instead.
+    local _dfw="${3%%$'\x1f'*}" _dfi=""
+    [[ "$3" == *$'\x1f'* ]] && _dfi="; a test could observe instead: ${3#*$'\x1f'}"
     case "$2" in
-        untestable)    _dfx="$3 — say what a test can see the code do after the When" ;;
-        how)           _dfx="$3 — say the situation, the action, or what can be seen — not how it is built or how a test does it" ;;
+        untestable)    _dfx="$_dfw — say what a test can see the code do after the When$_dfi" ;;
+        how)           _dfx="$_dfw — say the situation, the action, or what can be seen — not how it is built or how a test does it$_dfi" ;;
         contradicts)   _dfx="$3 — it cannot be true together with that; make them agree" ;;
         duplicate)     _dfx="$3 — another SPEC has this action; keep one of them" ;;
         not-asked)     _dfx="$3 — the issue does not ask for this; take it out, or make it what the issue asks" ;;

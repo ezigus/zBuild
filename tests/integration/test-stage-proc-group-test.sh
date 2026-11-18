@@ -161,7 +161,7 @@ fi
 # sharing this file reports as an infra timeout instead of an honest red.
 print_test_section "SPEC-5: fallback single-PID kill works when no PGID file present"
 
-if ! grep -q '_test_kill_staging_pg' "$REPO_ROOT/plugins/tool/test/plugin.sh" 2>/dev/null; then
+if ! grep -q '_test_kill_staging_pg' "$REPO_ROOT/plugins/tool/test/lib/suite.sh" 2>/dev/null; then
     assert_fail "[SPEC-5] fallback single-PID kill terminates process when no PGID file" \
         "_test_kill_staging_pg missing"
 else
@@ -237,7 +237,7 @@ fi
 # workers running: the bug this issue exists to end, reintroduced in its own fix.
 print_test_section "SPEC-7: runtime/test-stage.pid records the group leader, not its parent"
 
-if ! grep -q 'zbuild_pg_resolve' "$REPO_ROOT/plugins/tool/test/plugin.sh" 2>/dev/null; then
+if ! grep -q 'zbuild_pg_resolve' "$REPO_ROOT/plugins/tool/test/lib/suite.sh" 2>/dev/null; then
     assert_fail "[SPEC-7] recorded PID is the group leader" "spawn not wired to proc-group"
 else
     _spec7_state="$TEST_TEMP_DIR/spec7-state"

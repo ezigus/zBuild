@@ -39,10 +39,10 @@ _N="$TEST_TEMP_DIR/n"; _P="$TEST_TEMP_DIR/p"
 _l() { grep "^$2|" "$1" | head -1 | cut -d'|' -f2-; }
 
 print_test_section "G1: design's prompt"
-_dp="$(tr -s '[:space:]' ' ' < "$REPO_ROOT/plugins/agent/design/plugin.sh")"
+_dp="$(tr -s '[:space:]' ' ' < "$REPO_ROOT/plugins/agent/design/lib/run.sh")"
 assert_contains "[G1] a Given is the situation the code is in" "$_dp" "Given:\\\` the situation the code is in before the When — never the steps a test takes to get there."
 assert_contains "[G1] a Then is what can be seen, never how a test looks" "$_dp" "never how a test looks for it"
-if grep -q 'Cleanup:' <<< "$(sed -n '/Under its line, each \[code\]/,/The status says what work/p' "$REPO_ROOT/plugins/agent/design/plugin.sh")"; then
+if grep -q 'Cleanup:' <<< "$(sed -n '/Under its line, each \[code\]/,/The status says what work/p' "$REPO_ROOT/plugins/agent/design/lib/run.sh")"; then
     assert_fail "[G1] the parts design writes have no Cleanup:" "the prompt still lists Cleanup:"
 else assert_pass "[G1] the parts design writes have no Cleanup:"; fi
 
@@ -87,7 +87,7 @@ MD
     echo "G3|$(tr -s '[:space:]' ' ' < "$_P.1")"
     _R1=$'RQST-1: covered\nPRB-1: needs_cleanup | WHY: it leaves the variable set | QUOTE: ZBUILD_PLATFORM=macos is exported before scripts/lib/compat.sh is sourced\n'; _cov
     echo "G4|$_DESIGN_COV_OUTCOME"
-    _R1=$'RQST-1: covered\nPRB-1 Given: how | WHY: it says how a test sets the variable and when it loads the library | QUOTE: ZBUILD_PLATFORM=macos is exported before scripts/lib/compat.sh is sourced\n'; _cov
+    _R1=$'RQST-1: covered\nPRB-1 Given: how | WHY: it says how a test sets the variable and when it loads the library | INSTEAD: the event the run emits | QUOTE: ZBUILD_PLATFORM=macos is exported before scripts/lib/compat.sh is sourced\n'; _cov
     echo "G5|$(_design_coverage_findings | tr '\n\036' '~~')|$_DESIGN_COV_OUTCOME"
 ) > "$TEST_TEMP_DIR/j.out" 2>/dev/null
 J="$TEST_TEMP_DIR/j.out"

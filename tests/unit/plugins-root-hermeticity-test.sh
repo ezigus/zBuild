@@ -54,7 +54,7 @@ fi
 # handled EXPLICITLY: rc=0 means an offender was found, rc=1 means clean, and
 # rc>=2 means grep itself errored — which must fail loud, never be silently
 # treated as "clean" (the vacuous-pass class Copilot/lenses flagged, #1274).
-_offending_lines="$("$GREP" -nE 'ZBUILD_PLUGINS_ROOT' "$_target")"; _scan_rc=$?
+_offending_lines="$("$GREP" -nE 'ZBUILD_PLUGINS_ROOT' "$_target" "${_target%/*}"/lib/*.sh)"; _scan_rc=$?
 if [[ $_scan_rc -eq 0 ]]; then
     printf '  offending lines in %s:\n' "${_target#"$REPO_ROOT/"}" >&2
     printf '    %s\n' "$_offending_lines" >&2

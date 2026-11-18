@@ -513,9 +513,21 @@ _route_lookup_model() {
         error "models.json not found: $models_file"; return 2
     fi
 
-    local class
-    class="$(jq -r ".tiers.${tier}.class // empty" "$models_file" 2>/dev/null)" \
+    # One jq reads the tier (#2565, ADR-065): its class, whether it has a first
+    # candidate, and that candidate's fields, unit-separated (\x1f, not a tab:
+    # `read` collapses runs of whitespace IFS characters, so an empty field
+    # would shift every field after it).
+    local class _tier_line _has_cand _pin
+    # A candidate list that is not an array of objects reads as none, so an
+    # override or ZBUILD_PLUGIN_MODEL still routes, as when candidates were
+    # read only without one.
+    _tier_line="$(jq -r --arg t "$tier" '.tiers[$t] as $x
+        | (if ($x.candidates | type) == "array" then ($x.candidates[0] | objects) // null else null end) as $c
+        | [($x.class // ""), (if $c == null then "0" else "1" end),
+           ($c.provider // ""), ($c.family // ""), ($c.id // ""),
+           (($c.cache_eligible // false) | tostring)] | join("\u001f")' "$models_file" 2>/dev/null)" \
         || { error "failed to parse models.json for tier $tier"; return 2; }
+    IFS=$'\x1f' read -r class _has_cand _ROUTE_PROVIDER _ROUTE_FAMILY _pin _ROUTE_CACHE_ELIGIBLE <<< "$_tier_line"
     if [[ -z "$class" ]]; then
         error "tier $tier not found in models.json"; return 2
     fi
@@ -531,17 +543,9 @@ _route_lookup_model() {
         _ROUTE_PROVIDER="anthropic" _ROUTE_FAMILY="" _ROUTE_CACHE_ELIGIBLE="false"
         _route_provider_load anthropic || true
     else
-        local _cand
-        _cand="$(jq -c ".tiers.${tier}.candidates[0] // empty" "$models_file" 2>/dev/null)" \
-            || { error "failed to read candidates for tier $tier"; return 2; }
-        if [[ -z "$_cand" ]]; then
+        if [[ "$_has_cand" != 1 ]]; then
             error "no candidates for tier $tier"; return 1
         fi
-        local _pin
-        # \x1f, not a tab: `read` collapses runs of whitespace IFS characters,
-        # so an empty field (no pinned id) would shift every field after it.
-        IFS=$'\x1f' read -r _ROUTE_PROVIDER _ROUTE_FAMILY _pin _ROUTE_CACHE_ELIGIBLE < <(jq -r \
-            '[(.provider // ""), (.family // ""), (.id // ""), ((.cache_eligible // false) | tostring)] | join("\u001f")' <<< "$_cand")
         _ROUTE_PROVIDER="${_ROUTE_PROVIDER:-anthropic}"
         if ! _route_provider_load "$_ROUTE_PROVIDER"; then
             error "tier $tier names provider '$_ROUTE_PROVIDER', which has no module (core/router/providers/$_ROUTE_PROVIDER.sh)"
@@ -867,29 +871,33 @@ _route_call_claude() {
     _ROUTE_CACHE_READ=0 _ROUTE_CACHE_CREATION=0
     _ROUTE_TOOL_USES_JSON="[]"
     _route_record_call "$response"
-    local _is_envelope=0
-    jq -e 'type == "object" and has("result")' <<< "$response" >/dev/null 2>&1 && _is_envelope=1
+    # One jq reads the whole envelope (#2565, ADR-065): a first line of its
+    # fields, unit-separated, then the result as it is. Anything that is not an
+    # object with a result reads as no envelope.
+    local _is_envelope=0 _env_out="" _env_head="" text_response=""
+    _env_out="$(jq -r 'if type == "object" and has("result") then
+            ([ "1", ((.usage | objects | .input_tokens) // 0), ((.usage | objects | .output_tokens) // 0),
+               ((.usage | objects | .cache_read_input_tokens) // 0), ((.usage | objects | .cache_creation_input_tokens) // 0),
+               ((.tool_uses // []) | if type == "array" then tojson else "[]" end)
+             ] | map(tostring) | join("\u001f")), (.result // empty)
+          else "0" end' <<< "$response" 2>/dev/null || true)"
+    _env_head="${_env_out%%$'\n'*}"
+    if [[ "$_env_head" == 1$'\x1f'* ]]; then
+        _is_envelope=1
+        [[ "$_env_out" == *$'\n'* ]] && text_response="${_env_out#*$'\n'}"
+    fi
     if [[ "$_is_envelope" == "1" || "${ZBUILD_ROUTER_JSON_OUTPUT:-0}" == "1" ]]; then
-        local text_response
-        text_response="$(printf '%s' "$response" | jq -r '.result // empty' 2>/dev/null || true)"
         if [[ -z "$text_response" ]]; then
             error "router: JSON output mode active but .result missing — response: ${response:0:120}"
             eb_emit_event "router.error" "tier=$tier" "model_id=$_ROUTE_MODEL_ID" "reason=json_result_missing"
             return 1
         fi
-        _ROUTE_INPUT_TOKENS="$(printf '%s' "$response" | jq -r '.usage.input_tokens // 0' 2>/dev/null || echo 0)"
-        _ROUTE_OUTPUT_TOKENS="$(printf '%s' "$response" | jq -r '.usage.output_tokens // 0' 2>/dev/null || echo 0)"
-        _ROUTE_CACHE_READ="$(printf '%s' "$response" | jq -r '.usage.cache_read_input_tokens // 0' 2>/dev/null || echo 0)"
-        _ROUTE_CACHE_CREATION="$(printf '%s' "$response" | jq -r '.usage.cache_creation_input_tokens // 0' 2>/dev/null || echo 0)"
-        # ADR-018 (#469): expose tool_uses[] for opt-in audit consumers.
-        # Fail-soft — bad/missing field becomes empty array; never blocks.
-        local _tu
-        _tu="$(printf '%s' "$response" | jq -c '.tool_uses // []' 2>/dev/null || echo '[]')"
-        if printf '%s' "$_tu" | jq -e 'type == "array"' >/dev/null 2>&1; then
-            _ROUTE_TOOL_USES_JSON="$_tu"
-        else
-            _ROUTE_TOOL_USES_JSON="[]"
-        fi
+        # ADR-018 (#469): tool_uses[] for opt-in audit consumers; a bad or
+        # missing field is an empty array.
+        local _env_one
+        IFS=$'\x1f' read -r _env_one _ROUTE_INPUT_TOKENS _ROUTE_OUTPUT_TOKENS _ROUTE_CACHE_READ \
+            _ROUTE_CACHE_CREATION _ROUTE_TOOL_USES_JSON <<< "$_env_head"
+        _ROUTE_TOOL_USES_JSON="${_ROUTE_TOOL_USES_JSON:-[]}"
         # Side-channel: route_to_model is typically called via $() which
         # discards subshell state. Callers that need _ROUTE_TOOL_USES_JSON
         # across that boundary set ZBUILD_ROUTER_TOOL_USES_FILE to a path
@@ -968,11 +976,15 @@ _route_update_ledger() {
         return 0
     fi
     local _call_cost_usd
-    _call_cost_usd="$(awk -v c="$_ROUTE_CALL_COST" 'BEGIN{printf "%.6f", c+0}' 2>/dev/null || echo 0)"
+    # bash's printf formats it (#2565); what is not a number is 0, as awk's c+0.
+    _call_cost_usd="0.000000"
+    if [[ "$_ROUTE_CALL_COST" =~ ^[-+]?([0-9]+\.?[0-9]*|\.[0-9]+)([eE][-+]?[0-9]+)?$ ]]; then
+        LC_ALL=C printf -v _call_cost_usd '%.6f' "$_ROUTE_CALL_COST" 2>/dev/null || _call_cost_usd="0.000000"
+    fi
     [[ "$_call_cost_usd" == "0.000000" ]] && return 0
 
     local _ledger_file="${ZBUILD_COST_LEDGER:-${HOME}/.zbuild/cost-ledger.jsonl}"
-    local _ledger_dir; _ledger_dir="$(dirname "$_ledger_file")"
+    local _ledger_dir="."; [[ "$_ledger_file" == */* ]] && _ledger_dir="${_ledger_file%/*}"
     mkdir -p "$_ledger_dir" 2>/dev/null || true
     if zbuild_has_flock; then
         (

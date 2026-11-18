@@ -116,7 +116,7 @@ assert_contains "[S4] the other-tag rule stands" "$_p4" "belongs to other work: 
 
 print_test_section "S5: design is told"
 assert_contains "[S5] design's instructions describe the supersedes block" \
-    "$(cat "$REPO_ROOT/plugins/agent/design/plugin.sh")" 'supersedes block — one line per check'
+    "$(cat "$REPO_ROOT/plugins/agent/design/lib/run.sh")" 'supersedes block — one line per check'
 
 cleanup_test_env
 print_test_results

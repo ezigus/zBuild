@@ -184,7 +184,7 @@ fi
 # And the consumers must actually USE it — a shared reader nothing calls is the
 # same defect one layer up.
 for _consumer in "$REPO_ROOT/plugins/tool/teardown/plugin.sh" \
-                 "$REPO_ROOT/plugins/tool/test/plugin.sh"; do
+                 "$REPO_ROOT/plugins/tool/test/lib/suite.sh"; do
     if grep -q 'zbuild_pg_record_pgid' "$_consumer"; then
         assert_pass "SPEC-11: $(basename "$(dirname "$_consumer")") uses the shared reader"
     else

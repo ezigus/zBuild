@@ -129,7 +129,7 @@ _design 'FRSH-1[code]: x' '  When: it starts' '  Then: it ran' 'REMOVED: FRSH-2 
 assert_contains "[C4] a part under a REMOVED line" "$(_gwt)" "GWT_PART_ON_REMOVED FRSH-2"
 
 print_test_section "D1: design's prompt"
-_dp="$(tr -s '[:space:]' ' ' < "$REPO_ROOT/plugins/agent/design/plugin.sh")"
+_dp="$(tr -s '[:space:]' ' ' < "$REPO_ROOT/plugins/agent/design/lib/run.sh")"
 for _w in "Given: " "When: " "Then: " "And: "; do
     assert_contains "[D1] the prompt shows $_w" "$_dp" "$_w"
 done
