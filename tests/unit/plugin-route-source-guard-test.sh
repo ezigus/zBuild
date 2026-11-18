@@ -255,7 +255,7 @@ done
 # because this file must not encode which side of those merges it sits on.
 _KNOWN_CALLERS=(
     plugins/agent/build/plugin.sh
-    plugins/agent/design/plugin.sh
+    plugins/agent/issue-acceptance/plugin.sh
     plugins/agent/monitor/plugin.sh
     plugins/agent/review-lens/plugin.sh
 )

@@ -294,13 +294,23 @@ plugin_hook_call() {
     local -x ZBUILD_STAGE_TRY=1
     local _ph_budget _ph_tries=0 _ph_rc
     stage_retry_budget_v _ph_budget "$3"
+    stage_handoff_clear "$1" "$4"
     while :; do
         # #2443: each try knows its number, so its records are its own.
         ZBUILD_STAGE_TRY=$(( _ph_tries + 1 ))
+        # A try that ends before its outputs are archived leaves no record of
+        # its own: an earlier try's (or stage's) must not stand for it.
+        _ATTEMPT_LAST_PROGRESS=""
         _ph_rc=0; _plugin_hook_call_once "$@" || _ph_rc=$?
         _ph_tries=$(( _ph_tries + 1 ))
         stage_retry_next "$1" "$3" "$4" "$_ph_rc" "$_ph_tries" "$_ph_budget" || break
     done
+    # #2565 (ADR-054 §6a): a last try that changed nothing, its findings the
+    # same, hands them on by its answers instead of being run again.
+    # A try whose repository writes the engine put back did change something.
+    [[ "${_ATTEMPT_LAST_PROGRESS:-}" == false \
+       && ! -f "${4%/*}/runtime/write-boundary-reverted.${3//[^A-Za-z0-9._-]/_}" ]] \
+        && stage_handoff_unchanged "$1" "$3" "$4"
     return "$_ph_rc"
 }
 

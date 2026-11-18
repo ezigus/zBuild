@@ -101,7 +101,7 @@ _site_fresh "test-author's assertion check" plugins/agent/test-author/lib/corres
 _site_fresh "issue-acceptance" plugins/agent/issue-acceptance/plugin.sh fresh
 _site_fresh "review-lens" plugins/agent/review-lens/plugin.sh fresh
 _site_fresh "monitor" plugins/agent/monitor/plugin.sh fresh
-_site_fresh "design's writing call" plugins/agent/design/plugin.sh full
+_site_fresh "design's writing call" plugins/agent/design/lib/run.sh full
 _site_fresh "test-author's writing call" plugins/agent/test-author/plugin.sh full
 _site_fresh "build" plugins/agent/build/plugin.sh full
 

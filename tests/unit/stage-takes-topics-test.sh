@@ -224,8 +224,9 @@ assert_eq "[T7] design: the design is ask, its checks are requirement-findings" 
     "$(_topics_of "$REPO_ROOT/plugins/agent/design/manifest.yaml")"
 # #2491: test-author's check is about a test against its SPEC — design is shown
 # it; test-findings, so build, which may not edit a test, is not (#1805 run 42523805245).
-assert_eq "[T7] test-author: its checker is test-findings, its list of tests is tests" \
-    "test_author_result=test-findings test_author_summary=tests " \
+# #2565: what a try that changed nothing hands on is requirement-findings, for design.
+assert_eq "[T7] test-author: its checker is test-findings, its handoff requirement-findings, its list of tests is tests" \
+    "test_author_result=test-findings test_author_handoff=requirement-findings test_author_summary=tests " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/test-author/manifest.yaml")"
 assert_eq "[T7] build: change; its answers that a test is wrong are code-findings (#2441)" "diff_patch=change build_summary=change build_tests=code-findings build_stage_summary=change " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/build/manifest.yaml")"

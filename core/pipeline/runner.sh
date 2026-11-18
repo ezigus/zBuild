@@ -525,17 +525,42 @@ _runner_record_report() {
     [[ -n "$state_dir" && -n "$stage" && -n "$report" && "$report" != "{}" ]] || return 0
     # Most stages report none of the setup fields — skip the lock and the jq fork.
     [[ "$report" == *'"owned_files"'* || "$report" == *'"wiring_files"'* ]] || return 0
-    local rec="$state_dir/artifacts/stage-reports.json" tmp
+    local rec="$state_dir/artifacts/stage-reports.json"
     local lock="$state_dir/.stage-reports.lock" _tries=0
     [[ -d "$state_dir/artifacts" ]] || mkdir -p "$state_dir/artifacts" 2>/dev/null || return 0
+    # #2565: a lock held 10s was broken as a dead holder's, and a slow live one
+    # (twelve parallel writers on a busy runner) lost a report. flock is freed
+    # by the kernel when its holder dies, so it is never broken by hand.
+    if declare -F zbuild_has_flock >/dev/null 2>&1 && zbuild_has_flock; then
+        ( flock 9 || exit 0; _runner_report_merge "$rec" "$stage" "$report" ) \
+            9>"$state_dir/.stage-reports.flock" 2>/dev/null || true
+        return 0
+    fi
+    # Without flock: the lock records its holder and is broken only when that
+    # holder is gone.
+    local _held
     until mkdir "$lock" 2>/dev/null; do
-        # A merge takes milliseconds; a lock held 10s belongs to a dead holder.
-        if (( ++_tries > 200 )); then rmdir "$lock" 2>/dev/null; _tries=0; fi
+        if (( ++_tries > ${_ZB_REPORT_LOCK_TRIES:-200} )); then
+            _runner_report_lock_stale_v _held "$lock" && _runner_report_lock_break "$lock" "$_held"
+            _tries=0
+        fi
         sleep 0.05
     done
+    printf '%s' "$BASHPID" > "$lock/pid" 2>/dev/null || true
+    _runner_report_merge "$rec" "$stage" "$report"
+    # Released only while it is still ours: a lock broken under a holder (2
+    # minutes) may be another writer's by now.
+    local _mine=""; IFS= read -r _mine 2>/dev/null < "$lock/pid" || true
+    [[ "$_mine" == "$BASHPID" ]] && { rm -f "$lock/pid"; rmdir "$lock" 2>/dev/null; }
+    return 0
+}
+
+# _runner_report_merge <record> <stage> <report> — the report merged into the
+# record; called under the record's lock.
+_runner_report_merge() {
+    local rec="$1" tmp="$1.tmp.$BASHPID"
     [[ -s "$rec" ]] || printf '{}' > "$rec"
-    tmp="$rec.tmp.$BASHPID"
-    if jq --arg s "$stage" --argjson r "$report" '
+    if jq --arg s "$2" --argjson r "$3" '
             .wiring_files = ((.wiring_files // []) + ($r.wiring_files // []) | unique)
           | if ($r.owned_files // null) != null
               then .owned_files = ((.owned_files // {}) + {($s): ($r.owned_files | unique)})
@@ -544,7 +569,34 @@ _runner_record_report() {
     else
         rm -f "$tmp"
     fi
-    rmdir "$lock" 2>/dev/null
+    return 0
+}
+
+# _runner_report_lock_stale_v <var> <lock_dir> — rc 0 when the lock's holder is
+# gone, its recorded pid (or "" when it has none) into <var>. A holder is gone
+# when its pid is not running, or when the lock is older than any merge takes
+# (2 minutes): a pid can be reused, and a lock between its mkdir and its pid
+# write has none.
+_runner_report_lock_stale_v() {
+    local -n _rls="$1"; _rls=""
+    IFS= read -r _rls 2>/dev/null < "$2/pid" || true
+    if [[ "$_rls" =~ ^[0-9]+$ ]] && kill -0 "$_rls" 2>/dev/null; then
+        [[ -n "$(find "$2" -maxdepth 0 -mmin +2 2>/dev/null)" ]] && return 0
+        return 1
+    fi
+    [[ "$_rls" =~ ^[0-9]+$ ]] && return 0
+    [[ -n "$(find "$2" -maxdepth 0 -mmin +2 2>/dev/null)" ]]
+}
+
+# _runner_report_lock_break <lock_dir> <pid judged gone> — moved aside first, so
+# two waiters cannot both break it; put back when another holder took it since.
+_runner_report_lock_break() {
+    local _dead="$1.dead.$BASHPID" _now=""
+    mv "$1" "$_dead" 2>/dev/null || return 0
+    IFS= read -r _now 2>/dev/null < "$_dead/pid" || true
+    # Put back only where nothing stands: mv onto a new lock would move it inside.
+    if [[ "$_now" != "$2" ]]; then [[ -e "$1" ]] || mv "$_dead" "$1" 2>/dev/null || true; return 0; fi
+    rm -rf "$_dead" 2>/dev/null
     return 0
 }
 

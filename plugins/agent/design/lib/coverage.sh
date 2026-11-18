@@ -59,6 +59,11 @@ One line for every requirement:
 
 <requirement id>: covered
 <requirement id>: uncovered | WHY: <what no SPEC covers> | QUOTE: <the requirement's own words that no SPEC covers>
+
+When nothing a test could observe would show a requirement met, no SPEC can
+cover it and the issue must be fixed by its owner:
+
+<requirement id>: none | WHY: <why nothing a test could observe after the change would show it met> | QUOTE: <the requirement's own words>
 EOF2
     cat <<'EOF2'
 
@@ -83,6 +88,13 @@ several. <problem> is one of:
 - how — the line says how the code is built, or how a test sets something up or
   checks it; a Given names the situation the code is in, never the steps a test
   takes to get there
+
+An untestable or a how line also says what the line could say instead — what a
+test could observe after the When for the same requirement:
+
+<SPEC id> <line>: untestable | WHY: <why> | INSTEAD: <what a test could observe after the When instead> | QUOTE: <words from that line>
+<SPEC id> <line>: how | WHY: <why> | INSTEAD: <what a test could observe after the When instead> | QUOTE: <words from that line>
+
 - contradicts — the line cannot be true together with something else, and WHY
   says what and where
 - duplicate — only for the When: another SPEC already has this action, and WHY
@@ -145,7 +157,9 @@ Several SPECs may cover one requirement together, one thing each: judge every
 SPEC that names it, together.
 
 When a requirement is written so loosely that no SPEC could settle it — nothing
-anyone could observe would show it met — say so in its WHY: that is a finding against the requirement, not a gap a SPEC can close.
+anyone could observe would show it met — answer none for it:
+that is a finding against the requirement, for the issue's owner, not a gap a
+SPEC can close.
 
 Mapping is not enough: those SPECs together must demand ALL of the requirement.
 A set of SPECs that demands less than the requirement — a subset of the cases,
@@ -292,7 +306,7 @@ _dcov_disputes_v() {
 _design_coverage() {
     local design_md="$1" reqs="$2" tier="${3:-T2}" answers="${4:-}" lims="${5:-}" terms="${6:-}"
     _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_STATUS_WRONG=(); _DESIGN_COV_OUTCOME=""
-    _DESIGN_PART_WRONG=(); _DESIGN_COV_FINDINGS=(); _DESIGN_NEW_OWNER=()
+    _DESIGN_PART_WRONG=(); _DESIGN_COV_FINDINGS=(); _DESIGN_NEW_OWNER=(); _DESIGN_REQ_NONE=()
     local acc; acc="$(extract_acceptance_block "$design_md" 2>/dev/null || true)"
     [[ -n "$acc" ]] || return 0
 
@@ -438,8 +452,11 @@ _design_coverage() {
         local _why_left="$_DCOV_PROBLEM"
         _dcov_parse "$kept_raw$new_raw" "$kept_want$new_want"
         _dcov_findings_build
+        # A requirement no test could observe stops the run now (#2565), even
+        # when it is the only thing the usable items found.
+        [[ ${#_DESIGN_REQ_NONE[@]} -gt 0 ]] && return 0
         if [[ ${#_DESIGN_COV_FINDINGS[@]} -eq 0 ]]; then
-            _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_STATUS_WRONG=(); _DESIGN_PART_WRONG=(); _DESIGN_NEW_OWNER=()
+            _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_STATUS_WRONG=(); _DESIGN_PART_WRONG=(); _DESIGN_NEW_OWNER=(); _DESIGN_REQ_NONE=()
             _DESIGN_COV_OUTCOME=unusable
             return 0
         fi

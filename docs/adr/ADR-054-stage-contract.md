@@ -649,7 +649,20 @@ GitHub's `ubuntu-latest` moved to Ubuntu 26.04, whose Rust coreutils `timeout` d
 
 - **§11: when the per-run wall-clock limit (max_run_s) is reached, the watchdog signals the runner and the processes the runner started** — found by parent, the watchdog left out — never the runner's process group. It lists that whole tree before any signal (`_lc_tree`, as `plugin_stop_running` reads it — a stage shell that dies on TERM would otherwise orphan its children before they were found), then TERMs the runner and the tree in one call; the runner's trap writes `timed_out`, dispatches the always-run stages and exits 1; after the grace it KILLs what the runner started, not the runner. A parent that shares the runner's group gets no signal.
 
+## Amendment 2026-11-18 (#2565) — §6a: a try that changed nothing hands its findings on
+
+On #1764 run 44090911022 test-author's tries 2 and 3 changed no file (`stage.outputs.unchanged __repository__`) and answered "wrong" to the same finding of its own check, in both rounds. The finding was design's (DSCLA-10's Given), and nothing told design.
+
+- **A last try that changed nothing, its findings the same, is not run again** (as before: `_ATTEMPT_LAST_PROGRESS` is false), **and its findings go by its answers** (ADR-068 §6), whether the retry stopped for no change or for its budget. `plugin_hook_call` asks `stage_handoff_unchanged` (`scripts/lib/stage-handoff.sh`) once its tries are over; only a result that failed and may be tried again (`fail`, `unusable`) is read — a halting outcome halts as before — and one that holds no answers costs no program. A try whose repository writes the engine put back did change something, and a try that ended before its outputs were archived leaves no record that stands for it.
+  - **wrong / not mine, to a finding of the stage's own check:** the finding, with what it was answered and the finding's own text, goes to the stage's output marked `handoff: true`, and the result ends the loop's round (`ends_round`, §3 of ADR-068), as an untestable SPEC already does. The output's topic decides who reads it (ADR-071 §1). A wrong or not mine to another stage's finding is not handed on: it already goes back to that finding's judge (ADR-068 §6).
+  - **done with nothing changed:** a finding back to the stage, numbered after its own, in its own result: it said done for a change it did not make. The round does not end for it.
+  - **A stage with no handoff output hands nothing on.** test-author declares one, `test-author-requirement-result.json`, topic `requirement-findings`: a test that cannot meet its SPEC is the requirement's to change, so design is shown it.
+- **The handed-on output is that run's:** the engine removes it when the stage runs again (`stage_handoff_clear`).
+- **`stage.findings.handed_on`** names the stage, how many findings were handed on and how many sent back.
+
 ## Enforced by
+
+- §6a amendment 2026-11-18 (#2565: a try that changed nothing hands its findings on) → `tests/unit/no-change-handoff-test.sh` H1 (not run again), H2, H3 (wrong and not mine reach the handoff output; the round ends), H4 (done with nothing changed is a finding back), H5 (the budget's last try too), H6 (a try that changed something hands nothing on; the last run's handoff is removed), H10 (a halting outcome hands nothing on and ends no round), H11 (a wrong to another stage's finding is not handed on), H7 (test-author's handoff reaches design), H9 (the event)
 
 - §11 amendment 2026-11-18 (#2563: only the runner's own tree) → `tests/integration/run-timed-out-test.sh` P1–P4 and `tests/integration/resume-after-run-timeout-test.sh` P4, P5 (a process a trap-less stage started is ended), both run under `tests/lib/timeout-child-only-stub.sh` (a `timeout` that dies on TERM and signals only its child)
 

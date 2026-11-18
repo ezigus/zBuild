@@ -150,8 +150,8 @@ else
     assert_fail "[T6] the build prompt names tags with acceptance_spec_tag" "not called in prompt.sh"
 fi
 
-_design_src="$(sed -n '/You name no files/,/checked on its own/p' "${ZB_DESIGN_PLUGIN:-$REPO_ROOT/plugins/agent/design/plugin.sh}")"
-_design_ids="$(sed -n '/The id describes the SPEC/,/need no REMOVED line/p' "$REPO_ROOT/plugins/agent/design/plugin.sh")"
+_design_src="$(sed -n '/You name no files/,/checked on its own/p' "${ZB_DESIGN_PLUGIN:-$REPO_ROOT/plugins/agent/design/lib/run.sh}")"
+_design_ids="$(sed -n '/The id describes the SPEC/,/need no REMOVED line/p' "$REPO_ROOT/plugins/agent/design/lib/run.sh")"
 assert_contains "[T8] ...and says the id is the tag its test carries" "$_design_ids" "The id is also the tag its test"
 if grep -qF "this issue's number" <<< "$_design_src$_design_ids"; then
     assert_fail "[T8] design no longer says a tag holds the issue's number" "found"
@@ -161,7 +161,7 @@ assert_contains "[T9] test-author: a tag on a line this branch added is its own"
 if grep -qF "issue's number" <<< "$_ta_src"; then
     assert_fail "[T9] test-author is not told a tag carries the issue's number" "found"
 else assert_pass "[T9] test-author is not told a tag carries the issue's number"; fi
-if grep -qF 'acceptance_spec_tag' <<< "$_design_src$(sed -n '/The id describes the SPEC/,/need no REMOVED line/p' "$REPO_ROOT/plugins/agent/design/plugin.sh")"; then
+if grep -qF 'acceptance_spec_tag' <<< "$_design_src$(sed -n '/The id describes the SPEC/,/need no REMOVED line/p' "$REPO_ROOT/plugins/agent/design/lib/run.sh")"; then
     assert_pass "[T7] the design prompt's tagging rule names the tag with acceptance_spec_tag"
 else
     assert_fail "[T7] the design prompt's tagging rule names the tag with acceptance_spec_tag" "rule: ${_design_src:0:200}"

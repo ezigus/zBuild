@@ -62,7 +62,7 @@ echo "MARK_iter_\${n}" >> "\$mark"
 mkdir -p "\$PWD/fixtures"
 printf 'progress-iter-%d\n' "\$n" >> "\$PWD/fixtures/cycle-602.txt"
 if [[ "\$n" -ge 2 ]]; then
-    jq -n --arg r \$'done\nLOOP_COMPLETE' \
+    jq -n --arg r \$'done\nstep 1: not needed — the fixture writes its progress lines itself\nLOOP_COMPLETE' \
         '{result:\$r, usage:{input_tokens:7, output_tokens:4}}'
 else
     jq -n --arg r "iter \${n} progress" \

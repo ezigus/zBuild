@@ -101,3 +101,29 @@ stage_retry_next() {
     declare -F _router_clear_throttle_marker >/dev/null 2>&1 && _router_clear_throttle_marker
     return 0
 }
+
+# stage_handoff_clear <plugin_dir> <state_file> — what a stage handed on in its
+# last run (an output marked `handoff: true`, #2565) is removed when it runs
+# again: it was that run's, and the stages it was for have read it. Bash only:
+# asked on every dispatch (ADR-065 §5).
+stage_handoff_clear() {
+    declare -F _attempt_manifest_facts_v >/dev/null 2>&1 || return 0
+    local _shc_f _shc_k _shc_v _shc_p _shc_sd="${2%/*}"
+    _attempt_manifest_facts_v _shc_f "$1/manifest.yaml"
+    [[ $'\n'"$_shc_f" == *$'\nH\t'* ]] || return 0
+    while IFS=$'\t' read -r _shc_k _shc_v; do
+        [[ "$_shc_k" == H ]] || continue
+        _registry_resolve_output_path_v _shc_p "$_shc_v" "$_shc_sd" "${ZBUILD_ARTIFACT_DIR:-$_shc_sd/artifacts}"
+        [[ -n "$_shc_p" && -e "$_shc_p" ]] && rm -f "$_shc_p"
+    done <<< "$_shc_f"
+    return 0
+}
+
+# stage_handoff_unchanged <plugin_dir> <stage> <state_file> — loaded the first
+# time a try changes nothing; scripts/lib/stage-handoff.sh replaces this.
+stage_handoff_unchanged() {
+    unset -f stage_handoff_unchanged
+    source "$_ZB_SR_ROOT/scripts/lib/stage-handoff.sh" 2>/dev/null || return 0
+    declare -F stage_handoff_unchanged >/dev/null 2>&1 || return 0
+    stage_handoff_unchanged "$@"
+}

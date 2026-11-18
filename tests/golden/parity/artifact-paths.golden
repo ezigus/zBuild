@@ -1,3 +1,4 @@
+./.stage-reports.flock
 ./artifacts/acceptance-gate-result.json
 ./artifacts/acceptance-summary.txt
 ./artifacts/attempts/build/iter-0-attempt-1/attempt.json
@@ -41,6 +42,7 @@
 ./artifacts/attempts/test/iter-0-attempt-1/test-output.log
 ./artifacts/attempts/test/iter-0-attempt-1/test-results.json
 ./artifacts/build-prompt.txt
+./artifacts/build-steps-judged.json
 ./artifacts/build-summary.json
 ./artifacts/build-summary.md
 ./artifacts/design-prompt.txt

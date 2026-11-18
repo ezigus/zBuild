@@ -18,6 +18,8 @@
 #   files until #2363.)
 # SPEC-7 [change]: reports recorded concurrently (parallel members) all land —
 #   none is lost to a sibling's read-modify-write.
+# SPEC-9 [change] (#2565): the report lock records its holder; a holder that is
+#             alive is never broken, however long it holds; a dead one's is
 # SPEC-8 [change]: both group dispatch boundaries record their report — cycle
 #   and parallel — so a stage's report is not dropped by the kind of group it
 #   ran in. (The linear leaf path runs only for a template with no groups; no
@@ -119,6 +121,51 @@ for _b in '_runner_record_report "$state_dir" "$_cd_stage"' \
     _n="$(/usr/bin/grep -cF "$_b" "$_rn" 2>/dev/null)" || _n=0
     assert_eq "[SPEC-8] $_b" "1" "$_n"
 done
+
+print_test_section "SPEC-9: a live holder's lock is never broken"
+S9="$TEST_TEMP_DIR/s9"; mkdir -p "$S9/artifacts"
+# A held lock as _runner_record_report writes it: the folder and its holder.
+_holder() { mkdir -p "$S9/.stage-reports.lock"; printf '%s' "$1" > "$S9/.stage-reports.lock/pid"; }
+bash -c 'exec sleep 600' & _live=$!
+_holder "$_live"
+if _runner_report_lock_stale_v _hp "$S9/.stage-reports.lock"; then
+    assert_fail "[SPEC-9] a lock whose holder is alive is not stale" "it was called stale"
+else
+    assert_pass "[SPEC-9] a lock whose holder is alive is not stale"
+fi
+# A pid can be reused: a live pid on a lock older than any merge is stale.
+touch -t 202001010000 "$S9/.stage-reports.lock"
+if _runner_report_lock_stale_v _hp "$S9/.stage-reports.lock"; then
+    assert_pass "[SPEC-9] a live pid on a lock held over 2 minutes is stale (a reused pid)"
+else
+    assert_fail "[SPEC-9] a live pid on a lock held over 2 minutes is stale (a reused pid)" "it was called live"
+fi
+# Two waiters judged the same dead holder; the second finds a new holder's lock
+# and must not break it.
+_holder "$_live"
+_runner_report_lock_break "$S9/.stage-reports.lock" 99999999
+assert_eq "[SPEC-9] a lock another holder took since is not broken" "$_live" \
+    "$(cat "$S9/.stage-reports.lock/pid" 2>/dev/null)"
+kill -KILL "$_live" 2>/dev/null; wait "$_live" 2>/dev/null
+touch "$S9/.stage-reports.lock"
+if _runner_report_lock_stale_v _hp "$S9/.stage-reports.lock"; then
+    assert_pass "[SPEC-9] a lock whose holder is dead is stale"
+else
+    assert_fail "[SPEC-9] a lock whose holder is dead is stale" "it was called live"
+fi
+# A fresh lock with no pid yet is its holder's first instant: not stale.
+mkdir -p "$S9/fresh.lock"
+if _runner_report_lock_stale_v _hp "$S9/fresh.lock"; then
+    assert_fail "[SPEC-9] a fresh lock with no pid yet is not stale" "it was called stale"
+else
+    assert_pass "[SPEC-9] a fresh lock with no pid yet is not stale"
+fi
+# The record goes through once the dead holder's lock is broken.
+# Without flock, the mkdir lock is the one in use.
+( zbuild_has_flock() { return 1; }; _ZB_REPORT_LOCK_TRIES=1 _runner_record_report "$S9" m1 '{"owned_files":["a.sh"]}' )
+assert_eq "[SPEC-9] a dead holder's lock is broken and the record lands" "a.sh" \
+    "$(jq -r '.owned_files.m1[0] // empty' "$S9/artifacts/stage-reports.json" 2>/dev/null)"
+assert_eq "[SPEC-9] ...and no lock is left" "no" "$([[ -e "$S9/.stage-reports.lock" ]] && echo yes || echo no)"
 
 print_test_results
 exit $((FAIL > 0))

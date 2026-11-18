@@ -152,10 +152,14 @@ bash -c 'source core/pipeline/runner.sh 2>/dev/null; _runner_contract_lib_closur
 
 **Checking gate 3's merge-gate premise** *(gate 3 retired 2026-10-09)*: `gh api repos/:owner/:repo --jq .allow_auto_merge` — `false` means a human stands in front of every merge, which is what narrows the gate.
 
+## Amendment 2026-11-18 (#2565) — §5: the stage-reports record keeps every report
+
+The reports the self-grading set reads are merged into one record under a lock. The lock is `flock`, which the kernel frees when its holder dies, so it is never broken by hand. Where `flock` is missing, a `mkdir` lock records its holder's pid and is broken only when that holder is gone or the lock is older than any merge takes (2 minutes, for a reused pid), moved aside first so two waiters cannot both break it. Before, a lock held 10 seconds was taken for a dead holder's: with twelve parallel members on a busy runner, a live holder lost its lock and a report was dropped.
+
 ## Enforced by
 
 - §1, §3, §4, gates 1 and 3b, and the 2026-10-09 retirement of gates 2 and 3 are triage rules for the Build Mode field. No code reads the field (see Consequences), so there is nothing for a test to run. Each marking records its gate in the issue body, and a reader checks it there.
-- The self-grading set (formerly gate 2; the engine still reports it, §5), computed from `_runner_contract_lib_closure`: `tests/unit/runner-contract-lib-seam-test.sh` SPEC-1 checks that the closure includes the transitive dependencies, and SPEC-4/SPEC-5 check that a WIRING target inside the set is detected and one outside it is not. `tests/unit/engine-stage-reports-test.sh` SPEC-4 checks that detection reads the reported wiring.
+- The self-grading set (formerly gate 2; the engine still reports it, §5), computed from `_runner_contract_lib_closure`: `tests/unit/runner-contract-lib-seam-test.sh` SPEC-1 checks that the closure includes the transitive dependencies, and SPEC-4/SPEC-5 check that a WIRING target inside the set is detected and one outside it is not. `tests/unit/engine-stage-reports-test.sh` SPEC-4 checks that detection reads the reported wiring. SPEC-9 checks that a live holder's lock on the record is never broken and a dead holder's is (#2565).
 - §5, the snapshot that tracks the tree: `tests/unit/runner-contract-lib-seam-test.sh` SPEC-3 checks there is no once-guard, and `tests/integration/self-host-snapshot-tracks-tree-test.sh` checks that a refresh picks up an edit and that the source tree is never written. `tests/integration/self-host-contract-lib-redirect-test.sh` checks that the gate reads the run's own grammar.
 - §5 amendment (2026-10-09): `tests/unit/runner-contract-lib-seam-test.sh` SPEC-6 checks that a sibling loaded with the `$(cd …)` form, and `helpers.sh`, are in the snapshot and load from it. SPEC-7 checks that every top-level lib of the real tree is in the snapshot. SPEC-2 checks that every same-directory dependency resolves inside it.
 

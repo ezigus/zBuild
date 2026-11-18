@@ -1,0 +1,331 @@
+#!/usr/bin/env bash
+# plugins/agent/build/lib/steps.sh — build answers every design step, and each
+# "done" is checked twice (#2565; ADR-071 amendment 2026-11-14, ADR-068 §6,
+# ADR-072 §3).
+#
+# On #1764 runs 43959139598 and 44090911022 build skipped design's step 1 and
+# said it was done: the old code passed every test, and no SPEC covers a *how*.
+# Build now answers each step, `done` with a line it added or `not needed` with
+# why. The shell checks that a done's quote is a line this branch added in the
+# step's areas; a judging call, as its own persona, says whether that line does
+# what the step says. A step that fails either, or has no answer, is a finding
+# naming it, and build's try is unusable, so build goes round again.
+#
+# Sourced library: inherits the caller's pipefail/errexit; do not set them here.
+
+[[ -n "${_ZBUILD_BUILD_STEPS_LOADED:-}" ]] && return 0
+_ZBUILD_BUILD_STEPS_LOADED=1
+declare -F zbuild_resolve_merge_base_v >/dev/null 2>&1 \
+    || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/merge-base.sh" 2>/dev/null || true
+
+# _build_steps_load <plan_json> — design's steps, in order, into _BUILD_STEP_DESC
+# and _BUILD_STEP_AREAS (space separated): one jq, none when there is no step.
+_BUILD_STEP_DESC=() _BUILD_STEP_AREAS=()
+_build_steps_load() {
+    _BUILD_STEP_DESC=() _BUILD_STEP_AREAS=()
+    [[ "${1:-}" == *'"steps"'* ]] || return 0
+    local d a
+    while IFS=$'\x1f' read -r d a; do
+        [[ -n "$d" ]] || continue
+        _BUILD_STEP_DESC+=("$d"); _BUILD_STEP_AREAS+=("$a")
+    done < <(jq -r '.steps // [] | .[] | select(type == "object")
+        | "\(.description // "" | tostring | gsub("[\r\n\u001f]+"; " "))\u001f\((.areas // .files // []) | map(tostring) | join(" "))"' <<< "$1" 2>/dev/null)
+}
+
+# _build_steps_instructions_v <var> — what build's prompt asks of it about the
+# steps; empty when there are none.
+_build_steps_instructions_v() {
+    local -n _bsi="$1"; _bsi=""
+    [[ ${#_BUILD_STEP_DESC[@]} -gt 0 ]] || return 0
+    _bsi="### Answering each design step
+Before the sentinel, answer every one of the design's steps, by its number, each on its own line:
+
+    step N: done — QUOTE: <file> | <a line this change added>
+    step N: not needed — <why>
+
+- \`done\`: you did what the step says. Quote the line this change added that does it, in a file in that step's areas, copied as it is with no quote marks. It is checked: a line this branch did not add, a file outside the step's areas, or a line that does not do what the step says sends you round again for that step.
+- \`not needed\`: the code already does what the step says, or the step is wrong; say why.
+- A step with no answer is not done, and you are sent round again for it."
+}
+
+# _build_steps_strip_v <var> <text> — <text> without the spaces, dashes and
+# colon an answer puts before what it says.
+_build_steps_strip_v() {
+    local -n _bss="$1"; _bss="$2"
+    while :; do
+        _bss="${_bss#"${_bss%%[![:space:]]*}"}"
+        case "$_bss" in —*) _bss="${_bss#—}" ;; –*) _bss="${_bss#–}" ;; [-:]*) _bss="${_bss:1}" ;; *) break ;; esac
+    done
+    _bss="${_bss%"${_bss##*[![:space:]]}"}"
+}
+
+# _build_steps_in_area <path> <areas> — rc 0 when <path> is one of <areas>, or
+# under one that is a folder; any path when the step names no area.
+_build_steps_in_area() {
+    local a
+    # A path that climbs out (..) or starts at / is in no area.
+    [[ "$1" == /* || "$1" == ../* || "$1" == */../* || "$1" == .. || "$1" == */.. ]] && return 1
+    [[ -n "$2" ]] || return 0
+    # read -a splits without pathname expansion: an area is never a glob.
+    local -a _ar=(); read -ra _ar <<< "$2"
+    for a in ${_ar[@]+"${_ar[@]}"}; do
+        [[ "$1" == "$a" || "$1" == "${a%/}/"* ]] && return 0
+    done
+    return 1
+}
+
+# _build_steps_line_v <var> <text> — a line as it is compared: its ends' spaces,
+# and quote marks or backticks around it, set aside.
+_build_steps_line_v() {
+    local -n _bsl="$1"; _bsl="$2"
+    local _p _lq=$'\xe2\x80\x9c' _rq=$'\xe2\x80\x9d' _ls=$'\xe2\x80\x98' _rs=$'\xe2\x80\x99'
+    while :; do
+        _bsl="${_bsl#"${_bsl%%[![:space:]]*}"}"; _bsl="${_bsl%"${_bsl##*[![:space:]]}"}"
+        _p="$_bsl"
+        case "$_bsl" in
+            \`*\`|\"*\"|\'*\') (( ${#_bsl} >= 2 )) && _bsl="${_bsl:1:${#_bsl}-2}" ;;
+            # Curly marks are several bytes: taken off by pattern, not by count.
+            "$_lq"*"$_rq") _bsl="${_bsl#"$_lq"}"; _bsl="${_bsl%"$_rq"}" ;;
+            "$_ls"*"$_rs") _bsl="${_bsl#"$_ls"}"; _bsl="${_bsl%"$_rs"}" ;;
+        esac
+        [[ "$_bsl" == "$_p" ]] && break
+    done
+}
+
+# _build_steps_check <reply> <repo> <artifact_dir> <tier> — build's answers to
+# the steps, checked. _BUILD_STEP_FINDINGS: one finding a step refused;
+# _BUILD_STEP_LINES: each answer, for the summary; _BUILD_STEP_NOTE: why the
+# judge could not be used; _BUILD_STEP_RC: 130 when the judge was interrupted;
+# _BUILD_STEP_DISP: build's outcome when the judge could not be run — the
+# failed call's disposition, or misconfigured (ADR-072 §3: it fails closed).
+_BUILD_STEP_FINDINGS=() _BUILD_STEP_LINES=() _BUILD_STEP_NOTE="" _BUILD_STEP_RC=0 _BUILD_STEP_DISP=""
+_build_steps_check() {
+    local reply="$1" repo="${2%/}" ad="${3%/}" tier="${4:-T2}"
+    _BUILD_STEP_FINDINGS=() _BUILD_STEP_LINES=() _BUILD_STEP_NOTE="" _BUILD_STEP_RC=0 _BUILD_STEP_DISP=""
+    local count=${#_BUILD_STEP_DESC[@]}
+    (( count > 0 )) || return 0
+    local joined l low n rest q _jqs_path _jqs_txt
+    local -A kind=() said=() qpath=() qtxt=()
+    local re='^step[[:space:]]+([0-9]+)[[:space:]]*:[[:space:]]*(done|not[[:space:]]+needed)(.*)$'
+    zb_reply_join_v joined "$reply"
+    while IFS= read -r l; do
+        [[ "${l,,}" == *step* ]] || continue
+        judge_reply_line_v l "$l"; low="${l,,}"
+        [[ "$low" =~ $re ]] || continue
+        # 10#: `step 08` is step 8, not a bad octal number.
+        n="${BASH_REMATCH[1]}"; (( ${#n} <= 6 )) || continue; n=$(( 10#$n ))
+        (( n >= 1 && n <= count )) || continue
+        kind[$n]="${BASH_REMATCH[2]%%[[:space:]]*}"; rest="${l:${#l}-${#BASH_REMATCH[3]}}"
+        q=""; [[ "$rest" == *"| QUOTE:"* ]] && { q="${rest#*| QUOTE:}"; rest="${rest%%| QUOTE:*}"; }
+        _build_steps_strip_v rest "$rest"; said[$n]="$rest"; _build_steps_strip_v q "$q"
+        qpath[$n]=""; qtxt[$n]=""
+        if [[ "${kind[$n]}" == "done" ]] && _judge_quote_split "$q"; then
+            qpath[$n]="${_jqs_path#"$repo"/}"; _build_steps_line_v "qtxt[$n]" "$_jqs_txt"
+        fi
+    done <<< "$joined"
+
+    # The mechanical check: an answer for each step; a done's quote is a line
+    # this branch added, in a file in the step's areas. One git diff for all.
+    local -a paths=() ok=()
+    local -A added=()
+    local d a f
+    for (( n = 1; n <= count; n++ )); do
+        d="${_BUILD_STEP_DESC[n-1]}"; a="${_BUILD_STEP_AREAS[n-1]}"
+        case "${kind[$n]:-}" in
+            "") _BUILD_STEP_FINDINGS+=("step $n has no answer: do it and answer \`step $n: done — QUOTE: <file> | <a line this change added>\`, or answer \`step $n: not needed — <why>\` (the step: $d)") ;;
+            not)
+                if [[ -z "${said[$n]}" ]]; then _BUILD_STEP_FINDINGS+=("step $n is answered not needed with no reason: say why it is not needed (the step: $d)")
+                else _BUILD_STEP_LINES+=("step $n: not needed — ${said[$n]}"); fi ;;
+            done)
+                if [[ -z "${qpath[$n]}" ]]; then
+                    _BUILD_STEP_FINDINGS+=("step $n is answered done with no quote: give \`QUOTE: <file> | <a line this change added>\` (the step: $d)")
+                elif ! _build_steps_in_area "${qpath[$n]}" "$a"; then
+                    _BUILD_STEP_FINDINGS+=("step $n's quote is in ${qpath[$n]}, outside the step's areas ($a): quote the line this change added there that does the step (the step: $d)")
+                else
+                    paths+=("${qpath[$n]}"); ok+=("$n")
+                fi ;;
+        esac
+    done
+    if [[ ${#ok[@]} -gt 0 ]]; then
+        local base=""
+        declare -F zbuild_resolve_merge_base_v >/dev/null 2>&1 && zbuild_resolve_merge_base_v base "$repo"
+        : "${base:=${ZBUILD_RUN_START_COMMIT:-}}"
+        if [[ -n "$base" ]]; then
+            f=""
+            while IFS= read -r l; do
+                case "$l" in
+                    '+++ b/'*) f="${l#+++ b/}" ;;
+                    '+++ '*) f="" ;;
+                    '+'*) [[ -n "$f" ]] && { _build_steps_line_v l "${l:1}"; added[$f]+="$l"$'\x1e'; } ;;
+                esac
+            # The path quoting is set in the environment, so the command line is
+            # `git -C <repo> diff`, as every other reader of build's repo has it.
+            done < <(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.quotePath GIT_CONFIG_VALUE_0=false \
+                git -C "$repo" diff -U0 --no-color --no-ext-diff \
+                --src-prefix=a/ --dst-prefix=b/ "$base" -- "${paths[@]}" 2>/dev/null)
+        fi
+        local -a judged=()
+        for n in "${ok[@]}"; do
+            if [[ -n "$base" ]]; then
+                # One whole added line, not a piece of one (a `}` is in many).
+                [[ -n "${qtxt[$n]}" && $'\x1e'"${added[${qpath[$n]}]:-}" == *$'\x1e'"${qtxt[$n]}"$'\x1e'* ]] \
+                    && { judged+=("$n"); continue; }
+            else
+                # No base to say what this branch added: the line is in the file.
+                judge_quote_check_v l "${qpath[$n]} | ${qtxt[$n]}" "" "$repo" && { judged+=("$n"); continue; }
+            fi
+            _BUILD_STEP_FINDINGS+=("step $n's quote is not a line this change added in ${qpath[$n]}: ${qtxt[$n]} — quote the line you added that does the step, or answer not needed and why (the step: ${_BUILD_STEP_DESC[n-1]})")
+        done
+        [[ ${#judged[@]} -gt 0 ]] && _build_steps_judge "$repo" "$ad" "$tier" "${judged[@]}"
+    fi
+    return 0
+}
+
+# _build_steps_judge_prompt <list> — the judging call's own three parts.
+_build_steps_judge_prompt() {
+    cat <<EOF
+## What you own
+Your job: for each design step below, say whether the line quoted for it does
+what the step says. Read the file around the line and what the step asks for. A
+line in the right file that does something else, or the opposite of what the
+step says, does not. Judge only these steps: add none of your own.
+
+Answer one line for each step, by its number:
+
+<n>: does
+<n>: does not | WHY: <what the step asks that the line does not do>
+
+## What you judge against
+THE STEPS:
+$1
+
+## What you must not do
+- Do not change any file.
+- Do not judge how the line is written: judge whether it does what the step says.
+EOF
+}
+
+# _build_steps_parse <reply> <wanted…> — each answer into _BSJ_ANS (n → "does"
+# or "does not<US>why"); _BSJ_PROBLEM says what makes the reply unusable.
+_build_steps_parse() {
+    local raw="$1" l n why; shift
+    local -A want=(); for n in "$@"; do want[$n]=1; done
+    declare -gA _BSJ_ANS=(); _BSJ_PROBLEM=""
+    local -a bad=() units=()
+    local start='^[[:space:]>*_`-]*[0-9]+[[:space:]]*[:.)]'
+    # A line the model wrapped is read whole: each answer starts `<n>:`.
+    while IFS= read -r l; do
+        if [[ "$l" =~ $start || ${#units[@]} -eq 0 ]]; then units+=("$l")
+        elif [[ -n "${l//[[:space:]]/}" ]]; then units[-1]+=" ${l#"${l%%[![:space:]]*}"}"; fi
+    done <<< "$raw"
+    for l in ${units[@]+"${units[@]}"}; do
+        judge_reply_line_v l "$l"
+        [[ "${l,,}" =~ ^([0-9]+):[[:space:]]*(does[[:space:]]+not|does)([^a-z]|$) ]] || continue
+        n="${BASH_REMATCH[1]}"
+        [[ -n "${want[$n]:-}" ]] || { bad+=("line $n names no step you were asked about"); continue; }
+        if [[ "${BASH_REMATCH[2]}" == does ]]; then _BSJ_ANS[$n]=does; continue; fi
+        why=""; [[ "$l" == *"| WHY:"* ]] && why="${l#*| WHY:}"
+        _build_steps_strip_v why "$why"
+        _BSJ_ANS[$n]="does not"$'\x1f'"${why:-it does not do what the step says}"
+    done
+    for n in "$@"; do [[ -n "${_BSJ_ANS[$n]+x}" ]] || bad+=("step $n has no line"); done
+    if [[ ${#bad[@]} -gt 0 ]]; then local IFS=';'; _BSJ_PROBLEM="${bad[*]}"; _BSJ_PROBLEM="${_BSJ_PROBLEM//;/; }"; fi
+    return 0
+}
+
+# _build_steps_judge <repo> <artifact_dir> <tier> <n…> — the judging call for
+# the steps whose done passed the mechanical check (ADR-072 §3), as the call
+# the manifest names `check`. Each answer is kept while the step and the quoted
+# file are unchanged (§4); only the others are asked. It fails closed: a reply
+# that cannot be used, asked again once, refuses each step it was asked about;
+# a failed call sets _BUILD_STEP_DISP to its disposition.
+_build_steps_judge() {
+    local repo="$1" ad="$2" tier="$3"; shift 3
+    local kf="$ad/build-steps-judged.json" eng n item fp list="" prompt ask _r _got="" _rc=0 _try why=""
+    local -A fps=() kept=() deps=() items=() pay=()
+    local -a ask_n=()
+    judge_engine_v eng
+    for n in "$@"; do
+        item="### step $n"$'\n'"step: ${_BUILD_STEP_DESC[n-1]}"$'\n'"areas: ${_BUILD_STEP_AREAS[n-1]:-(any)}"$'\n'"line: ${qpath[$n]} | ${qtxt[$n]}"$'\n'
+        items[$n]="$item"; judge_fp_v fp "$eng"$'\n'"$item"; fps[step-$n]="$fp"; deps[step-$n]="$repo/${qpath[$n]}"
+    done
+    judge_kept_get_all_v kept "$kf" fps
+    for n in "$@"; do
+        if [[ -n "${kept[step-$n]+x}" ]]; then
+            _build_steps_parse "$n: ${kept[step-$n]}" "$n"
+            [[ -z "$_BSJ_PROBLEM" ]] && { pay[$n]="${_BSJ_ANS[$n]}"; continue; }
+        fi
+        ask_n+=("$n"); list+="${items[$n]}"$'\n'
+    done
+    if [[ ${#ask_n[@]} -gt 0 ]]; then
+        if ! prompt="$(stage_prompt_compose_parts --fresh "$(_build_steps_judge_prompt "$list")")"; then
+            _BUILD_STEP_NOTE="the check of the design steps could not be run: its prompt could not be composed"
+            # disposition-ok: build's own prompt could not be built
+            _BUILD_STEP_DISP=misconfigured
+            for n in "$@"; do _BUILD_STEP_LINES+=("step $n: done — ${qpath[$n]} | ${qtxt[$n]} (not judged)"); done
+            emit_event build.steps.check_unusable "reason=compose_failed" >/dev/null 2>&1 || true
+            return 0
+        fi
+        ask="$prompt"
+        for _try in 1 2; do
+            _r=""; _rc=0
+            # ADR-051 §5: the call the manifest names `check`, as its persona.
+            _r="$(ZBUILD_ROUTE_CALL=check route_to_model "$tier" "$ask")" || _rc=$?
+            [[ "$_rc" -eq 0 && -n "$_r" ]] || break
+            _build_steps_parse "$_r" "${ask_n[@]}"
+            [[ -z "$_BSJ_PROBLEM" ]] && { _got="$_r"; break; }
+            why="$_BSJ_PROBLEM"
+            ask="$(stage_prompt_reask "$prompt" "$_BSJ_PROBLEM" "$_r")"
+        done
+        if [[ "$_rc" -eq 130 ]]; then _BUILD_STEP_RC=130; return 0; fi
+        if [[ "$_rc" -ne 0 ]]; then
+            local _rv="" _rr=""
+            _router_rc_classify "$_rc" _rv _rr 2>/dev/null || true
+            # disposition-ok: the judging call failed
+            _BUILD_STEP_DISP="$(router_reason_disposition "${_rr:-}" 2>/dev/null || true)"
+            [[ -n "$_BUILD_STEP_DISP" ]] || _BUILD_STEP_DISP=unavailable
+            _BUILD_STEP_NOTE="the check of the design steps could not be run (the call ended rc $_rc), so no done was accepted"
+            emit_event build.steps.check_unusable "router_rc=$_rc" "reason=${_rr:-router_rc_nonzero}" >/dev/null 2>&1 || true
+            for n in "${ask_n[@]}"; do pay[$n]="unjudged"; done
+        elif [[ -z "$_got" ]]; then
+            _BUILD_STEP_NOTE="the check of the design steps could not be read (${why:-no answer}), so no done it was asked about was accepted"
+            emit_event build.steps.check_unusable "router_rc=0" "reason=${why:-no answer}" >/dev/null 2>&1 || true
+            for n in "${ask_n[@]}"; do pay[$n]="unread"; done
+        else
+            local -A keep=() kfp=() kdeps=()
+            # keep, kfp and kdeps are read by judge_kept_put_all through their names.
+            # shellcheck disable=SC2034
+            for n in "${ask_n[@]}"; do
+                pay[$n]="${_BSJ_ANS[$n]}"
+                keep[step-$n]="${_BSJ_ANS[$n]/$'\x1f'/ | WHY: }"; kfp[step-$n]="${fps[step-$n]}"; kdeps[step-$n]="${deps[step-$n]}"
+            done
+            judge_kept_put_all "$kf" keep kfp kdeps
+        fi
+    fi
+    local refused=0
+    for n in "$@"; do
+        if [[ "${pay[$n]:-}" == does ]]; then
+            _BUILD_STEP_LINES+=("step $n: done — ${qpath[$n]} | ${qtxt[$n]}")
+        elif [[ "${pay[$n]:-}" == unjudged ]]; then
+            _BUILD_STEP_LINES+=("step $n: done — ${qpath[$n]} | ${qtxt[$n]} (not judged)")
+        elif [[ "${pay[$n]:-unread}" == unread ]]; then
+            refused=$((refused + 1))
+            _BUILD_STEP_FINDINGS+=("the check of step $n could not be read; it is judged again (the step: ${_BUILD_STEP_DESC[n-1]}; your line: ${qpath[$n]} | ${qtxt[$n]})")
+        else
+            refused=$((refused + 1))
+            _BUILD_STEP_FINDINGS+=("step $n: the line you quoted does not do what the step says: ${pay[$n]#*$'\x1f'} — do the step, then quote the line that does it, or answer not needed and why (the step: ${_BUILD_STEP_DESC[n-1]}; your line: ${qpath[$n]} | ${qtxt[$n]})")
+        fi
+    done
+    emit_event build.steps.checked "judged=$#" "refused=$refused" >/dev/null 2>&1 || true
+    return 0
+}
+
+# _build_steps_summary_v <var> — the lines build's summary shows about the steps.
+_build_steps_summary_v() {
+    local -n _bsv="$1"; local x
+    _bsv=""
+    for x in ${_BUILD_STEP_LINES[@]+"${_BUILD_STEP_LINES[@]}"}; do _bsv+="${_bsv:+$'\n'}- $x"; done
+    for x in ${_BUILD_STEP_FINDINGS[@]+"${_BUILD_STEP_FINDINGS[@]}"}; do _bsv+="${_bsv:+$'\n'}- refused: $x"; done
+    [[ -n "$_BUILD_STEP_NOTE" ]] && _bsv+="${_bsv:+$'\n'}- $_BUILD_STEP_NOTE"
+    return 0
+}

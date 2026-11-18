@@ -93,6 +93,17 @@ outputs:
     format: json
     required: true
     primary: true
+  # #2565 (ADR-054 §6a, ADR-071 §1): a try that changed nothing and answered a
+  # finding wrong or not mine hands it on here — a test that cannot meet its
+  # SPEC is the requirement's to change, so design is shown it.
+  - id: test_author_handoff
+    topic: requirement-findings
+    description: "findings test-author's last try changed nothing for and answered wrong or not mine, with its answer"
+    path: "${artifact_dir}/test-author-requirement-result.json"
+    type: routed-findings.json@1
+    format: json
+    required: false
+    handoff: true
   # ADR-055 §9: this stage's statement of what it DID.
   - id: test_author_summary
     topic: tests

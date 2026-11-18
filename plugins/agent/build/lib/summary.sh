@@ -14,6 +14,9 @@ fi
 
 [[ -n "${_ZBUILD_BUILD_SUMMARY_LOADED:-}" ]] && return 0
 _ZBUILD_BUILD_SUMMARY_LOADED=1
+# The summary checks the design steps (#2565): its step library, loaded once.
+# shellcheck source=steps.sh
+source "${BASH_SOURCE[0]%/*}/steps.sh"
 # #2460: a reply is read in whole units; loaded here too, for a caller that
 # sources this file alone.
 declare -F zb_reply_join_v >/dev/null 2>&1 \
@@ -290,12 +293,29 @@ _build_write_build_summary() {
         fi
     fi
 
+    # #2565 (ADR-071, ADR-072 §3): a finished try answers every design step; a
+    # step refused or unanswered makes it unusable, and build goes round again.
+    _BUILD_STEP_FINDINGS=() _BUILD_STEP_LINES=() _BUILD_STEP_NOTE="" _BUILD_STEP_DISP=""
+    if [[ "$build_verdict" == pass ]]; then
+        # shellcheck disable=SC2154  # repo_root, artifact_dir, tier from caller scope
+        _build_steps_check "${_ROUTE_LOOP_LAST_RESPONSE:-}" "${repo_root:-}" "${artifact_dir:-}" "${tier:-T2}"
+        if [[ "$_BUILD_STEP_RC" -eq 130 ]]; then build_verdict="interrupted"; build_reason="sigint"
+        # ADR-072 §3: a judging call that could not run is no pass.
+        elif [[ -n "$_BUILD_STEP_DISP" ]]; then build_verdict="$_BUILD_STEP_DISP"; build_reason="design_steps_check_failed"
+        elif [[ ${#_BUILD_STEP_FINDINGS[@]} -gt 0 ]]; then build_verdict="unusable"; build_reason="design_steps_not_done"; fi
+    fi
+
     # shellcheck disable=SC2154  # scope_violations[] injected via dynamic scope from caller
     if [[ ${#scope_violations[@]} -gt 0 ]]; then
         _sum_violations_json="$(printf '%s\n' "${scope_violations[@]}" \
             | jq -R . | jq -sc . 2>/dev/null || echo '[]')"
     fi
 
+    # #2565: the step lines, one a line, joined in the shell.
+    local _sum_step_f="" _sum_step_a=""
+    # Set only once steps.sh is loaded; a caller without it has no steps.
+    [[ -n "${_BUILD_STEP_FINDINGS[*]:-}" ]] && printf -v _sum_step_f '%s\n' "${_BUILD_STEP_FINDINGS[@]}"
+    [[ -n "${_BUILD_STEP_LINES[*]:-}" ]] && printf -v _sum_step_a '%s\n' "${_BUILD_STEP_LINES[@]}"
     local _sum_answers_json="[]"
     _build_answers_json_v _sum_answers_json
     local _sum_issue="${issue:-0}"
@@ -323,6 +343,8 @@ _build_write_build_summary() {
         --arg failing_acceptance_testfile "${_inert_failing_testfile:-}" \
         --arg notes "Build stage completed. Diff written to artifact; not applied." \
         --arg build_data_kind "${build_data_kind:-}" \
+        --arg step_findings "$_sum_step_f" \
+        --arg step_answers "$_sum_step_a" \
         --argjson round "$(_build_round_json "${iterations:-0}" 2>/dev/null || printf 'null')" \
         '{
             schema_version: $schema_version,
@@ -353,10 +375,9 @@ _build_write_build_summary() {
             # received — a `wrong` sends that finding back to its judge.
             + (if ($answers | length) > 0 then {answers: $answers} else {} end)
             + {findings_shown: $findings_shown}
+            # #2565: the answer to each design step, and each step refused.
+            + ($step_answers | split("\n") | map(select(length > 0)) | if length > 0 then {steps: .} else {} end)
             + (if $unanswered != "" then {unanswered: ($unanswered | split("\n"))} else {} end)
-            # #2460: what the next try is told — its test still fails.
-            + (if $failing_acceptance_testfile != "" then {findings: [{n: 1,
-                text: "you said the work was done but changed no file, and \($failing_acceptance_testfile) still fails — make it pass by changing the code"}]} else {} end)
             # #2508 (ADR-030 §8): and that its change to the test folders, or to
             # a file that is off limits, was put back.
             + ( ($offl | split("\n") | map(select(length > 0))) as $fl
@@ -365,7 +386,14 @@ _build_write_build_summary() {
                     "you changed \($tv | join(", ")) in the test folders, which only the stage that writes the tests may change; it was put back — change the code instead, or, if a test should change, answer its finding: not mine — the test must change: <test file>: <why>"] else [] end)
                 + (if ($fl | length) > 0 then [
                     "you changed \($fl | join(", ")), which no stage may change (outside the repository, inside .git/, or listed in .zbuild/private-paths); it was put back — do the work without it"] else [] end) ) as $tx
-              | if ($tx | length) > 0 then {findings: [$tx | to_entries[] | {n: (.key + 1), text: .value}]} else {} end )
+              # #2565: one findings list — each step refused, a still-failing
+              # test (#2460), and the changes put back — numbered together, so
+              # none replaces another.
+              | ( ($step_findings | split("\n") | map(select(length > 0)))
+                + (if $failing_acceptance_testfile != "" then [
+                    "you said the work was done but changed no file, and \($failing_acceptance_testfile) still fails — make it pass by changing the code"] else [] end)
+                + $tx ) as $all
+              | if ($all | length) > 0 then {findings: [$all | to_entries[] | {n: (.key + 1), text: .value}]} else {} end )
             ) as $d | if ($d | length) > 0 then {data: $d} else {} end )
         ' | atomic_write "$output_summary_json" \
         && stage_result_add "$output_summary_json" "$build_verdict" "${_sum_build_reason:-${build_reason:-unknown}}"

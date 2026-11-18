@@ -88,7 +88,7 @@ fi
 
 # ── SPEC-5: the two sites that MAKE groups register them ───────────────────
 # A registration helper nothing calls is the same defect one layer up.
-for _site in "$REPO_ROOT/plugins/tool/test/plugin.sh" "$REPO_ROOT/core/router/route.sh"; do
+for _site in "$REPO_ROOT/plugins/tool/test/lib/suite.sh" "$REPO_ROOT/core/router/route.sh"; do
     if grep -q 'zbuild_pg_register' "$_site"; then
         assert_pass "SPEC-5: $(basename "$_site") registers the group it creates"
     else

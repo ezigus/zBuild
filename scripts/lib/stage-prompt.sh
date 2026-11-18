@@ -336,6 +336,7 @@ IFS= read -r -d '' _ZB_ANSWER_FORMS <<'EOF' || true
   - done — you changed your output for it.
   - wrong — it does not hold, or it needs no change. Say why.
   - not mine — it holds and needs a change, and that change is to another stage's output, not yours.
+  Answer done only for what you changed in this call. If the finding needs no change because your output is already right, answer wrong, and say why. If someone else must change something, answer not mine, and say who.
   A finding about your own output is yours, even when its fix is outside this issue's requirements or needs a file you may not touch:
   fix it, or answer wrong and say why it needs no change. A file you may not touch, ask for it the way your instructions say.
 EOF

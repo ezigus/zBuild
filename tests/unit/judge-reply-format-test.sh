@@ -127,7 +127,7 @@ WIRING: none
 ```
 MD
     printf 0 > "$_N"
-    _R1=$'**RQST-1**: covered\n**FRSH-1** When: how | WHY: it names the call, not what happens | QUOTE: "it is started again"\n'
+    _R1=$'**RQST-1**: covered\n**FRSH-1** When: how | WHY: it names the call, not what happens | INSTEAD: the run starts from the first stage | QUOTE: "it is started again"\n'
     _design_coverage "$D" '- RQST-1: start from the first stage' T2 >/dev/null 2>&1
     echo "F4|$(cat "$_N")|$_DESIGN_COV_OUTCOME|$(_design_coverage_findings | tr '\n\036' '~~')"
 ) > "$TEST_TEMP_DIR/f4.out" 2>/dev/null

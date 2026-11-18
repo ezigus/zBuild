@@ -39,6 +39,13 @@ model.route
 router.max_turns.flag_omitted
 model.outcome
 loop.complete
+redaction.applied
+redaction.applied
+model.route
+router.max_turns.flag_omitted
+model.outcome
+judge.kept.saved
+build.steps.checked
 build.commit.created
 plugin.result
 plugin.run.complete
