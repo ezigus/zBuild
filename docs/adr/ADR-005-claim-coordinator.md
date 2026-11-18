@@ -113,10 +113,14 @@ The engine refuses to start with multiple `claim-coordinator` plugins enabled �
 
 - §1 (engine calls claim after admission lock, before first stage; release on every EXIT path) →
   `tests/integration/teardown-repeat-signal-test.sh` [DSCLA-1] (claim present before stage dispatches),
-  [DSCLA-5] (released on normal exit), [DSCLA-6] (released on failure), [DSCLA-7] (released on TERM)
+  [DSCLA-5] (released on normal exit), [DSCLA-6] (released on failure), [DSCLA-7] (released on TERM);
+  §1(c) (refused: non-zero exit, no stage dispatched, event emitted) →
+  `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh` [DSCLA-3],
+  `tests/integration/teardown-repeat-signal-test.sh` [DSCLA-9] (refused output names holder)
 - §2 (single `zbuild:claimed` label, no hostname; holder in run-status comment) →
   `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh` [DSCLA-1] (label is
-  exactly `zbuild:claimed`), [DSCLA-2] (`<!-- zbuild-holder: -->` in rendered run-status header)
+  exactly `zbuild:claimed`), [DSCLA-2] (`<!-- zbuild-holder: -->` in rendered run-status header),
+  [DSCLA-12] (CI holder `<!-- zbuild-holder: CI_URL -->` in rendered run-status header)
 
 ## References
 

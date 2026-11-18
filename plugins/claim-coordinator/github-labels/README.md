@@ -6,7 +6,7 @@
 
 ## Purpose
 
-Default cross-machine claim coordinator for the zbuild daemon. Uses GitHub issue labels (`claimed:<machine>`) as the distributed claim mechanism so multiple daemon instances can coordinate over a shared repository without a central lock server.
+Default cross-machine claim coordinator for the zbuild daemon. Uses a single shared GitHub issue label (`zbuild:claimed`) as the distributed claim mechanism so multiple daemon instances can coordinate over a shared repository without a central lock server. The holder is identified in the run-status comment (`<!-- zbuild-holder: ... -->`), not in the label name.
 
 ## Contract (ADR-005)
 
@@ -22,14 +22,14 @@ Default cross-machine claim coordinator for the zbuild daemon. Uses GitHub issue
 The `claim` hook has a documented TOCTOU window between label-add and re-verify. Mitigated by:
 
 1. Random backoff 300–1100 ms before re-read
-2. Re-read drops the claim if multiple `claimed:*` labels are observed on the issue
+2. Re-read drops the claim if `zbuild:claimed` was not successfully added (eventual consistency window)
 
 ## Environment variables
 
 | Variable | Default | Description |
 |---|---|---|
 | `ZBUILD_CLAIM_BACKEND` | `gh` | Backend: `gh` (GitHub API) or `local-fs` (flock-serialised filesystem, for tests) |
-| `ZBUILD_CLAIM_MACHINE_ID` | `$(hostname)` | Override machine identity used in the claim label |
+| `ZBUILD_CLAIM_MACHINE_ID` | `${HOSTNAME}` | Override machine identity; affects the holder string in the run-status comment only, not the label name |
 | `ZBUILD_CLAIM_BACKOFF_MIN_MS` | `300` | Minimum backoff (ms) before re-verify after label-add |
 | `ZBUILD_CLAIM_BACKOFF_MAX_MS` | `1100` | Maximum backoff (ms) before re-verify |
 | `ZBUILD_CLAIM_FLOCK_TIMEOUT_SEC` | `5` | flock wait timeout for local-fs backend |
