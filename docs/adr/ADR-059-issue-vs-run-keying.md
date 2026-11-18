@@ -451,6 +451,9 @@ committed, stash ablates nothing and reports a false pass.
 
 ## Enforced by
 
+- §4 (cross-machine exclusion is the claim coordinator's job; the admission lock handles intra-machine serialisation) →
+  `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh` [DSCLA-3]
+  (a run is refused when another machine holds `zbuild:claimed` on the issue)
 - §2/§4 amendment 2026-11-14 (#2541: a tree git no longer lists is reclaimed, under the lock and age guards) → `tests/unit/cleanup-forgotten-trees-test.sh` G1–G5
 
 - `tests/unit/worktree-sparse-legacy-test.sh` — §2 per-worktree sparse-checkout: acquire and
