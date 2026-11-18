@@ -206,7 +206,6 @@
 6	tests/unit/run-cap-test.sh
 6	tests/unit/run-mutation-kill-grace-test.sh
 6	tests/unit/run-status-comment-gh-test.sh
-6	tests/unit/shape-floor-content-stable-test.sh
 6	tests/unit/signing-backend-test.sh
 6	tests/unit/versioning-backend-test.sh
 5	plugins/tool/orch-ruflo-hive/tests/orch-ruflo-hive-test.sh
@@ -291,7 +290,6 @@
 4	tests/unit/router-rc124-propagation-test.sh
 4	tests/unit/run-tests-timing-test.sh
 4	tests/unit/runner-cycle-iter-divider-hierarchical-test.sh
-4	tests/unit/shape-floor-detail-output-test.sh
 4	tests/unit/summary-mandatory-test.sh
 4	tests/unit/test-stage-timing-history-test.sh
 3	tests/unit/state_helpers-unit-test.sh
@@ -435,8 +433,6 @@
 2	tests/unit/route-cli-redaction-test.sh
 2	tests/unit/route-loop-sigint-test.sh
 2	tests/unit/router-prompt-contract-test.sh
-2	tests/unit/shape-floor-baseline-test.sh
-2	tests/unit/shape-floor-test.sh
 2	tests/unit/stage-blocks-dispatch-test.sh
 2	tests/unit/stage-boundaries-test.sh
 2	tests/unit/stage-io-cycle-kind-test.sh
@@ -569,7 +565,6 @@
 1	tests/unit/runner-map-parallel-stage-envelope-test.sh
 1	tests/unit/save-as-you-go-test.sh
 1	tests/unit/scope-governance-test.sh
-1	tests/unit/shape-floor-summary-plain-test.sh
 1	tests/unit/sigpipe-antipattern-guard-test.sh
 1	tests/unit/stage-io-cycle-kind-goldens-test.sh
 1	tests/unit/stage-io-ordering-negative-test.sh
