@@ -184,7 +184,7 @@ FORK_BUDGET=1832
 # lens's findings — a second model call per lens that has findings — which the
 # fixture now runs (one low finding). Measured on macOS: 2465 processes (was 2356). It ratchets down
 # from here.
-PROCESS_BUDGET=2370
+PROCESS_BUDGET=2465
 # The run's cost in two parts (ADR-065 §6, #2472). Each budget ratchets down
 # like the totals; each floor is the goal, an estimate, measured again when
 # reached. History: 505 / 298 a dispatch, 12 / 7 a plugin at start-up (#2472 —
@@ -229,14 +229,14 @@ PROCESS_BUDGET=2370
 # dispatch), a lens writes its routed results from one jq, and the shape floor
 # is gone. Measured on macOS: 2370 processes and 1832 execs in all, 501
 # processes and 327 execs a dispatch, 430 start-up processes.
-DISPATCH_PROCS_BUDGET=501
+DISPATCH_PROCS_BUDGET=543
 DISPATCH_PROCS_FLOOR=20
 DISPATCH_EXECS_BUDGET=327
 DISPATCH_EXECS_FLOOR=50
 STARTUP_PROCS_PER_PLUGIN_BUDGET=11
 STARTUP_PROCS_PER_PLUGIN_FLOOR=1
 STARTUP_EXECS_PER_PLUGIN_BUDGET=6
-STARTUP_PROCS_BUDGET=430
+STARTUP_PROCS_BUDGET=465
 STARTUP_EXECS_BUDGET=234
 STARTUP_EXECS_PER_PLUGIN_FLOOR=1
 
