@@ -128,21 +128,6 @@ _rl_quote_problem_v() {
     local IFS=';'; _rqp="${_rqp_bad[*]}"; _rqp="${_rqp//;/; }"
 }
 
-# _rl_write_routed <path> <lines-json> <what> — one routed result (#2433): fail
-# with a numbered finding per line, or pass with none.
-# Each finding is {text, blocking[, topic]}: one that does not block is still
-# sent on, marked, and the output fails only on one that does (ADR-071 §5).
-_rl_write_routed() {
-    # One jq: how many block, and the findings (ADR-065 §5).
-    local o=pass r="$3: none" _rw _rw_n=0 _rw_b=0 _rw_j='{}' _rw_re=$'^([0-9]+) ([0-9]+)\t(.*)$'
-    _rw="$(jq -r '"\(length) \([.[] | select(.blocking)] | length)\t" + (if length > 0 then {findings: [to_entries[]
-        | {n: (.key + 1), text: .value.text, blocking: .value.blocking} + (if .value.topic then {topic: .value.topic} else {} end)]} else {} end | tojson)' <<< "$2" 2>/dev/null)" || _rw=""
-    [[ "$_rw" =~ $_rw_re ]] && { _rw_n="${BASH_REMATCH[1]}"; _rw_b="${BASH_REMATCH[2]}"; _rw_j="${BASH_REMATCH[3]}"; }
-    (( _rw_n > 0 )) && r="$3"
-    (( _rw_b > 0 )) && o=fail
-    stage_result_write "$1" "$o" "$r" "$_rw_j"
-}
-
 # ─── _review_lens_write_result <out> <verdict> <disposition> <reason> ────────
 # Write a v2-compliant lens result file atomically. The output path is derived
 # entirely from the $out parameter (no literal artifact filename strings inside).
@@ -324,9 +309,10 @@ _review_lens_run_inner() {
     # before they are cleared, to show the lens.
     local _rl_last=""
     judge_last_findings_block_v _rl_last "$artifact_dir" "lens-${lens}-code" "${out%.json}-code-result.json" \
+        "lens-${lens}-change" "${out%.json}-change-result.json" \
         "lens-${lens}-design" "${out%.json}-design-result.json"
     # A round's routed findings are this round's only (#2433).
-    rm -f "${out%.json}-code-result.json" "${out%.json}-design-result.json" 2>/dev/null || true
+    rm -f "${out%.json}-code-result.json" "${out%.json}-change-result.json" "${out%.json}-design-result.json" 2>/dev/null || true
 
     # #2507 (ADR-072 §7): the lens is pointed at the change — the commit the
     # branch started from and the files it changed — and reads it with git.
@@ -392,7 +378,7 @@ _review_lens_run_inner() {
     # unchanged; a stage's `wrong` answer to one of its findings is judged
     # again, shown to the lens.
     local _rl_repo="${ZBUILD_REPO_ROOT:-$PWD}" _rl_kf="${out%.json}-judged.json" _rl_eng _rl_fp _rl_kept="" _rl_ans
-    judge_answers_to_v _rl_ans "$artifact_dir" "lens-${lens}-code" "lens-${lens}-design"
+    judge_answers_to_v _rl_ans "$artifact_dir" "lens-${lens}-code" "lens-${lens}-change" "lens-${lens}-design"
     judge_engine_v _rl_eng
     judge_fp_v _rl_fp "$_rl_eng"$'\n'"$lens"$'\n'"$_rl_judged"$'\n'"$_rl_ans"
     local _rl_disputed=0; [[ -n "$_rl_ans" ]] && _rl_disputed=1
@@ -572,30 +558,46 @@ _review_lens_run_inner() {
     # finding the change introduced is sent on too, marked as not blocking: on
     # #1805 run 42374066107 one graded low reached no stage, and the next round
     # graded it medium and failed (ADR-071 §5).
-    local _rl_route
-    _rl_route="$(printf '%s' "$normalized" | jq -c --arg on " $_rl_fail_on " --arg n "$lens" '
+    # #2556: one jq gives the lens's outcome and each routed result whole —
+    # one output per topic, each failing only on a finding that blocks — so a
+    # lens pays no jq per output (ADR-065).
+    local _rl_route _rl_k _rl_v _rl_issue=""; _rl_outcome="pass"
+    _rl_route="$(printf '%s' "$normalized" | jq -r --arg on " $_rl_fail_on " --arg n "$lens" --argjson c "${_ZBUILD_CONTRACT_V3:-3}" '
         def at_fail_on: .severity as $s | ($on | contains(" \($s) "));
         # #2506 (ADR-072 §3): shown with its quote, never a line — lines move.
         def line: "\($n) lens, \(.severity): \(.message) (\(.file)\(if (.quote | tostring) != "" then ": \"\(.quote | tostring | gsub("[\r\n]+"; " "))\"" else "" end); happens when: \(.trigger // "" | tostring | gsub("[\r\n]+"; " ")); fix: \(.fix))";
-        # #2491 (ADR-071 §1): a finding the code must fix goes to `change`.
-        def routed: {text: line, blocking: at_fail_on} + (if .fix == "code" then {topic: "change-findings"} else {} end);
+        def routed: {text: line, blocking: at_fail_on};
+        # One routed result (#2433): fail with a numbered finding per item when
+        # one blocks, pass otherwise.
+        def result($what): . as $l
+            | {result_contract: $c, outcome: (if ([$l[] | select(.blocking)] | length) > 0 then "fail" else "pass" end),
+               reason: (if ($l | length) > 0 then $what else "\($what): none" end)}
+              + (if ($l | length) > 0 then {data: {findings: [$l | to_entries[] | {n: (.key + 1), text: .value.text, blocking: .value.blocking}]}} else {} end);
         [.findings[] | select(.fix == "issue" and at_fail_on)] as $issue
         | [.findings[] | select(.fix != "issue" and .introduced)] as $sent
-        | { outcome: (if ($issue | length) > 0 then "misconfigured" elif ([$sent[] | select(at_fail_on)] | length) > 0 then "fail" else "pass" end),
-            issue: ($issue[0].message // ""),
-            code: [$sent[] | select(.fix == "code" or .fix == "test") | routed],
-            design: ([$sent[] | select(.fix == "design") | routed] + [$issue[] | routed]) }' 2>/dev/null \
-        || printf '{"outcome":"pass","issue":"","code":[],"design":[]}')"
-    _rl_outcome="$(jq -r '.outcome' <<< "$_rl_route")"
+        | "outcome\t" + (if ($issue | length) > 0 then "misconfigured" elif ([$sent[] | select(at_fail_on)] | length) > 0 then "fail" else "pass" end),
+          "issue\t" + (($issue[0].message // "") | tostring | gsub("[\r\n\t]+"; " ")),
+          # #2491, #2556 (ADR-071 §1): one a test must fix → code-findings; one
+          # only the code can fix → change-findings; the design or the issue →
+          # requirement-findings.
+          "code\t" + ([$sent[] | select(.fix == "test") | routed] | result("the \($n) lens'"'"'s findings a test must fix") | tojson),
+          "change\t" + ([$sent[] | select(.fix == "code") | routed] | result("the \($n) lens'"'"'s findings only the code can fix") | tojson),
+          "design\t" + (([$sent[] | select(.fix == "design") | routed] + [$issue[] | routed]) | result("the \($n) lens'"'"'s findings the design must fix") | tojson)' 2>/dev/null)" || _rl_route=""
+    while IFS=$'\t' read -r _rl_k _rl_v; do
+        case "$_rl_k" in
+            outcome) _rl_outcome="$_rl_v" ;;
+            issue) _rl_issue="$_rl_v" ;;
+            code|change|design) atomic_write "${out%.json}-${_rl_k}-result.json" <<< "$_rl_v" ;;
+        esac
+    done <<< "$_rl_route"
+    # A routing that gave nothing is no pass: the lens's findings reached no stage.
+    [[ -n "$_rl_route" ]] || _rl_outcome=broken
     _rl_reason="the ${lens} lens found no ${_rl_fail_on:+${_rl_fail_on// / or } }problem the change introduced that fails it"
     [[ "$_rl_outcome" == fail ]] && _rl_reason="the ${lens} lens found a ${_rl_fail_on// / or } problem the change introduced"
-    [[ "$_rl_outcome" == misconfigured ]] && _rl_reason="the ${lens} lens found that the issue itself is wrong: $(jq -r '.issue' <<< "$_rl_route")"
+    [[ "$_rl_outcome" == misconfigured ]] && _rl_reason="the ${lens} lens found that the issue itself is wrong: $_rl_issue"
+    [[ "$_rl_outcome" == broken ]] && _rl_reason="the ${lens} lens's findings could not be sent on to the stages that fix them"
     printf '%s' "$normalized" | atomic_write "$out" \
         && stage_result_add "$out" "$_rl_outcome" "$_rl_reason"
-    _rl_write_routed "${out%.json}-code-result.json" "$(jq -c '.code' <<< "$_rl_route")" \
-        "the ${lens} lens's findings the code or a test must fix"
-    _rl_write_routed "${out%.json}-design-result.json" "$(jq -c '.design' <<< "$_rl_route")" \
-        "the ${lens} lens's findings the design must fix"
     local score findings_count
     score="$(printf '%s' "$normalized" | jq -r '.score // 0' 2>/dev/null || echo 0)"
     findings_count="$(printf '%s' "$normalized" | jq '.findings | length' 2>/dev/null || echo 0)"

@@ -187,14 +187,11 @@ T6_ART_DIR="$T6_STATE_DIR/artifacts"
 mkdir -p "$T6_ART_DIR"
 # shellcheck source=../../scripts/lib/stage-result.sh
 source "$REPO_ROOT/scripts/lib/stage-result.sh"
-for _g in test-results shape-floor-result acceptance-gate-result lint-result \
+for _g in test-results acceptance-gate-result lint-result \
           coverage-result mutation-result; do
     stage_result_write "$T6_ART_DIR/$_g.json" pass "ok"
 done
-# Three failing gates; one still writes a fault (an older plugin) — #2271: the
-# aggregator never rolls it up.
-printf '{"fault":"scope"}\n' > "$T6_ART_DIR/shape-floor-result.json"
-stage_result_add "$T6_ART_DIR/shape-floor-result.json" fail "missing_floor_files"
+# Two failing gates (#2556: the shape floor is gone).
 printf '{"severity":"recoverable","failures":["tautology:SPEC-1"]}\n' > "$T6_ART_DIR/acceptance-gate-result.json"
 stage_result_add "$T6_ART_DIR/acceptance-gate-result.json" fail "tautology"
 printf '{"test_output":"FAIL tests/unit/sigpipe-antipattern-guard-test.sh"}\n' > "$T6_ART_DIR/test-results.json"
@@ -215,9 +212,12 @@ source "$REPO_ROOT/core/pipeline/input-resolve.sh"
 
 stage_summary_write "$T6_ART_DIR/test-failures-summary.md" "suite" "fail" \
     "FAIL tests/unit/sigpipe-antipattern-guard-test.sh"
-# #2372: the acceptance check and the shape floor run inside test; their
-# failures reach later stages as numbered findings in test's own result.
-_t6r="$(jq -c '.data = ((.data // {}) + {findings: [{n:1, text:"tautology:SPEC-1 — its test passes on the code from before the change"}, {n:2, text:"missing_floor_files"}]})' "$T6_ART_DIR/test-results.json")"
+# #2372, #2556: the acceptance check runs inside test; its failures reach later
+# stages as numbered findings in test's outputs by topic, written by test's
+# own writer.
+_t6f="$(printf '%s\n' "tautology:SPEC-1 — its test passes on the code from before the change" \
+    "a test file far slower than the rest" | stage_findings_route "$T6_ART_DIR" test code-findings)"
+_t6r="$(jq -c --argjson f "$_t6f" '.data = ((.data // {}) + {findings: $f})' "$T6_ART_DIR/test-results.json")"
 printf '%s\n' "$_t6r" > "$T6_ART_DIR/test-results.json"
 
 printf '{"schema_version":1,"stage_statuses":{"test":"failed"},"stage_verdicts":{"test":"fail"}}\n' \
@@ -233,9 +233,7 @@ assert_contains "T6: body carries the failing suite" \
     "$T6_BODY" "sigpipe-antipattern-guard-test.sh"
 assert_contains "T6: body carries the tautology build must re-author" \
     "$T6_BODY" "tautology:SPEC-1"
-# No longer described as "handled elsewhere" by a renderer — the design-routed
-# gate publishes its own finding like any other, and the fault class routes it.
-assert_contains "T6: the design-routed gate's finding is present too" \
-    "$T6_BODY" "missing_floor_files"
+assert_contains "T6: the second finding is present too" \
+    "$T6_BODY" "a test file far slower than the rest"
 
 print_test_results

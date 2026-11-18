@@ -1,6 +1,6 @@
 # ADR-040 — Composable gate / lens taxonomy (the convergence-path invariant)
 
-**Status:** Accepted (2026-06-27); amended 2026-11-15 (#2548, §3: each lens's job is its own text, ADR-038)
+**Status:** Accepted (2026-06-27); amended 2026-11-16 (#2556: the shape floor is gone; a run-shaping change always runs the shape tests); amended 2026-11-15 (#2548, §3: each lens's job is its own text, ADR-038)
 **Related** — dispositions below are **PLANNED** (declared here, executed in later issues of EPIC #1129 alongside the code that lands the decomposition); **this PR edits no existing ADR**:
 - evolve-planned: ADR-037 (the objective-gate *monolith* decomposes into many first-class `kind: tool` gate stages + a gate-aggregator; ADR-037's two-layer invariant is preserved and made machine-enforced)
 - supersede-planned: ADR-038 (its single-stage packaging of the lens fan-out is replaced by composable `kind: agent` lens stages + a review-aggregator; the lens *content* and evidence-fed contract are kept)
@@ -588,7 +588,7 @@ Enforced by: `tests/unit/build-checks-own-output-test.sh` K1–K5; `tests/unit/b
 ### Amendment (2026-10-15, #2372) — test checks its own run
 
 shape-floor, acceptance-gate (plugin spec-acceptance) and assertion-integrity are retired as stages, and
-test runs their checks over its own run, after the suite: the shape floor
+test runs their checks over its own run, after the suite (*the shape floor went with #2556, below*): the shape floor
 (`plugins/tool/test/lib/shape-floor-check.sh`) and the acceptance contract — negative control,
 reachability, untagged and unclaimed code (`plugins/tool/test/lib/acceptance-check.sh`), unchanged — and
 whether the assertion files are the ones their author wrote. test has no model to go back to: its one
@@ -694,3 +694,13 @@ knew were wrong. Three of those four findings were false: the check counted an a
 Enforced by: `tests/unit/test-author-checks-own-output-test.sh` A1, A2, A4, A6; `tests/unit/build-checks-own-output-test.sh`
 K1, K2, K4; `tests/unit/build-false-completion-guard-test.sh` SPEC-7; `tests/unit/own-check-retry-test.sh` R1–R3;
 `tests/unit/multiline-assertion-tag-test.sh` M1–M4.
+
+## Amendment 2026-11-16 (#2556) — the shape floor is gone; a run-shaping change always runs the shape tests
+
+On #1764 run 43772987273 the shape floor listed 7 files as needing an edit that needed none. It looked for the run's test results in the test stage's input list, written before the suite ran, so on test's first run it had no evidence (the #1874 path) and listed every unedited floor file; two of the seven matched only because the check's own test data looks like an order assertion (`_TPL_STAGES[N]`). The suite already says whether a shape test still holds: it fails when the change broke it. The one thing the suite cannot do alone is run the shape tests when a rerun picks only some files.
+
+- **The shape floor's demand to edit a file is removed**, with its check (`plugins/tool/test/lib/shape-floor-check.sh`), its library (`scripts/lib/shape-floor.sh`), its outputs and its `shape_floor.*` events. This supersedes the #1874 amendment and every statement in this or another ADR that a shape change owes edited floor files (ADR-001, ADR-013, ADR-036, ADR-037, ADR-058 mention it as it was).
+- **Two lists, explicit:** `config/shape-change-paths.txt` names the run-shaping files; `config/shape-tests.txt` names the shape tests — the tests that pin the run's stage order and event sequence. When a change touches a file on the first, the test stage always runs every test on the second, a targeted rerun included (`_test_compute_target_files`). Their result is the answer, reported like any test.
+- **A golden no test read is gone:** `tests/golden/full-pipeline/event-sequence.golden`.
+
+Enforced by: - Amendment 2026-11-16 (#2556: the shape floor is gone; the shape tests always run) → `tests/unit/shape-tests-list-test.sh` ST1 (a run-shaping change puts every shape test in the targeted set), ST2 (another change adds none), ST3 (every listed file exists), ST4 (the shape floor's check, library, outputs and events are gone), ST5 (the golden no test read is gone)

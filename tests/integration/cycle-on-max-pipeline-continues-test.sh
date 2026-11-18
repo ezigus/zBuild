@@ -90,7 +90,6 @@ outputs:
     type: json
     required: true
     primary: true
-    finding_topics: none
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 design_run() {
@@ -130,7 +129,6 @@ outputs:
     type: json
     required: true
     primary: true
-    finding_topics: none
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 test_stage_run() {
@@ -169,7 +167,6 @@ outputs:
     type: json
     required: true
     primary: true
-    finding_topics: none
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 gate_aggregator_run() {
@@ -207,7 +204,6 @@ outputs:
     type: json
     required: true
     primary: true
-    finding_topics: none
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 plan_run() {

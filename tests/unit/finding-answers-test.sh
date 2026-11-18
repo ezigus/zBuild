@@ -154,26 +154,26 @@ _lens() {  # <fail_on> <findings json>
 _low='[{"trigger":"a caller passes this on a normal run","quote":"x=1","file":"a.sh","category":"x","severity":"low","line":1,"message":"an extra state write a round","introduced":true,"fix":"code"}]'
 _lens "medium high critical" "$_low"
 assert_eq "[C1] a low finding does not fail the lens" "pass" "$(jq -r '.outcome' "$ART/lens-performance.json" 2>/dev/null)"
-assert_contains "[C1] ...but is sent on to the stages that fix code" "$(jq -r '.data.findings[0].text // ""' "$ART/lens-performance-code-result.json" 2>/dev/null)" "an extra state write a round"
-assert_eq "[C1] ...marked as not blocking" "false" "$(jq -r '.data.findings[0].blocking' "$ART/lens-performance-code-result.json" 2>/dev/null)"
-assert_eq "[C1] ...and the output it is in does not fail" "pass" "$(jq -r '.outcome' "$ART/lens-performance-code-result.json" 2>/dev/null)"
+assert_contains "[C1] ...but is sent on to the stages that fix code" "$(jq -r '.data.findings[0].text // ""' "$ART/lens-performance-change-result.json" 2>/dev/null)" "an extra state write a round"
+assert_eq "[C1] ...marked as not blocking" "false" "$(jq -r '.data.findings[0].blocking' "$ART/lens-performance-change-result.json" 2>/dev/null)"
+assert_eq "[C1] ...and the output it is in does not fail" "pass" "$(jq -r '.outcome' "$ART/lens-performance-change-result.json" 2>/dev/null)"
 _med='[{"trigger":"a caller passes this on a normal run","quote":"x=1","file":"a.sh","category":"x","severity":"medium","line":1,"message":"two writes a round","introduced":true,"fix":"code"}]'
 _lens "medium high critical" "$_med"
 assert_eq "[C1] a medium finding fails it, and blocks" "fail true" \
-    "$(jq -r '.outcome' "$ART/lens-performance.json") $(jq -r '.data.findings[0].blocking' "$ART/lens-performance-code-result.json" 2>/dev/null)"
+    "$(jq -r '.outcome' "$ART/lens-performance.json") $(jq -r '.data.findings[0].blocking' "$ART/lens-performance-change-result.json" 2>/dev/null)"
 source "$REPO_ROOT/scripts/lib/stage-previous-work.sh"
-_c2="$(_sp_findings_for "$ART/lens-performance-code-result.json" review_lenses lens-performance-code code-findings "" "")"
-assert_contains "[C2] a blocking finding is shown as it was" "$_c2" "lens-performance-code finding 1 (opened by review_lenses): "
+_c2="$(_sp_findings_for "$ART/lens-performance-change-result.json" review_lenses lens-performance-change code-findings "" "")"
+assert_contains "[C2] a blocking finding is shown as it was" "$_c2" "lens-performance-change finding 1 (opened by review_lenses): "
 stage_result_write "$ART/c2.json" pass "x" '{"findings":[{"n":1,"text":"an extra write","blocking":false}]}' >/dev/null
 assert_contains "[C2] one that does not block is marked" \
-    "$(_sp_findings_for "$ART/c2.json" review_lenses lens-performance-code code-findings "" "")" \
-    "lens-performance-code finding 1 (opened by review_lenses, does not block): an extra write"
+    "$(_sp_findings_for "$ART/c2.json" review_lenses lens-performance-change code-findings "" "")" \
+    "lens-performance-change finding 1 (opened by review_lenses, does not block): an extra write"
 # C3: last time's findings, with what was answered, come back to the lens.
 stage_result_write "$ART/build-summary.json" pass "built" \
-    '{"answers":["lens-performance-code finding 1: done — one write a round now"]}' >/dev/null
+    '{"answers":["lens-performance-change finding 1: done — one write a round now"]}' >/dev/null
 _lens "medium high critical" "$_low"
 _c3="$(cat "$TEST_TEMP_DIR/lens-prompt" 2>/dev/null)"
-assert_contains "[C3] the lens is shown its findings from last time" "$_c3" "lens-performance-code finding 1"
+assert_contains "[C3] the lens is shown its findings from last time" "$_c3" "lens-performance-change finding 1"
 assert_contains "[C3] ...with what was answered" "$_c3" "done — one write a round now"
 assert_contains "[C3] ...and told a finding keeps its grade unless it quotes what changed" "$_c3" \
     "A finding you report again keeps the grade you gave it, unless you quote what changed"

@@ -19,7 +19,6 @@ plugins/agent/review-lens/lenses/security.md
 plugins/agent/review-lens/lenses/sre.md
 plugins/tool/test/lib/acceptance-check.sh
 plugins/agent/design/lib/checks.sh printf
-plugins/tool/test/lib/shape-floor-check.sh
 scripts/lib/acceptance-reachability.sh
 scripts/lib/acceptance-negctl.sh
 scripts/lib/stage-prompt.sh printf

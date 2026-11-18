@@ -600,7 +600,7 @@ validate_manifest() {
     eb_manifest_events_invalid_v _evs "$manifest"
     while IFS= read -r _ev; do
         [[ -n "$_ev" ]] || continue
-        error "validate_manifest($manifest): provides.events entry '$_ev' is not a valid event name (lowercase, dot-separated, e.g. 'shape_floor.pass')"
+        error "validate_manifest($manifest): provides.events entry '$_ev' is not a valid event name (lowercase, dot-separated, e.g. 'acceptance.gate.pass')"
         errors=$((errors + 1))
     done <<< "$_evs"
 

@@ -1435,7 +1435,6 @@ _RUNNER_CONTRACT_LIB_ENTRYPOINTS=(
     acceptance-negctl.sh
     acceptance-reachability.sh
     merge-base.sh
-    shape-floor.sh
 )
 
 # _runner_contract_lib_closure <src_lib> — echo the transitive set of lib

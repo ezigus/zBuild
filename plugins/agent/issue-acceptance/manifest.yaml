@@ -63,20 +63,40 @@ personas:
   main: product-owner
 
 outputs:
+  # #2556 (ADR-071 §1): its verdict and summary name no topic, so they reach no
+  # stage; its findings do, from the three outputs below — one per topic.
   - id: issue_acceptance_result
-    topic: requirement-findings
-    description: "whether the change meets each of the issue's requirements; findings: each requirement not met, and why; each part of the change no requirement asks for, by who can undo it"
+    description: "whether the change meets each of the issue's requirements; findings: each requirement not met, and each part of the change no requirement asks for — for the reports; stages read them from the outputs by topic"
     path: "${artifact_dir}/issue-acceptance-result.json"
-    finding_topics: code-findings requirement-findings change-findings
     type: issue-acceptance-result.json@1
     format: json
     required: true
     primary: true
   - id: issue_acceptance_summary
-    topic: requirement-findings
     description: "issue-acceptance's summary of what is met and what is not"
     path: "${artifact_dir}/issue-acceptance-summary.md"
     type: issue-acceptance-summary.md@1
     format: markdown
     required: true
     summary: true
+  - id: issue_acceptance_requirement
+    topic: requirement-findings
+    description: "issue-acceptance's findings the design must fix: a requirement the design misses or gets wrong, one it is not sure is met"
+    path: "${artifact_dir}/issue-acceptance-requirement-result.json"
+    type: routed-findings.json@1
+    format: json
+    required: false
+  - id: issue_acceptance_code
+    topic: code-findings
+    description: "issue-acceptance's findings the code or a test must fix: a requirement the change does not meet yet, a part of a test no requirement asks for"
+    path: "${artifact_dir}/issue-acceptance-code-result.json"
+    type: routed-findings.json@1
+    format: json
+    required: false
+  - id: issue_acceptance_change
+    topic: change-findings
+    description: "issue-acceptance's findings only the code can fix: a part of the change no requirement asks for"
+    path: "${artifact_dir}/issue-acceptance-change-result.json"
+    type: routed-findings.json@1
+    format: json
+    required: false

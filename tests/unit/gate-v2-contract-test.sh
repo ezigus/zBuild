@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # Tests: gate result contract — result_contract:3, outcome, reason across all
-# three gate plugins and the shape floor check (ADR-054, ADR-055 §9, issue #1848; contract 3 since #2366).
+# three gate plugins (ADR-054, ADR-055 §9, issue #1848; contract 3 since #2366).
 #
 # SPEC-1: all four gates declare result_contract: 3 (#2366)
 # SPEC-2: every gate result JSON carries its contract, its outcome (no disposition on contract 3) and a reason
-# SPEC-3: shape-floor emits disposition:broken when _sf_shape_floor is undefined
 # SPEC-4: retired with design-gate (#2369; design checks its own design.md — design-checks-own-output-test.sh)
 # SPEC-5: coverage/lint/mutation resolve test_results path via ZBUILD_STAGE_INPUTS
 # SPEC-6: retired with design-gate (#2369)
@@ -27,7 +26,7 @@ setup_test_env "gate-v2-contract"
 _test_cleanup_hook() { cleanup_test_env; }
 
 
-# Source all three gate plugins and the shape floor check.
+# Source all three gate plugins.
 # shellcheck source=../../plugins/tool/coverage-gate/plugin.sh
 source "$REPO_ROOT/plugins/tool/coverage-gate/plugin.sh"
 # shellcheck source=../../plugins/tool/lint-gate/plugin.sh
@@ -167,38 +166,7 @@ assert_eq "[SPEC-8] mutation-gate skip → rc=0" "0" "$_rc"
 assert_json_key "[SPEC-2] mutation-gate skip → result_contract:3" \
     "$(cat "$W/artifacts/mutation-result.json")" '.result_contract' "3"
 
-# shape-floor: normal path (stub _sf_shape_floor to return skip)
-_sf_shape_floor() { echo "SHAPE_FLOOR SKIP no shape-change files (test stub)"; }
-W="$(_mkwork sf-v2-skip)"
-set +e; shape_floor_run "shape-floor" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
-assert_eq "[SPEC-8] shape-floor skip → rc=0" "0" "$_rc"
-_J="$(cat "$W/artifacts/shape-floor-result.json")"
-assert_json_key "[SPEC-2] shape-floor skip → result_contract:3" "$_J" '.result_contract' "3"
-assert_json_key "[SPEC-2] shape-floor skip → no disposition (contract 3)" "$_J" 'has("disposition")' "false"
-assert_contains "[SPEC-2] shape-floor skip → reason present" "$_J" '"reason"'
-
-# shape-floor: pass path — verify specific non-empty reason string is written (#1848)
-_sf_shape_floor() { echo "SHAPE_FLOOR PASS all floor files present"; }
-W="$(_mkwork sf-v2-pass)"
-set +e; shape_floor_run "shape-floor" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
-assert_eq "[SPEC-8] shape-floor pass → rc=0" "0" "$_rc"
-_J="$(cat "$W/artifacts/shape-floor-result.json")"
-assert_json_key "[SPEC-2] shape-floor pass → result_contract:3" "$_J" '.result_contract' "3"
-assert_json_key "[SPEC-2] shape-floor pass → reason non-empty" \
-    "$_J" '.reason' "all shape-change floor files present"
-
-# ── SPEC-3: shape-floor emits disposition:broken when _sf_shape_floor undefined ─
-unset -f _sf_shape_floor 2>/dev/null || true
-W="$(_mkwork sf-broken)"
-set +e; shape_floor_run "shape-floor" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
-assert_eq "[SPEC-3][SPEC-8] shape-floor library not loaded → rc=0" "0" "$_rc"
-_J="$(cat "$W/artifacts/shape-floor-result.json")"
-assert_json_key "[SPEC-3] shape-floor library not loaded → outcome:broken (#2366)" "$_J" '.outcome' "broken"
-assert_json_key "[SPEC-3] shape-floor library not loaded → reason:library_load_failure" "$_J" '.reason' "library_load_failure"
-# ADR-055 §9: the broken path is a terminal verdict too — the summary must exist
-# so a reader learns the floor was DISABLED rather than seeing nothing (#1758).
-assert_eq "[SPEC-14] shape-floor broken path → shape-floor-detail.md written and non-empty" "present" \
-    "$([[ -s "$W/artifacts/shape-floor-detail.md" ]] && echo present || echo absent)"
+# #2556: the shape floor is gone (ADR-040); its cases went with it.
 
 # ── SPEC-9: all three manifests declare valid_verdicts in config ──────────────
 for _plugin in coverage-gate lint-gate mutation-gate; do
@@ -275,10 +243,6 @@ for _wd in mg-v2-pass mg-v2-fail mg-v2-skip; do
     assert_eq "[SPEC-14] mutation-gate $_wd → mutation-detail.md written and non-empty" "present" \
         "$([[ -s "$TEST_TEMP_DIR/$_wd/artifacts/mutation-detail.md" ]] && echo present || echo absent)"
 done
-for _wd in sf-v2-skip sf-v2-pass; do
-    assert_eq "[SPEC-14] shape-floor $_wd → shape-floor-detail.md written and non-empty" "present" \
-        "$([[ -s "$TEST_TEMP_DIR/$_wd/artifacts/shape-floor-detail.md" ]] && echo present || echo absent)"
-done
 # ── SPEC-15 (#2161): the ENGINE's reader accepts every gate's pass result ─────
 # #1840 run 6: the acceptance gate passed all 19 SPECs and the run ended
 # blocked — its result had no `reason` and `disposition: none`. Field-level
@@ -308,6 +272,5 @@ _reader_ok "lint-gate" "$W" lint-gate lint-gate
 W="$(_mkwork r15-mut)"; _seed_results "$W" '{mutation:{status:"measured",score:90,floor:50}}'
 mutation_gate_run "mutation-gate" "$W/state.json" >/dev/null 2>&1 || true
 _reader_ok "mutation-gate" "$W" mutation-gate mutation-gate
-# #2372: the shape floor runs inside test; its result is one of test's outputs, not a stage's.
 
 print_test_results

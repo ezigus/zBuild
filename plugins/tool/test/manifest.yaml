@@ -67,9 +67,6 @@ provides:
     - acceptance.gate.wiring_exempt
     - acceptance.gate.wiring_not_on_path
     - acceptance.gate.worktree_failed
-    - shape_floor.fail
-    - shape_floor.pass
-    - shape_floor.skip
 
 config:
   # #2372: the acceptance check test runs over its own run.
@@ -116,11 +113,11 @@ outputs:
     format: text
     required: false
     errors: true
+  # #2556 (ADR-071 §1): the suite's outcome names no topic; its findings reach
+  # stages from test_code and test_change below, one output per topic.
   - id: test_results
-    topic: code-findings
-    description: "the suite's outcome; findings: each failing test file and why, and an assertion file changed after its tests were written; its reason names any of test's checks that failed"
+    description: "the suite's outcome; findings, for the reports: each failing test file and why, and an assertion file changed after its tests were written; its reason names any of test's checks that failed"
     path: "${artifact_dir}/test-results.json"
-    finding_topics: change-findings
     type: test-results.json@1
     format: json
     required: true
@@ -133,8 +130,9 @@ outputs:
   # makes `required: true` the contract, and the existing missing-output
   # machinery enforces it with no new engine code. This REPLACES the older
   # #511 F2 "missing == empty" semantics, under which a passing run left no file.
+  # #2556 (ADR-071 §1): it lists every failing file, whoever's it is, so it
+  # names no topic; the findings reach stages from test_code and test_change.
   - id: test_failures_summary
-    topic: code-findings
     description: "the suite's failing assertions, and which of test's checks failed"
     path: "${artifact_dir}/test-failures-summary.md"
     type: test-failures-summary.md@1
@@ -165,30 +163,41 @@ outputs:
     type: test-timing.log@1
     format: text
     required: false
-  # #2372: the checks test runs over its own run (were stages of their own).
-  # Their findings reach later stages through test-results.json; these files
-  # keep each check's detail.
-  - id: shape_floor_result
+  - id: test_code
     topic: code-findings
-    description: "the shape check; findings: a change to a file whose shape tests pin, without those tests in the change"
-    path: "${artifact_dir}/shape-floor-result.json"
-    finding_topics: change-findings
-    type: shape-floor-result.json@1
+    description: "the suite's findings a test's author or the code must fix: a failing file that is one of the design's tests, an assertion file changed after its tests were written, a test file far slower than the rest"
+    path: "${artifact_dir}/test-code-result.json"
+    type: routed-findings.json@1
     format: json
     required: false
-  - id: shape_floor_detail
-    topic: code-findings
-    description: "the shape check's detail"
-    path: "${artifact_dir}/shape-floor-detail.md"
-    type: shape-floor-detail.md@1
-    format: markdown
+  - id: test_change
+    topic: change-findings
+    description: "the suite's findings only the code can fix: a failing file that is not one of the design's tests"
+    path: "${artifact_dir}/test-change-result.json"
+    type: routed-findings.json@1
+    format: json
     required: false
+  # #2372: the checks test runs over its own run (were stages of their own).
+  # #2556: the acceptance check's outcome names no topic; its findings reach
+  # stages from acceptance_requirement and acceptance_code below.
   - id: acceptance_result
-    topic: requirement-findings
-    description: "whether each requirement's test proves it; findings: a requirement with no tagged assertion, a test that passes without the change or fails with it, a WIRING file the change does not run through or that is not what runs it, a changed file no test needs"
+    description: "whether each requirement's test proves it; findings, for the reports: a requirement with no tagged assertion, a test that passes without the change or fails with it, a WIRING file the change does not run through or that is not what runs it, a changed file no test needs"
     path: "${artifact_dir}/acceptance-gate-result.json"
-    finding_topics: code-findings
     type: acceptance-gate-result.json@1
+    format: json
+    required: false
+  - id: acceptance_requirement
+    topic: requirement-findings
+    description: "the acceptance check's findings about the requirements: a requirement with no tagged assertion, a test that passes on the old code, a WIRING file that is not what runs the change"
+    path: "${artifact_dir}/acceptance-gate-requirement-result.json"
+    type: routed-findings.json@1
+    format: json
+    required: false
+  - id: acceptance_code
+    topic: code-findings
+    description: "the acceptance check's findings about the code or a test: a test that does not pass on the new code, a changed file no test checks, a test that never reached its assertion, a test file that died or ran too long"
+    path: "${artifact_dir}/acceptance-gate-code-result.json"
+    type: routed-findings.json@1
     format: json
     required: false
   - id: acceptance_detail

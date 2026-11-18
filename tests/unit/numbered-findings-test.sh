@@ -19,7 +19,7 @@
 #             that opened it: "- design-gate finding 1 (opened by design-gate): …"
 # N4 [guard]  a check with nothing to report lists no findings
 # N5 [change] every check in the default design and build loops writes its
-#             findings through stage_findings_json
+#             findings through stage_findings_json (or, #2556, stage_findings_route)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -112,7 +112,7 @@ for _p in plugins/agent/design plugins/agent/test-author \
           plugins/tool/test plugins/agent/issue-acceptance; do
     _hit=0
     for _f in "$REPO_ROOT/$_p"/*.sh "$REPO_ROOT/$_p"/lib/*.sh; do
-        [[ -f "$_f" ]] && grep -q 'stage_findings_json' "$_f" && { _hit=1; break; }
+        [[ -f "$_f" ]] && grep -qE 'stage_findings_(json|route)' "$_f" && { _hit=1; break; }
     done
     [[ $_hit -eq 1 ]] || _missing+="$_p "
 done
