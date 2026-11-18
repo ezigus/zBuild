@@ -1,10 +1,9 @@
-# Shape-change indicators (#781). One glob per line. Lines starting with `#` are comments.
-# When ANY plan.steps[].files[] entry matches one of these globs, impact's
-# scope-completeness check enters "shape change" mode and runs the deterministic
-# prefilter (grep tests/ for old numeric counts + scan tests/golden/**/event-sequence.golden).
+# Run-shaping files (#781, #2556). One glob per line, from the repository root.
+# Lines starting with `#` are comments.
 #
-# CLAUDE.md "Test scope discovery" rule mandates this grep; the prefilter
-# automates it so plan/impact don't need to remember.
+# A change to one of these can change the run's stage order or its event
+# sequence. When a change touches one, the test stage always runs the shape
+# tests listed in config/shape-tests.txt (ADR-040, amended by #2556).
 
 config/templates/*.yaml
 core/pipeline/template.sh

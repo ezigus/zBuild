@@ -188,8 +188,8 @@ _ia_write() {
     # #2271 (ADR-068): each unmet acceptance item is a numbered finding. #2304
     # (ADR-069 §7): so is each requirement the judge is not sure of — nothing
     # else checks it. #2330: each says what would settle it, never who must.
-    # #2452 (ADR-071 §1): an unmet line's [fix-code] / [fix-design] mark is the
-    # finding's topic — it reaches the stages that can fix it — never its text.
+    # #2452, #2556 (ADR-071 §1): an unmet line's [fix-code] / [fix-design] mark
+    # sends it to the output of the stages that can fix it, never its text.
     # #2508 (ADR-072 §3): each part of the change nothing asked for is a
     # finding only the code can fix — change-findings, which build takes.
     # #2523 (ADR-071 §1): one in a test file ([fix-test]) is code-findings, which
@@ -203,7 +203,7 @@ _ia_write() {
         ($x[] | tostring | (if test("^\\[fix-test\\]") then "code-findings\t" else "change-findings\t" end)
             + "The change does this and no requirement asks for it: " + sub("^\\[fix-test\\][[:space:]]*"; "")
             + ". What would settle it: the change without this part, or a requirement that asks for it.")' \
-        <<< "$u" 2>/dev/null | stage_findings_json)"
+        <<< "$u" 2>/dev/null | stage_findings_route "$dir" issue-acceptance requirement-findings)"
     u="$(jq -c 'map(tostring | sub("^\\[fix-(code|design)\\][[:space:]]*"; ""))' <<< "$u" 2>/dev/null || printf '%s' "$u")"
     x="$(jq -c 'map(tostring | sub("^\\[fix-test\\][[:space:]]*"; ""))' <<< "$x" 2>/dev/null || printf '%s' "$x")"
     # ADR-068 §6: what it did about each finding it was given (_IA_ANSWERS),
@@ -291,7 +291,7 @@ issue_acceptance_run() {
     # #2464 (ADR-072 §4 §5): the answer is kept while what it judged is
     # unchanged; a stage's `wrong` answer to one of its findings is judged
     # again, shown to the judge.
-    local _ans=""; judge_answers_to_v _ans "$art" issue-acceptance
+    local _ans=""; judge_answers_to_v _ans "$art" issue-acceptance issue-acceptance-requirement issue-acceptance-code issue-acceptance-change
     local kf="${art%/}/issue-acceptance-judged.json" eng fp kept="" _root_q="$_root"
     judge_engine_v eng
     judge_fp_v fp "$eng"$'\n'"$issue"$'\n'"$_reqs"$'\n'"$_lims"$'\n'"$_terms"$'\n'"$acc"$'\n'"$_change_fp"$'\n'"$test_verdict"$'\n'"$_ans"

@@ -107,19 +107,20 @@ _ap="$(jq -r '.data.findings[0].text // empty' "$A/acceptance-gate-result.json" 
 _pw6() { local idx; idx="$(_inputs_resolve_stage "$1" "$REPO_ROOT/plugins" "$S" 2>/dev/null)"
          _stage_block_previous_work "$1" "$S" "$REPO_ROOT/plugins" "$idx" "$R" "$REPO_ROOT/plugins/agent/$1/manifest.yaml" 2>/dev/null; }
 _pwd="$(_pw6 design)"; _pwb="$(_pw6 build)"
-assert_contains "[R6] design is shown the acceptance check's finding" "$_pwd" "acceptance-gate finding 1 (opened by test): ${_ap:0:40}"
+assert_contains "[R6] design is shown the acceptance check's finding, from its requirement output (#2556)" "$_pwd" "acceptance-gate-requirement finding 1 (opened by test): ${_ap:0:40}"
 assert_eq "[R6] build is shown it as a finding once" "1" \
     "$(grep -E '^- [a-z-]+ finding [0-9]+ \(opened by test\): ' <<< "$_pwb" | grep -cF -- "${_ap:0:40}")"
 
 # ── R7 ───────────────────────────────────────────────────────────────────────
 # A check that fails with no findings and a reason over two lines gets ONE
 # finding: the reason is one item, not one per line (#2428 review).
-shape_floor_run() { stage_result_write "$ZBUILD_ARTIFACT_DIR/shape-floor-result.json" fail $'line one\nline two'; }
-acceptance_gate_run() { stage_result_write "$ZBUILD_ARTIFACT_DIR/acceptance-gate-result.json" pass ok; }
+acceptance_gate_run() { stage_result_write "$ZBUILD_ARTIFACT_DIR/acceptance-gate-result.json" fail $'line one\nline two'; }
 _test_own_checks test "$S/pipeline-state.json" "$A/test-results.json" "$R" >/dev/null 2>&1
 assert_eq "[R7] a two-line reason is one finding" "1" \
-    "$(jq '(.data.findings // []) | length' "$A/shape-floor-result.json" 2>/dev/null)"
-assert_contains "[R7] ...holding both lines" "$(jq -r '.data.findings[0].text // ""' "$A/shape-floor-result.json")" "line one line two"
+    "$(jq '(.data.findings // []) | length' "$A/acceptance-gate-result.json" 2>/dev/null)"
+assert_contains "[R7] ...holding both lines" "$(jq -r '.data.findings[0].text // ""' "$A/acceptance-gate-result.json")" "line one line two"
+assert_contains "[R7] ...and in the check's requirement output (#2556)" \
+    "$(jq -r '.data.findings[0].text // ""' "$A/acceptance-gate-requirement-result.json" 2>/dev/null)" "line one line two"
 
 # ── R5 ───────────────────────────────────────────────────────────────────────
 for _p in tool/shape-floor agent/spec-acceptance tool/assertion-integrity; do
@@ -130,7 +131,7 @@ for _s in shape-floor acceptance-gate assertion-integrity; do
 done
 _out="$(sed -n '/^outputs:/,/^[a-z]/p' "$REPO_ROOT/plugins/tool/test/manifest.yaml")"
 assert_contains "[R5] test declares the acceptance check's result" "$_out" "acceptance-gate-result.json"
-assert_contains "[R5] ...and the shape-floor check's" "$_out" "shape-floor-result.json"
+assert_eq "[R5] ...and no shape-floor result (#2556)" "0" "$(grep -c 'shape-floor' <<< "$_out" || true)"
 
 # ── R8 ───────────────────────────────────────────────────────────────────────
 # The suite fails in the design's test file and in another test file.
@@ -145,9 +146,11 @@ WIRING: none
 ```
 ' ""
 export ZBUILD_TEST_CMD="$_r8_saved"; unset A_TEST_BODY
-_r8() { jq -r --arg k "$1" '[.data.findings[]? | select(.text | contains($k)) | (.topic // "none")][0] // "MISSING"' "$A/test-results.json" 2>/dev/null; }
-assert_eq "[R8] the design's test file keeps test's topic" "none" "$(_r8 'tests/a-test.sh fails')"
-assert_eq "[R8] another test file is change-findings" "change-findings" "$(_r8 'tests/other-test.sh fails')"
+# #2556: each goes to test's output of its topic.
+_r8() { jq -r '[.data.findings[]?.text] | join(" ")' "$A/test-$1-result.json" 2>/dev/null; }
+assert_contains "[R8] the design's test file goes to test's code output" "$(_r8 code)" "tests/a-test.sh fails"
+assert_contains "[R8] another test file goes to its change output" "$(_r8 change)" "tests/other-test.sh fails"
+assert_eq "[R8] ...and not to the code output" "0" "$(grep -c 'tests/other-test.sh fails' <<< "$(_r8 code)" || true)"
 
 cleanup_test_env
 print_test_results

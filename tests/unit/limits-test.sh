@@ -192,8 +192,8 @@ KEPT: RQSTG-1
 UNASKED: none'
 assert_eq "[LM8] a broken limit fails it" "fail" "$(jq -r '.outcome' "$A/issue-acceptance-result.json" 2>/dev/null)"
 assert_contains "[LM8] ...as an unmet item" "$(jq -r '[.data.unmet[]?] | join("\n")' "$A/issue-acceptance-result.json" 2>/dev/null)" "RQNCI-1"
-assert_eq "[LM8] ...whose finding goes to the code's fixer (fix-code)" "1" \
-    "$(jq -r '[.data.findings[]? | select(.topic == "code-findings" and (.text | contains("RQNCI-1")))] | length' "$A/issue-acceptance-result.json" 2>/dev/null)"
+assert_eq "[LM8] ...whose finding goes to the code's fixer (fix-code: the code output, #2556)" "1" \
+    "$(jq -r '[.data.findings[]? | select(.text | contains("RQNCI-1"))] | length' "$A/issue-acceptance-code-result.json" 2>/dev/null)"
 _ia 'MET: RQCLM-1
 KEPT: RQNCI-1
 UNASKED: none'

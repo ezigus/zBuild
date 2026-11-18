@@ -209,7 +209,6 @@ outputs:
     format: json
     required: true
     primary: true
-    finding_topics: none
 EOF
     cat > "$INT_PLUGINS_ROOT/agent/$_plugin/plugin.sh" <<EOF
 ${_fn}() {

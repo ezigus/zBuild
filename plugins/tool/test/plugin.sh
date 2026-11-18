@@ -56,10 +56,8 @@ source "$_ZBUILD_TEST_STAGE_ROOT/scripts/lib/proc-group.sh"
 # grammar is checked by its own copy. A lib that fails to load is recorded.
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
 source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-block.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" acceptance-block.sh"
-# #2372: test checks its own run — the shape floor, the acceptance contract, and
+# #2372: test checks its own run — the acceptance contract, and
 # that the assertion files are the ones their author wrote.
-# shellcheck source=lib/shape-floor-check.sh
-source "$_ZBUILD_TEST_STAGE_DIR/lib/shape-floor-check.sh"
 # shellcheck source=lib/acceptance-check.sh
 source "$_ZBUILD_TEST_STAGE_DIR/lib/acceptance-check.sh"
 # #2364: earlier work is found by what it contains, never by which stage made it.
@@ -67,6 +65,14 @@ source "$_ZBUILD_TEST_STAGE_DIR/lib/acceptance-check.sh"
 source "$_ZBUILD_TEST_STAGE_ROOT/scripts/lib/earlier-output.sh"
 # shellcheck source=lib/own-checks.sh
 source "$_ZBUILD_TEST_STAGE_DIR/lib/own-checks.sh"
+
+# _test_list_file_v <var> <repo_root> <name> — the repository's config/<name>,
+# else the engine's own (#2556).
+_test_list_file_v() {
+    local -n _tlf="$1"; _tlf=""
+    if [[ -f "$2/config/$3" ]]; then _tlf="$2/config/$3"
+    elif [[ -f "$_ZBUILD_TEST_STAGE_ROOT/config/$3" ]]; then _tlf="$_ZBUILD_TEST_STAGE_ROOT/config/$3"; fi
+}
 
 # ─── _test_compute_target_files (ADR-034 / #846, #2121) ──────────────────────
 # Unions: the prior-iter red-set (ZBUILD_TEST_RED_SET JSON array of relative
@@ -166,6 +172,35 @@ _test_compute_target_files() {
             while IFS= read -r _dtf; do
                 [[ -n "$_dtf" && -f "$repo_root/$_dtf" ]] && all_files+=("$_dtf")
             done < <(acceptance_list_testfiles "$_design_md" "$repo_root" 2>/dev/null || true)
+        fi
+    fi
+
+    # #2556 (ADR-040): a change to a run-shaping file always runs the shape
+    # tests, so a targeted rerun cannot leave out the tests that pin the run.
+    if [[ -n "$changed_files_csv" ]]; then
+        local _sp_file _sp_tests _sp_l _sp_hit="" _sp_cf
+        local -a _sp_globs=()
+        _test_list_file_v _sp_file "$repo_root" shape-change-paths.txt
+        _test_list_file_v _sp_tests "$repo_root" shape-tests.txt
+        if [[ -n "$_sp_file" && -n "$_sp_tests" ]]; then
+            while IFS= read -r _sp_l || [[ -n "$_sp_l" ]]; do
+                _sp_l="${_sp_l%%#*}"; _sp_l="${_sp_l//[[:space:]]/}"; [[ -n "$_sp_l" ]] && _sp_globs+=("$_sp_l")
+            done < "$_sp_file"
+            local -a _sp_cfs=(); local _sp_ifs="$IFS"; IFS=','; read -ra _sp_cfs <<< "$changed_files_csv"; IFS="$_sp_ifs"
+            for _sp_cf in ${_sp_cfs[@]+"${_sp_cfs[@]}"}; do
+                _sp_cf="${_sp_cf## }"; _sp_cf="${_sp_cf% }"; _sp_cf="${_sp_cf#./}"
+                for _sp_l in ${_sp_globs[@]+"${_sp_globs[@]}"}; do
+                    # shellcheck disable=SC2053  # the list's globs match by design
+                    [[ "$_sp_cf" == $_sp_l ]] && { _sp_hit=1; break 2; }
+                done
+            done
+            if [[ -n "$_sp_hit" ]]; then
+                while IFS= read -r _sp_l || [[ -n "$_sp_l" ]]; do
+                    _sp_l="${_sp_l%%#*}"; _sp_l="${_sp_l//[[:space:]]/}"
+                    # Only a path inside the repository is ever run.
+                    [[ -n "$_sp_l" && "$_sp_l" != /* && "/$_sp_l/" != *"/../"* && -f "$repo_root/$_sp_l" ]] && all_files+=("$_sp_l")
+                done < "$_sp_tests"
+            fi
         fi
     fi
 
@@ -1121,11 +1156,14 @@ _test_write_result() {
     # #2271: each failing file is a numbered finding; #2454: labelled by whose
     # test file it is. The design is looked up only when something failed
     # (ADR-065: a passing run pays nothing for it).
+    # #2556 (ADR-071 §1): each goes to test's output of its topic.
     local _numbered="[]"
     if [[ "$findings_json" != "[]" ]]; then
         _numbered="$(jq -r '.[]? | "\(.file)\t\(.file) fails: \(.reason)"' <<< "$findings_json" 2>/dev/null \
-            | _test_findings_by_owner "$(earlier_acceptance_contract "$dir" "" 2>/dev/null || true)" | stage_findings_json)"
+            | _test_findings_by_owner "$(earlier_acceptance_contract "$dir" "" 2>/dev/null || true)" | stage_findings_route "$dir" test code-findings)"
         [[ -n "$_numbered" ]] || _numbered="[]"
+    else
+        stage_findings_route "$dir" test code-findings < /dev/null >/dev/null
     fi
 
     # #2366 (ADR-054 §6): one outcome — pass/fail when the suite ran to the end,

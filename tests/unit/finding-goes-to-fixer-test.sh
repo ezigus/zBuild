@@ -121,7 +121,7 @@ IA="$(_pw issue-acceptance)"
 assert_not_contains "[F5] issue-acceptance is not shown the lens finding the code must fix" "$IA" "CODE-FIX"
 # shellcheck source=../../plugins/tool/test/lib/findings.sh
 source "$REPO_ROOT/plugins/tool/test/lib/findings.sh"
-_tf="$(printf 'lib/other.sh\tOTHER-FILE fails: not one of the design test files\n' | _test_findings_by_owner "" | stage_findings_json)"
+_tf="$(printf 'lib/other.sh\tOTHER-FILE fails: not one of the design test files\n' | _test_findings_by_owner "" | stage_findings_route "$ART" test code-findings)"
 stage_result_write "$ART/test-results.json" fail "1 file failed" "{\"findings\":$_tf}" >/dev/null
 _update_stage_status "$STATE/pipeline-state.json" test complete
 assert_contains "[F5] build is shown a failing file that is not the design's test" "$(_pw build)" "OTHER-FILE fails"

@@ -95,6 +95,27 @@ _inputs_output_paths() {
     done
 }
 
+# _inputs_output_paths_v <var> <stage> <raw_path> <state_dir> — the same paths,
+# newline-joined, into <var>, read in this shell: the producer index asks once
+# per declared output at every start (#2556, ADR-065: no subshell an output).
+_inputs_output_paths_v() {
+    local -n _iopv="$1"; shift
+    local _iop_safe="${1//-/_}" _iop_one _iop_e _iop_p
+    local _iop_tv="_TPL_STAGE_TYPE_${_iop_safe}" _iop_av="_TPL_MAP_AS_${_iop_safe}" _iop_ev="_TPL_MAP_ELEMENTS_${_iop_safe}"
+    _iopv=""
+    if [[ "${!_iop_tv:-}" != "map" || -z "${!_iop_ev:-}" ]]; then
+        _verdict_resolve_path_v _iop_one "$2" "$3"; _iopv="$_iop_one"; return 0
+    fi
+    local -a _iop_el=()
+    IFS=',' read -r -a _iop_el <<< "${!_iop_ev}"
+    for _iop_e in "${_iop_el[@]}"; do
+        [[ -z "$_iop_e" ]] && continue
+        _iop_p="$2"; [[ -n "${!_iop_av:-}" ]] && _iop_p="${_iop_p//\$\{${!_iop_av}\}/$_iop_e}"
+        _verdict_resolve_path_v _iop_one "$_iop_p" "$3"
+        _iopv+="${_iopv:+$'\n'}$_iop_one"
+    done
+}
+
 # ─── _inputs_build_producer_index <plugins_root> <state_dir> ─────────────────
 # Populates the three globals below, keyed by OUTPUT ID. Legal because ADR-055
 # §5 requires each output id to be claimed by exactly one stage per resolved
@@ -138,7 +159,7 @@ _inputs_build_producer_index() {
             [[ -z "$out_id" || -z "$out_path" ]] && continue
             # First producer wins; a second is an OUTPUT_DUP the validator owns.
             [[ -n "${_IR_PRODUCER[$out_id]:-}" ]] && continue
-            paths="$(_inputs_output_paths "$stage" "$out_path" "$state_dir")"
+            _inputs_output_paths_v paths "$stage" "$out_path" "$state_dir"
             _IR_PRODUCER["$out_id"]="$stage"
             _IR_PATHS["$out_id"]="$paths"
             # #1895: the producer DECLARES how its artifact is checked. Captured

@@ -77,7 +77,6 @@ outputs:
     format: json
     required: true
     primary: true
-    finding_topics: none
 EOF
     cat > "$dir/plugin.sh" <<EOF
 ${fn}() {

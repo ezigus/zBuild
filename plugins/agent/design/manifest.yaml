@@ -103,7 +103,6 @@ outputs:
     topic: requirement-findings
     description: "design's checks on the design; findings: a missing acceptance block, a requirement with no status, a WIRING file that is missing or is in a test folder, an issue requirement no SPEC covers, an UNCLEAR line not in its form"
     path: "${artifact_dir}/design-verdict.json"
-    finding_topics: none
     type: design-verdict.json@1
     format: json
     required: true

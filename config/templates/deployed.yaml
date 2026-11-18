@@ -142,7 +142,7 @@ build:
 test:
   gate: auto
   roles: [tester]
-  # #2372: test runs the shape floor and the acceptance check over its own run,
+  # #2372: test runs the acceptance check over its own run (#2556: the shape floor is gone),
   # and checks the assertion files against their fingerprints. ADR-036 #1188:
   # negctl_timeout_s bounds each requirement's negative-control / reachability
   # run (seconds).

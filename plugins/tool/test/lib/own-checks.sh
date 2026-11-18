@@ -3,8 +3,7 @@
 # ADR-068).
 #
 # After the suite, test runs the checks that were stages of their own: the
-# shape floor (lib/shape-floor-check.sh), the acceptance contract
-# (lib/acceptance-check.sh), and that the assertion files are the ones their
+# acceptance contract (lib/acceptance-check.sh), and that the assertion files are the ones their
 # author wrote. test has no model to go back to: its one outcome is fail when any
 # check fails, and the build loop goes round. Each check's numbered findings stay
 # in that check's own result (#2428); test's result names the check in its reason.
@@ -92,16 +91,17 @@ _test_own_checks() {
     local own; own="$(jq -r '.outcome // empty' "$out" 2>/dev/null || true)"
     case "$own" in pass|fail) ;; *) return 0 ;; esac
 
-    ( cd "$repo" 2>/dev/null && shape_floor_run "$stage" "$state_file" ) >/dev/null 2>&1 || true
     ( cd "$repo" 2>/dev/null && acceptance_gate_run "$stage" "$state_file" ) >/dev/null 2>&1 || true
     _test_assertion_fingerprints "$repo"
 
     local -a texts=() why=()
     local outcome="$own" r o t
-    # #2452: read back with each finding's topic, so folding keeps it.
+    # #2556: read back from the outputs by topic, so folding keeps each topic.
     while IFS= read -r t; do [[ -n "$t" ]] && texts+=("$t"); done \
-        < <(stage_findings_lines "$out")
-    for r in "$art/shape-floor-result.json:the shape floor" "$art/acceptance-gate-result.json:the acceptance check"; do
+        < <(stage_findings_routed_lines "$art" test code-findings)
+    # One check since #2556 removed the shape floor; the loop keeps its shape.
+    # shellcheck disable=SC2066
+    for r in "$art/acceptance-gate-result.json:the acceptance check"; do
         local f="${r%%:*}" name="${r#*:}"
         o="$(jq -r '.outcome // empty' "$f" 2>/dev/null || true)"
         case "$o" in
@@ -114,7 +114,8 @@ _test_own_checks() {
                 # check that failed with no findings gets its reason as one.
                 if [[ "$(jq -r '(.data.findings // []) | length' "$f" 2>/dev/null)" == 0 ]]; then
                     local fj1 tmp1
-                    fj1="$(printf '%s failed: %s\n' "$name" "$(jq -r '(.reason // "") | gsub("[\r\n]+"; " ")' "$f" 2>/dev/null)" | stage_findings_json)"
+                    local _fn1="${f##*/}"; _fn1="${_fn1%-result.json}"
+                    fj1="$(printf '%s failed: %s\n' "$name" "$(jq -r '(.reason // "") | gsub("[\r\n]+"; " ")' "$f" 2>/dev/null)" | stage_findings_route "$art" "$_fn1" requirement-findings)"
                     tmp1="$(jq --argjson f "${fj1:-[]}" '.data = ((.data // {}) + {findings: $f})' "$f" 2>/dev/null)" \
                         && printf '%s\n' "$tmp1" | atomic_write "$f" || true
                 fi ;;
@@ -144,7 +145,7 @@ _test_own_checks() {
     fi
 
     local fj tmp reason
-    fj="$( { [[ ${#texts[@]} -gt 0 ]] && printf '%s\n' "${texts[@]}"; } | stage_findings_json)"
+    fj="$( { [[ ${#texts[@]} -gt 0 ]] && printf '%s\n' "${texts[@]}"; } | stage_findings_route "$art" test code-findings)"
     tmp="$(jq --argjson f "${fj:-[]}" '.data = ((.data // {}) + {findings: $f})' "$out" 2>/dev/null)" \
         && printf '%s\n' "$tmp" | atomic_write "$out" || true
     # A check's failure the loop cannot fix (a malformed contract) still ends

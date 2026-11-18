@@ -80,7 +80,6 @@ export ZBUILD_ARTIFACT_DIR="$A" ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events.jsonl
 unset ZBUILD_STAGE_INPUTS
 _timing 210229 1000 72000; cp "$LOG" "$A/test-timing.log"
 stage_result_write "$A/test-results.json" pass "all passed" '{}' >/dev/null 2>&1
-shape_floor_run() { stage_result_write "$ZBUILD_ARTIFACT_DIR/shape-floor-result.json" pass ok; }
 acceptance_gate_run() { stage_result_write "$ZBUILD_ARTIFACT_DIR/acceptance-gate-result.json" pass ok; }
 _test_own_checks test "$TEST_TEMP_DIR/state/pipeline-state.json" "$A/test-results.json" "$R" >/dev/null 2>&1
 assert_eq "[T6] test fails" "fail" "$(jq -r '.outcome // "MISSING"' "$A/test-results.json")"
