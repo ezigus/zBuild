@@ -445,19 +445,32 @@ fi
 
 # Given: config/event-schema.json includes an entry for pipeline.refused.claimed
 _dscla10_schema="$REPO_ROOT/config/event-schema.json"
+_dscla10_coverage="$REPO_ROOT/tests/unit/event-schema-emitted-coverage-test.sh"
 
-# When: the event-schema emitted-coverage check runs against the codebase
-# (eb_compose_known_types is the same function the coverage check uses to build
-# the known set from event-schema.json + plugin manifests; available via
-# event-bus.sh sourced at the top of this file)
+# Given check: pipeline.refused.claimed must be in the composed known set.
+# On base code the event is absent from event-schema.json so this fails
+# immediately (the right red step).  On new code the event is registered and
+# the check passes; we then invoke the actual coverage check.
 _dscla10_known="$(eb_compose_known_types "$_dscla10_schema" "$REPO_ROOT/plugins" 2>/dev/null || printf '')"
-
-# Then: the check exits without reporting pipeline.refused.claimed as an unregistered event name
-if grep -qxF "pipeline.refused.claimed" <<< "$_dscla10_known"; then
-    assert_pass "[DSCLA-10] pipeline.refused.claimed is in the composed known types (coverage check accepts it)"
+if ! grep -qxF "pipeline.refused.claimed" <<< "$_dscla10_known"; then
+    assert_fail "[DSCLA-10] Given: pipeline.refused.claimed must be in config/event-schema.json" \
+        "not found in composed known set; the coverage check cannot accept it if it is not registered"
 else
-    assert_fail "[DSCLA-10] pipeline.refused.claimed is in the composed known types (coverage check accepts it)" \
-        "not found in composed known set; config/event-schema.json may be missing the entry"
+    # When: the event-schema emitted-coverage check runs against the codebase
+    set +e
+    _dscla10_out="$(bash "$_dscla10_coverage" 2>&1)"
+    _dscla10_rc=$?
+    set -e
+
+    # Then: the check exits without reporting pipeline.refused.claimed as an unregistered event name
+    if [[ "$_dscla10_rc" -eq 0 ]]; then
+        assert_pass "[DSCLA-10] event-schema emitted-coverage check exits 0 (pipeline.refused.claimed is accepted)"
+    elif grep -qF "pipeline.refused.claimed" <<< "$_dscla10_out"; then
+        assert_fail "[DSCLA-10] event-schema emitted-coverage check reports pipeline.refused.claimed as an unregistered event name" \
+            "coverage check output (first 400 chars): ${_dscla10_out:0:400}"
+    else
+        assert_pass "[DSCLA-10] event-schema emitted-coverage check does not report pipeline.refused.claimed as unregistered (failed for other reasons)"
+    fi
 fi
 
 cleanup_test_env
