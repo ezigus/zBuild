@@ -403,14 +403,25 @@ mock_gh
 # DSCLA-10: pipeline.refused.claimed is an accepted event name in event-schema.json
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Given: config/event-schema.json is the event schema for the engine
-# When: we check for pipeline.refused.claimed in the known_types
-# Then: pipeline.refused.claimed is registered (passes the schema coverage check)
-if grep -qF '"pipeline.refused.claimed"' "$REPO_ROOT/config/event-schema.json" 2>/dev/null; then
+# Given: config/event-schema.json is the event schema for the engine;
+#        runner.sh emits pipeline.refused.claimed during a run refusal
+_dscla10_schema="$REPO_ROOT/config/event-schema.json"
+_dscla10_runner="$REPO_ROOT/core/pipeline/runner.sh"
+
+# When: the event-schema emitted-coverage check runs against the codebase
+# (the coverage check scans code for literal event names; for the check not to
+# reject this event, the name must be in config/event-schema.json — same query)
+_dscla10_registered=false
+grep -qF '"pipeline.refused.claimed"' "$_dscla10_schema" 2>/dev/null \
+    && _dscla10_registered=true
+
+# Then: the check exits without reporting pipeline.refused.claimed as an unregistered event name
+_dscla10_emitted_note="(runner emits it: $(grep -cF 'pipeline.refused.claimed' "$_dscla10_runner" 2>/dev/null || echo 0) occurrence(s))"
+if [[ "$_dscla10_registered" == "true" ]]; then
     assert_pass "[DSCLA-10] pipeline.refused.claimed is in config/event-schema.json known_types"
 else
     assert_fail "[DSCLA-10] pipeline.refused.claimed is in config/event-schema.json known_types" \
-        "not found in $REPO_ROOT/config/event-schema.json"
+        "not found in $_dscla10_schema $_dscla10_emitted_note"
 fi
 
 cleanup_test_env
