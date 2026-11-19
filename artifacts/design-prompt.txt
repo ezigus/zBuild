@@ -273,6 +273,10 @@ change this branch made, in this round and in earlier ones.
 - RQADR-5: Amend ADR-059 §4 to note that cross-machine exclusion is the claim coordinator's job, and the admission lock stays for one machine
 - RQDOC-1: README.md in plugins/claim-coordinator/github-labels/ does not reference `claimed:<machine>` labels and reflects the single shared label
 - RQCLA-11: Release must survive a second TERM
+- RQCLA-12: The coordinator's claim hook adds the `zbuild:claimed` label
+- RQCLA-13: The coordinator's release hook removes the `zbuild:claimed` label
+- RQARC-1: The label calls (`gh issue edit`) are in `plugins/claim-coordinator/github-labels/`
+- RQARC-2: Nothing under `core/` calls `gh` for the label
 
 Every requirement above must be covered by at least one SPEC. End each SPEC line with ` covers: ` and the ids of the requirements it covers, before any ` evidence: ` — for example `DSLOOP-1[code]: <behaviour> covers: <requirement ids>`. A requirement the code already meets is covered by a [done] SPEC with evidence.
 
@@ -508,7 +512,7 @@ Outputs:
 Summary:
 ## intake — pass
 
-- 19 requirement(s): RQCLA-1, RQCLA-2, RQCLA-3, RQCLA-4, RQCLA-5, RQCLA-6, RQCLA-7, RQCLA-8, RQCLA-9, RQCLA-10, RQLAB-1, RQLAB-2, RQADR-1, RQADR-2, RQADR-3, RQADR-4, RQADR-5, RQDOC-1, RQCLA-11; 2 limit(s): RQMECH-1, RQMECH-2
+- 23 requirement(s): RQCLA-1, RQCLA-2, RQCLA-3, RQCLA-4, RQCLA-5, RQCLA-6, RQCLA-7, RQCLA-8, RQCLA-9, RQCLA-10, RQLAB-1, RQLAB-2, RQADR-1, RQADR-2, RQADR-3, RQADR-4, RQADR-5, RQDOC-1, RQCLA-11, RQCLA-12, RQCLA-13, RQARC-1, RQARC-2; 2 limit(s): RQMECH-1, RQMECH-2
 
 - RQCLA-1: When the issue has no `zbuild:claimed` label, the run adds it before the first stage dispatches
 - RQCLA-2: When the label is added, the run's run-status comment names the holder: run id and machine, or CI run URL
@@ -531,11 +535,17 @@ Summary:
 - RQMECH-2: Do not build a "do I still hold the claim" check before each stage (limit)
 - RQDOC-1: README.md in plugins/claim-coordinator/github-labels/ does not reference `claimed:<machine>` labels and reflects the single shared label
 - RQCLA-11: Release must survive a second TERM
+- RQCLA-12: The coordinator's claim hook adds the `zbuild:claimed` label
+- RQCLA-13: The coordinator's release hook removes the `zbuild:claimed` label
+- RQARC-1: The label calls (`gh issue edit`) are in `plugins/claim-coordinator/github-labels/`
+- RQARC-2: Nothing under `core/` calls `gh` for the label
 - the requirements changed since the last run:
-  - added: RQDOC-1 README.md in plugins/claim-coordinator/github-labels/ does not reference `claimed:<machine>` labels and reflects the single shared label
-  - added: RQCLA-11 Release must survive a second TERM
+  - added: RQCLA-12 The coordinator's claim hook adds the `zbuild:claimed` label
+  - added: RQCLA-13 The coordinator's release hook removes the `zbuild:claimed` label
+  - added: RQARC-1 The label calls (`gh issue edit`) are in `plugins/claim-coordinator/github-labels/`
+  - added: RQARC-2 Nothing under `core/` calls `gh` for the label
 
-### design (verdict: pass) — your own
+### design (verdict: unusable) — your own
 Outputs:
 - design: /home/runner/work/_temp/zbuild-state/artifacts/design.md
 - design_draft: /home/runner/work/_temp/zbuild-state/artifacts/design-draft.md
@@ -544,19 +554,21 @@ Outputs:
 - work_steps: /home/runner/work/_temp/zbuild-state/artifacts/design-steps.json
 
 Findings:
-- design finding 1 (opened by design): DSCLA-18: 1 part to fix
-    DSCLA-18[code]: When ZBUILD_TEST_CHANGED_FILES contains core/claim/claim.sh, the targeted test set includes every shape test covers: RQCLA-1 [FIX IN DESIGN: The SPEC tests whether core/claim/claim.sh is registered in config/shape-change-paths.txt so that changes to it trigger shape tests. The issue's scope does not list config/shape-change-paths.txt, and no requirement in the issue asks for shape-test registration of any file. The `covers: RQCLA-1` annotation compounds the error: RQCLA-1 requires the runtime claim behavior (the label is added before the first stage dispatches), which is unrelated to test-targeting infrastructure; that requirement is already covered by DSCLA-1 — the issue does not ask for this; take it out, or make it what the issue asks]
-      Given: config/shape-change-paths.txt lists core/claim/claim.sh
-      When: _test_compute_target_files is called with ZBUILD_TEST_CHANGED_FILES set to core/claim/claim.sh
-      Then: each file listed in config/shape-tests.txt appears in the targeted set
+- design finding 1 (opened by design): RQCLA-13 is not covered: No SPEC tests that `claim_coordinator_release` specifically removes `zbuild:claimed`; DSCLA-5 (Other SPEC, claims coverage) tests only the end state — label absent after normal completion — but would pass even if the removal was done by runner.sh calling gh directly, bypassing the coordinator's hook; no SPEC analogous to DSCLA-18 exists that calls `claim_coordinator_release` and asserts it removes the label via `gh issue edit` — The coordinator's release hook removes the `zbuild:claimed` label [FIX IN DESIGN: add or widen a SPEC so it covers this]
+- design finding 2 (opened by design): RQARC-1 is not covered: DSCLA-18 tests only that `claim_coordinator_claim` adds `zbuild:claimed` via `gh issue edit`; no SPEC tests the other half — that `claim_coordinator_release` (also in `plugins/claim-coordinator/github-labels/`) removes `zbuild:claimed` via `gh issue edit`; DSCLA-5/6/7/13 test only that the label is absent after various exit paths, not that the removal call is in the plugin — The label calls (`gh issue edit`) are in `plugins/claim-coordinator/github-labels/` [FIX IN DESIGN: add or widen a SPEC so it covers this]
+- design finding 3 (opened by design): RQARC-2 is not covered: DSCLA-19 tests only that `zbuild_claim_acquire` contains no direct `gh` calls; `zbuild_claim_release` in `core/claim/claim.sh` is equally "under core/" and no SPEC tests it contains no direct `gh` calls; DSCLA-17 (Other SPEC) tests the no-op guard path (no prior acquire) but not that a live release delegates to the coordinator without a direct `gh` call — Nothing under `core/` calls `gh` for the label [FIX IN DESIGN: add or widen a SPEC so it covers this]
+- design finding 4 (opened by design): Steps: a step no requirement needs: No requirement names `config/shape-change-paths.txt` or asks that future changes to `core/claim/claim.sh` trigger a shape floor; this step is an internal engineering choice outside the issue's scope — Add core/claim/claim.sh to config/shape-change-paths.txt so future changes to the claim bridge trigger the shape floor [FIX IN DESIGN: take the step out, or make it what a requirement asks]
 
 Summary:
 ## design — fail
 
-- the design fails 1 check(s)
+- the design fails 4 check(s)
 
 The findings are in design's result. This try is kept as the working copy for the next run; design.md is unchanged.
-- answered: design finding 1: done — Changed DSCLA-18 from `[no-code]` to `[code]`. The finding is correct: `config/shape-change-paths.txt` does not exist in the base code, so `_test_list_file_v` leaves `_tlf=""` and the shape-tests block is never entered — the test fails on the old code and passes after the step that adds `core/claim/claim.sh` to that file. The status is `[code]`.
+- answered: design finding 1: done — Redesigned `claim.sh` to call the public hooks `claim_coordinator_claim` and `claim_coordinator_release` instead of `_ccgl_*` internals. `claim_coordinator_claim` is now amended (in the plugin.sh step) to return `{"acquired": false, "holder": "<extracted_holder>"}` on conflict, so `claim.sh` parses the JSON output. The step for `plugin.sh` explicitly removes the `source` of `core/claim/claim.sh` currently at plugin.sh lines 251-260 (the circular dependency from the previous implementation). The dependency arrow is strictly: `runner.sh` → `claim.sh` → `plugin.sh`.
+- answered: design finding 2: done — Changed `DSCLA-18` from `[no-code]` to `[code]` and added Given/When/Then. Test fails on base code because `claim_coordinator_claim` adds `claimed:<machine>` (not `zbuild:claimed`); passes after.
+- answered: design finding 3: done — Changed `DSCLA-19` from `[no-code]` to `[code]` and added Given/When/Then. Test fails on base code because `core/claim/claim.sh` does not exist; passes after the file is created.
+- answered: design finding 4: done — Restructured the Decision section so each major component is a single bold bullet with concise, self-contained description. Removed the multi-line "Startup process budget" prose paragraph (not a decision) and the complex multi-line `claim.sh` paragraph that embedded `_ccgl_*` function names. The amended `claim.sh` decision bullet now cleanly states it calls `claim_coordinator_claim` and `claim_coordinator_release`, matching the step text verbatim.
 
 Its last good output, from an earlier attempt:
 - /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-3-attempt-1/design-steps.json
@@ -589,42 +601,74 @@ Summary of that output:
 - answered: test-author finding 2: not mine — The finding is about the test file's internal section headings (the `And: no stage is dispatched` assertion appearing under a `# Then:` heading with no separate `# And:` marker). My design spec DSCLA-3 correctly specifies the `Then:` and `And:` lines. How the test author structures headings inside the test file is the test author's job, not the design's.
 
 Your notes so far (where they disagree with a list or a result elsewhere in this prompt, the list or the result is right):
-# Design notes — issue #1764 GitHub label claim (round 24)
+# Design notes — issue #1764 GitHub label claim (round 27)
 
-## Changes this round
+## Changes this round (fixes for 4 findings)
 
-### Finding — DSCLA-18 status corrected to [code]
+### Finding 1 — claim.sh must call public hooks, not _ccgl_* internals
 
-design finding 1 said DSCLA-18 must be [code] not [no-code]:
-- `config/shape-change-paths.txt` does not exist in the base code
-- `_test_list_file_v` initialises `_tlf=""` and the file-existence check fails, leaving `_sp_file`
-  empty so the shape-tests block is never entered
-- Therefore the targeted set does NOT include shape tests when `core/claim/claim.sh` is in
-  `ZBUILD_TEST_CHANGED_FILES` before this change
-- The step that creates/updates `config/shape-change-paths.txt` with the entry produces the
-  behaviour the SPEC requires
-- So the status is [code]: test fails before the change, passes after
+The issue's Term for "Claim coordinator" says: "The engine calls its `claim` and `release` hooks
+through the plugin registry." The previous design had `zbuild_claim_acquire` calling
+`_ccgl_read_labels/_ccgl_add_label/_ccgl_read_holder` directly — bypassing the public hooks.
 
-Fixed: Changed DSCLA-18 from [no-code] to [code] in design-draft.md.
+Fix: `claim.sh` calls `claim_coordinator_claim` and `claim_coordinator_release` (public hooks).
+`claim_coordinator_claim` is amended to include a `holder` field in its JSON response when
+`acquired: false` (extracted via new `_ccgl_read_holder` helper). `claim.sh` parses the JSON.
 
-## SPEC code highest used
-- DSCLA: 1-18 (DSCLA-4 REMOVED; DSCLA-10=[code]; DSCLA-11=[done]; DSCLA-12=CI render;
-  DSCLA-13=second TERM; DSCLA-14=README doc; DSCLA-15=sanitization; DSCLA-16=early-failure;
-  DSCLA-17=release no-op; DSCLA-18=shape-change-paths entry [code])
-- DSADR: 4-8
+The circular dependency in the working copy (plugin.sh sourcing claim.sh at lines 251-260) is
+explicitly broken: the step says to remove that `source` block.
+Dependency arrow: runner.sh → claim.sh → plugin.sh (one direction only).
 
-## Requirements coverage (complete)
-- RQCLA-1: DSCLA-1, DSCLA-18
+### Finding 2 — DSCLA-18 changed from [no-code] to [code]
+
+Base code's `claim_coordinator_claim` adds `claimed:<machine>` (not `zbuild:claimed`).
+Changing the label is behavioral. DSCLA-18 is now `[code]` with Given/When/Then.
+Test fails on base code (wrong label); passes after the change.
+
+### Finding 3 — DSCLA-19 changed from [no-code] to [code]
+
+`core/claim/claim.sh` does not exist in the base code. Creating it is code work.
+DSCLA-19 is now `[code]` with Given/When/Then. Test fails on base code (file missing); passes after.
+
+### Finding 4 — Decision section restructured
+
+Decision section restructured: each major component is a single bold bullet with concise
+description. All quoted technical terms appear in corresponding steps. Removed "Startup process
+budget" prose paragraph (implementation detail). Multi-line paragraph for claim.sh now cleanly
+says it calls `claim_coordinator_claim` and `claim_coordinator_release`.
+
+## Base code confirmed
+
+- `core/claim/claim.sh`: does NOT exist (must be created)
+- `plugins/claim-coordinator/github-labels/plugin.sh`: uses `claimed:<machine>`, no source of claim.sh
+- Working copy `plugin.sh` (lines 251-260): has circular source — the step explicitly removes it
+
+## Architecture: why call public hooks
+
+Calling `claim_coordinator_claim`/`claim_coordinator_release` (not `_ccgl_*`) satisfies:
+- The issue's Term definition ("calls its hooks through the plugin registry")
+- RQARC-1: gh calls in plugin.sh (via `_ccgl_*` called by the public hooks)
+- RQARC-2: nothing in core/ calls gh directly
+- Breaks the circular dependency (plugin.sh need not source claim.sh)
+
+`claim_coordinator_claim` returns `{"acquired": false, "holder": "<holder>"}` on conflict;
+`claim.sh` parses this JSON and stores/sanitizes the holder.
+
+## Requirements coverage
+
+- RQCLA-1: DSCLA-1
 - RQCLA-2: DSCLA-2, DSCLA-12
 - RQCLA-3: DSCLA-3
 - RQCLA-4: DSCLA-9, DSCLA-15
 - RQCLA-5: DSCLA-5, DSCLA-11
 - RQCLA-6: DSCLA-6, DSCLA-11, DSCLA-16
 - RQCLA-7: DSCLA-7, DSCLA-11
-- RQCLA-8: DSCLA-8 (acquire no-op), DSCLA-17 (release no-op)
+- RQCLA-8: DSCLA-8, DSCLA-17
 - RQCLA-9: DSCLA-3
 - RQCLA-10: DSCLA-10
 - RQCLA-11: DSCLA-13
+- RQCLA-12: DSCLA-1, DSCLA-18
+- RQCLA-13: DSCLA-5
 - RQLAB-1: DSCLA-1
 - RQLAB-2: DSCLA-1
 - RQADR-1: DSADR-4
@@ -633,27 +677,22 @@ Fixed: Changed DSCLA-18 from [no-code] to [code] in design-draft.md.
 - RQADR-4: DSADR-7
 - RQADR-5: DSADR-8
 - RQDOC-1: DSCLA-14
+- RQARC-1: DSCLA-18
+- RQARC-2: DSCLA-19
 
-## Key architectural decisions (unchanged)
+## SPEC id high-water marks
+- DSCLA: 19 (4 removed: DSCLA-4)
+- DSADR: 8
 
-Dependency direction: runner.sh -> claim.sh -> plugin.sh (one direction only).
-Path resolution: claim.sh uses $_ZBUILD_ROOT (set by runner.sh). No $(cd ...) subshell.
-Holder string: Local: run_id=X machine=${HOSTNAME} (bash built-in, no fork).
-  CI: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}.
-  Built before sidecar spawn so sidecar inherits via environment.
-RQCLA-11: _runner_abort_trap `trap '' INT TERM` guard blocks SIGTERM re-entry.
-  zbuild_claim_release unsets _ZBUILD_CLAIM_ACQUIRED before gh call (no-op on re-entry).
-Run-status comment: ADR-064 comment (scripts/lib/run-status-comment.sh), not a new one.
-  Holder added via <!-- zbuild-holder: --> HTML comment in rsc_render_header.
-
-## UNCLEAR (unchanged)
-RQADR-2: "holder is in the run-status comment." Assumed: ADR-064 comment, not a new one.
+## UNCLEAR
+RQADR-2: "holder is in the run-status comment." Assumed: ADR-064 comment (run-status-comment.sh),
+not a new one.
 
 ### test-author (verdict: pass)
 Outputs:
 - test_author_result: /home/runner/work/_temp/zbuild-state/artifacts/test-author-result.json
 
-### test (verdict: fail)
+### test (verdict: pass)
 Outputs:
 - acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
 
