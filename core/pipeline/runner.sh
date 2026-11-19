@@ -2549,7 +2549,10 @@ main() {
             eb_emit_event "pipeline.refused.claimed" \
                 "issue=${_runner_issue:-}" "holder=${_ZBUILD_CLAIM_HOLDER:-unknown}" \
                 2>/dev/null || true
-            error "issue ${_runner_issue:-} is already claimed: ${_ZBUILD_CLAIM_HOLDER:-unknown}"
+            # Use printf '%s\n' (not error(), which uses echo -e) so backslash
+            # sequences in an attacker-controlled holder are never interpreted.
+            error "issue ${_runner_issue:-} is already claimed"
+            printf '%s\n' "${_ZBUILD_CLAIM_HOLDER:-unknown}" >&2
             # The exit trap is not set yet; release resources explicitly.
             zbuild_issue_lock_release || true
             zbuild_run_cap_release || true
@@ -2569,6 +2572,11 @@ main() {
         _wt_key="$(zbuild_run_key "$_runner_issue" "${goal:-}" 2>/dev/null || true)"
     fi
     if ! _runner_enter_worktree "$state_dir" "$_runner_run_id" "$_wt_key"; then
+        # EXIT trap not installed yet; release all acquired resources explicitly.
+        if declare -F zbuild_claim_release >/dev/null 2>&1; then
+            zbuild_claim_release "${_runner_issue:-}" || true
+        fi
+        zbuild_issue_lock_release || true
         zbuild_run_cap_release || true
         return 1
     fi
@@ -2583,6 +2591,11 @@ main() {
             error "could not set up the run's branch (see above)"
             _set_pipeline_status "$state_file" "failed" 2>/dev/null || true
         fi
+        # EXIT trap not installed yet; release all acquired resources explicitly.
+        if declare -F zbuild_claim_release >/dev/null 2>&1; then
+            zbuild_claim_release "${_runner_issue:-}" || true
+        fi
+        zbuild_issue_lock_release || true
         zbuild_run_cap_release || true
         return 1
     fi
