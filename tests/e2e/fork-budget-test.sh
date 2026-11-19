@@ -140,7 +140,11 @@ setup_test_env "fork-budget"
 # one jq each paid back part of it. Measured on macOS: 2404 processes and 1868
 # execs in all (was 2368 and 1830); 467 processes and 306 execs a dispatch
 # (was 501 and 327). It ratchets down from here.
-FORK_BUDGET=1868
+# #2567: build, the lenses and design's check read a design's decisions with one
+# extractor in the shell (design_decisions_prose_v), not awk and sed. Measured
+# on macOS: 2399 processes and 1865 execs in all, 465 processes and 305 execs a
+# dispatch.
+FORK_BUDGET=1865
 # PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
 # the programs above plus each `$( )` subshell, a copy of the whole engine shell
 # that FORK_BUDGET cannot see. Ratchets down only, like FORK_BUDGET. History:
@@ -196,7 +200,11 @@ FORK_BUDGET=1868
 # one jq each paid back part of it. Measured on macOS: 2404 processes and 1868
 # execs in all (was 2368 and 1830); 467 processes and 306 execs a dispatch
 # (was 501 and 327). It ratchets down from here.
-PROCESS_BUDGET=2404
+# #2567: build, the lenses and design's check read a design's decisions with one
+# extractor in the shell (design_decisions_prose_v), not awk and sed. Measured
+# on macOS: 2399 processes and 1865 execs in all, 465 processes and 305 execs a
+# dispatch.
+PROCESS_BUDGET=2399
 # The run's cost in two parts (ADR-065 §6, #2472). Each budget ratchets down
 # like the totals; each floor is the goal, an estimate, measured again when
 # reached. History: 505 / 298 a dispatch, 12 / 7 a plugin at start-up (#2472 —
@@ -247,9 +255,13 @@ PROCESS_BUDGET=2404
 # one jq each paid back part of it. Measured on macOS: 2404 processes and 1868
 # execs in all (was 2368 and 1830); 467 processes and 306 execs a dispatch
 # (was 501 and 327). It ratchets down from here.
-DISPATCH_PROCS_BUDGET=467
+# #2567: build, the lenses and design's check read a design's decisions with one
+# extractor in the shell (design_decisions_prose_v), not awk and sed. Measured
+# on macOS: 2399 processes and 1865 execs in all, 465 processes and 305 execs a
+# dispatch.
+DISPATCH_PROCS_BUDGET=465
 DISPATCH_PROCS_FLOOR=20
-DISPATCH_EXECS_BUDGET=306
+DISPATCH_EXECS_BUDGET=305
 DISPATCH_EXECS_FLOOR=50
 STARTUP_PROCS_PER_PLUGIN_BUDGET=11
 STARTUP_PROCS_PER_PLUGIN_FLOOR=1

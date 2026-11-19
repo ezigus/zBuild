@@ -26,14 +26,13 @@ zb_id_prefix_v _DCK_ID_PREFIX "${BASH_SOURCE[0]%/*}/../manifest.yaml"
 # starts UNCLEAR: but is not `UNCLEAR: <id> | <question> | <assumed>` (#2508,
 # ADR-069 §12): a question no report could show, so it is refused, not dropped.
 _dck_unclear_bad_v() {
-    local -n _dub="$1"; local _l _in=0
+    local -n _dub="$1"; local -a _dub_all=(); local _l _q
     _dub=()
-    while IFS= read -r _l || [[ -n "$_l" ]]; do
-        _l="${_l%$'\r'}"
-        if [[ "$_l" =~ ^[[:space:]]*\`\`\` ]]; then _in=$(( 1 - _in )); continue; fi
-        (( _in == 0 )) && [[ "$_l" =~ ^[[:space:]]*UNCLEAR: && ! "$_l" =~ $_ZB_UNCLEAR_RE ]] \
-            && _dub+=("${_l#"${_l%%[![:space:]]*}"}")
-    done < "$2"
+    # #2567: the same joined lines the reports read (scripts/lib/unclear.sh).
+    zb_unclear_lines_v _dub_all "$2"
+    for _l in ${_dub_all[@]+"${_dub_all[@]}"}; do
+        zb_unclear_parse_v _q "$_l" || _dub+=("$_l")
+    done
     return 0
 }
 

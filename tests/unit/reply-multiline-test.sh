@@ -8,6 +8,11 @@
 # requirement holding a ';' became two. A wrapped "the test is wrong:" answer
 # was dropped entirely.
 #
+# J4 [change] (#2567) a fence line is a line of its own; the lines inside a
+#             block join as anywhere else
+# J5 [change] (review on #2567) a fenced, wrapped ANSWER is read whole; a fence
+#             never closed does not stop the joining
+# J6 [change] (review on #2567) only a check's Decision answer starts a unit
 # J1 [change] zb_reply_join_v joins a continued line to the line it continues
 # J2 [guard]  ...never across a blank line, and never into a new KEY:, ANSWER,
 #             list item or LOOP_COMPLETE
@@ -48,6 +53,26 @@ assert_contains "[J2] ...nor into an ANSWER or LOOP_COMPLETE" "$_j" $'ANSWER tes
 zb_reply_join_v _j $'MISSING:\n- Tests for R1-R5 must use a cycle\n- A test pins each side;\n  both ways' 2>/dev/null
 assert_contains "[J3] a list under an empty key becomes one key line per item" "$_j" "MISSING: Tests for R1-R5 must use a cycle"
 assert_contains "[J3] ...and an item's continued line joins it" "$_j" "MISSING: A test pins each side; both ways"
+# #2567: a fence line is a line of its own, and the lines inside it still join.
+zb_reply_join_v _j $'UNCLEAR: R-1 | q? |\nassumed it\n```acceptance\nX-1[code]: a\n  Then: b\n```\nafter' 2>/dev/null
+assert_eq "[J4] a fence line stays its own line" "2" "$(/usr/bin/grep -cx '```acceptance\|```' <<< "$_j")"
+assert_eq "[J4] ...the line before it is not glued to it" "UNCLEAR: R-1 | q? | assumed it" "$(/usr/bin/grep -x -B1 '```acceptance' <<< "$_j" | head -n 1)"
+assert_eq "[J4] ...and the lines inside it still join" "X-1[code]: a Then: b" "$(/usr/bin/grep -x -A1 '```acceptance' <<< "$_j" | tail -n 1)"
+assert_eq "[J4] ...and the line after the block starts afresh" "after" "$(tail -n 1 <<< "$_j")"
+# A model that fences its answer: the wrapped ANSWER is read whole (review on #2567).
+zb_reply_join_v _j $'```\nANSWER review_lenses finding lens-scope finding 2: wrong — the test is wrong:\ntests/unit/x-test.sh: it pins the old label\n```' 2>/dev/null
+assert_eq "[J5] a fenced, wrapped ANSWER is read whole" \
+    "ANSWER review_lenses finding lens-scope finding 2: wrong — the test is wrong: tests/unit/x-test.sh: it pins the old label" \
+    "$(/usr/bin/grep -x 'ANSWER.*' <<< "$_j")"
+zb_reply_join_v _j $'```\nREASON: the timeout is not applied\n  to the retry path' 2>/dev/null
+assert_eq "[J5] ...and a fence never closed does not stop the joining" "REASON: the timeout is not applied to the retry path" \
+    "$(/usr/bin/grep -x 'REASON.*' <<< "$_j")"
+# Only a check's Decision answer starts a unit; prose that says "Decision:" joins.
+zb_reply_join_v _j $'step 2: not needed — the code does it and\nDecision: in ADR-073 says so' 2>/dev/null
+assert_eq "[J6] wrapped prose starting with Decision: joins the line it continues" \
+    "step 2: not needed — the code does it and Decision: in ADR-073 says so" "$_j"
+zb_reply_join_v _j $'Steps: ok\nDecision: ok' 2>/dev/null
+assert_eq "[J6] ...a check's Decision answer is a unit of its own" "2" "$(/usr/bin/grep -c . <<< "$_j")"
 
 # ── Q1 ───────────────────────────────────────────────────────────────────────
 (

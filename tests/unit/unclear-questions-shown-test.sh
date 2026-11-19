@@ -17,6 +17,11 @@
 #           banner and the issue's completion comment
 # Q4 [code] the PR description shows each question (ADR-040)
 # Q5 [code] with no question, none of them has a questions section
+# Q7 [change] (review on #2567) an UNCLEAR whose assumption is only the word
+#            Assumed: is not a question; a leading Assumed: is set aside
+# Q6 [change] (#2567) a question design wrapped over lines is read whole: its
+#            assumption on the next line is kept, the prose after a blank line
+#            is not, and a wrapped line inside a block is still no question
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -60,6 +65,50 @@ if declare -F zb_unclear_list_v >/dev/null 2>&1; then zb_unclear_list_v _q "$S/a
 assert_eq "[Q1] two well-formed questions" "2" "${#_q[@]}"
 assert_eq "[Q1] id, question, assumption" $'R-2\tDoes --from-stage need --resume?\tit works on its own' "${_q[0]:-}"
 assert_eq "[Q1] trimmed" $'R-4\tIs the flag <b>documented</b>?\tno page is needed' "${_q[1]:-}"
+
+print_test_section "Q6: a wrapped question is read whole"
+# #1764 run 44417314654: design wrapped its assumption onto the next line.
+W="$TEST_TEMP_DIR/w"; mkdir -p "$W/artifacts"
+cat > "$W/artifacts/design.md" <<'EOF'
+# Design
+
+UNCLEAR: RQADR-2 | "the holder is in the run-status comment" — which comment is this? | Assumed:
+the ADR-064 run-status comment (`scripts/lib/run-status-comment.sh`), not a new one.
+
+The claim lives in the coordinator plugin.
+
+```acceptance
+UNCLEAR: R-7 | inside a block |
+not a question
+DSFLAG-1[code]: the flag works
+```
+EOF
+_w=()
+declare -F zb_unclear_list_v >/dev/null 2>&1 && zb_unclear_list_v _w "$W/artifacts/design.md"
+assert_eq "[Q6] one question, outside the block" "1" "${#_w[@]}"
+assert_eq "[Q6] its assumption whole, the next line included, the word Assumed: set aside" \
+    $'RQADR-2\t"the holder is in the run-status comment" — which comment is this?\tthe ADR-064 run-status comment (`scripts/lib/run-status-comment.sh`), not a new one.' "${_w[0]:-}"
+assert_not_contains "[Q6] the prose after the blank line is not part of it" "${_w[0]:-}" "coordinator plugin"
+
+print_test_section "Q7: a question with no assumption is not one"
+B="$TEST_TEMP_DIR/b"; mkdir -p "$B/artifacts"
+cat > "$B/artifacts/design.md" <<'EOF'
+# Design
+
+UNCLEAR: R-3 | is it bare? | Assumed:
+
+UNCLEAR: R-4 | is it led by a hash? | Assumed:
+#2460's reader joins it
+
+UNCLEAR: R-5 | is it led by a dash? | Assumed:
+- the existing one
+
+UNCLEAR: R-6 | is it whole? | Assumed: it is
+EOF
+_q7=()
+zb_unclear_list_v _q7 "$B/artifacts/design.md"
+assert_eq "[Q7] only the question with an assumption is listed" "1" "${#_q7[@]}"
+assert_eq "[Q7] ...its assumption without the word Assumed:" $'R-6\tis it whole?\tit is' "${_q7[0]:-}"
 
 print_test_section "Q2: the live run-status comment"
 # shellcheck source=../../scripts/lib/run-status-comment.sh
