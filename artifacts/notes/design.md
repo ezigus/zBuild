@@ -1,58 +1,71 @@
-# Design notes — issue #1764 GitHub label claim (round 19)
+# Design notes — issue #1764 GitHub label claim (round 20)
 
-## Critical fix this round: DSCLA-10 restored to [code] with Given/When/Then
+## Changes this round: lens findings addressed
 
-Design finding 1 from the rejected run said DSCLA-10 was [no-code] but must be [code].
-In the design-draft.md before this round, line 145 had `DSCLA-10[no-code]`.
-Fixed to [code] with Given/When/Then (matches the passing iter-3-attempt-1 version):
-- Given: runner.sh emits pipeline.refused.claimed during a run refusal
-- When: the event-schema emitted-coverage check runs against the codebase
-- Then: the check exits without reporting pipeline.refused.claimed as an unregistered event name
+The review_lenses stage failed on security, red-team, correctness, scope, and sre lenses.
+All lens-*-design-result.json files said "pass / no findings the design must fix" — but the
+judged.json files contained code findings, some of which were design gaps. Changes made:
 
-The design checker requires [code] because adding pipeline.refused.claimed to event-schema.json
-changes behaviour: the coverage check passes for this event name where it would fail before.
+### Findings addressed
 
-The previous round's answer tried to change to [no-code] — the design checker rejected that.
-Going back to [code] with Given/When/Then is the correct fix.
+**1. plugin.sh sources claim.sh (scope/sre/red-team HIGH)**
+Code added `source core/claim/claim.sh` to plugin.sh despite design prohibiting it.
+Fixed: Decision section now explicitly says plugin.sh MUST NOT contain any `source` of
+claim.sh; explains the circular load. Step 1 now says "ensure NO `source` of core/claim/claim.sh
+appears anywhere in plugin.sh."
 
-## Supersedes block removed
+**2. claim_coordinator_claim still uses `claimed:<machine>` (correctness/scope MEDIUM)**
+Code kept `local our_label="claimed:${machine}"` despite step saying to change it.
+Fixed: Decision section now says "Delete the `local our_label=...` line and all per-machine
+label logic from both functions; replace with `local label="zbuild:claimed"`."
+Step 1 updated with the same explicit instruction.
 
-All supersedes entries were stale. Verified against actual test files:
-- claim-coordinator-unit-test.sh: DSCLA-2 assertions say "gh issue comment was NOT called"
-  (already aligned — no separate claim comment)
-- claim-coordinator-unit-test.sh: no DSCLA-4 assertions exist (DSCLA-4 was REMOVED)
-- teardown-repeat-signal-test.sh: DSCLA-5/6/7 assertions check zbuild:claimed absence (correct)
-- teardown-repeat-signal-test.sh: DSCLA-9 reads holder from run-status comment mock (correct)
-Since all tests are already correctly aligned with the design, supersedes block is empty → removed.
+**3. zbuild_claim_release doesn't unset _ZBUILD_CLAIM_ACQUIRED (correctness/scope/sre)**
+Design already said to do this, code didn't. Fixed: Decision section now says "MUST call
+`unset _ZBUILD_CLAIM_ACQUIRED` BEFORE calling `_ccgl_remove_label`." Step 4 updated with MUST.
 
-## New requirements handled (RQDOC-1, RQCLA-11)
+**4. Early-failure paths after claim acquire don't call release (red-team HIGH)**
+After zbuild_claim_acquire succeeds, _runner_enter_worktree and zbuild_run_branch_setup
+failure paths only call `zbuild_run_cap_release || true`, not `zbuild_claim_release || true`.
+EXIT trap is installed much later so it won't fire on these paths.
+Fixed: Decision section now has an explicit paragraph about this gap. Step 7 updated to add
+`zbuild_claim_release || true` and `zbuild_issue_lock_release || true` to both paths.
+New SPEC DSCLA-16[code] added (covers RQCLA-6).
 
-DSCLA-13[code] covers RQCLA-11: second TERM during release doesn't prevent label removal.
-Mechanism: _runner_abort_trap already does `trap '' INT TERM` early (blocks SIGTERM re-entry
-for entire cleanup); zbuild_claim_release also unsets _ZBUILD_CLAIM_ACQUIRED before backend
-call (makes second call a no-op). Both layers work together.
+**5. Holder string sanitization (security/red-team MEDIUM)**
+_ccgl_read_holder extracts holder from GitHub comment. If holder contains \n or ANSI codes,
+error() (which uses echo -e) interprets them → log injection.
+Fixed: Decision section now says "sanitize the extracted holder string (strip ANSI escape codes
+and literal backslash sequences via `printf '%s'` or `sed`) before storing in _ZBUILD_CLAIM_HOLDER."
+Decision also says use `printf '%s\n'` not `error()` when printing holder on refusal.
+Steps 4 and 7 updated. New SPEC DSCLA-15[code] added (covers RQCLA-4, alongside DSCLA-9).
 
-DSCLA-14[doc] covers RQDOC-1: README.md must not reference claimed:<machine>.
-Current README base code line 9 says "claimed:<machine>". Step and doc SPEC added.
+**6. SRE observability on graceful degradation (sre MEDIUM)**
+Code silently returns 0 on backend error with no log. Design said "graceful" but no log.
+Fixed: Decision section now says "log a warning to stderr so the skip is visible."
+Step 4 updated.
 
-## test-author finding 1: not mine
+**7. SRE test finding: DSCLA-9 fixture is hand-written (sre MEDIUM, fix: test)**
+Tagged "fix: test" in the SRE result. Not a design gap — the design SPEC correctly specifies
+Given/When/Then. The test author must rewrite the fixture to use rsc_render_header.
+Answered: "not mine."
 
-The finding says the DSCLA-10 test uses grep on the JSON file instead of running the coverage
-check. All items are tagged "FIX IN TEST." The design SPEC correctly specifies Given/When/Then.
-The test author must rewrite the DSCLA-10 test to run the coverage check, not check file content.
+## SPEC additions this round
+- DSCLA-15[code]: holder sanitized before printing (covers RQCLA-4, alongside DSCLA-9)
+- DSCLA-16[code]: early-failure paths release claim before returning (covers RQCLA-6, alongside DSCLA-6)
 
 ## SPEC code highest used
-- DSCLA: 1-14 (DSCLA-4 REMOVED; DSCLA-10=[code]; DSCLA-11=[done]; DSCLA-12=CI render;
-  DSCLA-13=second TERM; DSCLA-14=README doc)
+- DSCLA: 1-16 (DSCLA-4 REMOVED; DSCLA-10=[code]; DSCLA-11=[done]; DSCLA-12=CI render;
+  DSCLA-13=second TERM; DSCLA-14=README doc; DSCLA-15=sanitization; DSCLA-16=early-failure)
 - DSADR: 4-8
 
 ## Requirements coverage (complete)
 - RQCLA-1: DSCLA-1
 - RQCLA-2: DSCLA-2, DSCLA-12
 - RQCLA-3: DSCLA-3
-- RQCLA-4: DSCLA-9
+- RQCLA-4: DSCLA-9, DSCLA-15
 - RQCLA-5: DSCLA-5, DSCLA-11
-- RQCLA-6: DSCLA-6, DSCLA-11
+- RQCLA-6: DSCLA-6, DSCLA-11, DSCLA-16
 - RQCLA-7: DSCLA-7, DSCLA-11
 - RQCLA-8: DSCLA-8
 - RQCLA-9: DSCLA-3

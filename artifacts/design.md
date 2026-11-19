@@ -24,13 +24,17 @@ adds a machine-readable `<!-- zbuild-holder: ... -->` HTML comment immediately a
 
 **Amend `plugins/claim-coordinator/github-labels/plugin.sh`** (the existing plugin owns this job):
 - Change `claim_coordinator_claim` to use the single shared label `zbuild:claimed` instead of
-  `claimed:<machine>`. The simplified check: if `zbuild:claimed` is absent, add it; if present,
-  search the issue's comments for the most recent run-status comment and extract the
+  `claimed:<machine>`. Delete the `local our_label="claimed:${machine}"` line and all per-machine
+  label logic from both `claim_coordinator_claim` and `claim_coordinator_release`; replace with
+  `local label="zbuild:claimed"`. The simplified check: if `zbuild:claimed` is absent, add it;
+  if present, search the issue's comments for the most recent run-status comment and extract the
   `<!-- zbuild-holder: -->` line into a returned holder string.
 - Change `claim_coordinator_release` to remove `zbuild:claimed` (no machine suffix).
 - The `_ccgl_*` backend helpers remain and are used by the amended public functions.
-- `plugin.sh` must not source `core/claim/claim.sh` — that would create a circular dependency
-  and add a startup `$(cd ...)` subshell in plugin.sh's load path.
+- `plugin.sh` MUST NOT contain any `source` of `core/claim/claim.sh` — that creates a circular
+  dependency (`claim.sh` sources `plugin.sh`; a reverse source closes the loop) and adds a
+  startup `$(cd ...)` subshell on plugin.sh's load path. The dependency arrow is one-way:
+  `claim.sh` sources `plugin.sh`.
 
 **Update `plugins/claim-coordinator/github-labels/README.md`**: remove all references to
 `claimed:<machine>` labels; describe the single shared label `zbuild:claimed`; update the
@@ -43,23 +47,33 @@ run-status comment, not in the label name.
 - `zbuild_claim_build_holder`: builds and exports `_ZBUILD_CLAIM_HOLDER`; uses `${HOSTNAME}`
   (bash built-in variable) for the machine name — never calls the external `hostname` command.
 - `zbuild_claim_acquire <issue>`: skip if issue is empty; calls `_ccgl_read_labels` / `_ccgl_add_label`
-  / `_ccgl_read_holder` from the loaded plugin; on conflict, sets `_ZBUILD_CLAIM_HOLDER` from
-  the extracted holder string and returns 1; on success, sets `_ZBUILD_CLAIM_ACQUIRED` and
-  returns 0. Backend errors return 0 (graceful).
+  / `_ccgl_read_holder` from the loaded plugin; on conflict, sanitizes the extracted holder string
+  (strip ANSI escape codes and literal backslash sequences via `printf '%s'` or `sed`) before
+  storing in `_ZBUILD_CLAIM_HOLDER`, then returns 1; on success, sets `_ZBUILD_CLAIM_ACQUIRED`
+  and returns 0. Backend errors (read or add failures) return 0 (graceful) and log a warning to
+  stderr so the skip is visible in the run's output.
 - `zbuild_claim_release <issue>`: skip if issue is empty or `_ZBUILD_CLAIM_ACQUIRED` is unset;
-  unsets `_ZBUILD_CLAIM_ACQUIRED` before calling `_ccgl_remove_label` (advisory). Unsetting
-  first makes a second call a no-op.
+  MUST call `unset _ZBUILD_CLAIM_ACQUIRED` BEFORE calling `_ccgl_remove_label` (advisory).
+  Unsetting first makes a second call a no-op — this is the idempotency guarantee DSCLA-13
+  relies on.
 
 **Wire into `core/pipeline/runner.sh`**: source `core/claim/claim.sh` at top (alongside
 `core/state/issue-lock.sh`); call `zbuild_claim_build_holder` before the sidecar spawn so the
 sidecar inherits `_ZBUILD_CLAIM_HOLDER`; call `zbuild_claim_acquire` right after
-`zbuild_issue_lock_acquire` succeeds; on return 1, emit `pipeline.refused.claimed`, print holder,
-return 1 (same shape as issue-lock refusal); call `zbuild_claim_release` in `_runner_abort_trap`
-after `zbuild_issue_lock_release`, using `declare -F` guard. The call is placed AFTER the
-`trap '' INT TERM` guard already at the top of `_runner_abort_trap` (line 2711 in the working
-tree), which blocks SIGTERM re-entry for the duration of cleanup — this is what RQCLA-11 relies
-on. `zbuild_claim_release` also unsets `_ZBUILD_CLAIM_ACQUIRED` on first call, so a second
-invocation from any path is a no-op.
+`zbuild_issue_lock_acquire` succeeds; on return 1, emit `pipeline.refused.claimed`, print holder
+using `printf '%s\n'` (not `error()`, which uses `echo -e` and would interpret escape sequences
+in an attacker-controlled holder string), then return 1 (same shape as issue-lock refusal); call
+`zbuild_claim_release` in `_runner_abort_trap` after `zbuild_issue_lock_release`, using `declare
+-F` guard. The call is placed AFTER the `trap '' INT TERM` guard already at the top of
+`_runner_abort_trap`, which blocks SIGTERM re-entry for the duration of cleanup — this is what
+RQCLA-11 relies on. `zbuild_claim_release` also unsets `_ZBUILD_CLAIM_ACQUIRED` on first call,
+so a second invocation from any path is a no-op.
+
+The EXIT trap is installed well after `zbuild_claim_acquire` succeeds; two early-failure return
+paths between them (`_runner_enter_worktree` failure and `zbuild_run_branch_setup` failure)
+currently call only `zbuild_run_cap_release || true` before returning. Both paths MUST also call
+`zbuild_claim_release || true` and `zbuild_issue_lock_release || true`, mirroring the
+`zbuild_run_cap_release || true` pattern already in those paths.
 
 **Register `pipeline.refused.claimed`** in `config/event-schema.json` (follows pattern of
 `pipeline.refused.issue_locked`).
@@ -90,13 +104,13 @@ UNCLEAR: RQADR-2 | "the holder is in the run-status comment" — which comment i
 the ADR-064 run-status comment (`scripts/lib/run-status-comment.sh`), not a new one.
 
 ```steps
-- Amend plugins/claim-coordinator/github-labels/plugin.sh: change claim_coordinator_claim to use zbuild:claimed (single shared label, no machine suffix); change claim_coordinator_release to remove zbuild:claimed; add holder extraction from run-status comment on claim conflict; remove any back-reference source of core/claim/claim.sh (circular dependency; also eliminates the _ccgl_plugin_dir=$(cd ...) subshell) | areas: plugins/claim-coordinator/github-labels/plugin.sh
+- Amend plugins/claim-coordinator/github-labels/plugin.sh: in claim_coordinator_claim, delete the `local our_label="claimed:${machine}"` line and all per-machine label logic; replace with `local label="zbuild:claimed"` and use it throughout; do the same in claim_coordinator_release; add holder extraction from run-status comment on claim conflict; ensure NO `source` of core/claim/claim.sh appears anywhere in plugin.sh (the dependency arrow is claim.sh→plugin.sh, not the reverse; a reverse source creates a circular load) | areas: plugins/claim-coordinator/github-labels/plugin.sh
 - Update plugins/claim-coordinator/github-labels/README.md: remove all references to claimed:<machine>; describe the single shared label zbuild:claimed; update ZBUILD_CLAIM_MACHINE_ID row to note it now affects only the holder string in the run-status comment, not the label name | areas: plugins/claim-coordinator/github-labels/README.md
 - Edit scripts/lib/run-status-render.sh: add <!-- zbuild-holder: CI_URL --> (CI) or <!-- zbuild-holder: run_id=X machine=H --> (local) in rsc_render_header after the run_id marker printf | areas: scripts/lib/run-status-render.sh
-- Create core/claim/claim.sh: thin wiring bridge; source plugin.sh using $_ZBUILD_ROOT (not $(cd ...) subshell); zbuild_claim_build_holder uses ${HOSTNAME} bash variable (not external hostname); zbuild_claim_acquire calls _ccgl_read_labels/_ccgl_add_label/_ccgl_read_holder; zbuild_claim_release unsets _ZBUILD_CLAIM_ACQUIRED before calling _ccgl_remove_label (makes second call a no-op); graceful degradation (no issue, backend error) | areas: core/claim/claim.sh
+- Create core/claim/claim.sh: thin wiring bridge; source plugin.sh using $_ZBUILD_ROOT (not $(cd ...) subshell); zbuild_claim_build_holder uses ${HOSTNAME} bash variable (not external hostname); zbuild_claim_acquire calls _ccgl_read_labels/_ccgl_add_label/_ccgl_read_holder; zbuild_claim_acquire sanitizes the holder string from _ccgl_read_holder (strip ANSI codes and backslash sequences via printf '%s') before storing in _ZBUILD_CLAIM_HOLDER; zbuild_claim_acquire logs a stderr warning when graceful-degrading on backend error; zbuild_claim_release MUST call `unset _ZBUILD_CLAIM_ACQUIRED` BEFORE `_ccgl_remove_label` (makes second call a no-op — required for DSCLA-13) | areas: core/claim/claim.sh
 - Register pipeline.refused.claimed in config/event-schema.json following the pattern of pipeline.refused.issue_locked | areas: config/event-schema.json
 - Add core/claim/claim.sh to config/shape-change-paths.txt so future changes to the claim bridge trigger the shape floor | areas: config/shape-change-paths.txt
-- Wire core/claim/claim.sh into runner.sh: source at top; call zbuild_claim_build_holder before sidecar spawn; call zbuild_claim_acquire after zbuild_issue_lock_acquire; emit event + print holder + return 1 on refusal; call zbuild_claim_release in _runner_abort_trap with declare -F guard, placed AFTER the trap '' INT TERM guard already at the top of _runner_abort_trap — this ensures a second SIGTERM during cleanup is blocked while release runs | areas: core/pipeline/runner.sh
+- Wire core/claim/claim.sh into runner.sh: source at top; call zbuild_claim_build_holder before sidecar spawn; call zbuild_claim_acquire after zbuild_issue_lock_acquire; on refusal emit event + print holder via `printf '%s\n' "$holder"` (not error(), which uses echo -e and would interpret backslash sequences in an attacker-controlled holder) + return 1; call zbuild_claim_release in _runner_abort_trap with declare -F guard, placed AFTER the trap '' INT TERM guard; in both early-failure return paths after zbuild_claim_acquire succeeds but before the EXIT trap is installed (_runner_enter_worktree failure and zbuild_run_branch_setup failure), add `zbuild_claim_release || true` and `zbuild_issue_lock_release || true` before returning, alongside the existing `zbuild_run_cap_release || true` | areas: core/pipeline/runner.sh
 - Amend docs/adr/ADR-005-claim-coordinator.md: extend the existing ## Enforced by §1 bullet to add §1(c) enforcement: claim-coordinator-unit-test.sh [DSCLA-3] (refused: non-zero exit, no stage dispatched, event emitted) and teardown-repeat-signal-test.sh [DSCLA-9] (refused output names holder); add [DSCLA-12] to the §2 bullet alongside [DSCLA-2] for the CI holder rendering case | areas: docs/adr/ADR-005-claim-coordinator.md
 - Amend docs/adr/ADR-059-issue-vs-run-keying.md: add an Enforced by entry for the §4 cross-machine exclusion statement — naming [DSCLA-3] (a run is refused when another machine holds zbuild:claimed on the issue) | areas: docs/adr/ADR-059-issue-vs-run-keying.md
 ```
@@ -149,6 +163,14 @@ DSCLA-10[code]: The event-schema emitted-coverage check does not reject pipeline
 DSCLA-11[done]: The run-status comment shows terminal status when the runner exits on any path covers: RQCLA-5, RQCLA-6, RQCLA-7 evidence: scripts/lib/run-status-render.sh | rsc_finalize_body() {
   When: the runner exits on any path (normal, failure, or signal)
   Then: the run-status comment's status header is not "running"
+DSCLA-15[code]: The holder string is printed without interpreting escape sequences in the run's refusal output covers: RQCLA-4
+  Given: the holder string extracted from the GitHub run-status comment contains a backslash sequence such as \n or an ANSI escape code
+  When: the run prints the holder on refusal
+  Then: the run's stdout or stderr output contains the literal backslash sequence, not its interpreted form
+DSCLA-16[code]: When claim acquisition succeeds but runner infrastructure setup fails before the EXIT trap is installed, zbuild:claimed is removed before the runner function returns covers: RQCLA-6
+  Given: zbuild_claim_acquire succeeds (zbuild:claimed is added to the issue); the subsequent _runner_enter_worktree or zbuild_run_branch_setup call fails before the EXIT trap is installed
+  When: the runner returns from that failure path
+  Then: zbuild_claim_release is called and zbuild:claimed is absent from the issue after the return
 DSCLA-13[code]: When a second SIGTERM arrives during the runner's claim release, zbuild:claimed is still removed covers: RQCLA-11
   Given: the claim was acquired at run start; the runner has entered _runner_abort_trap and blocked SIGTERM via trap '' TERM
   When: a second SIGTERM arrives while zbuild_claim_release is executing inside _runner_abort_trap

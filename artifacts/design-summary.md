@@ -1,6 +1,6 @@
 ## design — pass
 
-- 18 SPEC(s): DSCLA-1, DSCLA-2, DSCLA-12, DSCLA-3, DSCLA-9, DSCLA-5, DSCLA-6, DSCLA-7, DSCLA-8, DSCLA-10, DSCLA-11, DSCLA-13, DSADR-4, DSADR-5, DSADR-6, DSADR-7, DSADR-8, DSCLA-14
+- 20 SPEC(s): DSCLA-1, DSCLA-2, DSCLA-12, DSCLA-3, DSCLA-9, DSCLA-5, DSCLA-6, DSCLA-7, DSCLA-8, DSCLA-10, DSCLA-11, DSCLA-15, DSCLA-16, DSCLA-13, DSADR-4, DSADR-5, DSADR-6, DSADR-7, DSADR-8, DSCLA-14
 
 - DSCLA-1 (covers RQCLA-1, RQLAB-1, RQLAB-2): When an issue-bound run starts and zbuild:claimed is absent, the label is added before the first stage dispatches
 - DSCLA-2 (covers RQCLA-2): When a local run starts with an issue, rsc_render_header embeds the holder in the run-status comment header
@@ -13,6 +13,8 @@
 - DSCLA-8 (covers RQCLA-8): A run with no issue number makes no claim and calls no coordinator hook
 - DSCLA-10 (covers RQCLA-10): The event-schema emitted-coverage check does not reject pipeline.refused.claimed as an unknown event
 - DSCLA-11 (covers RQCLA-5, RQCLA-6, RQCLA-7): The run-status comment shows terminal status when the runner exits on any path
+- DSCLA-15 (covers RQCLA-4): The holder string is printed without interpreting escape sequences in the run's refusal output
+- DSCLA-16 (covers RQCLA-6): When claim acquisition succeeds but runner infrastructure setup fails before the EXIT trap is installed, zbuild:claimed is removed before the runner function returns
 - DSCLA-13 (covers RQCLA-11): When a second SIGTERM arrives during the runner's claim release, zbuild:claimed is still removed
 - DSADR-4 (covers RQADR-1): ADR-005 tells the reader that the engine calls the claim coordinator's claim hook after the admission lock and before the first stage, and release in the EXIT path
 - DSADR-5 (covers RQADR-2): ADR-005 tells the reader that the shared claim label is zbuild:claimed (no hostname) and that the holder is identified in the run-status comment
@@ -20,5 +22,10 @@
 - DSADR-7 (covers RQADR-4): ADR-005 has an ## Enforced by section with the §1 bullet extended to include §1(c)'s tests (claim-coordinator-unit-test.sh [DSCLA-3]: refused — non-zero exit, no stage, event emitted; teardown-repeat-signal-test.sh [DSCLA-9]: refused output names holder), and the §2 bullet extended to include [DSCLA-12] for the CI holder rendering case
 - DSADR-8 (covers RQADR-5): ADR-059 §4 tells the reader that cross-machine exclusion is the claim coordinator's job and the admission lock (flock) handles intra-machine serialisation; the amendment's Enforced by entry names DSCLA-3 as the test that enforces the cross-machine exclusion statement
 - DSCLA-14 (covers RQDOC-1): README.md in plugins/claim-coordinator/github-labels/ tells the reader the shared claim label is zbuild:claimed (not claimed:<machine>) and does not reference machine-suffixed labels
-- answered: design finding 1:** done — `DSCLA-10[no-code]` changed to `DSCLA-10[code]` with the same Given/When/Then that was in the passing iter-3-attempt-1 design. The design checker requires `[code]` because adding `pipeline.refused.claimed` to `config/event-schema.json` changes behaviour (the coverage check passes for this event where it would fail before).
-- answered: test-author finding 1:** not mine — every item in the finding is tagged "FIX IN TEST." My SPEC correctly specifies Given (runner.sh emits the event during refusal), When (the coverage check runs against the codebase), and Then (the check exits without flagging the event as unregistered). The test author wrote a weaker test (direct grep on the JSON file); the finding asks the test author to rewrite it to run the actual coverage check. That is the test author's output, not the design's.
+- answered: correctness lens finding 2 (`claimed:<machine>` still in plugin.sh):** done — Decision section and Step 1 now explicitly say to delete `local our_label="claimed:${machine}"` and replace with `local label="zbuild:claimed"`.
+- answered: scope lens finding 2 (`claimed:<machine>` still in plugin.sh):** done — same fix as correctness finding 2.
+- answered: lens finding 1:** done — same fix as red-team/scope finding.
+- answered: lens finding 2:** done — Decision section and Step 4 now say "log a warning to stderr when graceful-degrading on backend error."
+- answered: lens finding 3:** wrong — the design intentionally makes release advisory (`|| true`). The release path is in the EXIT trap; aborting it would skip the remaining cleanup. A `|| true` on an already-removed label is benign. The design does not add observability here beyond the existing silent-swallow, as the SRE's concern is about operator confusion — addressed by the existing run-status comment finalization (DSCLA-11) which marks the run finished regardless.
+- answered: lens finding 4:** done — same fix as correctness finding 1.
+- answered: lens finding 5:** not mine — tagged "fix: test" in the SRE result. The design SPEC correctly specifies Given/When/Then; the fixture format is the test author's responsibility.
