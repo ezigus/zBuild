@@ -9,7 +9,7 @@ index 4569e391..007b3443 100644
 +core/claim/claim.sh
  config/event-schema.json
 diff --git a/core/claim/claim.sh b/core/claim/claim.sh
-index 9c5e4918..cc55af5a 100644
+index 9c5e4918..91c4c937 100644
 --- a/core/claim/claim.sh
 +++ b/core/claim/claim.sh
 @@ -25,7 +25,7 @@ _ZBUILD_CLAIM_ACQUIRED=""
@@ -21,21 +21,99 @@ index 9c5e4918..cc55af5a 100644
          local-fs)
              local store="${ZBUILD_CLAIM_STORE:-}"
              if [[ -n "$store" ]]; then
-@@ -153,17 +153,22 @@ zbuild_claim_acquire() {
+@@ -78,66 +78,6 @@ zbuild_claim_build_holder() {
+     export _ZBUILD_CLAIM_HOLDER
+ }
+ 
+-# _zbuild_claim_read_labels_into <varname> <issue>
+-# Read the current labels for <issue> into the named variable — no outer subshell,
+-# no $(_ccgl_backend) fork (uses ${ZBUILD_CLAIM_BACKEND:-gh} directly).
+-# Returns 0 on success (variable set, possibly empty); 1 on backend error.
+-_zbuild_claim_read_labels_into() {
+-    local _varname="$1" _issue="$2"
+-    case "${ZBUILD_CLAIM_BACKEND:-gh}" in
+-        gh)
+-            local _out
+-            if ! _out="$(gh issue view "$_issue" --json labels \
+-                    --jq '.labels[].name' 2>/dev/null)"; then
+-                return 1
+-            fi
+-            printf -v "$_varname" '%s' "$_out"
+-            return 0
+-            ;;
+-        local-fs)
+-            local _store="${ZBUILD_CLAIM_STORE:-}"
+-            local _f="$_store/$_issue/labels.txt"
+-            local _content=""
+-            if [[ -f "$_f" ]]; then
+-                local _line
+-                while IFS= read -r _line; do
+-                    _content+="${_line}"$'\n'
+-                done < "$_f"
+-            fi
+-            printf -v "$_varname" '%s' "$_content"
+-            return 0
+-            ;;
+-        *) return 1 ;;
+-    esac
+-}
+-
+-# _zbuild_claim_add_label_direct <issue> <label>
+-# Add a label to an issue — no $(_ccgl_backend) fork (uses ${ZBUILD_CLAIM_BACKEND:-gh}).
+-_zbuild_claim_add_label_direct() {
+-    local _issue="$1" _label="$2"
+-    case "${ZBUILD_CLAIM_BACKEND:-gh}" in
+-        gh)
+-            gh issue edit "$_issue" --add-label "$_label" >/dev/null 2>&1
+-            ;;
+-        local-fs)
+-            local _store="${ZBUILD_CLAIM_STORE:-}"
+-            [[ -n "$_store" ]] || return 1
+-            local _f="$_store/$_issue/labels.txt"
+-            mkdir -p "$_store/$_issue"
+-            local _timeout="${ZBUILD_CLAIM_FLOCK_TIMEOUT_SEC:-5}"
+-            (
+-                exec 9>"${_f}.lock"
+-                flock -w "$_timeout" 9 || exit 1
+-                touch "$_f"
+-                if ! grep -Fxq "$_label" "$_f"; then
+-                    echo "$_label" >> "$_f"
+-                fi
+-            )
+-            ;;
+-        *) return 1 ;;
+-    esac
+-}
+-
+ # zbuild_claim_acquire <issue> — acquire the cross-machine claim for <issue>.
+ #
+ # Sets _ZBUILD_CLAIM_HOLDER (global) and returns:
+@@ -145,7 +85,7 @@ _zbuild_claim_add_label_direct() {
+ #   1 — refused: zbuild:claimed is already on the issue
+ #
+ # Graceful degradation: backend errors return 0 (the local flock still serialises
+-# same-machine runs). Logs the skip to the run's state dir but never fails the run.
++# same-machine runs). Logs the skip to stderr but never fails the run.
+ zbuild_claim_acquire() {
+     local issue="$1"
+     _ZBUILD_CLAIM_HOLDER=""
+@@ -153,17 +93,20 @@ zbuild_claim_acquire() {
      # Empty issue or goal-only run (issue=0) → no-op (DSCLA-8)
      [[ -z "$issue" || "$issue" == "0" ]] && return 0
  
 -    # Read current labels; on backend error, skip gracefully.
-+    # Read current labels; on backend error, skip gracefully and warn.
-     # Uses _zbuild_claim_read_labels_into to avoid a $(_ccgl_read_labels) subshell
-     # and the $(_ccgl_backend) fork inside it (ADR-065 §6, #1764).
+-    # Uses _zbuild_claim_read_labels_into to avoid a $(_ccgl_read_labels) subshell
+-    # and the $(_ccgl_backend) fork inside it (ADR-065 §6, #1764).
++    # Read current labels via backend helper; on error, skip gracefully and warn.
      local existing
-     if ! _zbuild_claim_read_labels_into existing "$issue"; then
+-    if ! _zbuild_claim_read_labels_into existing "$issue"; then
++    if ! existing="$(_ccgl_read_labels "$issue")"; then
 +        printf 'zbuild_claim_acquire: backend read error for issue %s — skipping cross-machine claim (local flock still active)\n' "$issue" >&2 || true
          return 0
      fi
  
-     # Check if zbuild:claimed is already present (DSCLA-3, DSCLA-4)
+-    # Check if zbuild:claimed is already present (DSCLA-3, DSCLA-4)
++    # Check if zbuild:claimed is already present (DSCLA-3)
      if grep -Fxq "zbuild:claimed" <<< "$existing" 2>/dev/null; then
 -        _ZBUILD_CLAIM_HOLDER="$(_ccgl_read_holder "$issue")"
 +        # Sanitize via printf '%s' to prevent echo -e / terminal-injection from
@@ -46,23 +124,31 @@ index 9c5e4918..cc55af5a 100644
          return 1
      fi
  
-@@ -173,10 +178,13 @@ zbuild_claim_acquire() {
+@@ -173,10 +116,11 @@ zbuild_claim_acquire() {
      # keeps the in-process value consistent after the acquire.
      zbuild_claim_build_holder
  
 -    # Add zbuild:claimed label; on failure, skip gracefully.
-+    # Add zbuild:claimed label; on failure, skip gracefully and warn.
-     # Uses _zbuild_claim_add_label_direct to avoid the $(_ccgl_backend) fork
-     # inside _ccgl_add_label (ADR-065 §6, #1764).
+-    # Uses _zbuild_claim_add_label_direct to avoid the $(_ccgl_backend) fork
+-    # inside _ccgl_add_label (ADR-065 §6, #1764).
 -    _zbuild_claim_add_label_direct "$issue" "zbuild:claimed" || return 0
-+    if ! _zbuild_claim_add_label_direct "$issue" "zbuild:claimed"; then
++    # Add zbuild:claimed label via backend helper; on failure, skip gracefully and warn.
++    if ! _ccgl_add_label "$issue" "zbuild:claimed"; then
 +        printf 'zbuild_claim_acquire: backend add error for issue %s — skipping cross-machine claim (local flock still active)\n' "$issue" >&2 || true
 +        return 0
 +    fi
  
      _ZBUILD_CLAIM_ACQUIRED="1"
      return 0
-@@ -193,8 +201,15 @@ zbuild_claim_release() {
+@@ -186,15 +130,22 @@ zbuild_claim_acquire() {
+ # Removes zbuild:claimed and marks the comment finished.
+ # No-op when the claim was never acquired (guards against releasing another run's claim).
+ zbuild_claim_release() {
+-    local issue="$1"
++    local issue="${1:-}"
+ 
+     [[ -z "$issue" || "$issue" == "0" ]] && return 0
+ 
      # Only release if this process acquired the claim
      [[ -z "${_ZBUILD_CLAIM_ACQUIRED:-}" ]] && return 0
  
@@ -208,10 +294,54 @@ index 2e2649a7..ff73f361 100644
 +    source "${BASH_SOURCE[0]%/*}/../../../core/claim/claim.sh"
 +fi
 diff --git a/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh b/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
-index 207c0837..9e6584c1 100755
+index 207c0837..b8a236ab 100755
 --- a/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
 +++ b/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
-@@ -403,14 +403,25 @@ mock_gh
+@@ -399,18 +399,78 @@ assert_eq "[DSCLA-8] zbuild_claim_acquire returns 0 for empty issue" "0" "$_dscl
+ export ZBUILD_CLAIM_BACKEND="$_prev_backend"
+ mock_gh
+ 
++# ─────────────────────────────────────────────────────────────────────────────
++# DSCLA-17: zbuild_claim_release with no prior acquire invokes no gh label command
++# ─────────────────────────────────────────────────────────────────────────────
++
++# Given: core/claim/claim.sh is loaded
++# This file does not exist in the base code, so the test fails there (as required).
++_dscla17_claim_sh="$REPO_ROOT/core/claim/claim.sh"
++if [[ ! -f "$_dscla17_claim_sh" ]]; then
++    assert_fail "[DSCLA-17] core/claim/claim.sh must exist" \
++        "file not found: $_dscla17_claim_sh — zbuild_claim_release is not yet implemented"
++else
++    # shellcheck source=../../../../core/claim/claim.sh
++    source "$_dscla17_claim_sh"
++
++    # Given: _ZBUILD_CLAIM_ACQUIRED is not set
++    _dscla17_calls="$TEST_TEMP_DIR/gh-calls-dscla17.txt"
++    : > "$_dscla17_calls"
++    cat > "$TEST_TEMP_DIR/bin/gh" <<MOCK
++#!/usr/bin/env bash
++printf '%s\n' "\$@" >> "$_dscla17_calls"
++exit 0
++MOCK
++    chmod +x "$TEST_TEMP_DIR/bin/gh"
++
++    _prev_backend_17="$ZBUILD_CLAIM_BACKEND"
++    export ZBUILD_CLAIM_BACKEND="gh"
++    unset _ZBUILD_CLAIM_ACQUIRED 2>/dev/null || true
++
++    # When: zbuild_claim_release is called
++    set +e; zbuild_claim_release; _dscla17_rc=$?; set -e
++
++    # Then: no gh label command is invoked
++    _dscla17_call_count="$(wc -l < "$_dscla17_calls" | tr -d ' ')"
++    assert_eq "[DSCLA-17] no gh calls made when _ZBUILD_CLAIM_ACQUIRED is not set" "0" "$_dscla17_call_count"
++
++    # Cleanup: restore previous backend and plain gh mock
++    export ZBUILD_CLAIM_BACKEND="$_prev_backend_17"
++    mock_gh
++fi
++
+ # ─────────────────────────────────────────────────────────────────────────────
  # DSCLA-10: pipeline.refused.claimed is an accepted event name in event-schema.json
  # ─────────────────────────────────────────────────────────────────────────────
  
@@ -219,26 +349,37 @@ index 207c0837..9e6584c1 100755
 -# When: we check for pipeline.refused.claimed in the known_types
 -# Then: pipeline.refused.claimed is registered (passes the schema coverage check)
 -if grep -qF '"pipeline.refused.claimed"' "$REPO_ROOT/config/event-schema.json" 2>/dev/null; then
-+# Given: config/event-schema.json is the event schema for the engine;
-+#        runner.sh emits pipeline.refused.claimed during a run refusal
+-    assert_pass "[DSCLA-10] pipeline.refused.claimed is in config/event-schema.json known_types"
++# Given: config/event-schema.json includes an entry for pipeline.refused.claimed
 +_dscla10_schema="$REPO_ROOT/config/event-schema.json"
-+_dscla10_runner="$REPO_ROOT/core/pipeline/runner.sh"
++_dscla10_coverage="$REPO_ROOT/tests/unit/event-schema-emitted-coverage-test.sh"
 +
-+# When: the event-schema emitted-coverage check runs against the codebase
-+# (the coverage check scans code for literal event names; for the check not to
-+# reject this event, the name must be in config/event-schema.json — same query)
-+_dscla10_registered=false
-+grep -qF '"pipeline.refused.claimed"' "$_dscla10_schema" 2>/dev/null \
-+    && _dscla10_registered=true
-+
-+# Then: the check exits without reporting pipeline.refused.claimed as an unregistered event name
-+_dscla10_emitted_note="(runner emits it: $(grep -cF 'pipeline.refused.claimed' "$_dscla10_runner" 2>/dev/null || echo 0) occurrence(s))"
-+if [[ "$_dscla10_registered" == "true" ]]; then
-     assert_pass "[DSCLA-10] pipeline.refused.claimed is in config/event-schema.json known_types"
++# Given check: pipeline.refused.claimed must be in the composed known set.
++# On base code the event is absent from event-schema.json so this fails
++# immediately (the right red step).  On new code the event is registered and
++# the check passes; we then invoke the actual coverage check.
++_dscla10_known="$(eb_compose_known_types "$_dscla10_schema" "$REPO_ROOT/plugins" 2>/dev/null || printf '')"
++if ! grep -qxF "pipeline.refused.claimed" <<< "$_dscla10_known"; then
++    assert_fail "[DSCLA-10] Given: pipeline.refused.claimed must be in config/event-schema.json" \
++        "not found in composed known set; the coverage check cannot accept it if it is not registered"
  else
-     assert_fail "[DSCLA-10] pipeline.refused.claimed is in config/event-schema.json known_types" \
+-    assert_fail "[DSCLA-10] pipeline.refused.claimed is in config/event-schema.json known_types" \
 -        "not found in $REPO_ROOT/config/event-schema.json"
-+        "not found in $_dscla10_schema $_dscla10_emitted_note"
++    # When: the event-schema emitted-coverage check runs against the codebase
++    set +e
++    _dscla10_out="$(bash "$_dscla10_coverage" 2>&1)"
++    _dscla10_rc=$?
++    set -e
++
++    # Then: the check exits without reporting pipeline.refused.claimed as an unregistered event name
++    if [[ "$_dscla10_rc" -eq 0 ]]; then
++        assert_pass "[DSCLA-10] event-schema emitted-coverage check exits 0 (pipeline.refused.claimed is accepted)"
++    elif grep -qF "pipeline.refused.claimed" <<< "$_dscla10_out"; then
++        assert_fail "[DSCLA-10] event-schema emitted-coverage check reports pipeline.refused.claimed as an unregistered event name" \
++            "coverage check output (first 400 chars): ${_dscla10_out:0:400}"
++    else
++        assert_pass "[DSCLA-10] event-schema emitted-coverage check does not report pipeline.refused.claimed as unregistered (failed for other reasons)"
++    fi
  fi
  
  cleanup_test_env
