@@ -400,6 +400,35 @@ export ZBUILD_CLAIM_BACKEND="$_prev_backend"
 mock_gh
 
 # ─────────────────────────────────────────────────────────────────────────────
+# DSCLA-17: zbuild_claim_release with no prior acquire invokes no gh label command
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Given: core/claim/claim.sh is loaded; _ZBUILD_CLAIM_ACQUIRED is not set
+_dscla17_calls="$TEST_TEMP_DIR/gh-calls-dscla17.txt"
+: > "$_dscla17_calls"
+cat > "$TEST_TEMP_DIR/bin/gh" <<MOCK
+#!/usr/bin/env bash
+printf '%s\n' "\$@" >> "$_dscla17_calls"
+exit 0
+MOCK
+chmod +x "$TEST_TEMP_DIR/bin/gh"
+
+_prev_backend_17="$ZBUILD_CLAIM_BACKEND"
+export ZBUILD_CLAIM_BACKEND="gh"
+unset _ZBUILD_CLAIM_ACQUIRED 2>/dev/null || true
+
+# When: zbuild_claim_release is called
+set +e; zbuild_claim_release; _dscla17_rc=$?; set -e
+
+# Then: no gh label command is invoked
+_dscla17_call_count="$(wc -l < "$_dscla17_calls" | tr -d ' ')"
+assert_eq "[DSCLA-17] no gh calls made when _ZBUILD_CLAIM_ACQUIRED is not set" "0" "$_dscla17_call_count"
+
+# Cleanup: restore previous backend and plain gh mock
+export ZBUILD_CLAIM_BACKEND="$_prev_backend_17"
+mock_gh
+
+# ─────────────────────────────────────────────────────────────────────────────
 # DSCLA-10: pipeline.refused.claimed is an accepted event name in event-schema.json
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -416,7 +445,7 @@ grep -qF '"pipeline.refused.claimed"' "$_dscla10_schema" 2>/dev/null \
     && _dscla10_registered=true
 
 # Then: the check exits without reporting pipeline.refused.claimed as an unregistered event name
-_dscla10_emitted_note="(runner emits it: $(grep -cF 'pipeline.refused.claimed' "$_dscla10_runner" 2>/dev/null || echo 0) occurrence(s))"
+_dscla10_emitted_note="(runner emits it: $(grep -cF 'pipeline.refused.claimed' "$_dscla10_runner" 2>/dev/null || true) occurrence(s))"
 if [[ "$_dscla10_registered" == "true" ]]; then
     assert_pass "[DSCLA-10] pipeline.refused.claimed is in config/event-schema.json known_types"
 else
