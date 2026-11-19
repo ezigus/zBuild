@@ -49,6 +49,12 @@ ${job}
 A problem the change introduced at a severity the template names sends the
 change back for another round, to the stage that can fix it. For each problem,
 say whether the change INTRODUCED it (or made it worse), or whether the code before the change already did the same thing.
+Something the issue or the design asks this change to do, and the change does
+not do, is the change's: introduced is true, even where the code before the
+change behaved the same way.
+A design step build answered not needed, its check accepting the reason (THE
+DESIGN STEPS BUILD FOUND NOT NEEDED), is not undone work; report it only if you
+show the reason is wrong, quoting the code that shows it.
 Compare the change with the issue it was made for. If the change does not
 deliver part of what the issue asked for, report it as a finding: name any part
 of the issue that the change does not deliver, judged as the "${lens}" lens
@@ -71,7 +77,7 @@ OUTPUT CONTRACT (obey absolutely):
         "message": "<one-sentence description>",
         "quote": "<the exact text that shows it, copied from the file as it is now, or a line the change removed>",
         "trigger": "<what makes it happen on a real run — where this lens's problems come from>",
-        "introduced": <true if this change introduced or worsened it; false if the code before the change already did this>,
+        "introduced": <true if this change introduced or worsened it, or did not do what the issue or design asked of it; false if the code before the change already did this and nothing asked this change to change it>,
         "fix": "<one of: code, test, design, issue>"
       }
     ]

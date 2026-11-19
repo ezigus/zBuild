@@ -111,8 +111,8 @@ print_test_section "TM5: design's coverage check"
   _design_coverage "$TEST_TEMP_DIR/d5.md" "$(acceptance_requirements_list "$REQ")" T2 "" "" "$(acceptance_terms_v _t5 "$REQ"; printf '%s' "$_t5")" ) >/dev/null 2>&1
 _cp="$(cat "$TEST_TEMP_DIR/cov-prompt" 2>/dev/null)"
 assert_contains "[TM5] the check is shown the terms" "$_cp" "the comment ADR-064 already posts for every run. Not a new comment."
-assert_contains "[TM5] ...and told a SPEC using a term differently contradicts it" "$_cp" \
-    "A SPEC that uses a term differently from its definition contradicts it"
+assert_contains "[TM5] ...and told a part using a term differently contradicts it (#2567: any part)" "$_cp" \
+    "a SPEC line, a step, the decisions — that uses a term differently from its definition contradicts it"
 
 # ── TM6 ──────────────────────────────────────────────────────────────────────
 print_test_section "TM6: test-author and issue-acceptance"

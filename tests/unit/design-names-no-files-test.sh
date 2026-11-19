@@ -16,7 +16,9 @@
 # N7 an old design's TESTFILES list is not read, nor its lines taken for SPECs
 # N8 design's prompt asks for no scope block and no TESTFILES
 # N9 design's prompt asks it to write UNCLEAR lines and carry on with the assumption
-# N10 a malformed UNCLEAR line is refused by design's checks
+# N10 a malformed UNCLEAR line is refused by design's checks; (#2567) a line
+#     design wrapped is read whole: the wrapped form passes, a wrapped line
+#     still missing a part is refused
 # N11 on an issue's branch, a SPEC's tests are only the test files the branch added
 #     or changed: a file the default branch already had, holding the tag as
 #     sample text, is not its test (#2517)
@@ -164,6 +166,18 @@ GOOD="$TEST_TEMP_DIR/good-design.md"
 { cat "$DESIGN"; printf '\nUNCLEAR: R-1 | does --from-stage need --resume? | it works on its own\n'; } > "$GOOD"
 _design_checks "$GOOD" "$ROOT" "" "$TEST_TEMP_DIR/last-design.md"
 assert_eq "[N10] a well-formed UNCLEAR line passes" "" "${_DESIGN_VIOLATIONS[*]-}"
+WRAP="$TEST_TEMP_DIR/wrap-design.md"
+{ cat "$DESIGN"; printf '\nUNCLEAR: R-1 | does --from-stage need --resume? |\nit works on its own\n'; } > "$WRAP"
+_design_checks "$WRAP" "$ROOT" "" "$TEST_TEMP_DIR/last-design.md"
+assert_eq "[N10] a well-formed line design wrapped passes" "" "${_DESIGN_VIOLATIONS[*]-}"
+WBAD="$TEST_TEMP_DIR/wbad-design.md"
+{ cat "$DESIGN"; printf '\nUNCLEAR: R-1 does --from-stage\nneed --resume?\n'; } > "$WBAD"
+_design_checks "$WBAD" "$ROOT" "" "$TEST_TEMP_DIR/last-design.md"
+assert_contains "[N10] a wrapped line still missing a part is refused" "${_DESIGN_VIOLATIONS[*]-}" "UNCLEAR_MALFORMED"
+WEMP="$TEST_TEMP_DIR/wemp-design.md"
+{ cat "$DESIGN"; printf '\nUNCLEAR: R-1 | does --from-stage need --resume? | Assumed:\n'; } > "$WEMP"
+_design_checks "$WEMP" "$ROOT" "" "$TEST_TEMP_DIR/last-design.md"
+assert_contains "[N10] a line whose assumption is only the word Assumed: is refused" "${_DESIGN_VIOLATIONS[*]-}" "UNCLEAR_MALFORMED"
 
 # ── N11 ────────────────────────────────────────────────────────────────────
 # On #1805 run 42817975218 an engine test holding [#1805/DSFSTG-1] as sample text

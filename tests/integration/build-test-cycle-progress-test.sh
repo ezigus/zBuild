@@ -56,11 +56,21 @@ mkdir -p "$TEST_TEMP_DIR/bin"
 cat > "$TEST_TEMP_DIR/bin/claude" <<MOCK
 #!/usr/bin/env bash
 mark="$MARK_FILE"
+# #2567: build's step judge reads the not-needed answer below; it is answered
+# as a judge, not one of build's iterations. Its prompt says what it is (the
+# CLI gets no ZBUILD_* and, here, no persona to tell the calls apart). The
+# fixture's repo is baked in, never \$PWD: the judge runs in the caller's
+# folder, and a mock that wrote to \$PWD littered the checkout.
+_in="\$(cat 2>/dev/null || true)"
+if [[ "\$_in" == *"say whether build's answer to it holds"* ]]; then
+    jq -n --arg r '1: does' '{result:\$r, usage:{input_tokens:1, output_tokens:1}}'
+    exit 0
+fi
 n=\$(wc -l < "\$mark" 2>/dev/null | tr -d ' ' || echo 0)
 n=\$(( n + 1 ))
 echo "MARK_iter_\${n}" >> "\$mark"
-mkdir -p "\$PWD/fixtures"
-printf 'progress-iter-%d\n' "\$n" >> "\$PWD/fixtures/cycle-602.txt"
+mkdir -p "$REPO/fixtures"
+printf 'progress-iter-%d\n' "\$n" >> "$REPO/fixtures/cycle-602.txt"
 if [[ "\$n" -ge 2 ]]; then
     jq -n --arg r \$'done\nstep 1: not needed — the fixture writes its progress lines itself\nLOOP_COMPLETE' \
         '{result:\$r, usage:{input_tokens:7, output_tokens:4}}'

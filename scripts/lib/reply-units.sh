@@ -16,8 +16,10 @@ _ZBUILD_REPLY_UNITS_LOADED=1
 # heading or a code fence. Markdown emphasis or a quote mark may come first.
 # #2467: a check's line about one part of a SPEC — `FRSH-1 Then:`,
 # `FRSH-1 And:`, `FRSH-1 sections:`, `FRSH-1 cleanup:` (#2543), an old `FRSH-1 Then 2:` — starts a unit too, as do `FRSH-1 Title:` and `Steps:` (#2555),
-# and build's answer to a design step, `step 2:` (#2565).
-_ZB_RU_START='^[[:space:]>*_`]*([A-Z][A-Z0-9_-]*:|[A-Z][A-Z0-9_]*-[0-9]+[[:space:]]+(Title|Given|When|Then|And|Cleanup|sections|cleanup)([[:space:]]+[0-9]+)?:|Steps:|[Ss][Tt][Ee][Pp][[:space:]]+[0-9]+[[:space:]]*:|[Aa][Nn][Ss][Ww][Ee][Rr][[:space:]]|LOOP_COMPLETE|#|```|[-*+][[:space:]]|[0-9]+[.)][[:space:]])'
+# and build's answer to a design step, `step 2:` (#2565), and design's check's
+# `Decision:` answer of a check — `Decision: ok` and its other words, not prose
+# that happens to start with the word (#2567).
+_ZB_RU_START='^[[:space:]>*_`]*([A-Z][A-Z0-9_-]*:|[A-Z][A-Z0-9_]*-[0-9]+[[:space:]]+(Title|Given|When|Then|And|Cleanup|sections|cleanup)([[:space:]]+[0-9]+)?:|Steps:|Decisions?:[[:space:]]*(ok|not-asked|contradicts|new-owner)|[Ss][Tt][Ee][Pp][[:space:]]+[0-9]+[[:space:]]*:|[Aa][Nn][Ss][Ww][Ee][Rr][[:space:]]|LOOP_COMPLETE|#|```|[-*+][[:space:]]|[0-9]+[.)][[:space:]])'
 _ZB_RU_ITEM='^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]+(.*)$'
 _ZB_RU_KEY_ONLY='^[[:space:]>*_`]*([A-Z][A-Z0-9_-]*):[[:space:]*_`]*$'
 
@@ -106,6 +108,14 @@ zb_reply_join_v() {
     local _zbrj_p
     while IFS= read -r _zbrj_l || [[ -n "$_zbrj_l" ]]; do
         _zbrj_t="${_zbrj_l#"${_zbrj_l%%[![:space:]]*}"}"; _zbrj_t="${_zbrj_t%"${_zbrj_t##*[![:space:]]}"}"
+        # #2567 (ADR-060): a fence line is a line of its own — nothing joins
+        # it, and it joins nothing — so a reader that tracks blocks (design.md's)
+        # still sees them; the lines inside a block join as anywhere else.
+        if [[ "$_zbrj_t" == '```'* ]]; then
+            (( _zbrj_have )) && _rj+="$_zbrj_cur"$'\n'
+            _rj+="$_zbrj_l"$'\n'; _zbrj_cur=""; _zbrj_have=0; _zbrj_key=""; _zbrj_blank=1
+            continue
+        fi
         # Where a unit starts is read with the formatting aside (#2474): its
         # start, not the whole line, so a long reply costs little.
         zb_reply_plain_v _zbrj_p "${_zbrj_l:0:80}"

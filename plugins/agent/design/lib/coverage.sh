@@ -25,182 +25,8 @@ declare -F zb_reply_join_v >/dev/null 2>&1 \
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/judge.sh"
 # shellcheck source=./coverage-answer.sh
 source "${BASH_SOURCE[0]%/*}/coverage-answer.sh"
-
-# The call's three parts, composed with the engine's blocks in the one prompt
-# order (ADR-067 §8). #2470: requirement coverage is asked only when a SPEC
-# changed or a requirement's finding was answered; with [reqs] it is.
-_dcov_prompt_own() {
-    local reqs="${1:-}" steps="${2:-}"
-    printf 'You are checking whether a DESIGN covers what an ISSUE asked for, SPEC by SPEC.\n'
-    [[ -n "$reqs" ]] && cat <<'EOF2'
-
-Check EVERY requirement, and find EVERY one that no SPEC fully covers — not
-only the first you find. The design is revised once per round and fixes only
-what you list; a gap left out of this answer costs a whole round.
-EOF2
-    cat <<'EOF2'
-
-Look at every SPEC shown in full: find EVERY one that commits to
-something that the issue does not ask for, or that contradicts it.
-
-Check each SPEC's status against the code from before this change and the
-issue. Its status follows from three facts:
-- Is it a change to a document only? Then it is [doc].
-- If not, does the code from before this change already behave as the SPEC says — by any route, a fallback included? If not, it is [code].
-- If it does, is work still needed that changes no behaviour — a test, a config, a refactor? Then it is [no-code]; if none, it is [done].
-Find every SPEC whose status is not the one these facts give. Then judge each
-of its parts.
-
-Answer in exactly this form, each line starting with its id.
-EOF2
-    [[ -n "$reqs" ]] && cat <<'EOF2'
-
-One line for every requirement:
-
-<requirement id>: covered
-<requirement id>: uncovered | WHY: <what no SPEC covers> | QUOTE: <the requirement's own words that no SPEC covers>
-
-When nothing a test could observe would show a requirement met, no SPEC can
-cover it and the issue must be fixed by its owner:
-
-<requirement id>: none | WHY: <why nothing a test could observe after the change would show it met> | QUOTE: <the requirement's own words>
-EOF2
-    cat <<'EOF2'
-
-At least one line for every SPEC shown in full. When nothing is wrong with it,
-one line:
-
-<SPEC id>: ok
-
-When something is wrong with it, one line for each thing wrong, and no ok line,
-every one in this form:
-
-<SPEC id> <line>: <problem> | WHY: <why> | QUOTE: <words from that line>
-
-<line> is the word the line starts with: Title (the SPEC's first line), Given, When, Then, And or Cleanup.
-The QUOTE is copied from that line, and says which line it is when the SPEC has
-several. <problem> is one of:
-
-- not-asked — the line commits to something the issue does not ask for, or contradicts it
-- untestable — only for a Then, or an And under a Then: it must be something a
-  test can observe after the When — an output, a result, a file the code
-  writes, an event — never what a file or a test contains, and never "it works"
-- how — the line says how the code is built, or how a test sets something up or
-  checks it; a Given names the situation the code is in, never the steps a test
-  takes to get there
-
-An untestable or a how line also says what the line could say instead — what a
-test could observe after the When for the same requirement:
-
-<SPEC id> <line>: untestable | WHY: <why> | INSTEAD: <what a test could observe after the When instead> | QUOTE: <words from that line>
-<SPEC id> <line>: how | WHY: <why> | INSTEAD: <what a test could observe after the When instead> | QUOTE: <words from that line>
-
-- contradicts — the line cannot be true together with something else, and WHY
-  says what and where
-- duplicate — only for the When: another SPEC already has this action, and WHY
-  names it
-- new-owner — only on Title: the SPEC builds something new for a job that
-  something in the code from before this change already does; the QUOTE is a
-  line of that existing owner, as <file> | <one line of it>
-- status — only on Title, for a SPEC whose status is not the one its facts give,
-  with the three facts, each yes or no, and a QUOTE from the code instead of the
-  SPEC:
-
-<SPEC id> Title: status | DOC: <yes or no> | BEFORE: <yes or no> | WORK: <yes or no> | WHY: <what shows it> | QUOTE: <file> | <one line of it>
-
-A status QUOTE is a line of the code from before this change, or of the
-document, that shows the fact the status gets wrong: when it already behaves
-this way, the line that does it; when it does not, the line that does
-something else.
-EOF2
-    [[ -n "$steps" ]] && cat <<'EOF2'
-
-One line for the design's steps (its ```steps block): does a step build
-something new — a file, a library, a mechanism — for a job that something in
-the code from before this change already does? Look for it before you answer:
-the plugin kinds in docs/ARCHITECTURE.md, the ADRs for the area, the existing
-plugins and libraries.
-
-Steps: ok
-Steps: new-owner | WHY: <what the steps build, and what already owns that job> | QUOTE: <file> | <one line of the existing owner>
-EOF2
-    cat <<'EOF2'
-
-Copy each QUOTE as it is from what it names, with no quote marks around it. It
-is checked: a quote that is not there makes the answer unusable.
-EOF2
-}
-
-# _dcov_prompt_judge <draft> <shown> [requirements] [others] [done_evidence] [base] [issue] [limits] [terms] [steps]
-# — <shown> the SPECs to judge, in full; [others] the rest, by their first line,
-# given only with [requirements], for what they cover (#2470, ADR-072 §4).
-_dcov_prompt_judge() {
-    cat <<EOF2
-The design you judge is the file at $1 — read it there for anything you need
-that is not shown here. Do not open design.md: it is an earlier design, not the
-one you judge.
-EOF2
-    [[ -n "${7:-}" ]] && printf '\nISSUE — the issue itself, in the requester'"'"'s own words:\n%s\n' "$7"
-    [[ -n "${3:-}" ]] && cat <<EOF2
-
-REQUIREMENTS — the issue's requirements, each with its id.
-
-Judge every requirement in REQUIREMENTS by its words. Read the issue for what a
-requirement means. A SPEC may say which requirements it covers; check its
-words, not only the ids it names.
-
-An issue contains more than requirements — context, rationale, links, history.
-Those are not requirements and their absence from the SPECs is not a gap. Judge
-what the issue REQUIRES, not everything it mentions.
-
-Several SPECs may cover one requirement together, one thing each: judge every
-SPEC that names it, together.
-
-When a requirement is written so loosely that no SPEC could settle it — nothing
-anyone could observe would show it met — answer none for it:
-that is a finding against the requirement, for the issue's owner, not a gap a
-SPEC can close.
-
-Mapping is not enough: those SPECs together must demand ALL of the requirement.
-A set of SPECs that demands less than the requirement — a subset of the cases,
-a weaker condition, some of the files, a narrower scope — leaves it uncovered. Name the
-requirement as uncovered and say what the SPECs leave out.
-
-You judge the design before any code exists, so your part of each requirement
-is the BEHAVIOUR it asks of the software. A requirement about how the change is
-verified — that the tests fail on the code from before the change, that the
-full suite is green, that the mutation tests run, that the tree is committed
-first — can only be judged once the change and its tests exist, and the check
-that compares the finished change with the issue judges it there. It is not
-uncovered.
-
-A SPEC tagged [done] says the code already does it. A requirement it covers
-counts as covered: the claim is judged against the code once the change is
-built.
-
-REQUIREMENTS:
-$3
-EOF2
-    printf '\nACCEPTANCE — the SPECs to judge, each with its parts:\n'
-    printf 'ACCEPTANCE:\n%s\n' "${2:-(none)}"
-    # #2550 (ADR-069): a limit is not covered; a SPEC that builds one contradicts it.
-    [[ -n "${10:-}" ]] && printf '\nSTEPS — the design'"'"'s steps, to judge for a new owner:\n%s\n' "${10}"
-    # #2555 (ADR-070): the issue's terms, word for word, as every stage gets them.
-    [[ -n "${9:-}" ]] && printf '\nTERMS — what the issue says each of these words means, and only this. A SPEC that uses a term differently from its definition contradicts it: answer contradicts for the line that does it, quoting it.\n%s\n' "$9"
-    [[ -n "${8:-}" ]] && printf '\nLIMITS — what the change must not do. They are not requirements: give them no line. A SPEC that does what a limit forbids contradicts it: answer contradicts for the part that does it, quoting that part.\n%s\n' "$8"
-    [[ -n "${3:-}" && -n "${4:-}" ]] && printf '\nOTHER SPECS — judged before and unchanged, shown by their first line for what they cover. Do not answer for them.\n%s\n' "$4"
-    [[ -n "${5:-}" ]] && printf "\nTHE [done] SPECS' EVIDENCE — a file and a piece of its text. Open the file\nand read the code around that text, as much as you need:\n%s\n" "$5"
-    # #2543: every SPEC's status is checked against it, not only a [done] one's.
-    [[ -n "${6:-}" ]] && printf '\nThe code from before this change is a copy at %s — check each SPEC'"'"'s\nstatus there. The repository as it is now is the current directory.\n' "$6"
-    return 0
-}
-_dcov_prompt_limits() {
-    cat <<'EOF2'
-- Do not suggest SPEC text.
-- Do not rewrite the design.
-- Answer only, in the form above.
-EOF2
-}
+# shellcheck source=./coverage-prompt.sh
+source "${BASH_SOURCE[0]%/*}/coverage-prompt.sh"
 
 # _dcov_steps_v <var> <design_md> — the lines of the design's ```steps block.
 _dcov_steps_v() {
@@ -213,6 +39,12 @@ _dcov_steps_v() {
         [[ $_in -eq 1 ]] && _dsv+="$_l"$'\n'
     done < "$2"
     return 0
+}
+
+# _dcov_decision_v <var> <design_md> — the design's decisions (#2567, ADR-073 §5).
+_dcov_decision_v() {
+    # #2567: the one decisions extractor build and the lenses read (acceptance-judge.sh), uncapped.
+    design_decisions_prose_v "$1" "${2:-}" 0
 }
 
 # _dcov_specs <acceptance> — every SPEC of the block, read once, into the
@@ -285,6 +117,7 @@ _dcov_disputes_v() {
         if [[ -n "${first[$_ddv_id]+x}" ]]; then _ddv["$_ddv_id"]+="$_ddv_a"$'\n'
         elif [[ -n "${req_text[$_ddv_id]+x}" ]]; then _ddv["requirements"]+="$_ddv_a"$'\n'
         elif [[ "$_ddv_id" == Steps ]]; then _ddv["steps"]+="$_ddv_a"$'\n'
+        elif [[ "$_ddv_id" == Decision ]]; then _ddv["decision"]+="$_ddv_a"$'\n'
         else
             for _ddv_k in ${ids[@]+"${ids[@]}"} requirements; do _ddv["$_ddv_k"]+="$_ddv_a"$'\n'; done
         fi
@@ -307,6 +140,7 @@ _design_coverage() {
     local design_md="$1" reqs="$2" tier="${3:-T2}" answers="${4:-}" lims="${5:-}" terms="${6:-}"
     _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_STATUS_WRONG=(); _DESIGN_COV_OUTCOME=""
     _DESIGN_PART_WRONG=(); _DESIGN_COV_FINDINGS=(); _DESIGN_NEW_OWNER=(); _DESIGN_REQ_NONE=()
+    _DESIGN_STEP_WRONG=(); _DESIGN_DECISION_WRONG=()
     local acc; acc="$(extract_acceptance_block "$design_md" 2>/dev/null || true)"
     [[ -n "$acc" ]] || return 0
 
@@ -349,8 +183,15 @@ _design_coverage() {
     # for a new owner where one exists, and judged again only when they change.
     local steps=""; _dcov_steps_v steps "$design_md"
     if [[ -n "$steps" ]]; then
-        judge_fp_v _fpv "$eng"$'\n'steps$'\n'"$steps"$'\n'"$base_sha"$'\n'"${disp[steps]:-}"
+        # #2567: judged against the requirements, limits and terms too.
+        judge_fp_v _fpv "$eng"$'\n'steps$'\n'"$steps"$'\n'"$base_sha"$'\n'"${disp[steps]:-}"$'\n'"$reqs"$'\n'"$lims"$'\n'"$terms"
         fps["steps"]="$_fpv"
+    fi
+    # #2567 (ADR-073 §5): the design's decisions are an item too.
+    local decision=""; _dcov_decision_v decision "$design_md"
+    if [[ -n "$decision" ]]; then
+        judge_fp_v _fpv "$eng"$'\n'decision$'\n'"$decision"$'\n'"$base_sha"$'\n'"${disp[decision]:-}"$'\n'"$reqs"$'\n'"$lims"$'\n'"$terms"
+        fps["decision"]="$_fpv"
     fi
     [[ -n "$kf" ]] && judge_kept_get_all_v kept "$kf" fps disp
 
@@ -370,6 +211,8 @@ _design_coverage() {
     [[ -n "${kept["requirements"]+x}" ]] || { want+=requirements$'\n'; reqs_asked="$reqs"; }
     local steps_asked=""
     [[ -n "$steps" && -z "${kept["steps"]+x}" ]] && { want+=steps$'\n'; steps_asked="$steps"; }
+    local decision_asked=""
+    [[ -n "$decision" && -z "${kept["decision"]+x}" ]] && { want+=decision$'\n'; decision_asked="$decision"; }
     if [[ -z "$want" ]]; then
         _dcov_parse "$kept_raw" "$kept_want"
         _dcov_findings_build
@@ -377,10 +220,15 @@ _design_coverage() {
     fi
 
     local framed _disp_shown="" issue=""
-    [[ -n "$reqs_asked" ]] && issue="$(earlier_issue_text "${artifact_dir:-${ZBUILD_ARTIFACT_DIR:-}}" "${state_dir:-}" 2>/dev/null || true)"
+    # #2567 (review): steps and decisions are judged against the requirements
+    # and the issue's words, so they are shown whenever those parts are asked,
+    # though the requirement lines are asked only with the requirements.
+    local reqs_ctx=""
+    [[ -z "$reqs_asked" && ( -n "$steps_asked" || -n "$decision_asked" ) ]] && reqs_ctx="$reqs"
+    [[ -n "$reqs_asked$steps_asked$decision_asked" ]] && issue="$(earlier_issue_text "${artifact_dir:-${ZBUILD_ARTIFACT_DIR:-}}" "${state_dir:-}" 2>/dev/null || true)"
     for k in "${!disp[@]}"; do [[ $'\n'"$want" == *$'\n'"$k"$'\n'* ]] && _disp_shown+="${disp[$k]}"; done
     # #2458: it judges, so it composes fresh — no notes, and no rule to confirm earlier work.
-    if ! framed="$(stage_prompt_compose_text --fresh "$(_dcov_prompt_own "$reqs_asked" "$steps_asked")" "$(_dcov_prompt_judge "$design_md" "${shown%$'\n'}" "$reqs_asked" "${others%$'\n'}" "$done_ev" "$base" "$issue" "$lims" "$terms" "$steps_asked")$(judge_disputes_block "$_disp_shown")" "$(_dcov_prompt_limits)")"; then
+    if ! framed="$(stage_prompt_compose_text --fresh "$(_dcov_prompt_own "$reqs_asked" "$steps_asked" "$decision_asked")" "$(_dcov_prompt_judge "$design_md" "${shown%$'\n'}" "$reqs_asked" "${others%$'\n'}" "$done_ev" "$base" "$issue" "$lims" "$terms" "$steps_asked" "$decision_asked" "$reqs_ctx")$(judge_disputes_block "$_disp_shown")" "$(_dcov_prompt_limits)")"; then
         _DESIGN_COV_OUTCOME=misconfigured
         return 0
     fi
@@ -457,6 +305,7 @@ _design_coverage() {
         [[ ${#_DESIGN_REQ_NONE[@]} -gt 0 ]] && return 0
         if [[ ${#_DESIGN_COV_FINDINGS[@]} -eq 0 ]]; then
             _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_STATUS_WRONG=(); _DESIGN_PART_WRONG=(); _DESIGN_NEW_OWNER=(); _DESIGN_REQ_NONE=()
+            _DESIGN_STEP_WRONG=(); _DESIGN_DECISION_WRONG=()
             _DESIGN_COV_OUTCOME=unusable
             return 0
         fi

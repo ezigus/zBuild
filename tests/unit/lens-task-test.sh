@@ -17,6 +17,12 @@
 #             and no model is asked
 # L4 [change] the correctness lens runs as test-strategist and the scope lens
 #             as product-owner — personas that are roles, not lens jobs
+# L6 [change] (#2567, ADR-038) a lens is told that work the issue or the design
+#             asks this change to do, which it does not do, is the change's:
+#             introduced true, though the old code behaves the same
+# L7 [change] (#2567 review) a lens is shown the design steps build answered
+#             not needed that build's check accepted, and is told such a step
+#             is not undone work unless it shows the reason is wrong
 # L5 [change] the unused security-lens plugin is gone; the security lens in
 #             the lens map stays
 set -uo pipefail
@@ -147,6 +153,44 @@ for _t in simple deployed; do
     assert_eq "[L5] $_t.yaml: the security lens is still in the lens map" "1" \
         "$(_tpl_lenses "$REPO_ROOT/config/templates/$_t.yaml" | grep -cx security)"
 done
+
+# ── L6 ───────────────────────────────────────────────────────────────────────
+# #1764 run 44417314654: the scope lens found "plugin.sh still uses
+# claimed:<machine>; the design says to change it" and marked it introduced:
+# false — the old code did the same — so it never went back to be fixed.
+_p6="$(_rl_build_lens_prompt scope "EVIDENCE" "CONTEXT" 2>/dev/null | tr -s '[:space:]' ' ')"
+assert_contains "[L6] work asked for and not done is the change's" "$_p6" \
+    "Something the issue or the design asks this change to do, and the change does not do, is the change's: introduced is true, even where the code before the change behaved the same way."
+
+# ── L7 ───────────────────────────────────────────────────────────────────────
+# Build's summary, made by build's own writer, with step 1 answered not needed
+# and its check accepting it; the lens's context then shows that answer.
+L7A="$TEST_TEMP_DIR/l7/artifacts"; mkdir -p "$L7A"
+(
+    # shellcheck source=../../plugins/agent/build/plugin.sh
+    source "$REPO_ROOT/plugins/agent/build/plugin.sh" >/dev/null 2>&1
+    route_to_model() { printf '1: does\n'; }
+    # The judging call's prompt needs the engine's blocks, present and not empty.
+    export ZBUILD_STAGE_BLOCKS="$TEST_TEMP_DIR/l7/blocks"; mkdir -p "$ZBUILD_STAGE_BLOCKS"
+    for _b in from-repo previous-work-fresh rules-fresh; do printf '# %s\n' "$_b" > "$ZBUILD_STAGE_BLOCKS/$_b.md"; done
+    _build_steps_load '{"steps":[{"description":"amend plugin.sh to use zbuild:claimed","areas":["plugins/x/plugin.sh"]}]}'
+    # shellcheck disable=SC2034  # read by _build_write_build_summary, in its scope
+    output_summary_json="$L7A/build-summary.json" output_diff_patch="$L7A/diff.patch"
+    # shellcheck disable=SC2034  # read by _build_write_build_summary, in its scope
+    terminated_reason=done_sentinel router_rc=0 files_changed_count=0 artifact_dir="$L7A" repo_root="$TEST_TEMP_DIR/l7"
+    # shellcheck disable=SC2034  # read by _build_write_build_summary, in its scope
+    scope_violations=()
+    _ROUTE_LOOP_LAST_RESPONSE=$'step 1: not needed — plugin.sh already adds zbuild:claimed in claim_coordinator_claim\nLOOP_COMPLETE'
+    _build_write_build_summary >/dev/null 2>&1
+)
+assert_contains "[L7] setup: build's summary holds the accepted answer" \
+    "$(jq -r '.data.steps[]?' "$L7A/build-summary.json" 2>/dev/null)" "step 1: not needed — plugin.sh already adds zbuild:claimed"
+_ctx="$(ZBUILD_ARTIFACT_DIR="$L7A" ZBUILD_STAGE_INPUTS="" artifact_dir="$L7A" _rl_context 2>/dev/null)"
+assert_contains "[L7] the lens is shown the accepted not-needed answer" "$_ctx" \
+    "step 1: not needed — plugin.sh already adds zbuild:claimed in claim_coordinator_claim"
+_p7="$(_rl_build_lens_prompt scope "EVIDENCE" "CONTEXT" 2>/dev/null | tr -s '[:space:]' ' ')"
+assert_contains "[L7] ...and told it is not undone work unless the reason is wrong" "$_p7" \
+    "A design step build answered not needed, its check accepting the reason (THE DESIGN STEPS BUILD FOUND NOT NEEDED), is not undone work; report it only if you show the reason is wrong, quoting the code that shows it."
 
 cleanup_test_env
 print_test_results

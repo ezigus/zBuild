@@ -252,6 +252,24 @@ _rl_context() {
         _txt="$(printf '%s' "${_txt:0:6000}" | _zbuild_sanitize_for_llm)"
         [[ -n "${_txt//[[:space:]]/}" ]] && out+=$'## THE DESIGN DECISIONS (what the design chose, and why)\n'"$_txt"$'\n\n'
     fi
+    # #2567 (ADR-038): the design steps build answered not needed, its check
+    # accepting the reason — not undone work, unless a lens shows the reason
+    # wrong. Read from build's own steps lines (.data.steps, summary.sh): one jq
+    # over the earlier JSON outputs, and only when one names a not-needed step.
+    local -a _rl_c=() _rl_j=(); local _rl_b
+    _eo_candidates_v _rl_c "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}"
+    for f in ${_rl_c[@]+"${_rl_c[@]}"}; do
+        [[ "$f" == *.json && -s "$f" ]] || continue
+        _rl_b=""; IFS= read -r -d '' _rl_b < "$f" || true
+        [[ "$_rl_b" == *'"steps"'* && "$_rl_b" == *'not needed'* ]] && _rl_j+=("$f")
+    done
+    if [[ ${#_rl_j[@]} -gt 0 ]]; then
+        _txt="$(jq -r '(.data.steps // empty) | arrays | .[] | strings
+            | select(test("^step [0-9]+: not needed — ")) | select(endswith("(not judged)") | not)' \
+            "${_rl_j[@]}" 2>/dev/null | awk '!seen[$0]++')"
+        _txt="$(printf '%s' "${_txt:0:4000}" | _zbuild_sanitize_for_llm)"
+        [[ -n "${_txt//[[:space:]]/}" ]] && out+=$'## THE DESIGN STEPS BUILD FOUND NOT NEEDED (its check accepted each reason)\n'"$_txt"$'\n\n'
+    fi
     # #2302's planned scope is gone: design names no files (#2508, ADR-069 §11).
     printf '%s' "$out"
 }

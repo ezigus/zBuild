@@ -6,22 +6,41 @@
 #
 # Sourced library: no set -euo pipefail.
 
-# design_decisions_prose <design_md> [max_lines] — the design's DECISION PROSE:
-# everything outside fenced blocks, capped (default 120 lines). Empty when absent.
-# Shared by build (honours the decisions) and review-lens (judges against them,
-# #1654) — one extractor, so the two cannot read a design differently.
+# design_decisions_prose_v <var> <design_md> [max_lines] — the design's DECISION
+# PROSE: everything outside fenced blocks, under whatever heading design gave it,
+# capped at max_lines (default 120; 0 is no cap). UNCLEAR, REMOVED and WIRING
+# lines, with the lines they wrap onto up to a blank line, are not decisions, nor
+# are headings alone; no
+# leading blank line, and one blank line between paragraphs. One extractor for
+# build (honours the decisions), review-lens (judges against them, #1654) and
+# design's check (judges them, #2567), so none reads a design differently. No fork.
+design_decisions_prose_v() {
+    local -n _ddp="$1"; local _ddp_f="${2:-}" _ddp_cap="${3:-120}" _l _t _in=0 _skip=0 _n=0 _blank=0 _prose=0
+    _ddp=""
+    [[ -n "$_ddp_f" && -f "$_ddp_f" ]] || return 0
+    while IFS= read -r _l || [[ -n "$_l" ]]; do
+        _l="${_l%$'\r'}"
+        if [[ "$_l" =~ ^[[:space:]]*'```' ]]; then _in=$(( 1 - _in )); _skip=0; continue; fi
+        (( _in )) && continue
+        _t="${_l#"${_l%%[![:space:]]*}"}"; _t="${_t%"${_t##*[![:space:]]}"}"
+        if [[ -z "$_t" ]]; then _skip=0; [[ -n "$_ddp" ]] && _blank=1; continue; fi
+        if [[ "$_t" == UNCLEAR:* || "$_t" == REMOVED:* || "$_t" == WIRING:* ]]; then _skip=1; continue; fi
+        (( _skip )) && continue
+        (( _blank )) && { _ddp+=$'\n'; _blank=0; }
+        [[ "$_t" == \#* ]] || _prose=1
+        _ddp+="$_l"$'\n'; _n=$(( _n + 1 ))
+        (( _ddp_cap > 0 && _n >= _ddp_cap )) && break
+    done < "$_ddp_f"
+    # Headings alone are no decisions.
+    if (( _prose )); then _ddp="${_ddp%$'\n'}"; else _ddp=""; fi
+    return 0
+}
+
+# design_decisions_prose <design_md> [max_lines] — the same, printed.
 design_decisions_prose() {
-    local design_md="${1:-}" cap="${2:-120}" body
-    [[ -z "$design_md" || ! -f "$design_md" ]] && return 0
-    body="$(awk -v cap="$cap" '
-        /^```/ { infence = !infence; next }
-        infence { next }
-        { print; emitted++ }
-        emitted >= cap { exit }
-    ' "$design_md" 2>/dev/null || true)"
-    body="$(printf '%s\n' "$body" | sed '/./,$!d')"
-    [[ -z "${body//[[:space:]]/}" ]] && return 0
-    printf '%s\n' "$body"
+    local _ddp_out; design_decisions_prose_v _ddp_out "${1:-}" "${2:-120}"
+    [[ -n "${_ddp_out//[[:space:]]/}" ]] && printf '%s\n' "$_ddp_out"
+    return 0
 }
 
 # acceptance_requirements_for_judge <design_md>  (#2304, ADR-069 §7)

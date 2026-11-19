@@ -23,28 +23,28 @@ _dcov_parse() {
     local raw="$1" want=$'\n'"$2"$'\n'
     _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_STATUS_WRONG=(); _DCOV_PROBLEM=""
     _DESIGN_PART_WRONG=(); _DCOV_LINES=(); _DCOV_QUOTED=(); _DESIGN_NEW_OWNER=(); _DESIGN_REQ_NONE=()
+    _DESIGN_STEP_WRONG=(); _DESIGN_DECISION_WRONG=()
     local -A seen=()
     local -a bad=()
     local l id rest word why quote instead w qp key reqs_asked=0 steps_asked=0 steps_seen=0
+    local decision_asked=0 decision_seen=0
     [[ "$want" == *$'\nrequirements\n'* ]] && reqs_asked=1
     [[ "$want" == *$'\nsteps\n'* ]] && steps_asked=1
+    [[ "$want" == *$'\ndecision\n'* ]] && decision_asked=1
     while IFS= read -r l; do
         judge_reply_line_v l "$l"
-        # #2555 (ADR-073): the design's steps, judged with the requirements.
+        # #2555, #2567 (ADR-073 §5): the steps and the decisions, each one item,
+        # judged by the rule every part is.
         if [[ "$l" =~ ^Steps[*\`_]*:[[:space:]]*([a-z_-]+)(.*)$ ]]; then
             (( steps_asked )) || continue
             steps_seen=1; _DCOV_LINES["steps"]+="$l"$'\n'
-            word="${BASH_REMATCH[1]}"; _dcov_why_quote "${BASH_REMATCH[2]}"
-            case "$word" in
-                ok) ;;
-                new-owner)
-                    if [[ -z "$quote" ]]; then bad+=("Steps has no QUOTE"); continue; fi
-                    # The existing owner is in the code from before the change only.
-                    judge_quote_check_v w "$quote" "" "${base:-$repo}" "${base:-$repo}" || { bad+=("Steps' quote $w in the code from before this change"); continue; }
-                    judge_quote_path_v qp "$quote" "$repo" "$base"; [[ -n "$qp" ]] && _DCOV_QUOTED["steps"]+="$qp"$'\n'
-                    _DESIGN_NEW_OWNER+=("${why:-something already owns this job}"$'\t'"$quote") ;;
-                *) bad+=("Steps is ok or new-owner, not $word") ;;
-            esac
+            _dcov_whole_part steps Steps "${steps:-}" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+            continue
+        fi
+        if [[ "$l" =~ ^Decisions?[*\`_]*:[[:space:]]*([a-z_-]+)(.*)$ ]]; then
+            (( decision_asked )) || continue
+            decision_seen=1; _DCOV_LINES["decision"]+="$l"$'\n'
+            _dcov_whole_part decision Decision "${decision:-}" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
             continue
         fi
         if [[ "$l" =~ ^([A-Za-z0-9]+-[0-9]+)[[:space:]]+(Title|Given|When|Then|And|Cleanup)([[:space:]]+[0-9]+)?[*\`_]*:[[:space:]]*([a-z_-]+)(.*)$ ]]; then
@@ -99,9 +99,47 @@ _dcov_parse() {
         [[ "$want" == *$'\n'"$id"$'\n'* && -z "${seen[$id]+x}" ]] && missing+=("$id")
     done
     (( steps_asked && ! steps_seen )) && missing+=("Steps")
+    (( decision_asked && ! decision_seen )) && missing+=("Decision")
     [[ ${#missing[@]} -gt 0 ]] && bad=("it has no line for ${missing[*]}" ${bad[@]+"${bad[@]}"})
     if [[ ${#bad[@]} -gt 0 ]]; then
         local IFS=';'; _DCOV_PROBLEM="${bad[*]}"; _DCOV_PROBLEM="${_DCOV_PROBLEM//;/; }"
+    fi
+    return 0
+}
+
+# _dcov_whole_part <key> <Label> <its text> <verdict> <rest> — one line about a
+# part judged whole, the steps or the decisions (#2567, ADR-073 §5), read in
+# _dcov_parse's scope: not-asked and contradicts quote the part's own words;
+# new-owner quotes a line of the code from before the change.
+_dcov_whole_part() {
+    local _wp_k="$1" _wp_l="$2" _wp_txt="$3" _wp_word="$4" why quote instead w qp
+    _dcov_why_quote "$5"
+    case "$_wp_word" in
+        ok) return 0 ;;
+        not-asked|contradicts)
+            [[ -n "$quote" ]] || { bad+=("$_wp_l has no QUOTE"); return 0; }
+            # #2567 (review): the quote names one part — it lies in one step
+            # line, or one line of the decisions, and is at least three words.
+            local -a _wp_w=(); read -ra _wp_w <<< "$quote"
+            (( ${#_wp_w[@]} >= 3 )) || { bad+=("$_wp_l's quote is too short to name the part: copy at least three words of it"); return 0; }
+            local _wp_one _wp_ok=0
+            while IFS= read -r _wp_one; do
+                [[ -n "$_wp_one" ]] && judge_quote_check_v w "$quote" "$_wp_one" "" "" && { _wp_ok=1; break; }
+            done <<< "$_wp_txt"
+            (( _wp_ok )) || { bad+=("$_wp_l's quote is not in any one of its lines: copy it from one step, or one line of the decisions"); return 0; } ;;
+        new-owner)
+            [[ -n "$quote" ]] || { bad+=("$_wp_l has no QUOTE"); return 0; }
+            # The existing owner is in the code from before the change only.
+            judge_quote_check_v w "$quote" "" "${base:-$repo}" "${base:-$repo}" || { bad+=("$_wp_l's quote $w in the code from before this change"); return 0; }
+            judge_quote_path_v qp "$quote" "$repo" "$base"; [[ -n "$qp" ]] && _DCOV_QUOTED["$_wp_k"]+="$qp"$'\n' ;;
+        *) bad+=("$_wp_l is ok, not-asked, contradicts or new-owner, not $_wp_word"); return 0 ;;
+    esac
+    if [[ "$_wp_k" == steps ]]; then
+        # The old new-owner finding's form is kept (#2555).
+        if [[ "$_wp_word" == new-owner ]]; then _DESIGN_NEW_OWNER+=("${why:-something already owns this job}"$'\t'"$quote")
+        else _DESIGN_STEP_WRONG+=("$_wp_word"$'\t'"$why"$'\t'"$quote"); fi
+    else
+        _DESIGN_DECISION_WRONG+=("$_wp_word"$'\t'"$why"$'\t'"$quote")
     fi
     return 0
 }
@@ -144,6 +182,7 @@ _dcov_need_names() {
         [[ -n "$_dn_k" ]] || continue
         if [[ "$_dn_k" == requirements ]]; then _dn_req=1
         elif [[ "$_dn_k" == steps ]]; then _dn_out+="${_dn_out:+, }the Steps line"
+        elif [[ "$_dn_k" == decision ]]; then _dn_out+="${_dn_out:+, }the Decision line"
         else _dn_out+="${_dn_out:+, }$_dn_k"; fi
     done <<< "$1"
     [[ -n "$_dn_req" ]] && _dn_out+="${_dn_out:+, }every requirement"
@@ -315,6 +354,23 @@ _dcov_findings_build() {
     done
     for x in ${_DESIGN_NEW_OWNER[@]+"${_DESIGN_NEW_OWNER[@]}"}; do
         _DESIGN_COV_FINDINGS+=("Steps: the design's steps build a new owner where one exists: ${x%%$'\t'*} — ${x#*$'\t'} [FIX IN DESIGN: build on what exists, or say in the design why it cannot]")
+    done
+    # #2567: a step or a decision against the issue, or that no requirement needs.
+    local _pw _pwy _pq
+    for x in ${_DESIGN_STEP_WRONG[@]+"${_DESIGN_STEP_WRONG[@]}"}; do
+        IFS=$'\t' read -r _pw _pwy _pq <<< "$x"
+        case "$_pw" in
+            not-asked) _DESIGN_COV_FINDINGS+=("Steps: a step no requirement needs: ${_pwy:-no requirement asks for it} — $_pq [FIX IN DESIGN: take the step out, or make it what a requirement asks]") ;;
+            *)         _DESIGN_COV_FINDINGS+=("Steps: a step goes against the issue: ${_pwy:-it contradicts the issue} — $_pq [FIX IN DESIGN: make the step agree with the issue]") ;;
+        esac
+    done
+    for x in ${_DESIGN_DECISION_WRONG[@]+"${_DESIGN_DECISION_WRONG[@]}"}; do
+        IFS=$'\t' read -r _pw _pwy _pq <<< "$x"
+        case "$_pw" in
+            not-asked) _DESIGN_COV_FINDINGS+=("Decision: the design's decisions commit to something no requirement needs: ${_pwy:-no requirement asks for it} — $_pq [FIX IN DESIGN: take it out, or make it what a requirement asks]") ;;
+            new-owner) _DESIGN_COV_FINDINGS+=("Decision: the design's decisions build a new owner where one exists: ${_pwy:-something already owns this job} — $_pq [FIX IN DESIGN: build on what exists, or say in the design why it cannot]") ;;
+            *)         _DESIGN_COV_FINDINGS+=("Decision: the design's decisions go against the issue: ${_pwy:-they contradict the issue} — $_pq [FIX IN DESIGN: make the decisions agree with the issue]") ;;
+        esac
     done
     local _sr _so
     for x in ${_DESIGN_STATUS_WRONG[@]+"${_DESIGN_STATUS_WRONG[@]}"}; do
