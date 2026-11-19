@@ -403,54 +403,61 @@ mock_gh
 # DSCLA-17: zbuild_claim_release with no prior acquire invokes no gh label command
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Given: core/claim/claim.sh is loaded; _ZBUILD_CLAIM_ACQUIRED is not set
-_dscla17_calls="$TEST_TEMP_DIR/gh-calls-dscla17.txt"
-: > "$_dscla17_calls"
-cat > "$TEST_TEMP_DIR/bin/gh" <<MOCK
+# Given: core/claim/claim.sh is loaded
+# This file does not exist in the base code, so the test fails there (as required).
+_dscla17_claim_sh="$REPO_ROOT/core/claim/claim.sh"
+if [[ ! -f "$_dscla17_claim_sh" ]]; then
+    assert_fail "[DSCLA-17] core/claim/claim.sh must exist" \
+        "file not found: $_dscla17_claim_sh — zbuild_claim_release is not yet implemented"
+else
+    # shellcheck source=../../../../core/claim/claim.sh
+    source "$_dscla17_claim_sh"
+
+    # Given: _ZBUILD_CLAIM_ACQUIRED is not set
+    _dscla17_calls="$TEST_TEMP_DIR/gh-calls-dscla17.txt"
+    : > "$_dscla17_calls"
+    cat > "$TEST_TEMP_DIR/bin/gh" <<MOCK
 #!/usr/bin/env bash
 printf '%s\n' "\$@" >> "$_dscla17_calls"
 exit 0
 MOCK
-chmod +x "$TEST_TEMP_DIR/bin/gh"
+    chmod +x "$TEST_TEMP_DIR/bin/gh"
 
-_prev_backend_17="$ZBUILD_CLAIM_BACKEND"
-export ZBUILD_CLAIM_BACKEND="gh"
-unset _ZBUILD_CLAIM_ACQUIRED 2>/dev/null || true
+    _prev_backend_17="$ZBUILD_CLAIM_BACKEND"
+    export ZBUILD_CLAIM_BACKEND="gh"
+    unset _ZBUILD_CLAIM_ACQUIRED 2>/dev/null || true
 
-# When: zbuild_claim_release is called
-set +e; zbuild_claim_release; _dscla17_rc=$?; set -e
+    # When: zbuild_claim_release is called
+    set +e; zbuild_claim_release; _dscla17_rc=$?; set -e
 
-# Then: no gh label command is invoked
-_dscla17_call_count="$(wc -l < "$_dscla17_calls" | tr -d ' ')"
-assert_eq "[DSCLA-17] no gh calls made when _ZBUILD_CLAIM_ACQUIRED is not set" "0" "$_dscla17_call_count"
+    # Then: no gh label command is invoked
+    _dscla17_call_count="$(wc -l < "$_dscla17_calls" | tr -d ' ')"
+    assert_eq "[DSCLA-17] no gh calls made when _ZBUILD_CLAIM_ACQUIRED is not set" "0" "$_dscla17_call_count"
 
-# Cleanup: restore previous backend and plain gh mock
-export ZBUILD_CLAIM_BACKEND="$_prev_backend_17"
-mock_gh
+    # Cleanup: restore previous backend and plain gh mock
+    export ZBUILD_CLAIM_BACKEND="$_prev_backend_17"
+    mock_gh
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DSCLA-10: pipeline.refused.claimed is an accepted event name in event-schema.json
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Given: config/event-schema.json is the event schema for the engine;
-#        runner.sh emits pipeline.refused.claimed during a run refusal
+# Given: config/event-schema.json includes an entry for pipeline.refused.claimed
 _dscla10_schema="$REPO_ROOT/config/event-schema.json"
-_dscla10_runner="$REPO_ROOT/core/pipeline/runner.sh"
 
 # When: the event-schema emitted-coverage check runs against the codebase
-# (the coverage check scans code for literal event names; for the check not to
-# reject this event, the name must be in config/event-schema.json — same query)
-_dscla10_registered=false
-grep -qF '"pipeline.refused.claimed"' "$_dscla10_schema" 2>/dev/null \
-    && _dscla10_registered=true
+# (eb_compose_known_types is the same function the coverage check uses to build
+# the known set from event-schema.json + plugin manifests; available via
+# event-bus.sh sourced at the top of this file)
+_dscla10_known="$(eb_compose_known_types "$_dscla10_schema" "$REPO_ROOT/plugins" 2>/dev/null || printf '')"
 
 # Then: the check exits without reporting pipeline.refused.claimed as an unregistered event name
-_dscla10_emitted_note="(runner emits it: $(grep -cF 'pipeline.refused.claimed' "$_dscla10_runner" 2>/dev/null || true) occurrence(s))"
-if [[ "$_dscla10_registered" == "true" ]]; then
-    assert_pass "[DSCLA-10] pipeline.refused.claimed is in config/event-schema.json known_types"
+if grep -qxF "pipeline.refused.claimed" <<< "$_dscla10_known"; then
+    assert_pass "[DSCLA-10] pipeline.refused.claimed is in the composed known types (coverage check accepts it)"
 else
-    assert_fail "[DSCLA-10] pipeline.refused.claimed is in config/event-schema.json known_types" \
-        "not found in $_dscla10_schema $_dscla10_emitted_note"
+    assert_fail "[DSCLA-10] pipeline.refused.claimed is in the composed known types (coverage check accepts it)" \
+        "not found in composed known set; config/event-schema.json may be missing the entry"
 fi
 
 cleanup_test_env
