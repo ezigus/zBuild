@@ -1,0 +1,1 @@
+{"data":{"findings":[{"n":1,"text":"tests/unit/lint-grep-c-test.sh fails: ✗ [SPEC-5] real scripts/ core/ plugins/ tree is clean — expected: 0, got: 1 (and 1 more failing check in this file)"}]}}

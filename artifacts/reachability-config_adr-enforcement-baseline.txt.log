@@ -103,10 +103,15 @@
   [38;2;74;222;128m✓[0m [DSCLA-11] run-status comment does not show 'running' on pipeline failure
   [38;2;74;222;128m✓[0m [DSCLA-11] run-status comment does not show 'running' on TERM signal exit
   [38;2;74;222;128m✓[0m [DSCLA-13] zbuild:claimed absent after second SIGTERM during abort trap
+  [38;2;74;222;128m✓[0m [DSCLA-15] runner exits non-zero when zbuild:claimed is present (escape test)
+  [38;2;74;222;128m✓[0m [DSCLA-15] holder is printed without interpreting 
+ escape sequence
+  [38;2;74;222;128m✓[0m [DSCLA-15] no stage was dispatched when runner refused the claim (escape test)
+  [38;2;74;222;128m✓[0m [DSCLA-16] zbuild:claimed absent after runner's early-failure path (_runner_enter_worktree)
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 22 tests passed[0m
+  [38;2;74;222;128m[1mAll 26 tests passed[0m
 
 ### config/adr-enforcement-baseline.txt head tests/integration/teardown-repeat-signal-test.sh
 
@@ -135,10 +140,15 @@
   [38;2;74;222;128m✓[0m [DSCLA-11] run-status comment does not show 'running' on pipeline failure
   [38;2;74;222;128m✓[0m [DSCLA-11] run-status comment does not show 'running' on TERM signal exit
   [38;2;74;222;128m✓[0m [DSCLA-13] zbuild:claimed absent after second SIGTERM during abort trap
+  [38;2;74;222;128m✓[0m [DSCLA-15] runner exits non-zero when zbuild:claimed is present (escape test)
+  [38;2;74;222;128m✓[0m [DSCLA-15] holder is printed without interpreting 
+ escape sequence
+  [38;2;74;222;128m✓[0m [DSCLA-15] no stage was dispatched when runner refused the claim (escape test)
+  [38;2;74;222;128m✓[0m [DSCLA-16] zbuild:claimed absent after runner's early-failure path (_runner_enter_worktree)
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 22 tests passed[0m
+  [38;2;74;222;128m[1mAll 26 tests passed[0m
 
 ### config/adr-enforcement-baseline.txt reverted tests/unit/lint-adr-enforced-by-test.sh
 
@@ -177,7 +187,7 @@ lint-adr-enforced-by: 1 problem(s) among 70 live ADR(s)
   [38;2;74;222;128m✓[0m [#1951/SPEC-5] ADR-001-plugin-contract.md is not in config/adr-enforcement-baseline.txt
   [38;2;74;222;128m✓[0m [#1764/DSADR-7] ADR-005-claim-coordinator.md carries an ## Enforced by section
   [38;2;248;113;113m✗[0m [#1764/DSADR-7] ADR-005-claim-coordinator.md must be removed from config/adr-enforcement-baseline.txt
-    [2mADR-005 still listed in /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.UPAUg3/config/adr-enforcement-baseline.txt; remove the entry once the ## Enforced by section is added[0m
+    [2mADR-005 still listed in /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.3jFpmO/config/adr-enforcement-baseline.txt; remove the entry once the ## Enforced by section is added[0m
 
 [2m  ──────────────────────────────────────────[0m
 

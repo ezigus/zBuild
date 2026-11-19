@@ -1,3 +1,4 @@
+the acceptance check failed — config/shape-change-paths.txt was put back to its old version on its own and every test still passed, so no test checks what this change does to it — add a test that fails without the change to it
 NEGCTL PASS DSCLA-1
       design : When an issue-bound run starts and zbuild:claimed is absent, the label is added before the first sta…
       asserts: assert_eq "[DSCLA-1] zbuild_claim_acquire returns 0 when zbuild:claimed is absent" "0" "$_dscla1_rc"
@@ -31,6 +32,12 @@ NEGCTL PASS DSCLA-10
 NEGCTL SKIP DSCLA-11 already_done
       design : The run-status comment shows terminal status when the runner exits on any path
       asserts: assert_fail "[DSCLA-11] run-status comment does not show 'running' when pipeline.end is present"    …
+NEGCTL PASS DSCLA-15
+      design : The holder string is printed without interpreting escape sequences in the run's refusal output
+      asserts: assert_pass "[DSCLA-15] runner exits non-zero when zbuild:claimed is present (escape test)"
+NEGCTL PASS DSCLA-16
+      design : When claim acquisition succeeds but runner infrastructure setup fails before the EXIT trap is instal…
+      asserts: assert_fail "[DSCLA-16] zbuild_claim_acquire was never called — cannot verify early-failure release"…
 NEGCTL PASS DSCLA-13
       design : When a second SIGTERM arrives during the runner's claim release, zbuild:claimed is still removed
       asserts: assert_fail "[DSCLA-13] zbuild:claimed was never acquired — cannot verify release after second SIGTE…
@@ -55,6 +62,7 @@ NEGCTL SKIP DSCLA-14 doc
 REACHABILITY PASS core/pipeline/runner.sh
 REACHABILITY PASS change config/adr-enforcement-baseline.txt
 REACHABILITY PASS change config/event-schema.json
+REACHABILITY FAIL untested_change config/shape-change-paths.txt
 REACHABILITY PASS change core/claim/claim.sh
 REACHABILITY PASS change plugins/claim-coordinator/github-labels/plugin.sh
 REACHABILITY PASS change scripts/lib/run-status-render.sh

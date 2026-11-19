@@ -1,0 +1,1 @@
+{"data":{"findings":[{"n":1,"text":"config/shape-change-paths.txt was put back to its old version on its own and every test still passed, so no test checks what this change does to it — add a test that fails without the change to it"}]}}

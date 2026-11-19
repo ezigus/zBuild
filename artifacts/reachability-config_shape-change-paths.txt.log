@@ -102,10 +102,16 @@
   [38;2;74;222;128m✓[0m [DSCLA-11] run-status comment does not show 'running' when pipeline.end is present
   [38;2;74;222;128m✓[0m [DSCLA-11] run-status comment does not show 'running' on pipeline failure
   [38;2;74;222;128m✓[0m [DSCLA-11] run-status comment does not show 'running' on TERM signal exit
+  [38;2;74;222;128m✓[0m [DSCLA-13] zbuild:claimed absent after second SIGTERM during abort trap
+  [38;2;74;222;128m✓[0m [DSCLA-15] runner exits non-zero when zbuild:claimed is present (escape test)
+  [38;2;74;222;128m✓[0m [DSCLA-15] holder is printed without interpreting 
+ escape sequence
+  [38;2;74;222;128m✓[0m [DSCLA-15] no stage was dispatched when runner refused the claim (escape test)
+  [38;2;74;222;128m✓[0m [DSCLA-16] zbuild:claimed absent after runner's early-failure path (_runner_enter_worktree)
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 21 tests passed[0m
+  [38;2;74;222;128m[1mAll 26 tests passed[0m
 
 ### config/shape-change-paths.txt head tests/integration/teardown-repeat-signal-test.sh
 
@@ -133,10 +139,16 @@
   [38;2;74;222;128m✓[0m [DSCLA-11] run-status comment does not show 'running' when pipeline.end is present
   [38;2;74;222;128m✓[0m [DSCLA-11] run-status comment does not show 'running' on pipeline failure
   [38;2;74;222;128m✓[0m [DSCLA-11] run-status comment does not show 'running' on TERM signal exit
+  [38;2;74;222;128m✓[0m [DSCLA-13] zbuild:claimed absent after second SIGTERM during abort trap
+  [38;2;74;222;128m✓[0m [DSCLA-15] runner exits non-zero when zbuild:claimed is present (escape test)
+  [38;2;74;222;128m✓[0m [DSCLA-15] holder is printed without interpreting 
+ escape sequence
+  [38;2;74;222;128m✓[0m [DSCLA-15] no stage was dispatched when runner refused the claim (escape test)
+  [38;2;74;222;128m✓[0m [DSCLA-16] zbuild:claimed absent after runner's early-failure path (_runner_enter_worktree)
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 21 tests passed[0m
+  [38;2;74;222;128m[1mAll 26 tests passed[0m
 
 ### config/shape-change-paths.txt reverted tests/unit/lint-adr-enforced-by-test.sh
 
