@@ -78,66 +78,6 @@ zbuild_claim_build_holder() {
     export _ZBUILD_CLAIM_HOLDER
 }
 
-# _zbuild_claim_read_labels_into <varname> <issue>
-# Read the current labels for <issue> into the named variable — no outer subshell,
-# no $(_ccgl_backend) fork (uses ${ZBUILD_CLAIM_BACKEND:-gh} directly).
-# Returns 0 on success (variable set, possibly empty); 1 on backend error.
-_zbuild_claim_read_labels_into() {
-    local _varname="$1" _issue="$2"
-    case "${ZBUILD_CLAIM_BACKEND:-gh}" in
-        gh)
-            local _out
-            if ! _out="$(gh issue view "$_issue" --json labels \
-                    --jq '.labels[].name' 2>/dev/null)"; then
-                return 1
-            fi
-            printf -v "$_varname" '%s' "$_out"
-            return 0
-            ;;
-        local-fs)
-            local _store="${ZBUILD_CLAIM_STORE:-}"
-            local _f="$_store/$_issue/labels.txt"
-            local _content=""
-            if [[ -f "$_f" ]]; then
-                local _line
-                while IFS= read -r _line; do
-                    _content+="${_line}"$'\n'
-                done < "$_f"
-            fi
-            printf -v "$_varname" '%s' "$_content"
-            return 0
-            ;;
-        *) return 1 ;;
-    esac
-}
-
-# _zbuild_claim_add_label_direct <issue> <label>
-# Add a label to an issue — no $(_ccgl_backend) fork (uses ${ZBUILD_CLAIM_BACKEND:-gh}).
-_zbuild_claim_add_label_direct() {
-    local _issue="$1" _label="$2"
-    case "${ZBUILD_CLAIM_BACKEND:-gh}" in
-        gh)
-            gh issue edit "$_issue" --add-label "$_label" >/dev/null 2>&1
-            ;;
-        local-fs)
-            local _store="${ZBUILD_CLAIM_STORE:-}"
-            [[ -n "$_store" ]] || return 1
-            local _f="$_store/$_issue/labels.txt"
-            mkdir -p "$_store/$_issue"
-            local _timeout="${ZBUILD_CLAIM_FLOCK_TIMEOUT_SEC:-5}"
-            (
-                exec 9>"${_f}.lock"
-                flock -w "$_timeout" 9 || exit 1
-                touch "$_f"
-                if ! grep -Fxq "$_label" "$_f"; then
-                    echo "$_label" >> "$_f"
-                fi
-            )
-            ;;
-        *) return 1 ;;
-    esac
-}
-
 # zbuild_claim_acquire <issue> — acquire the cross-machine claim for <issue>.
 #
 # Sets _ZBUILD_CLAIM_HOLDER (global) and returns:
@@ -145,7 +85,7 @@ _zbuild_claim_add_label_direct() {
 #   1 — refused: zbuild:claimed is already on the issue
 #
 # Graceful degradation: backend errors return 0 (the local flock still serialises
-# same-machine runs). Logs the skip to the run's state dir but never fails the run.
+# same-machine runs). Logs the skip to stderr but never fails the run.
 zbuild_claim_acquire() {
     local issue="$1"
     _ZBUILD_CLAIM_HOLDER=""
@@ -153,16 +93,14 @@ zbuild_claim_acquire() {
     # Empty issue or goal-only run (issue=0) → no-op (DSCLA-8)
     [[ -z "$issue" || "$issue" == "0" ]] && return 0
 
-    # Read current labels; on backend error, skip gracefully and warn.
-    # Uses _zbuild_claim_read_labels_into to avoid a $(_ccgl_read_labels) subshell
-    # and the $(_ccgl_backend) fork inside it (ADR-065 §6, #1764).
+    # Read current labels via backend helper; on error, skip gracefully and warn.
     local existing
-    if ! _zbuild_claim_read_labels_into existing "$issue"; then
+    if ! existing="$(_ccgl_read_labels "$issue")"; then
         printf 'zbuild_claim_acquire: backend read error for issue %s — skipping cross-machine claim (local flock still active)\n' "$issue" >&2 || true
         return 0
     fi
 
-    # Check if zbuild:claimed is already present (DSCLA-3, DSCLA-4)
+    # Check if zbuild:claimed is already present (DSCLA-3)
     if grep -Fxq "zbuild:claimed" <<< "$existing" 2>/dev/null; then
         # Sanitize via printf '%s' to prevent echo -e / terminal-injection from
         # attacker-controlled comment content (backslash seqs stay literal).
@@ -178,10 +116,8 @@ zbuild_claim_acquire() {
     # keeps the in-process value consistent after the acquire.
     zbuild_claim_build_holder
 
-    # Add zbuild:claimed label; on failure, skip gracefully and warn.
-    # Uses _zbuild_claim_add_label_direct to avoid the $(_ccgl_backend) fork
-    # inside _ccgl_add_label (ADR-065 §6, #1764).
-    if ! _zbuild_claim_add_label_direct "$issue" "zbuild:claimed"; then
+    # Add zbuild:claimed label via backend helper; on failure, skip gracefully and warn.
+    if ! _ccgl_add_label "$issue" "zbuild:claimed"; then
         printf 'zbuild_claim_acquire: backend add error for issue %s — skipping cross-machine claim (local flock still active)\n' "$issue" >&2 || true
         return 0
     fi
