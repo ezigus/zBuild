@@ -32,7 +32,7 @@
   [38;2;74;222;128m✓[0m [DSCLA-8] no gh calls made for empty issue
   [38;2;74;222;128m✓[0m [DSCLA-8] zbuild_claim_acquire returns 0 for empty issue
   [38;2;248;113;113m✗[0m [DSCLA-10] pipeline.refused.claimed is in config/event-schema.json known_types
-    [2mnot found in /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.0uy3Yy/config/event-schema.json[0m
+    [2mnot found in /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.Fog0qm/config/event-schema.json[0m
 
 [2m  ──────────────────────────────────────────[0m
 

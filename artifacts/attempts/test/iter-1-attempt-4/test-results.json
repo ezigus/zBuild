@@ -1,0 +1,70 @@
+{
+  "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 610/610 passed (5 skipped)\nintegration: 264/264 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 911/911 passed (5 skipped)",
+  "run_mode": "full",
+  "exit_code": 0,
+  "data": {
+    "exit_code": 0,
+    "passed": 911,
+    "failed": 0,
+    "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 610/610 passed (5 skipped)\nintegration: 264/264 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 911/911 passed (5 skipped)",
+    "diff_applied": false,
+    "test_cmd": "npm test",
+    "run_mode": "full",
+    "timing": {
+      "tiers": {
+        "lint": 160602,
+        "e2e": 114007,
+        "golden": 7176,
+        "unit": 429912,
+        "integration": 346147
+      },
+      "slowest_files": [
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.mikYlk/tests/e2e/fork-budget-test.sh",
+          "ms": 105407
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.mikYlk/tests/integration/core-pipeline-runner-test.sh",
+          "ms": 59940
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.mikYlk/tests/unit/lint-test-engine-state-test.sh",
+          "ms": 45565
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.mikYlk/tests/integration/stop-run-on-fail-test.sh",
+          "ms": 41993
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.mikYlk/tests/integration/run-timed-out-test.sh",
+          "ms": 41074
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.mikYlk/tests/e2e/parity-local-vs-ci-test.sh",
+          "ms": 38780
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.mikYlk/tests/integration/cycle-acceptance-terminal-failure-test.sh",
+          "ms": 38448
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.mikYlk/tests/integration/leaf-verdict-halts-test.sh",
+          "ms": 37798
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.mikYlk/tests/integration/cycle-on-max-pipeline-continues-test.sh",
+          "ms": 37104
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.mikYlk/tests/integration/runner-release-exit-paths-test.sh",
+          "ms": 36515
+        }
+      ]
+    },
+    "tree_sha": "719d8f52968e2552b53eeadf61795db0cf5eb76c",
+    "findings": []
+  },
+  "result_contract": 3,
+  "outcome": "pass",
+  "reason": "911 of 911 tests passed"
+}

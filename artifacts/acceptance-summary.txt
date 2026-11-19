@@ -31,6 +31,9 @@ NEGCTL PASS DSCLA-10
 NEGCTL SKIP DSCLA-11 already_done
       design : The run-status comment shows terminal status when the runner exits on any path
       asserts: assert_fail "[DSCLA-11] run-status comment does not show 'running' when pipeline.end is present"    …
+NEGCTL PASS DSCLA-13
+      design : When a second SIGTERM arrives during the runner's claim release, zbuild:claimed is still removed
+      asserts: assert_fail "[DSCLA-13] zbuild:claimed was never acquired — cannot verify release after second SIGTE…
 NEGCTL SKIP DSADR-4 doc
       design : ADR-005 tells the reader that the engine calls the claim coordinator's claim hook after the admissio…
       asserts: <none found>
@@ -41,10 +44,13 @@ NEGCTL SKIP DSADR-6 doc
       design : ADR-005 corrects stale content: coordinator selection is not from config/zbuild.yaml, and the engine…
       asserts: <none found>
 NEGCTL SKIP DSADR-7 doc
-      design : ADR-005 has an ## Enforced by section naming the test or lint that enforces each statement
+      design : ADR-005 has an ## Enforced by section with the §1 bullet extended to include §1(c)'s tests (claim-co…
       asserts: assert_pass "[#1764/DSADR-7] ADR-005-claim-coordinator.md carries an ## Enforced by section"
 NEGCTL SKIP DSADR-8 doc
       design : ADR-059 §4 tells the reader that cross-machine exclusion is the claim coordinator's job and the admi…
+      asserts: <none found>
+NEGCTL SKIP DSCLA-14 doc
+      design : README.md in plugins/claim-coordinator/github-labels/ tells the reader the shared claim label is zbu…
       asserts: <none found>
 REACHABILITY PASS core/pipeline/runner.sh
 REACHABILITY PASS change config/adr-enforcement-baseline.txt
