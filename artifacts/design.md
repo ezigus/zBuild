@@ -151,13 +151,17 @@ DSCLA-7[code]: On TERM signal, zbuild:claimed is removed from the issue covers: 
   Given: the claim was acquired at run start
   When: the runner process receives SIGTERM
   Then: zbuild:claimed is absent from the issue
-DSCLA-8[code]: A run with no issue number makes no claim and calls no coordinator hook covers: RQCLA-8
-  Given: the run is started with --goal and no --issue
-  When: the run starts
-  Then: zbuild_claim_acquire returns 0
+DSCLA-8[code]: When zbuild_claim_acquire is called with an empty issue argument, it returns 0 and invokes no gh label command covers: RQCLA-8
+  Given: core/claim/claim.sh is loaded
+  When: zbuild_claim_acquire is called with an empty string as the issue argument
+  Then: the function returns 0
   And: no gh label command is invoked
-DSCLA-10[code]: The event-schema emitted-coverage check does not reject pipeline.refused.claimed as an unknown event covers: RQCLA-10
-  Given: runner.sh emits pipeline.refused.claimed during a run refusal
+DSCLA-17[code]: When zbuild_claim_release is called without a prior successful acquire, it invokes no gh label command covers: RQCLA-8
+  Given: core/claim/claim.sh is loaded; _ZBUILD_CLAIM_ACQUIRED is not set
+  When: zbuild_claim_release is called
+  Then: no gh label command is invoked
+DSCLA-10[code]: When the event-schema emitted-coverage check runs, it accepts pipeline.refused.claimed as a registered event covers: RQCLA-10
+  Given: config/event-schema.json includes an entry for pipeline.refused.claimed
   When: the event-schema emitted-coverage check runs against the codebase
   Then: the check exits without reporting pipeline.refused.claimed as an unregistered event name
 DSCLA-11[done]: The run-status comment shows terminal status when the runner exits on any path covers: RQCLA-5, RQCLA-6, RQCLA-7 evidence: scripts/lib/run-status-render.sh | rsc_finalize_body() {
