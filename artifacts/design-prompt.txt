@@ -126,7 +126,7 @@ The design document MUST include:
    starting with a letter, that say what it is about, a dash, and a number —
    DSLOOP-1 for a SPEC about loop state. The id is also the tag its test
    carries, [DSLOOP-1]:
-   - The highest number each code has had, removed ones counted, and in the repository's tests: DSADR 8, DSBUD 1, DSCLA 16, DSCLM 9, DSDEL 1, DSEND 1, DSFRSH 1, DSFSTG 9, DSLOOP 1, DSPRB 6, DSWORK 9. A new SPEC with one of these codes takes the next number; a new code starts at 1.
+   - The highest number each code has had, removed ones counted, and in the repository's tests: DSADR 8, DSBUD 1, DSCLA 17, DSCLM 9, DSDEL 1, DSEND 1, DSFRSH 1, DSFSTG 9, DSLOOP 1, DSPRB 6, DSWORK 9. A new SPEC with one of these codes takes the next number; a new code starts at 1.
    - A SPEC you keep keeps its id.
    - REMOVED: only for a SPEC in the last design that passed — one you drop
      gets a line `REMOVED: <id> — <why>`, kept in every later design. An id
@@ -447,13 +447,17 @@ DSCLA-7[code]: On TERM signal, zbuild:claimed is removed from the issue covers: 
   Given: the claim was acquired at run start
   When: the runner process receives SIGTERM
   Then: zbuild:claimed is absent from the issue
-DSCLA-8[code]: A run with no issue number makes no claim and calls no coordinator hook covers: RQCLA-8
-  Given: the run is started with --goal and no --issue
-  When: the run starts
-  Then: zbuild_claim_acquire returns 0
+DSCLA-8[code]: When zbuild_claim_acquire is called with an empty issue argument, it returns 0 and invokes no gh label command covers: RQCLA-8
+  Given: core/claim/claim.sh is loaded
+  When: zbuild_claim_acquire is called with an empty string as the issue argument
+  Then: the function returns 0
   And: no gh label command is invoked
-DSCLA-10[code]: The event-schema emitted-coverage check does not reject pipeline.refused.claimed as an unknown event covers: RQCLA-10
-  Given: runner.sh emits pipeline.refused.claimed during a run refusal
+DSCLA-17[code]: When zbuild_claim_release is called without a prior successful acquire, it invokes no gh label command covers: RQCLA-8
+  Given: core/claim/claim.sh is loaded; _ZBUILD_CLAIM_ACQUIRED is not set
+  When: zbuild_claim_release is called
+  Then: no gh label command is invoked
+DSCLA-10[code]: When the event-schema emitted-coverage check runs, it accepts pipeline.refused.claimed as a registered event covers: RQCLA-10
+  Given: config/event-schema.json includes an entry for pipeline.refused.claimed
   When: the event-schema emitted-coverage check runs against the codebase
   Then: the check exits without reporting pipeline.refused.claimed as an unregistered event name
 DSCLA-11[done]: The run-status comment shows terminal status when the runner exits on any path covers: RQCLA-5, RQCLA-6, RQCLA-7 evidence: scripts/lib/run-status-render.sh | rsc_finalize_body() {
@@ -540,20 +544,19 @@ Outputs:
 - work_steps: /home/runner/work/_temp/zbuild-state/artifacts/design-steps.json
 
 Findings:
-- design finding 1 (opened by design): RQCLA-8 is not covered: DSCLA-8 tests that zbuild_claim_acquire invokes no gh label command when the issue argument is empty, covering the claim (acquire) side. No SPEC tests that the release coordinator hook is also not called for a goal-only run. The design says zbuild_claim_release skips when the issue is empty or _ZBUILD_CLAIM_ACQUIRED is unset, but that path is left untested. — calls no coordinator hook [FIX IN DESIGN: add or widen a SPEC so it covers this]
-- design finding 2 (opened by design): DSCLA-10: 1 part to fix
-    DSCLA-10[code]: config/event-schema.json contains an entry for the event name pipeline.refused.claimed covers: RQCLA-10
-      When: config/event-schema.json is read [FIX IN DESIGN: "config/event-schema.json is read" describes what a test does to verify the Then (opens and inspects the file), not a software action or stimulus; the When should name something the software does — say the situation, the action, or what can be seen — not how it is built or how a test does it; a test could observe instead: the event-schema emitted-coverage check runs against the codebase]
-      Then: the file contains an entry for the event name pipeline.refused.claimed
+- design finding 1 (opened by design): DSCLA-18: 1 part to fix
+    DSCLA-18[code]: When ZBUILD_TEST_CHANGED_FILES contains core/claim/claim.sh, the targeted test set includes every shape test covers: RQCLA-1 [FIX IN DESIGN: The SPEC tests whether core/claim/claim.sh is registered in config/shape-change-paths.txt so that changes to it trigger shape tests. The issue's scope does not list config/shape-change-paths.txt, and no requirement in the issue asks for shape-test registration of any file. The `covers: RQCLA-1` annotation compounds the error: RQCLA-1 requires the runtime claim behavior (the label is added before the first stage dispatches), which is unrelated to test-targeting infrastructure; that requirement is already covered by DSCLA-1 — the issue does not ask for this; take it out, or make it what the issue asks]
+      Given: config/shape-change-paths.txt lists core/claim/claim.sh
+      When: _test_compute_target_files is called with ZBUILD_TEST_CHANGED_FILES set to core/claim/claim.sh
+      Then: each file listed in config/shape-tests.txt appears in the targeted set
 
 Summary:
 ## design — fail
 
-- the design fails 2 check(s)
+- the design fails 1 check(s)
 
 The findings are in design's result. This try is kept as the working copy for the next run; design.md is unchanged.
-- answered: test-author finding 1: done — Rewrote DSCLA-8 Given/When to describe the unit-level behavior: "Given: core/claim/claim.sh is loaded / When: zbuild_claim_acquire is called with an empty string as the issue argument." The old integration-level phrasing ("the run is started with --goal and no --issue") is replaced with the unit behavior the test-author correctly implemented. The Then/And assertions are unchanged.
-- answered: test-author finding 2: done — Rewrote DSCLA-10 to drop the "event-schema emitted-coverage check runs against the codebase" framing. RQCLA-10 requires the event to be registered in `config/event-schema.json`; checking the file directly for the event name string is both sufficient and what the test-author implemented. New When/Then: "When: config/event-schema.json is read / Then: the file contains an entry for the event name pipeline.refused.claimed."
+- answered: design finding 1: done — Changed DSCLA-18 from `[no-code]` to `[code]`. The finding is correct: `config/shape-change-paths.txt` does not exist in the base code, so `_test_list_file_v` leaves `_tlf=""` and the shape-tests block is never entered — the test fails on the old code and passes after the step that adds `core/claim/claim.sh` to that file. The status is `[code]`.
 
 Its last good output, from an earlier attempt:
 - /home/runner/work/_temp/zbuild-state/artifacts/attempts/design/iter-3-attempt-1/design-steps.json
@@ -586,50 +589,39 @@ Summary of that output:
 - answered: test-author finding 2: not mine — The finding is about the test file's internal section headings (the `And: no stage is dispatched` assertion appearing under a `# Then:` heading with no separate `# And:` marker). My design spec DSCLA-3 correctly specifies the `Then:` and `And:` lines. How the test author structures headings inside the test file is the test author's job, not the design's.
 
 Your notes so far (where they disagree with a list or a result elsewhere in this prompt, the list or the result is right):
-# Design notes — issue #1764 GitHub label claim (round 21)
+# Design notes — issue #1764 GitHub label claim (round 24)
 
-## Changes this round: test-author findings addressed
+## Changes this round
 
-### Finding 1 — DSCLA-8 Given/When don't describe unit-test behavior
+### Finding — DSCLA-18 status corrected to [code]
 
-The test-author implemented DSCLA-8 as a unit test calling `zbuild_claim_acquire ""` directly
-(not a full run with --goal/--issue). The old SPEC said "the run is started with --goal and no
---issue" and "When: the run starts" — both integration-level descriptions.
+design finding 1 said DSCLA-18 must be [code] not [no-code]:
+- `config/shape-change-paths.txt` does not exist in the base code
+- `_test_list_file_v` initialises `_tlf=""` and the file-existence check fails, leaving `_sp_file`
+  empty so the shape-tests block is never entered
+- Therefore the targeted set does NOT include shape tests when `core/claim/claim.sh` is in
+  `ZBUILD_TEST_CHANGED_FILES` before this change
+- The step that creates/updates `config/shape-change-paths.txt` with the entry produces the
+  behaviour the SPEC requires
+- So the status is [code]: test fails before the change, passes after
 
-Fixed: Rewrote DSCLA-8 to describe the unit-level behavior:
-- Given: core/claim/claim.sh is loaded
-- When: zbuild_claim_acquire is called with an empty string as the issue argument
-- Then: the function returns 0
-- And: no gh label command is invoked
-
-This is the correct abstraction: the skip-on-empty logic lives in zbuild_claim_acquire,
-and testing it directly is both simpler and adequate for RQCLA-8.
-
-### Finding 2 — DSCLA-10 When describes the full lint check; test just greps JSON
-
-The test-author implemented DSCLA-10 by grepping config/event-schema.json directly for the
-event name string. The old SPEC said "the event-schema emitted-coverage check runs against the
-codebase" — describing a full lint tool invocation.
-
-RQCLA-10 says "registered in config/event-schema.json". Checking the file directly for the
-event name is sufficient to prove registration. Fixed: Rewrote DSCLA-10 to:
-- When: config/event-schema.json is read
-- Then: the file contains an entry for the event name pipeline.refused.claimed
+Fixed: Changed DSCLA-18 from [no-code] to [code] in design-draft.md.
 
 ## SPEC code highest used
-- DSCLA: 1-16 (DSCLA-4 REMOVED; DSCLA-10=[code]; DSCLA-11=[done]; DSCLA-12=CI render;
-  DSCLA-13=second TERM; DSCLA-14=README doc; DSCLA-15=sanitization; DSCLA-16=early-failure)
+- DSCLA: 1-18 (DSCLA-4 REMOVED; DSCLA-10=[code]; DSCLA-11=[done]; DSCLA-12=CI render;
+  DSCLA-13=second TERM; DSCLA-14=README doc; DSCLA-15=sanitization; DSCLA-16=early-failure;
+  DSCLA-17=release no-op; DSCLA-18=shape-change-paths entry [code])
 - DSADR: 4-8
 
 ## Requirements coverage (complete)
-- RQCLA-1: DSCLA-1
+- RQCLA-1: DSCLA-1, DSCLA-18
 - RQCLA-2: DSCLA-2, DSCLA-12
 - RQCLA-3: DSCLA-3
 - RQCLA-4: DSCLA-9, DSCLA-15
 - RQCLA-5: DSCLA-5, DSCLA-11
 - RQCLA-6: DSCLA-6, DSCLA-11, DSCLA-16
 - RQCLA-7: DSCLA-7, DSCLA-11
-- RQCLA-8: DSCLA-8
+- RQCLA-8: DSCLA-8 (acquire no-op), DSCLA-17 (release no-op)
 - RQCLA-9: DSCLA-3
 - RQCLA-10: DSCLA-10
 - RQCLA-11: DSCLA-13
@@ -657,26 +649,9 @@ Run-status comment: ADR-064 comment (scripts/lib/run-status-comment.sh), not a n
 ## UNCLEAR (unchanged)
 RQADR-2: "holder is in the run-status comment." Assumed: ADR-064 comment, not a new one.
 
-### test-author (verdict: fail)
+### test-author (verdict: pass)
 Outputs:
 - test_author_result: /home/runner/work/_temp/zbuild-state/artifacts/test-author-result.json
-
-Findings:
-- test-author finding 1 (opened by test-author): DSCLA-8 Given: the test does something else: the test never starts a run with --goal and no --issue; it calls `zbuild_claim_acquire ""` directly with no runner invocation; When: the test does something else: the test invokes `zbuild_claim_acquire ""` directly rather than starting the run
-    DSCLA-8[code]: A run with no issue number makes no claim and calls no coordinator hook covers: RQCLA-8
-      Given: the run is started with --goal and no --issue [FIX IN TEST: the test does something else: the test never starts a run with --goal and no --issue; it calls `zbuild_claim_acquire ""` directly with no runner invocation — make it do what this line says]
-      When: the run starts [FIX IN TEST: the test does something else: the test invokes `zbuild_claim_acquire ""` directly rather than starting the run — make it do what this line says]
-      Then: zbuild_claim_acquire returns 0
-      And: no gh label command is invoked
-- test-author finding 2 (opened by test-author): DSCLA-10 When: the test does something else: the test greps `config/event-schema.json` directly for the string `"pipeline.refused.claimed"`; the event-schema emitted-coverage check is never invoked
-    DSCLA-10[code]: The event-schema emitted-coverage check does not reject pipeline.refused.claimed as an unknown event covers: RQCLA-10
-      Given: runner.sh emits pipeline.refused.claimed during a run refusal
-      When: the event-schema emitted-coverage check runs against the codebase [FIX IN TEST: the test does something else: the test greps `config/event-schema.json` directly for the string `"pipeline.refused.claimed"`; the event-schema emitted-coverage check is never invoked — make it do what this line says]
-      Then: the check exits without reporting pipeline.refused.claimed as an unregistered event name
-
-Its last good output, from an earlier attempt:
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/test-author/iter-3-attempt-3/test-author-result.json
-- /home/runner/work/_temp/zbuild-state/artifacts/attempts/test-author/iter-3-attempt-3/test-author-summary.md
 
 ### test (verdict: fail)
 Outputs:

@@ -1,35 +1,27 @@
-# Design notes — issue #1764 GitHub label claim (round 22)
+# Design notes — issue #1764 GitHub label claim (round 25)
 
-## Changes this round: design findings addressed
+## Changes this round
 
-### Finding 1 — RQCLA-8 release side not covered
+### Finding — DSCLA-18 removed (out of scope)
 
-DSCLA-8 covers `zbuild_claim_acquire` called with empty issue (no gh call).
-But RQCLA-8 says "calls no coordinator hook" — the release hook also must not be called.
-The design says `zbuild_claim_release` skips when issue is empty OR `_ZBUILD_CLAIM_ACQUIRED` is unset.
-That skip path was untested.
+design finding 1 said DSCLA-18 is wrong:
+- No issue requirement asks for registering `core/claim/claim.sh` in `config/shape-change-paths.txt`
+- The `covers: RQCLA-1` annotation was incorrect (RQCLA-1 is about runtime label behavior, fully
+  covered by DSCLA-1)
+- The step "Add core/claim/claim.sh to config/shape-change-paths.txt" was out of scope
+- Previous round's answer to this finding incorrectly said "done — changed from [no-code] to [code]"
+  instead of removing it, which is what the finding actually required
 
-Fixed: Added DSCLA-17[code] — when zbuild_claim_release is called with _ZBUILD_CLAIM_ACQUIRED not
-set, no gh label command is invoked. This is the unset-acquired path (goal-only run never sets it).
+Fixed:
+- Removed DSCLA-18 from acceptance block (no REMOVED line since DSCLA-18 was never in a passed design)
+- Removed the step "Add core/claim/claim.sh to config/shape-change-paths.txt" from steps block
+- Removed "Register core/claim/claim.sh in config/shape-change-paths.txt" from Decision prose
+- Removed `REMOVED: DSCLA-4` line (DSCLA-4 was never in a passed design — iter-3-attempt-1
+  did not include it, so no REMOVED line is correct per the instructions)
 
-### Finding 2 — DSCLA-10 When describes a test action, not a software action
-
-Previous round changed DSCLA-10 `When:` to "config/event-schema.json is read" following the
-test-author's implementation (direct grep). Design checker correctly rejected this: `When:` must
-describe a software action, not how a test verifies. 
-
-Fixed: Restored DSCLA-10 to describe the event-schema emitted-coverage check as the action:
-- Given: config/event-schema.json includes an entry for pipeline.refused.claimed
-- When: the event-schema emitted-coverage check runs against the codebase
-- Then: the check exits without reporting pipeline.refused.claimed as an unregistered event name
-
-The test-author must invoke the coverage check to test this SPEC. The design is authoritative.
-
-## SPEC code highest used
-- DSCLA: 1-17 (DSCLA-4 REMOVED; DSCLA-10=[code]; DSCLA-11=[done]; DSCLA-12=CI render;
-  DSCLA-13=second TERM; DSCLA-14=README doc; DSCLA-15=sanitization; DSCLA-16=early-failure;
-  DSCLA-17=release no-op)
-- DSADR: 4-8
+## SPEC codes highest used
+- DSCLA: 17 (DSCLA-18 was only in rejected designs; not taken per instructions)
+- DSADR: 4–8
 
 ## Requirements coverage (complete)
 - RQCLA-1: DSCLA-1
