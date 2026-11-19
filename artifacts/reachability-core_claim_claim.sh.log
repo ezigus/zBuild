@@ -3,7 +3,7 @@
 [38;2;0;212;255m[1m  plugin: claim-coordinator/github-labels — local-fs backend[0m
 [2m  ══════════════════════════════════════════[0m
 
-/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.qPrZBx/plugins/claim-coordinator/github-labels/plugin.sh: line 259: /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.qPrZBx/plugins/claim-coordinator/github-labels/../../../core/claim/claim.sh: No such file or directory
+/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2QdZ6i/plugins/claim-coordinator/github-labels/plugin.sh: line 259: /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.2QdZ6i/plugins/claim-coordinator/github-labels/../../../core/claim/claim.sh: No such file or directory
 ### core/claim/claim.sh head plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
 
 [38;2;0;212;255m[1m  plugin: claim-coordinator/github-labels — local-fs backend[0m
@@ -37,9 +37,10 @@
   [38;2;74;222;128m✓[0m _ZBUILD_CLAIM_HOLDER contains holder string from run-status comment
   [38;2;74;222;128m✓[0m [DSCLA-8] no gh calls made for empty issue
   [38;2;74;222;128m✓[0m [DSCLA-8] zbuild_claim_acquire returns 0 for empty issue
-  [38;2;74;222;128m✓[0m [DSCLA-10] pipeline.refused.claimed is in config/event-schema.json known_types
+  [38;2;74;222;128m✓[0m [DSCLA-17] no gh calls made when _ZBUILD_CLAIM_ACQUIRED is not set
+  [38;2;74;222;128m✓[0m [DSCLA-10] event-schema emitted-coverage check does not report pipeline.refused.claimed as unregistered (failed for other reasons)
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 27 tests passed[0m
+  [38;2;74;222;128m[1mAll 28 tests passed[0m
 

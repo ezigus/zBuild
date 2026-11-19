@@ -31,11 +31,12 @@
   [38;2;74;222;128m✓[0m _ZBUILD_CLAIM_HOLDER contains holder string from run-status comment
   [38;2;74;222;128m✓[0m [DSCLA-8] no gh calls made for empty issue
   [38;2;74;222;128m✓[0m [DSCLA-8] zbuild_claim_acquire returns 0 for empty issue
-  [38;2;74;222;128m✓[0m [DSCLA-10] pipeline.refused.claimed is in config/event-schema.json known_types
+  [38;2;74;222;128m✓[0m [DSCLA-17] no gh calls made when _ZBUILD_CLAIM_ACQUIRED is not set
+  [38;2;74;222;128m✓[0m [DSCLA-10] event-schema emitted-coverage check does not report pipeline.refused.claimed as unregistered (failed for other reasons)
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 27 tests passed[0m
+  [38;2;74;222;128m[1mAll 28 tests passed[0m
 
 ### config/adr-enforcement-baseline.txt head plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
 
@@ -70,11 +71,12 @@
   [38;2;74;222;128m✓[0m _ZBUILD_CLAIM_HOLDER contains holder string from run-status comment
   [38;2;74;222;128m✓[0m [DSCLA-8] no gh calls made for empty issue
   [38;2;74;222;128m✓[0m [DSCLA-8] zbuild_claim_acquire returns 0 for empty issue
-  [38;2;74;222;128m✓[0m [DSCLA-10] pipeline.refused.claimed is in config/event-schema.json known_types
+  [38;2;74;222;128m✓[0m [DSCLA-17] no gh calls made when _ZBUILD_CLAIM_ACQUIRED is not set
+  [38;2;74;222;128m✓[0m [DSCLA-10] event-schema emitted-coverage check does not report pipeline.refused.claimed as unregistered (failed for other reasons)
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 27 tests passed[0m
+  [38;2;74;222;128m[1mAll 28 tests passed[0m
 
 ### config/adr-enforcement-baseline.txt reverted tests/integration/teardown-repeat-signal-test.sh
 
@@ -187,7 +189,7 @@ lint-adr-enforced-by: 1 problem(s) among 70 live ADR(s)
   [38;2;74;222;128m✓[0m [#1951/SPEC-5] ADR-001-plugin-contract.md is not in config/adr-enforcement-baseline.txt
   [38;2;74;222;128m✓[0m [#1764/DSADR-7] ADR-005-claim-coordinator.md carries an ## Enforced by section
   [38;2;248;113;113m✗[0m [#1764/DSADR-7] ADR-005-claim-coordinator.md must be removed from config/adr-enforcement-baseline.txt
-    [2mADR-005 still listed in /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.3jFpmO/config/adr-enforcement-baseline.txt; remove the entry once the ## Enforced by section is added[0m
+    [2mADR-005 still listed in /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.DPz9XB/config/adr-enforcement-baseline.txt; remove the entry once the ## Enforced by section is added[0m
 
 [2m  ──────────────────────────────────────────[0m
 
