@@ -194,7 +194,7 @@ zbuild_claim_acquire() {
 # Removes zbuild:claimed and marks the comment finished.
 # No-op when the claim was never acquired (guards against releasing another run's claim).
 zbuild_claim_release() {
-    local issue="$1"
+    local issue="${1:-}"
 
     [[ -z "$issue" || "$issue" == "0" ]] && return 0
 
