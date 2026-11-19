@@ -1,0 +1,26 @@
+--- reply 1 ---
+{
+  "score": 7,
+  "findings": [
+    {
+      "file": "core/claim/claim.sh",
+      "category": "logic",
+      "severity": "medium",
+      "message": "`zbuild_claim_release` never unsets `_ZBUILD_CLAIM_ACQUIRED`, so a second invocation is not a no-op as the design requires.",
+      "quote": "    # Only release if this process acquired the claim\n    [[ -z \"${_ZBUILD_CLAIM_ACQUIRED:-}\" ]] && return 0\n\n    # Remove zbuild:claimed (advisory; failures never abort the run)\n    _ccgl_remove_label \"$issue\" \"zbuild:claimed\" || true\n\n    return 0",
+      "trigger": "The design document for this issue states: 'unsets `_ZBUILD_CLAIM_ACQUIRED` before calling `_ccgl_remove_label` (advisory). Unsetting first makes a second call a no-op.' Because `_ZBUILD_CLAIM_ACQUIRED` is never unset inside the function, any second call that arrives while the variable still holds `\"1\"` will pass the guard and invoke `_ccgl_remove_label` again on an already-removed label. In production the gh call returns non-zero (label absent), but `|| true` silences it; in the local-fs backend `grep -Fxv` on the already-cleaned file writes an empty replacement and succeeds silently. DSCLA-13 is not affected today because `trap '' TERM` in `_runner_abort_trap` prevents re-entry, but the idempotency guarantee the design chose is absent from the function itself.",
+      "introduced": true,
+      "fix": "code"
+    },
+    {
+      "file": "plugins/claim-coordinator/github-labels/plugin.sh",
+      "category": "logic",
+      "severity": "medium",
+      "message": "`claim_coordinator_claim` and `claim_coordinator_release` still use the per-machine label `claimed:<machine>` that the issue required to be replaced with `zbuild:claimed`, and the unit test at lines 44–49 asserts the old label pattern and passes, masking the unimplemented change.",
+      "quote": "    local our_label=\"claimed:${machine}\"",
+      "trigger": "The unit test calls `claim_coordinator_claim \"42\"` (line 33) and then asserts `grep -q \"claimed:\" \"$labels_file\"` (line 45). `claimed:<machine>` is written instead of `zbuild:claimed`. If another run on a different machine checks for `zbuild:claimed` (as `zbuild_claim_acquire` does via `grep -Fxq \"zbuild:claimed\"`), it will not see the per-machine label and both runs will proceed concurrently — the exact cross-machine collision the issue was designed to prevent (RQLAB-1, RQLAB-2). The corresponding `claim_coordinator_release` removes `claimed:${machine}`, so it also would not remove the `zbuild:claimed` label added by `zbuild_claim_acquire`. The test at lines 44–49 would fail if the function were correctly changed, so it currently passes while enforcing the unfixed state.",
+      "introduced": false,
+      "fix": "code"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "stage": "review_lenses",
+  "cycle_iter": 1,
+  "attempt": 3,
+  "rc": "0",
+  "generated_at": "2026-11-19T00:18:04Z",
+  "files": 6,
+  "outputs": {
+    "lens-security.json": "changed",
+    "lens-security-summary.md": "changed",
+    "lens-security-code-result.json": "changed",
+    "lens-security-change-result.json": "changed",
+    "lens-security-design-result.json": "changed",
+    "lens-security-reply.txt": "changed",
+    "__notes__": "absent",
+    "__cutoff__": "absent"
+  },
+  "progress": true
+}
