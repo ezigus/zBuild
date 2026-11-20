@@ -18,6 +18,8 @@ source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/item-ids.sh"
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/unclear.sh"
 # shellcheck source=../../../../scripts/lib/judge-quotes.sh
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/judge-quotes.sh"
+# shellcheck source=../../../../scripts/lib/design-steps.sh
+source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/design-steps.sh"
 _DCK_LIB_DIR="${BASH_SOURCE[0]%/*}/../../../../scripts/lib"
 # #2482 (ADR-001): design's id prefix, from its manifest — every SPEC id starts with it.
 zb_id_prefix_v _DCK_ID_PREFIX "${BASH_SOURCE[0]%/*}/../manifest.yaml"
@@ -35,27 +37,6 @@ _dck_unclear_bad_v() {
     for _l in ${_dub_all[@]+"${_dub_all[@]}"}; do
         zb_unclear_check_v _w "$_l" "${3:-}" _dub_seen || _dub+=("$_l) because it $_w")
     done
-    return 0
-}
-
-# _dck_step_areas_v <array> <design_md> — every area the ```steps block's
-# lines name after " | areas:", one per entry, in order.
-_dck_step_areas_v() {
-    local -n _dsa="$1"; local _l _in=0 _a
-    local -a _ar
-    _dsa=()
-    while IFS= read -r _l || [[ -n "$_l" ]]; do
-        _l="${_l%$'\r'}"
-        if [[ "$_l" =~ ^'```steps'[[:space:]]*$ ]]; then _in=1; continue; fi
-        (( _in == 1 )) || continue
-        [[ "$_l" =~ ^'```' ]] && break
-        [[ "$_l" == *" | areas:"* ]] || continue
-        IFS=',' read -ra _ar <<< "${_l#* | areas:}"
-        for _a in ${_ar[@]+"${_ar[@]}"}; do
-            _a="${_a#"${_a%%[![:space:]]*}"}"; _a="${_a%"${_a##*[![:space:]]}"}"
-            [[ -n "$_a" ]] && _dsa+=("$_a")
-        done
-    done < "$2"
     return 0
 }
 
@@ -437,7 +418,7 @@ _design_checks() {
     # ── C13 STEPS: a step names code, never the test folders (ADR-071 §1,
     # 2026-11-14) — which tests, in which files and how is test-author's.
     local -a _sa=(); local _s
-    [[ -f "$design_md" ]] && _dck_step_areas_v _sa "$design_md"
+    [[ -f "$design_md" ]] && zb_design_step_areas_v _sa "$design_md"
     for _s in ${_sa[@]+"${_sa[@]}"}; do
         zb_is_test_path "$_s" "$repo_root" && violations+=("STEP_IS_TEST $_s (a work step names a file in the test folders)")
     done

@@ -13,7 +13,9 @@
 #
 # Then every other changed code file (ADR-036, 2026-10-11), listed by git, is
 # put back the same way: some test must fail without it, or
-# REACHABILITY FAIL untested_change <file>. A file whose only changes are
+# REACHABILITY FAIL untested_change <file> — or, when nothing asks for the file
+# (no design step's areas, WIRING file or requirement names it, #2575),
+# REACHABILITY FAIL unasked_change <file>. A file whose only changes are
 # comments or blank lines, a deleted file, tests, docs/ and Markdown are skipped.
 #
 # WIRING: none → REACHABILITY EXEMPT none: no file is named for the first part;
@@ -36,6 +38,9 @@ if ! declare -F _negctl_spec_log_check >/dev/null 2>&1; then
 fi
 # shellcheck source=./merge-base.sh
 source "$_ACCEPTANCE_REACHABILITY_DIR/merge-base.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" merge-base.sh"
+# #2575: what the design asks the change to touch.
+# shellcheck source=./design-steps.sh
+source "$_ACCEPTANCE_REACHABILITY_DIR/design-steps.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" design-steps.sh"
 
 # #2010: zbuild_engine_tmpdir names where engine code writes temp files.
 # Lazy-sourced, same pattern lifecycle.sh uses for stage-scratch.sh: this
@@ -271,6 +276,9 @@ _reachability_print() {
 #   REACHABILITY FAIL inert_wiring <target>  — no testfile flips; wiring is inert
 #   REACHABILITY PASS change <file>   — ≥1 testfile flips with <file> put back
 #   REACHABILITY FAIL untested_change <file> — no testfile flips with <file> put back
+#   REACHABILITY FAIL unasked_change <file>  — the same, and nothing asks for <file>:
+#                                       no step's areas, WIRING file or requirement
+#                                       names it (#2575)
 #   REACHABILITY SKIP no_code <file>  — only comments / blank lines changed
 #   REACHABILITY ERROR <detail>       — infrastructure failure (worktree_failed,
 #                                       empty_wiring_targets, timeout:<target>)
@@ -358,8 +366,11 @@ acceptance_reachability_check() {
         _reachability_print "$(_reachability_revert_one "$target")" "$target" inert_wiring || rc=1
     done
 
-    # Part 2: every other changed code file, put back on its own.
-    local _named
+    # Part 2: every other changed code file, put back on its own. #2575: one
+    # no test checks is asked for, or not, by the design (zb_design_asks_for).
+    local _named _uw
+    local -a _asked_areas=(); local -A _asked_words=()
+    zb_design_asked_v _asked_areas _asked_words "$design_md"
     for cf in "${changed_files[@]}"; do
         _acceptance_is_production_path "$cf" || continue
         # Deleted here: nothing is left to test.
@@ -373,7 +384,9 @@ acceptance_reachability_check() {
             printf 'REACHABILITY SKIP no_code %s\n' "$cf"
             continue
         fi
-        _reachability_print "$(_reachability_revert_one "$cf")" "$cf" untested_change "change " || rc=1
+        _uw=unasked_change
+        zb_design_asks_for "$cf" _asked_areas _asked_words && _uw=untested_change
+        _reachability_print "$(_reachability_revert_one "$cf")" "$cf" "$_uw" "change " || rc=1
     done
 
     if [[ "$_rc_owner" -eq 1 ]]; then
