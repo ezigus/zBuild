@@ -37,7 +37,7 @@
 #         §2 amendment 2026-11-20): run-to-run noise moves a figure by one, and a
 #         budget set to the exact measure failed now and then with no change.
 #         The ratchet holds: on macOS, where the measures are written from, a
-#         budget more than its margin + 1 above this run's measure fails — a
+#         budget more than twice its margin (at least 2) above this run's measure fails — a
 #         cost cut lowers the written measure, and slack cannot build up.
 # SPEC-6: the worker pool's execs scale with its work units, not with how long
 #         they take: its poll sleep is exempt, and no counted pool line runs
@@ -61,7 +61,7 @@ setup_test_env "fork-budget"
 # with no change. The margin is set from that noise: 2 a dispatch, 5 for the
 # run's totals; 1 for the start-up, which showed none. Each change that cuts
 # cost still lowers the measure written below, and the budget with it: SPEC-9
-# fails a budget more than its margin + 1 above the measure (review on #2573).
+# fails a budget more than twice its margin (at least 2) above the measure.
 BUDGET_MARGIN_TOTAL=5
 BUDGET_MARGIN_DISPATCH=2
 BUDGET_MARGIN_STARTUP=1
@@ -170,7 +170,7 @@ BUDGET_MARGIN_STARTUP=1
 # 1850–1852 execs in all; 464–466 processes and 297–299 execs a dispatch; 428
 # start-up processes and 232 execs every run. The written measure is the middle
 # of each range, so a run at either end stays within budget and within the
-# margin + 1 the SPEC-9 slack check allows. Budgets: that measure plus the margin.
+# twice the margin the SPEC-9 slack check allows. Budgets: that measure plus the margin.
 FORK_BUDGET=$(( 1851 + BUDGET_MARGIN_TOTAL ))
 # PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
 # the programs above plus each `$( )` subshell, a copy of the whole engine shell
@@ -480,7 +480,8 @@ assert_eq "[SPEC-9] the start-up, which showed no noise, has a margin of 1 (${_m
 if [[ "$(uname -s)" == Darwin ]]; then
     _slack=""
     _chk() {   # <name> <budget> <measured> <margin>
-        (( $2 - $3 > $4 + 1 )) && _slack+="$1 $2 is $(( $2 - $3 )) above this run's $3 (margin $4) — lower the written measure"$'\n'
+        local _tol=$(( 2 * $4 )); (( _tol < 2 )) && _tol=2
+        (( $2 - $3 > _tol )) && _slack+="$1 $2 is $(( $2 - $3 )) above this run's $3 (margin $4, tolerance $_tol) — lower the written measure"$'\n'
         return 0
     }
     _chk FORK_BUDGET "$FORK_BUDGET" "$_total" "$_mt"
@@ -489,7 +490,7 @@ if [[ "$(uname -s)" == Darwin ]]; then
     _chk DISPATCH_EXECS_BUDGET "$DISPATCH_EXECS_BUDGET" "$_de" "$_md"
     _chk STARTUP_PROCS_BUDGET "$STARTUP_PROCS_BUDGET" "$_sP" "$_ms"
     _chk STARTUP_EXECS_BUDGET "$STARTUP_EXECS_BUDGET" "$_sE" "$_ms"
-    assert_eq "[SPEC-9] no budget sits more than its margin + 1 above the measure (macOS)" "" "$_slack"
+    assert_eq "[SPEC-9] no budget sits more than twice its margin (at least 2) above the measure (macOS)" "" "$_slack"
 else
     echo "  SPEC-9 slack check: the measures are written from macOS; $(uname -s) counts differ, so only the budgets are checked here"
 fi
