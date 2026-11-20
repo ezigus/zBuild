@@ -82,17 +82,24 @@ open_items_render() {
           + "\n   - What would settle it: " + $settle' <<< "$items" 2>/dev/null || true
 }
 
-# The questions design could not settle (#2508, ADR-064 §4): read from the
-# design the design stage writes, artifacts/design.md (its manifest's path).
+# The questions the run could not settle (#2508, #2571, ADR-064 §4, ADR-069
+# §12): design's, read from the design it writes, artifacts/design.md (its
+# manifest's path), and every other stage's, from its result's data.unclear —
+# the results this run wrote, as open_items_json reads them.
 # shellcheck source=unclear.sh
 source "${BASH_SOURCE[0]%/*}/unclear.sh"
 # open_items_questions <state_dir> — the questions section, or nothing.
 open_items_questions() {
-    zb_unclear_markdown "$1/artifacts/design.md"
+    local _oiq; open_items_questions_v _oiq "$1"
+    [[ -n "$_oiq" ]] && printf '%s\n' "$_oiq"
+    return 0
 }
-# open_items_questions_v <var> <state_dir> — the same, with no fork.
+# open_items_questions_v <var> <state_dir> — the same, with no fork: the
+# status comment renders it on every tick.
 open_items_questions_v() {
-    zb_unclear_markdown_v "$1" "$2/artifacts/design.md"
+    local -a _oiq_r=()
+    zb_unclear_results_in_v _oiq_r "$2/artifacts" "$2/runtime/run-start"
+    zb_unclear_markdown_v "$1" "$2/artifacts/design.md" ${_oiq_r[@]+"${_oiq_r[@]}"}
 }
 
 # open_items_markdown <state_dir> — the list, or nothing when no item is open.

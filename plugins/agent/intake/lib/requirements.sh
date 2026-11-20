@@ -27,6 +27,9 @@ source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/judge.sh"
 # #2569: a MISSING line is held to the issue's words.
 # shellcheck source=missing-quote.sh
 source "${BASH_SOURCE[0]%/*}/missing-quote.sh"
+# #2571 (ADR-070 §1, ADR-069 §12): what intake finds unclear, in the one form.
+# shellcheck source=unclear.sh
+source "${BASH_SOURCE[0]%/*}/unclear.sh"
 # #2482 (ADR-001): intake's id prefix, from its manifest — every requirement
 # id starts with it, so no SPEC's id is ever the same.
 zb_id_prefix_v _IREQ_PX "${BASH_SOURCE[0]%/*}/../manifest.yaml"
@@ -65,6 +68,9 @@ ${_IREQ_PX}LOOP-2. Never use an id the issue itself writes.
 When a requirement refers to another of the issue's items by the issue's own
 name for it (R1, R1–R5), write the ids of the requirements it means instead:
 every later stage sees only this list, never the issue's names.
+
+${ZB_UNCLEAR_RULES}
+Write the requirement in the issue's own words all the same.
 EOF
     # #2460, #2462: a list from the last run is where the work starts, and its
     # ids never move. #2569: a start, not the whole issue — on #1764 run
@@ -293,6 +299,9 @@ _ireq_call_parsed() {
                     || _unq+="${_IREQ_IDS[i]} is not in the issue's words: \"${_IREQ_TEXTS[i]:0:100}\""$'\n'
             done
         fi
+        # #2571 (ADR-070 §1): an UNCLEAR line the writer raised is in the one
+        # form; the check's answers to the carried questions can be used.
+        local _usoft=""; _ireq_unclear_reply "$label" "$reply" "$5" _usoft
         # #2550: an id keeps its kind — a limit in the last list stays a limit.
         for i in "${!_IREQ_IDS[@]}"; do
             v="${_IREQ_IDS[i]}"
@@ -306,13 +315,14 @@ _ireq_call_parsed() {
         for v in "${_iv[@]+"${_iv[@]}"}"; do plain+="${plain:+; }$(zb_id_plain "$v" requirement)"; done
         # #2569 review: after the one re-ask, a line still not in the issue's
         # words does not stop the run — it is kept, and intake's result says so.
-        if [[ -z "$plain" && ( -z "$_unq" || $_try -eq 2 ) ]]; then
+        if [[ -z "$plain" && ( -z "$_unq$_usoft" || $_try -eq 2 ) ]]; then
             while IFS= read -r v; do if [[ -n "$v" ]]; then _INTAKE_REQ_NOTES+="$v — kept as the check wrote it"$'\n'; fi; done <<< "$_unq"
             return 0
         fi
         while IFS= read -r v; do
             if [[ -n "$v" ]]; then plain+="${plain:+; }$v — copy the requirement from the issue as it is written, whole sentences, never a paraphrase or a part of a sentence"; fi
         done <<< "$_unq"
+        [[ -n "$_usoft" ]] && plain+="${plain:+; }$_usoft"
         ask="$(stage_prompt_reask "$prompt" "$plain" "$reply")"
     done
     _INTAKE_REQ_OUTCOME=unusable
@@ -364,6 +374,7 @@ _ireq_terms_v() {
 _intake_requirements_json_v() {
     local -n _irj="$1"; shift
     _irj=""; _INTAKE_REQ_OUTCOME=""; _INTAKE_REQ_CHANGES=""; _INTAKE_REQ_NOTES=""
+    _IREQ_UQ_NEW=(); _IREQ_UQ_DROP=(); _IREQ_UQ_BAD=()
     local issue prompt i listed
     local -a ids=() texts=() rm_ids=() rm_why=()
     issue="$(_ireq_issue_text "${1:-}")"
@@ -410,8 +421,10 @@ _intake_requirements_json_v() {
     done
     [[ -n "${_removed_now// }" ]] && listed+=$'\n'"ALREADY REMOVED (not requirements; never use their ids again):"$'\n'"$_rm_lines"
     local _IREQ_CHECK_IDS="${ids[*]+${ids[*]}}" _IREQ_CHECK_RM="$_removed_now" _IREQ_LIMS_NOW="$_lims"
+    # #2571: the questions intake carried, judged against the issue as it is now.
+    local _uqb=""; zb_unclear_judge_block_v _uqb "${_IREQ_UQ_CARRIED:-}"; [[ -n "$_uqb" ]] && _uqb=$'\n'"$_uqb"
     prompt="$(stage_prompt_compose_text --fresh "$(_ireq_check_own)" \
-        "ISSUE:"$'\n'"$issue"$'\n\n'"THE LIST:"$'\n'"$listed" "$(_ireq_limits)")" \
+        "ISSUE:"$'\n'"$issue"$'\n\n'"THE LIST:"$'\n'"$listed$_uqb" "$(_ireq_limits)")" \
         || { _INTAKE_REQ_OUTCOME=misconfigured; return 1; }
     # ADR-017 §12 (#2507): the call intake's manifest lists as `check`.
     local -x ZBUILD_ROUTE_CALL=check

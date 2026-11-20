@@ -17,6 +17,9 @@ _ZBUILD_BUILD_PROMPT_LOADED=1
 # a caller that sources this file alone.
 [[ -n "${_ACCEPTANCE_ID_ERE:-}" ]] \
     || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/acceptance-block.sh" 2>/dev/null || true
+# #2571 (ADR-069 §12): what is unclear to build is the design's.
+# shellcheck source=../../../../scripts/lib/unclear.sh
+source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/unclear.sh"
 
 # _build_render_task_header <round>
 # Emits the stable banner that prefixes every build prompt: the loop's round.
@@ -43,6 +46,9 @@ ${_framing}
 - When what was asked and what the code can do differ in a way you cannot
   close, say so in your answer rather than building something else.
 - When a test fails, find out why it fails before you change anything else.
+
+### When something is unclear
+${ZB_UNCLEAR_NOT_YOURS}
 
 ### How your work is kept
 - You make code changes via Edit/Write/Bash. What you change stays in the

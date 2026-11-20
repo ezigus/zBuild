@@ -60,135 +60,15 @@ source "$_RL_ROOT/core/plugin-registry/registry.sh"
 source "$_RL_DIR/lib/charters.sh"
 # shellcheck source=lib/check.sh
 source "$_RL_DIR/lib/check.sh"
-
-# ─── _review_lens_envelope_schema_ok <json> ──────────────────────────────────
-# Schema gate for _llm_envelope_parse: accepts an object with a .findings array.
-# Mirrors _security_lens_envelope_schema_ok (ADR-028 §Migration, #2035).
-_review_lens_envelope_schema_ok() {
-    local _json="${1:-}"
-    [[ -n "$_json" ]] || return 1
-    printf '%s' "$_json" | jq -e '(type == "object") and (.findings | type == "array")' >/dev/null 2>&1
-}
-
-# _rl_reply_problem <reply> <json-var> <problem-var> — the lens's JSON from its
-# reply, or what is wrong with the reply in plain words (ADR-060 §7: which
-# check failed — jq's own complaint for a reply that is not JSON).
-_rl_reply_problem() {
-    local -n _rp_json="$2" _rp_why="$3"
-    local _rp_prose=""
-    _rp_json=""; _rp_why=""
-    # ADR-028 §Migration (#2035): schema-gated envelope parser replaces bare
-    # extract_first_json_object so postamble sign-offs don't discard the real answer.
-    # shellcheck disable=SC2034  # review-lens emits no prose sidecar.
-    _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok "$1" _rp_json _rp_prose
-    case "$(_llm_envelope_classify "${_rp_json:-$1}" _review_lens_envelope_schema_ok)" in
-        ok) return 0 ;;
-        schema) _rp_why='it is JSON, but has no findings list: one object with a "findings" array is asked for' ;;
-        *) _rp_why="it is not valid JSON: $(_llm_envelope_parse_error "${_rp_json:-$1}")" ;;
-    esac
-    _rp_json=""
-}
-
-# _rl_quote_problem_v <var> <json> <base> <repo> [patch] — what is wrong with
-# the report's quotes (#2464, ADR-072 §3): a finding with none, or one that is
-# in neither its file as it is now nor as it was at the commit the branch
-# started from (<base>: a line the change removed), nor — with no starting
-# commit known — the change's patch. Empty when every quote is there. Sets
-# _RL_QUOTE_FILES: the files the findings name, which a kept report depends on;
-# _RL_NO_ACC: the index (from 0) of each finding with no accepted_if, and
-# _RL_OTHER_BAD: how many other problems there are — a report whose only
-# problem is a missing accepted_if can be used without those findings.
-_rl_quote_problem_v() {
-    local -n _rqp="$1"; local _rqp_n=0 _rqp_f _rqp_q _rqp_w _rqp_old
-    local -a _rqp_bad=()
-    _rqp=""; _RL_QUOTE_FILES=(); _RL_NO_ACC=(); _RL_OTHER_BAD=0
-    # No findings, nothing to check; a finding of any form is read (a plain
-    # string has no quote or trigger — lens review on #2552).
-    [[ "$2" =~ \"findings\"[[:space:]]*:[[:space:]]*\[[[:space:]]*\] || "$2" != *'"findings"'* ]] && return 0
-    local _rqp_t _rqp_a
-    while IFS=$'\037' read -r -d '' _rqp_f _rqp_q _rqp_t _rqp_a; do
-        _rqp_n=$(( _rqp_n + 1 ))
-        # #2552 (ADR-038): every finding says what makes it happen.
-        # Filler is no trigger (lens review on #2552).
-        local _rqp_tl="${_rqp_t,,}"; _rqp_tl="${_rqp_tl//[[:space:].]/}"
-        [[ -n "$_rqp_tl" && ! "$_rqp_tl" =~ ^(unknown|n/a|na|none|tbd|-+|null|\[\]|\{\})$ ]] \
-            || { _rqp_bad+=("finding $_rqp_n has no trigger: say what makes it happen on a real run"); _RL_OTHER_BAD=$(( _RL_OTHER_BAD + 1 )); }
-        # #2569 (ADR-038, ADR-072 §3): every finding says what would be accepted.
-        _rqp_tl="${_rqp_a,,}"; _rqp_tl="${_rqp_tl//[[:space:].]/}"
-        [[ -n "$_rqp_tl" && ! "$_rqp_tl" =~ ^(unknown|n/a|na|none|tbd|-+|null|\[\]|\{\})$ ]] \
-            || { _rqp_bad+=("finding $_rqp_n has no accepted_if: say what must be true for it to be accepted, in the issue's words"); _RL_NO_ACC+=($(( _rqp_n - 1 ))); }
-        [[ -n "$_rqp_f" && "$_rqp_f" != unknown ]] && _RL_QUOTE_FILES+=("$4/$_rqp_f")
-        if [[ -z "${_rqp_q//[[:space:]]/}" ]]; then _rqp_bad+=("finding $_rqp_n has no quote"); _RL_OTHER_BAD=$(( _RL_OTHER_BAD + 1 )); continue; fi
-        judge_quote_check_v _rqp_w "$_rqp_f | $_rqp_q" "" "$4" && continue
-        # #2507 (ADR-072 §7): a removed line is in the file as it was — one git
-        # call, only for a quote not found as the file is now.
-        if [[ -n "$3" && -n "$_rqp_f" && "$_rqp_f" != unknown ]]; then
-            _rqp_old="$(git -C "$4" show "$3:$_rqp_f" 2>/dev/null)" && _judge_holds "$_rqp_old" "$_rqp_q" && continue
-        fi
-        [[ -n "${5:-}" ]] && _judge_holds "$5" "$_rqp_q" && continue
-        _rqp_bad+=("finding $_rqp_n's quote $_rqp_w"); _RL_OTHER_BAD=$(( _RL_OTHER_BAD + 1 ))
-    # One record per finding, as tool-hook.sh reads a tool's fields: its file
-    # and quote split by a unit separator and ended by a NUL, so a quote keeps
-    # its line breaks and every other character as written (#2545). @tsv would
-    # double a backslash in the quote.
-    done < <(jq -j '(.findings // [])[]? | [(if type == "object" then (.file // "") else "" end), (if type == "object" then (.quote // "") else "" end), (if type == "object" then (.trigger // "") else "" end), (if type == "object" then (.accepted_if // "") else "" end)] | map(tostring | gsub("\u001f"; " ")) | join("\u001f") + "\u0000"' <<< "$2" 2>/dev/null)
-    [[ ${#_rqp_bad[@]} -gt 0 ]] || return 0
-    local IFS=';'; _rqp="${_rqp_bad[*]}"; _rqp="${_rqp//;/; }"
-}
-
-# ─── _review_lens_write_result <out> <verdict> <disposition> <reason> ────────
-# Write a v2-compliant lens result file atomically. The output path is derived
-# entirely from the $out parameter (no literal artifact filename strings inside).
-# Called on every terminal exit path (degrade + success) so the file is always
-# on disk — ADR-055 §3. Verdict appears here as a jq field, not a coercion token.
-# _review_lens_saved_notes <artifact_dir> — what this lens saved as it went
-# (#2270), capped; empty when nothing was saved. A call cut off by time, turns
-# or a signal returns nothing; this is all it leaves.
-_review_lens_saved_notes() {
-    local cp
-    declare -F stage_notes_path >/dev/null 2>&1 || return 0
-    # The lens's notes file (ADR-067 §8), found in the artifacts folder it was
-    # given, whatever that folder is called.
-    cp="$(stage_notes_path "/_rl_sd" "${ZBUILD_CURRENT_STAGE:-review_lenses}")"
-    cp="${1%/}/${cp#/_rl_sd/artifacts/}"
-    [[ -s "$cp" ]] || return 0
-    head -c 4000 "$cp" 2>/dev/null || true
-}
-
-# #2366 (contract 3): a lens that reviewed nothing — score 0, no findings — with
-# the outcome saying how it ended; any partial notes under data.
-_review_lens_write_result() {
-    local out="$1" outcome="$2" reason="$3" notes="${4:-}"
-    local _base _name
-    _base="$(basename "$out")"
-    _name="${_base%.json}"; _name="${_name#lens-}"
-    # Built beside the result and written to it ONCE: a signal that reaches the
-    # trap and the rc=130 branch must still leave exactly one write (#2165).
-    local _tmp="${out%/*}/.review-lens-result.$BASHPID.tmp"
-    jq -nc \
-        --arg n "$_name" \
-        --arg pn "$notes" \
-        '{schema_version:1, name:$n, score:0, findings:[]}
-         + (if $pn != "" then {data:{partial_notes:$pn}} else {} end)' > "$_tmp" 2>/dev/null \
-        && stage_result_add "$_tmp" "$outcome" "$reason" 2>/dev/null \
-        && atomic_write "$out" 2>/dev/null < "$_tmp"
-    rm -f "$_tmp" 2>/dev/null || true
-}
-
-# ─── _review_lens_interrupt_handler ──────────────────────────────────────────
-# Trap handler for SIGTERM/SIGINT: write disposition:interrupted and propagate.
-# Reads $_rl_out_ref (set by _review_lens_run_inner before trap registration)
-# so it can be invoked directly in tests for SIGTERM simulation (SPEC-13).
-_review_lens_interrupt_handler() {
-    _review_lens_write_result "${_rl_out_ref:-}" \
-        "${1:-$STAGE_SIGNAL_DISPOSITION}" "${2:-$STAGE_SIGNAL_REASON}" \
-        "$(_review_lens_saved_notes "${_rl_out_ref%/*}")"
-    # Ctrl-C reaches the whole process group: this trap fires AND the router
-    # subshell returns 130. Record the write so the rc=130 branch skips its own.
-    _rl_interrupted=1
-}
-
-
+# shellcheck source=lib/unclear.sh
+source "$_RL_DIR/lib/unclear.sh"
+# #2571: split from this file to keep it under 500 lines.
+# shellcheck source=lib/reply.sh
+source "$_RL_DIR/lib/reply.sh"
+# shellcheck source=lib/result.sh
+source "$_RL_DIR/lib/result.sh"
+# shellcheck source=lib/context.sh
+source "$_RL_DIR/lib/context.sh"
 
 # ─── _review_lens_id ─────────────────────────────────────────────────────────
 # Resolve the lens identity: explicit override, else the running stage id, else
@@ -198,88 +78,6 @@ _review_lens_id() {
     local lens="${ZBUILD_REVIEW_LENS_ID:-${ZBUILD_CURRENT_STAGE:-}}"
     lens="${lens#review-lens-}"; lens="${lens#lens-}"; lens="${lens#lens_}"
     printf '%s' "$lens"
-}
-
-# _rl_context — what the change was for: the issue, its SPECs, the design's
-# decisions and planned scope, each bounded and sanitised like the evidence.
-# Every piece is optional; an absent one is simply left out.
-# _rl_requirements_readable <design.md> — the acceptance block as a reviewer
-# reads it (#2269): each requirement with what its status means (#2304,
-# ADR-069), the evidence a done one names, the file that calls the new code,
-# and the test files that check each one.
-_rl_requirements_readable() {
-    local design="$1" sid txt st kind tfs ev w blk _p
-    # #2467: the block read once; each SPEC's words, status and parts from it.
-    blk="$(extract_acceptance_block "$design" 2>/dev/null)" || blk=""
-    # #2508: each SPEC's test files, found by tag, once.
-    local -A _rl_files=()
-    acceptance_spec_files_v _rl_files "$design"
-    while IFS= read -r sid; do
-        [[ -n "$sid" ]] || continue
-        txt="" st=""
-        _acceptance_spec_line "$blk" "$sid" && { txt="$_ACC_SPEC_TEXT"; st="$_ACC_SPEC_STATUS"; }
-        case "$st" in
-            no-code) kind="work that changes no behaviour" ;;
-            doc)     kind="a doc change — no test checks it" ;;
-            done)    kind="already done — the code already does this" ;;
-            *)       kind="new behaviour" ;;
-        esac
-        tfs="${_rl_files[$sid]:-}"
-        printf -- '- %s (%s): %s\n' "$sid" "$kind" "${txt:-<no text>}"
-        local -a _rl_parts=()
-        acceptance_parts_shown_v _rl_parts "$_ACC_SPEC_PARTS"
-        for _p in ${_rl_parts[@]+"${_rl_parts[@]}"}; do printf '  %s: %s\n' "${_p%%$'\t'*}" "${_p#*$'\t'}"; done
-        ev="$(acceptance_spec_evidence "$design" "$sid" 2>/dev/null | tr '\n' ' ')"
-        [[ -n "${ev// /}" ]] && printf -- '  shown by: %s\n' "${ev% }"
-        [[ -n "${tfs// /}" ]] && printf -- '  checked by: %s\n' "${tfs% }"
-    done < <(acceptance_list_spec_ids "$design" 2>/dev/null || true)
-    w="$(acceptance_list_wiring "$design" 2>/dev/null | tr '\n' ' ')"
-    [[ -n "${w// /}" ]] && printf -- '- The existing file that calls the new code: %s\n' "${w% }"
-    return 0
-}
-
-_rl_context() {
-    local f out="" _txt
-    # #2364: the issue text and the acceptance contract, found by what they are.
-    _txt="$(earlier_issue_text "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
-    if [[ -n "$_txt" ]]; then
-        _txt="$(printf '%s' "${_txt:0:6000}" | _zbuild_sanitize_for_llm)"
-        out+=$'## THE ISSUE (what was asked for)\n'"$_txt"$'\n\n'
-    fi
-    f="$(earlier_acceptance_contract "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
-    if [[ -n "$f" && -s "$f" ]] && declare -F acceptance_list_spec_ids >/dev/null 2>&1; then
-        # #2269: the requirements as sentences, not the raw block's keys and tags.
-        _txt="$(_rl_requirements_readable "$f")"
-        _txt="$(printf '%s' "${_txt:0:6000}" | _zbuild_sanitize_for_llm)"
-        [[ -n "$_txt" ]] && out+=$'## THE REQUIREMENTS (what the change had to meet)\n'"$_txt"$'\n\n'
-    fi
-    # #1654: what the design DECIDED — so "this is odd" and "this was chosen"
-    # can be told apart. Same extractor build honours (design_decisions_prose).
-    if [[ -n "$f" && -s "$f" ]] && declare -F design_decisions_prose >/dev/null 2>&1; then
-        _txt="$(design_decisions_prose "$f" 80)"
-        _txt="$(printf '%s' "${_txt:0:6000}" | _zbuild_sanitize_for_llm)"
-        [[ -n "${_txt//[[:space:]]/}" ]] && out+=$'## THE DESIGN DECISIONS (what the design chose, and why)\n'"$_txt"$'\n\n'
-    fi
-    # #2567 (ADR-038): the design steps build answered not needed, its check
-    # accepting the reason — not undone work, unless a lens shows the reason
-    # wrong. Read from build's own steps lines (.data.steps, summary.sh): one jq
-    # over the earlier JSON outputs, and only when one names a not-needed step.
-    local -a _rl_c=() _rl_j=(); local _rl_b
-    _eo_candidates_v _rl_c "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}"
-    for f in ${_rl_c[@]+"${_rl_c[@]}"}; do
-        [[ "$f" == *.json && -s "$f" ]] || continue
-        _rl_b=""; IFS= read -r -d '' _rl_b < "$f" || true
-        [[ "$_rl_b" == *'"steps"'* && "$_rl_b" == *'not needed'* ]] && _rl_j+=("$f")
-    done
-    if [[ ${#_rl_j[@]} -gt 0 ]]; then
-        _txt="$(jq -r '(.data.steps // empty) | arrays | .[] | strings
-            | select(test("^step [0-9]+: not needed — ")) | select(endswith("(not judged)") | not)' \
-            "${_rl_j[@]}" 2>/dev/null | awk '!seen[$0]++')"
-        _txt="$(printf '%s' "${_txt:0:4000}" | _zbuild_sanitize_for_llm)"
-        [[ -n "${_txt//[[:space:]]/}" ]] && out+=$'## THE DESIGN STEPS BUILD FOUND NOT NEEDED (its check accepted each reason)\n'"$_txt"$'\n\n'
-    fi
-    # #2302's planned scope is gone: design names no files (#2508, ADR-069 §11).
-    printf '%s' "$out"
 }
 
 # ─── review_lens_run ──────────────────────────────────────────────────────────
@@ -331,6 +129,8 @@ _review_lens_run_inner() {
         return 2
     fi
     mkdir -p "$artifact_dir"
+    # #2571 (ADR-038): the questions the lens's last result carries, for this call to judge.
+    _rl_unclear_carried_load "$out"
     # ADR-068 §6: last time's findings, with what was answered, are read
     # before they are cleared, to show the lens.
     local _rl_last=""
@@ -360,7 +160,8 @@ _review_lens_run_inner() {
             "Advisory lens: no findings were produced. Absence here is not evidence of a clean change."
         return 0
     fi
-    local prompt; prompt="$(_rl_build_lens_prompt "$lens" "$_rl_change" "$(_rl_context)")"
+    local prompt _rl_uqb=""; prompt="$(_rl_build_lens_prompt "$lens" "$_rl_change" "$(_rl_context)")"
+    _rl_unclear_block_v _rl_uqb; prompt+="$_rl_uqb"
     # #2464: what the lens judges, before the engine's blocks (whose Previous
     # work names this run's paths) — its kept answer's fingerprint.
     # The patch's path differs from run to run; what it holds is in _rl_cfp.
@@ -429,10 +230,15 @@ _review_lens_run_inner() {
         _rl_reply_problem "$raw_response" json _rl_problem
         # ADR-072 §3: every finding quotes the text that shows it.
         [[ -z "$_rl_problem" ]] && _rl_quote_problem_v _rl_problem "$json" "$_rl_base" "$_rl_repo" "$_rl_patch"
+        # #2571: each question in the one form, each carried one answered —
+        # asked again once, then costing only that question: the report is kept.
+        if [[ -z "$_rl_problem" && $_rl_try -eq 1 ]]; then
+            _rl_unclear_problem_v _rl_problem "$json"; [[ -n "$_rl_problem" ]] && _rl_salvage="$json"
+        fi
         # #2569 (review): a finding with no accepted_if is asked again, and
         # then costs only itself — the report without it is kept in hand, used
         # when no reply can be used whole. It is not kept for a later round.
-        if [[ -n "$_rl_problem" && -n "$json" && ${#_RL_NO_ACC[@]} -gt 0 && "$_RL_OTHER_BAD" -eq 0 ]]; then
+        if [[ -n "$_rl_problem" && -n "$json" && -z "$_rl_salvage" && ${#_RL_NO_ACC[@]} -gt 0 && "$_RL_OTHER_BAD" -eq 0 ]]; then
             _rl_salvage="$(jq -c --argjson d "[$(IFS=,; printf '%s' "${_RL_NO_ACC[*]}")]" \
                 '.findings |= [to_entries[] | select(.key as $k | $d | index($k) | not) | .value]' <<< "$json" 2>/dev/null)" || _rl_salvage=""
         fi
@@ -577,6 +383,11 @@ _review_lens_run_inner() {
         return 10
     fi
 
+    # #2571 (ADR-038): the questions the lens goes on with, those it retired,
+    # and its notes, in its result.
+    _rl_unclear_settle "$json"
+    _rl_unclear_data_v normalized "$normalized"
+
     # Primary output (manifest provides.outputs, primary:true) is
     # lens-${ZBUILD_REVIEW_LENS_ID}.json — here "$out" resolves to
     # $artifact_dir/lens-$lens.json (same file; $lens is the resolved id). Written
@@ -599,7 +410,7 @@ _review_lens_run_inner() {
     # one output per topic, each failing only on a finding that blocks — so a
     # lens pays no jq per output (ADR-065).
     local _rl_route _rl_k _rl_v _rl_issue=""; _rl_outcome="pass"
-    _rl_route="$(printf '%s' "$normalized" | jq -r --arg on " $_rl_fail_on " --arg n "$lens" --argjson c "${_ZBUILD_CONTRACT_V3:-3}" '
+    _rl_route="$(printf '%s' "$normalized" | jq -r --arg on " $_rl_fail_on " --arg n "$lens" --argjson c "${_ZBUILD_CONTRACT_V3:-3}" --argjson q "${_RL_UQ_NEWQ:-[]}" '
         def at_fail_on: .severity as $s | ($on | contains(" \($s) "));
         # #2506 (ADR-072 §3): shown with its quote, never a line — lines move.
         def line: "\($n) lens, \(.severity): \(.message) (\(.file)\(if (.quote | tostring) != "" then ": \"\(.quote | tostring | gsub("[\r\n]+"; " "))\"" else "" end); happens when: \(.trigger // "" | tostring | gsub("[\r\n]+"; " ")); fix: \(.fix); ACCEPTED IF: \(.accepted_if // "" | tostring | gsub("[\r\n]+"; " ")))";
@@ -617,8 +428,10 @@ _review_lens_run_inner() {
           # #2569 (ADR-071 §1): the fix: word of a finding is its topic,
           # <fix>-findings, and names its output, lens-<id>-<fix>-result.json:
           # no translation. One saying the issue is wrong goes with design.
+          # #2571: so does a question it raised now, blocking nothing.
           (["code", "test", "design"][] as $w
-           | "\($w)\t" + (([$sent[] | select(.fix == $w) | routed] + (if $w == "design" then [$issue[] | routed] else [] end))
+           | "\($w)\t" + (([$sent[] | select(.fix == $w) | routed] + (if $w == "design" then [$issue[] | routed]
+                  + [$q[] | {text: "The issue is unclear here, and the \($n) lens judged by the assumption: \(.)", blocking: false}] else [] end))
                | result("the \($n) lens'"'"'s findings the \($w) must fix") | tojson))' 2>/dev/null)" || _rl_route=""
     while IFS=$'\t' read -r _rl_k _rl_v; do
         case "$_rl_k" in

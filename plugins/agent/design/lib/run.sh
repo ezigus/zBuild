@@ -236,13 +236,7 @@ plugin kinds in docs/ARCHITECTURE.md, the ADRs for the area, the existing plugin
 and libraries. Build on it, not beside it. Name in the design what you found and
 why you used it or not.
 
-A requirement you do not understand — the issue could mean either of two
-things — is not guessed in silence. Write one line for it in the design,
-outside the fenced blocks:
-UNCLEAR: <id> | <the question> | <what you assumed>
-where <id> is the requirement's id. Then carry on with that assumption: design
-the change as if it were the answer. The question and your assumption are
-shown to the people who can answer it.
+${ZB_UNCLEAR_RULES}
 
 Keep the prose focused and under 200 lines (the acceptance block may be as
 long as completeness requires).
@@ -292,6 +286,10 @@ DESIGN_PROMPT
         local _one_line=""
         _design_one_line_specs_v _one_line "$_prior_design_body"
         [[ -n "$_one_line" ]] && printf '\nThese [code] and [done] SPECs of YOUR LATEST DESIGN are still written on one line. Each one you keep is rewritten with its parts on the lines under it — Given, When, Then, And, Cleanup:\n%s' "$_one_line" >> "$prompt_input_file"
+        # Review on #2571 (ADR-069 §12): an old-form UNCLEAR line is named now, not learned from a failed try.
+        local -a _old_u=(); local _ou _oul=""; zb_unclear_lines_text_v _old_u "$_prior_design_body"
+        for _ou in ${_old_u[@]+"${_old_u[@]}"}; do [[ "$_ou" == UNCLEAR:* ]] && _oul+="- $_ou"$'\n'; done
+        [[ -n "$_oul" ]] && printf '\nThese UNCLEAR lines of YOUR LATEST DESIGN are in the old form. Rewrite each in the one form above, under the same id, quoting the issue'"'"'s words:\n%s' "$_oul" >> "$prompt_input_file"
         printf '\nRefine YOUR LATEST DESIGN.\n' \
             >> "$prompt_input_file"
         [[ -n "$_passed_body" ]] && printf '\n### The last design that passed — for reference; do not copy back what your newest try removed\n\n%s\n' \
@@ -431,6 +429,7 @@ ${_dp_limits}")"; then
             [[ "$_a" == "design finding "* ]] && _dp_ans+="$_a"$'\n'
         done
         _design_coverage "$output_draft" "$_reqs" "$tier" "$_dp_ans" "$_lims" "$_terms"
+        for _u in ${_DESIGN_COV_NOTES[@]+"${_DESIGN_COV_NOTES[@]}"}; do warn "design: $_u"; done
         if [[ -n "$_DESIGN_COV_OUTCOME" && ${#_fnd[@]} -gt 0 ]]; then
             _fnd+=("the check that the design covers the issue could not be run ($_DESIGN_COV_OUTCOME), so coverage was not checked this try")
         elif [[ -n "$_DESIGN_COV_OUTCOME" ]]; then

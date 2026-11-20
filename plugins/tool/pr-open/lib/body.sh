@@ -29,16 +29,29 @@ _pr_open_review_findings() {
     done
 }
 
-# The questions design could not settle (#2508, ADR-040): read from the design,
-# found among the earlier outputs by what it contains (#2364).
+# The questions the run could not settle (#2508, #2571, ADR-040, ADR-069
+# §12): design's, read from the design, and every other stage's, from its
+# result's data.unclear — each found among the earlier outputs by what it
+# contains (#2364): one list of them, each read by the shell (ADR-065). A result
+# is read by the rule the run-status comment reads it (zb_unclear_result_ok):
+# a stage result of this run, of bounded size (#2571 review).
 # shellcheck source=../../../../scripts/lib/unclear.sh
 source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/../../../../scripts/lib/unclear.sh"
 # _pr_open_questions — the questions section, or nothing.
 _pr_open_questions() {
-    local d
-    declare -F earlier_acceptance_contract >/dev/null 2>&1 || return 0
-    d="$(earlier_acceptance_contract "${artifact_dir:-${artifacts_dir:-}}" "${state_dir:-}" 2>/dev/null)" || return 0
-    zb_unclear_markdown "$d"
+    local d="" f t start="${state_dir:+$state_dir/runtime/run-start}"
+    local -a all=() res=()
+    declare -F _eo_candidates_v >/dev/null 2>&1 || return 0
+    _eo_candidates_v all "${artifact_dir:-${artifacts_dir:-}}" "${state_dir:-}"
+    for f in ${all[@]+"${all[@]}"}; do
+        [[ -n "$f" && -s "$f" ]] || continue
+        if [[ "$f" == *.json ]]; then zb_unclear_result_ok "$f" "$start" && res+=("$f"); continue; fi
+        # The design: the first output with an ```acceptance block, as
+        # earlier_acceptance_contract finds it.
+        if [[ -n "$d" ]] || ! _zb_unclear_read_v t "$f"; then continue; fi
+        [[ "$t" == '```acceptance'* || "$t" == *$'\n''```acceptance'* ]] && d="$f"
+    done
+    zb_unclear_markdown "$d" ${res[@]+"${res[@]}"}
 }
 
 # _pr_open_compose_body <issue> <plan_json> <test_outcome> <files_changed>

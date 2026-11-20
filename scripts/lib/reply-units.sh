@@ -18,8 +18,10 @@ _ZBUILD_REPLY_UNITS_LOADED=1
 # `FRSH-1 And:`, `FRSH-1 sections:`, `FRSH-1 cleanup:` (#2543), an old `FRSH-1 Then 2:` — starts a unit too, as do `FRSH-1 Title:` and `Steps:` (#2555),
 # and build's answer to a design step, `step 2:` (#2565), and design's check's
 # `Decision:` answer of a check — `Decision: ok` and its other words, not prose
-# that happens to start with the word (#2567).
-_ZB_RU_START='^[[:space:]>*_`]*([A-Z][A-Z0-9_-]*:|[A-Z][A-Z0-9_]*-[0-9]+[[:space:]]+(Title|Given|When|Then|And|Cleanup|sections|cleanup)([[:space:]]+[0-9]+)?:|Steps:|Decisions?:[[:space:]]*(ok|not-asked|contradicts|new-owner)|[Ss][Tt][Ee][Pp][[:space:]]+[0-9]+[[:space:]]*:|[Aa][Nn][Ss][Ww][Ee][Rr][[:space:]]|LOOP_COMPLETE|#|```|[-*+][[:space:]]|[0-9]+[.)][[:space:]])'
+# that happens to start with the word (#2567). A question in the one form, and
+# a check's answer to one — `UNCLEAR <id> | …`, `UNCLEAR <id>: open` — starts a
+# unit too (#2571).
+_ZB_RU_START='^[[:space:]>*_`]*([A-Z][A-Z0-9_-]*:|UNCLEAR[[:space:]]|[A-Z][A-Z0-9_]*-[0-9]+[[:space:]]+(Title|Given|When|Then|And|Cleanup|sections|cleanup)([[:space:]]+[0-9]+)?:|Steps:|Decisions?:[[:space:]]*(ok|not-asked|contradicts|new-owner)|[Ss][Tt][Ee][Pp][[:space:]]+[0-9]+[[:space:]]*:|[Aa][Nn][Ss][Ww][Ee][Rr][[:space:]]|LOOP_COMPLETE|#|```|[-*+][[:space:]]|[0-9]+[.)][[:space:]])'
 _ZB_RU_ITEM='^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]+(.*)$'
 _ZB_RU_KEY_ONLY='^[[:space:]>*_`]*([A-Z][A-Z0-9_-]*):[[:space:]*_`]*$'
 

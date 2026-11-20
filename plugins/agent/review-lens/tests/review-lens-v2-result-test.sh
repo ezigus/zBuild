@@ -103,17 +103,19 @@ else
 fi
 
 # ─── SPEC-11 [change]: _review_lens_write_result exists; no hardcoded paths ──
-if grep -q '^_review_lens_write_result()' "$PLUGIN_DIR/plugin.sh" 2>/dev/null; then
-    assert_pass "[SPEC-11] _review_lens_write_result function exists in plugin.sh"
+# #2571: the result writer lives in lib/result.sh, split from plugin.sh.
+_RL_RESULT_SH="$PLUGIN_DIR/lib/result.sh"
+if grep -q '^_review_lens_write_result()' "$_RL_RESULT_SH" 2>/dev/null; then
+    assert_pass "[SPEC-11] _review_lens_write_result function exists in lib/result.sh"
 else
-    assert_fail "[SPEC-11] _review_lens_write_result must exist in plugin.sh" "absent"
+    assert_fail "[SPEC-11] _review_lens_write_result must exist in lib/result.sh" "absent"
 fi
 # Extract helper body (function declaration through closing brace at column 0)
 _1840_helper_body="$(awk '
     /^_review_lens_write_result\(\)/ { found=1 }
     found { print }
     found && /^\}$/ { exit }
-' "$PLUGIN_DIR/plugin.sh" 2>/dev/null || true)"
+' "$_RL_RESULT_SH" 2>/dev/null || true)"
 # Helper must contain no quoted literal artifact filenames (lens-*.json, scope-manifest.md)
 if grep -qE '"lens-[^$"]*"|'"'"'lens-[^$'"'"']*'"'"'|"scope-manifest\.md"' <<< "$_1840_helper_body"; then
     assert_fail "[SPEC-11] _review_lens_write_result body must have no hardcoded artifact path literals" "found"
@@ -216,12 +218,13 @@ fi
 # The recovered result must be valid (findings array present)
 assert_eq "[SPEC-4] recovered lens result has valid findings array (1 finding)" \
     "1" "$(jq '.findings | length' "$out_1840_s4" 2>/dev/null || echo 0)"
-# Confirm _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok is present in plugin.sh
+# Confirm _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok is present in
+# the lens's reply reader (lib/reply.sh since #2571)
 if grep -q '_llm_envelope_parse.*--schema-gate.*_review_lens_envelope_schema_ok' \
-    "$PLUGIN_DIR/plugin.sh" 2>/dev/null; then
-    assert_pass "[SPEC-4] plugin.sh uses _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok"
+    "$PLUGIN_DIR/lib/reply.sh" 2>/dev/null; then
+    assert_pass "[SPEC-4] the lens's reply reader uses _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok"
 else
-    assert_fail "[SPEC-4] plugin.sh must use _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok" "absent"
+    assert_fail "[SPEC-4] the lens's reply reader must use _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok" "absent"
 fi
 
 # ─── SPEC-5 [change]: ADR-063 budget guidance in prompt when max_turns > 0 ────
@@ -389,7 +392,7 @@ fi
 # ─── SPEC-10 [change]: merge-action coercion tokens absent; verdict appears only as jq field in _review_lens_write_result ─
 # Part 1: approve, request_changes, "block" tokens remain absent from plugin source.
 if grep -qiE '\b(approve|request_changes)\b|"block"' \
-    "$PLUGIN_DIR/plugin.sh" "$PLUGIN_DIR/lib/charters.sh"; then
+    "$PLUGIN_DIR/plugin.sh" "$PLUGIN_DIR"/lib/*.sh; then
     assert_fail "[SPEC-10] merge-action coercion tokens absent from review-lens source" "found"
 else
     assert_pass "[SPEC-10] merge-action tokens (approve|request_changes|block) absent"
@@ -397,9 +400,9 @@ fi
 # Part 2: after migration, 'verdict' appears in _review_lens_write_result as a jq
 # field; confirm the helper exists and contains 'verdict', and that the
 # coercion-vocabulary grep above does NOT match it — the two must be compatible.
-if grep -q '^_review_lens_write_result()' "$PLUGIN_DIR/plugin.sh" 2>/dev/null; then
+if grep -q '^_review_lens_write_result()' "$_RL_RESULT_SH" 2>/dev/null; then
     _1840_s10_helper="$(awk '/^_review_lens_write_result\(\)/{f=1} f{print} f && /^\}$/{exit}' \
-        "$PLUGIN_DIR/plugin.sh" 2>/dev/null || true)"
+        "$_RL_RESULT_SH" 2>/dev/null || true)"
     # "verdict" must appear as a jq field (.verdict, "verdict":, verdict:<val>, or --arg verdict),
     # not merely as a comment word — bare string match does not establish jq field.
     if grep -qE 'stage_result_(add|write)' <<< "$_1840_s10_helper"; then

@@ -18,7 +18,8 @@
 # N9 design's prompt asks it to write UNCLEAR lines and carry on with the assumption
 # N10 a malformed UNCLEAR line is refused by design's checks; (#2567) a line
 #     design wrapped is read whole: the wrapped form passes, a wrapped line
-#     still missing a part is refused
+#     still missing a part is refused; (#2571) the one form passes, the old
+#     form in a new design is refused
 # N11 on an issue's branch, a SPEC's tests are only the test files the branch added
 #     or changed: a file the default branch already had, holding the tag as
 #     sample text, is not its test (#2517)
@@ -151,9 +152,10 @@ PROMPT="$(cat "$TEST_TEMP_DIR/state/artifacts/design-prompt.txt" 2>/dev/null || 
 assert_contains "fixture: design's prompt was written" "$PROMPT" "acceptance"
 assert_not_contains "[N8] design is not asked for a scope block" "$PROMPT" '```scope'
 assert_not_contains "[N8] design is not asked for TESTFILES" "$PROMPT" "TESTFILES"
-assert_contains "[N9] design is told how to mark a requirement it does not understand" \
-    "$PROMPT" "UNCLEAR: <id> | <the question> | <what you assumed>"
-assert_contains "[N9] and to carry on with what it assumed" "$PROMPT" "carry on with that assumption"
+# #2571 (ADR-069 §12): the one form every stage that reads the issue writes.
+assert_contains "[N9] design is told how to mark what the issue leaves unclear" \
+    "$PROMPT" 'UNCLEAR <id> | "<the issue'"'"'s unclear words, quoted>" | <the readings> | ASSUMED: <the reading chosen and acted on>'
+assert_contains "[N9] and to act on what it assumed" "$PROMPT" "Pick one reading and act on it"
 
 # ── N10 ────────────────────────────────────────────────────────────────────
 BAD="$TEST_TEMP_DIR/bad-design.md"
@@ -161,13 +163,13 @@ BAD="$TEST_TEMP_DIR/bad-design.md"
 _design_checks "$BAD" "$ROOT" "" "$TEST_TEMP_DIR/last-design.md"
 assert_contains "[N10] a malformed UNCLEAR line is refused" "${_DESIGN_VIOLATIONS[*]-}" "UNCLEAR_MALFORMED"
 _n10=""; for v in "${_DESIGN_VIOLATIONS[@]}"; do _n10+="$(_dck_plain "$v")"; done
-assert_contains "[N10] and design is told the form" "$_n10" "UNCLEAR: <id> | <the question> | <what you assumed>"
+assert_contains "[N10] and design is told the form" "$_n10" 'UNCLEAR <id> | "<the issue'"'"'s unclear words, quoted>" | <the readings> | ASSUMED: <the reading chosen and acted on>'
 GOOD="$TEST_TEMP_DIR/good-design.md"
-{ cat "$DESIGN"; printf '\nUNCLEAR: R-1 | does --from-stage need --resume? | it works on its own\n'; } > "$GOOD"
+{ cat "$DESIGN"; printf '\nUNCLEAR R-1 | "does --from-stage need --resume" | yes, or no | ASSUMED: it works on its own\n'; } > "$GOOD"
 _design_checks "$GOOD" "$ROOT" "" "$TEST_TEMP_DIR/last-design.md"
 assert_eq "[N10] a well-formed UNCLEAR line passes" "" "${_DESIGN_VIOLATIONS[*]-}"
 WRAP="$TEST_TEMP_DIR/wrap-design.md"
-{ cat "$DESIGN"; printf '\nUNCLEAR: R-1 | does --from-stage need --resume? |\nit works on its own\n'; } > "$WRAP"
+{ cat "$DESIGN"; printf '\nUNCLEAR R-1 | "does --from-stage need --resume" | yes,\nor no | ASSUMED: it works on its own\n'; } > "$WRAP"
 _design_checks "$WRAP" "$ROOT" "" "$TEST_TEMP_DIR/last-design.md"
 assert_eq "[N10] a well-formed line design wrapped passes" "" "${_DESIGN_VIOLATIONS[*]-}"
 WBAD="$TEST_TEMP_DIR/wbad-design.md"
@@ -175,9 +177,13 @@ WBAD="$TEST_TEMP_DIR/wbad-design.md"
 _design_checks "$WBAD" "$ROOT" "" "$TEST_TEMP_DIR/last-design.md"
 assert_contains "[N10] a wrapped line still missing a part is refused" "${_DESIGN_VIOLATIONS[*]-}" "UNCLEAR_MALFORMED"
 WEMP="$TEST_TEMP_DIR/wemp-design.md"
-{ cat "$DESIGN"; printf '\nUNCLEAR: R-1 | does --from-stage need --resume? | Assumed:\n'; } > "$WEMP"
+{ cat "$DESIGN"; printf '\nUNCLEAR R-1 | "does --from-stage need --resume" | yes, or no | ASSUMED:\n'; } > "$WEMP"
 _design_checks "$WEMP" "$ROOT" "" "$TEST_TEMP_DIR/last-design.md"
 assert_contains "[N10] a line whose assumption is only the word Assumed: is refused" "${_DESIGN_VIOLATIONS[*]-}" "UNCLEAR_MALFORMED"
+WOLD="$TEST_TEMP_DIR/wold-design.md"
+{ cat "$DESIGN"; printf '\nUNCLEAR: R-1 | does --from-stage need --resume? | it works on its own\n'; } > "$WOLD"
+_design_checks "$WOLD" "$ROOT" "" "$TEST_TEMP_DIR/last-design.md"
+assert_contains "[N10] (#2571) a line in the old form, in a new design, is refused" "${_DESIGN_VIOLATIONS[*]-}" "UNCLEAR_MALFORMED"
 
 # ── N11 ────────────────────────────────────────────────────────────────────
 # On #1805 run 42817975218 an engine test holding [#1805/DSFSTG-1] as sample text

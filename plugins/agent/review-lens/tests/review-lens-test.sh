@@ -188,7 +188,7 @@ assert_file_exists "[#1140-7] stage-id prefix stripped (lens_maintainability →
 # [#1840/SPEC-10] 'verdict' is removed from this check: after the v2 migration
 # _review_lens_write_result uses 'verdict' as a jq field, not a coercion token.
 if grep -qiE '\b(approve|request_changes)\b|"block"' \
-    "$PLUGIN_DIR/plugin.sh" "$PLUGIN_DIR/lib/charters.sh"; then
+    "$PLUGIN_DIR/plugin.sh" "$PLUGIN_DIR"/lib/*.sh; then
     assert_fail "[#1140-9] no coercion vocabulary in review-lens source" "found coercion token"
 else
     assert_pass "[#1140-9] no coercion vocabulary in review-lens source"

@@ -72,7 +72,6 @@ Answer with one line for every requirement in ISSUE REQUIREMENTS, by its id:
 MET: <id>
 UNMET: [fix-code] <id> | WHY: <what the change does not do> | ACCEPTED IF: <the requirement, in its own words> | QUOTE: <quote>
 UNMET: [fix-design] <id> | WHY: <what the requirements miss or get wrong> | ACCEPTED IF: <the requirement, in its own words> | QUOTE: <quote>
-UNSURE: <id> | WHY: <what you cannot tell> | ACCEPTED IF: <the requirement, and what would show it met> | QUOTE: <quote>
 
 ACCEPTED IF names the line you judge against: the requirement or the limit, in
 its own words, so the finding says what would be accepted. An UNASKED line with
@@ -86,8 +85,12 @@ Start each UNMET: line with what would fix it:
 - [fix-code] — the change does not do it yet: the code or its tests must change.
 - [fix-design] — the REQUIREMENTS miss it or get it wrong, or the issue itself is
   wrong: the design must change.
-An UNSURE: line may start with the same mark when you can tell which would fix
-it; leave it off when you cannot.
+Leave the mark off when you cannot tell which would fix it.
+
+${ZB_UNCLEAR_RULES}
+When none are listed under ISSUE REQUIREMENTS, the <id> of an UNCLEAR line is
+the requirement's few words joined by dashes.
+A question is never a verdict: write the requirement's MET: or UNMET: line too, judged by the reading you assumed.
 
 A QUOTE is either the requirement's own words, from ISSUE REQUIREMENTS or the
 ISSUE, or the code that shows it: <file> | <one line from it>. Copy it as it
@@ -151,12 +154,12 @@ no code, the doc changes, and those design says are already done. Nothing but
 you checks them. For a doc change, read the doc on the branch: no test checks
 it. For one already done, open the file its evidence names and check the claim
 against the code. If you cannot
-tell whether such a requirement is met, say so rather than guess: the run then
-reports it as open, with what would settle it.
+tell whether such a requirement is met, it is UNMET: say in its WHY what you
+cannot tell, and in its ACCEPTED IF what would settle it.
 
 A failing test you cannot trace to the change within a few reads: mark the
-requirement it bears on UNSURE, naming the test and that you could not tell
-whether the change broke it. Do not
+requirement it bears on UNMET, naming in its WHY the test and that you could
+not tell whether the change broke it. Do not
 work out why a test fails: that is the build's job, and your answer is lost if
 your time runs out first.
 
@@ -182,8 +185,8 @@ TEST VERDICT: $4
 ${6:-}
 ## What you must not do
 - Do not suggest code.
-- Do not guess whether a requirement is met: say you are unsure instead.
-- Do not work out why a test fails: a failure you cannot trace to the change is UNSURE.
+- Do not guess whether a requirement is met: when you cannot tell, it is UNMET, saying what you cannot tell.
+- Do not work out why a test fails: a failure you cannot trace to the change is UNMET, saying so.
 - Answer only, in the form above.
 EOF
 }
@@ -207,13 +210,17 @@ _ia_write() {
     # #2508 (ADR-072 §3): a part of the change nothing asked for is
     # the code's to undo; #2523: one in a test file ([fix-test]) is a test's,
     # which test-author takes: build may not change a test.
-    local _fnd; _fnd="$(jq -r --argjson s "$s" --argjson x "$x" 'def topic: if test("^\\[fix-code\\]") then "code-findings,test-findings\t"
+    # #2571 (ADR-072 §3): a question it raised now is a finding routed as an
+    # unmarked UNSURE line was; the questions it goes on with are data.unclear.
+    local _uq_new="[]"; zb_unclear_result_json_v _uq_new _IA_UQ_NEW
+    local _fnd; _fnd="$(jq -r --argjson s "$s" --argjson x "$x" --argjson q "$_uq_new" 'def topic: if test("^\\[fix-code\\]") then "code-findings,test-findings\t"
             elif test("^\\[fix-design\\]") then "design-findings\t" else "design-findings,test-findings,code-findings\t" end;
         def bare: sub("^\\[fix-(code|design)\\][[:space:]]*"; "");
         (.[]? | tostring | topic + "The issue requires this and the change does not meet it: " + bare),
         ($s[] | tostring | topic + "Not sure this requirement is met: " + bare),
         ($x[] | tostring | (if test("^\\[fix-test\\]") then "test-findings\t" else "code-findings\t" end)
-            + "The change does this and no requirement asks for it: " + sub("^\\[fix-test\\][[:space:]]*"; ""))' \
+            + "The change does this and no requirement asks for it: " + sub("^\\[fix-test\\][[:space:]]*"; "")),
+        ($q[] | "design-findings,test-findings,code-findings\tThe issue is unclear here, and issue-acceptance judged by the assumption: " + .)' \
         <<< "$u" 2>/dev/null | stage_findings_route_each "$dir" issue-acceptance design-findings)"
     u="$(jq -c 'map(tostring | sub("^\\[fix-(code|design)\\][[:space:]]*"; ""))' <<< "$u" 2>/dev/null || printf '%s' "$u")"
     [[ "$s" == "[]" ]] || s="$(jq -c 'map(tostring | sub("^\\[fix-(code|design)\\][[:space:]]*"; ""))' <<< "$s" 2>/dev/null || printf '%s' "$s")"
@@ -222,10 +229,14 @@ _ia_write() {
     # and how many it was shown when it was asked this time.
     local _data _ia_a="[]"
     [[ ${#_IA_ANSWERS[@]} -gt 0 ]] && _ia_a="$(_ia_json_list "${_IA_ANSWERS[@]}")"
-    _data="$(jq -nc --argjson u "$u" --argjson s "$s" --argjson x "$x" --argjson fnd "${_fnd:-[]}" --arg j "$j" --argjson a "$_ia_a" \
+    _data="$(jq -nc --argjson u "$u" --argjson s "$s" --argjson x "$x" --argjson fnd "${_fnd:-[]}" --arg j "$j" --argjson a "$_ia_a" --argjson uq "${_IA_UQ_JSON:-[]}" \
+        --argjson ud "${_IA_UQ_DROPPED:-[]}" --arg un2 "${_IA_UQ_NOTES:-}" \
         --arg known "${_IA_ANS_KNOWN:-0}" --argjson fs "${_ZB_ANS_SHOWN:-0}" --arg un "${_ZB_ANS_MISSING:-}" \
         '{unmet: $u, unsure: $s, findings: $fnd} + (if ($x | length) > 0 then {unasked: $x} else {} end) + (if $j == "" then {} else {judgement: $j} end)
          + (if ($a | length) > 0 then {answers: $a} else {} end)
+         + (if ($uq | length) > 0 then {unclear: $uq} else {} end)
+         + (if ($ud | length) > 0 then {unclear_dropped: $ud} else {} end)
+         + ($un2 | split("\n") | map(select(length > 0)) | if length > 0 then {notes: .} else {} end)
          + (if $known == "1" then {findings_shown: $fs} + (if $un != "" then {unanswered: ($un | split("\n"))} else {} end) else {} end)' 2>/dev/null)"
     [[ -n "$_data" ]] || _data='{}'
     if ! stage_result_write "$dir/issue-acceptance-result.json" "$o" "$r" "$_data"; then
@@ -255,6 +266,9 @@ issue_acceptance_run() {
     [[ -n "$art" ]] || { [[ -n "$state_file" ]] && art="$(dirname "$state_file")/artifacts"; }
     [[ -n "$art" ]] || return 1
     mkdir -p "$art" 2>/dev/null || true
+    # #2571 (ADR-072 §3): the questions its last result carries, for this call
+    # to judge; a result written before they are judged keeps them.
+    _ia_unclear_carried_load "${art%/}/issue-acceptance-result.json"
 
     # #2364: each piece of earlier work found by what it contains.
     local design_f diff_f tests_f issue="" acc="" change="" test_verdict=""
@@ -309,7 +323,7 @@ issue_acceptance_run() {
     judge_held_entries_v _held "$_ans" "${_ia_lf[@]}"
     local kf="${art%/}/issue-acceptance-judged.json" eng fp kept="" _root_q="$_root"
     judge_engine_v eng
-    judge_fp_v fp "$eng"$'\n'"$issue"$'\n'"$_reqs"$'\n'"$_lims"$'\n'"$_terms"$'\n'"$acc"$'\n'"$_change_fp"$'\n'"$test_verdict"$'\n'"$_ans"
+    judge_fp_v fp "$eng"$'\n'"$issue"$'\n'"$_reqs"$'\n'"$_lims"$'\n'"$_terms"$'\n'"$acc"$'\n'"$_change_fp"$'\n'"$test_verdict"$'\n'"$_ans"$'\n'"$_IA_UQ_CARRIED"
     judge_kept_get_v kept "$kf" issue "$fp" "${_ans:+1}"
     if [[ -n "$kept" ]]; then
         _ia_parse "$kept" "$_reqs" "$issue" "$_root_q" "$_lims"
@@ -322,6 +336,8 @@ issue_acceptance_run() {
     fi
 
     judge_held_block_v _held "$_held"
+    local _uqb=""; zb_unclear_judge_block_v _uqb "$_IA_UQ_CARRIED"
+    [[ -n "$_uqb" ]] && _held+=$'\n'"$_uqb"$'\n'
     _task="$(_ia_prompt "$issue" "${acc:-<none>}" "${change:-<no change found>}" "${test_verdict:-unknown}" "$_reqs" "$_held" "$_lims" "$_terms")"
     _framed="$_task"
     # ADR-067 §8: the stage's three parts and the engine's blocks, in the one
@@ -334,7 +350,7 @@ issue_acceptance_run() {
         return 1
     fi
     _framed="$_composed"
-    local _raw="" rc=0 _ask="$_framed" _try _opened
+    local _raw="" rc=0 _ask="$_framed" _try _opened _first=""
     _opened="$(mktemp 2>/dev/null)" || _opened=""
     local -x ZBUILD_ROUTER_OPENED_FILE="$_opened"
     # ADR-060 §6: an answer that cannot be used is asked again once, at once,
@@ -352,9 +368,13 @@ issue_acceptance_run() {
         # line is read whole.
         zb_reply_join_v _raw "$_raw"
         _ia_parse "$_raw" "$_reqs" "$issue" "$_root_q" "$_lims"
-        [[ -z "$_IA_PROBLEM" ]] && break
-        _ask="$(stage_prompt_reask "$_framed" "$_IA_PROBLEM" "$_raw")"
+        # #2571: what is wrong with a question is asked again once, then costs
+        # only that question; a re-ask answered worse leaves the first answer.
+        [[ -z "$_IA_PROBLEM" && ( -z "$_IA_UQ_PROBLEM" || $_try -eq 2 ) ]] && break
+        [[ -z "$_IA_PROBLEM" ]] && _first="$_raw"
+        _ask="$(stage_prompt_reask "$_framed" "$_IA_PROBLEM${_IA_PROBLEM:+${_IA_UQ_PROBLEM:+; }}$_IA_UQ_PROBLEM" "$_raw")"
     done
+    [[ $rc -eq 0 && -n "$_IA_PROBLEM" && -n "$_first" ]] && { _raw="$_first"; _ia_parse "$_raw" "$_reqs" "$issue" "$_root_q" "$_lims"; }
     local -a _deps=()
     judge_opened_v _deps "$_opened"; rm -f "$_opened" 2>/dev/null
     if [[ $rc -ne 0 ]]; then
@@ -386,6 +406,7 @@ issue_acceptance_run() {
 # of is never a pass, and is reported as open), pass otherwise.
 _ia_finish() {
     local _v=pass _u_json _s_json _x_json
+    _ia_unclear_settle
     _u_json="$(_ia_json_list "${_IA_UNMET[@]+"${_IA_UNMET[@]}"}")"
     _s_json="$(_ia_json_list "${_IA_UNSURE[@]+"${_IA_UNSURE[@]}"}")"
     _x_json="$(_ia_json_list "${_IA_UNASKED[@]+"${_IA_UNASKED[@]}"}")"
