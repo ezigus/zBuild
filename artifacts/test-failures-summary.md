@@ -1,28 +1,26 @@
 # Test stage summary
 
-- failed: plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
+- 2 test(s) failed
 - verdict: fail
-- passed: 914
-- failed: 3
+- passed: 14
+- failed: 2
 - exit_code: 1
-
-## Failing files
-
-- plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh — ✗ claimed label contains 'claimed:' prefix — zbuild:claimed (and 1 more failing check in this file)
 
 ## Failing lines (extracted)
 
 ```
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.yHKulZ/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
-[event-bus] WARN: unknown event type 'plugin.release.complete' (run_id=run-dscla2-123)
-  [38;2;74;222;128m✓[0m [DSCLA-21] coordinator's release hook was called (zbuild:claimed removed from claim store)
-  [38;2;74;222;128m✓[0m [DSCLA-21] gh is not invoked directly within zbuild_claim_release
+unit: FAIL tests/e2e/claim-race-test.sh
+unit: FAIL tests/e2e/parity-local-vs-ci-test.sh
+  [38;2;74;222;128m✓[0m release removed claimed:releaser label
+  [38;2;0;212;255m5. list_claims emits JSON array of current holders[0m
+  [38;2;74;222;128m✓[0m list_claims contains the claimed issue
 [2m  ──────────────────────────────────────────[0m
-  [38;2;248;113;113m[1m1 of 36 tests failed[0m
-  [38;2;248;113;113m✗[0m claimed label contains 'claimed:' prefix
-e2e: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.yHKulZ/tests/e2e/claim-race-test.sh
+  [38;2;248;113;113m[1m1 of 9 tests failed[0m
   [38;2;248;113;113m✗[0m 3-way race must produce ≤1 winner
-e2e: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.yHKulZ/tests/e2e/parity-local-vs-ci-test.sh
+  [38;2;74;222;128m✓[0m all artifact contents identical across modes (sha256, timestamps normalized)
+  [38;2;74;222;128m✓[0m normalized state.json matches golden snapshot
+  [38;2;74;222;128m✓[0m artifact filename list matches golden snapshot
+  [38;2;248;113;113m[1m1 of 15 tests failed[0m
   [38;2;248;113;113m✗[0m event sequence matches golden snapshot
 ```
 

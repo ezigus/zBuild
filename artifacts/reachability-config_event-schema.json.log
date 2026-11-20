@@ -6,10 +6,9 @@
 {"acquired": true}
   [38;2;74;222;128m✓[0m claim_coordinator_claim → rc=0
   [38;2;74;222;128m✓[0m claim store file created after claim
-  [38;2;248;113;113m✗[0m claimed label contains 'claimed:' prefix
-    [2mzbuild:claimed[0m
+  [38;2;74;222;128m✓[0m label is exactly zbuild:claimed (no machine name)
   [38;2;74;222;128m✓[0m claim_coordinator_release → rc=0
-  [38;2;74;222;128m✓[0m claimed label removed after release
+  [38;2;74;222;128m✓[0m zbuild:claimed label removed after release
   [38;2;74;222;128m✓[0m list_claims returns [] after release
 {"acquired": true}
   [38;2;74;222;128m✓[0m claim_coordinator_heartbeat → rc=0
@@ -58,12 +57,12 @@
 [event-bus] WARN: unknown event type 'plugin.release.complete' (run_id=run-dscla2-123)
   [38;2;74;222;128m✓[0m [DSCLA-21] coordinator's release hook was called (zbuild:claimed removed from claim store)
   [38;2;74;222;128m✓[0m [DSCLA-21] gh is not invoked directly within zbuild_claim_release
+  [38;2;74;222;128m✓[0m core/claim/claim.sh is listed in config/shape-change-paths.txt
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m2 of 36 tests failed[0m
+  [38;2;248;113;113m[1m1 of 37 tests failed[0m
 
-  [38;2;248;113;113m✗[0m claimed label contains 'claimed:' prefix
   [38;2;248;113;113m✗[0m [DSCLA-10] Given: pipeline.refused.claimed must be in config/event-schema.json
 
 ### config/event-schema.json head plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
@@ -74,10 +73,9 @@
 {"acquired": true}
   [38;2;74;222;128m✓[0m claim_coordinator_claim → rc=0
   [38;2;74;222;128m✓[0m claim store file created after claim
-  [38;2;248;113;113m✗[0m claimed label contains 'claimed:' prefix
-    [2mzbuild:claimed[0m
+  [38;2;74;222;128m✓[0m label is exactly zbuild:claimed (no machine name)
   [38;2;74;222;128m✓[0m claim_coordinator_release → rc=0
-  [38;2;74;222;128m✓[0m claimed label removed after release
+  [38;2;74;222;128m✓[0m zbuild:claimed label removed after release
   [38;2;74;222;128m✓[0m list_claims returns [] after release
 {"acquired": true}
   [38;2;74;222;128m✓[0m claim_coordinator_heartbeat → rc=0
@@ -125,10 +123,9 @@
 [event-bus] WARN: unknown event type 'plugin.release.complete' (run_id=run-dscla2-123)
   [38;2;74;222;128m✓[0m [DSCLA-21] coordinator's release hook was called (zbuild:claimed removed from claim store)
   [38;2;74;222;128m✓[0m [DSCLA-21] gh is not invoked directly within zbuild_claim_release
+  [38;2;74;222;128m✓[0m core/claim/claim.sh is listed in config/shape-change-paths.txt
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 36 tests failed[0m
-
-  [38;2;248;113;113m✗[0m claimed label contains 'claimed:' prefix
+  [38;2;74;222;128m[1mAll 37 tests passed[0m
 

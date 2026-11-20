@@ -22622,3 +22622,36 @@ cpu 108 108 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.
 file 195 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.yHKulZ/tests/golden/golden-contracts-test.sh
 tier 248 golden
 tier 133739 lint
+run 14 targeted
+cpu 229 249 tests/e2e/claim-race-test.sh
+file 470 tests/e2e/claim-race-test.sh
+cpu 156 127 tests/golden/golden-contracts-test.sh
+file 313 tests/golden/golden-contracts-test.sh
+cpu 1502 682 plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
+file 2569 plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
+cpu 3011 1894 tests/unit/checks-accepted-if-test.sh
+file 5028 tests/unit/checks-accepted-if-test.sh
+cpu 6602 4703 plugins/agent/build/tests/build-step-answers-test.sh
+file 11562 plugins/agent/build/tests/build-step-answers-test.sh
+cpu 2858 1499 tests/unit/checks-held-to-findings-test.sh
+file 4487 tests/unit/checks-held-to-findings-test.sh
+cpu 886 738 tests/unit/core-pipeline-template-test.sh
+file 1683 tests/unit/core-pipeline-template-test.sh
+cpu 2163 889 tests/unit/design-check-every-part-test.sh
+file 3121 tests/unit/design-check-every-part-test.sh
+cpu 2552 1170 tests/unit/design-one-form-test.sh
+file 3756 tests/unit/design-one-form-test.sh
+cpu 455 154 tests/unit/lint-adr-enforced-by-test.sh
+file 606 tests/unit/lint-adr-enforced-by-test.sh
+cpu 361 239 tests/unit/template-always-run-test.sh
+file 626 tests/unit/template-always-run-test.sh
+cpu 2846 1141 tests/unit/design-refines-newest-try-test.sh
+file 4053 tests/unit/design-refines-newest-try-test.sh
+cpu 226 142 tests/unit/template-simple-yaml-test.sh
+file 389 tests/unit/template-simple-yaml-test.sh
+cpu 6093 5513 tests/integration/teardown-repeat-signal-test.sh
+file 19597 tests/integration/teardown-repeat-signal-test.sh
+cpu 2011 1121 tests/unit/template-resolvability-preflight-test.sh
+file 3176 tests/unit/template-resolvability-preflight-test.sh
+cpu 16885 10666 tests/e2e/parity-local-vs-ci-test.sh
+file 27413 tests/e2e/parity-local-vs-ci-test.sh
