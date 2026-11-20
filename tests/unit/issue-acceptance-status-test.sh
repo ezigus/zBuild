@@ -18,7 +18,9 @@
 #           is a fail, data.unsure lists them, each is a numbered finding saying
 #           what is unresolved and what would settle it (never who must check it,
 #           #2330), and issue_acceptance.unsure is emitted and declared in the
-#           manifest.
+#           manifest. #2571 (ADR-072 §3): the prompt no longer offers UNSURE —
+#           a requirement it cannot tell is UNMET, saying what it cannot tell —
+#           and an UNSURE line, the form before, is still read as above.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -118,8 +120,9 @@ assert_contains "[I2] ...naming the requirement" "$(_res '.data.findings[0].text
 assert_contains "[I2] issue_acceptance.unsure is emitted" "$(cat "$ZBUILD_EVENTS_JSONL")" "issue_acceptance.unsure"
 assert_contains "[I2] the manifest declares the event" "$(cat "$PLUGIN_DIR/manifest.yaml")" "- issue_acceptance.unsure"
 _p2="$(tr -s '[:space:]' ' ' <<< "$(cat "$_IA_PROMPT")")"
-assert_contains "[I2] the prompt offers the 'not sure' answer" "$_p2" "UNSURE: <id> | WHY:"
-assert_contains "[I2] the prompt says how to name what it is not sure of" "$_p2" "UNSURE:"
+assert_eq "[I2] the prompt no longer offers UNSURE (#2571)" "0" "$(grep -cF "UNSURE: <id> | WHY:" <<< "$_p2" || true)"
+assert_contains "[I2] ...a requirement it cannot tell is UNMET, saying what it cannot tell" "$_p2" \
+    "If you cannot tell whether such a requirement is met, it is UNMET: say in its WHY what you cannot tell, and in its ACCEPTED IF what would settle it."
 
 _setup i2b
 _IA_ANSWER=$'MET: the flag\nMET: the docs\nMET: the parser\nUNSURE: none'

@@ -22,6 +22,14 @@
 # Q6 [change] (#2567) a question design wrapped over lines is read whole: its
 #            assumption on the next line is kept, the prose after a blank line
 #            is not, and a wrapped line inside a block is still no question
+# Q8 [change] (#2571, ADR-069 §12) every stage's open questions are shown, not
+#            only design's: a question in the one form in a stage's result
+#            (data.unclear, written with the shared writer) reaches the
+#            run-status comment, the failed run's report and the PR description,
+#            under the stage's name, with its quote and assumption
+# Q9 [change] (#2571) a result an earlier run left (older than this run's start)
+#            is not this run's; the status comment reads the questions with no
+#            program run (it renders on every tick)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -63,8 +71,9 @@ fi
 _q=()
 if declare -F zb_unclear_list_v >/dev/null 2>&1; then zb_unclear_list_v _q "$S/artifacts/design.md"; fi
 assert_eq "[Q1] two well-formed questions" "2" "${#_q[@]}"
-assert_eq "[Q1] id, question, assumption" $'R-2\tDoes --from-stage need --resume?\tit works on its own' "${_q[0]:-}"
-assert_eq "[Q1] trimmed" $'R-4\tIs the flag <b>documented</b>?\tno page is needed' "${_q[1]:-}"
+# #2571: id, quote, readings, assumption and form — an old line's question is its readings.
+assert_eq "[Q1] id, question, assumption" $'R-2\t\tDoes --from-stage need --resume?\tit works on its own\told' "${_q[0]:-}"
+assert_eq "[Q1] trimmed" $'R-4\t\tIs the flag <b>documented</b>?\tno page is needed\told' "${_q[1]:-}"
 
 print_test_section "Q6: a wrapped question is read whole"
 # #1764 run 44417314654: design wrapped its assumption onto the next line.
@@ -87,7 +96,7 @@ _w=()
 declare -F zb_unclear_list_v >/dev/null 2>&1 && zb_unclear_list_v _w "$W/artifacts/design.md"
 assert_eq "[Q6] one question, outside the block" "1" "${#_w[@]}"
 assert_eq "[Q6] its assumption whole, the next line included, the word Assumed: set aside" \
-    $'RQADR-2\t"the holder is in the run-status comment" — which comment is this?\tthe ADR-064 run-status comment (`scripts/lib/run-status-comment.sh`), not a new one.' "${_w[0]:-}"
+    $'RQADR-2\t\t"the holder is in the run-status comment" — which comment is this?\tthe ADR-064 run-status comment (`scripts/lib/run-status-comment.sh`), not a new one.\told' "${_w[0]:-}"
 assert_not_contains "[Q6] the prose after the blank line is not part of it" "${_w[0]:-}" "coordinator plugin"
 
 print_test_section "Q7: a question with no assumption is not one"
@@ -108,7 +117,7 @@ EOF
 _q7=()
 zb_unclear_list_v _q7 "$B/artifacts/design.md"
 assert_eq "[Q7] only the question with an assumption is listed" "1" "${#_q7[@]}"
-assert_eq "[Q7] ...its assumption without the word Assumed:" $'R-6\tis it whole?\tit is' "${_q7[0]:-}"
+assert_eq "[Q7] ...its assumption without the word Assumed:" $'R-6\t\tis it whole?\tit is\told' "${_q7[0]:-}"
 
 print_test_section "Q2: the live run-status comment"
 # shellcheck source=../../scripts/lib/run-status-comment.sh
@@ -149,6 +158,36 @@ jq -n --arg d "$S/artifacts/design.md" '{inputs:{design:$d}}' > "$TEST_TEMP_DIR/
 _pq=""
 declare -F _pr_open_questions >/dev/null 2>&1 && _pq="$(ZBUILD_STAGE_INPUTS="$TEST_TEMP_DIR/inputs.json" _pr_open_questions)"
 assert_contains "[Q4] pr-open finds the design's questions" "$_pq" "- R-4: Is the flag"
+
+print_test_section "Q8: every stage's questions"
+# shellcheck source=../../scripts/lib/stage-result.sh
+source "$REPO_ROOT/scripts/lib/stage-result.sh"
+Q8L='UNCLEAR RQCL-3 | "the label is set early" | before the first stage, or before design | ASSUMED: before the first stage'
+declare -a _q8=("$Q8L"); _q8j="[]"
+declare -F zb_unclear_result_json_v >/dev/null 2>&1 && zb_unclear_result_json_v _q8j _q8
+stage_result_write "$S/artifacts/intake-result.json" pass "took in the issue" "$(jq -nc --argjson u "$_q8j" '{goal_len: 1, unclear: $u}')"
+Q8MD='- RQCL-3: "the label is set early" — before the first stage, or before design — assumed: before the first stage'
+_b8="$(ZBUILD_STATUS_NOW=2026-11-09T10:30:00Z rsc_render_body "$EV" "$S")"
+assert_contains "[Q8] status comment: intake's questions, under its name" "$_b8" "**Questions intake could not settle**"
+assert_contains "[Q8] ...each with its quote, readings and assumption" "$_b8" "$Q8MD"
+assert_contains "[Q8] ...design's still shown" "$_b8" "- R-2: Does --from-stage need --resume? — assumed: it works on its own"
+_o8="$(open_items_outbound "$S")"
+assert_contains "[Q8] the failed run's report" "$_o8" "$Q8MD"
+jq -n --arg d "$S/artifacts/design.md" --arg r "$S/artifacts/intake-result.json" '{inputs:{design:$d, intake_result:$r}}' > "$TEST_TEMP_DIR/inputs8.json"
+_pq8=""
+declare -F _pr_open_questions >/dev/null 2>&1 && _pq8="$(ZBUILD_STAGE_INPUTS="$TEST_TEMP_DIR/inputs8.json" _pr_open_questions)"
+assert_contains "[Q8] the PR description" "$_pq8" "$Q8MD"
+assert_contains "[Q8] ...and design's" "$_pq8" "- R-4: Is the flag"
+
+print_test_section "Q9: this run's, with no program run"
+mkdir -p "$S/runtime"; touch "$S/runtime/run-start"
+touch -t 202001010000 "$S/artifacts/intake-result.json"
+_q9=""; open_items_questions_v _q9 "$S"
+assert_not_contains "[Q9] a result from before this run is not shown" "$_q9" "RQCL-3"
+touch "$S/artifacts/intake-result.json"
+_q9=""; PATH=/nonexistent open_items_questions_v _q9 "$S"
+assert_contains "[Q9] read with no program run" "$_q9" "$Q8MD"
+rm -f "$S/runtime/run-start" "$S/artifacts/intake-result.json"
 
 print_test_section "Q5: no question, no section"
 _b0="$(ZBUILD_STATUS_NOW=2026-11-09T10:30:00Z rsc_render_body "$EV" "$EMPTY")"

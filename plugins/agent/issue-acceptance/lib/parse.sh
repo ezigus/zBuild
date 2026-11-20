@@ -7,6 +7,9 @@
 
 [[ -n "${_ZBUILD_IA_PARSE_LOADED:-}" ]] && return 0
 _ZBUILD_IA_PARSE_LOADED=1
+# #2571 (ADR-072 §3, ADR-069 §12): what the judge finds unclear in the issue.
+# shellcheck source=../../../../scripts/lib/unclear.sh
+source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/unclear.sh"
 
 # What an UNASKED with no ACCEPTED IF is told (#2569, ADR-072 §3). An UNMET,
 # UNSURE or BROKEN with none is judged against its requirement or limit, whose
@@ -32,9 +35,18 @@ _ia_fields() {
 # #2508 (ADR-072 §3): each UNASKED: line — a part of the change no requirement
 # asks for, with the code that does it — into _IA_UNASKED ("<part>: <why> —
 # <quote>"); its quote must be in a file, and `UNASKED: none` is no line.
+# #2571 (ADR-072 §3): each UNCLEAR line in the one form into _IA_UNCLEAR, and
+# the answers to the questions it carried (_IA_UQ_CARRIED) into _IA_UQ_DROP
+# (and the open ones' ids into _IA_UQ_KEPT). A question is never a verdict, so
+# what is wrong with one — a new line not in the form (kept in _IA_UQ_BAD), a
+# carried one with no usable answer — is _IA_UQ_PROBLEM, asked again once and
+# then costing only itself, never _IA_PROBLEM. An UNSURE: line, the form
+# before #2571, is still read.
 _ia_parse() {
     local raw="$1" reqs="$2" issue="$3" repo="$4" lims="${5:-}"
     _IA_UNMET=(); _IA_UNSURE=(); _IA_UNASKED=(); _IA_PROBLEM=""; _IA_QUOTED=()
+    _IA_UNCLEAR=(); _IA_UQ_DROP=(); _IA_UQ_KEPT=(); _IA_UQ_BAD=(); _IA_UQ_PROBLEM=""
+    local _uq_ans=""; local -a _uq_bad=()
     local -A rtext=() seen=() ltext=() lseen=()
     local -a order=() bad=()
     local l kind rest fix name why quote acc w qp own
@@ -46,8 +58,9 @@ _ia_parse() {
         [[ "$l" =~ ^-[[:space:]]+([A-Za-z0-9]+-[0-9]+):[[:space:]]*(.*)$ ]] || continue
         ltext["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"
     done <<< "$lims"
+    local l0
     while IFS= read -r l; do
-        judge_reply_line_v l "$l"
+        l0="$l"; judge_reply_line_v l "$l"
         # #2550 (ADR-072 §3): one line per limit; a broken one is unmet code.
         if [[ "$l" =~ ^(KEPT|BROKEN):[[:space:]]*(.*)$ ]]; then
             kind="${BASH_REMATCH[1]}"; rest="${BASH_REMATCH[2]}"
@@ -67,6 +80,16 @@ _ia_parse() {
         fi
         if [[ "$l" =~ ^UNASKED:[[:space:]]*(.*)$ ]]; then
             _ia_parse_unasked "${BASH_REMATCH[1]}" "$repo"; continue
+        fi
+        if [[ "$l" =~ ^UNCLEAR([[:space:]]|:) ]]; then
+            # Read as written, its formatting aside: the reply-line reader
+            # turns a bar into a colon.
+            _ia_unclear_plain_v l0 "$l0"
+            # An answer to a carried question, or a question it raises.
+            if [[ "$l0" =~ ^UNCLEAR[[:space:]]+[^[:space:]:|]+[[:space:]]*: ]]; then _uq_ans+="$l0"$'\n'
+            elif zb_unclear_check_v w "$l0" "$issue"; then _IA_UNCLEAR+=("$l0")
+            else _uq_bad+=("the line \"${l0:0:120}\" $w"); _IA_UQ_BAD+=("$l0"); fi
+            continue
         fi
         [[ "$l" =~ ^(MET|UNMET|UNSURE):[[:space:]]*(.*)$ ]] || continue
         kind="${BASH_REMATCH[1]}"; rest="${BASH_REMATCH[2]}"; fix=""
@@ -94,6 +117,12 @@ _ia_parse() {
     for name in ${order[@]+"${order[@]}"}; do [[ -n "${seen[$name]+x}" ]] || missing+=("$name"); done
     for name in "${!ltext[@]}"; do [[ -n "${lseen[$name]+x}" ]] || missing+=("$name"); done
     [[ ${#missing[@]} -gt 0 ]] && bad=("it has no line for ${missing[*]}" ${bad[@]+"${bad[@]}"})
+    if [[ -n "${_IA_UQ_CARRIED:-}" ]]; then
+        local _uq_p=""
+        zb_unclear_answers_v _IA_UQ_KEPT _IA_UQ_DROP _uq_p "$_uq_ans" "$_IA_UQ_CARRIED" "$issue"
+        [[ -n "$_uq_p" ]] && _uq_bad+=("$_uq_p")
+    fi
+    for w in ${_uq_bad[@]+"${_uq_bad[@]}"}; do _IA_UQ_PROBLEM+="${_IA_UQ_PROBLEM:+; }$w"; done
     # With no list, an answer must still judge something: no line is no answer.
     [[ ${#order[@]} -eq 0 && ${#seen[@]} -eq 0 && ${#bad[@]} -eq 0 ]] \
         && bad=("it has no MET:, UNMET: or UNSURE: line")
@@ -102,6 +131,11 @@ _ia_parse() {
     fi
     return 0
 }
+
+# _ia_unclear_plain_v <var> <line> — an UNCLEAR line as the model wrote it,
+# with the formatting around it aside — spaces, a quote or heading mark, a list
+# bullet or number, bold or code marks — and its bars kept.
+_ia_unclear_plain_v() { zb_unclear_plain_v "$@"; }
 
 # _ia_parse_unasked <rest> <repo> — one UNASKED: line, in _ia_parse's scope
 # (bad, _IA_UNASKED, _IA_QUOTED).
@@ -121,4 +155,57 @@ _ia_parse_unasked() {
     # #2523: a part in a test file is the tests' to fix, not the code's.
     local mark=""; [[ -n "$qp" ]] && zb_is_test_path "$qp" "$repo" && mark="[fix-test] "
     _IA_UNASKED+=("$mark$part: ${why:-no requirement asks for it} — $quote — ACCEPTED IF: $acc")
+}
+
+# _ia_unclear_carried_load <result_json> — the questions issue-acceptance's last
+# result carries (data.unclear), readable ones only: _IA_UQ_CARRIED (a line
+# each, for its next call to judge) and _IA_UQ_JSON (what a result keeps until
+# they are judged). #2571 (ADR-072 §3).
+_ia_unclear_carried_load() {
+    local -a _iuc=() _iuc_ok=(); local _iuc_l _iuc_p
+    _IA_UQ_CARRIED=""; _IA_UQ_JSON="[]"; _IA_UQ_NEW=(); _IA_UQ_DROPPED="[]"; _IA_UQ_NOTES=""
+    _IA_UQ_DROP=(); _IA_UQ_KEPT=(); _IA_UQ_BAD=(); _IA_UQ_PROBLEM=""
+    zb_unclear_result_lines_v _iuc "${1:-}"
+    for _iuc_l in ${_iuc[@]+"${_iuc[@]}"}; do
+        zb_unclear_parse_v _iuc_p "$_iuc_l" || continue
+        _IA_UQ_CARRIED+="$_iuc_l"$'\n'; _iuc_ok+=("$_iuc_l")
+    done
+    zb_unclear_result_json_v _IA_UQ_JSON _iuc_ok
+}
+
+# _ia_unclear_settle — after a usable answer: _IA_UQ_JSON, each carried question
+# not dropped, then each one raised now whose id was not carried; _IA_UQ_NEW,
+# the questions raised now, each a finding. Only its own call retires its
+# question: a dropped one is gone — recorded, with its WHY, QUOTE and the
+# question, in _IA_UQ_DROPPED (JSON, for data.unclear_dropped:
+# zb_unclear_dropped_json_v) — and an open one is kept. _IA_UQ_NOTES: a line
+# for each carried one with no usable answer, each new line left out, and any
+# over the most a stage carries.
+_ia_unclear_settle() {
+    local -A _ius_drop=() _ius_have=() _ius_open=(); local -a _ius_out=(); local _ius_l _ius_p _ius_id _ius_n=""
+    _IA_UQ_NEW=(); _IA_UQ_NOTES=""
+    zb_unclear_dropped_json_v _IA_UQ_DROPPED _IA_UQ_DROP "${_IA_UQ_CARRIED:-}"
+    for _ius_l in ${_IA_UQ_DROP[@]+"${_IA_UQ_DROP[@]}"}; do _ius_drop["${_ius_l%%$'\t'*}"]=1; done
+    for _ius_l in ${_IA_UQ_KEPT[@]+"${_IA_UQ_KEPT[@]}"}; do _ius_open["$_ius_l"]=1; done
+    while IFS= read -r _ius_l; do
+        [[ -n "$_ius_l" ]] && zb_unclear_parse_v _ius_p "$_ius_l" || continue
+        _ius_id="${_ius_p%%$'\t'*}"
+        [[ -n "${_ius_have[$_ius_id]+x}" ]] && continue
+        _ius_have["$_ius_id"]=1
+        [[ -n "${_ius_drop[$_ius_id]+x}" ]] && continue
+        [[ -n "${_ius_open[$_ius_id]+x}" ]] || _IA_UQ_NOTES+="UNCLEAR $_ius_id: no usable answer after it was asked again — kept open"$'\n'
+        _ius_out+=("$_ius_l")
+    done <<< "${_IA_UQ_CARRIED:-}"
+    for _ius_l in ${_IA_UQ_BAD[@]+"${_IA_UQ_BAD[@]}"}; do
+        _IA_UQ_NOTES+="an UNCLEAR line was left out, still not in its form after it was asked again: ${_ius_l:0:200}"$'\n'
+    done
+    for _ius_l in ${_IA_UNCLEAR[@]+"${_IA_UNCLEAR[@]}"}; do
+        zb_unclear_parse_v _ius_p "$_ius_l" || continue
+        _ius_id="${_ius_p%%$'\t'*}"
+        [[ -n "${_ius_have[$_ius_id]+x}" ]] && continue
+        _ius_have["$_ius_id"]=1; _ius_out+=("$_ius_l"); _IA_UQ_NEW+=("$_ius_l")
+    done
+    zb_unclear_result_json_v _IA_UQ_JSON _ius_out _ius_n
+    [[ -n "$_ius_n" ]] && _IA_UQ_NOTES+="$_ius_n"$'\n'
+    return 0
 }

@@ -24,7 +24,8 @@ design_decisions_prose_v() {
         (( _in )) && continue
         _t="${_l#"${_l%%[![:space:]]*}"}"; _t="${_t%"${_t##*[![:space:]]}"}"
         if [[ -z "$_t" ]]; then _skip=0; [[ -n "$_ddp" ]] && _blank=1; continue; fi
-        if [[ "$_t" == UNCLEAR:* || "$_t" == REMOVED:* || "$_t" == WIRING:* ]]; then _skip=1; continue; fi
+        # #2571: a question in the one form (UNCLEAR <id> | …) or the old one.
+        if [[ "$_t" == UNCLEAR:* || "$_t" == "UNCLEAR "* || "$_t" == REMOVED:* || "$_t" == WIRING:* ]]; then _skip=1; continue; fi
         (( _skip )) && continue
         (( _blank )) && { _ddp+=$'\n'; _blank=0; }
         [[ "$_t" == \#* ]] || _prose=1

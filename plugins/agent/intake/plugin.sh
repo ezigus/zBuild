@@ -59,6 +59,12 @@ _intake_write_result() {
         error "intake: ZBUILD_ARTIFACT_DIR is not set — the engine gave intake nowhere to write intake-result.json"
         return 1
     fi
+    # #2571 (ADR-070 §1): a try that ends before its check judged them keeps
+    # the questions intake carried, so the next try still has them.
+    if [[ "$outcome" != pass && "${_IREQ_UQ_CARRIED_JSON:-[]}" != "[]" ]]; then
+        [[ -n "$data_json" ]] || data_json='{}'
+        data_json="$(jq -c --argjson u "$_IREQ_UQ_CARRIED_JSON" '. + {unclear: $u}' <<< "$data_json" 2>/dev/null || printf '%s' "$data_json")"
+    fi
     stage_result_write "$art_dir/intake-result.json" "$outcome" "$reason" "$data_json" \
         && _INTAKE_RESULT_VERDICT="$outcome" && return 0
     error "intake: could not write $art_dir/intake-result.json"
@@ -151,6 +157,9 @@ _intake_run_inner() {
     # never read as this run's.
     _INTAKE_PREV_REQ_JSON=""
     [[ -n "$_art" && -s "$_art/requirements.json" ]] && _INTAKE_PREV_REQ_JSON="$(<"$_art/requirements.json")"
+    # #2571 (ADR-070 §1): the questions intake's last result carries, read
+    # before this try writes its own: its check judges them.
+    _ireq_unclear_carried_load "${_art:+$_art/intake-result.json}"
 
     # Support --issue mode: when goal text is absent, derive it from the issue number.
     # Runner exports ZBUILD_GOAL="" in --issue runs, so we fall back rather than hard-fail.
@@ -346,7 +355,11 @@ _intake_run_inner() {
 
     # #2569 review (ADR-070 §1): a requirement the check still did not write in
     # the issue's words after the re-ask is kept, and named here.
-    local _notes="${_req_written:+${_INTAKE_REQ_NOTES:-}}" _n
+    # #2571: the questions intake goes on with, and what its check dropped. A
+    # pass that wrote no list — its check never judged them — keeps those it carried.
+    local _uq_json="${_IREQ_UQ_CARRIED_JSON:-[]}"; _INTAKE_UQ_DROPPED="[]"
+    [[ -n "$_req_written" ]] && _ireq_unclear_result_v _uq_json
+    local _notes="${_req_written:+${_INTAKE_REQ_NOTES:-}${_INTAKE_UQ_NOTES:-}}" _n
     while IFS= read -r _n; do
         if [[ -n "$_n" ]]; then _chg_md+="${_chg_md:+$'\n'}- note: $_n"; fi
     done <<< "$_notes"
@@ -354,8 +367,11 @@ _intake_run_inner() {
     # what it is (data.issue_text), never by intake's file name.
     _intake_write_result "$_art" "pass" \
         "took in the goal for issue #$issue: ${_title_line:0:60}" \
-        "$(jq -nc --arg t "$sanitized" --argjson n "${#platforms[@]}" --argjson c "${_chg:-null}" --arg notes "$_notes" \
+        "$(jq -nc --arg t "$sanitized" --argjson n "${#platforms[@]}" --argjson c "${_chg:-null}" --arg notes "$_notes" --argjson u "$_uq_json" \
+            --argjson ud "$_INTAKE_UQ_DROPPED" \
             '{goal_len: ($t | length), platform_count: $n, issue_text: $t}
+             + (if ($u | length) > 0 then {unclear: $u} else {} end)
+             + (if ($ud | length) > 0 then {unclear_dropped: $ud} else {} end)
              + (if $c != null then {requirements_changed: $c} else {} end)
              + ($notes | split("\n") | map(select(length > 0)) | if length > 0 then {notes: .} else {} end)')" || return 1
     _intake_pass_summary_write "${_intake_art:+$_intake_art/intake-summary.md}" "$issue" \

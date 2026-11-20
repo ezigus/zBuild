@@ -55,7 +55,7 @@ done
 assert_contains "[D2] a missing acceptance block is said plainly" "$_fb1" "has no readable \`\`\`acceptance block"
 assert_contains "[D2] a requirement with no status is said plainly" "$_fb2" "SPEC-2 has no status"
 assert_contains "[D2] an UNCLEAR line not in its form is said plainly, with the form (#2508)" "$_fb2" \
-    "write it as UNCLEAR: <id> | <the question> | <what you assumed>"
+    'write it as UNCLEAR <id> | "<the issue'"'"'s unclear words, quoted>" | <the readings> | ASSUMED: <the reading chosen and acted on>'
 assert_contains "[D2] a missing WIRING line asks the question" "$_fb2" "which existing file calls the new code"
 assert_contains "[D2] a WIRING file that does not exist is said plainly" "$_fb3" "lib/gone.sh does not exist"
 assert_contains "[D2] evidence that does not exist is said plainly (#2304)" "$_fb3" \

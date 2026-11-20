@@ -23,16 +23,22 @@ _dcov_parse() {
     local raw="$1" want=$'\n'"$2"$'\n'
     _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_STATUS_WRONG=(); _DCOV_PROBLEM=""
     _DESIGN_PART_WRONG=(); _DCOV_LINES=(); _DCOV_QUOTED=(); _DESIGN_NEW_OWNER=(); _DESIGN_REQ_NONE=()
-    _DESIGN_STEP_WRONG=(); _DESIGN_DECISION_WRONG=()
+    _DESIGN_STEP_WRONG=(); _DESIGN_DECISION_WRONG=(); _DESIGN_UNCLEAR_DROP=()
     local -A seen=()
     local -a bad=()
     local l id rest word why quote acc w qp key reqs_asked=0 steps_asked=0 steps_seen=0
-    local decision_asked=0 decision_seen=0
+    local decision_asked=0 decision_seen=0 unclear_asked=0
     [[ "$want" == *$'\nrequirements\n'* ]] && reqs_asked=1
     [[ "$want" == *$'\nsteps\n'* ]] && steps_asked=1
     [[ "$want" == *$'\ndecision\n'* ]] && decision_asked=1
+    [[ "$want" == *$'\nunclear\n'* ]] && unclear_asked=1
     while IFS= read -r l; do
         judge_reply_line_v l "$l"
+        # #2571 (ADR-069 §12): an answer to a carried question, read below.
+        if [[ "$l" =~ ^UNCLEAR[[:space:]] ]]; then
+            (( unclear_asked )) && _DCOV_LINES["unclear"]+="$l"$'\n'
+            continue
+        fi
         # #2555, #2567 (ADR-073 §5): the steps and the decisions, each one item,
         # judged by the rule every part is.
         if [[ "$l" =~ ^Steps[*\`_]*:[[:space:]]*([a-z_-]+)(.*)$ ]]; then
@@ -104,6 +110,13 @@ _dcov_parse() {
     (( steps_asked && ! steps_seen )) && missing+=("Steps")
     (( decision_asked && ! decision_seen )) && missing+=("Decision")
     [[ ${#missing[@]} -gt 0 ]] && bad=("it has no line for ${missing[*]}" ${bad[@]+"${bad[@]}"})
+    # #2571: the carried questions, judged by the shared reader — an open one
+    # kept, an answered or not-needed one a finding for design.
+    if (( unclear_asked )); then
+        local -a _uk=(); local _up=""
+        zb_unclear_answers_v _uk _DESIGN_UNCLEAR_DROP _up "${_DCOV_LINES["unclear"]:-}" "${unclear:-}" "${issue:-}"
+        [[ -n "$_up" ]] && bad+=("$_up")
+    fi
     if [[ ${#bad[@]} -gt 0 ]]; then
         local IFS=';'; _DCOV_PROBLEM="${bad[*]}"; _DCOV_PROBLEM="${_DCOV_PROBLEM//;/; }"
     fi
@@ -189,6 +202,7 @@ _dcov_need_names() {
         if [[ "$_dn_k" == requirements ]]; then _dn_req=1
         elif [[ "$_dn_k" == steps ]]; then _dn_out+="${_dn_out:+, }the Steps line"
         elif [[ "$_dn_k" == decision ]]; then _dn_out+="${_dn_out:+, }the Decision line"
+        elif [[ "$_dn_k" == unclear ]]; then _dn_out+="${_dn_out:+, }every UNCLEAR question"
         else _dn_out+="${_dn_out:+, }$_dn_k"; fi
     done <<< "$1"
     [[ -n "$_dn_req" ]] && _dn_out+="${_dn_out:+, }every requirement"
@@ -369,6 +383,10 @@ _dcov_findings_build() {
             new-owner) _DESIGN_COV_FINDINGS+=("Decision: the design's decisions build a new owner where one exists: $_pwy — $_pq [FIX IN DESIGN: ACCEPTED IF: $_pa]") ;;
             *)         _DESIGN_COV_FINDINGS+=("Decision: the design's decisions go against the issue: $_pwy — $_pq [FIX IN DESIGN: ACCEPTED IF: $_pa]") ;;
         esac
+    done
+    # #2571 (ADR-069 §12): a question the issue answers, or no longer needs.
+    for x in ${_DESIGN_UNCLEAR_DROP[@]+"${_DESIGN_UNCLEAR_DROP[@]}"}; do
+        zb_unclear_finding_v _pw "$x" DESIGN; _DESIGN_COV_FINDINGS+=("$_pw")
     done
     local _sr _so
     for x in ${_DESIGN_STATUS_WRONG[@]+"${_DESIGN_STATUS_WRONG[@]}"}; do

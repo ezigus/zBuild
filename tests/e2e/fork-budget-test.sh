@@ -148,7 +148,7 @@ setup_test_env "fork-budget"
 # output, then all the rest at once — not one an output until a match: renamed
 # output ids had moved the match further down the index. Measured on macOS:
 # 2399 processes and 1852 execs in all, 465 processes and 298 execs a dispatch.
-FORK_BUDGET=1852
+FORK_BUDGET=1851
 # PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
 # the programs above plus each `$( )` subshell, a copy of the whole engine shell
 # that FORK_BUDGET cannot see. Ratchets down only, like FORK_BUDGET. History:
@@ -208,7 +208,7 @@ FORK_BUDGET=1852
 # extractor in the shell (design_decisions_prose_v), not awk and sed. Measured
 # on macOS: 2399 processes and 1865 execs in all, 465 processes and 305 execs a
 # dispatch.
-PROCESS_BUDGET=2399
+PROCESS_BUDGET=2397
 # The run's cost in two parts (ADR-065 §6, #2472). Each budget ratchets down
 # like the totals; each floor is the goal, an estimate, measured again when
 # reached. History: 505 / 298 a dispatch, 12 / 7 a plugin at start-up (#2472 —

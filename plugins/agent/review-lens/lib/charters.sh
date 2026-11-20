@@ -105,6 +105,9 @@ FIX — say what would fix each finding:
 - \`design\`: the design must change: a decision, or a requirement in its acceptance contract.
 - \`issue\`: the issue itself is wrong: it contradicts an ADR, or asks for something that cannot be built as written. No stage can fix this.
 
+UNCLEAR — what the issue means, when its words could mean either of two things:
+${_RL_UNCLEAR_RULES:-}
+
 ## What you judge against
 THE CHANGE below names the commit this branch started from and the files it
 changed: read each change with git diff, as it says there. Before you judge a

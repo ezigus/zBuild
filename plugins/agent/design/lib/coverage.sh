@@ -42,6 +42,19 @@ _dcov_steps_v() {
     return 0
 }
 
+# _dcov_unclear_v <var> <design_md> — the questions the design carries, one
+# readable UNCLEAR line per line, as written (#2571, ADR-069 §12): judged by
+# the check as one more item, through the shared block (scripts/lib/unclear.sh).
+_dcov_unclear_v() {
+    local -n _duv="$1"; local -a _duv_l=(); local _duv_x _duv_p
+    _duv=""
+    zb_unclear_lines_v _duv_l "${2:-}"
+    for _duv_x in ${_duv_l[@]+"${_duv_l[@]}"}; do
+        zb_unclear_parse_v _duv_p "$_duv_x" && _duv+="$_duv_x"$'\n'
+    done
+    return 0
+}
+
 # _dcov_decision_v <var> <design_md> — the design's decisions (#2567, ADR-073 §5).
 _dcov_decision_v() {
     # #2567: the one decisions extractor build and the lenses read (acceptance-judge.sh), uncapped.
@@ -128,6 +141,7 @@ _dcov_answered_v() {
         elif [[ -n "${req_text[$_ddv_id]+x}" ]]; then _ddv_id=requirements
         elif [[ "$_ddv_id" == Steps ]]; then _ddv_id=steps
         elif [[ "$_ddv_id" == Decision ]]; then _ddv_id=decision
+        elif [[ "$_ddv_id" == UNCLEAR ]]; then _ddv_id=unclear
         else
             for _ddv_x in ${ids[@]+"${ids[@]}"} requirements; do _ddv["$_ddv_x"]+="$_ddv_a"$'\n'; _ddv_h["$_ddv_x"]+="$_ddv_e"$'\x1c'1$'\x1d'; done
             continue
@@ -164,7 +178,8 @@ _dcov_held_v() {
 # Sets _DESIGN_UNCOVERED, _DESIGN_OUTSIDE, _DESIGN_STATUS_WRONG,
 # _DESIGN_PART_WRONG and _DESIGN_COV_OUTCOME: empty when
 # the call judged the design, otherwise the outcome word for how the call failed
-# (rate_limited, unavailable, unusable, misconfigured, broken). [answers]:
+# (rate_limited, unavailable, unusable, misconfigured, broken);
+# _DESIGN_COV_NOTES, what the run log is told that is no finding. [answers]:
 # design's own answers to findings of this check, one per line (ADR-072 §5).
 #
 # #2470 (ADR-072 §4): the answer is kept per SPEC, and requirement coverage as
@@ -176,7 +191,7 @@ _design_coverage() {
     local design_md="$1" reqs="$2" tier="${3:-T2}" answers="${4:-}" lims="${5:-}" terms="${6:-}"
     _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_STATUS_WRONG=(); _DESIGN_COV_OUTCOME=""
     _DESIGN_PART_WRONG=(); _DESIGN_COV_FINDINGS=(); _DESIGN_NEW_OWNER=(); _DESIGN_REQ_NONE=()
-    _DESIGN_STEP_WRONG=(); _DESIGN_DECISION_WRONG=()
+    _DESIGN_STEP_WRONG=(); _DESIGN_DECISION_WRONG=(); _DESIGN_UNCLEAR_DROP=(); _DESIGN_COV_NOTES=()
     local acc; acc="$(extract_acceptance_block "$design_md" 2>/dev/null || true)"
     [[ -n "$acc" ]] || return 0
 
@@ -237,7 +252,17 @@ _design_coverage() {
         judge_fp_v _fpv "$eng"$'\n'decision$'\n'"$decision"$'\n'"$base_sha"$'\n'"$reqs"$'\n'"$lims"$'\n'"$terms"
         fps["decision"]="$_fpv"
     fi
-    [[ -n "$kf" ]] && judge_kept_get_all_v kept "$kf" fps dfp _earl "ok covered" kwhy
+    # #2571 (ADR-069 §12): the questions the design carries are an item too,
+    # judged again when they, the requirements, limits, terms or the issue's
+    # own words change (review on #2571: an open answer outlived the issue's edit).
+    local unclear="" issue=""; _dcov_unclear_v unclear "$design_md"
+    if [[ -n "$unclear" ]]; then
+        issue="$(earlier_issue_text "${artifact_dir:-${ZBUILD_ARTIFACT_DIR:-}}" "${state_dir:-}" 2>/dev/null || true)"
+        judge_fp_v _fpv "$eng"$'\n'unclear$'\n'"$unclear"$'\n'"$reqs"$'\n'"$lims"$'\n'"$terms"$'\n'"$issue"
+        fps["unclear"]="$_fpv"
+    fi
+    # An open question is no refusal (judge_refused).
+    [[ -n "$kf" ]] && judge_kept_get_all_v kept "$kf" fps dfp _earl "ok covered open" kwhy
 
     # A kept answer is read as it was given; one that no longer reads is judged again.
     local kept_raw="" kept_want="" k
@@ -257,23 +282,27 @@ _design_coverage() {
     [[ -n "$steps" && -z "${kept["steps"]+x}" ]] && { want+=steps$'\n'; steps_asked="$steps"; }
     local decision_asked=""
     [[ -n "$decision" && -z "${kept["decision"]+x}" ]] && { want+=decision$'\n'; decision_asked="$decision"; }
+    local unclear_asked=""
+    [[ -n "$unclear" && -z "${kept["unclear"]+x}" ]] && { want+=unclear$'\n'; unclear_asked="$unclear"; }
     if [[ -z "$want" ]]; then
         _dcov_parse "$kept_raw" "$kept_want"
         _dcov_findings_build
         return 0
     fi
 
-    local framed _disp_shown="" issue=""
+    local framed _disp_shown=""
     # #2567 (review): steps and decisions are judged against the requirements
     # and the issue's words, so they are shown whenever those parts are asked,
     # though the requirement lines are asked only with the requirements.
     local reqs_ctx=""
     [[ -z "$reqs_asked" && ( -n "$steps_asked" || -n "$decision_asked" ) ]] && reqs_ctx="$reqs"
-    [[ -n "$reqs_asked$steps_asked$decision_asked" ]] && issue="$(earlier_issue_text "${artifact_dir:-${ZBUILD_ARTIFACT_DIR:-}}" "${state_dir:-}" 2>/dev/null || true)"
+    [[ -z "$issue" && -n "$reqs_asked$steps_asked$decision_asked$unclear_asked" ]] && issue="$(earlier_issue_text "${artifact_dir:-${ZBUILD_ARTIFACT_DIR:-}}" "${state_dir:-}" 2>/dev/null || true)"
     # #2569 (ADR-072 §5): each item asked that it refused before, with design's
     # answer to its finding, in the order the items are asked.
     _dcov_held_v _disp_shown "$want"
     judge_held_block_v _disp_shown "$_disp_shown"
+    local _ublk=""; zb_unclear_judge_block_v _ublk "$unclear_asked"
+    [[ -n "$_ublk" ]] && _disp_shown=$'\n'"$_ublk"$'\n'"$_disp_shown"
     # #2458: it judges, so it composes fresh — no notes, and no rule to confirm earlier work.
     if ! framed="$(stage_prompt_compose_text --fresh "$(_dcov_prompt_own "$reqs_asked" "$steps_asked" "$decision_asked")" "$(_dcov_prompt_judge "$design_md" "${shown%$'\n'}" "$reqs_asked" "${others%$'\n'}" "$done_ev" "$base" "$issue" "$lims" "$terms" "$steps_asked" "$decision_asked" "$reqs_ctx")$_disp_shown" "$(_dcov_prompt_limits)")"; then
         _DESIGN_COV_OUTCOME=misconfigured
@@ -342,6 +371,13 @@ _design_coverage() {
         new_raw+="${got[$k]}"; new_want+="$k"$'\n'
     done <<< "$want"
     [[ -n "$kf" ]] && judge_kept_put_all "$kf" put putfp deps
+    # Review on #2571 (ADR-069 §12): carried questions still unjudged after the
+    # one re-ask stay open — not kept, so the next try judges them — and the
+    # other items' answers stand; a note says so. They never fail the try.
+    if [[ "$need" == *$'\n'unclear$'\n'* || "$need" == unclear$'\n'* ]]; then
+        need="${need/#unclear$'\n'/}"; need="${need//$'\n'unclear$'\n'/$'\n'}"
+        _DESIGN_COV_NOTES+=("the check gave no usable answer for the UNCLEAR questions the design carries ($_DCOV_PROBLEM): they stay open, with their assumptions, and are judged again on the next try")
+    fi
     if [[ -n "$need" ]]; then
         # #2555 (R6): what the usable items found still reaches design, with a
         # note naming what was not judged; with nothing found, it cannot be used.
@@ -353,7 +389,7 @@ _design_coverage() {
         [[ ${#_DESIGN_REQ_NONE[@]} -gt 0 ]] && return 0
         if [[ ${#_DESIGN_COV_FINDINGS[@]} -eq 0 ]]; then
             _DESIGN_UNCOVERED=(); _DESIGN_OUTSIDE=(); _DESIGN_STATUS_WRONG=(); _DESIGN_PART_WRONG=(); _DESIGN_NEW_OWNER=(); _DESIGN_REQ_NONE=()
-            _DESIGN_STEP_WRONG=(); _DESIGN_DECISION_WRONG=()
+            _DESIGN_STEP_WRONG=(); _DESIGN_DECISION_WRONG=(); _DESIGN_UNCLEAR_DROP=()
             _DESIGN_COV_OUTCOME=unusable
             return 0
         fi

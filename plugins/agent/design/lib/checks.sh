@@ -22,16 +22,18 @@ _DCK_LIB_DIR="${BASH_SOURCE[0]%/*}/../../../../scripts/lib"
 # #2482 (ADR-001): design's id prefix, from its manifest — every SPEC id starts with it.
 zb_id_prefix_v _DCK_ID_PREFIX "${BASH_SOURCE[0]%/*}/../manifest.yaml"
 
-# _dck_unclear_bad_v <array> <design_md> — each line outside a fence that
-# starts UNCLEAR: but is not `UNCLEAR: <id> | <question> | <assumed>` (#2508,
-# ADR-069 §12): a question no report could show, so it is refused, not dropped.
+# _dck_unclear_bad_v <array> <design_md> [issue_text] — each UNCLEAR line
+# outside a fence that the shared validator refuses (#2508, #2571, ADR-069
+# §12): not in the one form, with no assumption, or quoting words that are not
+# the issue's, or a second question on one id. Each entry is "<line>) because
+# it <why>". Refused, not dropped.
 _dck_unclear_bad_v() {
-    local -n _dub="$1"; local -a _dub_all=(); local _l _q
+    local -n _dub="$1"; local -a _dub_all=(); local _l _w; local -A _dub_seen=()
     _dub=()
     # #2567: the same joined lines the reports read (scripts/lib/unclear.sh).
     zb_unclear_lines_v _dub_all "$2"
     for _l in ${_dub_all[@]+"${_dub_all[@]}"}; do
-        zb_unclear_parse_v _q "$_l" || _dub+=("$_l")
+        zb_unclear_check_v _w "$_l" "${3:-}" _dub_seen || _dub+=("$_l) because it $_w")
     done
     return 0
 }
@@ -189,7 +191,10 @@ _dck_plain() {
     local v="$1" rest="${1#* }"
     local id="${rest%% *}" third="${rest#* }"; third="${third%% *}"
     case "$v" in
-        UNCLEAR_MALFORMED*)  printf 'an UNCLEAR line is not in its form (%s) — write it as UNCLEAR: <id> | <the question> | <what you assumed>, all three parts on one line' "${rest#(}" ;;
+        # #2571: the shared validator says what is wrong (scripts/lib/unclear.sh).
+        UNCLEAR_MALFORMED*)  local _ul="${rest#(}" _uw; _uw="${rest#*) because it }"; _uw="${_uw%)}"
+            printf 'an UNCLEAR line is not in its form (%s): it %s' "${_ul%%) because it *}" "$_uw" ;;
+        UNCLEAR_DROPPED*)    printf 'the question UNCLEAR %s of the last design that passed is gone, but only design'"'"'s check retires a question, when the issue answers it or no longer needs it — put the UNCLEAR %s line back, with its assumption' "$id" "$id" ;;
         ACCEPTANCE_MISSING*) printf 'design.md has no readable ```acceptance block — add one with a line per requirement' ;;
         NO_STATUS*)          printf '%s has no status — tag it [code] if it needs code (its test fails on the code from before your change and passes after), [no-code] if it needs work that changes no behaviour (a test, config or a refactor), [doc] if it changes a doc (say what the doc must tell a reader), or [done] if the code already does it (then name the evidence after " evidence: ")' "$id" ;;
         # The retired tag is named, not written: design would copy it back.
@@ -241,7 +246,7 @@ _dck_plain() {
 # [last_design] is the last design that passed, [issue_text] the issue's words
 # (the stage passes none: the requirement list carries the ids they write).
 _design_checks() {
-    local design_md="$1" repo_root="$2" req_json="${3:-}" last="${4:-}" _txt="${5:-}"
+    local design_md="$1" repo_root="$2" req_json="${3:-}" last="${4:-}" _txt="${5:-}" _iss="${5:-}"
     _DESIGN_VIOLATIONS=()
     local -a violations=()
     local _covered=" " _base="" _base_done="" _evw="" _req_rows="" _rr_k _rr_id _rr_t
@@ -437,11 +442,30 @@ _design_checks() {
         zb_is_test_path "$_s" "$repo_root" && violations+=("STEP_IS_TEST $_s (a work step names a file in the test folders)")
     done
 
-    # ── C12 UNCLEAR (#2508, ADR-069 §12): a question design could not settle
-    # is in its form, so every report can show it.
+    # ── C12 UNCLEAR (#2508, #2571, ADR-069 §12): a question design could not
+    # settle is in the one form, with its assumption, quoting the issue. The
+    # issue's words are read only when the design has an UNCLEAR line.
     local -a _ub=(); local _u
-    [[ -f "$design_md" ]] && _dck_unclear_bad_v _ub "$design_md"
+    if [[ -f "$design_md" ]] && zb_unclear_lines_v _ub "$design_md" && [[ ${#_ub[@]} -gt 0 ]]; then
+        [[ -z "$_iss" ]] && declare -F earlier_issue_text >/dev/null 2>&1 \
+            && _iss="$(earlier_issue_text "${artifact_dir:-${ZBUILD_ARTIFACT_DIR:-}}" "${state_dir:-}" 2>/dev/null || true)"
+        _dck_unclear_bad_v _ub "$design_md" "$_iss"
+    fi
     for _u in ${_ub[@]+"${_ub[@]}"}; do violations+=("UNCLEAR_MALFORMED ($_u)"); done
+    # Review on #2571: a question of the last design that passed stays until
+    # design's check retires it — its finding in the result beside that design.
+    if [[ -s "$last" && -f "$design_md" ]]; then
+        local -a _uq_last=(); local -A _uq_now=(); local _uq _uq_id _uqv=""
+        zb_unclear_lines_v _ub "$design_md"
+        for _uq in ${_ub[@]+"${_ub[@]}"}; do [[ "$_uq" =~ ^UNCLEAR:?[[:space:]]*([^|:[:space:]]+) ]] && _uq_now["${BASH_REMATCH[1]}"]=1; done
+        zb_unclear_list_v _uq_last "$last"
+        [[ ${#_uq_last[@]} -gt 0 && -s "${last%/*}/design-verdict.json" ]] && { IFS= read -r -d '' _uqv < "${last%/*}/design-verdict.json" || true; }
+        for _uq in ${_uq_last[@]+"${_uq_last[@]}"}; do
+            _uq_id="${_uq%%$'\t'*}"; [[ -n "${_uq_now[$_uq_id]+x}" ]] && continue
+            [[ "$_uqv" == *"UNCLEAR $_uq_id: the issue now answers it"* || "$_uqv" == *"UNCLEAR $_uq_id: no longer needed"* ]] && continue
+            violations+=("UNCLEAR_DROPPED $_uq_id (a question of the last design that passed is gone, not retired by design's check)")
+        done
+    fi
 
     _DESIGN_VIOLATIONS=("${violations[@]}")
     return 0
