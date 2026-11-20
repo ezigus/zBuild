@@ -25,11 +25,16 @@
 # E6 [code] a changed file no test checks and nothing asks for — no design
 #           step's areas, no WIRING file and no requirement names it — is
 #           reported as unasked_change, not untested_change
-# E7 [guard] a file a step's areas name (the file, or a folder holding it), or a
-#            requirement names, is asked for: still untested_change
+# E7 [code] a file a SPEC names is untested_change (to the code and the tests);
+#           a file only a step's areas name (here a folder holding it) is
+#           unspecified_change
 # E8 [code] the gate's finding for it says "nothing asks for this change — take
 #           it out, or name what asks for it", and goes to the code and the
 #           design, never to the tests
+# E9 [code] review on #2575: a SPEC on a.sh, a step on b.sh, b.sh untested — the
+#           finding is "step 2 changes b.sh but no SPEC says what it should do —
+#           add a SPEC, or say why it needs no test", to the design only: never
+#           to test-author, whose tests trace to a SPEC, so nothing loops
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -73,12 +78,11 @@ TESTEOF
     "$GIT" add -A && "$GIT" commit -q -m "feat: limit 2"
 ) >/dev/null 2>&1
 
-# The design's steps name the files the change is asked to touch (#2575): E1-E5
-# are about a change that is asked for and untested.
+# E1-E5's design has no steps block: the check keeps the rule it had, and
+# does not guess what is asked for (#2575 review).
 _design() {
     local wiring="$1"
     {
-        printf '```steps\n- raise the limit | areas: lib.sh, caller.sh\n```\n'
         printf '```acceptance\nSPEC-1[code]: the limit is 2\n'
         [[ -n "$wiring" ]] && printf 'WIRING:\n%s\n' "$wiring"
         printf 'TESTFILES:\nSPEC-1: tests/limit-test.sh\n```\n'
@@ -186,8 +190,8 @@ assert_contains "[E6] the leftover change is reported as asked for by nothing" "
     "REACHABILITY FAIL unasked_change config/shape-change-paths.txt"
 assert_eq "[E6] ...not as an untested change" "0" \
     "$(grep -c 'untested_change config/shape-change-paths.txt' <<< "$_out6" || true)"
-assert_contains "[E7] a file in a folder a step's areas name is asked for" "$_out6" \
-    "REACHABILITY FAIL untested_change tools/t.sh"
+assert_contains "[E7] a file only a step's areas name (a folder holding it) has no SPEC" "$_out6" \
+    "REACHABILITY FAIL unspecified_change tools/t.sh step=2"
 assert_contains "[E7] a file a requirement names is asked for" "$_out6" \
     "REACHABILITY FAIL untested_change named.sh"
 assert_contains "[E7] the tested change still passes" "$_out6" "REACHABILITY PASS change lib.sh"
@@ -208,6 +212,48 @@ assert_contains "[E8] ...and to the design" "$(_f8 design)" "nothing asks for th
 assert_eq "[E8] ...never to the tests" "0" "$(_f8 test | grep -c 'shape-change-paths' || true)"
 assert_eq "[E8] the event is emitted for the file" "1" \
     "$(grep '"acceptance.gate.unasked_change"' "$R2/.zbuild-state/events/events.jsonl" | grep -c '"file":"config/shape-change-paths.txt"' || true)"
+
+print_test_section "E9: a step's file with no SPEC goes to the design (#2575 review)"
+R3="$(setup_git_temp_repo "step-no-spec")"
+(
+    cd "$R3"
+    printf '#!/usr/bin/env bash\nlimit() { echo 1; }\n' > a.sh
+    printf '#!/usr/bin/env bash\nb() { echo 1; }\n' > b.sh
+    "$GIT" add -A && "$GIT" commit -q -m base
+    "$GIT" checkout -q -b feature
+    printf '#!/usr/bin/env bash\nlimit() { echo 2; }\n' > a.sh
+    printf '#!/usr/bin/env bash\nb() { echo 2; }\n' > b.sh
+    mkdir -p tests
+    cat > tests/limit-test.sh <<'TESTEOF'
+repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+source "$repo_root/a.sh"
+if [[ "$(limit)" == "2" ]]; then echo "  ✓ [SPEC-1] the limit is 2"; exit 0; fi
+echo "  ✗ [SPEC-1] the limit is 2"; exit 1
+TESTEOF
+    "$GIT" add -A && "$GIT" commit -q -m change
+) >/dev/null 2>&1
+cat > "$R3/design.md" <<'MD'
+# Two files
+```steps
+- raise the limit | areas: a.sh
+- tidy b | areas: b.sh
+```
+```acceptance
+SPEC-1[code]: a.sh's limit is 2
+WIRING: none
+```
+MD
+REPO="$R3"
+_run_gate
+_A9="$R3/.zbuild-state/artifacts"
+_f9() { jq -r '.data.findings[]?.text // empty' "$_A9/acceptance-gate-$1-result.json" 2>/dev/null || true; }
+assert_contains "[E9] the gate lists the file with the step's number" "$(jq -r '.failures[]? // empty' <<< "$RESULT")" \
+    "unspecified_change:b.sh step=2"
+assert_contains "[E9] the design is told the step changes it with no SPEC" "$(_f9 design)" \
+    "step 2 changes b.sh but no SPEC says what it should do — add a SPEC, or say why it needs no test"
+assert_eq "[E9] ...test-author is not asked for a test" "0" "$(_f9 test | grep -c 'b.sh' || true)"
+assert_eq "[E9] ...nor build to take it out" "0" "$(_f9 code | grep -c 'b.sh' || true)"
+assert_eq "[E9] the build loop can act on it" "recoverable" "$(jq -r '.severity // empty' <<< "$RESULT")"
 
 cleanup_test_env
 print_test_results

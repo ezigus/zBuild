@@ -1536,7 +1536,7 @@ zb_test_check_ok() {
     local l
     if [[ "$1" == *"carry no requirement's tag"* ]]; then
         while IFS= read -r l; do
-            [[ "$l" =~ ^-\ (.+\ line\ [0-9]+):\  ]] && printf '%s: not an assertion\n' "${BASH_REMATCH[1]}"
+            [[ "$l" =~ ^-\ (.+\ line\ [0-9]+):\  ]] && printf -- '- %s: not an assertion\n' "${BASH_REMATCH[1]}"
         done <<< "$1"
         return 0
     fi

@@ -49,8 +49,9 @@ ${_framing}
 - Every change you make traces to a design step or to a failing test. A change
   that traces to neither is not asked for: do not make it, and take out one
   the branch already has.
-- When a step is gone from the design, undo what you built for it: the
-  branch's change holds only what the current steps and tests ask for.
+- When a step is gone from the design, undo what you built for it, unless the
+  current design's steps now name it: the branch's change holds only what the
+  current steps and tests ask for.
 
 ### When something is unclear
 ${ZB_UNCLEAR_NOT_YOURS}

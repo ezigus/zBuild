@@ -342,12 +342,12 @@ acceptance_gate_run() {
                         eb_emit_event "acceptance.gate.inert_wiring" "stage=acceptance-gate" \
                             "target=$target"
                         ;;
-                    # #2575: unasked_change — untested, and nothing asks for it.
-                    "REACHABILITY FAIL untested_change "*|"REACHABILITY FAIL unasked_change "*)
+                    # #2575: untested, and asked for by only a step, or by nothing.
+                    "REACHABILITY FAIL untested_change "*|"REACHABILITY FAIL unasked_change "*|"REACHABILITY FAIL unspecified_change "*)
                         local _uc="${line#REACHABILITY FAIL }"; local _uf="${_uc#* }"; _uc="${_uc%% *}"
                         failures+=("$_uc:$_uf")
                         verdict="fail"
-                        eb_emit_event "acceptance.gate.$_uc" "stage=acceptance-gate" "file=$_uf"
+                        eb_emit_event "acceptance.gate.$_uc" "stage=acceptance-gate" "file=${_uf% step=*}"
                         ;;
                     "REACHABILITY FAIL not_passing_at_head "*)
                         # #2109: "<target> <tf>" — the file is red at HEAD, so

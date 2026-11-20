@@ -171,36 +171,10 @@ _design_one_line_specs_v() {
 }
 
 # _design_write_steps <design_md> <out_json> — the ```steps block as
-# {title, steps:[{id, description, areas}]}. A design with no steps writes none
-# (and removes an earlier one, so a stale list is never read as this design's).
-# The steps are the code work (ADR-071 §1, 2026-11-14): design's check refuses a
+# {title, steps:[{id, description, areas}]}, by the one step parser
+# (scripts/lib/design-steps.sh, #2575). The steps are the code work (ADR-071 §1, 2026-11-14): design's check refuses a
 # step on the test folders, which are test-author's.
-_design_write_steps() {
-    local design="$1" out="$2" line in_block=0 title
-    local -a lines=()
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        if [[ "$line" =~ ^'```steps'[[:space:]]*$ ]]; then in_block=1; continue; fi
-        if [[ $in_block -eq 1 && "$line" =~ ^'```'[[:space:]]*$ ]]; then break; fi
-        [[ $in_block -eq 1 ]] || continue
-        if [[ "$line" =~ ^[[:space:]]*[-*0-9.]+[[:space:]]+(.*[^[:space:]]) ]]; then
-            lines+=("${BASH_REMATCH[1]}")
-        elif [[ -n "${line// }" && ${#lines[@]} -gt 0 ]]; then
-            # #2460: a step whose words or areas carry on to the next line.
-            local _c="${line#"${line%%[![:space:]]*}"}"
-            lines[-1]+=" ${_c%"${_c##*[![:space:]]}"}"
-        fi
-    done < "$design"
-    if [[ ${#lines[@]} -eq 0 ]]; then rm -f "$out" 2>/dev/null; return 0; fi
-    title="$(grep -m1 -E '^# ' "$design" 2>/dev/null || true)"; title="${title#\# }"
-    printf '%s\n' "${lines[@]}" | jq -Rsc --arg t "$title" '
-        split("\n") | map(select(length > 0))
-        | [.[] | split(" | areas:") as $p
-            | {description: ($p[0] | gsub("^\\s+|\\s+$"; "")),
-               areas: (($p[1] // "") | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0)))}]
-        | {title: $t, steps: [to_entries[] | {id: "step-\(.key + 1)"} + .value]}' \
-        | atomic_write "$out" || rm -f "$out" 2>/dev/null
-    return 0
-}
+_design_write_steps() { zb_design_write_steps "$@"; }
 
 # _design_show <design> — one block of the stage's log holding the design the
 # call wrote (stage-io trims it for the terminal). Best-effort: the log never

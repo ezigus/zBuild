@@ -83,8 +83,8 @@ _ta_drop_stale_tags() {
     [[ "$issue" =~ ^[1-9][0-9]*$ ]] || issue=""
     re="\\[(#${issue:-0}/)?${_ACCEPTANCE_ID_ERE}\\]"
     local -A _tfl=()
-    zb_test_folder_branch_lines_v _tfl "$repo"
-    # #2554: the same lines feed the tag-shape check a moment later: one diff.
+    declare -gA _TA_BRANCH_REMOVED=(); zb_test_folder_branch_lines_v _tfl "$repo" _TA_BRANCH_REMOVED
+    # #2554: the same lines feed the tag-shape check a moment later: one diff (#2575: and the unasked one).
     declare -gA _TA_BRANCH_LINES=(); _TA_BRANCH_LINES_REPO="$repo"
     for tf in "${!_tfl[@]}"; do _TA_BRANCH_LINES[$tf]="${_tfl[$tf]}"; done
     for tf in "${!_tfl[@]}"; do
@@ -306,7 +306,7 @@ A test you touch that is not laid out this way — one you update, or one you ad
 
 A test that needs data another part of the code writes — a file, a record, a field, a message — makes it with that code, never by hand: hand-made data holds whatever its author assumed. Find how the existing tests and test helpers already make it, and do the same.
 
-Every test and assertion you write traces to a SPEC below, and carries its tag. What you own is the tests the SPECs ask for: a finding that asks for a test of a change no SPEC asks for, answer not mine — no SPEC asks for this change; it is the code's to take out or the design's to ask for. Your own check refuses an assertion that names no SPEC and tests what no SPEC asks for.
+Every test and assertion you write traces to a SPEC below, and carries its tag; a change to an existing test for what a design step changes traces to that step. What you own is the tests the SPECs ask for: a finding that asks for a test of a change no SPEC asks for, answer not mine — no SPEC asks for this change; it is the code's to take out or the design's to ask for. Your own check refuses an assertion that names no SPEC and tests what no SPEC asks for.
 
 Tag each assertion in its label. Each tag names one SPEC, exactly as shown — e.g. ${_spec_tag1} — and a line holds one tag. An assertion that proves two SPECs is written twice, one line per SPEC, each with its own tag. A tag on a line this branch added is yours: one whose SPEC is not in this contract is stale from an earlier design — remove the tag and keep the assertion.
 
@@ -431,13 +431,13 @@ EOF
     _ta_tag_shape "$design" "$repo"
     # #2464 (ADR-072 §4): its verdicts are kept beside its result.
     _ta_correspondence "$design" "$repo" "$tier" "$art"
-    _TA_UNASKED_FINDINGS=()
-    [[ -n "$_TA_CORR_OUTCOME" ]] || _ta_unasked "$design" "$repo" "$tier"
+    _TA_UNASKED_FINDINGS=(); _TA_CORR_WHAT=""
+    [[ -n "$_TA_CORR_OUTCOME" ]] || _ta_unasked "$design" "$repo" "$tier" "$art"
     if [[ -n "$_TA_CORR_OUTCOME" ]]; then
         declare -f assertion_integrity_record >/dev/null 2>&1 && assertion_integrity_record "$art" "$repo"
         _ta_commit_testfiles "$design" "$repo" "test-author: acceptance assertions for $n SPEC(s), unchecked"
         _ta_write_result "$art" "$_TA_CORR_OUTCOME" \
-            "the check that each assertion tests its SPEC could not be run ($_TA_CORR_OUTCOME)" "$n"
+            "${_TA_CORR_WHAT:-the check that each assertion tests its SPEC} could not be run ($_TA_CORR_OUTCOME)" "$n"
         return 0
     fi
     # #2467 (ADR-073 §6): a SPEC no test can prove is design's to rewrite. The

@@ -1,103 +1,144 @@
 #!/usr/bin/env bash
 # plugins/agent/test-author/lib/unasked.sh — test-author's own check refuses an
-# assertion its branch added that names no SPEC and tests what no SPEC asks
-# for (#2575, ADR-069). A test for a change nothing asks for pins that change.
+# assertion its branch added that names no SPEC and tests what neither a SPEC
+# nor a design step asks for (#2575, ADR-069). A test for a change nothing asks
+# for pins that change.
 #
 # The lines are found by script: the lines this branch added to the test
 # folders (zb_test_folder_branch_lines_v) that read as a check — a call named
-# assert…, expect or refute, or a ✓/✗ mark — and carry no tag of a SPEC of this
-# contract. Whether each tests something a SPEC asks for is judged by the
-# assertion check's call (_sc_call), with every SPEC shown.
+# assert… or refute…, an `expect` call, or a ✓/✗ mark — and carry no tag of a
+# SPEC of this contract. A line the default branch already had, that only lost
+# a tag (the stale-tag step), is not new and is not judged. Whether each line
+# is asked for is judged by the assertion check's call (_sc_call), shown every
+# SPEC and every design step, in chunks; every line is judged. Each answer is
+# kept beside test-author's result, by file, line content and the SPECs and
+# steps it was judged against, so a line is judged once.
 #
 # Sourced library: no set -euo pipefail.
 
 [[ -n "${_ZBUILD_TA_UNASKED_LOADED:-}" ]] && return 0
 _ZBUILD_TA_UNASKED_LOADED=1
+# shellcheck source=../../../../scripts/lib/digest.sh
+source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/digest.sh"
+# shellcheck source=../../../../scripts/lib/design-steps.sh
+source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/design-steps.sh"
 
-# At most this many lines are judged in one try; the rest wait for the next.
-_TA_UNASKED_MAX=30
+# How many lines one call judges.
+_TA_UNASKED_CHUNK=30
+_TA_UNASKED_WHAT="the check that each untagged assertion traces to a SPEC or a design step"
+
+# _ta_unasked_untag_v <var> <text> [any] — <text> without its tags of this
+# contract (_TA_UQ_IDS " a b ", and the issue in _TA_UQ_ISSUE) — with [any],
+# without any tag-shaped text, as the stale-tag step takes one off — its
+# spaces squeezed.
+_ta_unasked_untag_v() {
+    local -n _tuu="$1"; local _t="$2" _out="" _c _w _m
+    while [[ "$_t" =~ \[([^][]*)\] ]]; do
+        _c="${BASH_REMATCH[1]}"; _m="${BASH_REMATCH[0]}"; _out+="${_t%%"$_m"*}"
+        _t="${_t#*"$_m"}"
+        [[ -n "$_TA_UQ_ISSUE" && "$_c" == "#$_TA_UQ_ISSUE/"* ]] && _c="${_c#"#$_TA_UQ_ISSUE/"}"
+        if [[ -n "${3:-}" ]]; then
+            [[ "$_c" =~ ^(#[0-9]+/)?(${_ACCEPTANCE_ID_ERE})$ ]] || _out+="$_m"
+        else
+            [[ "$_TA_UQ_IDS" == *" $_c "* ]] || _out+="$_m"
+        fi
+    done
+    _out+="$_t"
+    read -ra _w <<< "$_out"; _tuu="${_w[*]}"
+}
+
+# _ta_unasked_is_check <line> — rc 0 when the line reads as a check.
+_ta_unasked_is_check() {
+    local l="$1"
+    [[ "$l" =~ ^[[:space:]]*(#|//) ]] && return 1
+    [[ "$l" =~ (^|[^A-Za-z0-9_\$])(assert|refute)[A-Za-z0-9_]*([[:space:]\(]|$) ]] && return 0
+    [[ "$l" =~ (^|[^A-Za-z0-9_\$])expect[[:space:]]*\( ]] && return 0
+    [[ "$l" =~ (^|[\;\&\|\{[:space:]])expect[[:space:]]+[^=[:space:]] ]] && return 0
+    [[ "$l" == *✓* || "$l" == *✗* ]]
+}
 
 # _ta_unasked_lines_v <array> <design> <repo> — "<file> line <n>: <text>" for
 # each line this branch added to a test file that reads as a check and carries
-# no tag of this contract.
+# no tag of this contract, files in order.
 _ta_unasked_lines_v() {
-    local -n _tul="$1"; local design="$2" repo="$3" ids="" id tf issue="${ZBUILD_ISSUE:-}" line
+    local -n _tul="$1"; local design="$2" repo="$3" id tf i n l u
+    local -a w=()
     _tul=()
-    while IFS= read -r id; do [[ -n "$id" ]] && ids+="${ids:+ }$id"; done \
+    _TA_UQ_IDS=" "; _TA_UQ_ISSUE="${ZBUILD_ISSUE:-}"
+    while IFS= read -r id; do [[ -n "$id" ]] && _TA_UQ_IDS+="$id "; done \
         < <(acceptance_list_spec_ids "$design" 2>/dev/null || true)
-    [[ -n "$ids" ]] || return 0
-    [[ "$issue" =~ ^[1-9][0-9]*$ ]] || issue=""
-    local -A _tsl=()
+    [[ "$_TA_UQ_IDS" != " " ]] || return 0
+    [[ "$_TA_UQ_ISSUE" =~ ^[1-9][0-9]*$ ]] || _TA_UQ_ISSUE=""
+    local -A _tsl=() _trm=() _gone=()
+    # The diff the stale-tag step read, when it read this repository's.
     if [[ "${_TA_BRANCH_LINES_REPO:-}" == "$repo" ]]; then
         for tf in "${!_TA_BRANCH_LINES[@]}"; do _tsl[$tf]="${_TA_BRANCH_LINES[$tf]}"; done
+        for tf in "${!_TA_BRANCH_REMOVED[@]}"; do _trm[$tf]="${_TA_BRANCH_REMOVED[$tf]}"; done
     else
-        zb_test_folder_branch_lines_v _tsl "$repo"
+        zb_test_folder_branch_lines_v _tsl "$repo" _trm
     fi
-    local -a order=(); local i
+    local -a order=() _tu_fl=() rm=()
     for tf in "${!_tsl[@]}"; do
         i=${#order[@]}
         while (( i > 0 )) && [[ "${order[i-1]}" > "$tf" ]]; do order[i]="${order[i-1]}"; i=$((i - 1)); done
         order[i]="$tf"
     done
-    local -a files=() lists=()
     for tf in ${order[@]+"${order[@]}"}; do
         [[ -f "$repo/$tf" ]] || continue
-        files+=("$repo/$tf"); lists+=("$tf=${_tsl[$tf]}")
+        _gone=()
+        IFS=$'\x1e' read -ra rm <<< "${_trm[$tf]:-}"
+        for l in ${rm[@]+"${rm[@]}"}; do _ta_unasked_untag_v u "$l" any; u="${u//[[:space:]]/}"; [[ -n "$u" ]] && _gone[$u]=1; done
+        mapfile -t _tu_fl < "$repo/$tf"
+        for (( n = 1; n <= ${#_tu_fl[@]}; n++ )); do
+            [[ "${_tsl[$tf]}" == all || " ${_tsl[$tf]} " == *" $n "* ]] || continue
+            l="${_tu_fl[n-1]}"
+            _ta_unasked_is_check "$l" || continue
+            _ta_unasked_untag_v u "$l"
+            read -ra w <<< "$l"
+            [[ "$u" == "${w[*]}" ]] || continue       # it carries a tag: it names a SPEC
+            # The default branch had it, tagged (spaces aside: a tag took one).
+            [[ -n "${_gone[${u//[[:space:]]/}]+x}" ]] && continue
+            l="${l#"${l%%[![:space:]]*}"}"
+            _tul+=("$tf line $n: $l")
+        done
     done
-    [[ ${#files[@]} -gt 0 ]] || return 0
-    local joined; printf -v joined '%s\x1f' "${lists[@]}"
-    # One awk over every file: the tag reader's own rule (_ta_tag_shape).
-    while IFS= read -r line; do
-        [[ -n "$line" ]] && (( ${#_tul[@]} < _TA_UNASKED_MAX )) && _tul+=("$line")
-    done < <(LC_ALL=C awk -v ids="$ids" -v issue="$issue" -v root="$repo/" -v lists="$joined" -v ck="✓" -v cx="✗" '
-        BEGIN {
-            k = split(ids, a, " "); for (i = 1; i <= k; i++) ok[a[i]] = 1
-            m = split(lists, L, "\037")
-            for (i = 1; i <= m; i++) { p = index(L[i], "="); if (p) want[substr(L[i], 1, p - 1)] = " " substr(L[i], p + 1) " " }
-        }
-        function valid(c,    r) {
-            if (c in ok) return 1
-            if (issue != "" && index(c, "#" issue "/") == 1) { r = substr(c, length(issue) + 3); return (r in ok) }
-            return 0
-        }
-        FNR == 1 { f = substr(FILENAME, length(root) + 1); w = want[f] }
-        w !~ / all / && index(w, " " FNR " ") == 0 { next }
-        /^[ \t]*(#|\/\/)/ { next }
-        !/(^|[^A-Za-z0-9_])(assert[A-Za-z0-9_]*|expect|refute)([^A-Za-z0-9_]|$)/ && !index($0, ck) && !index($0, cx) { next }
-        {
-            rest = $0; tagged = 0
-            while (match(rest, /\[[^][]*\]/)) {
-                if (valid(substr(rest, RSTART + 1, RLENGTH - 2))) { tagged = 1; break }
-                rest = substr(rest, RSTART + RLENGTH)
-            }
-            if (!tagged) { t = $0; sub(/^[ \t]+/, "", t); printf "%s line %d: %s\n", f, FNR, t }
-        }' "${files[@]}" 2>/dev/null)
     return 0
 }
 
-# _ta_unasked_prompt <design> <lines_array> — the check's question: every SPEC,
-# and the lines to judge.
+# _ta_unasked_context_v <var> <design> — every SPEC, then every step numbered,
+# as the check is shown them.
+_ta_unasked_context_v() {
+    local -n _tuc="$1"; local design="$2" blk sid s i=0
+    local -a steps=()
+    _tuc="THE SPECS:"$'\n'
+    blk="$(extract_acceptance_block "$design" 2>/dev/null)" || blk=""
+    while IFS= read -r sid; do
+        [[ -n "$sid" ]] || continue
+        _acceptance_spec_line "$blk" "$sid" && _tuc+="- $sid: $_ACC_SPEC_TEXT"$'\n'
+    done < <(acceptance_list_spec_ids "$design" 2>/dev/null || true)
+    zb_design_step_lines_v steps "$design"
+    _tuc+=$'\n'"THE DESIGN'S STEPS:"$'\n'
+    [[ ${#steps[@]} -gt 0 ]] || _tuc+="(none)"$'\n'
+    for s in ${steps[@]+"${steps[@]}"}; do i=$((i + 1)); _tuc+="$i. $s"$'\n'; done
+}
+
+# _ta_unasked_prompt <context> <lines_array> — the check's question.
 _ta_unasked_prompt() {
-    local design="$1"; local -n _tup="$2"; local sid blk l
+    local -n _tup="$2"; local l
     cat <<'EOF'
 You are checking test lines this branch added that carry no requirement's tag.
 
 ## What you own
-A test or an assertion must trace to a SPEC below: a test for a change no SPEC asks for pins that change. For EACH line listed under THE LINES, decide whether it is an assertion — a check that can fail — and if so whether it tests something one of the SPECs asks for. Open the test file to see what the line checks. Answer one line for each, starting with its file and line number exactly as listed:
+A test or an assertion must trace to what the design asks for: a SPEC, or a design step's change. A test for a change nothing asks for pins that change. For EACH line listed under THE LINES, decide whether it is an assertion — a check that can fail — and if so what asks for what it tests. A line changed for what a design step changes is asked for by that step. A line in a helper that a tagged assertion calls traces to that assertion's SPEC. Open the test file to see what the line checks. Answer one list item for each, starting with its file and line number exactly as listed:
 
-<file> line <n>: asked | SPEC: <the identifier of the SPEC it tests>
-<file> line <n>: not an assertion
-<file> line <n>: unasked | WHY: <what it tests, and why no SPEC asks for it>
+- <file> line <n>: asked | SPEC: <the identifier of the SPEC it tests>
+- <file> line <n>: asked | STEP: <the number of the step whose change it tests>
+- <file> line <n>: not an assertion
+- <file> line <n>: unasked | WHY: <what it tests, and why no SPEC and no step asks for it>
 
 ## What you judge against
-THE SPECS:
 EOF
-    blk="$(extract_acceptance_block "$design" 2>/dev/null)" || blk=""
-    while IFS= read -r sid; do
-        [[ -n "$sid" ]] || continue
-        _acceptance_spec_line "$blk" "$sid" && printf -- '- %s: %s\n' "$sid" "$_ACC_SPEC_TEXT"
-    done < <(acceptance_list_spec_ids "$design" 2>/dev/null || true)
-    printf '\nTHE LINES:\n'
+    printf '%s\nTHE LINES:\n' "$1"
     for l in "${_tup[@]}"; do printf -- '- %s\n' "$l"; done
     cat <<'EOF'
 
@@ -107,47 +148,74 @@ EOF
 EOF
 }
 
-# _ta_unasked <design> <repo> <tier> — sets _TA_UNASKED_FINDINGS, one per line
-# the check finds no SPEC asks for. A line with no usable answer is asked again
-# once; one still unanswered, or a call that failed, leaves _TA_CORR_OUTCOME set
-# as the assertion check's own failure does (#2062: no answer, no pass).
+# _ta_unasked <design> <repo> <tier> [artifact_dir] — sets _TA_UNASKED_FINDINGS,
+# one per line the check finds nothing asks for. A line with no usable answer
+# is asked again once; any still unanswered, or a call that failed, set
+# _TA_CORR_OUTCOME and _TA_CORR_WHAT (this check, and how many lines were left):
+# no answer, no pass (#2062).
 _ta_unasked() {
-    local design="$1" repo="$2" tier="${3:-T2}" l key why task raw problem="" rc_file router_rc=0 tries=0
-    local -a lines=() missing=()
+    local design="$1" repo="$2" tier="${3:-T2}" art="${4:-}" l key why ctx cfp lfp kf="" k v w
+    local -a lines=() todo=() chunk=() missing=() left=()
+    local -A kept=() now=()
     _TA_UNASKED_FINDINGS=()
     _ta_unasked_lines_v lines "$design" "$repo"
     [[ ${#lines[@]} -gt 0 ]] || return 0
-    task="$(_ta_unasked_prompt "$design" lines)"
+    _ta_unasked_context_v ctx "$design"; zb_digest_v cfp "$ctx"
+    [[ -n "$art" ]] && kf="${art%/}/test-author-unasked.tsv"
+    if [[ -n "$kf" && -s "$kf" ]]; then
+        while IFS=$'\t' read -r k v w; do [[ -n "$k" ]] && kept[$k]="$v"$'\t'"$w"; done < "$kf"
+    fi
+    # The key: the file, the line's content and what it is judged against.
+    local -A keyof=()
+    for l in "${lines[@]}"; do
+        zb_digest_v lfp "${l#*: }"
+        key="${l%% line *}"$'\x1f'"$lfp"$'\x1f'"$cfp"; keyof[$l]="$key"
+        [[ -n "${kept[$key]+x}" ]] && now[$key]="${kept[$key]}" || todo+=("$l")
+    done
+    local rc_file router_rc=0 i raw problem
     rc_file="$(mktemp 2>/dev/null)" || rc_file=""
     [[ -n "$rc_file" ]] && printf '0' > "$rc_file"
-    raw=""
-    while (( tries < 2 )); do
-        tries=$((tries + 1))
-        if [[ -n "$problem" ]]; then raw="$(_sc_call "$tier" "$task" "$rc_file" "$problem" "$raw")"
-        else raw="$(_sc_call "$tier" "$task" "$rc_file")"; fi
-        zb_reply_join_v raw "$raw"
-        _TA_UNASKED_FINDINGS=(); missing=()
-        for l in "${lines[@]}"; do
-            key="${l%%: *}"
-            _ta_unasked_answer_v why "$raw" "$key"
-            case "$why" in
-                "") missing+=("$key") ;;
-                ok) ;;
-                *) _TA_UNASKED_FINDINGS+=("$key tests something no SPEC asks for ($why) — take it out: a test must trace to a SPEC, and a test for a change no SPEC asks for is not yours. If a SPEC does ask for it, tag the assertion with that SPEC") ;;
-            esac
+    for (( i = 0; i < ${#todo[@]}; i += _TA_UNASKED_CHUNK )); do
+        chunk=("${todo[@]:i:_TA_UNASKED_CHUNK}"); problem=""; raw=""
+        local _try
+        for _try in 1 2; do  # asked again once
+            if [[ -n "$problem" ]]; then raw="$(_sc_call "$tier" "$(_ta_unasked_prompt "$ctx" chunk)" "$rc_file" "$problem" "$raw")"
+            else raw="$(_sc_call "$tier" "$(_ta_unasked_prompt "$ctx" chunk)" "$rc_file")"; fi
+            zb_reply_join_v raw "$raw"
+            missing=()
+            for l in "${chunk[@]}"; do
+                [[ -n "${now[${keyof[$l]}]+x}" ]] && continue
+                _ta_unasked_answer_v why "$raw" "${l%%: *}"
+                if [[ -z "$why" ]]; then missing+=("${l%%: *}")
+                else now[${keyof[$l]}]="$why"$'\t'; fi
+            done
+            [[ ${#missing[@]} -eq 0 ]] && break
+            problem="no usable answer for: ${missing[*]} — answer asked, not an assertion or unasked for each line, one list item each, starting with its file and line number"
         done
-        [[ ${#missing[@]} -eq 0 ]] && break
-        problem="no usable answer for: ${missing[*]} — answer asked, not an assertion or unasked for each line, starting with its file and line number"
+        left+=(${missing[@]+"${missing[@]}"})
     done
     [[ -n "$rc_file" ]] && { router_rc="$(cat "$rc_file" 2>/dev/null || printf 0)"; rm -f "$rc_file"; }
+    # The answers for the lines there now, kept for the next try.
+    if [[ -n "$kf" ]]; then
+        local out=""
+        for key in "${!now[@]}"; do out+="$key"$'\t'"${now[$key]}"$'\n'; done
+        printf '%s' "$out" > "$kf.tmp.$$" 2>/dev/null && mv -f "$kf.tmp.$$" "$kf" 2>/dev/null || rm -f "$kf.tmp.$$" 2>/dev/null
+    fi
+    for l in "${lines[@]}"; do
+        v="${now[${keyof[$l]}]:-}"; v="${v%$'\t'}"
+        [[ -n "$v" && "$v" != ok ]] || continue
+        _TA_UNASKED_FINDINGS+=("${l%%: *} tests something no SPEC or design step asks for ($v) — take it out: a test must trace to a SPEC or a step's change, and a test for a change nothing asks for is not yours. If a SPEC does ask for it, tag the assertion with that SPEC")
+    done
     if [[ "$router_rc" =~ ^[1-9][0-9]*$ ]]; then
         local _rv _rr
         _router_rc_classify "$router_rc" _rv _rr 2>/dev/null || true
         # disposition-ok: the model router is not responding
         _TA_CORR_OUTCOME="$(router_reason_disposition "${_rr:-}" 2>/dev/null || true)"
         [[ -n "$_TA_CORR_OUTCOME" ]] || _TA_CORR_OUTCOME="unavailable"
-    elif [[ ${#missing[@]} -gt 0 ]]; then
+        _TA_CORR_WHAT="$_TA_UNASKED_WHAT"
+    elif [[ ${#left[@]} -gt 0 ]]; then
         _TA_CORR_OUTCOME=unusable
+        _TA_CORR_WHAT="$_TA_UNASKED_WHAT (${#left[@]} line(s) left unjudged: ${left[*]:0:3})"
     fi
     return 0
 }
@@ -165,7 +233,7 @@ _ta_unasked_answer_v() {
             asked*|"not an assertion"*) _tua=ok ;;
             unasked*)
                 judge_reply_field_v w "$l" WHY
-                _tua="${w:-no SPEC names it}" ;;
+                _tua="${w:-nothing names it}" ;;
         esac
         [[ -n "$_tua" ]] && return 0
     done <<< "$2"

@@ -16,6 +16,21 @@
 #           unusable, the finding names the file, the line and why
 # A4 [guard] an untagged assertion the check finds a SPEC asks for is no finding
 # A5 [guard] an assertion tagged with a SPEC is not sent to that check at all
+# Review on #2575:
+# A6 [code]  every untagged line is judged — 35 across two files, in more than
+#            one call when needed — none left out
+# A7 [code]  a second try with the same lines makes no call: each line's answer
+#            is kept beside test-author's result, by file and line content
+# A8 [code]  a line the check leaves unanswered ends the try unusable, the
+#            reason naming this check
+# A9 [code]  the check is shown the design's steps: a test changed for what a
+#            step changes ("asked | STEP: <n>") is no finding
+# A10 [code] the check is told that a helper's line a tagged assertion calls
+#            traces to that assertion's SPEC
+# A11 [code] an assertion the default branch already has, that only lost its
+#            stale tag, is not judged
+# A12 [code] an `expect=` variable, or `$assert_ok`, is not a check line
+# A13 [code] a test file whose name holds `=` is read like any other
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -35,6 +50,8 @@ assert_contains "[A1] every change traces to a design step or a failing test" "$
     "Every change you make traces to a design step or to a failing test"
 assert_contains "[A1] ...what a removed step built is undone" "$_bp" \
     "When a step is gone from the design, undo what you built for it"
+assert_contains "[A1] ...unless the current design's steps now name it" "$_bp" \
+    "undo what you built for it, unless the current design's steps now name it"
 
 # shellcheck source=../../plugins/agent/test-author/plugin.sh
 source "$REPO_ROOT/plugins/agent/test-author/plugin.sh"
@@ -53,6 +70,7 @@ route_to_model_loop() {
         [[ -n "$EXTRA" ]] && printf '%s\n' "$EXTRA"
         printf 'exit 1\n'
     } > "$R/tests/a-test.sh"
+    [[ -n "${AUTHOR_HOOK:-}" ]] && "$AUTHOR_HOOK"
     _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"; _ROUTE_LOOP_LAST_RESPONSE="LOOP_COMPLETE"
     return 0
 }
@@ -62,30 +80,43 @@ VERDICT="unasked | WHY: it pins the shape-change list, which no SPEC mentions"
 route_to_model() {
     if [[ "$2" == *"carry no requirement's tag"* ]]; then
         printf '%s' "$2" > "$TEST_TEMP_DIR/unasked-prompt"
+        printf '%s\n' "$2" >> "$TEST_TEMP_DIR/unasked-prompts"
+        printf 'x' >> "$TEST_TEMP_DIR/unasked-calls"
         local l
         while IFS= read -r l; do
-            [[ "$l" =~ ^-\ (tests/[^ ]+\ line\ [0-9]+): ]] && printf '%s: %s\n' "${BASH_REMATCH[1]}" "$VERDICT"
+            [[ "$l" =~ ^-\ (tests/[^ ]+\ line\ [0-9]+): ]] || continue
+            printf '%s\n' "${BASH_REMATCH[1]}" >> "$TEST_TEMP_DIR/unasked-keys"
+            [[ -n "$VERDICT" ]] && printf -- '- %s: %s\n' "${BASH_REMATCH[1]}" "$VERDICT"
         done <<< "$2"
         return 0
     fi
     zb_test_check_ok "$2"
 }
 
+STEPS_BLOCK=""
+SEED_HOOK=""
 _run() {
-    rm -rf "$TEST_TEMP_DIR/run" "$TEST_TEMP_DIR"/author-* "$TEST_TEMP_DIR/unasked-prompt"
+    rm -rf "$TEST_TEMP_DIR/run" "$TEST_TEMP_DIR"/author-* "$TEST_TEMP_DIR"/unasked-*
     local d="$TEST_TEMP_DIR/run"; R="$d/repo"; A="$d/state/artifacts"
     mkdir -p "$A" "$R/tests" "$R/config"
     ( cd "$R" && git init -q -b main . && git config user.email t@e.st && git config user.name t \
         && printf 'scripts/lib/a.sh\n' > config/shape-change-paths.txt \
+        && { [[ -z "$SEED_HOOK" ]] || "$SEED_HOOK"; } \
         && git add -A && git commit -q -m seed && git checkout -q -b work ) >/dev/null 2>&1
     printf '{"schema_version":1}' > "$d/state/pipeline-state.json"
-    cat > "$A/design.md" <<'MD'
-# Design
+    { printf '# Design\n%s' "$STEPS_BLOCK"; cat <<'MD'
 ```acceptance
 SPEC-1[code]: an empty input returns rc 1
 WIRING: none
 ```
 MD
+    } > "$A/design.md"
+    _again
+}
+# _again — test-author's next try, over the same run.
+_again() {
+    local d="$TEST_TEMP_DIR/run"
+    rm -f "$TEST_TEMP_DIR"/unasked-*
     export ZBUILD_REPO_ROOT="$R" ZBUILD_EVENTS_JSONL="$d/events.jsonl"
     test_author_run test-author "$d/state/pipeline-state.json" >/dev/null 2>&1
     OUTCOME="$(jq -r '.outcome // "MISSING"' "$A/test-author-result.json" 2>/dev/null || echo MISSING)"
@@ -96,7 +127,7 @@ print_test_section "A2: test-author's prompt"
 EXTRA=""; _run
 _ap="$(tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/author-prompt-1" 2>/dev/null)"
 assert_contains "[A2] every test and assertion traces to a SPEC" "$_ap" \
-    "Every test and assertion you write traces to a SPEC below, and carries its tag."
+    "Every test and assertion you write traces to a SPEC below, and carries its tag; a change to an existing test for what a design step changes traces to that step."
 assert_contains "[A2] ...a test for a change no SPEC asks for is not yours: not mine" "$_ap" \
     "What you own is the tests the SPECs ask for: a finding that asks for a test of a change no SPEC asks for, answer not mine"
 
@@ -105,7 +136,7 @@ EXTRA='assert_contains "lists the design plugin" "$(cat config/shape-change-path
 _run
 assert_eq "[A3] the try is unusable, for the next try to fix" "unusable" "$OUTCOME"
 assert_contains "[A3] the finding names the file and line, and that no SPEC asks for it" "$FINDINGS" \
-    "tests/a-test.sh line 3 tests something no SPEC asks for"
+    "tests/a-test.sh line 3 tests something no SPEC or design step asks for"
 assert_contains "[A3] ...with the check's reason" "$FINDINGS" "it pins the shape-change list, which no SPEC mentions"
 assert_contains "[A3] ...and says to take it out" "$FINDINGS" "take it out"
 
@@ -121,6 +152,53 @@ if [[ -s "$TEST_TEMP_DIR/unasked-prompt" ]] && grep -qF "tests/a-test.sh line 2"
 else
     assert_pass "[A5] ...and the tagged line was not sent to the check"
 fi
+
+print_test_section "A6/A7: every line judged, each once"
+_many() {
+    local i
+    for i in $(seq 1 20); do printf 'assert_eq "case %s" x x\n' "$i"; done >> "$R/tests/a-test.sh"
+    for i in $(seq 1 15); do printf 'assert_eq "other %s" x x\n' "$i"; done > "$R/tests/b-test.sh"
+}
+VERDICT="asked | SPEC: SPEC-1"; EXTRA=""; AUTHOR_HOOK=_many; _run
+assert_eq "[A6] all 35 untagged lines are judged" "35" "$(sort -u "$TEST_TEMP_DIR/unasked-keys" 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "[A6] ...from both files" "15" "$(sort -u "$TEST_TEMP_DIR/unasked-keys" 2>/dev/null | grep -c "^tests/b-test.sh line" || true)"
+assert_eq "[A6] ...and the try passes" "pass" "$OUTCOME"
+_again
+assert_eq "[A7] the next try with the same lines makes no call" "0" "$(wc -c < "$TEST_TEMP_DIR/unasked-calls" 2>/dev/null | tr -d ' ' || echo 0)"
+assert_eq "[A7] ...and still passes" "pass" "$OUTCOME"
+AUTHOR_HOOK=""
+
+print_test_section "A8: a line left unanswered"
+VERDICT=""; EXTRA='assert_eq "unanswered" x x'; _run
+assert_eq "[A8] the try is unusable" "unusable" "$OUTCOME"
+assert_contains "[A8] ...the reason names this check" \
+    "$(jq -r '.reason // empty' "$A/test-author-result.json" 2>/dev/null)" "the check that each untagged assertion traces to a SPEC or a design step"
+
+print_test_section "A9/A10: the steps, and helpers"
+STEPS_BLOCK=$'```steps\n- rename the claim reader | areas: scripts/lib/claim.sh\n```\n'
+VERDICT="asked | STEP: 1"; EXTRA='assert_eq "reads the renamed claim reader" x x'; _run
+assert_contains "[A9] the check is shown the design's steps" "$(cat "$TEST_TEMP_DIR/unasked-prompt" 2>/dev/null)" \
+    "1. rename the claim reader | areas: scripts/lib/claim.sh"
+assert_eq "[A9] a line changed for what a step changes is no finding" "pass" "$OUTCOME"
+assert_contains "[A10] a helper's line a tagged assertion calls traces to its SPEC" \
+    "$(tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/unasked-prompt" 2>/dev/null)" \
+    "A line in a helper that a tagged assertion calls traces to that assertion's SPEC."
+STEPS_BLOCK=""
+
+print_test_section "A11: an old assertion that only lost its stale tag"
+_seed11() { printf 'assert_eq "[SPEC-9] old check" x x\n' > tests/old-test.sh; }
+_strip11() { printf 'assert_eq "old check" x x\n' > "$R/tests/old-test.sh"; }
+SEED_HOOK=_seed11; AUTHOR_HOOK=_strip11; VERDICT="unasked | WHY: x"; EXTRA=""; _run
+assert_eq "[A11] it is not judged" "0" "$(grep -c 'old-test.sh' <<< "$(cat "$TEST_TEMP_DIR/unasked-keys" 2>/dev/null)" || true)"
+SEED_HOOK=""; AUTHOR_HOOK=""
+
+print_test_section "A12/A13: what is a check line, and odd file names"
+_odd() { printf 'assert_eq "odd" x x\n' > "$R/tests/a=b-test.sh"; }
+AUTHOR_HOOK=_odd; VERDICT="asked | SPEC: SPEC-1"
+EXTRA=$'expect="x"\nif $assert_ok; then :; fi'; _run
+assert_eq "[A12] an expect= variable or \$assert_ok is not sent" "0" "$(grep -c 'a-test.sh' <<< "$(cat "$TEST_TEMP_DIR/unasked-keys" 2>/dev/null)" || true)"
+assert_contains "[A13] a file named with = is read" "$(cat "$TEST_TEMP_DIR/unasked-keys" 2>/dev/null)" "tests/a=b-test.sh line 1"
+AUTHOR_HOOK=""
 
 cleanup_test_env
 print_test_results

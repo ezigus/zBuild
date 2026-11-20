@@ -265,7 +265,9 @@ _stage_block_previous_work() {
     local _pw_sig="" _pw_np=""
     stage_notes_path_v _pw_np "$state_dir" "$stage"
     _sp_asked_sig_v _pw_sig "$stage" "$state_dir" "$plugins_root" "$takes" _pw_ins
-    _sp_notes_version "$_pw_np" "$_pw_sig"
+    # Compared below, once the stage's own result is found (its roles are read
+    # there anyway); a stage with no section of its own, after the loop.
+    local _pw_nv=0; _SP_NOTES_OLD=""; _SP_OUTPUT_OLD=""
 
     local s manifest roles summ errp res req notes cutoff verdict own body any=0 raw content
     local -a summs=() prims=()
@@ -319,6 +321,7 @@ _stage_block_previous_work() {
             listed+="${outtext[$id]}"
         done
         [[ "$res" == *.json && -s "$res" ]] || res=""
+        [[ "$s" == "$stage" ]] && { _sp_notes_version "$_pw_np" "$_pw_sig" "$res_any"; _pw_nv=1; }
         [[ "$res_any" == *.json && -s "$res_any" ]] || res_any=""
 
         # ADR-071 §2 (#2556): a finding is shown when the stage takes its
@@ -425,6 +428,7 @@ _stage_block_previous_work() {
         [[ -n "$own" && -n "${_ZB_SP_MARK_OWN:-}" ]] && printf '%s' "$_ZB_SP_OWN_END"
         [[ -n "$own" && -n "${_ZB_SP_MARK_OWN:-}" ]] && printf '%s' "$_ZB_SP_SECT_END"
     done
+    (( _pw_nv )) || _sp_notes_version "$_pw_np" "$_pw_sig" ""
     [[ "$any" -eq 1 ]] || printf '\nNo stage has run before this one.\n'
     return 0
 }

@@ -65,6 +65,7 @@ provides:
     - acceptance.gate.untagged_spec
     - acceptance.gate.untested_change
     - acceptance.gate.unasked_change
+    - acceptance.gate.unspecified_change
     - acceptance.gate.wiring_exempt
     - acceptance.gate.wiring_not_on_path
     - acceptance.gate.worktree_failed
@@ -84,6 +85,7 @@ config:
     - inert_wiring
     - untested_change
     - unasked_change
+    - unspecified_change
     - no_testfile
     - no_testfiles
     - not_passing_at_head
@@ -195,7 +197,7 @@ outputs:
   # stage can fix is in each (ADR-071 §1), a problem in the pipeline in none.
   - id: acceptance_design
     topic: design-findings
-    description: "the acceptance check's findings the design can fix: code no requirement covers, a test that passes on the old code (the code may already do it), a WIRING file that is not what runs the change or that the change does not touch, an acceptance block that cannot be read"
+    description: "the acceptance check's findings the design can fix: code no requirement covers, a test that passes on the old code (the code may already do it), a WIRING file that is not what runs the change or that the change does not touch, an acceptance block that cannot be read, a changed file nothing in the design asks for, a file a step changes that no SPEC says what it should do"
     path: "${artifact_dir}/acceptance-gate-design-result.json"
     type: routed-findings.json@1
     format: json
@@ -209,7 +211,7 @@ outputs:
     required: false
   - id: acceptance_code
     topic: code-findings
-    description: "the acceptance check's findings the code can fix: a test that does not pass on the new code, code no requirement covers, a changed file no test checks, a test that never reached its assertion on the new code, a test file that ran too long"
+    description: "the acceptance check's findings the code can fix: a test that does not pass on the new code, code no requirement covers, a changed file no test checks, a changed file nothing in the design asks for, a test that never reached its assertion on the new code, a test file that ran too long"
     path: "${artifact_dir}/acceptance-gate-code-result.json"
     type: routed-findings.json@1
     format: json
