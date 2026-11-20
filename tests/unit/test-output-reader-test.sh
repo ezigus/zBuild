@@ -15,13 +15,25 @@
 # TR3 [R1] the red set (the files the next rerun targets) holds every failing
 #          file of both rounds, repo-relative
 # TR4 [R1] the failing files' own output reaches the error channel for all of them
-# TR5 [R1] a forgiving read: FAIL/TIMEOUT in any case, colour codes, a carriage
-#          return, leading spaces and a ✗ marker, a suite name with digits, `_`
-#          and `-`; a TIMEOUT's suffix is not part of the path; a FAIL with no
-#          path (`lint: FAIL (npm run lint)`) names no file
+# TR5 [R1] where the output really varies: colour codes and a carriage return,
+#          a suite name with digits, `_` and `-`; a TIMEOUT's suffix is not part
+#          of the path; a FAIL with no path (`lint: FAIL (npm run lint)`) names
+#          no file
 # TR6 [R1] the runner summary counts every failing file of the forgiving output
 # TR7 [R2] no code outside the shared reader reads `<suite>: FAIL <path>` or
 #          `<suite>: N/M passed` with a pattern of its own
+# TR8 a marker is what run-tests.sh writes, at column 0: an indented
+#     `unit: FAIL <path>` or `unit: 1/2 passed` inside a file's output is that
+#     file's output, not a marker or a tally (review on #2573)
+# TR9 a failing check named like a marker (`✗ NC-G: timeout → …`, `✗ S8: fail
+#     verdict`) is the file's reason, not a marker
+# TR10 a green run holding such lines stays green, its counts unchanged
+# TR11 runner-test's nested fixture (`    unit: FAIL tests/fixtures/broken-test.sh`)
+#      makes no finding and leaves runner-test its own ✗ reason
+# TR12 a path with a space is the whole path (#2210)
+# TR13 with the staging folder given, a path that is not a file there names no file
+# TR14 in the failures summary a column-0 `word: ` line (`jq: error …`) ends a
+#      ✗ message; it is not glued onto the check before it
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -45,6 +57,10 @@ T_PHYS="$(cd "$T" && pwd -P)"
 U=plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
 RACE=tests/e2e/claim-race-test.sh
 PAR=tests/e2e/parity-local-vs-ci-test.sh
+# A path names a file of the repository only when it is one (TR13).
+for _f in "$U" "$RACE" "$PAR" tests/unit/runner-test.sh "tests/has space-test.sh"; do
+    mkdir -p "$T/$(dirname "$_f")"; : > "$T/$_f"
+done
 
 # #1764 run 44782866204, iter-1 test-output.log: the lines a reader needs, the
 # staging path replaced — by the logical, physical and doubled-slash spellings.
@@ -139,18 +155,18 @@ B1="$(_test_extract_failing_blocks "$ROUND1")"
 assert_contains "[TR4] claim-race's output" "$B1" "got 3 winners"
 assert_contains "[TR4] parity's output" "$B1" "event sequence matches golden snapshot"
 
-print_test_section "TR5: a forgiving read"
+print_test_section "TR5: where the output really varies"
 ESC=$'\033'
 FORGIVE="$(printf '%s\n' \
-    "${ESC}[31mE2E: fail $RACE${ESC}[0m"$'\r' \
+    "${ESC}[31me2e: FAIL $RACE${ESC}[0m"$'\r' \
     "  ✗ 3-way race must produce ≤1 winner" \
-    "   ✗ integration_2-x: FAIL $T/$PAR" \
+    "integration_2-x: FAIL $T/$PAR" \
     "  ✗ event sequence matches golden snapshot" \
-    "unit: Timeout $U (exceeded 480s, rc=124)" \
+    "unit: TIMEOUT $U (exceeded 480s, rc=124)" \
     "lint: FAIL (npm run lint)" \
     "unit: 1/4 passed")"
 F5="$(_test_failure_findings "$FORGIVE" "$T")"
-assert_eq "[TR5] every failing file, whatever the case, colour, marker or suite name" "$U,$RACE,$PAR" "$(_files "$F5")"
+assert_eq "[TR5] every failing file, whatever the colour or suite name" "$U,$RACE,$PAR" "$(_files "$F5")"
 assert_contains "[TR5] the TIMEOUT says it timed out" "$(_reason "$F5" "$U")" "timed out"
 assert_eq "[TR5] the red set of the forgiving output" "$(printf '%s\n' "$U" "$RACE" "$PAR" | sort)" "$(_test_extract_failing_files "$FORGIVE" "$T")"
 
@@ -161,7 +177,7 @@ IFS='|' read -r _v _p _f _s <<< "$(_test_pattern_runall "$ROUND1" 1)"
 assert_eq "[TR6] round 1: three failing files" "3" "$_f"
 
 print_test_section "TR7: no stage reads test output with a pattern of its own"
-_off=""
+_off="" _nscan=0
 while IFS= read -r _path; do
     case "$_path" in
         scripts/lib/test-output-read.sh|scripts/run-tests.sh) continue ;;  # the reader; the writer
@@ -169,10 +185,57 @@ while IFS= read -r _path; do
     esac
     while IFS= read -r _l; do
         [[ "$_l" =~ ^[0-9]+:[[:space:]]*# ]] && continue
+        [[ "$_l" =~ ^[0-9]+:[[:space:]]*(printf|echo)[[:space:]] ]] && continue  # a writer of such a line
         _off+="$_path:$_l"$'\n'
-    done < <(/usr/bin/grep -nF -e 'FAIL|TIMEOUT' -e '/[0-9]+ passed' "$REPO_ROOT/$_path" 2>/dev/null || true)
+    done < <(/usr/bin/grep -nF -e 'FAIL|TIMEOUT' -e 'TIMEOUT|FAIL' -e ': (FAIL' -e ': FAIL ' -e '/[0-9]+ passed' \
+        "$REPO_ROOT/$_path" 2>/dev/null || true)
+    _nscan=$((_nscan + 1))
 done < <(git -C "$REPO_ROOT" ls-files -- 'core/*.sh' 'scripts/*.sh' 'plugins/*.sh')
+assert_eq "[TR7] the scan read the engine's files" "1" "$(( _nscan > 100 ))"
 assert_eq "[TR7] no reader of its own outside scripts/lib/test-output-read.sh" "" "$_off"
+
+print_test_section "TR8-TR11: a marker is what run-tests.sh writes, at column 0"
+NESTED="$(cat <<OUT
+unit: FAIL $T/tests/unit/runner-test.sh
+
+  runner reports a broken file
+    unit: FAIL tests/fixtures/broken-test.sh
+    unit: 1/2 passed
+    upstream: timeout
+  ✗ NC-G: timeout → the stage ends timed_out
+  ✗ S8: fail verdict reaches the summary
+  ✗ runner names the broken file
+
+  3 of 9 tests failed
+
+unit: 6/9 passed
+OUT
+)"
+F8="$(_test_failure_findings "$NESTED" "$T")"
+assert_eq "[TR8] only runner-test is a finding" "tests/unit/runner-test.sh" "$(_files "$F8")"
+assert_contains "[TR9] its reason is its first failing check, named like a marker" \
+    "$(_reason "$F8" tests/unit/runner-test.sh)" "NC-G: timeout → the stage ends timed_out"
+assert_contains "[TR11] ...and counts its other failing checks" "$(_reason "$F8" tests/unit/runner-test.sh)" "and 2 more failing checks"
+assert_eq "[TR8] the red set holds runner-test alone" "tests/unit/runner-test.sh" "$(_test_extract_failing_files "$NESTED" "$T")"
+IFS='|' read -r _v _p _f _s <<< "$(_test_pattern_runall "$NESTED" 1)"
+assert_eq "[TR8] one failing file, the nested lines not counted" "1" "$_f"
+assert_eq "[TR8] the tally is the tier's own" "6" "$_p"
+GREEN="$(printf '%s\n' "unit: 5/5 passed" "    upstream: timeout" "    unit: 1/2 passed" "  ✓ NC-P3: TIMEOUT annotation kept" "total: 5/5 passed")"
+IFS='|' read -r _v _p _f _s <<< "$(_test_pattern_runall "$GREEN" 0)"
+assert_eq "[TR10] a green run holding such lines stays green" "pass|5|0" "$_v|$_p|$_f"
+assert_eq "[TR10] ...with no failing file" "" "$(_test_extract_failing_files "$GREEN" "$T")"
+
+print_test_section "TR12/TR13: the path as written, and only a real file"
+F12="$(_test_failure_findings "$(printf '%s\n' "unit: FAIL $T/tests/has space-test.sh" "  ✗ spaced" "unit: FAIL tests/unit/missing-test.sh" "  ✗ gone" "unit: 0/2 passed")" "$T")"
+assert_eq "[TR12] a path with a space is the whole path; [TR13] a missing file names none" "tests/has space-test.sh" "$(_files "$F12")"
+
+print_test_section "TR14: a column-0 word: line ends a check's message"
+SUMF="$TEST_TEMP_DIR/summary.md"
+_test_emit_failures_summary "$SUMF" fail 1 1 "$(printf '%s\n' "unit: FAIL $T/$U" "  ✗ claimed label contains the prefix" "jq: error (at <stdin>:1): null has no keys" "unit: 0/1 passed")" 0 >/dev/null 2>&1
+_sum="$(cat "$SUMF" 2>/dev/null)"
+assert_contains "[TR14] the check is in the summary" "$_sum" "✗ claimed label contains the prefix"
+if [[ "$_sum" == *"prefix ⏎ jq: error"* ]]; then assert_fail "[TR14] jq's error is not glued onto the check" "$_sum"
+else assert_pass "[TR14] jq's error is not glued onto the check"; fi
 
 cleanup_test_env
 print_test_results
