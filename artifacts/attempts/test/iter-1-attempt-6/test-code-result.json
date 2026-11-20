@@ -1,0 +1,1 @@
+{"data":{"findings":[{"n":1,"text":"plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh fails: ✗ claimed label contains 'claimed:' prefix — zbuild:claimed (and 1 more failing check in this file)"}]}}

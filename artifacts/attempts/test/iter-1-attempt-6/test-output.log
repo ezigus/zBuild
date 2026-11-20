@@ -1,0 +1,139 @@
+
+> zbuild@0.1.0 test
+> bash tests/run-all.sh
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.yHKulZ/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
+
+  plugin: claim-coordinator/github-labels — local-fs backend
+
+{"acquired": true}
+  ✓ claim_coordinator_claim → rc=0
+  ✓ claim store file created after claim
+  ✗ claimed label contains 'claimed:' prefix
+    zbuild:claimed
+  ✓ claim_coordinator_release → rc=0
+  ✓ claimed label removed after release
+  ✓ list_claims returns [] after release
+{"acquired": true}
+  ✓ claim_coordinator_heartbeat → rc=0
+[event-bus] WARN: unknown event type 'plugin.claim.start' (run_id=test-run-dscla1)
+[event-bus] WARN: unknown event type 'plugin.claim.complete' (run_id=test-run-dscla1)
+  ✓ [DSCLA-1] zbuild_claim_acquire returns 0 when zbuild:claimed is absent
+  ✓ [DSCLA-1] gh is called to add zbuild:claimed to the issue
+  ✓ [DSCLA-1] label is exactly zbuild:claimed with no hostname suffix
+[event-bus] WARN: unknown event type 'plugin.claim.start' (run_id=run-dscla2-123)
+[event-bus] WARN: unknown event type 'plugin.claim.complete' (run_id=run-dscla2-123)
+  ✓ [DSCLA-2] zbuild_claim_acquire returns 0 (claim acquired via gh)
+  ✓ [DSCLA-2] gh called with zbuild:claimed label
+  ✓ [DSCLA-2] label has no hostname component (machine-specific label not used)
+  ✓ [DSCLA-2] gh issue comment was NOT called (holder goes into run-status comment)
+  ✓ [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains run_id after successful acquire
+  ✓ [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains machine name after successful acquire
+  ✓ [DSCLA-2] run-status comment header contains <!-- zbuild-holder: run_id=<id> machine=<hostname> -->
+[event-bus] WARN: unknown event type 'plugin.claim.start' (run_id=run-dscla2-123)
+[event-bus] WARN: unknown event type 'plugin.claim.complete' (run_id=run-dscla2-123)
+  ✓ [DSCLA-2] zbuild_claim_acquire returns 0 (CI mode)
+  ✓ [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains CI run URL when GITHUB_ACTIONS=true
+  ✓ [DSCLA-12] rendered header contains <!-- zbuild-holder: CI_URL -->
+[event-bus] WARN: unknown event type 'plugin.claim.start' (run_id=run-dscla2-123)
+[event-bus] WARN: unknown event type 'plugin.claim.complete' (run_id=run-dscla2-123)
+  ✓ [DSCLA-3] zbuild_claim_acquire returns 1 when zbuild:claimed is present
+[event-bus] WARN: unknown event type 'plugin.claim.start' (run_id=run-dscla2-123)
+[event-bus] WARN: unknown event type 'plugin.claim.complete' (run_id=run-dscla2-123)
+  ✓ zbuild_claim_acquire returns 1 when issue already claimed (pre-stage check)
+  ✓ _ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim
+  ✓ _ZBUILD_CLAIM_HOLDER contains holder string from run-status comment
+  ✓ [DSCLA-8] no gh calls made for empty issue
+  ✓ [DSCLA-8] zbuild_claim_acquire returns 0 for empty issue
+  ✓ [DSCLA-17] no gh calls made when _ZBUILD_CLAIM_ACQUIRED is not set
+  ✓ [DSCLA-10] event-schema emitted-coverage check does not report pipeline.refused.claimed as unregistered (failed for other reasons)
+{"acquired": true}
+  ✓ [DSCLA-18] gh issue edit is called to add zbuild:claimed
+  ✓ [DSCLA-18] label added has no hostname component (zbuild:claimed, not claimed:<host>)
+  ✓ [DSCLA-20] gh issue edit is called to remove zbuild:claimed
+  ✓ [DSCLA-20] label removed has no hostname component (zbuild:claimed, not claimed:<host>)
+[event-bus] WARN: unknown event type 'plugin.claim.start' (run_id=run-dscla2-123)
+[event-bus] WARN: unknown event type 'plugin.claim.complete' (run_id=run-dscla2-123)
+  ✓ [DSCLA-19] coordinator's claim hook was called (zbuild:claimed in claim store)
+  ✓ [DSCLA-19] gh is not invoked directly within zbuild_claim_acquire
+[event-bus] WARN: unknown event type 'plugin.release.start' (run_id=run-dscla2-123)
+[event-bus] WARN: unknown event type 'plugin.release.complete' (run_id=run-dscla2-123)
+  ✓ [DSCLA-21] coordinator's release hook was called (zbuild:claimed removed from claim store)
+  ✓ [DSCLA-21] gh is not invoked directly within zbuild_claim_release
+
+
+  1 of 36 tests failed
+
+  ✗ claimed label contains 'claimed:' prefix
+
+unit: 615/616 passed (5 skipped)
+integration: 264/264 passed
+e2e: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.yHKulZ/tests/e2e/claim-race-test.sh
+
+  claim-coordinator race (ADR-005, issue #308)
+
+  ✓ github-labels manifest validates as claim-coordinator
+
+  1. 3-way race: exactly-one-winner invariant
+  ✓ 3-way race: no backend errors
+  ✓ 3-way race: no JSON parse errors
+  ✗ 3-way race must produce ≤1 winner
+    got 3 winners
+
+  2. solo claim always wins
+  ✓ solo claimant always wins
+
+  3. losers do not leave orphaned claimed:* labels
+  ✓ 4-way race: no backend errors
+  ✓ ≤1 claimed:* label remains after race (0 present)
+
+  4. release removes the holder's label
+  ✓ release removed claimed:releaser label
+
+  5. list_claims emits JSON array of current holders
+  ✓ list_claims contains the claimed issue
+
+
+  1 of 9 tests failed
+
+  ✗ 3-way race must produce ≤1 winner
+
+e2e: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.yHKulZ/tests/e2e/parity-local-vs-ci-test.sh
+
+  CI/CLI parity — engine behavior is environmentally agnostic (ADR-010)
+
+  ✓ fixture script exists and is executable
+  ✓ fixture runs exit 0 in local mode
+  ✓ pipeline-state.json created (local)
+  ✓ events.jsonl created (local)
+  ✓ fixture runs exit 0 in CI mode
+  ✓ local run pipeline status=complete
+  ✓ CI run pipeline status=complete
+  ✓ event type sequence identical in local and CI modes
+  ✓ stage_statuses identical in local and CI modes
+  [golden] DIFF for parity/event-sequence:
+2a3,4
+> plugin.claim.start
+> plugin.claim.complete
+114a117,118
+> plugin.release.start
+> plugin.release.complete
+  ✗ event sequence matches golden snapshot
+    golden mismatch (run UPDATE_GOLDEN=1 to regenerate)
+  ✓ full pipeline-state.json identical after normalization
+  ✓ artifact filename list identical across modes
+  ✓ all artifact contents identical across modes (sha256, timestamps normalized)
+  ✓ normalized state.json matches golden snapshot
+  ✓ artifact filename list matches golden snapshot
+
+
+  1 of 15 tests failed
+
+  ✗ event sequence matches golden snapshot
+
+e2e: 8/10 passed
+golden: 1/1 passed
+mutation: 25/25 passed
+lint: 1/1 passed
+
+total: 914/917 passed (5 skipped)
