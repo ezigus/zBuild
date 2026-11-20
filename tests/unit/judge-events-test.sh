@@ -178,8 +178,10 @@ _reset
     printf '%s\n' 'diff --git a/scripts/cfg.sh b/scripts/cfg.sh' '+x=2' > "$ART/diff.patch"
     _l
 ) >/dev/null 2>&1
+# #2574 (ADR-072 §4): a lens keeps a report per file of the change; what is
+# not about one is the item `change`, whose fingerprint is the whole change.
 assert_eq "[V4] a lens: saved, used, stale" "2|1|1" \
-    "$(_ev judge.kept.saved '.check == "lens-red-team"')|$(_ev judge.kept.used '.check == "lens-red-team"')|$(_ev judge.kept.stale '.check == "lens-red-team" and .why == "fingerprint"')"
+    "$(_ev judge.kept.saved '.check == "lens-red-team" and .item == "change"')|$(_ev judge.kept.used '.check == "lens-red-team" and .item == "change"')|$(_ev judge.kept.stale '.check == "lens-red-team" and .item == "change" and .why == "fingerprint"')"
 
 print_test_section "V5: declared, and judge.kept gone"
 _decl() { grep -c -- "- $2\$" "$REPO_ROOT/plugins/$1/manifest.yaml" || true; }
