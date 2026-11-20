@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # plugins/claim-coordinator/github-labels/plugin.sh — ADR-005 default plugin (#308)
-# Ports legacy-DoNotUse/scripts/lib/daemon-state.sh:602-720 to the plugin contract.
+# Uses zbuild:claimed as the single shared cross-machine claim label (#1764).
 # Sourced library: inherits caller's pipefail; do not add set -euo pipefail.
 
 [[ -n "${_ZBUILD_CLAIM_GH_LABELS_LOADED:-}" ]] && return 0
@@ -12,15 +12,6 @@ _ZBUILD_CLAIM_GH_LABELS_LOADED=1
 # ZBUILD_CLAIM_STORE/<issue>/labels.txt — one label per line, file-locked via
 # flock to model gh's atomic label edits within a single machine.
 _ccgl_backend() { echo "${ZBUILD_CLAIM_BACKEND:-gh}"; }
-_ccgl_machine_id() {
-    local m="${ZBUILD_CLAIM_MACHINE_ID:-}"
-    [[ -n "$m" ]] && { echo "$m"; return; }
-    if command -v hostname >/dev/null 2>&1; then
-        hostname
-    else
-        echo "unknown-host"
-    fi
-}
 
 # Bounded flock wait (seconds) — never block forever on a stale lock. Matches
 # the bounded-wait pattern used elsewhere in the repo (#320 review L60/L83).
@@ -109,82 +100,87 @@ _ccgl_remove_label() {
     esac
 }
 
+# _ccgl_read_holder <issue> — extract the holder string from the run-status comment.
+# The holder is embedded by rsc_render_header as <!-- zbuild-holder: <string> -->.
+_ccgl_read_holder() {
+    local issue="$1"
+    case "${ZBUILD_CLAIM_BACKEND:-gh}" in
+        local-fs)
+            local store="${ZBUILD_CLAIM_STORE:-}"
+            if [[ -n "$store" ]]; then
+                local rsc="$store/$issue/run-status-comment.txt"
+                if [[ -f "$rsc" ]]; then
+                    local line
+                    while IFS= read -r line; do
+                        if [[ "$line" =~ ^'<!-- zbuild-holder: '(.+)' -->'$ ]]; then
+                            printf '%s' "${BASH_REMATCH[1]}"
+                            return 0
+                        fi
+                    done < "$rsc"
+                fi
+            fi
+            ;;
+        gh)
+            local body
+            body="$(gh issue comment list "$issue" --json body \
+                --jq '[.[] | select(.body | contains("<!-- zbuild-run-status")) | .body] | last' \
+                2>/dev/null || true)"
+            local line
+            while IFS= read -r line; do
+                if [[ "$line" =~ ^'<!-- zbuild-holder: '(.+)' -->'$ ]]; then
+                    printf '%s' "${BASH_REMATCH[1]}"
+                    return 0
+                fi
+            done <<< "$body"
+            ;;
+        *) ;;
+    esac
+}
+
 # ─── Hook: claim <issue_id> ───────────────────────────────────────────────────
-# stdout: {"acquired": bool, "lease_id": "<machine>:<issue>"}
+# stdout: {"acquired": true} on success
+#         {"acquired": false, "holder": "<holder>"} when zbuild:claimed is already present
 # Exit codes:
 #   0 — claim attempted (read JSON for acquired=true|false)
-#   1 — backend error (caller must NOT proceed; treat issue as undeterminable)
+#   1 — backend error
 #   2 — usage error (missing issue id)
 claim_coordinator_claim() {
     local issue="$1"
-    [[ -z "$issue" ]] && { error "claim_coordinator_claim: missing issue id" >&2 || true; return 2; }
+    [[ -z "$issue" ]] && { printf 'claim_coordinator_claim: missing issue id\n' >&2 || true; return 2; }
 
-    local machine; machine="$(_ccgl_machine_id)"
-    local our_label="claimed:${machine}"
-    local lease_id="${machine}:${issue}"
-
-    # Phase 1: read current labels. Propagate backend failure (#320 L134).
-    local existing
+    # Read current labels; propagate backend failure.
+    local existing=""
     if ! existing="$(_ccgl_read_labels "$issue")"; then
-        printf '{"acquired": false, "lease_id": "%s", "reason": "backend_read_error"}\n' "$lease_id"
+        printf '{"acquired": false, "reason": "backend_read_error"}\n'
         return 1
     fi
-    if grep -q "^claimed:" <<< "$existing" && ! grep -Fxq "$our_label" <<< "$existing"; then
-        printf '{"acquired": false, "lease_id": "%s", "reason": "already_claimed"}\n' "$lease_id"
+
+    # If zbuild:claimed is already present, another run holds it.
+    if grep -Fxq "zbuild:claimed" <<< "$existing" 2>/dev/null; then
+        local holder=""
+        holder="$(_ccgl_read_holder "$issue" || true)"
+        # Escape quotes for valid JSON.
+        local escaped_holder
+        escaped_holder="$(printf '%s' "$holder" | sed 's/"/\\"/g' || true)"
+        printf '{"acquired": false, "holder": "%s"}\n' "$escaped_holder"
         return 0
     fi
 
-    # Phase 2: add our label.
-    _ccgl_add_label "$issue" "$our_label" || {
-        printf '{"acquired": false, "lease_id": "%s", "reason": "backend_error"}\n' "$lease_id"
+    # Add the shared claim label zbuild:claimed (no hostname component — RQLAB-2).
+    _ccgl_add_label "$issue" "zbuild:claimed" || {
+        printf '{"acquired": false, "reason": "backend_error"}\n'
         return 1
     }
 
-    # Phase 3: random backoff (legacy: 300–1100 ms) before re-verifying.
-    local min_ms="${ZBUILD_CLAIM_BACKOFF_MIN_MS:-300}"
-    local max_ms="${ZBUILD_CLAIM_BACKOFF_MAX_MS:-1100}"
-    local span=$(( max_ms - min_ms ))
-    local sleep_ms=$(( min_ms + (RANDOM % (span > 0 ? span : 1)) ))
-    # Convert ms → fractional seconds for sleep; macOS / GNU sleep both accept decimals.
-    sleep "$(awk -v n="$sleep_ms" 'BEGIN{printf "%.3f", n/1000.0}')"
-
-    # Phase 4: re-read and verify EXCLUSIVITY — exactly one claimed:* label
-    # and it MUST be ours (legacy daemon-state.sh:680-700 semantics, #320
-    # review L163). If our label is missing (add-label silently failed,
-    # eventual consistency, concurrent cleanup) we treat it as a loss, not
-    # a win.
-    local after
-    if ! after="$(_ccgl_read_labels "$issue")"; then
-        printf '{"acquired": false, "lease_id": "%s", "reason": "backend_reverify_error"}\n' "$lease_id"
-        return 1
-    fi
-    local all_claims
-    all_claims="$(echo "$after" | grep "^claimed:" || true)"
-    local claim_count
-    claim_count="$(echo "$all_claims" | grep -c "^claimed:" || true)"
-
-    if ! grep -Fxq "$our_label" <<< "$all_claims"; then
-        printf '{"acquired": false, "lease_id": "%s", "reason": "our_label_missing_after_add"}\n' "$lease_id"
-        return 0
-    fi
-
-    if [[ "$claim_count" -gt 1 ]]; then
-        # Concurrent claim detected — drop ours and yield.
-        _ccgl_remove_label "$issue" "$our_label" || true
-        printf '{"acquired": false, "lease_id": "%s", "reason": "race_lost"}\n' "$lease_id"
-        return 0
-    fi
-
-    printf '{"acquired": true, "lease_id": "%s"}\n' "$lease_id"
+    printf '{"acquired": true}\n'
     return 0
 }
 
-# ─── Hook: release <issue_id> [lease_id] ──────────────────────────────────────
+# ─── Hook: release <issue_id> ─────────────────────────────────────────────────
 claim_coordinator_release() {
     local issue="$1"
-    [[ -z "$issue" ]] && { error "claim_coordinator_release: missing issue id" >&2 || true; return 2; }
-    local machine; machine="$(_ccgl_machine_id)"
-    _ccgl_remove_label "$issue" "claimed:${machine}"
+    [[ -z "$issue" ]] && { printf 'claim_coordinator_release: missing issue id\n' >&2 || true; return 2; }
+    _ccgl_remove_label "$issue" "zbuild:claimed"
     return 0
 }
 
@@ -200,33 +196,17 @@ claim_coordinator_heartbeat() {
 claim_coordinator_list_claims() {
     case "$(_ccgl_backend)" in
         gh)
-            # `gh issue list --label` does NOT support wildcards or prefix
-            # matches — `--label "claimed:"` looks for a label literally named
-            # "claimed:". List labels first and filter for prefix `claimed:`.
-            local labels_json
-            if ! labels_json="$(gh label list --json name 2>/dev/null)"; then
-                error "list_claims: 'gh label list' failed" >&2 || true
+            # List all issues with the zbuild:claimed label.
+            local issues_json
+            if ! issues_json="$(gh issue list --label "zbuild:claimed" --json number 2>/dev/null)"; then
+                printf 'list_claims: gh issue list failed\n' >&2 || true
                 return 1
             fi
-            local claim_labels
-            claim_labels="$(echo "$labels_json" \
-                | jq -r '.[] | select(.name | startswith("claimed:")) | .name' 2>/dev/null \
-                || true)"
             local results='[]'
-            local label
-            while IFS= read -r label; do
-                [[ -z "$label" ]] && continue
-                local issues_json
-                if ! issues_json="$(gh issue list --label "$label" --json number 2>/dev/null)"; then
-                    error "list_claims: 'gh issue list --label $label' failed" >&2 || true
-                    return 1
-                fi
-                local holder="${label#claimed:}"
-                results="$(echo "$results" | jq --arg h "$holder" --argjson issues "$issues_json" \
-                    '. + ($issues | map({issue: .number, holder: $h, acquired_at: null}))')" \
-                    || { error "list_claims: jq merge failed" >&2 || true; return 1; }
-            done <<< "$claim_labels"
-            echo "$results"
+            results="$(printf '%s' "$issues_json" \
+                | jq 'map({issue: .number, holder: "unknown", acquired_at: null})' \
+                2>/dev/null || true)"
+            printf '%s\n' "${results:-[]}"
             ;;
         local-fs)
             local store="${ZBUILD_CLAIM_STORE:?}"
@@ -236,14 +216,14 @@ claim_coordinator_list_claims() {
                 [[ -d "$issue_dir" ]] || continue
                 issue="$(basename "$issue_dir")"
                 [[ -f "$issue_dir/labels.txt" ]] || continue
-                holder="$(grep -m1 "^claimed:" "$issue_dir/labels.txt" | sed 's/^claimed://')"
-                [[ -z "$holder" ]] && continue
-                results="$(echo "$results" | jq --arg i "$issue" --arg h "$holder" \
+                grep -Fxq "zbuild:claimed" "$issue_dir/labels.txt" 2>/dev/null || continue
+                holder="$(_ccgl_read_holder "$issue" || true)"
+                results="$(printf '%s' "$results" | jq --arg i "$issue" --arg h "$holder" \
                     '. + [{issue: ($i|tonumber), holder: $h, acquired_at: null}]')"
             done
-            echo "$results"
+            printf '%s\n' "$results"
             ;;
-        *) echo '[]' ;;
+        *) printf '[]\n' ;;
     esac
     return 0
 }
