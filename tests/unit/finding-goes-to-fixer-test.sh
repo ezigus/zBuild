@@ -99,7 +99,8 @@ print_test_section "F1/F2: each lens finding goes by what fixes it"
 assert_contains "[F1] build is shown the finding the code must fix" "$BUILD" "CODE-FIX the read is unchecked"
 assert_not_contains "[F1] ...and test-author is not" "$TA" "CODE-FIX"
 assert_contains "[F2] test-author is shown the finding a test must fix" "$TA" "correctness lens, high: TEST-FIX"
-assert_contains "[F2] ...as the lens's test output's finding" "$TA" "lens-correctness-test finding"
+# #2574: by the id of the correctness lens's code (RLCOR).
+assert_contains "[F2] ...as the lens's test output's finding" "$TA" "RLCOR-"
 assert_not_contains "[F2] ...and build is not (#2569)" "$BUILD" "TEST-FIX"
 
 # ── F3 ───────────────────────────────────────────────────────────────────────
