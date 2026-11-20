@@ -1531,9 +1531,16 @@ zb_test_acceptance_ok() {
 # every part of every SPEC is met and every test is laid out in sections
 # (#2467, ADR-073 §6): one ok line per SPEC (#2470), read off the prompt it was
 # asked, as the real check reads it. rc 1 when <prompt> is not that check's.
+# Asked about untagged lines (#2575), it finds each one no assertion.
 zb_test_check_ok() {
-    [[ "$1" == *"judge every part of it against its test"* ]] || return 1
     local l
+    if [[ "$1" == *"carry no requirement's tag"* ]]; then
+        while IFS= read -r l; do
+            [[ "$l" =~ ^-\ (.+\ line\ [0-9]+):\  ]] && printf '%s: not an assertion\n' "${BASH_REMATCH[1]}"
+        done <<< "$1"
+        return 0
+    fi
+    [[ "$1" == *"judge every part of it against its test"* ]] || return 1
     while IFS= read -r l; do
         [[ "$l" =~ ^\#\#\#\ ([A-Z][A-Z0-9_]*-[0-9]+)$ ]] && printf '%s: ok\n' "${BASH_REMATCH[1]}"
     done <<< "$1"
