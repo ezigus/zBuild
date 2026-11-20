@@ -53,23 +53,24 @@ _rl_area_of_v() {
     return 0
 }
 
-# _rl_items_prepare <kept_file> <engine> <base> <whole> <answers> <af_assoc> —
-# the items and their kept reports: _RL_IT_FPS (item → fingerprint: a file's
-# is the lens's prompt without the change and the file's name; `change`'s is
-# the whole change), _RL_IT_DFP (item → the answers to its findings, by
-# fingerprint), _RL_IT_KEPT (JSON object: each kept item's report) and
-# _RL_IT_WANT (the items to ask, `change` among them when any is). Reads
-# _RL_IT_FILES.
+# _rl_items_prepare <kept_file> <engine> <base> <answers> <af_assoc> — the
+# items and their kept reports: _RL_IT_FPS (item → fingerprint: what the lens
+# was shown but the change — its prompt without the change, and the commit the
+# change starts from — and the item's name; one checksum for them all, ADR-065
+# §5), _RL_IT_DFP (item → the answers to its findings, by fingerprint),
+# _RL_IT_KEPT (JSON object: each kept item's report) and _RL_IT_WANT (the items
+# to ask, `change` among them when any is). Reads _RL_IT_FILES. A file's
+# content is in its own kept report's files; `change` depends on every file of
+# the change (_rl_items_keep).
 declare -gA _RL_IT_FPS=() _RL_IT_DFP=()
 _RL_IT_KEPT="{}" _RL_IT_WANT=""
 _rl_items_prepare() {
-    local kf="$1" eng="$2" base="$3" whole="$4" ans="$5" f fp it a k kj
-    local -n _rip_af="$6"
+    local kf="$1" eng="$2" base="$3" ans="$4" f fp it a k kj
+    local -n _rip_af="$5"
     _RL_IT_FPS=() _RL_IT_DFP=() _RL_IT_KEPT="{}" _RL_IT_WANT=""
-    for f in ${_RL_IT_FILES[@]+"${_RL_IT_FILES[@]}"}; do
-        judge_fp_v fp "$eng"$'\n'file$'\n'"$f"$'\n'"$base"; _RL_IT_FPS["$f"]="$fp"
-    done
-    judge_fp_v fp "$eng"$'\n'change$'\n'"$whole"; _RL_IT_FPS[change]="$fp"
+    judge_fp_v fp "$eng"$'\n'"$base"
+    for f in ${_RL_IT_FILES[@]+"${_RL_IT_FILES[@]}"}; do _RL_IT_FPS["$f"]="$fp:file:$f"; done
+    _RL_IT_FPS[change]="$fp:change"
     # shellcheck disable=SC2034  # earlier and why are filled by name
     local -A disp=() kept=() earlier=() why=()
     while IFS= read -r a; do
@@ -153,7 +154,10 @@ _rl_items_keep() {
         if [[ "$j" == "[]" || "$j" == *'"findings":[]'* ]]; then put["$it"]="clean: no finding"$'\n'"$j"
         else put["$it"]="found: findings"$'\n'"$j"; fi
         judge_kept_fp_v "putfp[$it]" "${_RL_IT_FPS[$it]}" "${_RL_IT_DFP[$it]:-}"
-        deps["$it"]="$opened"; [[ "$it" == change ]] || deps["$it"]+="$repo/$it"$'\n'
+        deps["$it"]="$opened"
+        if [[ "$it" == change ]]; then
+            for q in ${_RL_IT_FILES[@]+"${_RL_IT_FILES[@]}"}; do deps["$it"]+="$repo/$q"$'\n'; done
+        else deps["$it"]+="$repo/$it"$'\n'; fi
         # The files its findings quote.
         while [[ "$j" =~ \"file\":\"([^\"]+)\" ]]; do
             q="${BASH_REMATCH[1]}"; j="${j/"\"file\":\"$q\""/}"

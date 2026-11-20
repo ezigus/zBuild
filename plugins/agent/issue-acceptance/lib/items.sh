@@ -83,29 +83,29 @@ _ia_judge() {
         lids+=("${BASH_REMATCH[1]}"); lline["${BASH_REMATCH[1]}"]="$l"
     done <<< "$_lims"
     local listed=0; [[ ${#rids[@]} -gt 0 ]] && listed=1
-    # What a requirement is judged by that is not its own: the change's files
-    # (by name — a file's content is in the files the call read), the test
-    # verdict, the issue's words and terms, and design's lines about it.
-    local chg="${change//"${diff_f:-<none>}"/<the patch>}" accl _fp
+    # What a requirement or limit is judged by that is not its own — the
+    # change's files (by name: a file's content is in the files the call
+    # read), the test verdict, the issue's words and terms — is one checksum
+    # for every item (ADR-065 §5); the item's own lines are its words.
+    local chg="${change//"${diff_f:-<none>}"/<the patch>}" accl _fp _sfp
+    judge_fp_v _sfp "$eng"$'\n'"$issue"$'\n'"$_terms"$'\n'"$test_verdict"$'\n'"$chg"
     if (( listed )); then
         for k in "${rids[@]}"; do
             accl=""; while IFS= read -r l; do [[ "$l" == *"$k"* ]] && accl+="$l"$'\n'; done <<< "$acc"
-            judge_fp_v _fp "$eng"$'\n'req$'\n'"${rline[$k]}"$'\n'"$accl"$'\n'"$issue"$'\n'"$_terms"$'\n'"$test_verdict"$'\n'"$chg"
-            fps["$k"]="$_fp"; items+=("$k")
+            # One line, no tab: a kept file's record reads its fingerprint so.
+            accl="${rline[$k]}|$accl"; fps["$k"]="$_sfp|req|${accl//[$'\n\t']/ }"; items+=("$k")
         done
     else
         judge_fp_v _fp "$eng"$'\n'"$issue"$'\n'"$_lims"$'\n'"$_terms"$'\n'"$acc"$'\n'"$_change_fp"$'\n'"$test_verdict"
         fps[issue]="$_fp"; items+=(issue)
     fi
-    for k in ${lids[@]+"${lids[@]}"}; do
-        judge_fp_v _fp "$eng"$'\n'lim$'\n'"${lline[$k]}"$'\n'"$issue"$'\n'"$_terms"$'\n'"$chg"; fps["$k"]="$_fp"; items+=("$k")
-    done
+    for k in ${lids[@]+"${lids[@]}"}; do fps["$k"]="$_sfp|lim|${lline[$k]//$'\t'/ }"; items+=("$k"); done
     judge_fp_v _fp "$eng"$'\n'unasked$'\n'"$_change_fp"$'\n'"$issue"$'\n'"$_reqs"$'\n'"$acc"; fps[unasked]="$_fp"; items+=(unasked)
     # The questions it carries are an item while there are any (#2571): its
     # next call judges each.
-    judge_fp_v _fp "$eng"$'\n'unclear$'\n'"${_IA_UQ_CARRIED:-}"$'\n'"$issue"$'\n'"$_reqs"; fps[unclear]="$_fp"
+    accl="${_IA_UQ_CARRIED:-}|$_reqs"; fps[unclear]="$_sfp|unclear|${accl//[$'\n\t']/ }"
     [[ -n "${_IA_UQ_CARRIED:-}" ]] && items+=(unclear)
-    judge_fp_v _fp "$eng"$'\n'answers; fps[answers]="$_fp"
+    fps[answers]="$eng|answers"
     # Each answer to one of its findings, by the item the finding is about; one
     # that names none is every item's (#2569, ADR-072 §5).
     local -A af=() disp=() dfp=() held=() kept=() earlier=() kwhy=()

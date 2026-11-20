@@ -137,8 +137,9 @@ _review_lens_run_inner() {
     judge_answers_to_v _rl_ans "$artifact_dir" "lens-${lens}-code" "lens-${lens}-test" "lens-${lens}-design" ${_rl_fc:+"$_rl_fc"}
     local -a _rl_lf=(); for _rl_w in code test design; do _rl_lf+=("lens-${lens}-$_rl_w=${out%.json}-$_rl_w-result.json"); done
     [[ -n "$_rl_ans" ]] && judge_answered_findings_v _rl_af "$_rl_ans" "${_rl_lf[@]}"
-    # A round's routed findings are this round's only (#2433).
-    rm -f "${out%.json}-code-result.json" "${out%.json}-test-result.json" "${out%.json}-design-result.json" 2>/dev/null || true
+    # A round's routed findings are this round's only (#2433); rm only when one is there.
+    local -a _rl_old=(); for _rl_w in code test design; do [[ -e "${out%.json}-$_rl_w-result.json" ]] && _rl_old+=("${out%.json}-$_rl_w-result.json"); done
+    [[ ${#_rl_old[@]} -gt 0 ]] && { rm -f "${_rl_old[@]}" 2>/dev/null || true; }
 
     # #2507 (ADR-072 §7): the lens is pointed at the change — the commit the
     # branch started from and the files it changed — and reads it with git.
@@ -172,7 +173,8 @@ _review_lens_run_inner() {
     _rl_fpb="${_rl_fpb//"$evidence"/<the patch>}"
     _rl_changed_files_v _RL_IT_FILES "$_rl_change" "$_rl_patch"
     judge_engine_v _rl_eng
-    _rl_items_prepare "${out%.json}-judged.json" "$_rl_eng" "$_rl_fpb" "$_rl_judged" "$_rl_ans" _rl_af
+    # No starting commit: the change is the patch, in every item's fingerprint.
+    _rl_items_prepare "${out%.json}-judged.json" "$_rl_eng" "$_rl_fpb"$'\n'"${_rl_base:-$_rl_cfp}" "$_rl_ans" _rl_af
     [[ -n "$_RL_IT_WANT" ]] && { _rl_items_only_v _rl_only; prompt+="$_rl_only"; }
 
     # ADR-067 §8: the lens's three parts and the engine's blocks — its budget
@@ -422,7 +424,7 @@ _review_lens_run_inner() {
     # #2556: one jq gives the lens's outcome and each routed result whole —
     # one output per topic, each failing only on a finding that blocks — so a
     # lens pays no jq per output (ADR-065).
-    local _rl_route _rl_k _rl_v _rl_issue=""; _rl_outcome="pass"
+    local _rl_route _rl_k _rl_v _rl_issue="" score=0 findings_count=0; _rl_outcome="pass"
     # #2574 (ADR-068 §5): each routed finding's id, from the lens's own code.
     local _rl_code="" _rl_reg="{}"; _rl_finding_code_v _rl_code "$lens"
     zb_findings_reg_v _rl_reg "$artifact_dir" "$_rl_code" || _rl_code=""
@@ -442,7 +444,9 @@ _review_lens_run_inner() {
                   + (if .value.id then {id: .value.id} else {} end) + (if .value.area then {area: .value.area} else {} end)]}} else {} end);
         [.findings[] | select(.fix == "issue" and at_fail_on)] as $issue
         | [.findings[] | select(.fix != "issue" and .introduced)] as $sent
-        | "outcome\t" + (if ($issue | length) > 0 then "misconfigured" elif ([$sent[] | select(at_fail_on)] | length) > 0 then "fail" else "pass" end),
+        # The score and how many findings: read here, by no jq of their own (ADR-065 §5).
+        | "score\t\(.score // 0)", "count\t\(.findings | length)",
+          "outcome\t" + (if ($issue | length) > 0 then "misconfigured" elif ([$sent[] | select(at_fail_on)] | length) > 0 then "fail" else "pass" end),
           "issue\t" + (($issue[0].message // "") | tostring | gsub("[\r\n\t]+"; " ")),
           # #2569 (ADR-071 §1): the fix: word of a finding is its topic,
           # <fix>-findings, and names its output, lens-<id>-<fix>-result.json:
@@ -459,6 +463,8 @@ _review_lens_run_inner() {
     while IFS=$'\t' read -r _rl_k _rl_v; do
         case "$_rl_k" in
             outcome) _rl_outcome="$_rl_v" ;;
+            score) score="$_rl_v" ;;
+            count) findings_count="$_rl_v" ;;
             issue) _rl_issue="$_rl_v" ;;
             code|test|design) atomic_write "${out%.json}-${_rl_k}-result.json" <<< "$_rl_v" ;;
             reg) zb_findings_reg_put "$artifact_dir" "$_rl_code" "$_rl_v" ;;
@@ -472,9 +478,6 @@ _review_lens_run_inner() {
     [[ "$_rl_outcome" == broken ]] && _rl_reason="the ${lens} lens's findings could not be sent on to the stages that fix them"
     printf '%s' "$normalized" | atomic_write "$out" \
         && stage_result_add "$out" "$_rl_outcome" "$_rl_reason"
-    local score findings_count
-    score="$(printf '%s' "$normalized" | jq -r '.score // 0' 2>/dev/null || echo 0)"
-    findings_count="$(printf '%s' "$normalized" | jq '.findings | length' 2>/dev/null || echo 0)"
     local _rl_head _rl_body
     _rl_summary_head_v _rl_head "$lens" "$normalized" _rl_body
     # #2552: what the check knocked down reaches no stage — a person sees it here.
