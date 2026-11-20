@@ -77,7 +77,7 @@ The question and your assumption are shown to the people who can answer it."
 # shellcheck disable=SC2034  # read by build's and test-author's prompts
 ZB_UNCLEAR_NOT_YOURS="What is unclear to you about what the issue or the design means is the design's to settle, never yours. Never decide the issue's meaning yourself.
 Work to the design. Work to the assumption a stage stated in an UNCLEAR line under Previous work: one you think wrong is a finding for the stage that raised it, never a silent override. When the design leaves something unclear, or a stated assumption looks wrong to you, answer the finding it bears on, on its own line:
-    ANSWER <the finding as listed>: not mine — design must <what design must settle>: <why>"
+    ANSWER <its id>: not mine — design must <what design must settle>: <why>"
 
 # The old form (#2508): groups 1 id, 2 question, 3 assumed.
 _ZB_UNCLEAR_RE='^[[:space:]]*UNCLEAR:[[:space:]]*([^|]*[^|[:space:]])[[:space:]]*\|[[:space:]]*([^|]*[^|[:space:]])[[:space:]]*\|[[:space:]]*(.*[^[:space:]])[[:space:]]*$'

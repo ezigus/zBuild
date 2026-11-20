@@ -41,7 +41,7 @@ print_test_section "NY1: the rule"
 assert_contains "[NY1] what is unclear is the design's" "$RULE" \
     "What is unclear to you about what the issue or the design means is the design's to settle, never yours"
 assert_contains "[NY1] ...sent to design as a finding" "$RULE" \
-    "ANSWER <the finding as listed>: not mine — design must <what design must settle>: <why>"
+    "ANSWER <its id>: not mine — design must <what design must settle>: <why>"
 assert_contains "[NY1] ...never deciding the issue's meaning" "$RULE" "Never decide the issue's meaning yourself"
 assert_contains "[NY1] a stated assumption is worked to" "$RULE" \
     "Work to the assumption a stage stated in an UNCLEAR line under Previous work"

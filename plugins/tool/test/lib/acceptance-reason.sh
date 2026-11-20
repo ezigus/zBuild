@@ -5,6 +5,8 @@
 # shellcheck source=../../../../scripts/lib/stage-handoff.sh
 declare -F stage_findings_route_each >/dev/null 2>&1 \
     || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/stage-handoff.sh"
+# #2574 (ADR-068 §5): the code test's findings' ids take (TEFND).
+[[ -n "${_TEST_FCODE:-}" ]] || { _TEST_FCODE=""; zb_finding_code_v _TEST_FCODE "${BASH_SOURCE[0]%/*}/../manifest.yaml"; }
 
 # _ag_resolve_negctl_timeout <stage_id> — per-test negctl/reachability timeout (s).
 # Precedence (ADR-036 #1188): explicit ZBUILD_NEGCTL_TIMEOUT env > per-stage
@@ -248,7 +250,7 @@ _ag_build_reason() {
 _ag_route_findings() {
     local _agr_f="$1" _agr_n; shift
     _agr_n="${_agr_f##*/}"; _agr_n="${_agr_n%-result.json}"
-    _AG_REASON_LINES=1 _ag_build_reason "$@" | stage_findings_route_each "${_agr_f%/*}" "$_agr_n" design-findings
+    _AG_REASON_LINES=1 _ag_build_reason "$@" | stage_findings_route_each "${_agr_f%/*}" "$_agr_n" design-findings "$_TEST_FCODE"
 }
 
 # The lib functions acceptance_gate_run calls. One undefined after loading means
@@ -287,7 +289,7 @@ _ag_fail_load() {
     local _agl_n="${result_file##*/}"; _agl_n="${_agl_n%-result.json}"
     # #2569 (review): no stage can fix the check's own code — it stops the run
     # (broken, terminal), its finding in its own result only.
-    fnd="$(printf 'report\t%s\n' "${reason#the acceptance check failed — }" | stage_findings_route_each "$(dirname "$result_file")" "$_agl_n" design-findings)"
+    fnd="$(printf 'report\t%s\n' "${reason#the acceptance check failed — }" | stage_findings_route_each "$(dirname "$result_file")" "$_agl_n" design-findings "$_TEST_FCODE")"
     _ag_write_result "$result_file" broken "$reason" \
         "$(jq -cn --argjson f "$failures_json" --argjson fnd "${fnd:-[]}" \
             '{severity:"terminal",failures:$f,data:{findings:$fnd}}')"

@@ -205,7 +205,8 @@ _review_lens_run_inner() {
     # judged is unchanged; a stage's answer to one of its findings has it judge
     # again, shown the finding and the answer (its last findings, above).
     local _rl_repo="${ZBUILD_REPO_ROOT:-$PWD}" _rl_kf="${out%.json}-judged.json" _rl_eng _rl_fp _rl_kept="" _rl_ans
-    judge_answers_to_v _rl_ans "$artifact_dir" "lens-${lens}-code" "lens-${lens}-test" "lens-${lens}-design"
+    local _rl_fc=""; _rl_finding_code_v _rl_fc "$lens"
+    judge_answers_to_v _rl_ans "$artifact_dir" "lens-${lens}-code" "lens-${lens}-test" "lens-${lens}-design" ${_rl_fc:+"$_rl_fc"}
     judge_engine_v _rl_eng
     judge_fp_v _rl_fp "$_rl_eng"$'\n'"$lens"$'\n'"$_rl_judged"$'\n'"$_rl_ans"
     local _rl_disputed=0; [[ -n "$_rl_ans" ]] && _rl_disputed=1
@@ -410,17 +411,23 @@ _review_lens_run_inner() {
     # one output per topic, each failing only on a finding that blocks — so a
     # lens pays no jq per output (ADR-065).
     local _rl_route _rl_k _rl_v _rl_issue=""; _rl_outcome="pass"
-    _rl_route="$(printf '%s' "$normalized" | jq -r --arg on " $_rl_fail_on " --arg n "$lens" --argjson c "${_ZBUILD_CONTRACT_V3:-3}" --argjson q "${_RL_UQ_NEWQ:-[]}" '
+    # #2574 (ADR-068 §5): each routed finding's id, from the lens's own code.
+    local _rl_code="" _rl_reg="{}"; _rl_finding_code_v _rl_code "$lens"
+    zb_findings_reg_v _rl_reg "$artifact_dir" "$_rl_code" || _rl_code=""
+    _rl_route="$(printf '%s' "$normalized" | jq -r --arg on " $_rl_fail_on " --arg n "$lens" --argjson c "${_ZBUILD_CONTRACT_V3:-3}" --argjson q "${_RL_UQ_NEWQ:-[]}" \
+        --arg reg "$_rl_reg" --arg code "$_rl_code" "$_ZB_FINDING_IDS_JQ"'
         def at_fail_on: .severity as $s | ($on | contains(" \($s) "));
         # #2506 (ADR-072 §3): shown with its quote, never a line — lines move.
         def line: "\($n) lens, \(.severity): \(.message) (\(.file)\(if (.quote | tostring) != "" then ": \"\(.quote | tostring | gsub("[\r\n]+"; " "))\"" else "" end); happens when: \(.trigger // "" | tostring | gsub("[\r\n]+"; " ")); fix: \(.fix); ACCEPTED IF: \(.accepted_if // "" | tostring | gsub("[\r\n]+"; " ")))";
-        def routed: {text: line, blocking: at_fail_on};
+        # #2574 (R3): its area — the file it is about — is the item it is kept under.
+        def routed: {text: line, blocking: at_fail_on, area: (.file // "unknown" | tostring)};
         # One routed result (#2433): fail with a numbered finding per item when
         # one blocks, pass otherwise.
         def result($what): . as $l
             | {result_contract: $c, outcome: (if ([$l[] | select(.blocking)] | length) > 0 then "fail" else "pass" end),
                reason: (if ($l | length) > 0 then $what else "\($what): none" end)}
-              + (if ($l | length) > 0 then {data: {findings: [$l | to_entries[] | {n: (.key + 1), text: .value.text, blocking: .value.blocking}]}} else {} end);
+              + (if ($l | length) > 0 then {data: {findings: [$l | to_entries[] | {n: (.key + 1), text: .value.text, blocking: .value.blocking}
+                  + (if .value.id then {id: .value.id} else {} end) + (if .value.area then {area: .value.area} else {} end)]}} else {} end);
         [.findings[] | select(.fix == "issue" and at_fail_on)] as $issue
         | [.findings[] | select(.fix != "issue" and .introduced)] as $sent
         | "outcome\t" + (if ($issue | length) > 0 then "misconfigured" elif ([$sent[] | select(at_fail_on)] | length) > 0 then "fail" else "pass" end),
@@ -429,15 +436,20 @@ _review_lens_run_inner() {
           # <fix>-findings, and names its output, lens-<id>-<fix>-result.json:
           # no translation. One saying the issue is wrong goes with design.
           # #2571: so does a question it raised now, blocking nothing.
-          (["code", "test", "design"][] as $w
-           | "\($w)\t" + (([$sent[] | select(.fix == $w) | routed] + (if $w == "design" then [$issue[] | routed]
-                  + [$q[] | {text: "The issue is unclear here, and the \($n) lens judged by the assumption: \(.)", blocking: false}] else [] end))
-               | result("the \($n) lens'"'"'s findings the \($w) must fix") | tojson))' 2>/dev/null)" || _rl_route=""
+          ([["code", "test", "design"][] as $w
+            | ([$sent[] | select(.fix == $w) | routed] + (if $w == "design" then [$issue[] | routed]
+                  + [$q[] | {text: "The issue is unclear here, and the \($n) lens judged by the assumption: \(.)", blocking: false}] else [] end))[]
+            | . + {w: $w}] as $rall
+           | (if $code != "" and ($rall | length) > 0 then ($rall | zb_fids($reg; $code)) else {out: $rall, r: null} end) as $z
+           | (["code", "test", "design"][] as $w
+              | "\($w)\t" + ([$z.out[] | select(.w == $w) | del(.w)] | result("the \($n) lens'"'"'s findings the \($w) must fix") | tojson)),
+             (if $z.r then "reg\t" + ($z.r | tojson) else empty end))' 2>/dev/null)" || _rl_route=""
     while IFS=$'\t' read -r _rl_k _rl_v; do
         case "$_rl_k" in
             outcome) _rl_outcome="$_rl_v" ;;
             issue) _rl_issue="$_rl_v" ;;
             code|test|design) atomic_write "${out%.json}-${_rl_k}-result.json" <<< "$_rl_v" ;;
+            reg) zb_findings_reg_put "$artifact_dir" "$_rl_code" "$_rl_v" ;;
         esac
     done <<< "$_rl_route"
     # A routing that gave nothing is no pass: the lens's findings reached no stage.
@@ -465,6 +477,16 @@ _review_lens_run_inner() {
         "lens=$lens" "score=$score" "findings_count=$findings_count" \
         "router_rc=$router_rc"
     return 0
+}
+
+# _rl_finding_code_v <var> <lens> — the code a lens's findings' ids take
+# (#2574, ADR-068 §5): the stage's prefix and three letters of the lens's
+# name (RLSRE, RLSEC, RLCOR), so two lenses' ids are never the same.
+_rl_finding_code_v() {
+    local -n _rfc="$1"; local _rfc_t="${2^^}"
+    _rfc_t="${_rfc_t//[^A-Z0-9]/}XXX"; _rfc_t="${_rfc_t:0:3}"
+    [[ "$_rfc_t" =~ ^[A-Z] ]] || _rfc_t="L${_rfc_t:0:2}"
+    zb_finding_code_v _rfc "$_RL_DIR/manifest.yaml" "$_rfc_t"
 }
 
 # _rl_summary_head_v <var> <lens> <normalized-json> [body-var] — #2476: what

@@ -11,21 +11,30 @@ _ZBUILD_JUDGE_HELD_LOADED=1
 
 # ─── Answers to a check's findings (§5, ADR-068 §6) ──────────────────────────
 
-# judge_answers_to <artifact_dir> <label>... — every answer a stage keeps in
-# its result (data.answers) to a finding labelled <label>, one per line: done,
-# wrong or not mine, each goes back to the finding's judge (#2569, ADR-072 §5),
-# which is held to its finding.
+# judge_answers_to <artifact_dir> <label|code>... — every answer a stage keeps in
+# its result (data.answers) to a finding labelled <label> (the form before
+# #2574) or with an id of <code> (#2574), one per line: done, wrong or not
+# mine, each goes back to the finding's judge (#2569, ADR-072 §5), which is
+# held to its finding.
 judge_answers_to() { local _jat=""; judge_answers_to_v _jat "$@"; [[ -n "$_jat" ]] && printf '%s\n' "$_jat"; return 0; }
-# judge_answers_to_v <var> <artifact_dir> <label>... — the same into <var>.
+# judge_answers_to_v <var> <artifact_dir> <label|code>... — the same into <var>.
+# _JUDGE_ANSWER_FINDING gets the text of each answered finding the answering
+# stage kept with its answers (data.answer_findings): the finding travels with
+# the answer (#2574).
+declare -gA _JUDGE_ANSWER_FINDING=()
 judge_answers_to_v() {
     local -n _jatv="$1"; shift
-    _jatv=""
+    _jatv=""; _JUDGE_ANSWER_FINDING=()
     local dir="${1:+${1%/}}"; shift
     [[ -d "$dir" && $# -gt 0 ]] || return 0
-    local re="" l
-    for l in "$@"; do re+="${re:+|}${l//[^A-Za-z0-9_-]/.}"; done
+    local re="" cre="" l
+    for l in "$@"; do
+        if [[ "$l" =~ ^[A-Z][A-Z0-9]{2,5}$ ]]; then cre+="${cre:+|}$l"
+        else re+="${re:+|}${l//[^A-Za-z0-9_-]/.}"; fi
+    done
+    local key="(${re:+($re) finding [0-9]+}${re:+${cre:+|}}${cre:+($cre)-[0-9]+})"
     local -a files=()
-    local f _jat_body
+    local f _jat_body _jat_t _jat_k _jat_x
     for f in "$dir"/*.json; do
         [[ -f "$f" ]] || continue
         # read, not $(<): no process for a file with no answers (ADR-065 §5).
@@ -33,19 +42,30 @@ judge_answers_to_v() {
         [[ "$_jat_body" == *'"answers"'* ]] && files+=("$f")
     done
     [[ ${#files[@]} -gt 0 ]] || return 0
-    _jatv="$(jq -r --arg re "^($re) finding [0-9]+[[:space:]]*:[[:space:]*_\`]*(done|wrong|not[[:space:]]+mine)([^A-Za-z]|$)" \
-        '(.data.answers // [])[]? | strings | select(test($re; "i"))' "${files[@]}" 2>/dev/null)" || true
+    while IFS=$'\t' read -r _jat_t _jat_k _jat_x; do
+        case "$_jat_t" in
+            A) _jatv+="${_jatv:+$'\n'}$_jat_k" ;;
+            T) [[ -n "$_jat_k" ]] && _JUDGE_ANSWER_FINDING["$_jat_k"]="${_jat_x//$'\x1e'/$'\n'}" ;;
+        esac
+    done < <(jq -r --arg re "^${key}[[:space:]]*:[[:space:]*_\`]*(done|wrong|not[[:space:]]+mine)([^A-Za-z]|$)" --arg kre "^${key}$" \
+        '((.data.answers // [])[]? | strings | select(test($re; "i")) | "A\t" + gsub("[\t\r\n]"; " ")),
+         ((.data.answer_findings // {}) | objects | to_entries[] | select(.key | test($kre; "i"))
+          | "T\t\(.key)\t\(.value | tostring | gsub("\t"; " ") | gsub("\r?\n"; "\u001e"))")' "${files[@]}" 2>/dev/null)
+    return 0
 }
 
 # judge_answered_findings_v <out_assoc> <answers> <label>=<result_json>... —
-# each answer of <answers> ("<label> finding <n>: <answer>", one per line) with
-# the finding it answers, as the stage was given it: finding <n> of the result
-# its <label> names. <out_assoc>["<label> finding <n>"] = the finding's text
-# (its lines joined by a record separator), a unit separator, and the answer.
-# An answer to a finding not found keeps an empty text. One jq for every result
-# (#2569, ADR-072 §5); none when there is no answer.
+# each answer of <answers> ("<id>: <answer>", or, before #2574, "<label>
+# finding <n>: <answer>", one per line) with the finding it answers.
+# <out_assoc>[<key>] = the finding's text (its lines joined by a record
+# separator), a unit separator, and the answer. The text is the one that
+# travelled with the answer (_JUDGE_ANSWER_FINDING, judge_answers_to_v) when it
+# did; else the finding with that id, or finding <n> of the result its <label>
+# names. An answer whose finding is found nowhere keeps an empty text: it is
+# never given another finding's (#2574). One jq for every result (#2569,
+# ADR-072 §5); none when there is no answer.
 judge_answered_findings_v() {
-    local -n _jaf="$1"; local _jaf_ans="$2" _jaf_p _jaf_l _jaf_n _jaf_k _jaf_t _jaf_f
+    local -n _jaf="$1"; local _jaf_ans="$2" _jaf_p _jaf_l _jaf_n _jaf_k _jaf_t _jaf_f _jaf_i
     shift 2
     _jaf=()
     local -A _jaf_file=() _jaf_label=() _jaf_txt=()
@@ -56,29 +76,41 @@ judge_answered_findings_v() {
     local -a _jaf_order=() _jaf_fs=()
     local -A _jaf_said=()
     local _jaf_re='^([A-Za-z0-9_-]+) finding ([0-9]+)[[:space:]]*:[[:space:]]*(.*)$'
+    local _jaf_ire='^('"$_ZB_FID_RE"')[[:space:]]*:[[:space:]]*(.*)$'
     while IFS= read -r _jaf_l; do
-        [[ "$_jaf_l" =~ $_jaf_re ]] || continue
-        _jaf_k="${BASH_REMATCH[1]} finding ${BASH_REMATCH[2]}"
-        [[ -n "${_jaf_file[${BASH_REMATCH[1]}]+x}" ]] || continue
+        if [[ "$_jaf_l" =~ $_jaf_ire ]]; then
+            _jaf_k="${BASH_REMATCH[1]}"; _jaf_t="${BASH_REMATCH[2]}"
+        elif [[ "$_jaf_l" =~ $_jaf_re ]]; then
+            _jaf_k="${BASH_REMATCH[1]} finding ${BASH_REMATCH[2]}"; _jaf_t="${BASH_REMATCH[3]}"
+            [[ -n "${_jaf_file[${BASH_REMATCH[1]}]+x}" ]] || continue
+        else
+            continue
+        fi
         [[ -n "${_jaf_said[$_jaf_k]+x}" ]] || _jaf_order+=("$_jaf_k")
-        _jaf_said["$_jaf_k"]="${BASH_REMATCH[3]}"
+        _jaf_said["$_jaf_k"]="$_jaf_t"
     done <<< "$_jaf_ans"
     [[ ${#_jaf_order[@]} -gt 0 ]] || return 0
     for _jaf_l in "${!_jaf_file[@]}"; do
         _jaf_f="${_jaf_file[$_jaf_l]}"
         [[ -s "$_jaf_f" ]] || continue
-        _jaf_fs+=("$_jaf_f"); _jaf_label["$_jaf_f"]+="$_jaf_l"$'\n'
+        [[ -n "${_jaf_label[$_jaf_f]+x}" ]] || _jaf_fs+=("$_jaf_f")
+        _jaf_label["$_jaf_f"]+="$_jaf_l"$'\n'
     done
     if [[ ${#_jaf_fs[@]} -gt 0 ]]; then
-        while IFS=$'\t' read -r _jaf_f _jaf_n _jaf_t; do
+        while IFS=$'\t' read -r _jaf_f _jaf_n _jaf_i _jaf_t; do
             [[ -n "$_jaf_f" ]] || continue
+            [[ "$_jaf_i" != - ]] && _jaf_txt["$_jaf_i"]="$_jaf_t"
             while IFS= read -r _jaf_l; do
                 [[ -n "$_jaf_l" ]] && _jaf_txt["$_jaf_l finding $_jaf_n"]="$_jaf_t"
             done <<< "${_jaf_label[$_jaf_f]:-}"
         done < <(jq -r 'input_filename as $f | (.data.findings // [])[]? | select((.n | type) == "number")
-            | "\($f)\t\(.n)\t\(.text | tostring | gsub("[\t]"; " ") | gsub("\r?\n"; "\u001e"))"' "${_jaf_fs[@]}" 2>/dev/null)
+            | "\($f)\t\(.n)\t\(if (.id | type) == "string" then .id else "-" end)\t\(.text | tostring | gsub("[\t]"; " ") | gsub("\r?\n"; "\u001e"))"' "${_jaf_fs[@]}" 2>/dev/null)
     fi
-    for _jaf_k in "${_jaf_order[@]}"; do _jaf["$_jaf_k"]="${_jaf_txt[$_jaf_k]:-}"$'\x1f'"${_jaf_said[$_jaf_k]}"; done
+    for _jaf_k in "${_jaf_order[@]}"; do
+        if [[ -n "${_JUDGE_ANSWER_FINDING[$_jaf_k]+x}" ]]; then _jaf_t="${_JUDGE_ANSWER_FINDING[$_jaf_k]//$'\n'/$'\x1e'}"
+        else _jaf_t="${_jaf_txt[$_jaf_k]:-}"; fi
+        _jaf["$_jaf_k"]="$_jaf_t"$'\x1f'"${_jaf_said[$_jaf_k]}"
+    done
 }
 
 # What a check is shown of each earlier finding, at most (review on #2569):
@@ -112,11 +144,12 @@ judge_held_entries_v() {
     local -n _jhs_v="$1"; local _jhs_a="$2" _jhs_l _jhs_k _jhs_e
     shift 2
     _jhs_v=""
-    [[ "$_jhs_a" == *" finding "* ]] || return 0
+    [[ -n "$_jhs_a" ]] || return 0
     local -A _jhs_af=()
     judge_answered_findings_v _jhs_af "$_jhs_a" "$@"
+    local _jhs_re='^('"$_ZB_FID_RE"'|[A-Za-z0-9_-]+ finding [0-9]+)[[:space:]]*:'
     while IFS= read -r _jhs_l; do
-        [[ "$_jhs_l" =~ ^([A-Za-z0-9_-]+\ finding\ [0-9]+) ]] || continue
+        [[ "$_jhs_l" =~ $_jhs_re ]] || continue
         _jhs_k="${BASH_REMATCH[1]}"
         [[ -n "${_jhs_af[$_jhs_k]+x}" ]] || continue
         judge_held_entry_v _jhs_e "$_jhs_k" "${_jhs_af[$_jhs_k]}"; unset '_jhs_af[$_jhs_k]'
@@ -164,14 +197,17 @@ judge_last_findings_block_v() {
         _jlf_s=""; IFS= read -r -d '' _jlf_s < "$_jlf_f" || true
         [[ "$_jlf_s" == *'"findings"'* ]] || continue
         _jlf_ans=""
-        [[ ${#_jlf_with[@]} -gt 0 ]] && _jlf_ans="$(jq -r --arg re "^${_jlf_l//[^A-Za-z0-9_-]/.} finding [0-9]+[[:space:]]*:" \
+        # #2574: an answer names the finding's id, or (before ids) its place.
+        [[ ${#_jlf_with[@]} -gt 0 ]] && _jlf_ans="$(jq -r --arg re "^(${_jlf_l//[^A-Za-z0-9_-]/.} finding [0-9]+|$_ZB_FID_RE)[[:space:]]*:" \
             '(.data.answers // [])[]? | strings | select(test($re))' "${_jlf_with[@]}" 2>/dev/null)"
         _jlf_body+="$(jq -r --arg l "$_jlf_l" --arg a "$_jlf_ans" '
             ($a | split("\n") | map(select(length > 0))) as $ans
             | (.data.findings // [])[]? | select((.n | type) == "number")
-            | "\($l) finding \(.n)" as $k
+            | "\($l) finding \(.n)" as $old
+            | (if (.id | type) == "string" then .id else $old end) as $k
             | "- \($k): \(.text | tostring | split("\n")[0])"
-              + ([$ans[] | select(startswith($k + ":")) | "\n  answered: " + ltrimstr($k + ": ")] | join(""))' "$_jlf_f" 2>/dev/null)"$'\n'
+              + ([$ans[] | . as $x | ([$k, $old] | map(select(. as $y | $x | startswith($y + ":"))) | first) as $m
+                  | select($m != null) | "\n  answered: " + ($x | ltrimstr($m + ":") | ltrimstr(" "))] | join(""))' "$_jlf_f" 2>/dev/null)"$'\n'
     done
     [[ -n "${_jlf_body//[[:space:]]/}" ]] || return 0
     _jlf=$'\n'"YOUR FINDINGS LAST TIME — each with what the stages given it answered. A finding you report again keeps the grade you gave it, unless you quote what changed since that makes it worse. For each one answered — done, wrong or not mine — say whether the answer resolves it: when it does (its ACCEPTED IF now holds, or the answer shows it was wrong), do not report it again; when it does not, report it again, its message saying why the answer does not resolve it."$'\n'"${_jlf_body%$'\n'}"

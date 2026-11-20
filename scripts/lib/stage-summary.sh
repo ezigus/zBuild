@@ -15,6 +15,8 @@
 
 [[ -n "${_ZBUILD_STAGE_SUMMARY_SH_LOADED:-}" ]] && return 0
 _ZBUILD_STAGE_SUMMARY_SH_LOADED=1
+# shellcheck source=item-ids.sh
+source "${BASH_SOURCE[0]%/*}/item-ids.sh"
 
 # ─── stage_findings_json — one finding per line on stdin → [{n, text}] ──────
 # #2271 (ADR-068): a check lists what it found as numbered items in its result
@@ -25,23 +27,38 @@ _ZBUILD_STAGE_SUMMARY_SH_LOADED=1
 # §1): a finding names no topic of its own — its output's topic decides who
 # reads it; a stage with findings for several topics writes them with
 # stage_findings_route.
+# #2574 (ADR-068 §5): with <dir> and <code>, each finding also gets its id
+# (zb_fids, item-ids.sh): the same finding keeps it, numbered in the same jq.
 stage_findings_json() {
-    jq -R -s -c '[ split("\n")[] | sub("^\\s+"; "") | sub("\\s+$"; "") | select(length > 0) ]
-         | to_entries | map({n: (.key + 1), text: (.value | gsub("\u001e"; "\n"))})' 2>/dev/null || printf '[]'
+    local _sfj_reg="" _sfj_out="" _sfj_f="" _sfj_r=""
+    if ! zb_findings_reg_v _sfj_reg "${1:-}" "${2:-}"; then
+        jq -R -s -c '[ split("\n")[] | sub("^\\s+"; "") | sub("\\s+$"; "") | select(length > 0) ]
+             | to_entries | map({n: (.key + 1), text: (.value | gsub("\u001e"; "\n"))})' 2>/dev/null || printf '[]'
+        return 0
+    fi
+    _sfj_out="$(jq -R -s -r --arg reg "$_sfj_reg" --arg code "$2" "$_ZB_FINDING_IDS_JQ"'
+        [ split("\n")[] | sub("^\\s+"; "") | sub("\\s+$"; "") | select(length > 0) ]
+        | to_entries | map({n: (.key + 1), text: (.value | gsub("\u001e"; "\n"))})
+        | if length == 0 then "[]", "-" else zb_fids($reg; $code) | (.out | tojson), (.r | tojson) end' 2>/dev/null)"
+    { IFS= read -r _sfj_f; IFS= read -r _sfj_r; } <<< "$_sfj_out"
+    [[ "$_sfj_r" == "{"* ]] && zb_findings_reg_put "$1" "$2" "$_sfj_r"
+    printf '%s' "${_sfj_f:-[]}"
 }
 
 # The topics a finding line may be routed to, and each one's word in its file's
 # name: <name>-<word>-result.json. #2569: the word is what must change.
 _ZB_FINDING_TOPICS='^(design-findings|test-findings|code-findings)\t'
 
-# stage_findings_route <dir> <name> <default-topic> — reads finding lines on
+# stage_findings_route <dir> <name> <default-topic> [code] — reads finding lines on
 # stdin, "<topic><TAB><text>" or "<text>" (the default topic); writes each
 # topic's findings, numbered, to <dir>/<name>-<word>-result.json (the topic
 # without "-findings"), with no verdict of its own, and removes the file of a
 # topic that has none; prints every finding, numbered and naming no topic, for
-# the stage's own result (#2556, ADR-071 §1).
+# the stage's own result (#2556, ADR-071 §1). [code]: each finding's id
+# (#2574), the same in every output it is in.
 stage_findings_route() {
-    local dir="$1" name="$2" def="$3" _in="" _l _w _j _all="[]"
+    local dir="$1" name="$2" def="$3" code="${4:-}" _in="" _l _w _j _all="[]" _reg="" _ids=0
+    zb_findings_reg_v _reg "$dir" "$code" && _ids=1
     IFS= read -r -d '' _in || true
     local -A _sfr_has=()
     local -a _sfr_gone=()
@@ -57,16 +74,23 @@ stage_findings_route() {
     while IFS=$'\t' read -r _w _j; do
         [[ -n "$_w" ]] || continue
         if [[ "$_w" == ALL ]]; then _all="$_j"; continue; fi
+        if [[ "$_w" == REG ]]; then zb_findings_reg_put "$dir" "$code" "$_j"; continue; fi
         # Counted as written only once it is: a file that could not be
         # written is removed below, never left from an earlier try.
         atomic_write "$dir/$name-$_w-result.json" <<< "$_j" 2>/dev/null && _sfr_has[$_w]=1
-    done < <(jq -R -s -r --arg d "$def" --arg re "$_ZB_FINDING_TOPICS" '
+    # #2574: with a code, every finding gets its id once, over the whole list,
+    # so it has the same id in the stage's own list and in its topic's output.
+    done < <(jq -R -s -r --arg d "$def" --arg re "$_ZB_FINDING_TOPICS" --arg reg "$_reg" --arg code "$code" --argjson ids "$_ids" "$_ZB_FINDING_IDS_JQ"'
         [ split("\n")[] | sub("^\\s+"; "") | sub("\\s+$"; "") | select(length > 0)
           | if test($re) then {t: split("\t")[0], x: sub("^[^\t]+\t"; "")} else {t: $d, x: .} end
-          | .x |= gsub("\u001e"; "\n") ] as $l
-        | ([$l[].t] | unique[] | . as $t
-           | "\($t | sub("-findings$"; ""))\t" + ({data: {findings: ([$l[] | select(.t == $t) | .x] | to_entries | map({n: (.key + 1), text: .value}))}} | tojson)),
-          "ALL\t" + ($l | to_entries | map({n: (.key + 1), text: .value.x}) | tojson)' <<< "$_in" 2>/dev/null)
+          | .x |= gsub("\u001e"; "\n") ] as $l0
+        | (if $ids == 1 then ($l0 | map({text: .x, t: .t}) | zb_fids($reg; $code)) else {out: ($l0 | map({text: .x, t: .t})), r: null} end) as $z
+        | $z.out as $l
+        | def item: {text} + (if .id then {id} else {} end);
+        ([$l[].t] | unique[] | . as $t
+           | "\($t | sub("-findings$"; ""))\t" + ({data: {findings: ([$l[] | select(.t == $t)] | to_entries | map({n: (.key + 1)} + (.value | item)))}} | tojson)),
+          "ALL\t" + ($l | to_entries | map({n: (.key + 1)} + (.value | item)) | tojson),
+          (if $z.r then "REG\t" + ($z.r | tojson) else empty end)' <<< "$_in" 2>/dev/null)
     for _w in design test code; do
         [[ -z "${_sfr_has[$_w]:-}" && -e "$dir/$name-$_w-result.json" ]] && _sfr_gone+=("$dir/$name-$_w-result.json")
     done

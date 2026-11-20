@@ -72,6 +72,8 @@ source "$_DESIGN_ROOT/scripts/lib/earlier-output.sh"
 # the passing design it reports on (default: design.md).
 # design's ANSWER lines from its last call (#2464), kept in its result.
 _DESIGN_ANSWERS=()
+# #2574 (ADR-068 §5): the code its check's findings' ids take (DSFND).
+_DESIGN_FCODE=""; zb_finding_code_v _DESIGN_FCODE "$_DESIGN_DIR/manifest.yaml"
 _design_write_outcome() {
     local dir="$1" outcome="$2" reason="$3" findings="${4:-[]}" design="${5:-$1/design.md}"
     mkdir -p "$dir" 2>/dev/null || true
@@ -98,13 +100,15 @@ _design_write_outcome() {
     local _ans="[]"
     [[ ${#_DESIGN_ANSWERS[@]} -gt 0 ]] \
         && _ans="$(printf '%s\n' "${_DESIGN_ANSWERS[@]}" | jq -Rnc '[inputs | select(length > 0)]' 2>/dev/null || printf '[]')"
-    local _data
-    _data="$(jq -nc --arg at "$_at" --arg sha "$_sha" \
+    # #2574: each answered finding's text travels with the answer.
+    local _data _afj="{}"; zb_answers_findings_json_v _afj _DESIGN_ANSWERS
+    _data="$(jq -nc --arg at "$_at" --arg sha "$_sha" --argjson af "$_afj" \
         --argjson w "${_wiring:-[]}" --argjson f "$findings" --argjson a "${_ans:-[]}" \
         --argjson fs "${_ZB_ANS_SHOWN:-0}" --arg un "${_ZB_ANS_MISSING:-}" \
         '{authored_at: $at, authored_at_commit: $sha, wiring_files: $w}
          + (if ($f | length) > 0 then {findings: $f} else {} end)
          + (if ($a | length) > 0 then {answers: $a} else {} end)
+         + (if ($af | length) > 0 then {answer_findings: $af} else {} end)
          + {findings_shown: $fs}
          + (if $un != "" then {unanswered: ($un | split("\n"))} else {} end)')"
     stage_result_write "$dir/design-verdict.json" "$outcome" "$reason" "$_data" 2>/dev/null \

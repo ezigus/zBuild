@@ -326,10 +326,10 @@ EOF
 # none of them stays open (#2491). Read once, by the shell (ADR-065 §5).
 IFS= read -r -d '' _ZB_ANSWER_FORMS <<'EOF' || true
 - Answer every finding you are given under Previous work, each on its own line
-  in your reply. Name it as its line there begins, before "(opened by":
-    ANSWER <the finding as listed>: done — <what you changed for it>
-    ANSWER <the finding as listed>: wrong — <why it does not hold>
-    ANSWER <the finding as listed>: not mine — <why your job cannot fix it>
+  in your reply. Name it by its id, as its line there begins, before "(opened by":
+    ANSWER <its id>: done — <what you changed for it>
+    ANSWER <its id>: wrong — <why it does not hold>
+    ANSWER <its id>: not mine — <why your job cannot fix it>
   Only the answers in this reply count: answer every finding listed, even one you answered in an earlier reply or a past run.
   A finding you do not answer stays open, and is shown to you again.
 - What each answer means:

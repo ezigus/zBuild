@@ -126,12 +126,14 @@ _dcov_answered_v() {
     local -n _ddv="$1"; local _ddv_hn="${4:-_ddv_noh}" _ddv_a _ddv_t _ddv_id _ddv_k _ddv_e _ddv_x
     local -A _ddv_noh=()
     local -n _ddv_h="$_ddv_hn"
-    [[ "$2" == *"design finding "* ]] || return 0
+    [[ "$2" == *"design finding "* || ( -n "${_DESIGN_FCODE:-}" && "$2" == *"$_DESIGN_FCODE-"* ) ]] || return 0
     local -A _ddv_af=()
     judge_answered_findings_v _ddv_af "$2" "design=$3"
+    # #2574: an answer names the finding's id (DSFND-<n>), or its place.
+    local _ddv_re="^(design finding [0-9]+${_DESIGN_FCODE:+|$_DESIGN_FCODE-[0-9]+})[[:space:]]*:"
     while IFS= read -r _ddv_a; do
-        [[ "$_ddv_a" =~ ^design\ finding\ ([0-9]+)[[:space:]]*: ]] || continue
-        _ddv_k="design finding ${BASH_REMATCH[1]}"
+        [[ "$_ddv_a" =~ $_ddv_re ]] || continue
+        _ddv_k="${BASH_REMATCH[1]}"
         [[ -n "${_ddv_af[$_ddv_k]+x}" ]] || continue
         zb_answer_kind_v _ddv_x "$_ddv_a"; [[ -n "$_ddv_x" ]] || continue
         _ddv_t="${_ddv_af[$_ddv_k]%%$'\x1f'*}"; _ddv_e="$_ddv_k"$'\x1c'"${_ddv_af[$_ddv_k]}"

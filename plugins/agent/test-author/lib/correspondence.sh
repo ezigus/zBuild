@@ -251,9 +251,11 @@ _sc_answered() {
     local -A _scd_af=()
     local _scd_all; printf -v _scd_all '%s\n' "${_TA_ANSWERS[@]}"
     judge_answered_findings_v _scd_af "$_scd_all" "test-author=$art/test-author-result.json"
+    # #2574: an answer names the finding's id (TAFND-<n>), or its place.
+    local re="^(test-author[[:space:]]+finding[[:space:]]+[0-9]+${_TA_FCODE:+|$_TA_FCODE-[0-9]+})[[:space:]]*:"
     for a in "${_TA_ANSWERS[@]}"; do
-        [[ "$a" =~ ^test-author[[:space:]]+finding[[:space:]]+([0-9]+)[[:space:]]*: ]] || continue
-        k="test-author finding ${BASH_REMATCH[1]}"
+        [[ "$a" =~ $re ]] || continue
+        k="${BASH_REMATCH[1]}"
         [[ -n "${_scd_af[$k]+x}" ]] || continue
         zb_answer_kind_v t "$a"; [[ -n "$t" ]] || continue
         t="${_scd_af[$k]%%$'\x1f'*}"

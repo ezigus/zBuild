@@ -458,7 +458,8 @@ _sp_findings_for() {
          # #2470: a finding that shows a SPEC whole keeps its lines, each
          # indented under the first.
          # ADR-071 §5: one that does not block is still shown, and marked.
-         | "- \($l) finding \(.n) (opened by \($s)\(if .blocking == false then ", does not block" else "" end)): \(.text|tostring|gsub("\r"; "")|gsub("\n+$"; "")|gsub("\n"; "\n    "))"' "$1" 2>/dev/null || true
+         # #2574 (ADR-068 §5): by its id; one written before ids by its place.
+         | "- \(if (.id | type) == "string" then .id else "\($l) finding \(.n)" end) (opened by \($s)\(if .blocking == false then ", does not block" else "" end)): \(.text|tostring|gsub("\r"; "")|gsub("\n+$"; "")|gsub("\n"; "\n    "))"' "$1" 2>/dev/null || true
 }
 
 # _sp_list_words " a b c " — "a, b and c".

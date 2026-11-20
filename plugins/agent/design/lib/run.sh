@@ -312,7 +312,7 @@ DESIGN_PROMPT
     # #2464 (ADR-072 §5, ADR-068 §6): a finding of design's own check that
     # design says is wrong is answered, not designed around; the check judges
     # it again with the answer.
-    printf '\nIf a finding of your design'"'"'s own check (under Previous work, as design finding <n>) is wrong, do not change the design for it: answer it on its own line in your reply, ANSWER design finding <n>: wrong — <why>. The check judges it again, with your answer.\n' \
+    printf '\nIf a finding of your design'"'"'s own check (under Previous work, by its id) is wrong, do not change the design for it: answer it on its own line in your reply, ANSWER <its id>: wrong — <why>. The check judges it again, with your answer.\n' \
         >> "$prompt_input_file"
 
     # #2308: the limits close the stage's own text.
@@ -426,7 +426,7 @@ ${_dp_limits}")"; then
     if [[ -n "$_reqs" || -n "$_lims" ]] && extract_acceptance_block "$output_draft" >/dev/null 2>&1; then
         local _dp_ans="" _a
         for _a in ${_DESIGN_ANSWERS[@]+"${_DESIGN_ANSWERS[@]}"}; do
-            [[ "$_a" == "design finding "* ]] && _dp_ans+="$_a"$'\n'
+            [[ "$_a" == "design finding "* || "$_a" == "$_DESIGN_FCODE-"* ]] && _dp_ans+="$_a"$'\n'
         done
         _design_coverage "$output_draft" "$_reqs" "$tier" "$_dp_ans" "$_lims" "$_terms"
         for _u in ${_DESIGN_COV_NOTES[@]+"${_DESIGN_COV_NOTES[@]}"}; do warn "design: $_u"; done
@@ -460,7 +460,7 @@ ${_dp_limits}")"; then
     # design; this try stays as the working copy, for the next run to fix.
     if [[ ${#_fnd[@]} -gt 0 ]]; then
         emit_event "design.checks.failed" "plugin=design" "findings=${#_fnd[@]}"
-        local _fj; _fj="$(printf '%s\n' "${_fnd[@]}" | stage_findings_json)"
+        local _fj; _fj="$(printf '%s\n' "${_fnd[@]}" | stage_findings_json "$artifact_dir" "$_DESIGN_FCODE")"
         _design_write_outcome "$artifact_dir" "unusable" "the design fails ${#_fnd[@]} of its checks${_cut}" "${_fj:-[]}"
         # #2470 (ADR-055 §9): the findings are in the result, shown once; the
         # summary says where they are, never copies them.

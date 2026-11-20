@@ -49,6 +49,8 @@ source "$_IA_ROOT/scripts/lib/persona-resolve.sh" 2>/dev/null || true
 source "$_IA_ROOT/core/plugin-registry/persona.sh" 2>/dev/null || true
 
 _ia_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
+# #2574 (ADR-068 §5): the code its findings' ids take (IAFND).
+_IA_FCODE=""; zb_finding_code_v _IA_FCODE "${BASH_SOURCE[0]%/*}/manifest.yaml"
 
 # intake writes the literal "GitHub issue #<N>" when the fetch fails (#1804);
 # judging a change against that must not read as satisfied (spec-coverage's rule).
@@ -221,19 +223,21 @@ _ia_write() {
         ($x[] | tostring | (if test("^\\[fix-test\\]") then "test-findings\t" else "code-findings\t" end)
             + "The change does this and no requirement asks for it: " + sub("^\\[fix-test\\][[:space:]]*"; "")),
         ($q[] | "design-findings,test-findings,code-findings\tThe issue is unclear here, and issue-acceptance judged by the assumption: " + .)' \
-        <<< "$u" 2>/dev/null | stage_findings_route_each "$dir" issue-acceptance design-findings)"
+        <<< "$u" 2>/dev/null | stage_findings_route_each "$dir" issue-acceptance design-findings "$_IA_FCODE")"
     u="$(jq -c 'map(tostring | sub("^\\[fix-(code|design)\\][[:space:]]*"; ""))' <<< "$u" 2>/dev/null || printf '%s' "$u")"
     [[ "$s" == "[]" ]] || s="$(jq -c 'map(tostring | sub("^\\[fix-(code|design)\\][[:space:]]*"; ""))' <<< "$s" 2>/dev/null || printf '%s' "$s")"
     x="$(jq -c 'map(tostring | sub("^\\[fix-test\\][[:space:]]*"; ""))' <<< "$x" 2>/dev/null || printf '%s' "$x")"
     # ADR-068 §6: what it did about each finding it was given (_IA_ANSWERS),
     # and how many it was shown when it was asked this time.
-    local _data _ia_a="[]"
+    local _data _ia_a="[]" _ia_af="{}"
     [[ ${#_IA_ANSWERS[@]} -gt 0 ]] && _ia_a="$(_ia_json_list "${_IA_ANSWERS[@]}")"
-    _data="$(jq -nc --argjson u "$u" --argjson s "$s" --argjson x "$x" --argjson fnd "${_fnd:-[]}" --arg j "$j" --argjson a "$_ia_a" --argjson uq "${_IA_UQ_JSON:-[]}" \
+    zb_answers_findings_json_v _ia_af _IA_ANSWERS
+    _data="$(jq -nc --argjson u "$u" --argjson s "$s" --argjson x "$x" --argjson fnd "${_fnd:-[]}" --arg j "$j" --argjson a "$_ia_a" --argjson uq "${_IA_UQ_JSON:-[]}" --argjson af "$_ia_af" \
         --argjson ud "${_IA_UQ_DROPPED:-[]}" --arg un2 "${_IA_UQ_NOTES:-}" \
         --arg known "${_IA_ANS_KNOWN:-0}" --argjson fs "${_ZB_ANS_SHOWN:-0}" --arg un "${_ZB_ANS_MISSING:-}" \
         '{unmet: $u, unsure: $s, findings: $fnd} + (if ($x | length) > 0 then {unasked: $x} else {} end) + (if $j == "" then {} else {judgement: $j} end)
          + (if ($a | length) > 0 then {answers: $a} else {} end)
+         + (if ($af | length) > 0 then {answer_findings: $af} else {} end)
          + (if ($uq | length) > 0 then {unclear: $uq} else {} end)
          + (if ($ud | length) > 0 then {unclear_dropped: $ud} else {} end)
          + ($un2 | split("\n") | map(select(length > 0)) | if length > 0 then {notes: .} else {} end)
@@ -318,7 +322,7 @@ issue_acceptance_run() {
     # unchanged; a stage's answer to one of its findings has it judge again,
     # shown the finding and the answer.
     local _ans="" _held="" _ia_l; local -a _ia_lf=()
-    judge_answers_to_v _ans "$art" issue-acceptance issue-acceptance-design issue-acceptance-test issue-acceptance-code
+    judge_answers_to_v _ans "$art" issue-acceptance issue-acceptance-design issue-acceptance-test issue-acceptance-code ${_IA_FCODE:+"$_IA_FCODE"}
     for _ia_l in "" -design -test -code; do _ia_lf+=("issue-acceptance$_ia_l=${art%/}/issue-acceptance$_ia_l-result.json"); done
     judge_held_entries_v _held "$_ans" "${_ia_lf[@]}"
     local kf="${art%/}/issue-acceptance-judged.json" eng fp kept="" _root_q="$_root"

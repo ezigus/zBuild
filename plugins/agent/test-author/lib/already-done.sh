@@ -24,7 +24,7 @@ source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/stage-handoff.sh"
 # §1): its own result is test-findings. Added to what the engine's handoff
 # writes there in the same run, never in its place.
 _ta_to_design() {
-    stage_findings_add "$1/test-author-design-result.json" "${2:-[]}" || true
+    stage_findings_add "$1/test-author-design-result.json" "${2:-[]}" "${_TA_FCODE:-}" || true
 }
 
 # _ta_already_done <design.md> <reply> <base_dir> — reads the reply's reports.
