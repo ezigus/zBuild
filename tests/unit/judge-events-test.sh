@@ -156,8 +156,12 @@ _reset
     printf '%s\n' 'diff --git a/p.sh b/p.sh' '+flag=2' > "$IN/diff.patch"
     issue_acceptance_run issue-acceptance "$S/pipeline-state.json"
 ) >/dev/null 2>&1
+# #2574 (ADR-072 §4): one verdict per item — with no requirement list, the
+# issue is one item, and the reverse question another.
 assert_eq "[V4] issue-acceptance: saved, used, stale" "2|1|1" \
-    "$(_ev judge.kept.saved '.check == "issue-acceptance"')|$(_ev judge.kept.used '.check == "issue-acceptance"')|$(_ev judge.kept.stale '.check == "issue-acceptance" and .why == "fingerprint"')"
+    "$(_ev judge.kept.saved '.check == "issue-acceptance" and .item == "issue"')|$(_ev judge.kept.used '.check == "issue-acceptance" and .item == "issue"')|$(_ev judge.kept.stale '.check == "issue-acceptance" and .item == "issue" and .why == "fingerprint"')"
+assert_eq "[V4] ...the reverse question too" "2|1|1" \
+    "$(_ev judge.kept.saved '.check == "issue-acceptance" and .item == "unasked"')|$(_ev judge.kept.used '.check == "issue-acceptance" and .item == "unasked"')|$(_ev judge.kept.stale '.check == "issue-acceptance" and .item == "unasked" and .why == "fingerprint"')"
 _reset
 (
     # shellcheck source=../../core/plugin-registry/registry.sh
