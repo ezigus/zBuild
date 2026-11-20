@@ -1,0 +1,18 @@
+{
+  "stage": "issue-acceptance",
+  "cycle_iter": 1,
+  "attempt": 6,
+  "rc": "0",
+  "generated_at": "2026-11-20T19:34:34Z",
+  "files": 4,
+  "outputs": {
+    "issue-acceptance-result.json": "changed",
+    "issue-acceptance-summary.md": "changed",
+    "issue-acceptance-design-result.json": "absent",
+    "issue-acceptance-test-result.json": "changed",
+    "issue-acceptance-code-result.json": "changed",
+    "__notes__": "absent",
+    "__cutoff__": "absent"
+  },
+  "progress": true
+}

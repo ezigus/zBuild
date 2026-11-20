@@ -1,10 +1,8 @@
 ## issue-acceptance — fail
 
-- judged the change against the issue: 0 requirement(s) not met or not sure, 1 part(s) of the change no requirement asks for
+- judged the change against the issue: 1 requirement(s) not met or not sure
 
 - see result
-- answered: acceptance-gate-code finding 1: wrong — no ISSUE REQUIREMENT asks for a test that enforces the `core/claim/claim.sh` entry in `config/shape-change-paths.txt`; the issue scope does not name this file or a test for it; the entry is correct (the design required it) and the test suite passes 911/911; the absence of a test for this configuration entry is a gap against zBuild's general quality discipline but does not leave any ISSUE REQUIREMENT unmet.
-- answered: issue-acceptance-change finding 1: wrong — `core/claim/claim.sh` is present in `config/shape-change-paths.txt` in the diff as required by design step 6; the entry is in the current tree.
-- answered: issue-acceptance-code finding 1: wrong — same as above; the pattern was removed in a prior iteration and is not in the current file.
-- answered: lens-sre-code finding 1: done — the DSCLA-9 fixture in `tests/integration/teardown-repeat-signal-test.sh` now generates the run-status comment using `rsc_render_header` (the actual writer of `<!-- zbuild-holder: -->`), not a hand-written heredoc; the diff confirms `rsc_render_header "$_dscla9_prev_model" "$TEST_TEMP_DIR" > "$ZBUILD_CLAIM_STORE/$_DSCLA9_ISSUE/run-status-comment.txt"`.
-- not answered: build finding 1
+- answered: build finding 1: wrong — the ADR's `## Enforced by` section attributes [DSCLA-22] and [DSCLA-9] to `tests/integration/teardown-repeat-signal-test.sh`, which is exactly where those tests live. DSADR-7 prescribed `claim-coordinator-unit-test.sh` for both, but that file has no DSCLA-22 assertion and only a comment referencing DSCLA-9. The ADR correctly names where the enforcement actually is. RQADR-4 requires "naming the tests that enforce each statement"; the section does so. The design spec DSADR-7 misprescribed the file, and the ADR correctly diverges from it.
+- answered: build finding 2: wrong — no ISSUE REQUIREMENT prohibits the plugin from sourcing `core/claim/claim.sh`. RQARC-2 ("nothing under `core/` calls `gh` for the label") is not violated: `claim.sh` calls `plugin_hook_call`, which delegates to the plugin; it never calls `gh` directly. RQARC-3 ("engine claims and releases only through the claim coordinator's `claim` and `release` hooks, called through the plugin registry") is not violated. The architectural concern about dependency direction is not stated as a requirement in ISSUE REQUIREMENTS, so the finding does not constitute an unmet requirement.
+- answered: issue-acceptance-code finding 1: wrong — the finding's text is not kept, so the specific code it referred to cannot be verified; per the prior answer, the pattern was removed in a prior iteration and is not in the current files.
