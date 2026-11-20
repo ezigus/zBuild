@@ -15,6 +15,9 @@ _ZBUILD_STAGE_PREVIOUS_WORK_LOADED=1
 # ─── What this issue's work has changed ─────────────────────────────────────
 # shellcheck source=./merge-base.sh
 source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/merge-base.sh"
+# #2575: whether a stage's notes and output were written for what it is asked now.
+# shellcheck source=./stage-notes-version.sh
+source "${BASH_SOURCE[0]%/*}/stage-notes-version.sh"
 
 # _sp_work_changed_line <repo_root> — one line naming the files this
 # issue's work has changed, against where its branch left the default branch,
@@ -257,6 +260,13 @@ _stage_block_previous_work() {
         done
     fi
 
+    # #2575 (ADR-068 §8): what the stage is asked now, against what its notes
+    # and its last output were written for.
+    local _pw_sig="" _pw_np=""
+    stage_notes_path_v _pw_np "$state_dir" "$stage"
+    _sp_asked_sig_v _pw_sig "$stage" "$state_dir" "$plugins_root" "$takes" _pw_ins
+    _sp_notes_version "$_pw_np" "$_pw_sig"
+
     local s manifest roles summ errp res req notes cutoff verdict own body any=0 raw content
     local -a summs=() prims=()
     local listed t_topic t_id t_path
@@ -356,6 +366,8 @@ _stage_block_previous_work() {
         # out for a judging call — a judge never sees its stage's earlier output.
         [[ -n "$own" && -n "${_ZB_SP_MARK_OWN:-}" ]] && printf '%s' "$_ZB_SP_SECT_BEGIN"
         printf '\n### %s (verdict: %s)%s\n' "$s" "${verdict:-unknown}" "$own"
+        [[ -n "$own" && -n "$_SP_OUTPUT_OLD" ]] \
+            && printf 'Your output below was written for an earlier version of %s — check it against the current one.\n' "$_SP_OUTPUT_OLD"
         [[ -n "$listed" ]] && printf 'Outputs:\n%s' "$listed"
         [[ -n "$body" ]] && printf '\nFindings:\n%s\n' "$body"
         # #2480: every member's summary, each as a stage's is.
@@ -402,7 +414,9 @@ _stage_block_previous_work() {
         # fresh one (a judging call, a stage with no tools).
         [[ -n "$own" && -n "${_ZB_SP_MARK_OWN:-}" ]] && printf '%s' "$_ZB_SP_OWN_BEGIN"
         if [[ -n "$own" && -n "$notes" ]]; then
-            printf '\nYour notes so far (where they disagree with a list or a result elsewhere in this prompt, the list or the result is right):\n%s\n' "$(_sp_read "$notes" "$_ZB_SP_NOTES_MAX_BYTES")"
+            local _nv=""
+            [[ -n "$_SP_NOTES_OLD" ]] && _nv=", written for an earlier version of $_SP_NOTES_OLD — check them against the current one"
+            printf '\nYour notes so far%s (where they disagree with a list or a result elsewhere in this prompt, the list or the result is right):\n%s\n' "$_nv" "$(_sp_read "$notes" "$_ZB_SP_NOTES_MAX_BYTES")"
         fi
         if [[ -n "$own" && -n "$cutoff" ]]; then
             printf '\nYour last call was cut off at its time limit before it finished. What it did, step by step, up to the cut-off:\n%s\n' \
