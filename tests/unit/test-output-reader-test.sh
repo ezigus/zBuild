@@ -236,6 +236,9 @@ _sum="$(cat "$SUMF" 2>/dev/null)"
 assert_contains "[TR14] the check is in the summary" "$_sum" "✗ claimed label contains the prefix"
 if [[ "$_sum" == *"prefix ⏎ jq: error"* ]]; then assert_fail "[TR14] jq's error is not glued onto the check" "$_sum"
 else assert_pass "[TR14] jq's error is not glued onto the check"; fi
+_f14="$(_test_failure_findings "$(printf '%s\n' "unit: FAIL $T/$U" "  ✗ claimed label contains the prefix" "jq: error (at <stdin>:1): null has no keys" "unit: 0/1 passed")" "$T")"
+if [[ "$_f14" == *"prefix — jq: error"* ]]; then assert_fail "[TR14] the finding's reason does not take jq's error as the check's message" "$_f14"
+else assert_pass "[TR14] the finding's reason does not take jq's error as the check's message"; fi
 
 cleanup_test_env
 print_test_results

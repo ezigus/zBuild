@@ -45,7 +45,7 @@ _test_failure_findings() {
     raw="$(zb_test_output_normalize "$raw" "$tmp")"
     local rows
     rows="$(printf '%s\n' "$raw" | awk -v t="$tmp" -v tl="$tmp_log" -v tp="$tmp_phys" \
-        -v mre="$ZB_TEST_MARKER_ERE" -v fre="$ZB_TEST_MARKER_FILE_ERE" -v sre="$ZB_TEST_TALLY_ERE" "$ZB_TEST_MARKER_FILE_AWK"'
+        -v mre="$ZB_TEST_MARKER_ERE" -v fre="$ZB_TEST_MARKER_FILE_ERE" -v sre="$ZB_TEST_TALLY_ERE" -v nre="$ZB_TEST_NAMED_LINE_ERE" "$ZB_TEST_MARKER_FILE_AWK"'
         function rel(p) {
             if (tp != "" && index(p, tp "/") == 1) return substr(p, length(tp) + 2)
             if (tl != "" && index(p, tl "/") == 1) return substr(p, length(tl) + 2)
@@ -68,7 +68,7 @@ _test_failure_findings() {
             # the next check, a blank line or the tally of the file - however many
             # lines it spans - kept as one, its line breaks shown as ⏎.
             if (after_x) {
-                if (line == "" || line ~ /^(✗|✘|✓)/ || line ~ /^[0-9]+ of [0-9]+ tests failed/ || line ~ /^All [0-9]+ tests passed/) flushd()
+                if (line == "" || $0 ~ nre || line ~ /^(✗|✘|✓)/ || line ~ /^[0-9]+ of [0-9]+ tests failed/ || line ~ /^All [0-9]+ tests passed/) flushd()
                 else det = (det == "" ? line : det " ⏎ " line)
             }
             if (line ~ /^(✗|✘)/) { printf "X\t%s\t%s\n", f, line; after_x = 1; det = ""; next }
