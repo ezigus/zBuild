@@ -358,7 +358,7 @@ mkdir -p "$RUN_DIR/events" "$BIN_DIR" "$TEST_TEMP_DIR/pc"
 TRACE="$TEST_TEMP_DIR/run.trace"
 set +e
 (
-    unset GITHUB_ACTIONS CI GITHUB_STEP_SUMMARY RUNNER_OS 2>/dev/null || true
+    unset GITHUB_ACTIONS CI GITHUB_STEP_SUMMARY RUNNER_OS ZBUILD_DISCOVERY_MEMO_DIR 2>/dev/null || true
     export FIXTURE_STATE_DIR="$RUN_DIR" FIXTURE_BIN_DIR="$BIN_DIR"
     fork_census_traced "$TRACE" bash "$FIXTURE" >/dev/null 2>&1
 )
@@ -416,8 +416,7 @@ else
     assert_fail "[SPEC-6] the worker pool's poll sleep is listed as an exempt wait" "exempt: $(cat "$SITES.exempt" 2>/dev/null)"
 fi
 _pool_max="$(awk -F'\t' '$2 ~ /^local_engine\.sh:/ && $1 > m { m = $1 } END { print m + 0 }' "$SITES")"
-echo "  busiest counted pool line: ${_pool_max} execs (2 work units)"
-assert_eq "[SPEC-6] …and no counted pool line runs more than once per work unit (max ${_pool_max})" "1" "$(( _pool_max <= 2 ))"
+assert_eq "[SPEC-6] …and no counted pool line runs more than once per work unit (max ${_pool_max} execs, 2 units)" "1" "$(( _pool_max <= 2 ))"
 if (( _procs <= PROCESS_BUDGET )); then
     assert_pass "[SPEC-7] ${_procs} processes ≤ PROCESS_BUDGET ${PROCESS_BUDGET}"
 else
@@ -432,12 +431,13 @@ fi
 # SPEC-8 (#2472): the cost in two parts.
 _fb_disp() { jq -r 'select(.type == "plugin.run.start") | 1' "$1" 2>/dev/null | grep -c . || true; }
 _dA="$(_fb_disp "$RUN_DIR/events/events.jsonl")"; _dA="${_dA:-0}"
-# The same run with three more review lenses: three more dispatches.
+# The same run with three more review lenses: three more dispatches. Each run starts with no inherited
+# discovery memo: run-tests.sh shares one, and B reusing A's walk read as 17 processes a dispatch less (#2573).
 RUN_B="$TEST_TEMP_DIR/run-b"; BIN_B="$TEST_TEMP_DIR/bin-b"; TRACE_B="$TEST_TEMP_DIR/run-b.trace"
 mkdir -p "$RUN_B/events" "$BIN_B"
 set +e
 (
-    unset GITHUB_ACTIONS CI GITHUB_STEP_SUMMARY RUNNER_OS 2>/dev/null || true
+    unset GITHUB_ACTIONS CI GITHUB_STEP_SUMMARY RUNNER_OS ZBUILD_DISCOVERY_MEMO_DIR 2>/dev/null || true
     export FIXTURE_STATE_DIR="$RUN_B" FIXTURE_BIN_DIR="$BIN_B" FIXTURE_LENSES="correctness red-team performance sre"
     fork_census_traced "$TRACE_B" bash "$FIXTURE" >/dev/null 2>&1
 )
