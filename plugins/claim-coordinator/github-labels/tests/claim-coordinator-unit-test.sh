@@ -511,11 +511,12 @@ export ZBUILD_CLAIM_MACHINE_ID="test-machine-dscla18"
 set +e; claim_coordinator_claim "$_dscla18_issue"; _dscla18_rc=$?; set -e
 
 # Then: gh issue edit is called to add the label zbuild:claimed to the issue
-if grep -qF "zbuild:claimed" "$_dscla18_calls" 2>/dev/null; then
+# (must check --add-label specifically; --remove-label zbuild:claimed would also match zbuild:claimed alone)
+if grep -qF "zbuild:claimed" "$_dscla18_calls" 2>/dev/null && grep -qF -- "--add-label" "$_dscla18_calls" 2>/dev/null; then
     assert_pass "[DSCLA-18] gh issue edit is called to add zbuild:claimed"
 else
     assert_fail "[DSCLA-18] gh issue edit is called to add zbuild:claimed" \
-        "zbuild:claimed not found in gh calls; calls: $(cat "$_dscla18_calls" 2>/dev/null || echo '<empty>')"
+        "zbuild:claimed with --add-label not found in gh calls; calls: $(cat "$_dscla18_calls" 2>/dev/null || echo '<empty>')"
 fi
 
 # And: the label added has no hostname component (not claimed:<hostname>)
@@ -565,11 +566,12 @@ export ZBUILD_CLAIM_MACHINE_ID="test-machine-dscla20"
 set +e; claim_coordinator_release "$_dscla20_issue"; _dscla20_rc=$?; set -e
 
 # Then: gh issue edit is called to remove the label zbuild:claimed from the issue
-if grep -qF "zbuild:claimed" "$_dscla20_calls" 2>/dev/null; then
+# (must check --remove-label specifically; --add-label zbuild:claimed would also match zbuild:claimed alone)
+if grep -qF "zbuild:claimed" "$_dscla20_calls" 2>/dev/null && grep -qF -- "--remove-label" "$_dscla20_calls" 2>/dev/null; then
     assert_pass "[DSCLA-20] gh issue edit is called to remove zbuild:claimed"
 else
     assert_fail "[DSCLA-20] gh issue edit is called to remove zbuild:claimed" \
-        "zbuild:claimed not found in gh calls; calls: $(cat "$_dscla20_calls" 2>/dev/null || echo '<empty>')"
+        "zbuild:claimed with --remove-label not found in gh calls; calls: $(cat "$_dscla20_calls" 2>/dev/null || echo '<empty>')"
 fi
 
 # And: the label removed is zbuild:claimed with no hostname component
