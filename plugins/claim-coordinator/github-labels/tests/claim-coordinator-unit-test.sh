@@ -473,6 +473,228 @@ else
     fi
 fi
 
+# ─────────────────────────────────────────────────────────────────────────────
+# DSCLA-18: claim_coordinator_claim adds zbuild:claimed via gh issue edit;
+#           no hostname component in the label
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Given: plugins/claim-coordinator/github-labels/plugin.sh is loaded (sourced at top)
+#        the issue has no zbuild:claimed label
+_dscla18_issue="2018"
+_dscla18_calls="$TEST_TEMP_DIR/gh-calls-dscla18.txt"
+: > "$_dscla18_calls"
+
+# gh mock: records all invocations; returns empty label list (no zbuild:claimed)
+cat > "$TEST_TEMP_DIR/bin/gh" <<MOCK
+#!/usr/bin/env bash
+printf '%s\n' "\$@" >> "$_dscla18_calls"
+case "\${1:-}:\${2:-}:\${3:-}" in
+    issue:view:*)
+        echo ""
+        ;;
+    issue:edit:*)
+        ;;
+    *)
+        ;;
+esac
+exit 0
+MOCK
+chmod +x "$TEST_TEMP_DIR/bin/gh"
+
+export ZBUILD_CLAIM_BACKEND="gh"
+export ZBUILD_CLAIM_BACKOFF_MIN_MS=5
+export ZBUILD_CLAIM_BACKOFF_MAX_MS=15
+export ZBUILD_CLAIM_MACHINE_ID="test-machine-dscla18"
+
+# When: claim_coordinator_claim is called with the issue number
+: > "$ZBUILD_EVENTS_JSONL"
+set +e; claim_coordinator_claim "$_dscla18_issue"; _dscla18_rc=$?; set -e
+
+# Then: gh issue edit is called to add the label zbuild:claimed to the issue
+if grep -qF "zbuild:claimed" "$_dscla18_calls" 2>/dev/null; then
+    assert_pass "[DSCLA-18] gh issue edit is called to add zbuild:claimed"
+else
+    assert_fail "[DSCLA-18] gh issue edit is called to add zbuild:claimed" \
+        "zbuild:claimed not found in gh calls; calls: $(cat "$_dscla18_calls" 2>/dev/null || echo '<empty>')"
+fi
+
+# And: the label added has no hostname component (not claimed:<hostname>)
+if ! grep -qE "^claimed:[a-zA-Z0-9_-]" "$_dscla18_calls" 2>/dev/null; then
+    assert_pass "[DSCLA-18] label added has no hostname component (zbuild:claimed, not claimed:<host>)"
+else
+    assert_fail "[DSCLA-18] label added has no hostname component (zbuild:claimed, not claimed:<host>)" \
+        "hostname-specific label found in calls: $(grep -oE 'claimed:[a-zA-Z0-9_-]+' "$_dscla18_calls" 2>/dev/null || echo '<none>')"
+fi
+
+# Cleanup: restore local-fs backend and plain gh mock
+export ZBUILD_CLAIM_BACKEND="local-fs"
+mock_gh
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DSCLA-20: claim_coordinator_release removes zbuild:claimed via gh issue edit
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Given: plugins/claim-coordinator/github-labels/plugin.sh is loaded (sourced at top)
+#        the issue has the zbuild:claimed label
+_dscla20_issue="2020"
+_dscla20_calls="$TEST_TEMP_DIR/gh-calls-dscla20.txt"
+: > "$_dscla20_calls"
+
+# gh mock: records all invocations; returns zbuild:claimed for issue view
+cat > "$TEST_TEMP_DIR/bin/gh" <<MOCK
+#!/usr/bin/env bash
+printf '%s\n' "\$@" >> "$_dscla20_calls"
+case "\${1:-}:\${2:-}:\${3:-}" in
+    issue:view:*)
+        echo "zbuild:claimed"
+        ;;
+    issue:edit:*)
+        ;;
+    *)
+        ;;
+esac
+exit 0
+MOCK
+chmod +x "$TEST_TEMP_DIR/bin/gh"
+
+export ZBUILD_CLAIM_BACKEND="gh"
+export ZBUILD_CLAIM_MACHINE_ID="test-machine-dscla20"
+
+# When: claim_coordinator_release is called with the issue number
+: > "$ZBUILD_EVENTS_JSONL"
+set +e; claim_coordinator_release "$_dscla20_issue"; _dscla20_rc=$?; set -e
+
+# Then: gh issue edit is called to remove the label zbuild:claimed from the issue
+if grep -qF "zbuild:claimed" "$_dscla20_calls" 2>/dev/null; then
+    assert_pass "[DSCLA-20] gh issue edit is called to remove zbuild:claimed"
+else
+    assert_fail "[DSCLA-20] gh issue edit is called to remove zbuild:claimed" \
+        "zbuild:claimed not found in gh calls; calls: $(cat "$_dscla20_calls" 2>/dev/null || echo '<empty>')"
+fi
+
+# And: the label removed is zbuild:claimed with no hostname component
+if ! grep -qE "^claimed:[a-zA-Z0-9_-]" "$_dscla20_calls" 2>/dev/null; then
+    assert_pass "[DSCLA-20] label removed has no hostname component (zbuild:claimed, not claimed:<host>)"
+else
+    assert_fail "[DSCLA-20] label removed has no hostname component (zbuild:claimed, not claimed:<host>)" \
+        "hostname-specific label found in calls: $(grep -oE 'claimed:[a-zA-Z0-9_-]+' "$_dscla20_calls" 2>/dev/null || echo '<none>')"
+fi
+
+# Cleanup: restore local-fs backend and plain gh mock
+export ZBUILD_CLAIM_BACKEND="local-fs"
+mock_gh
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DSCLA-19: zbuild_claim_acquire delegates to coordinator's claim hook;
+#           no direct gh calls within zbuild_claim_acquire
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Given: core/claim/claim.sh is loaded (defines zbuild_claim_acquire)
+_dscla19_claim_sh="$REPO_ROOT/core/claim/claim.sh"
+if [[ ! -f "$_dscla19_claim_sh" ]]; then
+    assert_fail "[DSCLA-19] core/claim/claim.sh must exist" \
+        "file not found: $_dscla19_claim_sh — zbuild_claim_acquire is not yet implemented"
+else
+    _dscla19_issue="2019"
+    _dscla19_gh_calls="$TEST_TEMP_DIR/gh-calls-dscla19.txt"
+    : > "$_dscla19_gh_calls"
+
+    # Mock gh: records every invocation (must NOT be called by zbuild_claim_acquire directly)
+    cat > "$TEST_TEMP_DIR/bin/gh" <<MOCK
+#!/usr/bin/env bash
+printf '%s\n' "\$@" >> "$_dscla19_gh_calls"
+exit 0
+MOCK
+    chmod +x "$TEST_TEMP_DIR/bin/gh"
+
+    # Given: a claim-coordinator plugin is registered; use local-fs backend so the
+    # coordinator itself does not call gh — any gh call in the calls file comes
+    # directly from zbuild_claim_acquire, not through the coordinator hook
+    _prev_backend_19="$ZBUILD_CLAIM_BACKEND"
+    export ZBUILD_CLAIM_BACKEND="local-fs"
+    rm -rf "${ZBUILD_CLAIM_STORE:?}/$_dscla19_issue"
+    unset _ZBUILD_CLAIM_ACQUIRED 2>/dev/null || true
+
+    # When: zbuild_claim_acquire is called with an issue number
+    : > "$ZBUILD_EVENTS_JSONL"
+    set +e; zbuild_claim_acquire "$_dscla19_issue"; _dscla19_rc=$?; set -e
+
+    # Then: the coordinator's claim hook function is called with the issue number
+    # (evidenced by zbuild:claimed being added to the claim store for this issue)
+    _dscla19_labels="$ZBUILD_CLAIM_STORE/$_dscla19_issue/labels.txt"
+    if grep -Fxq "zbuild:claimed" "$_dscla19_labels" 2>/dev/null; then
+        assert_pass "[DSCLA-19] coordinator's claim hook was called (zbuild:claimed in claim store)"
+    else
+        assert_fail "[DSCLA-19] coordinator's claim hook was called (zbuild:claimed in claim store)" \
+            "zbuild:claimed not found in $_dscla19_labels; contents: $(cat "$_dscla19_labels" 2>/dev/null || echo '<absent>')"
+    fi
+
+    # And: gh is not invoked directly within zbuild_claim_acquire
+    _dscla19_gh_count="$(wc -l < "$_dscla19_gh_calls" | tr -d ' ')"
+    assert_eq "[DSCLA-19] gh is not invoked directly within zbuild_claim_acquire" "0" "$_dscla19_gh_count"
+
+    # Cleanup
+    export ZBUILD_CLAIM_BACKEND="$_prev_backend_19"
+    mock_gh
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DSCLA-21: zbuild_claim_release delegates to coordinator's release hook;
+#           no direct gh calls within zbuild_claim_release
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Given: core/claim/claim.sh is loaded; _ZBUILD_CLAIM_ACQUIRED is set
+_dscla21_claim_sh="$REPO_ROOT/core/claim/claim.sh"
+if [[ ! -f "$_dscla21_claim_sh" ]]; then
+    assert_fail "[DSCLA-21] core/claim/claim.sh must exist" \
+        "file not found: $_dscla21_claim_sh — zbuild_claim_release is not yet implemented"
+else
+    _dscla21_issue="2021"
+    _dscla21_gh_calls="$TEST_TEMP_DIR/gh-calls-dscla21.txt"
+    : > "$_dscla21_gh_calls"
+
+    # Mock gh: records every invocation (must NOT be called by zbuild_claim_release directly)
+    cat > "$TEST_TEMP_DIR/bin/gh" <<MOCK
+#!/usr/bin/env bash
+printf '%s\n' "\$@" >> "$_dscla21_gh_calls"
+exit 0
+MOCK
+    chmod +x "$TEST_TEMP_DIR/bin/gh"
+
+    # Pre-populate claim store with zbuild:claimed (simulates prior successful acquire)
+    _prev_backend_21="$ZBUILD_CLAIM_BACKEND"
+    export ZBUILD_CLAIM_BACKEND="local-fs"
+    mkdir -p "$ZBUILD_CLAIM_STORE/$_dscla21_issue"
+    printf 'zbuild:claimed\n' > "$ZBUILD_CLAIM_STORE/$_dscla21_issue/labels.txt"
+
+    # Given: _ZBUILD_CLAIM_ACQUIRED is set (simulate successful acquire)
+    export _ZBUILD_CLAIM_ACQUIRED=1
+    export _ZBUILD_CLAIM_ISSUE="$_dscla21_issue"
+
+    # When: zbuild_claim_release is called with the issue number
+    : > "$ZBUILD_EVENTS_JSONL"
+    set +e; zbuild_claim_release "$_dscla21_issue"; _dscla21_rc=$?; set -e
+
+    # Then: the coordinator's release hook function is called with the issue number
+    # (evidenced by zbuild:claimed being removed from the claim store)
+    _dscla21_labels="$ZBUILD_CLAIM_STORE/$_dscla21_issue/labels.txt"
+    if ! grep -Fxq "zbuild:claimed" "$_dscla21_labels" 2>/dev/null; then
+        assert_pass "[DSCLA-21] coordinator's release hook was called (zbuild:claimed removed from claim store)"
+    else
+        assert_fail "[DSCLA-21] coordinator's release hook was called (zbuild:claimed removed from claim store)" \
+            "zbuild:claimed still present in $_dscla21_labels after zbuild_claim_release"
+    fi
+
+    # And: gh is not invoked directly within zbuild_claim_release
+    _dscla21_gh_count="$(wc -l < "$_dscla21_gh_calls" | tr -d ' ')"
+    assert_eq "[DSCLA-21] gh is not invoked directly within zbuild_claim_release" "0" "$_dscla21_gh_count"
+
+    # Cleanup
+    unset _ZBUILD_CLAIM_ACQUIRED _ZBUILD_CLAIM_ISSUE 2>/dev/null || true
+    export ZBUILD_CLAIM_BACKEND="$_prev_backend_21"
+    mock_gh
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
