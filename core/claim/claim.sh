@@ -1,78 +1,72 @@
 #!/usr/bin/env bash
 # core/claim/claim.sh — Cross-machine soft claim via zbuild:claimed GitHub label (#1764)
 # Sourced by runner.sh; defines zbuild_claim_acquire and zbuild_claim_release.
-# Back-end primitives (_ccgl_*) come from plugins/claim-coordinator/github-labels/plugin.sh
-# which is sourced automatically below when not already loaded.
+# Calls the claim-coordinator plugin through the plugin registry.
 # Sourced library: inherits caller's pipefail; do not add set -euo pipefail.
 
 [[ -n "${_ZBUILD_CLAIM_SH_LOADED:-}" ]] && return 0
 _ZBUILD_CLAIM_SH_LOADED=1
 
-# Source plugin.sh for _ccgl_* backend helpers.
-# When loaded via plugin.sh's own source chain (unit-test path), _ZBUILD_CLAIM_GH_LABELS_LOADED
-# is already set — skip to avoid re-loading and to avoid requiring $_ZBUILD_ROOT in that path.
-# When loaded directly by runner.sh, _ZBUILD_ROOT is set before we are sourced.
-if [[ -z "${_ZBUILD_CLAIM_GH_LABELS_LOADED:-}" ]]; then
-    # shellcheck source=../../plugins/claim-coordinator/github-labels/plugin.sh
-    source "${_ZBUILD_ROOT}/plugins/claim-coordinator/github-labels/plugin.sh"
+# Derive _ZBUILD_ROOT from this file's location when not already set.
+# claim.sh lives at core/claim/claim.sh; two levels up is the repo root.
+# Needed when loaded via plugin.sh's source chain (unit-test path) where
+# _ZBUILD_ROOT may not yet be set.
+if [[ -z "${_ZBUILD_ROOT:-}" && "${BASH_SOURCE[0]}" == */* ]]; then
+    _ZBUILD_ROOT="$(cd "${BASH_SOURCE[0]%/*}/../.." 2>/dev/null && pwd)"
 fi
 
-# Global: set by zbuild_claim_acquire when it successfully adds zbuild:claimed.
-# Guards zbuild_claim_release so a refused run never removes another run's claim.
+# Source plugin registry for discover_plugins and plugin_hook_call.
+# Idempotent: registry.sh has a guard. Must be sourced here because runner.sh
+# sources claim.sh (line 33) before registry.sh (line 46).
+# shellcheck source=../plugin-registry/registry.sh
+if [[ -n "${_ZBUILD_ROOT:-}" ]]; then
+    source "${_ZBUILD_ROOT}/core/plugin-registry/registry.sh"
+fi
+
+# Globals set by zbuild_claim_acquire.
+# _ZBUILD_CLAIM_ACQUIRED: set when claim was successfully acquired.
+# _ZBUILD_COORDINATOR_DIR: path to the coordinator plugin directory.
 _ZBUILD_CLAIM_ACQUIRED=""
+_ZBUILD_COORDINATOR_DIR=""
 
-# _ccgl_read_holder <issue> — read the holder string from the run-status comment.
-# The holder is embedded by rsc_render_header as <!-- zbuild-holder: <string> -->.
-_ccgl_read_holder() {
-    local issue="$1"
-    case "${ZBUILD_CLAIM_BACKEND:-gh}" in
-        local-fs)
-            local store="${ZBUILD_CLAIM_STORE:-}"
-            if [[ -n "$store" ]]; then
-                local rsc="$store/$issue/run-status-comment.txt"
-                if [[ -f "$rsc" ]]; then
-                    local line
-                    while IFS= read -r line; do
-                        if [[ "$line" =~ ^'<!-- zbuild-holder: '(.+)' -->'$ ]]; then
-                            printf '%s' "${BASH_REMATCH[1]}"
-                            return 0
-                        fi
-                    done < "$rsc"
-                fi
+# _zbuild_claim_find_coordinator_v <var> — find the first claim-coordinator plugin.
+# Two-search strategy: try ZBUILD_PLUGINS_ROOT first (finds test stubs), then fall
+# back to _ZBUILD_ROOT/plugins (finds github-labels).
+# DSCLA-22: stub IS in ZBUILD_PLUGINS_ROOT → found on first search.
+# DSCLA-5..16: test ZBUILD_PLUGINS_ROOT has no coordinator → fallback finds github-labels.
+_zbuild_claim_find_coordinator_v() {
+    local -n _zccf_res="$1"
+    _zccf_res=""
+    local _search_root _dir _kind
+    for _search_root in "${ZBUILD_PLUGINS_ROOT:-}" "${_ZBUILD_ROOT:-}/plugins"; do
+        [[ -z "$_search_root" ]] && continue
+        [[ -d "$_search_root" ]] || continue
+        while IFS= read -r _dir; do
+            [[ -d "$_dir" ]] || continue
+            [[ -f "$_dir/manifest.yaml" ]] || continue
+            _kind=""
+            yaml_get_v _kind "$_dir/manifest.yaml" "kind" 2>/dev/null || true
+            if [[ "$_kind" == "claim-coordinator" ]]; then
+                _zccf_res="$_dir"
+                return 0
             fi
-            ;;
-        gh)
-            # Best-effort: find the most recent run-status comment and extract <!-- zbuild-holder: -->.
-            local body
-            body="$(gh issue comment list "$issue" --json body \
-                --jq '[.[] | select(.body | contains("<!-- zbuild-run-status")) | .body] | last' \
-                2>/dev/null || true)"
-            local line
-            while IFS= read -r line; do
-                if [[ "$line" =~ ^'<!-- zbuild-holder: '(.+)' -->'$ ]]; then
-                    printf '%s' "${BASH_REMATCH[1]}"
-                    return 0
-                fi
-            done <<< "$body"
-            true
-            ;;
-        *) true ;;
-    esac
+        done < <(discover_plugins "$_search_root" 2>/dev/null || true)
+        [[ -n "$_zccf_res" ]] && return 0
+    done
+    return 0
 }
-
 
 # zbuild_claim_build_holder — set and export _ZBUILD_CLAIM_HOLDER for this run.
 # Must be called before the run-status sidecar is spawned (see runner.sh) so the
 # sidecar inherits the holder string via its environment and rsc_render_header can
 # embed it in <!-- zbuild-holder: --> (ADR-005 §2 / #1764).
-# zbuild_claim_acquire calls this automatically on the success path.
 zbuild_claim_build_holder() {
     if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
         _ZBUILD_CLAIM_HOLDER="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-unknown}/actions/runs/${GITHUB_RUN_ID:-unknown}"
     else
         local run_id="${ZBUILD_RUN_ID:-}"
         # ${ZBUILD_CLAIM_MACHINE_ID:-${HOSTNAME}}: ZBUILD_CLAIM_MACHINE_ID overrides for tests;
-        # ${HOSTNAME} is a bash built-in — no external hostname command, no fork (ADR-005 §2)
+        # ${HOSTNAME} is a bash built-in — no external hostname command, no fork (ADR-005 §2).
         _ZBUILD_CLAIM_HOLDER="run_id=${run_id} machine=${ZBUILD_CLAIM_MACHINE_ID:-${HOSTNAME}}"
     fi
     export _ZBUILD_CLAIM_HOLDER
@@ -80,8 +74,8 @@ zbuild_claim_build_holder() {
 
 # zbuild_claim_acquire <issue> — acquire the cross-machine claim for <issue>.
 #
-# Sets _ZBUILD_CLAIM_HOLDER (global) and returns:
-#   0 — claim acquired, or skipped (no issue / graceful degradation)
+# Sets _ZBUILD_COORDINATOR_DIR on success. Returns:
+#   0 — claim acquired, or skipped (no issue / no coordinator / backend error)
 #   1 — refused: zbuild:claimed is already on the issue
 #
 # Graceful degradation: backend errors return 0 (the local flock still serialises
@@ -90,61 +84,88 @@ zbuild_claim_acquire() {
     local issue="$1"
     _ZBUILD_CLAIM_HOLDER=""
 
-    # Empty issue or goal-only run (issue=0) → no-op (DSCLA-8)
+    # Empty issue or goal-only run → no-op (DSCLA-8)
     [[ -z "$issue" || "$issue" == "0" ]] && return 0
 
-    # Read current labels via backend helper; on error, skip gracefully and warn.
-    local existing
-    if ! existing="$(_ccgl_read_labels "$issue")"; then
-        printf 'zbuild_claim_acquire: backend read error for issue %s — skipping cross-machine claim (local flock still active)\n' "$issue" >&2 || true
+    # Find the first claim-coordinator plugin via registry discovery (RQARC-3).
+    local coordinator_dir=""
+    if declare -F _zbuild_claim_find_coordinator_v >/dev/null 2>&1; then
+        _zbuild_claim_find_coordinator_v coordinator_dir
+    fi
+    if [[ -z "$coordinator_dir" ]]; then
+        printf 'zbuild_claim_acquire: no claim-coordinator plugin found — skipping cross-machine claim\n' >&2 || true
+        return 0
+    fi
+    _ZBUILD_COORDINATOR_DIR="$coordinator_dir"
+
+    # Call the coordinator's claim hook and capture JSON stdout.
+    local json_out="" hook_rc=0
+    json_out="$(plugin_hook_call "$coordinator_dir" claim "$issue")" || hook_rc=$?
+    if [[ "$hook_rc" -ne 0 ]]; then
+        printf 'zbuild_claim_acquire: coordinator claim hook failed for issue %s — skipping\n' \
+            "$issue" >&2 || true
         return 0
     fi
 
-    # Check if zbuild:claimed is already present (DSCLA-3)
-    if grep -Fxq "zbuild:claimed" <<< "$existing" 2>/dev/null; then
-        # Sanitize via printf '%s' to prevent echo -e / terminal-injection from
-        # attacker-controlled comment content (backslash seqs stay literal).
-        local _raw_holder
-        _raw_holder="$(_ccgl_read_holder "$issue")"
-        _ZBUILD_CLAIM_HOLDER="$(printf '%s' "$_raw_holder")"
+    # Parse JSON: extract "acquired" field.
+    local _acquired_line acquired
+    _acquired_line="$(grep -o '"acquired":[[:space:]]*[a-z]*' <<< "$json_out" || true)"
+    acquired="$(grep -o 'true\|false' <<< "$_acquired_line" || true)"
+
+    if [[ "$acquired" == "false" ]]; then
+        # Another run holds zbuild:claimed — extract and sanitize the holder string.
+        local raw_holder=""
+        raw_holder="$(grep -o '"holder":[[:space:]]*"[^"]*"' <<< "$json_out" || true)"
+        # Strip outer JSON key/quotes, then strip ANSI escape codes.
+        local holder_value=""
+        holder_value="$(sed -e 's/^"holder":[[:space:]]*"\(.*\)"$/\1/' \
+            -e 's/\x1b\[[0-9;]*[mK]//g' <<< "$raw_holder" || true)"
+        _ZBUILD_CLAIM_HOLDER="$holder_value"
         return 1
     fi
 
-    # Build and export holder string (DSCLA-2 / ADR-005 §2).
-    # zbuild_claim_build_holder is also called in runner.sh before the sidecar
-    # spawn so the sidecar inherits _ZBUILD_CLAIM_HOLDER; calling it again here
-    # keeps the in-process value consistent after the acquire.
-    zbuild_claim_build_holder
-
-    # Add zbuild:claimed label via backend helper; on failure, skip gracefully and warn.
-    if ! _ccgl_add_label "$issue" "zbuild:claimed"; then
-        printf 'zbuild_claim_acquire: backend add error for issue %s — skipping cross-machine claim (local flock still active)\n' "$issue" >&2 || true
+    if [[ "$acquired" == "true" ]]; then
+        zbuild_claim_build_holder
+        _ZBUILD_CLAIM_ACQUIRED="1"
         return 0
     fi
 
-    _ZBUILD_CLAIM_ACQUIRED="1"
+    # Unexpected response — treat as graceful degradation (ADR-005 soft claim).
+    printf 'zbuild_claim_acquire: unexpected response from coordinator for issue %s — skipping\n' \
+        "$issue" >&2 || true
     return 0
 }
 
 # zbuild_claim_release <issue> — release the cross-machine claim (advisory).
-# Removes zbuild:claimed and marks the comment finished.
 # No-op when the claim was never acquired (guards against releasing another run's claim).
 zbuild_claim_release() {
     local issue="${1:-}"
 
     [[ -z "$issue" || "$issue" == "0" ]] && return 0
 
-    # Only release if this process acquired the claim
+    # Only release if this process acquired the claim (DSCLA-17)
     [[ -z "${_ZBUILD_CLAIM_ACQUIRED:-}" ]] && return 0
 
-    # Unset BEFORE the label removal: a second call from any path is now a no-op
-    # because the guard above sees an unset variable (DSCLA-13 / design §4).
+    # Unset BEFORE the hook call: a second call is now a no-op because the
+    # guard above sees an unset variable (DSCLA-13 idempotency — SIGTERM during
+    # release cannot trigger a second release).
     unset _ZBUILD_CLAIM_ACQUIRED
 
-    # Remove zbuild:claimed (advisory; failures never abort the run, but warn so
-    # operators know the label may need manual removal).
-    _ccgl_remove_label "$issue" "zbuild:claimed" || {
-        printf 'zbuild_claim_release: failed to remove zbuild:claimed from issue %s (gh error — label may need manual removal)\n' "$issue" >&2 || true
+    # Resolve coordinator dir; fall back to re-discovery when not set
+    # (DSCLA-21 sets _ZBUILD_CLAIM_ACQUIRED manually without a prior acquire call).
+    local coordinator_dir="${_ZBUILD_COORDINATOR_DIR:-}"
+    if [[ -z "$coordinator_dir" ]] && declare -F _zbuild_claim_find_coordinator_v >/dev/null 2>&1; then
+        _zbuild_claim_find_coordinator_v coordinator_dir
+    fi
+    if [[ -z "$coordinator_dir" ]]; then
+        printf 'zbuild_claim_release: no claim-coordinator found — zbuild:claimed may need manual removal\n' \
+            >&2 || true
+        return 0
+    fi
+
+    plugin_hook_call "$coordinator_dir" release "$issue" >/dev/null || {
+        printf 'zbuild_claim_release: release hook failed for issue %s (label may need manual removal)\n' \
+            "$issue" >&2 || true
     }
 
     return 0
