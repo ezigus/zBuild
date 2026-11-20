@@ -45,7 +45,7 @@ _test_failure_findings() {
     raw="$(zb_test_output_normalize "$raw" "$tmp")"
     local rows
     rows="$(printf '%s\n' "$raw" | awk -v t="$tmp" -v tl="$tmp_log" -v tp="$tmp_phys" \
-        -v mre="$ZB_TEST_MARKER_ERE" -v fre="$ZB_TEST_MARKER_FILE_ERE" -v sre="$ZB_TEST_TALLY_ERE" '
+        -v mre="$ZB_TEST_MARKER_ERE" -v fre="$ZB_TEST_MARKER_FILE_ERE" -v sre="$ZB_TEST_TALLY_ERE" "$ZB_TEST_MARKER_FILE_AWK"'
         function rel(p) {
             if (tp != "" && index(p, tp "/") == 1) return substr(p, length(tp) + 2)
             if (tl != "" && index(p, tl "/") == 1) return substr(p, length(tl) + 2)
@@ -55,7 +55,7 @@ _test_failure_findings() {
         function flushd() { if (after_x) printf "D\t%s\t%s\n", f, det; after_x = 0; det = "" }
         $0 ~ mre {
             flushd()
-            f = ($0 ~ fre) ? $3 : ""; kind = ($2 == "TIMEOUT") ? "T" : "F"
+            f = ($0 ~ fre) ? zb_marker_file($0) : ""; kind = ($2 == "TIMEOUT") ? "T" : "F"
             inblk = (f != ""); after_x = 0
             if (inblk) printf "%s\t%s\t\n", kind, f
             next

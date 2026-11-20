@@ -126,11 +126,11 @@ _test_emit_failures_summary() {
         # up to the next check, a blank line or the tally of its file — on one
         # line, its line breaks shown as ⏎, so no continued line is lost or
         # merged away as a repeat.
-        _ex_first="$(printf '%s\n' "$raw_output" | awk -v mre="$ZB_TEST_MARKER_ERE" -v sre="$ZB_TEST_TALLY_ERE" '
+        _ex_first="$(printf '%s\n' "$raw_output" | awk -v nre="$ZB_TEST_NAMED_LINE_ERE" '
             function flush() { if (blk != "") print blk; blk = "" }
             { line = $0; sub(/^[[:space:]]+/, "", line) }
             line ~ /^(✗|✘)/ { flush(); blk = $0; next }
-            blk != "" && (line == "" || line ~ /^✓/ || line ~ /^[0-9]+ of [0-9]+ tests failed/ || line ~ /^All [0-9]+ tests passed/ || $0 ~ mre || $0 ~ sre) { flush(); next }
+            blk != "" && (line == "" || line ~ /^✓/ || line ~ /^[0-9]+ of [0-9]+ tests failed/ || line ~ /^All [0-9]+ tests passed/ || $0 ~ nre) { flush(); next }
             blk != "" { blk = blk " ⏎ " line }
             END { flush() }' 2>/dev/null | head -n 40 || true)"  # sigpipe-ok: || true, and an explicit empty-check follows
         # sigpipe-ok: || true

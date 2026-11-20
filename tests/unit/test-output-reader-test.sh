@@ -220,10 +220,10 @@ assert_eq "[TR8] the red set holds runner-test alone" "tests/unit/runner-test.sh
 IFS='|' read -r _v _p _f _s <<< "$(_test_pattern_runall "$NESTED" 1)"
 assert_eq "[TR8] one failing file, the nested lines not counted" "1" "$_f"
 assert_eq "[TR8] the tally is the tier's own" "6" "$_p"
-GREEN="$(printf '%s\n' "unit: 5/5 passed" "    upstream: timeout" "    unit: 1/2 passed" "  ✓ NC-P3: TIMEOUT annotation kept" "total: 5/5 passed")"
-IFS='|' read -r _v _p _f _s <<< "$(_test_pattern_runall "$GREEN" 0)"
+GREENRUN="$(printf '%s\n' "unit: 5/5 passed" "    upstream: timeout" "    unit: 1/2 passed" "  ✓ NC-P3: TIMEOUT annotation kept" "total: 5/5 passed")"
+IFS='|' read -r _v _p _f _s <<< "$(_test_pattern_runall "$GREENRUN" 0)"
 assert_eq "[TR10] a green run holding such lines stays green" "pass|5|0" "$_v|$_p|$_f"
-assert_eq "[TR10] ...with no failing file" "" "$(_test_extract_failing_files "$GREEN" "$T")"
+assert_eq "[TR10] ...with no failing file" "" "$(_test_extract_failing_files "$GREENRUN" "$T")"
 
 print_test_section "TR12/TR13: the path as written, and only a real file"
 F12="$(_test_failure_findings "$(printf '%s\n' "unit: FAIL $T/tests/has space-test.sh" "  ✗ spaced" "unit: FAIL tests/unit/missing-test.sh" "  ✗ gone" "unit: 0/2 passed")" "$T")"
