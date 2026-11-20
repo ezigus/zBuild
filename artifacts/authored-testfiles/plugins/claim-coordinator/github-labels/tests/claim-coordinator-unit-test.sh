@@ -41,20 +41,27 @@ else
     assert_fail "claim store file created after claim" "file not found: $labels_file"
 fi
 
-# ── label contains claimed:<machine> pattern ─────────────────────────────────
-if grep -q "claimed:" "$labels_file" 2>/dev/null; then
-    assert_pass "claimed label contains 'claimed:' prefix"
+# ── label is exactly zbuild:claimed (no machine name component) ───────────────
+# On base code the label was claimed:<machine>; new code uses the shared
+# zbuild:claimed label.  grep -Fxq requires an exact line match.
+if grep -Fxq "zbuild:claimed" "$labels_file" 2>/dev/null; then
+    assert_pass "label is exactly zbuild:claimed (no machine name)"
 else
-    assert_fail "claimed label contains 'claimed:' prefix" "$(cat "$labels_file" 2>/dev/null || echo '<empty>')"
+    assert_fail "label is exactly zbuild:claimed (no machine name)" \
+        "$(cat "$labels_file" 2>/dev/null || echo '<empty>')"
 fi
 
-# ── release → rc=0 and label removed ─────────────────────────────────────────
+# ── release → rc=0 and zbuild:claimed removed ────────────────────────────────
 : > "$ZBUILD_EVENTS_JSONL"
 set +e; claim_coordinator_release "42"; rc=$?; set -e
 assert_eq "claim_coordinator_release → rc=0" "0" "$rc"
 
-remaining="$({ grep "claimed:" "$labels_file" 2>/dev/null || true; } | wc -l | tr -d ' \n')"
-assert_eq "claimed label removed after release" "0" "$remaining"
+if ! grep -Fxq "zbuild:claimed" "$labels_file" 2>/dev/null; then
+    assert_pass "zbuild:claimed label removed after release"
+else
+    assert_fail "zbuild:claimed label removed after release" \
+        "$(cat "$labels_file" 2>/dev/null || echo '<empty>')"
+fi
 
 # ── list_claims returns empty JSON array after release ────────────────────────
 : > "$ZBUILD_EVENTS_JSONL"
@@ -695,6 +702,19 @@ MOCK
     unset _ZBUILD_CLAIM_ACQUIRED _ZBUILD_CLAIM_ISSUE 2>/dev/null || true
     export ZBUILD_CLAIM_BACKEND="$_prev_backend_21"
     mock_gh
+fi
+
+# ── core/claim/claim.sh is listed in config/shape-change-paths.txt ────────────
+# core/claim/claim.sh gates every claim and release in runner.sh; a change to
+# it can alter the run's stage order or its event sequence, so it must appear
+# in config/shape-change-paths.txt.  This assertion fails if the entry is
+# removed: config/shape-change-paths.txt would revert to its old version and
+# shape tests would not be forced to run on claim.sh changes.
+if grep -Fxq "core/claim/claim.sh" "$REPO_ROOT/config/shape-change-paths.txt" 2>/dev/null; then
+    assert_pass "core/claim/claim.sh is listed in config/shape-change-paths.txt"
+else
+    assert_fail "core/claim/claim.sh is listed in config/shape-change-paths.txt" \
+        "not found in shape-change-paths.txt — a change to core/claim/claim.sh must trigger shape tests"
 fi
 
 cleanup_test_env
