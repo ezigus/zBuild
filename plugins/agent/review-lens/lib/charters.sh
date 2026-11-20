@@ -77,6 +77,7 @@ OUTPUT CONTRACT (obey absolutely):
         "message": "<one-sentence description>",
         "quote": "<the exact text that shows it, copied from the file as it is now, or a line the change removed>",
         "trigger": "<what makes it happen on a real run — where this lens's problems come from>",
+        "accepted_if": "<what must be true for this finding to be resolved, in the issue's words>",
         "introduced": <true if this change introduced or worsened it, or did not do what the issue or design asked of it; false if the code before the change already did this and nothing asked this change to change it>,
         "fix": "<one of: code, test, design, issue>"
       }
@@ -85,6 +86,11 @@ OUTPUT CONTRACT (obey absolutely):
 - Every finding says what makes it happen on a real run (its trigger), and quotes the text that shows it. The quote is checked against
   its file and the change: a finding whose quote is not there makes the report
   unusable.
+- Every finding says what would be accepted (accepted_if). ACCEPTED IF says what must be true for the part to be accepted, in the issue's words — never how to build it: no file, function, command or change to make. Not this:
+  ACCEPTED IF: runner.sh calls plugin_hook_call on the claim-coordinator folder
+  but this:
+  ACCEPTED IF: the engine itself calls the claim coordinator's claim and release hooks through the plugin registry
+  A finding with no accepted_if makes the report unusable.
 - If you find nothing for this lens, return {"score": 10, "findings": []}.
 
 SEVERITY — grade each finding on this one scale:

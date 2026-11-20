@@ -144,7 +144,11 @@ setup_test_env "fork-budget"
 # extractor in the shell (design_decisions_prose_v), not awk and sed. Measured
 # on macOS: 2399 processes and 1865 execs in all, 465 processes and 305 execs a
 # dispatch.
-FORK_BUDGET=1865
+# #2569: a stage finds an earlier JSON output with at most two jq — the first
+# output, then all the rest at once — not one an output until a match: renamed
+# output ids had moved the match further down the index. Measured on macOS:
+# 2399 processes and 1852 execs in all, 465 processes and 298 execs a dispatch.
+FORK_BUDGET=1852
 # PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
 # the programs above plus each `$( )` subshell, a copy of the whole engine shell
 # that FORK_BUDGET cannot see. Ratchets down only, like FORK_BUDGET. History:
@@ -259,9 +263,10 @@ PROCESS_BUDGET=2399
 # extractor in the shell (design_decisions_prose_v), not awk and sed. Measured
 # on macOS: 2399 processes and 1865 execs in all, 465 processes and 305 execs a
 # dispatch.
+# #2569: see FORK_BUDGET — 465 processes and 298 execs a dispatch.
 DISPATCH_PROCS_BUDGET=465
 DISPATCH_PROCS_FLOOR=20
-DISPATCH_EXECS_BUDGET=305
+DISPATCH_EXECS_BUDGET=298
 DISPATCH_EXECS_FLOOR=50
 STARTUP_PROCS_PER_PLUGIN_BUDGET=11
 STARTUP_PROCS_PER_PLUGIN_FLOOR=1

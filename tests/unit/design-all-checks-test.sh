@@ -84,7 +84,7 @@ DSHLD-3[doc]: the holder is named covers: RQHLD-1
 WIRING: none
 ```'
 COV='RQCLM-1: covered
-RQHLD-1: uncovered | WHY: no SPEC says the run id is named | QUOTE: Name the holder in the progress comment.
+RQHLD-1: uncovered | WHY: no SPEC says the run id is named | ACCEPTED IF: it is accepted | QUOTE: Name the holder in the progress comment.
 DSCLM-1: ok
 DSHLD-3: ok'
 

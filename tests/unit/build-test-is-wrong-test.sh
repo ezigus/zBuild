@@ -12,7 +12,7 @@
 #
 # W1 [change] build's prompt says how to answer a test that is wrong, and to
 #             stop working on it
-# W2 [change] build declares build-tests-result.json on topic code-findings,
+# W2 [change] build declares build-tests-result.json on topic test-findings (#2569),
 #             with a description
 # W3 [change] test-author's Previous work shows build's "test is wrong"
 #             findings, and nothing of build's code: not its diff, not its
@@ -116,7 +116,7 @@ assert_not_contains "[W8] ...nor that the listed tests fail now and are not to b
 BM="$REPO_ROOT/plugins/agent/build/manifest.yaml"
 _entry="$(awk '/^  - id: build_tests$/ {f=1} f && /^  - id: / && !/build_tests/ {exit} f' "$BM")"
 assert_contains "[W2] build declares build_tests" "$_entry" "build-tests-result.json"
-assert_contains "[W2] ...on topic code-findings" "$_entry" "topic: code-findings"
+assert_contains "[W2] ...on topic test-findings" "$_entry" "topic: test-findings"
 assert_contains "[W2] ...described" "$_entry" "description:"
 
 # ── W3 ───────────────────────────────────────────────────────────────────────

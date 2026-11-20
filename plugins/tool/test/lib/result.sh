@@ -156,14 +156,14 @@ _test_write_result() {
     dir="$(dirname "$path")"
     mkdir -p "$dir"
 
-    # #2271: each failing file is a numbered finding; #2454: labelled by whose
-    # test file it is. The design is looked up only when something failed
-    # (ADR-065: a passing run pays nothing for it).
-    # #2556 (ADR-071 §1): each goes to test's output of its topic.
+    # #2271: each failing file is a numbered finding. #2569 (ADR-071 §1): a
+    # failing file is the code's to make pass, whoever's test it is, so each goes
+    # to test's code output; a test that is wrong reaches test-author as build's
+    # answer (build-tests-result.json, test-findings).
     local _numbered="[]"
     if [[ "$findings_json" != "[]" ]]; then
-        _numbered="$(jq -r '.[]? | "\(.file)\t\(.file) fails: \(.reason)"' <<< "$findings_json" 2>/dev/null \
-            | _test_findings_by_owner "$(earlier_acceptance_contract "$dir" "" 2>/dev/null || true)" | stage_findings_route "$dir" test code-findings)"
+        _numbered="$(jq -r '.[]? | "\(.file) fails: \(.reason)"' <<< "$findings_json" 2>/dev/null \
+            | stage_findings_route "$dir" test code-findings)"
         [[ -n "$_numbered" ]] || _numbered="[]"
     else
         stage_findings_route "$dir" test code-findings < /dev/null >/dev/null

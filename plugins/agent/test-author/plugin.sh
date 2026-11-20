@@ -474,9 +474,11 @@ EOF
         declare -f assertion_integrity_record >/dev/null 2>&1 && assertion_integrity_record "$art" "$repo"
         _ta_commit_testfiles "$design" "$repo" "test-author: acceptance assertions for $n SPEC(s); a requirement the old code already meets"
         _ta_emit "test_author.already_done" "specs=${_TA_DONE_IDS// /,}"
+        local _ad_fj; _ad_fj="$(stage_findings_json <<< "$_TA_DONE_VERIFIED")"
         _ta_write_result "$art" "fail" \
             "${_TA_DONE_IDS// /, } already met by the code from before this change — its status must change" "$n" \
-            "$(stage_findings_json <<< "$_TA_DONE_VERIFIED")" ends_round
+            "$_ad_fj" ends_round
+        _ta_to_design "$art" "$_ad_fj"
         return 1
     fi
 
@@ -509,9 +511,11 @@ EOF
         local _ut_first="${_TA_CORR_UNTESTABLE%%$'\n'*}"
         declare -f assertion_integrity_record >/dev/null 2>&1 && assertion_integrity_record "$art" "$repo"
         _ta_commit_testfiles "$design" "$repo" "test-author: acceptance assertions for $n SPEC(s); a SPEC cannot be tested"
+        local _ut_fj; _ut_fj="$(stage_findings_json <<< "$_TA_CORR_UNTESTABLE")"
         _ta_write_result "$art" "fail" \
             "${_ut_first%%[ :]*} cannot be proven by any test — design must rewrite it" "$n" \
-            "$(stage_findings_json <<< "$_TA_CORR_UNTESTABLE")" ends_round
+            "$_ut_fj" ends_round
+        _ta_to_design "$art" "$_ut_fj"
         return 1
     fi
     _TA_CORR_FINDINGS+=(${_TA_BEFORE_FINDINGS[@]+"${_TA_BEFORE_FINDINGS[@]}"})

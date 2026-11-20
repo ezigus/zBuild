@@ -35,6 +35,10 @@ source "$_IA_ROOT/scripts/lib/test-output-sanitize.sh" 2>/dev/null || true
 source "$_IA_ROOT/scripts/lib/llm-agent.sh" 2>/dev/null || true
 # shellcheck source=../../../scripts/lib/judge.sh
 source "$_IA_ROOT/scripts/lib/judge.sh"
+# shellcheck source=../../../scripts/lib/stage-handoff.sh
+source "$_IA_ROOT/scripts/lib/stage-handoff.sh"
+# shellcheck source=./lib/parse.sh
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/lib/parse.sh"
 # shellcheck source=../../../scripts/lib/merge-base.sh
 declare -F zbuild_change_files_v >/dev/null 2>&1 || source "$_IA_ROOT/scripts/lib/merge-base.sh"
 # shellcheck source=../../../scripts/lib/router-rc-classify.sh
@@ -66,9 +70,13 @@ issue states, in full — including what its tests must catch?
 Answer with one line for every requirement in ISSUE REQUIREMENTS, by its id:
 
 MET: <id>
-UNMET: [fix-code] <id> | WHY: <what the change does not do> | QUOTE: <quote>
-UNMET: [fix-design] <id> | WHY: <what the requirements miss or get wrong> | QUOTE: <quote>
-UNSURE: <id> | WHY: <what you cannot tell, and what would settle it> | QUOTE: <quote>
+UNMET: [fix-code] <id> | WHY: <what the change does not do> | ACCEPTED IF: <the requirement, in its own words> | QUOTE: <quote>
+UNMET: [fix-design] <id> | WHY: <what the requirements miss or get wrong> | ACCEPTED IF: <the requirement, in its own words> | QUOTE: <quote>
+UNSURE: <id> | WHY: <what you cannot tell> | ACCEPTED IF: <the requirement, and what would show it met> | QUOTE: <quote>
+
+ACCEPTED IF names the line you judge against: the requirement or the limit, in
+its own words, so the finding says what would be accepted. An UNASKED line with
+no ACCEPTED IF cannot be used.
 
 When none are listed under ISSUE REQUIREMENTS, write one of these lines for
 each requirement the ISSUE states, naming it in a few words where the id would
@@ -78,6 +86,8 @@ Start each UNMET: line with what would fix it:
 - [fix-code] — the change does not do it yet: the code or its tests must change.
 - [fix-design] — the REQUIREMENTS miss it or get it wrong, or the issue itself is
   wrong: the design must change.
+An UNSURE: line may start with the same mark when you can tell which would fix
+it; leave it off when you cannot.
 
 A QUOTE is either the requirement's own words, from ISSUE REQUIREMENTS or the
 ISSUE, or the code that shows it: <file> | <one line from it>. Copy it as it
@@ -89,7 +99,7 @@ for — not the ISSUE, not ISSUE REQUIREMENTS, not REQUIREMENTS. A test for a
 requirement, and a file that test needs, are asked for by that requirement.
 Write one line for each part nothing asks for:
 
-UNASKED: <what the change does> | WHY: <why no requirement asks for it> | QUOTE: <file> | <one line of the code that does it>
+UNASKED: <what the change does> | WHY: <why no requirement asks for it> | ACCEPTED IF: <the change without it, or the requirement that would ask for it> | QUOTE: <file> | <one line of the code that does it>
 
 Its QUOTE is the code that does it. When every part of the DIFF is asked for,
 write one line: UNASKED: none
@@ -98,7 +108,7 @@ Then judge each LIMIT — something the issue says the change must not do — on
 line for each, by its id:
 
 KEPT: <id>
-BROKEN: <id> | WHY: <what the change does that the limit forbids> | QUOTE: <file> | <one line of the code that does it>
+BROKEN: <id> | WHY: <what the change does that the limit forbids> | ACCEPTED IF: <the limit, in its own words> | QUOTE: <file> | <one line of the code that does it>
 
 A limit is broken only by code the change adds or changes; its QUOTE is that
 code.
@@ -187,24 +197,26 @@ _ia_write() {
     mkdir -p "$dir" 2>/dev/null || true
     # #2271 (ADR-068): each unmet acceptance item is a numbered finding. #2304
     # (ADR-069 §7): so is each requirement the judge is not sure of — nothing
-    # else checks it. #2330: each says what would settle it, never who must.
-    # #2452, #2556 (ADR-071 §1): an unmet line's [fix-code] / [fix-design] mark
-    # sends it to the output of the stages that can fix it, never its text.
-    # #2508 (ADR-072 §3): each part of the change nothing asked for is a
-    # finding only the code can fix — change-findings, which build takes.
-    # #2523 (ADR-071 §1): one in a test file ([fix-test]) is code-findings, which
-    # test-author takes: build may not change a test.
-    local _fnd; _fnd="$(jq -r --argjson s "$s" --argjson x "$x" '(.[]? | tostring
-            | (if test("^\\[fix-code\\]") then "code-findings\t" elif test("^\\[fix-design\\]") then "requirement-findings\t" else "" end)
-              + "The issue requires this and the change does not meet it: " + sub("^\\[fix-(code|design)\\][[:space:]]*"; "")
-              + ". What would settle it: a change that meets this requirement in full."),
-        ($s[] | "Not sure this requirement is met: " + tostring
-            + ". What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met."),
-        ($x[] | tostring | (if test("^\\[fix-test\\]") then "code-findings\t" else "change-findings\t" end)
-            + "The change does this and no requirement asks for it: " + sub("^\\[fix-test\\][[:space:]]*"; "")
-            + ". What would settle it: the change without this part, or a requirement that asks for it.")' \
-        <<< "$u" 2>/dev/null | stage_findings_route "$dir" issue-acceptance requirement-findings)"
+    # else checks it. #2330, #2569: each says what would settle it — the
+    # check's own ACCEPTED IF, never advice the engine writes.
+    # #2452, #2556, #2569 (ADR-071 §1): a line's [fix-<word>] mark is its topic,
+    # <word>-findings — what must change — and sends it to the output of the
+    # stages that can fix it, never its text. #2569 (review): an unmet or
+    # unsure line with no mark says nothing of what must change, so it goes to
+    # every stage that can change something: design, test and code.
+    # #2508 (ADR-072 §3): a part of the change nothing asked for is
+    # the code's to undo; #2523: one in a test file ([fix-test]) is a test's,
+    # which test-author takes: build may not change a test.
+    local _fnd; _fnd="$(jq -r --argjson s "$s" --argjson x "$x" 'def topic: if test("^\\[fix-code\\]") then "code-findings,test-findings\t"
+            elif test("^\\[fix-design\\]") then "design-findings\t" else "design-findings,test-findings,code-findings\t" end;
+        def bare: sub("^\\[fix-(code|design)\\][[:space:]]*"; "");
+        (.[]? | tostring | topic + "The issue requires this and the change does not meet it: " + bare),
+        ($s[] | tostring | topic + "Not sure this requirement is met: " + bare),
+        ($x[] | tostring | (if test("^\\[fix-test\\]") then "test-findings\t" else "code-findings\t" end)
+            + "The change does this and no requirement asks for it: " + sub("^\\[fix-test\\][[:space:]]*"; ""))' \
+        <<< "$u" 2>/dev/null | stage_findings_route_each "$dir" issue-acceptance design-findings)"
     u="$(jq -c 'map(tostring | sub("^\\[fix-(code|design)\\][[:space:]]*"; ""))' <<< "$u" 2>/dev/null || printf '%s' "$u")"
+    [[ "$s" == "[]" ]] || s="$(jq -c 'map(tostring | sub("^\\[fix-(code|design)\\][[:space:]]*"; ""))' <<< "$s" 2>/dev/null || printf '%s' "$s")"
     x="$(jq -c 'map(tostring | sub("^\\[fix-test\\][[:space:]]*"; ""))' <<< "$x" 2>/dev/null || printf '%s' "$x")"
     # ADR-068 §6: what it did about each finding it was given (_IA_ANSWERS),
     # and how many it was shown when it was asked this time.
@@ -222,7 +234,7 @@ _ia_write() {
     local _body="- every requirement the issue states is met by the change"
     # #2452: the unmet requirements are findings, each sent to the stages that
     # can fix it; listed here they would reach every stage that reads this.
-    [[ "$u" != "[]" || "$s" != "[]" || "$x" != "[]" ]] && _body="$(jq -r --argjson s "$s" '(if length > 0 then "- \(length) requirement(s) not met — each is a finding, sent to the stages that can fix it" else empty end), (if ($x | length) > 0 then "- \($x | length) part(s) of the change no requirement asks for — each is a finding, sent to the stages that can fix it" else empty end), ($s[] | "- NOT SURE: " + . + " — what would settle it: a test that fails when it is not met, or the code or document that shows it is met")' <<< "$u" 2>/dev/null || printf -- '- see result')"
+    [[ "$u" != "[]" || "$s" != "[]" || "$x" != "[]" ]] && _body="$(jq -r --argjson s "$s" '(if length > 0 then "- \(length) requirement(s) not met — each is a finding, sent to the stages that can fix it" else empty end), (if ($x | length) > 0 then "- \($x | length) part(s) of the change no requirement asks for — each is a finding, sent to the stages that can fix it" else empty end), ($s[] | "- NOT SURE: " + .)' <<< "$u" 2>/dev/null || printf -- '- see result')"
     if [[ "$j" == unreadable ]] || [[ "$o" != pass && "$o" != fail ]]; then
         _body="- the change was not judged against the issue"
     fi
@@ -288,10 +300,13 @@ issue_acceptance_run() {
     declare -F acceptance_requirements_list >/dev/null 2>&1 && _reqs="$(acceptance_requirements_list "$_req_f")"
     # #2550 (ADR-072 §3): what the change must not do; #2555 (ADR-070): the issue's terms, word for word.
     declare -F acceptance_limits_list >/dev/null 2>&1 && { _lims="$(acceptance_limits_list "$_req_f")"; acceptance_terms_v _terms "$_req_f"; }
-    # #2464 (ADR-072 §4 §5): the answer is kept while what it judged is
-    # unchanged; a stage's `wrong` answer to one of its findings is judged
-    # again, shown to the judge.
-    local _ans=""; judge_answers_to_v _ans "$art" issue-acceptance issue-acceptance-requirement issue-acceptance-code issue-acceptance-change
+    # #2464, #2569 (ADR-072 §4 §5): the answer is kept while what it judged is
+    # unchanged; a stage's answer to one of its findings has it judge again,
+    # shown the finding and the answer.
+    local _ans="" _held="" _ia_l; local -a _ia_lf=()
+    judge_answers_to_v _ans "$art" issue-acceptance issue-acceptance-design issue-acceptance-test issue-acceptance-code
+    for _ia_l in "" -design -test -code; do _ia_lf+=("issue-acceptance$_ia_l=${art%/}/issue-acceptance$_ia_l-result.json"); done
+    judge_held_entries_v _held "$_ans" "${_ia_lf[@]}"
     local kf="${art%/}/issue-acceptance-judged.json" eng fp kept="" _root_q="$_root"
     judge_engine_v eng
     judge_fp_v fp "$eng"$'\n'"$issue"$'\n'"$_reqs"$'\n'"$_lims"$'\n'"$_terms"$'\n'"$acc"$'\n'"$_change_fp"$'\n'"$test_verdict"$'\n'"$_ans"
@@ -306,7 +321,8 @@ issue_acceptance_run() {
         fi
     fi
 
-    _task="$(_ia_prompt "$issue" "${acc:-<none>}" "${change:-<no change found>}" "${test_verdict:-unknown}" "$_reqs" "$(judge_disputes_block "$_ans")" "$_lims" "$_terms")"
+    judge_held_block_v _held "$_held"
+    _task="$(_ia_prompt "$issue" "${acc:-<none>}" "${change:-<no change found>}" "${test_verdict:-unknown}" "$_reqs" "$_held" "$_lims" "$_terms")"
     _framed="$_task"
     # ADR-067 §8: the stage's three parts and the engine's blocks, in the one
     # prompt order. A prompt that cannot be composed is not sent.
@@ -389,111 +405,6 @@ _ia_finish() {
 _ia_json_list() {
     [[ $# -gt 0 ]] || { printf '[]'; return 0; }
     printf '%s\n' "$@" | jq -Rnc '[inputs | select(length > 0)]' 2>/dev/null || printf '[]'
-}
-
-# _ia_parse <reply> <requirements> <issue> <repo> — each MET:/UNMET:/UNSURE:
-# line (ADR-072 §3) into _IA_UNMET ("[fix-code] <id>: <why> — <quote>"; an
-# unmarked line keeps no mark, #2452) and
-# _IA_UNSURE. _IA_PROBLEM says what makes the answer unusable: a requirement
-# with no line, a line naming none of them, a complaint with no quote or a
-# quote that is not there. A line that names nothing ("none") is no line.
-# #2508 (ADR-072 §3): each UNASKED: line — a part of the change no requirement
-# asks for, with the code that does it — into _IA_UNASKED ("<part>: <why> —
-# <quote>"); its quote must be in a file, and `UNASKED: none` is no line.
-_ia_parse() {
-    local raw="$1" reqs="$2" issue="$3" repo="$4" lims="${5:-}"
-    _IA_UNMET=(); _IA_UNSURE=(); _IA_UNASKED=(); _IA_PROBLEM=""; _IA_QUOTED=()
-    local -A rtext=() seen=() ltext=() lseen=()
-    local -a order=() bad=()
-    local l kind rest fix name why quote w qp own
-    while IFS= read -r l; do
-        [[ "$l" =~ ^-[[:space:]]+([A-Za-z0-9]+-[0-9]+):[[:space:]]*(.*)$ ]] || continue
-        rtext["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"; order+=("${BASH_REMATCH[1]}")
-    done <<< "$reqs"
-    while IFS= read -r l; do
-        [[ "$l" =~ ^-[[:space:]]+([A-Za-z0-9]+-[0-9]+):[[:space:]]*(.*)$ ]] || continue
-        ltext["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"
-    done <<< "$lims"
-    while IFS= read -r l; do
-        judge_reply_line_v l "$l"
-        # #2550 (ADR-072 §3): one line per limit; a broken one is unmet code.
-        if [[ "$l" =~ ^(KEPT|BROKEN):[[:space:]]*(.*)$ ]]; then
-            kind="${BASH_REMATCH[1]}"; rest="${BASH_REMATCH[2]}"
-            name="${rest%%|*}"; name="${name%"${name##*[![:space:]]}"}"; name="${name%:}"
-            # An empty id is no key: refused before the lookup (lens review on #2550).
-            [[ -n "$name" ]] || { bad+=("a $kind: line names no limit"); continue; }
-            if [[ -z "${ltext[$name]+x}" ]]; then bad+=("$kind names $name, which is not a limit listed"); continue; fi
-            lseen["$name"]=1
-            [[ "$kind" == KEPT ]] && continue
-            why=""; quote=""
-            if [[ "$rest" == *"| WHY:"* ]]; then why="${rest#*| WHY:}"; why="${why%%| QUOTE:*}"; fi
-            why="${why#"${why%%[![:space:]]*}"}"; why="${why%"${why##*[![:space:]]}"}"
-            [[ "$rest" == *"| QUOTE:"* ]] && { quote="${rest#*| QUOTE:}"; quote="${quote#"${quote%%[![:space:]]*}"}"; }
-            if [[ -z "$quote" ]]; then bad+=("BROKEN $name has no QUOTE"); continue; fi
-            judge_quote_check_v w "$quote" "" "$repo" || { bad+=("BROKEN $name: its quote $w"); continue; }
-            judge_quote_path_v qp "$quote" "$repo"; [[ -n "$qp" ]] && _IA_QUOTED+=("$qp")
-            _IA_UNMET+=("[fix-code] $name: ${why:-the change does what this limit forbids} (${ltext[$name]}) — $quote")
-            continue
-        fi
-        if [[ "$l" =~ ^UNASKED:[[:space:]]*(.*)$ ]]; then
-            _ia_parse_unasked "${BASH_REMATCH[1]}" "$repo"; continue
-        fi
-        [[ "$l" =~ ^(MET|UNMET|UNSURE):[[:space:]]*(.*)$ ]] || continue
-        kind="${BASH_REMATCH[1]}"; rest="${BASH_REMATCH[2]}"; fix=""
-        [[ "$kind" == UNMET && "$rest" =~ ^(\[fix-(code|design)\])[[:space:]]*(.*)$ ]] && { fix="${BASH_REMATCH[1]}"; rest="${BASH_REMATCH[3]}"; }
-        name="${rest%%|*}"; name="${name%"${name##*[![:space:]]}"}"; name="${name%:}"
-        shopt -q nocasematch; local _ncm=$?
-        shopt -s nocasematch
-        [[ -z "$name" || "$name" =~ ^\(?(none|omitted|n/a|nothing)\)?\.?$ ]] && { (( _ncm )) && shopt -u nocasematch; continue; }
-        (( _ncm )) && shopt -u nocasematch
-        if [[ ${#order[@]} -gt 0 && -z "${rtext[$name]+x}" ]]; then
-            bad+=("$kind names $name, which is not a requirement listed"); continue
-        fi
-        seen["$name"]=1
-        [[ "$kind" == MET ]] && continue
-        why=""; quote=""
-        if [[ "$rest" == *"| WHY:"* ]]; then why="${rest#*| WHY:}"; why="${why%%| QUOTE:*}"; fi
-        why="${why#"${why%%[![:space:]]*}"}"; why="${why%"${why##*[![:space:]]}"}"
-        [[ "$rest" == *"| QUOTE:"* ]] && { quote="${rest#*| QUOTE:}"; quote="${quote#"${quote%%[![:space:]]*}"}"; }
-        if [[ -z "$quote" ]]; then bad+=("$name has no QUOTE"); continue; fi
-        own="${rtext[$name]:-}"$'\n'"$issue"
-        judge_quote_check_v w "$quote" "$own" "$repo" || { bad+=("$name's quote $w"); continue; }
-        judge_quote_path_v qp "$quote" "$repo"; [[ -n "$qp" ]] && _IA_QUOTED+=("$qp")
-        if [[ "$kind" == UNMET ]]; then _IA_UNMET+=("${fix:+$fix }$name: ${why:-it is not met} — $quote")
-        else _IA_UNSURE+=("$name: ${why:-it cannot be told} — $quote"); fi
-    done <<< "$raw"
-    local -a missing=()
-    for name in ${order[@]+"${order[@]}"}; do [[ -n "${seen[$name]+x}" ]] || missing+=("$name"); done
-    for name in "${!ltext[@]}"; do [[ -n "${lseen[$name]+x}" ]] || missing+=("$name"); done
-    [[ ${#missing[@]} -gt 0 ]] && bad=("it has no line for ${missing[*]}" ${bad[@]+"${bad[@]}"})
-    # With no list, an answer must still judge something: no line is no answer.
-    [[ ${#order[@]} -eq 0 && ${#seen[@]} -eq 0 && ${#bad[@]} -eq 0 ]] \
-        && bad=("it has no MET:, UNMET: or UNSURE: line")
-    if [[ ${#bad[@]} -gt 0 ]]; then
-        local IFS=';'; _IA_PROBLEM="${bad[*]}"; _IA_PROBLEM="${_IA_PROBLEM//;/; }"
-    fi
-    return 0
-}
-
-# _ia_parse_unasked <rest> <repo> — one UNASKED: line, in _ia_parse's scope
-# (bad, _IA_UNASKED, _IA_QUOTED).
-_ia_parse_unasked() {
-    local rest="$1" repo="$2" part why="" quote="" w qp
-    part="${rest%%|*}"; part="${part%"${part##*[![:space:]]}"}"
-    shopt -q nocasematch; local _ncm=$?
-    shopt -s nocasematch
-    [[ -z "$part" || "$part" =~ ^\(?(none|nothing|n/a)\)?\.?$ ]] && { (( _ncm )) && shopt -u nocasematch; return 0; }
-    (( _ncm )) && shopt -u nocasematch
-    if [[ "$rest" == *"| WHY:"* ]]; then why="${rest#*| WHY:}"; why="${why%%| QUOTE:*}"; fi
-    why="${why#"${why%%[![:space:]]*}"}"; why="${why%"${why##*[![:space:]]}"}"
-    [[ "$rest" == *"| QUOTE:"* ]] && { quote="${rest#*| QUOTE:}"; quote="${quote#"${quote%%[![:space:]]*}"}"; }
-    if [[ -z "$quote" ]]; then bad+=("UNASKED $part has no QUOTE"); return 0; fi
-    # No own words: the quote is the code that does it, in a file.
-    judge_quote_check_v w "$quote" "" "$repo" || { bad+=("UNASKED $part: its quote $w"); return 0; }
-    judge_quote_path_v qp "$quote" "$repo"; [[ -n "$qp" ]] && _IA_QUOTED+=("$qp")
-    # #2523: a part in a test file is the tests' to fix, not the code's.
-    local mark=""; [[ -n "$qp" ]] && zb_is_test_path "$qp" "$repo" && mark="[fix-test] "
-    _IA_UNASKED+=("$mark$part: ${why:-no requirement asks for it} — $quote")
 }
 
 issue_acceptance_cleanup() { return 0; }

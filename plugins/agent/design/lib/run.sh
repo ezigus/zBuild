@@ -7,6 +7,17 @@
 [[ -n "${_ZBUILD_DESIGN_RUN_LOADED:-}" ]] && return 0
 _ZBUILD_DESIGN_RUN_LOADED=1
 
+# _design_draft_unfinished <draft> <artifact_dir> — rc 0 when the working copy is a try not finished
+# (#2569 review): no acceptance block, or design's last result (written below) says its call was cut
+# off (_DESIGN_CUT_MARK) or is a pass — no check judged this copy: the stage stopped in its call.
+_DESIGN_CUT_MARK=" — its call was cut off before it ended"
+_design_draft_unfinished() {
+    extract_acceptance_block "$1" >/dev/null 2>&1 || return 0
+    local _r=""; [[ -s "$2/design-verdict.json" ]] || return 1
+    _r="$(jq -r '"\(.outcome // "")\t\(.reason // "")"' "$2/design-verdict.json" 2>/dev/null || true)"
+    [[ "${_r%%$'\t'*}" == pass || "$_r" == *"$_DESIGN_CUT_MARK"* ]]
+}
+
 # Inner implementation — unit-testable with explicit paths.
 # Args:
 #   $1 = scope_manifest path
@@ -33,11 +44,39 @@ _design_stage_run_inner() {
     # A working copy still on disk is a try that did not pass. Otherwise the
     # working copy starts as the last good design, so a design is on disk from
     # the first turn.
-    local output_draft="$artifact_dir/design-draft.md" _draft_rejected=0
+    local output_draft="$artifact_dir/design-draft.md" _draft_rejected=0 _draft_unfinished=0
     if [[ -s "$output_draft" ]]; then
-        _draft_rejected=1
+        _draft_rejected=1; _design_draft_unfinished "$output_draft" "$artifact_dir" && _draft_unfinished=1
     elif [[ -s "$output_design_md" ]]; then
         cp "$output_design_md" "$output_draft" 2>/dev/null || true
+    fi
+
+    # Design REFINES its prior design rather than re-creating it, spliced exactly ONCE (#1825, #1979);
+    # Previous work carries the check's findings. Its own latest design.md, whichever try or run wrote it
+    # (ADR-068 §8): a rerun continues it; what moved since is under Previous work.
+    local _prior_design_body=""
+    local _si_design_path=""
+    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS:-}" ]]; then
+        _si_design_path="$(jq -r '.inputs.design // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+    fi
+    if [[ -z "$_si_design_path" || ! -s "$_si_design_path" ]]; then
+        _si_design_path="$(_design_prior_design_path "$output_design_md" 2>/dev/null || true)"
+    fi
+    [[ -n "$_si_design_path" ]] && _prior_design_body="$(cat "$_si_design_path" 2>/dev/null || true)"
+    # #2569 (ADR-068 §8): after a rejected try the design to refine is the
+    # working copy, the newest try; the last design that passed is reference
+    # only. #1764 run 44530053809 re-added, word for word, a step the working
+    # copy had removed: the passed design was the one shown in full.
+    # A try not finished (#2569 review) is no design to refine: the last that passed is, the working copy
+    # starts as it again, and the try is shown after it. With none that passed, the try is finished.
+    local _passed_body="" _unfinished_body=""
+    if (( _draft_unfinished )) && [[ -n "$_prior_design_body" ]]; then
+        _unfinished_body="$(<"$output_draft")"
+        cp "$_si_design_path" "$output_draft" 2>/dev/null || true
+        _draft_rejected=0
+    elif (( _draft_rejected )); then
+        _passed_body="$_prior_design_body"
+        _prior_design_body="$(<"$output_draft")"
     fi
 
     # #2299 (ADR-050 §6): design always runs. A restored prior design reaches
@@ -56,9 +95,14 @@ _design_stage_run_inner() {
     # The persona (ADR-051) reaches the model through the provider, not this
     # text: the stage writes only its own job.
     local _framing="Your job: write the design — the change's decisions and its acceptance contract — in the working copy at the path below. When it passes design's checks it becomes design.md. Save it as you go: a design on disk when your time runs out still counts."
-    local _start
-    if (( _draft_rejected )); then
-        _start="The working copy holds your last try, which was rejected: Previous work says why. Fix what it names. If YOUR LATEST DESIGN below is closer to right, start from that instead."
+    local _start _unf="Your last try was not finished (it was cut off, or it has no acceptance block)."
+    if (( _draft_unfinished && _draft_rejected )); then
+        _start="$_unf It is YOUR LATEST DESIGN (below): finish it, and fix what Previous work names. No design has passed yet."
+    elif (( _draft_rejected )); then
+        _start="The working copy holds your last try, which was rejected: Previous work says why. It is YOUR LATEST DESIGN (below): refine it and fix what Previous work names."
+        if [[ -n "$_passed_body" ]]; then _start+=" The last design that passed is shown after it for reference only."; else _start+=" No design has passed yet."; fi
+    elif [[ -n "$_unfinished_body" ]]; then
+        _start="$_unf The working copy holds the last design that passed, YOUR LATEST DESIGN (below): refine it, and fix what Previous work names. Your unfinished try is shown after it, for reference."
     elif [[ -s "$output_draft" ]]; then
         _start="The working copy already holds YOUR LATEST DESIGN (below). Change only what needs to change."
     else
@@ -239,24 +283,6 @@ DESIGN_PROMPT
     [[ -n "$_terms" ]] && printf '\n### Terms from the issue — each means this, and only this\n%s\n\nUse each term as the issue defines it here, in every SPEC and step.\n' "$_terms" >> "$prompt_input_file"
     [[ -n "$_lims" ]] && printf '\n### Limits from the issue — what this change must not do\n%s\n\nWrite no SPEC for a limit, and no step that does what one forbids: a limit is met by not building it, and it is checked against the change once it is made.\n' "$_lims" >> "$prompt_input_file"
 
-    # On a later round design REFINES its prior design.md rather than
-    # re-creating it. #1825 established that this content is spliced exactly ONCE. #1979 keeps
-    # that invariant with the splice moved: the engine's Previous work carries
-    # the design check's findings, so design only decides how to WORD the
-    # refinement instruction — from the recorded verdict, not from a file read.
-    local _prior_design_body=""
-    # Design refines its own latest design.md, whichever try or run wrote it
-    # (ADR-068 §8): a rerun of an issue continues it. What moved since design
-    # last ran — files and the issue text — is the engine's, under Previous
-    # work; every claim is checked against the tree as it is now.
-    local _si_design_path=""
-    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS:-}" ]]; then
-        _si_design_path="$(jq -r '.inputs.design // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
-    fi
-    if [[ -z "$_si_design_path" || ! -s "$_si_design_path" ]]; then
-        _si_design_path="$(_design_prior_design_path "$output_design_md" 2>/dev/null || true)"
-    fi
-    [[ -n "$_si_design_path" ]] && _prior_design_body="$(cat "$_si_design_path" 2>/dev/null || true)"
     if [[ -n "$_prior_design_body" ]]; then
         printf '\n### YOUR LATEST DESIGN (refine it; Previous work says what moved since you wrote it)\n' >> "$prompt_input_file"
         printf 'Every claim it makes about the repository — an ADR it relies on, a file it lists, a hook, field or convention it declares — is re-checked against the tree as it is NOW, and every SPEC it keeps against the issue'"'"'s requirements as they are NOW, not only the new ones: anything that no longer holds is dropped or re-derived — a SPEC a requirement now contradicts is rewritten or removed — and the design says what changed and why. Keep what still holds; do not start over.\n' >> "$prompt_input_file"
@@ -268,6 +294,9 @@ DESIGN_PROMPT
         [[ -n "$_one_line" ]] && printf '\nThese [code] and [done] SPECs of YOUR LATEST DESIGN are still written on one line. Each one you keep is rewritten with its parts on the lines under it — Given, When, Then, And, Cleanup:\n%s' "$_one_line" >> "$prompt_input_file"
         printf '\nRefine YOUR LATEST DESIGN.\n' \
             >> "$prompt_input_file"
+        [[ -n "$_passed_body" ]] && printf '\n### The last design that passed — for reference; do not copy back what your newest try removed\n\n%s\n' \
+            "$_passed_body" >> "$prompt_input_file"
+        [[ -n "$_unfinished_body" ]] && printf '\n### Your last try, not finished — for reference; it was cut off or has no acceptance block\n\n%s\n' "$_unfinished_body" >> "$prompt_input_file"
     fi
 
     # When a later check found a [code] requirement whose test already passes,
@@ -389,7 +418,9 @@ ${_dp_limits}")"; then
     # cannot run does not hide the script findings (review on PR #2399): they
     # are returned, saying coverage was not checked.
     local -a _fnd=()
-    local _v _u
+    local _v _u _cut=""
+    # #2569 review: a working copy its call did not finish says so in the result (_design_draft_unfinished).
+    (( router_rc == 0 )) || _cut="$_DESIGN_CUT_MARK"
     # #2462: held to the ids of the last design that passed (and, through the
     # requirement list, to the ids the issue's words write).
     _design_checks "$output_draft" "$repo_root" "$_req_f" "$output_design_md"
@@ -404,7 +435,7 @@ ${_dp_limits}")"; then
             _fnd+=("the check that the design covers the issue could not be run ($_DESIGN_COV_OUTCOME), so coverage was not checked this try")
         elif [[ -n "$_DESIGN_COV_OUTCOME" ]]; then
             error "_design_stage_run_inner: the coverage check could not be run ($_DESIGN_COV_OUTCOME)"
-            _design_write_outcome "$artifact_dir" "$_DESIGN_COV_OUTCOME" "coverage_check_failed"
+            _design_write_outcome "$artifact_dir" "$_DESIGN_COV_OUTCOME" "coverage_check_failed${_cut}"
             stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
                 "the check that the design covers the issue could not be run ($_DESIGN_COV_OUTCOME)" \
                 "The new design is kept as the working copy, unchecked; design.md is unchanged."
@@ -431,7 +462,7 @@ ${_dp_limits}")"; then
     if [[ ${#_fnd[@]} -gt 0 ]]; then
         emit_event "design.checks.failed" "plugin=design" "findings=${#_fnd[@]}"
         local _fj; _fj="$(printf '%s\n' "${_fnd[@]}" | stage_findings_json)"
-        _design_write_outcome "$artifact_dir" "unusable" "the design fails ${#_fnd[@]} of its checks" "${_fj:-[]}"
+        _design_write_outcome "$artifact_dir" "unusable" "the design fails ${#_fnd[@]} of its checks${_cut}" "${_fj:-[]}"
         # #2470 (ADR-055 §9): the findings are in the result, shown once; the
         # summary says where they are, never copies them.
         local _fsa=""; zb_answers_summary_v _fsa _DESIGN_ANSWERS

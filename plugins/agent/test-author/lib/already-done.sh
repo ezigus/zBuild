@@ -15,6 +15,17 @@
 
 [[ -n "${_ZBUILD_TA_ALREADY_DONE_LOADED:-}" ]] && return 0
 _ZBUILD_TA_ALREADY_DONE_LOADED=1
+# shellcheck source=../../../../scripts/lib/stage-handoff.sh
+source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/stage-handoff.sh"
+
+# _ta_to_design <dir> <findings_json> — a finding only design can fix (a SPEC no
+# test can prove, a requirement the old code already meets) goes to
+# test-author's design-findings output, the one design takes (#2569, ADR-071
+# §1): its own result is test-findings. Added to what the engine's handoff
+# writes there in the same run, never in its place.
+_ta_to_design() {
+    stage_findings_add "$1/test-author-design-result.json" "${2:-[]}" || true
+}
 
 # _ta_already_done <design.md> <reply> <base_dir> — reads the reply's reports.
 # Sets _TA_DONE_VERIFIED (one finding line per report whose quote is in the old

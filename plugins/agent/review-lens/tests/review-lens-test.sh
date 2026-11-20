@@ -50,9 +50,9 @@ route_to_model() { zb_test_lens_check_answer "$2" && return 0;
     printf 'call\n' >> "$_RL_CALLS"
     printf '%s' "$2" > "$_RL_PROMPT"
     if [[ "$2" == *'"security" lens'* ]]; then
-        printf '%s' '{"score":3,"findings":[{"trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/y.sh","category":"injection","severity":"CRITICAL","line":10,"message":"shell injection risk"}]}'
+        printf '%s' '{"score":3,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/y.sh","category":"injection","severity":"CRITICAL","line":10,"message":"shell injection risk"}]}'
     elif [[ "$2" == *'"performance" lens'* ]]; then
-        printf '%s' '{"score":8,"findings":[{"trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/z.sh","category":"perf","severity":"low","line":3,"message":"repeated read"}]}'
+        printf '%s' '{"score":8,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/z.sh","category":"perf","severity":"low","line":3,"message":"repeated read"}]}'
     else
         printf '%s' '{"score":10,"findings":[]}'
     fi

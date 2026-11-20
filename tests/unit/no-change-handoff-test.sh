@@ -23,8 +23,8 @@
 # H6 [guard]  a try that changed something hands nothing on; [change] the
 #             handed-on file of an earlier run of the stage is gone when it
 #             runs again
-# H7 [change] test-author declares a handoff output of topic requirement-
-#             findings, and design is shown what test-author hands on there
+# H7 [change] test-author declares a handoff output of topic design-findings
+#             (#2569), and design is shown what test-author hands on there
 # H8 [change] the shared answer rules say done is only for what this call
 #             changed; already right is wrong; someone else's is not mine
 # H9 [change] stage.findings.handed_on is announced, and is a known event
@@ -92,8 +92,8 @@ outputs:
     type: text
     required: false
   - id: answerer_handoff
-    topic: requirement-findings
-    path: ${artifact_dir}/answerer-requirement-result.json
+    topic: design-findings
+    path: ${artifact_dir}/answerer-design-result.json
     type: routed-findings.json@1
     required: false
     handoff: true
@@ -125,7 +125,7 @@ export ZBUILD_STATE_DIR="$S" ZBUILD_ARTIFACT_DIR="$A"
 _same() { rm -rf "$A" "$S/runtime"; mkdir -p "$A"; printf 'same' > "$A/answerer-work.txt"; : > "$ZBUILD_EVENTS_JSONL"; }
 _runs() { cat "$A/runs.$1" 2>/dev/null || echo 0; }
 _dispatch() { plugin_hook_call "$P" run "$1" "$S/pipeline-state.json" >/dev/null 2>&1; }
-_handed() { jq -r '[.data.findings[]?.text] | join("\n")' "$A/answerer-requirement-result.json" 2>/dev/null; }
+_handed() { jq -r '[.data.findings[]?.text] | join("\n")' "$A/answerer-design-result.json" 2>/dev/null; }
 _ends() { jq -r '.data.ends_round // false' "$A/answerer-result.json" 2>/dev/null; }
 
 WRONG="ans finding 1: wrong — the Given cannot be met by any test; design must rewrite SPEC-3"
@@ -139,8 +139,8 @@ _h="$(_handed)"
 assert_contains "[H2] the wrong answer reaches the stage's handoff output" "$_h" "design must rewrite SPEC-3"
 assert_contains "[H2] ...with the finding it answers" "$_h" "the assertion does not test its Given"
 assert_contains "[H2] ...naming the stage and its answer" "$_h" "ans changed nothing for ans finding 1 and answered: wrong"
-assert_eq "[H2] the handed-on output holds one finding, numbered" "1" "$(jq -r '.data.findings[0].n' "$A/answerer-requirement-result.json" 2>/dev/null)"
-assert_eq "[H2] the handed-on output has no verdict of its own" "null" "$(jq -r '.verdict // .outcome // null' "$A/answerer-requirement-result.json" 2>/dev/null)"
+assert_eq "[H2] the handed-on output holds one finding, numbered" "1" "$(jq -r '.data.findings[0].n' "$A/answerer-design-result.json" 2>/dev/null)"
+assert_eq "[H2] the handed-on output has no verdict of its own" "null" "$(jq -r '.verdict // .outcome // null' "$A/answerer-design-result.json" 2>/dev/null)"
 assert_eq "[H2] the stage's result ends the round" "true" "$(_ends)"
 assert_contains "[H2] ...which the loop reads from the stage's report" "$(_verdict_report_from_file "$A/answerer-result.json")" '"ends_round":true'
 
@@ -151,7 +151,7 @@ assert_eq "[H3] ...and ends the round" "true" "$(_ends)"
 
 # ── H4 ───────────────────────────────────────────────────────────────────────
 _same; SAME=1 OUTCOMES="unusable" ANSWER="$DONE" _dispatch ans
-assert_eq "[H4] done with nothing changed hands nothing on" "absent" "$([[ -e "$A/answerer-requirement-result.json" ]] && echo present || echo absent)"
+assert_eq "[H4] done with nothing changed hands nothing on" "absent" "$([[ -e "$A/answerer-design-result.json" ]] && echo present || echo absent)"
 assert_eq "[H4] ...and does not end the round" "false" "$(_ends)"
 _own="$(jq -r '[.data.findings[]?.text] | join("\n")' "$A/answerer-result.json" 2>/dev/null)"
 assert_contains "[H4] it is a finding back to the stage, in its own result" "$_own" "answered done, but this try changed nothing"
@@ -166,19 +166,19 @@ assert_contains "[H5] ...and its last try, changing nothing, hands on" "$(_hande
 # ── H6 ───────────────────────────────────────────────────────────────────────
 # Every try changes its work and fails: the budget runs out, nothing is handed on.
 _same; OUTCOMES="unusable" ANSWER="$WRONG" _dispatch ans
-assert_eq "[H6] a try that changed something hands nothing on" "absent" "$([[ -e "$A/answerer-requirement-result.json" ]] && echo present || echo absent)"
+assert_eq "[H6] a try that changed something hands nothing on" "absent" "$([[ -e "$A/answerer-design-result.json" ]] && echo present || echo absent)"
 assert_eq "[H6] ...and its round goes on" "false" "$(_ends)"
 # ── H10 / H11 (review on #2565) ──────────────────────────────────────────────
 _same; SAME=1 OUTCOMES="misconfigured" ANSWER="$WRONG" _dispatch ans
-assert_eq "[H10] a halting outcome hands nothing on" "absent" "$([[ -e "$A/answerer-requirement-result.json" ]] && echo present || echo absent)"
+assert_eq "[H10] a halting outcome hands nothing on" "absent" "$([[ -e "$A/answerer-design-result.json" ]] && echo present || echo absent)"
 assert_eq "[H10] ...and ends no round, so it halts" "false" "$(_ends)"
 _same; SAME=1 OUTCOMES="unusable" ANSWER="build finding 2: wrong — the test is right" _dispatch ans
 assert_eq "[H11] a wrong to another stage's finding is not handed on (it goes back to that judge)" "absent" \
-    "$([[ -e "$A/answerer-requirement-result.json" ]] && echo present || echo absent)"
+    "$([[ -e "$A/answerer-design-result.json" ]] && echo present || echo absent)"
 assert_eq "[H11] ...and ends no round" "false" "$(_ends)"
 _same; SAME=1 OUTCOMES="unusable" ANSWER="$WRONG" _dispatch ans
 rm -f "$A/runs.ans"; OUTCOMES="pass" ANSWER="" _dispatch ans
-assert_eq "[H6] the handed-on file of an earlier run is gone when the stage runs again" "absent" "$([[ -e "$A/answerer-requirement-result.json" ]] && echo present || echo absent)"
+assert_eq "[H6] the handed-on file of an earlier run is gone when the stage runs again" "absent" "$([[ -e "$A/answerer-design-result.json" ]] && echo present || echo absent)"
 
 # ── H9 ───────────────────────────────────────────────────────────────────────
 _same; SAME=1 OUTCOMES="unusable" ANSWER="$WRONG" _dispatch ans
@@ -208,8 +208,8 @@ stage_result_write "$A2/test-author-result.json" unusable "1 finding open" \
     "$(jq -nc '{findings: [{n: 1, text: "DSCLA-10: the assertion does not test the Given"}],
                 answers: ["test-author finding 1: wrong — no test can register an event; design must say what is observed"]}')"
 stage_handoff_unchanged "$PROOT/agent/test-author" test-author "$S2/pipeline-state.json" >/dev/null 2>&1
-assert_contains "[H7] test-author hands it on in its requirement-findings output" \
-    "$(jq -r '[.data.findings[]?.text] | join("\n")' "$A2/test-author-requirement-result.json" 2>/dev/null)" "design must say what is observed"
+assert_contains "[H7] test-author hands it on in its design-findings output" \
+    "$(jq -r '[.data.findings[]?.text] | join("\n")' "$A2/test-author-design-result.json" 2>/dev/null)" "design must say what is observed"
 _update_stage_status "$S2/pipeline-state.json" design complete
 _update_stage_status "$S2/pipeline-state.json" test-author complete
 _idx="$(_inputs_resolve_stage design "$PROOT" "$S2")"

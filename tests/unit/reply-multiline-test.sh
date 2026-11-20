@@ -81,7 +81,8 @@ assert_eq "[J6] ...a check's Decision answer is a unit of its own" "2" "$(/usr/b
         if [[ "$2" == *"THE LIST:"* ]]; then printf 'MISSING: RQRTRY-1 retries 3 times; on the last failure it exits 2\n'
         else printf 'REQUIREMENT: RQGATE-1 the gate must reject a test that\n  passes on the old code\nREQUIREMENT: RQSUMM-1 the summary names the file\n'; fi
     }
-    _j=""; _intake_requirements_json_v _j '{"title":"t","body":"b"}' >/dev/null 2>&1
+    # #2569: what the check says is missing is the issue's own sentence.
+    _j=""; _intake_requirements_json_v _j '{"title":"t","body":"- retries 3 times; on the last failure it exits 2"}' >/dev/null 2>&1
     printf '%s' "$_j" > "$TEST_TEMP_DIR/q1.json"
 )
 _q1="$(jq -r '.requirements[].text' "$TEST_TEMP_DIR/q1.json" 2>/dev/null)"
@@ -100,7 +101,7 @@ assert_eq "[Q1] ...three requirements, not four" "3" "$(jq '.requirements | leng
     jq -n --arg g "$sd/intake-result.json" --arg d "$ad/design.md" --arg p "$ad/d.patch" \
         '{schema_version:2, stage:"issue-acceptance", inputs:{a:$g, b:$d, c:$p}}' > "$sd/idx.json"
     source "$REPO_ROOT/plugins/agent/issue-acceptance/plugin.sh" >/dev/null 2>&1
-    route_to_model() { printf 'UNMET: [fix-code] the retry | WHY: the timeout is not applied to the retry path,\n  so a hung retry blocks forever | QUOTE: "the retry is bounded"\n'; }
+    route_to_model() { printf 'UNMET: [fix-code] the retry | WHY: the timeout is not applied to the retry path,\n  so a hung retry blocks forever | ACCEPTED IF: the retry is bounded | QUOTE: "the retry is bounded"\n'; }
     ZBUILD_STAGE_INPUTS="$sd/idx.json" ZBUILD_ARTIFACT_DIR="$ad" ZBUILD_REPO_ROOT="${sd%/state}" \
         issue_acceptance_run issue-acceptance "$sd/pipeline-state.json" >/dev/null 2>&1
 )
@@ -113,7 +114,7 @@ assert_contains "[Q2] ...with the quote on its continued line" "$(jq -r '.data.u
     source "$REPO_ROOT/plugins/agent/design/plugin.sh" >/dev/null 2>&1
     d="$TEST_TEMP_DIR/q3.md"
     printf '# Design\n```acceptance\nSPEC-1[code]: x covers: R-1\nTESTFILES:\nSPEC-1: tests/a.sh\nWIRING: none\n```\n' > "$d"
-    route_to_model() { printf -- '- R-1: covered\n- R-2: uncovered | WHY: retries 3 times; then exits 2 | QUOTE: "retries"\n- R-3: uncovered | WHY: names the file,\n  and only the file | QUOTE: "names"\n- SPEC-1: ok\n'; }
+    route_to_model() { printf -- '- R-1: covered\n- R-2: uncovered | WHY: retries 3 times; then exits 2 | ACCEPTED IF: it is accepted | QUOTE: "retries"\n- R-3: uncovered | WHY: names the file,\n  and only the file | ACCEPTED IF: it is accepted | QUOTE: "names"\n- SPEC-1: ok\n'; }
     _design_coverage "$d" $'- R-1: x\n- R-2: retries\n- R-3: names' T2 >/dev/null 2>&1
     printf '%s\n' "${_DESIGN_UNCOVERED[@]}" > "$TEST_TEMP_DIR/q3.txt"
 )
@@ -127,7 +128,7 @@ assert_eq "[Q3] ...two items" "2" "$(grep -c . "$TEST_TEMP_DIR/q3.txt" 2>/dev/nu
 (
     source "$REPO_ROOT/plugins/agent/test-author/plugin.sh" >/dev/null 2>&1
     _parts=($'Then 1\tThen\tit counts the lines of the file')
-    _r=""; zb_reply_join_v _r $'SPEC-1 Then: missing | WHY: it checks grep x | wc -l,\n  not the file | QUOTE: "it counts the lines of the file"\nSPEC-2: ok'
+    _r=""; zb_reply_join_v _r $'SPEC-1 Then: missing | WHY: it checks grep x | wc -l,\n  not the file | ACCEPTED IF: it counts the lines of the file | QUOTE: "it counts the lines of the file"\nSPEC-2: ok'
     _sc_judge "$_r" SPEC-1 _parts "it counts the lines of the file" "$TEST_TEMP_DIR" "SPEC-1[code]: it counts the lines of the file"
     printf '%s\n' "$_SC_V" "${_SC_F//$'\x1e'/ ~ }" > "$TEST_TEMP_DIR/q4.txt"
     # #2470: a line about an And, after a line that is fine, starts a unit of its own.

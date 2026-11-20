@@ -48,29 +48,88 @@ earlier_output_with_text() {
     printf '%s\n' "${out%%$'\n'*}"
 }
 
+# _eo_json_matches_v <var> <first|all> <jq-test> [dir...] — the earlier JSON
+# outputs <jq-test> is true of, in index order, one path a line. At most two jq
+# (#2569, ADR-065): one jq an output until a match made the cost follow the
+# index's order, which follows the outputs' ids. The rest are read as raw lines
+# and each file parsed on its own, so one that is not JSON is skipped, never the
+# end of the search.
+_eo_json_matches_v() {
+    local -n _eojm="$1"; local mode="$2" test="$3" f; shift 3
+    local -a _eojm_all=() _eojm_js=()
+    local -A _eojm_seen=()
+    _eojm=""
+    _eo_candidates_v _eojm_all "$@"
+    # Each file once: jq keys a file's lines by its name, so a file named twice
+    # (a directory searched twice) would read as one file holding two documents.
+    for f in ${_eojm_all[@]+"${_eojm_all[@]}"}; do
+        [[ "$f" == *.json && -s "$f" && -z "${_eojm_seen[$f]:-}" ]] || continue
+        _eojm_seen[$f]=1; _eojm_js+=("$f")
+    done
+    [[ ${#_eojm_js[@]} -gt 0 ]] || return 0
+    # The first output is tried on its own, with no subshell: most often it is
+    # the one asked for. The rest, if it is not, are read with one jq.
+    if jq -e "$test" "${_eojm_js[0]}" >/dev/null 2>&1; then
+        _eojm="${_eojm_js[0]}"
+        [[ "$mode" == first ]] && return 0
+    fi
+    _eojm_js=("${_eojm_js[@]:1}")
+    [[ ${#_eojm_js[@]} -gt 0 ]] || return 0
+    if [[ ${#_eojm_js[@]} -eq 1 ]]; then
+        jq -e "$test" "${_eojm_js[0]}" >/dev/null 2>&1 && _eojm+="${_eojm:+$'\n'}${_eojm_js[0]}"
+        return 0
+    fi
+    # Written to a file and read back with a builtin: no subshell (ADR-065).
+    # TMPDIR is the stage's scratch directory under a dispatch (ADR-058). The
+    # file is made new, as mktemp makes one — noclobber refuses a name that is
+    # there — by the shell, with no process. A file that cannot be made, or a
+    # jq that fails, is no answer: each output is then read with its own jq,
+    # never taken for "no match" (review on #2569).
+    local - _eojm_rest="" _eojm_tmp="" _eojm_i _eojm_ok=0
+    set -C
+    for _eojm_i in 1 2 3; do
+        _eojm_tmp="${TMPDIR:-/tmp}"; _eojm_tmp="${_eojm_tmp%/}/zbuild-eo.$BASHPID.$RANDOM$RANDOM"
+        { : > "$_eojm_tmp"; } 2>/dev/null && { _eojm_ok=1; break; }
+    done
+    set +C
+    # shellcheck disable=SC2016  # $l, $f, $j are jq's
+    if (( _eojm_ok )) && jq -n -R -r --arg mode "$mode" '
+        def hit: try ('"$test"') catch false;
+        (reduce inputs as $l ({o: [], t: {}}; input_filename as $f
+            | if .t[$f] == null then .o += [$f] | .t[$f] = $l else .t[$f] += "\n" + $l end)) as $s
+        | [$s.o[] as $f | ($s.t[$f] | try fromjson catch null) as $j
+           | select($j != null) | select($j | hit) | $f]
+        | if $mode == "first" then .[:1] else . end | .[]' "${_eojm_js[@]}" >| "$_eojm_tmp" 2>/dev/null; then
+        [[ -s "$_eojm_tmp" ]] && { IFS= read -r -d '' _eojm_rest < "$_eojm_tmp" || true; }
+    else
+        _eojm_rest=""
+        for f in "${_eojm_js[@]}"; do
+            jq -e "$test" "$f" >/dev/null 2>&1 || continue
+            _eojm_rest+="$f"$'\n'
+            [[ "$mode" == first ]] && break
+        done
+    fi
+    (( _eojm_ok )) && rm -f "$_eojm_tmp"
+    _eojm_rest="${_eojm_rest%$'\n'}"
+    [[ -n "$_eojm_rest" ]] && _eojm+="${_eojm:+$'\n'}$_eojm_rest"
+    return 0
+}
+
 # earlier_output_with_json <jq-test> [dir...] — the first earlier JSON output
 # <jq-test> is true of. Prints its path; rc 1 when none is.
 earlier_output_with_json() {
-    local test="$1" f; shift
-    local -a _eoj_all=()
-    _eo_candidates_v _eoj_all "$@"
-    for f in ${_eoj_all[@]+"${_eoj_all[@]}"}; do
-        [[ "$f" == *.json && -s "$f" ]] || continue
-        jq -e "$test" "$f" >/dev/null 2>&1 && { printf '%s\n' "$f"; return 0; }
-    done
-    return 1
+    local _eoj=""
+    _eo_json_matches_v _eoj first "$@"
+    [[ -n "$_eoj" ]] || return 1
+    printf '%s\n' "$_eoj"
 }
 
 # earlier_outputs_with_json <jq-test> [dir...] — every earlier JSON output
 # <jq-test> is true of, one path per line. rc 0 always.
 earlier_outputs_with_json() {
-    local test="$1" f; shift
-    local -a _eos_all=()
-    _eo_candidates_v _eos_all "$@"
-    for f in ${_eos_all[@]+"${_eos_all[@]}"}; do
-        [[ "$f" == *.json && -s "$f" ]] || continue
-        jq -e "$test" "$f" >/dev/null 2>&1 && printf '%s\n' "$f"
-    done
+    local _eos=""
+    _eo_json_matches_v _eos all "$@"
+    [[ -n "$_eos" ]] && printf '%s\n' "$_eos"
     return 0
 }
 

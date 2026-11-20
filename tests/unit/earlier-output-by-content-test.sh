@@ -17,6 +17,13 @@
 # C6 [change] no plugin's code names another stage's output (the lint passes)
 # C7 [change] a deploy result is found by whether it says anything was deployed
 # C8 [change] an empty issue text is not an issue text (rc 1)
+# C10 [change] (#2569, ADR-065) earlier_output_with_json reads the outputs after
+#             the first with one jq, whatever the index order: the first match
+#             in the index wins, and a broken one before it does not stop it
+# C11 [change] (review) the one jq's output file cannot be written — TMPDIR
+#             is gone, or not writable: each output is read with its own jq
+#             instead, so a match is still found, never silently missed; and
+#             no file is left behind
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -104,6 +111,44 @@ assert_eq "[C9] a binary output before the match does not stop the search" "$E/a
     "$(ZBUILD_STAGE_INPUTS="$TEST_TEMP_DIR/idx9b.json" earlier_output_with_text '^file 3 ')"
 
 assert_eq "[C8] an empty issue text is not found: rc 1" "1" "$_rc8"
+
+# ── C10 (#2569: one jq for all the JSON outputs) ─────────────────────────────
+# Output ids name the index's keys, and the index's order is the engine's, so a
+# renamed output moved the match further down it: one jq per output read until
+# a match made the cost follow the names (#2569 R7).
+E="$TEST_TEMP_DIR/c10"; mkdir -p "$E"
+# TMPDIR is this test's own folder: what is left in it is this test's.
+_C10_TMP="$TEST_TEMP_DIR/c10-tmp"; mkdir -p "$_C10_TMP"; _OLD_TMPDIR="${TMPDIR-}"; export TMPDIR="$_C10_TMP"
+printf '{"x":1}\n' > "$E/a.json"; printf '{"y":2}\n' > "$E/b.json"; printf 'not json {\n' > "$E/c.json"
+printf '{"steps":[1],"n":"first"}\n' > "$E/d.json"; printf '{"steps":[2],"n":"second"}\n' > "$E/e.json"
+printf 'text\n' > "$E/f.md"
+jq -n --arg a "$E/a.json" --arg b "$E/b.json" --arg c "$E/c.json" --arg d "$E/d.json" --arg e "$E/e.json" --arg f "$E/f.md" --arg m "$E/missing.json" \
+    '{inputs:{one:$a, two:[$b, $m], three:$c, four:$f, five:$d, six:$e}}' > "$TEST_TEMP_DIR/idx10.json"
+_C10_N="$TEST_TEMP_DIR/c10.jq"; : > "$_C10_N"
+jq() { printf 'x\n' >> "$_C10_N"; command jq "$@"; }
+_c10="$(ZBUILD_STAGE_INPUTS="$TEST_TEMP_DIR/idx10.json" earlier_work_plan)"
+_c10_n="$(grep -c . "$_C10_N" || true)"
+unset -f jq
+assert_eq "[C10] the first JSON output in the index the test is true of" "$E/d.json" "$_c10"
+assert_eq "[C10] ...past a broken one" "$E/d.json" "$_c10"
+# One to read the index, one for the first output, one for all the rest —
+# however many there are (was one an output, until a match: 5 here).
+assert_eq "[C10] three jq in all: the index, the first output, then the rest at once" "3" "$_c10_n"
+assert_eq "[C10] ...and no file left behind in TMPDIR" "" "$(ls -A "$_C10_TMP" 2>/dev/null)"
+assert_eq "[C10] earlier_outputs_with_json: every match, in index order" "$E/d.json $E/e.json" \
+    "$(ZBUILD_STAGE_INPUTS="$TEST_TEMP_DIR/idx10.json" earlier_outputs_with_json '(.steps | type) == "array"' | tr '\n' ' ' | sed 's/ $//')"
+
+# ── C11 (review: a write that fails is not "no match") ───────────────────────
+assert_eq "[C11] TMPDIR is gone: the match is still found" "$E/d.json" \
+    "$(TMPDIR="$TEST_TEMP_DIR/no-such-dir" ZBUILD_STAGE_INPUTS="$TEST_TEMP_DIR/idx10.json" earlier_work_plan)"
+assert_eq "[C11] ...every match, in index order" "$E/d.json $E/e.json" \
+    "$(TMPDIR="$TEST_TEMP_DIR/no-such-dir" ZBUILD_STAGE_INPUTS="$TEST_TEMP_DIR/idx10.json" earlier_outputs_with_json '(.steps | type) == "array"' | tr '\n' ' ' | sed 's/ $//')"
+_C11_RO="$TEST_TEMP_DIR/c11-ro"; mkdir -p "$_C11_RO"; chmod a-w "$_C11_RO"
+assert_eq "[C11] TMPDIR is not writable: the match is still found" "$E/d.json" \
+    "$(TMPDIR="$_C11_RO" ZBUILD_STAGE_INPUTS="$TEST_TEMP_DIR/idx10.json" earlier_work_plan)"
+assert_eq "[C11] ...and nothing is left in it" "" "$(ls -A "$_C11_RO" 2>/dev/null)"
+chmod u+w "$_C11_RO"
+if [[ -n "$_OLD_TMPDIR" ]]; then export TMPDIR="$_OLD_TMPDIR"; else unset TMPDIR; fi
 
 # ── C6 ───────────────────────────────────────────────────────────────────────
 _out="$(bash "$REPO_ROOT/scripts/lib/lint-stage-output-names.sh" 2>&1)"; _rc=$?

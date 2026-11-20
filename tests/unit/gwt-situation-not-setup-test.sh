@@ -85,9 +85,9 @@ MD
     _cov() { printf 0 > "$_N"; _design_coverage "$D" "$REQS" T2 >/dev/null 2>&1; }
     _R1=$'RQST-1: covered\nPRB-1: ok\n'; _cov
     echo "G3|$(tr -s '[:space:]' ' ' < "$_P.1")"
-    _R1=$'RQST-1: covered\nPRB-1: needs_cleanup | WHY: it leaves the variable set | QUOTE: ZBUILD_PLATFORM=macos is exported before scripts/lib/compat.sh is sourced\n'; _cov
+    _R1=$'RQST-1: covered\nPRB-1: needs_cleanup | WHY: it leaves the variable set | ACCEPTED IF: it is accepted | QUOTE: ZBUILD_PLATFORM=macos is exported before scripts/lib/compat.sh is sourced\n'; _cov
     echo "G4|$_DESIGN_COV_OUTCOME"
-    _R1=$'RQST-1: covered\nPRB-1 Given: how | WHY: it says how a test sets the variable and when it loads the library | INSTEAD: the event the run emits | QUOTE: ZBUILD_PLATFORM=macos is exported before scripts/lib/compat.sh is sourced\n'; _cov
+    _R1=$'RQST-1: covered\nPRB-1 Given: how | WHY: it says how a test sets the variable and when it loads the library | INSTEAD: the platform is macOS when the library loads | QUOTE: ZBUILD_PLATFORM=macos is exported before scripts/lib/compat.sh is sourced\n'; _cov
     echo "G5|$(_design_coverage_findings | tr '\n\036' '~~')|$_DESIGN_COV_OUTCOME"
 ) > "$TEST_TEMP_DIR/j.out" 2>/dev/null
 J="$TEST_TEMP_DIR/j.out"
@@ -96,7 +96,8 @@ else assert_pass "[G3] the check no longer asks needs_cleanup"; fi
 assert_contains "[G3] its how covers how a test sets it up or checks it" "$(_l "$J" G3)" "how — the line says how the code is built, or how a test sets something up or"
 assert_eq "[G4] a needs_cleanup answer cannot be used" "unusable" "$(_l "$J" G4)"
 assert_contains "[G5] a Given that says how a test sets it up is a finding" "$(_l "$J" G5)" "  Given: ZBUILD_PLATFORM=macos is exported before scripts/lib/compat.sh is sourced [FIX IN DESIGN:"
-assert_contains "[G5] ...whose fix names the situation, not the test's steps" "$(_l "$J" G5)" "say the situation, the action, or what can be seen — not how it is built or how a test does it"
+# #2569: what the check would accept is its own words, not the engine's advice.
+assert_contains "[G5] ...whose fix names the situation, not the test's steps" "$(_l "$J" G5)" "— ACCEPTED IF: the platform is macOS when the library loads]"
 
 print_test_section "G6–G7: test-author"
 _tp="$(tr -s '[:space:]' ' ' < "$REPO_ROOT/plugins/agent/test-author/plugin.sh")"
@@ -124,14 +125,14 @@ MD
            _ta_correspondence "$D" "$R" T2 "$TEST_TEMP_DIR/t-art" >/dev/null 2>&1; }
     _R1=$'LOOP-1: ok\n'; _j
     echo "G7a|$(tr -s '[:space:]' ' ' < "$_P.1")"
-    _R1=$'LOOP-1 Then: ok\nLOOP-1 sections: ok\nLOOP-1 cleanup: missing | WHY: it exports ZB_ROUND and never unsets it | QUOTE: tests/loop-test.sh | export ZB_ROUND=2\n'; _j
+    _R1=$'LOOP-1 Then: ok\nLOOP-1 sections: ok\nLOOP-1 cleanup: missing | WHY: it exports ZB_ROUND and never unsets it | ACCEPTED IF: the test unsets ZB_ROUND at its end | QUOTE: tests/loop-test.sh | export ZB_ROUND=2\n'; _j
     echo "G7b|${#_TA_CORR_FINDINGS[@]}|$(tr '\036' '~' <<< "${_TA_CORR_FINDINGS[0]:-}")|$_TA_CORR_OUTCOME"
 ) > "$TEST_TEMP_DIR/t.out" 2>/dev/null
 T="$TEST_TEMP_DIR/t.out"
-assert_contains "[G7] the check asks what the test leaves changed outside its sandbox" "$(_l "$T" G7a)" "<identifier> cleanup: missing | WHY: <what the test leaves changed> | QUOTE: <test file> | <the line that changes it>"
+assert_contains "[G7] the check asks what the test leaves changed outside its sandbox" "$(_l "$T" G7a)" "<identifier> cleanup: missing | WHY: <what the test leaves changed> | ACCEPTED IF: <what the test must put back> | QUOTE: <test file> | <the line that changes it>"
 assert_contains "[G7] ...and is not asked about a Cleanup part" "$(_l "$T" G7a)" "cleanup: does the test change anything outside its own sandbox"
 assert_contains "[G7] what it finds is a finding on the test" "$(_l "$T" G7b)" "1|LOOP-1 cleanup: it exports ZB_ROUND and never unsets it"
-assert_contains "[G7] ...that says to put it back" "$(_l "$T" G7b)" "[FIX IN TEST: it exports ZB_ROUND and never unsets it — put it back at the end of the test, under its Cleanup section]"
+assert_contains "[G7] ...that says to put it back" "$(_l "$T" G7b)" "[FIX IN TEST: it exports ZB_ROUND and never unsets it — ACCEPTED IF: the test unsets ZB_ROUND at its end]"
 
 cleanup_test_env
 print_test_results

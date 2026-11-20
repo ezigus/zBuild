@@ -96,7 +96,7 @@ print_test_section "D1 + P1: design's check"
 
     # P1: requirement lines bad twice, both SPECs good: SPECs kept, check unusable.
     _spec_design "$D"
-    _BADQ=$'RQST-1: covered\nRQST-2: uncovered | WHY: nothing reads it | QUOTE: "reads the flag"\nFRSH-1: ok\nWORK-2: ok\n'
+    _BADQ=$'RQST-1: covered\nRQST-2: uncovered | WHY: nothing reads it | ACCEPTED IF: it is accepted | QUOTE: "reads the flag"\nFRSH-1: ok\nWORK-2: ok\n'
     _fresh; _R1="$_BADQ"; _R2="$_BADQ"; _cov
     echo "P1a|$(cat "$_N")|$_DESIGN_COV_OUTCOME|$(_ev judge.kept.saved design FRSH-1)|$(_ev judge.kept.saved design WORK-2)|$(_ev judge.kept.saved design requirements)"
     echo "P1b|$(grep -F 'Answer again only for:' "$_P.2" 2>/dev/null)"
@@ -107,8 +107,8 @@ print_test_section "D1 + P1: design's check"
 
     # P1: one SPEC's line bad, then fixed: the re-ask asks for it alone, and the
     # second reply's lines for the items already answered do not count.
-    _BADP=$'RQST-1: covered\nRQST-2: covered\nFRSH-1: ok\nWORK-2 Then: how | WHY: x | QUOTE: "not its words"\n'
-    _fresh; _R1="$_BADP"; _R2=$'WORK-2: ok\nFRSH-1 Then: how | WHY: names a loop | QUOTE: "every stage is dispatched"\nRQST-1: uncovered | WHY: y | QUOTE: "first stage"\n'; _cov
+    _BADP=$'RQST-1: covered\nRQST-2: covered\nFRSH-1: ok\nWORK-2 Then: how | WHY: x | ACCEPTED IF: it is accepted | QUOTE: "not its words"\n'
+    _fresh; _R1="$_BADP"; _R2=$'WORK-2: ok\nFRSH-1 Then: how | WHY: names a loop | ACCEPTED IF: it is accepted | QUOTE: "every stage is dispatched"\nRQST-1: uncovered | WHY: y | ACCEPTED IF: it is accepted | QUOTE: "first stage"\n'; _cov
     echo "P1d|$(cat "$_N")|$_DESIGN_COV_OUTCOME|$(_design_coverage_findings | grep -c .)|$(grep -F 'Answer again only for:' "$_P.2" 2>/dev/null)"
 ) > "$TEST_TEMP_DIR/d.out" 2>/dev/null
 F="$TEST_TEMP_DIR/d.out"

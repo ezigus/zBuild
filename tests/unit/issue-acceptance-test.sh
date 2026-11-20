@@ -98,7 +98,7 @@ assert_contains "[SPEC-1] the test verdict" "$_p" "TEST VERDICT: pass"
 
 print_test_section "SPEC-2: unmet by the code → fail, a numbered finding"
 _setup s2
-_IA_ANSWER=$'MET: no artifact paths in code\nUNMET: an interrupted push | WHY: the push failure is reported as broken | QUOTE: "an interrupted push reports unavailable"'
+_IA_ANSWER=$'MET: no artifact paths in code\nUNMET: an interrupted push | WHY: the push failure is reported as broken | ACCEPTED IF: it is accepted | QUOTE: "an interrupted push reports unavailable"'
 _run; _rc=$?
 assert_eq "[SPEC-2] rc=0 (the verdict is in the artifact)" "0" "$_rc"
 assert_eq "[SPEC-2] outcome=fail" "fail" "$(_res .outcome)"
@@ -109,7 +109,7 @@ assert_contains "[SPEC-2] the unmet requirement is named, with why" "$(_res '.da
 
 print_test_section "SPEC-3: no fault class — the stage does not decide who fixes it"
 _setup s3
-_IA_ANSWER=$'FAULT: specification\nUNMET: no artifact paths | WHY: no SPEC asks for it | QUOTE: "no artifact paths in code"\nMET: an interrupted push reports unavailable'
+_IA_ANSWER=$'FAULT: specification\nUNMET: no artifact paths | WHY: no SPEC asks for it | ACCEPTED IF: it is accepted | QUOTE: "no artifact paths in code"\nMET: an interrupted push reports unavailable'
 _run
 assert_eq "[SPEC-3] a fault line in the reply is not written" "null" "$(_res .fault)"
 if grep -q 'FAULT' "$REPO_ROOT/plugins/agent/issue-acceptance/plugin.sh"; then
@@ -191,14 +191,14 @@ assert_contains "[SPEC-12] ...and it does not work out why the test fails" "$_p9
 
 print_test_section "SPEC-10: one finding per line, whole"
 _setup s10
-_IA_ANSWER=$'UNMET: R-4 | WHY: persist is not tested; only release is | QUOTE: "no artifact paths in code"\nUNMET: R-10 | WHY: lint fails (eight files use `set +e`; one sets `set -e` mid-file) | QUOTE: "no artifact paths in code"\nUNSURE: R-9 | WHY: §9 or §11; the issue is unclear | QUOTE: "an interrupted push reports unavailable"'
+_IA_ANSWER=$'UNMET: R-4 | WHY: persist is not tested; only release is | ACCEPTED IF: it is accepted | QUOTE: "no artifact paths in code"\nUNMET: R-10 | WHY: lint fails (eight files use `set +e`; one sets `set -e` mid-file) | ACCEPTED IF: it is accepted | QUOTE: "no artifact paths in code"\nUNSURE: R-9 | WHY: §9 or §11; the issue is unclear | ACCEPTED IF: it is accepted | QUOTE: "an interrupted push reports unavailable"'
 _run
 assert_eq "[SPEC-10] two UNMET lines → two unmet items" "2" "$(_res '.data.unmet | length')"
 assert_eq "[SPEC-10] a semicolon inside a finding does not split it" \
-    'R-4: persist is not tested; only release is — "no artifact paths in code"' "$(_res '.data.unmet[0]')"
+    'R-4: persist is not tested; only release is — "no artifact paths in code" — ACCEPTED IF: it is accepted' "$(_res '.data.unmet[0]')"
 assert_eq "[SPEC-10] ...nor a backticked one" \
-    'R-10: lint fails (eight files use `set +e`; one sets `set -e` mid-file) — "no artifact paths in code"' "$(_res '.data.unmet[1]')"
-assert_eq "[SPEC-10] an UNSURE line is one item too" 'R-9: §9 or §11; the issue is unclear — "an interrupted push reports unavailable"' "$(_res '.data.unsure[0]')"
+    'R-10: lint fails (eight files use `set +e`; one sets `set -e` mid-file) — "no artifact paths in code" — ACCEPTED IF: it is accepted' "$(_res '.data.unmet[1]')"
+assert_eq "[SPEC-10] an UNSURE line is one item too" 'R-9: §9 or §11; the issue is unclear — "an interrupted push reports unavailable" — ACCEPTED IF: it is accepted' "$(_res '.data.unsure[0]')"
 assert_eq "[SPEC-10] three findings in all" "3" "$(_res '.data.findings | length')"
 _p10="$(_ia_prompt "I" "S" "D" "pass")"
 assert_eq "[SPEC-10] the prompt no longer asks for a semicolon-separated list" \

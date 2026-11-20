@@ -64,12 +64,12 @@ LOOP-1 And: missing **WHY:** nothing asserts the round **QUOTE:** "the outer loo
 LOOP-1 And: missing WHY: nothing asserts the round QUOTE: "the outer loop is at round 2"
 V
     assert_eq "[F2] an underscore inside a word stays" \
-        'FRSH-1: done_wrong | WHY: resume_mode is never read | QUOTE: x.sh:"resume_mode=1"' \
-        "$(_read '**FRSH-1**: done_wrong | WHY: resume_mode is never read | QUOTE: x.sh:"resume_mode=1"')"
+        'FRSH-1: done_wrong | WHY: resume_mode is never read | ACCEPTED IF: it is accepted | QUOTE: x.sh:"resume_mode=1"' \
+        "$(_read '**FRSH-1**: done_wrong | WHY: resume_mode is never read | ACCEPTED IF: it is accepted | QUOTE: x.sh:"resume_mode=1"')"
     assert_eq "[F2] a line with no WHY keeps its words" "LOOP-1: ok" "$(_read '**LOOP-1:** ok')"
     assert_eq "[F2] code marks in the WHY are kept as written" \
-        'UNMET: R-10 | WHY: eight files use `set +e` | QUOTE: "no artifact paths"' \
-        "$(_read '**UNMET:** R-10 | WHY: eight files use `set +e` | QUOTE: "no artifact paths"')"
+        'UNMET: R-10 | WHY: eight files use `set +e` | ACCEPTED IF: it is accepted | QUOTE: "no artifact paths"' \
+        "$(_read '**UNMET:** R-10 | WHY: eight files use `set +e` | ACCEPTED IF: it is accepted | QUOTE: "no artifact paths"')"
 fi
 
 print_test_section "F3: test-author's check"
@@ -99,7 +99,7 @@ MD
     printf '# Given\nexport ZB_ROUND=2\n# When\nenter_inner\n# Then\nassert_eq "[LOOP-1] inner at 1" "1" "$inner"\n' > "$R/tests/loop-test.sh"
     ( cd "$R" && git add -A && git commit -q -m seed ) >/dev/null 2>&1
     printf 0 > "$_N"; mkdir -p "$TEST_TEMP_DIR/t-art"
-    _R1=$'**LOOP-1** When: wrong | WHY: it enters the outer loop | QUOTE: "the inner loop is entered again"\n'
+    _R1=$'**LOOP-1** When: wrong | WHY: it enters the outer loop | ACCEPTED IF: it is accepted | QUOTE: "the inner loop is entered again"\n'
     _ta_correspondence "$D" "$R" T2 "$TEST_TEMP_DIR/t-art" >/dev/null 2>&1
     echo "F3|$(cat "$_N")|${#_TA_CORR_FINDINGS[@]}|$(tr '\036' '~' <<< "${_TA_CORR_FINDINGS[0]:-}")"
 ) > "$TEST_TEMP_DIR/f3.out" 2>/dev/null
@@ -138,12 +138,21 @@ print_test_section "F5: issue-acceptance"
 (
     # shellcheck source=../../plugins/agent/issue-acceptance/plugin.sh
     source "$REPO_ROOT/plugins/agent/issue-acceptance/plugin.sh"
-    _ia_parse $'**UNMET:** [fix-code] RQST-1 | WHY: the run starts at stage 2 | QUOTE: "start from the first stage"\n' \
+    _ia_parse $'**UNMET:** [fix-code] RQST-1 | WHY: the run starts at stage 2 | ACCEPTED IF: it is accepted | QUOTE: "start from the first stage"\n' \
         '- RQST-1: start from the first stage' 'start from the first stage' "$TEST_TEMP_DIR"
     echo "F5|${_IA_PROBLEM:-none}|${#_IA_UNMET[@]}|${_IA_UNMET[0]:-}"
 ) > "$TEST_TEMP_DIR/f5.out" 2>/dev/null
 assert_contains "[F5] a bold label is read: no problem, one unmet requirement" "$(_l "$TEST_TEMP_DIR/f5.out" F5)" "none|1|"
 assert_contains "[F5] ...with the judge's words" "$(_l "$TEST_TEMP_DIR/f5.out" F5)" "the run starts at stage 2"
+(
+    # Review on #2569: an UNSURE line may say what would fix it, as UNMET does.
+    source "$REPO_ROOT/plugins/agent/issue-acceptance/plugin.sh"
+    _ia_parse $'UNSURE: [fix-design] RQST-1 | WHY: it never says which stage | ACCEPTED IF: it is accepted | QUOTE: "start from the first stage"\nUNSURE: RQST-2 | WHY: cannot tell | ACCEPTED IF: it is accepted | QUOTE: "stop at the last"\n' \
+        $'- RQST-1: start from the first stage\n- RQST-2: stop at the last' $'start from the first stage\nstop at the last' "$TEST_TEMP_DIR"
+    echo "F6|${_IA_PROBLEM:-none}|${_IA_UNSURE[0]:-}|${_IA_UNSURE[1]:-}"
+) > "$TEST_TEMP_DIR/f6.out" 2>/dev/null
+assert_contains "[F6] an UNSURE line's mark is kept" "$(_l "$TEST_TEMP_DIR/f6.out" F6)" "none|[fix-design] RQST-1: it never says which stage"
+assert_contains "[F6] ...and one with none keeps none" "$(_l "$TEST_TEMP_DIR/f6.out" F6)" "|RQST-2: cannot tell"
 
 cleanup_test_env
 print_test_results

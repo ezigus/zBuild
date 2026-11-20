@@ -4,8 +4,9 @@
 # A judge reads the code itself, read-only, and the code from before the change
 # is a copy it can open (§1 §2). Each complaint quotes the text it is about, and
 # the quote is checked (§3). Its answers are kept while nothing it judged has
-# changed, and judged again when a stage answers one of its findings `wrong`
-# (§4 §5).
+# changed, and judged again when a stage answers one of its findings (§4 §5):
+# #2569, it is shown that finding and the answer, and says whether the answer
+# resolves it.
 #
 # Sourced library: no set -euo pipefail.
 
@@ -18,6 +19,8 @@ source "$_ZB_JUDGE_DIR/reply-units.sh"
 source "$_ZB_JUDGE_DIR/stage-answers.sh"
 # shellcheck source=judge-quotes.sh
 source "$_ZB_JUDGE_DIR/judge-quotes.sh"
+# shellcheck source=judge-held.sh
+source "$_ZB_JUDGE_DIR/judge-held.sh"
 
 # _judge_emit <type> [k=v]... — an event, when the event bus is loaded (#2466).
 _judge_emit() { declare -F eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" 2>/dev/null; return 0; }
@@ -71,34 +74,6 @@ judge_base_release() {
         || { rm -rf -- "$_judge__dir" 2>/dev/null; git -C "$_judge__repo" worktree prune >/dev/null 2>&1; }
     _judge_emit judge.base.released "path=$_judge__dir" "by=$_judge__by"
     return 0
-}
-
-# ─── Answers to a check's findings (§5, ADR-068 §6) ──────────────────────────
-
-# judge_answers_to <artifact_dir> <label>... — every `wrong` answer a stage
-# keeps in its result (data.answers) to a finding labelled <label>, one per
-# line: the finding goes back to its judge. A `done` answer changed something,
-# so what is judged changed too; a `not mine` says nothing about the finding.
-judge_answers_to() { local _jat=""; judge_answers_to_v _jat "$@"; [[ -n "$_jat" ]] && printf '%s\n' "$_jat"; return 0; }
-# judge_answers_to_v <var> <artifact_dir> <label>... — the same into <var>.
-judge_answers_to_v() {
-    local -n _jatv="$1"; shift
-    _jatv=""
-    local dir="${1:+${1%/}}"; shift
-    [[ -d "$dir" && $# -gt 0 ]] || return 0
-    local re="" l
-    for l in "$@"; do re+="${re:+|}${l//[^A-Za-z0-9_-]/.}"; done
-    local -a files=()
-    local f _jat_body
-    for f in "$dir"/*.json; do
-        [[ -f "$f" ]] || continue
-        # read, not $(<): no process for a file with no answers (ADR-065 §5).
-        _jat_body=""; IFS= read -r -d '' _jat_body < "$f" || true
-        [[ "$_jat_body" == *'"answers"'* ]] && files+=("$f")
-    done
-    [[ ${#files[@]} -gt 0 ]] || return 0
-    _jatv="$(jq -r --arg re "^($re) finding [0-9]+[[:space:]]*:[[:space:]*_\`]*wrong([^A-Za-z]|$)" \
-        '(.data.answers // [])[]? | strings | select(test($re; "i"))' "${files[@]}" 2>/dev/null)" || true
 }
 
 # ─── Kept answers (§4) ───────────────────────────────────────────────────────
@@ -157,23 +132,55 @@ _judge_hashes_v() {
 # its events name it: design, test-author, issue-acceptance, lens-<id>.
 _judge_check_name_v() { local -n _jcn="$1"; _jcn="${2##*/}"; _jcn="${_jcn%-judged.json}"; }
 
-# judge_kept_get_v <var> <kept_file> <key> <fp> [disputed] — the payload kept
-# for <key> when it was kept for fingerprint <fp> and every file it depended on
-# is unchanged; empty otherwise. #2466: emits judge.kept.used when it is, and
-# judge.kept.stale (why=fingerprint, disputed when [disputed] is 1, or file)
-# when a kept answer exists but cannot be used.
+# judge_kept_fp_v <var> <fp> [answers_fp] — the fingerprint a verdict is kept
+# under: <fp>, and the fingerprint of the answers it was given with, when it
+# was (review on #2569: an answer is not in <fp>, but the same answer again
+# does not have the same verdict judged again).
+judge_kept_fp_v() { local -n _jkf="$1"; _jkf="$2${3:++$3}"; }
+
+# judge_refused <payload> <pass-word>... — rc 0 when a line of a kept answer
+# gives a verdict, the word after its first colon, that is none of the
+# <pass-word>s: the check refused the part (review on #2569).
+judge_refused() {
+    local _jrd_l _jrd_w _jrd_p _jrd_t="$1"; shift
+    while IFS= read -r _jrd_l; do
+        [[ "$_jrd_l" == *:* ]] || continue
+        _jrd_w="${_jrd_l#*:}"; _jrd_w="${_jrd_w#"${_jrd_w%%[![:space:]*_\`]*}"}"; _jrd_w="${_jrd_w%%[!A-Za-z_-]*}"
+        [[ -n "$_jrd_w" ]] || continue
+        for _jrd_p in "$@"; do [[ "${_jrd_w,,}" == "$_jrd_p" ]] && continue 2; done
+        return 0
+    done <<< "$_jrd_t"
+    return 1
+}
+
+# judge_kept_get_v <var> <kept_file> <key> <fp> [disputed] [pass-words] — the
+# payload kept for <key> when it was kept for fingerprint <fp> and every file it
+# depended on is unchanged; empty otherwise. #2466: emits judge.kept.used when
+# it is, and judge.kept.stale (why=fingerprint, disputed when [disputed] is 1,
+# or file) when a kept answer exists but cannot be used. Review on #2569
+# (ADR-072 §5): with [pass-words] (space separated), a stage's answer is not in
+# <fp>, and [disputed] is the fingerprint of the stage's answers to the key's
+# finding. A kept answer still holding is judged again only when it refused
+# the key (judge_refused) and those answers are not the ones it was kept with
+# (kept under "<fp>+<answers' fp>", judge_kept_fp_v), why=disputed; a kept
+# pass is used, the answer to an old finding notwithstanding. _JUDGE_KEPT_WHY
+# says how it went: used, fingerprint, file, disputed, or empty with no kept
+# answer.
+_JUDGE_KEPT_WHY=""
 judge_kept_get_v() {
     local -n _jkg="$1"; local _judge__kf="$2" _judge__key="$3" _judge__fp="$4" _judge__rec _judge__chk
-    _jkg=""
+    _jkg=""; _JUDGE_KEPT_WHY=""
     [[ -n "$_judge__fp" && -s "$_judge__kf" ]] || return 0
     _judge_check_name_v _judge__chk "$_judge__kf"
-    _judge__rec="$(jq -r --arg k "$_judge__key" --arg fp "$_judge__fp" \
-        '.[$k] // empty | ("X\t\(.fp)"), (select(.fp == $fp) | ((.files // {} | to_entries[] | "F\t\(.key)\t\(.value)"), "P\t\(.payload | @json)"))' \
+    _judge__rec="$(jq -r --arg k "$_judge__key" --arg fp "$_judge__fp" --arg pw "${6:-}" \
+        '.[$k] // empty | ("X\t\(.fp)"), (select(.fp == $fp or ($pw != "" and ((.fp | tostring) | startswith($fp + "+"))))
+          | ((.files // {} | to_entries[] | "F\t\(.key)\t\(.value)"), "P\t\(.payload | @json)"))' \
         "$_judge__kf" 2>/dev/null)" || return 0
     [[ -n "$_judge__rec" ]] || return 0
     if [[ "$_judge__rec" != *$'\nP\t'* ]]; then
-        local _judge__why=fingerprint; [[ "${5:-0}" == 1 ]] && _judge__why=disputed
+        local _judge__why=fingerprint; [[ "${5:-0}" == 1 && -z "${6:-}" ]] && _judge__why=disputed
         _judge_emit judge.kept.stale "check=$_judge__chk" "item=$_judge__key" "why=$_judge__why"
+        _JUDGE_KEPT_WHY="$_judge__why"
         return 0
     fi
     local _judge__kind _judge__a _judge__b _judge__payload=""
@@ -190,10 +197,20 @@ judge_kept_get_v() {
     for _judge__i in "${!_judge__paths[@]}"; do
         [[ "${_judge__now[${_judge__paths[_judge__i]}]:-absent}" == "${_judge__want[_judge__i]}" ]] && continue
         _judge_emit judge.kept.stale "check=$_judge__chk" "item=$_judge__key" "why=file"
+        _JUDGE_KEPT_WHY="file"
         return 0
     done
     _jkg="$(jq -r '.' <<< "$_judge__payload" 2>/dev/null)" || _jkg=""
-    [[ -n "$_jkg" ]] && _judge_emit judge.kept.used "check=$_judge__chk" "item=$_judge__key"
+    if [[ -n "$_jkg" && -n "${5:-}" && -n "${6:-}" ]]; then
+        local -a _judge__pw=(); read -ra _judge__pw <<< "$6"
+        local _judge__heard="${_judge__rec%%$'\n'*}"; _judge__heard="${_judge__heard#X$'\t'}"; _judge__heard="${_judge__heard#"$_judge__fp"}"
+        if [[ "${_judge__heard#+}" != "$5" ]] && judge_refused "$_jkg" "${_judge__pw[@]}"; then
+            _judge_emit judge.kept.stale "check=$_judge__chk" "item=$_judge__key" "why=disputed"
+            _jkg=""; _JUDGE_KEPT_WHY=disputed
+            return 0
+        fi
+    fi
+    [[ -n "$_jkg" ]] && { _judge_emit judge.kept.used "check=$_judge__chk" "item=$_judge__key"; _JUDGE_KEPT_WHY=used; }
     return 0
 }
 
@@ -249,17 +266,25 @@ judge_kept_put_one() {
     return 0
 }
 
-# judge_kept_get_all_v <out_assoc> <kept_file> <fps_assoc> [disputed_assoc] —
+# judge_kept_get_all_v <out_assoc> <kept_file> <fps_assoc> [disputed_assoc] [earlier_assoc] [pass-words] [why_assoc] —
 # every key of <fps_assoc> whose kept answer still holds, its payload into
 # <out_assoc>: one read of the file, one hash of the files the answers depend
 # on (#2470, ADR-072 §4 — a check that keeps an answer per SPEC). Emits
 # judge.kept.used for each one used and judge.kept.stale for each one kept but
 # not usable, why=fingerprint, disputed (when <disputed_assoc>[key] is set) or
-# file.
+# file. #2569 (ADR-072 §5): [earlier_assoc] gets the payload of each key kept
+# but not usable — what the check answered last time, to hold it to. With
+# [pass-words], as in judge_kept_get_v: <disputed_assoc>[key] is the
+# fingerprint of the stage's answers to its finding, and a disputed key is
+# judged again only when its kept answer, otherwise usable, refused it and was
+# not kept with those answers (why=disputed). [why_assoc] gets each kept key's
+# why: used, fingerprint, file or disputed.
 judge_kept_get_all_v() {
-    local -n _jga="$1" _jga_fp="$3"; local _jga_kf="$2" _jga_dn="${4:-_jga_nod}" _jga_chk
-    local -A _jga_nod=()
-    local -n _jga_d="$_jga_dn"
+    local -n _jga="$1" _jga_fp="$3"; local _jga_kf="$2" _jga_dn="${4:-_jga_nod}" _jga_en="${5:-_jga_noe}" _jga_chk
+    local _jga_pws="${6:-}" _jga_wn="${7:-_jga_now_why}"
+    local -A _jga_nod=() _jga_noe=() _jga_now_why=()
+    local -n _jga_d="$_jga_dn" _jga_e="$_jga_en" _jga_w="$_jga_wn"
+    local -a _jga_pw=(); [[ -n "$_jga_pws" ]] && read -ra _jga_pw <<< "$_jga_pws"
     _jga=()
     [[ -n "$_jga_kf" && -s "$_jga_kf" ]] || return 0
     _judge_check_name_v _jga_chk "$_jga_kf"
@@ -277,7 +302,12 @@ judge_kept_get_all_v() {
           ("P\t\($k)\t\(.payload | tostring | gsub("\n"; "\u001e") | gsub("\t"; "\u001f"))")' "$_jga_kf" 2>/dev/null)
     local -a _jga_paths=()
     local _jga_l
+    # A record kept with answers heard is "<fp>+<answers' fp>" (pass-words mode).
+    local -A _jga_heard=()
     for _jga_k in "${!_jga_fp[@]}"; do
+        if [[ -n "$_jga_pws" && "${_jga_rfp[$_jga_k]:-}" == "${_jga_fp[$_jga_k]}+"* ]]; then
+            _jga_heard["$_jga_k"]="${_jga_rfp[$_jga_k]#"${_jga_fp[$_jga_k]}+"}"; _jga_rfp["$_jga_k"]="${_jga_fp[$_jga_k]}"
+        fi
         [[ "${_jga_rfp[$_jga_k]:-}" == "${_jga_fp[$_jga_k]}" ]] || continue
         while IFS=$'\t' read -r _jga_a _jga_b; do [[ -n "$_jga_a" ]] && _jga_paths+=("$_jga_a"); done <<< "${_jga_rf[$_jga_k]:-}"
     done
@@ -288,8 +318,10 @@ judge_kept_get_all_v() {
         [[ -n "${_jga_rfp[$_jga_k]+x}" ]] || continue
         if [[ "${_jga_rfp[$_jga_k]}" != "${_jga_fp[$_jga_k]}" ]]; then
             _jga_why=fingerprint
-            [[ -n "${_jga_d[$_jga_k]:-}" ]] && _jga_why=disputed
+            [[ -n "${_jga_d[$_jga_k]:-}" && -z "$_jga_pws" ]] && _jga_why=disputed
+            _jga_w["$_jga_k"]="$_jga_why"
             _judge_emit judge.kept.stale "check=$_jga_chk" "item=$_jga_k" "why=$_jga_why"
+            _jga_l="${_jga_rp[$_jga_k]:-}"; _jga_l="${_jga_l//$'\x1e'/$'\n'}"; _jga_e["$_jga_k"]="${_jga_l//$'\x1f'/$'\t'}"
             continue
         fi
         _jga_ok=1
@@ -298,11 +330,18 @@ judge_kept_get_all_v() {
             [[ "${_jga_now[$_jga_a]:-absent}" == "$_jga_b" ]] || { _jga_ok=0; break; }
         done <<< "${_jga_rf[$_jga_k]:-}"
         if (( ! _jga_ok )); then
-            _judge_emit judge.kept.stale "check=$_jga_chk" "item=$_jga_k" "why=file"
+            _judge_emit judge.kept.stale "check=$_jga_chk" "item=$_jga_k" "why=file"; _jga_w["$_jga_k"]="file"
+            _jga_l="${_jga_rp[$_jga_k]:-}"; _jga_l="${_jga_l//$'\x1e'/$'\n'}"; _jga_e["$_jga_k"]="${_jga_l//$'\x1f'/$'\t'}"
             continue
         fi
         _jga_l="${_jga_rp[$_jga_k]:-}"; _jga_l="${_jga_l//$'\x1e'/$'\n'}"; _jga_l="${_jga_l//$'\x1f'/$'\t'}"
-        _jga["$_jga_k"]="$_jga_l"
+        if [[ -n "$_jga_pws" && -n "${_jga_d[$_jga_k]:-}" && "${_jga_d[$_jga_k]}" != "${_jga_heard[$_jga_k]:-}" ]] \
+            && judge_refused "$_jga_l" "${_jga_pw[@]}"; then
+            _judge_emit judge.kept.stale "check=$_jga_chk" "item=$_jga_k" "why=disputed"
+            _jga_e["$_jga_k"]="$_jga_l"; _jga_w["$_jga_k"]=disputed
+            continue
+        fi
+        _jga["$_jga_k"]="$_jga_l"; _jga_w["$_jga_k"]=used
         _judge_emit judge.kept.used "check=$_jga_chk" "item=$_jga_k"
     done
     return 0
@@ -363,49 +402,4 @@ judge_opened_v() {
         for _judge__s in ${_jop[@]+"${_jop[@]}"}; do [[ "$_judge__s" == "$_judge__l" ]] && continue 2; done
         _jop+=("$_judge__l")
     done < "$_judge__f"
-}
-
-# judge_last_findings_block_v <var> <artifact_dir> <label> <result_json>... —
-# what a stage that reports findings is shown of its own findings from last
-# time: each one, with every answer a stage gave it (ADR-068 §6, ADR-072 §5).
-# Its grade holds unless it can quote what changed: on #1805 run 42374066107 the
-# same finding was low one round and medium the next. Pairs of <label> and its
-# result; empty when there were none. No process when no result exists.
-judge_last_findings_block_v() {
-    local -n _jlf="$1"; shift
-    local dir="${1%/}"; shift
-    local _jlf_l _jlf_f _jlf_body="" _jlf_ans="" _jlf_s f
-    local -a _jlf_with=()
-    _jlf=""
-    for f in "$dir"/*.json; do
-        [[ -f "$f" ]] || continue
-        _jlf_s=""; IFS= read -r -d '' _jlf_s < "$f" || true
-        [[ "$_jlf_s" == *'"answers"'* ]] && _jlf_with+=("$f")
-    done
-    while [[ $# -ge 2 ]]; do
-        _jlf_l="$1" _jlf_f="$2"; shift 2
-        [[ -s "$_jlf_f" ]] || continue
-        _jlf_s=""; IFS= read -r -d '' _jlf_s < "$_jlf_f" || true
-        [[ "$_jlf_s" == *'"findings"'* ]] || continue
-        _jlf_ans=""
-        [[ ${#_jlf_with[@]} -gt 0 ]] && _jlf_ans="$(jq -r --arg re "^${_jlf_l//[^A-Za-z0-9_-]/.} finding [0-9]+[[:space:]]*:" \
-            '(.data.answers // [])[]? | strings | select(test($re))' "${_jlf_with[@]}" 2>/dev/null)"
-        _jlf_body+="$(jq -r --arg l "$_jlf_l" --arg a "$_jlf_ans" '
-            ($a | split("\n") | map(select(length > 0))) as $ans
-            | (.data.findings // [])[]? | select((.n | type) == "number")
-            | "\($l) finding \(.n)" as $k
-            | "- \($k): \(.text | tostring | split("\n")[0])"
-              + ([$ans[] | select(startswith($k + ":")) | "\n  answered: " + ltrimstr($k + ": ")] | join(""))' "$_jlf_f" 2>/dev/null)"$'\n'
-    done
-    [[ -n "${_jlf_body//[[:space:]]/}" ]] || return 0
-    _jlf=$'\n'"YOUR FINDINGS LAST TIME — each with what the stages given it answered. A finding you report again keeps the grade you gave it, unless you quote what changed since that makes it worse. One answered done: check that what was done fixes it. One answered wrong: judge it again with the answer in mind."$'\n'"${_jlf_body%$'\n'}"
-}
-
-# judge_disputes_block <answers> — what a judge is shown when a stage answers
-# one of its findings `wrong`.
-judge_disputes_block() {
-    [[ -n "${1//[[:space:]]/}" ]] || return 0
-    printf '\nANSWERS TO YOUR EARLIER FINDINGS — a stage that had to act on these says each is wrong, and why. Judge each again with its answer in mind: keep a finding only when you can quote what shows it still holds.\n'
-    local l
-    while IFS= read -r l; do [[ -n "$l" ]] && printf -- '- %s\n' "$l"; done <<< "$1"
 }

@@ -24,6 +24,9 @@ source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/item-ids.sh"
 # #2477: the engine and fingerprint a kept list is checked against.
 # shellcheck source=../../../../scripts/lib/judge.sh
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/judge.sh"
+# #2569: a MISSING line is held to the issue's words.
+# shellcheck source=missing-quote.sh
+source "${BASH_SOURCE[0]%/*}/missing-quote.sh"
 # #2482 (ADR-001): intake's id prefix, from its manifest — every requirement
 # id starts with it, so no SPEC's id is ever the same.
 zb_id_prefix_v _IREQ_PX "${BASH_SOURCE[0]%/*}/../manifest.yaml"
@@ -64,14 +67,16 @@ name for it (R1, R1–R5), write the ids of the requirements it means instead:
 every later stage sees only this list, never the issue's names.
 EOF
     # #2460, #2462: a list from the last run is where the work starts, and its
-    # ids never move.
+    # ids never move. #2569: a start, not the whole issue — on #1764 run
+    # 44530053809 the call copied its 19 old requirements and missed a new one.
     # #2550 (ADR-069 §1): the numbers, counted by the function intake's id
     # check uses.
     local _idl=""; zb_ids_highest_line_v _idl "${_IREQ_PREV_IDS:-}" "${_IREQ_PREV_REMOVED:-}" "$_IREQ_PX" requirement
     [[ -n "${_IREQ_PREV_SHOWN:-}" ]] && cat <<EOF
 
 Your list from the last run is shown below the issue, each requirement with its
-id: start from it.
+id. It is a starting point, not the whole issue: read the whole issue for every
+requirement it states, and add each one the old list does not have.
 - Keep each requirement the issue still states, with the same id, in the same words.
 - A requirement shown without an id gets one.
 - Leave out any the issue no longer asks for, and say why on its own line:
@@ -93,6 +98,9 @@ requirements.
 Answer with one line for each requirement the list misses, in this form:
 
 MISSING: <id> <a requirement the list misses, in the issue's words>
+
+The issue's words are its own sentences, copied as written: the whole sentence
+or item, never a paraphrase and never a part of a sentence.
 
 or the one line "MISSING: none" when it misses nothing. An item the issue says
 not to do or not to build that the list misses is a limit, not a requirement:
@@ -247,10 +255,11 @@ _ireq_parse() {
 # list a MISSING answer adds to. rc 1 with _INTAKE_REQ_OUTCOME set when the call
 # fails or its answer still breaks a rule.
 _ireq_call_parsed() {
-    local prompt="$1" label="$2" ask="$1" reply _try v plain i labels
+    local prompt="$1" label="$2" ask="$1" reply _try v plain i labels _ni="" _unq
     _ireq_issue_labels_v labels "$5"
     local -a _iv=()
     for _try in 1 2; do
+        _unq=""
         _ireq_call_v reply "$ask" || return 1
         zb_reply_join_v reply "$reply"
         _ireq_parse "$label" "$reply"
@@ -272,6 +281,18 @@ _ireq_call_parsed() {
                     && _IREQ_FORM+=("${_IREQ_IDS[i]} writes $v, the issue's own name for one of its items — write the id of the requirement it means instead")
             done
         done
+        # #2569 (ADR-070 §1): what the check says is missing is the issue's own
+        # sentences, never a paraphrase or a part (#1764 run 44530053809). A
+        # limit's "Do not" may be intake's, so a limit is not held to it. The
+        # issue is made ready once, however many lines are held to it.
+        if [[ "$label" == MISSING ]]; then
+            for i in "${!_IREQ_IDS[@]}"; do
+                [[ "$_IREQ_LIMITS" == *" ${_IREQ_IDS[i]} "* ]] && continue
+                [[ -n "$_ni" ]] || _ireq_issue_norm_v _ni "$5"
+                _ireq_in_norm "${_IREQ_TEXTS[i]}" "$_ni" \
+                    || _unq+="${_IREQ_IDS[i]} is not in the issue's words: \"${_IREQ_TEXTS[i]:0:100}\""$'\n'
+            done
+        fi
         # #2550: an id keeps its kind — a limit in the last list stays a limit.
         for i in "${!_IREQ_IDS[@]}"; do
             v="${_IREQ_IDS[i]}"
@@ -283,7 +304,15 @@ _ireq_call_parsed() {
         done
         for v in "${_IREQ_FORM[@]+"${_IREQ_FORM[@]}"}"; do plain+="${plain:+; }$v"; done
         for v in "${_iv[@]+"${_iv[@]}"}"; do plain+="${plain:+; }$(zb_id_plain "$v" requirement)"; done
-        [[ -z "$plain" ]] && return 0
+        # #2569 review: after the one re-ask, a line still not in the issue's
+        # words does not stop the run — it is kept, and intake's result says so.
+        if [[ -z "$plain" && ( -z "$_unq" || $_try -eq 2 ) ]]; then
+            while IFS= read -r v; do if [[ -n "$v" ]]; then _INTAKE_REQ_NOTES+="$v — kept as the check wrote it"$'\n'; fi; done <<< "$_unq"
+            return 0
+        fi
+        while IFS= read -r v; do
+            if [[ -n "$v" ]]; then plain+="${plain:+; }$v — copy the requirement from the issue as it is written, whole sentences, never a paraphrase or a part of a sentence"; fi
+        done <<< "$_unq"
         ask="$(stage_prompt_reask "$prompt" "$plain" "$reply")"
     done
     _INTAKE_REQ_OUTCOME=unusable
@@ -334,7 +363,7 @@ _ireq_terms_v() {
 # Sets _INTAKE_REQ_CHANGES: what was added and removed since the last list.
 _intake_requirements_json_v() {
     local -n _irj="$1"; shift
-    _irj=""; _INTAKE_REQ_OUTCOME=""; _INTAKE_REQ_CHANGES=""
+    _irj=""; _INTAKE_REQ_OUTCOME=""; _INTAKE_REQ_CHANGES=""; _INTAKE_REQ_NOTES=""
     local issue prompt i listed
     local -a ids=() texts=() rm_ids=() rm_why=()
     issue="$(_ireq_issue_text "${1:-}")"

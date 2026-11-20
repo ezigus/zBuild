@@ -105,8 +105,9 @@ outputs:
   # #2183: this stage's error channel — whatever its subprocesses said when
   # they failed. Published to the other stages' prompts (bounded) when this
   # stage's verdict is a failure; the per-file output of a suite run that failed.
+  # #2569: how the tests ran is `tests`, not a findings topic.
   - id: test_errors
-    topic: code-findings
+    topic: tests
     description: "what the suite's commands said when they failed"
     path: "${artifact_dir}/test-errors.log"
     type: test-errors.log@1
@@ -114,7 +115,7 @@ outputs:
     required: false
     errors: true
   # #2556 (ADR-071 §1): the suite's outcome names no topic; its findings reach
-  # stages from test_code and test_change below, one output per topic.
+  # stages from test_code and test_test below, one output per topic.
   - id: test_results
     description: "the suite's outcome; findings, for the reports: each failing test file and why, and an assertion file changed after its tests were written; its reason names any of test's checks that failed"
     path: "${artifact_dir}/test-results.json"
@@ -131,7 +132,7 @@ outputs:
   # machinery enforces it with no new engine code. This REPLACES the older
   # #511 F2 "missing == empty" semantics, under which a passing run left no file.
   # #2556 (ADR-071 §1): it lists every failing file, whoever's it is, so it
-  # names no topic; the findings reach stages from test_code and test_change.
+  # names no topic; the findings reach stages from test_code and test_test.
   - id: test_failures_summary
     description: "the suite's failing assertions, and which of test's checks failed"
     path: "${artifact_dir}/test-failures-summary.md"
@@ -150,65 +151,76 @@ outputs:
   # `summary: true` — it is far too large for a prompt, and the extraction is
   # what a stage reads. Optional: a stage that died before spawning has none.
   - id: test_output_log
-    topic: code-findings
+    topic: tests
     description: "the suite's full output"
     path: "${artifact_dir}/test-output.log"
     type: test-output.log@1
     format: text
     required: false
   - id: test_timing
-    topic: code-findings
+    topic: tests
     description: "each test file's wall time"
     path: "${artifact_dir}/test-timing.log"
     type: test-timing.log@1
     format: text
     required: false
+  # #2569: a failing file is the code's to make pass, whoever's test it is; a
+  # test that is wrong reaches test-author as build's answer (build_tests).
   - id: test_code
     topic: code-findings
-    description: "the suite's findings a test's author or the code must fix: a failing file that is one of the design's tests, an assertion file changed after its tests were written, a test file far slower than the rest"
+    description: "the suite's findings the code must fix: a failing test file, an assertion file changed after its tests were written, a test file this change made far slower than the rest"
     path: "${artifact_dir}/test-code-result.json"
     type: routed-findings.json@1
     format: json
     required: false
-  - id: test_change
-    topic: change-findings
-    description: "the suite's findings only the code can fix: a failing file that is not one of the design's tests"
-    path: "${artifact_dir}/test-change-result.json"
+  - id: test_test
+    topic: test-findings
+    description: "the suite's findings a test can fix: a test file this change made far slower than the rest"
+    path: "${artifact_dir}/test-test-result.json"
     type: routed-findings.json@1
     format: json
     required: false
   # #2372: the checks test runs over its own run (were stages of their own).
   # #2556: the acceptance check's outcome names no topic; its findings reach
-  # stages from acceptance_requirement and acceptance_code below.
+  # stages from acceptance_design, acceptance_test and acceptance_code below.
   - id: acceptance_result
     description: "whether each requirement's test proves it; findings, for the reports: a requirement with no tagged assertion, a test that passes without the change or fails with it, a WIRING file the change does not run through or that is not what runs it, a changed file no test needs"
     path: "${artifact_dir}/acceptance-gate-result.json"
     type: acceptance-gate-result.json@1
     format: json
     required: false
-  - id: acceptance_requirement
-    topic: requirement-findings
-    description: "the acceptance check's findings about the requirements: a requirement with no tagged assertion, a test that passes on the old code, a WIRING file that is not what runs the change"
-    path: "${artifact_dir}/acceptance-gate-requirement-result.json"
+  # #2569: one output per thing that must change; a finding more than one
+  # stage can fix is in each (ADR-071 §1), a problem in the pipeline in none.
+  - id: acceptance_design
+    topic: design-findings
+    description: "the acceptance check's findings the design can fix: code no requirement covers, a test that passes on the old code (the code may already do it), a WIRING file that is not what runs the change or that the change does not touch, an acceptance block that cannot be read"
+    path: "${artifact_dir}/acceptance-gate-design-result.json"
+    type: routed-findings.json@1
+    format: json
+    required: false
+  - id: acceptance_test
+    topic: test-findings
+    description: "the acceptance check's findings a test can fix: a requirement with no tagged assertion, a test that passes on the old code or fails on the new, a changed file no test checks, a test that never reached its assertion, a test file that died or ran too long"
+    path: "${artifact_dir}/acceptance-gate-test-result.json"
     type: routed-findings.json@1
     format: json
     required: false
   - id: acceptance_code
     topic: code-findings
-    description: "the acceptance check's findings about the code or a test: a test that does not pass on the new code, a changed file no test checks, a test that never reached its assertion, a test file that died or ran too long"
+    description: "the acceptance check's findings the code can fix: a test that does not pass on the new code, code no requirement covers, a changed file no test checks, a test that never reached its assertion on the new code, a test file that ran too long"
     path: "${artifact_dir}/acceptance-gate-code-result.json"
     type: routed-findings.json@1
     format: json
     required: false
   - id: acceptance_detail
-    topic: requirement-findings
+    topic: tests
     description: "the acceptance check's detail, per requirement and per file put back"
     path: "${artifact_dir}/acceptance-summary.txt"
     type: acceptance-summary.txt@1
     format: text
     required: false
   - id: acceptance_errors
-    topic: requirement-findings
+    topic: tests
     description: "what the acceptance check's commands said when they failed"
     path: "${artifact_dir}/acceptance-gate-errors.log"
     type: acceptance-gate-errors.log@1

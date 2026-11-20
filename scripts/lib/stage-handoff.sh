@@ -2,7 +2,9 @@
 # scripts/lib/stage-handoff.sh — a stage's last try changed nothing and its
 # findings were the same: it is not run again, and what it answered decides
 # where each finding goes (#2565; ADR-054 §6a, ADR-068 §6, ADR-071 §1). Loaded
-# by stage-retry.sh the first time it is needed.
+# by stage-retry.sh the first time it is needed. #2569: also how a stage hands a
+# finding to every stage that can fix it (stage_findings_route_each), and adds
+# to an output its handoff writes too (stage_findings_add).
 #
 # Sourced library: no set -euo pipefail.
 
@@ -88,8 +90,7 @@ stage_handoff_unchanged() {
           | "\($s) changed nothing for \(.key) and answered: \(.a | sub("^[^:]*:[[:space:]]*"; ""))" + tail(.orig)]) as $on
         | ([$l[] | select(.kind == "done")
           | "\(.key): you answered done, but this try changed nothing — make the change, or answer wrong (it is already right, and why) or not mine (whose change it is)" + tail(.orig)]) as $back
-        | (if ($on | length) == 0 then "-"
-           else {data: {findings: ($on | to_entries | map({n: (.key + 1), text: .value}))}} | tojson end),
+        | (if ($on | length) == 0 then "-" else $on | map({text: .}) | tojson end),
           ($docs[$resf]
            | (if ($back | length) == 0 then . else
                 (.data.findings // []) as $f | ([$f[]?.n? | numbers] | max // 0) as $m
@@ -98,18 +99,65 @@ stage_handoff_unchanged() {
            | tojson)' "${files[@]}" 2>/dev/null)" || return 0
     { IFS= read -r hj; IFS= read -r rj; } <<< "$out"
     [[ -n "$rj" && "$rj" == "{"* ]] || return 0
-    if [[ "$hj" == "{"* ]]; then
-        local hp; _registry_resolve_output_path_v hp "$hraw" "$sd" "$ad"
-        # A handoff that could not be written ends no round: nothing changes.
-        if [[ -z "$hp" ]] || ! atomic_write "$hp" <<< "$hj" 2>/dev/null; then on=0; rj=""; fi
+    local hp="" hprev=""
+    if [[ "$hj" == "["* ]]; then
+        _registry_resolve_output_path_v hp "$hraw" "$sd" "$ad"
+        # #2569: added to what the stage itself wrote there in this run (an
+        # untestable SPEC), never in its place. A handoff that could not be
+        # written ends no round: nothing changes.
+        [[ -n "$hp" && -s "$hp" ]] && { IFS= read -r -d '' hprev < "$hp" || true; }
+        if [[ -z "$hp" ]] || ! stage_findings_add "$hp" "$hj"; then on=0; rj=""; hp=""; fi
     fi
     # A result that could not be written takes its handoff with it: a handoff
     # with no ends_round would reach its owner while the round went on.
     if [[ -n "$rj" ]] && ! atomic_write "$res" <<< "$rj" 2>/dev/null; then
-        [[ -n "${hp:-}" ]] && rm -f "$hp" 2>/dev/null
+        if [[ -n "$hp" && -n "$hprev" ]]; then atomic_write "$hp" <<< "$hprev" 2>/dev/null
+        elif [[ -n "$hp" ]]; then rm -f "$hp" 2>/dev/null; fi
         return 0
     fi
     declare -F emit_event >/dev/null 2>&1 && emit_event "stage.findings.handed_on" \
         "stage=$stage" "handed_on=$on" "sent_back=$back" >/dev/null 2>&1
     return 0
+}
+
+# stage_findings_add <file> <findings_json> — adds findings ([{text}, …]) to a
+# routed-findings file (#2569): numbered after the ones it holds, or the file
+# made when there is none. A stage and its handoff can both write one output in
+# one run; neither overwrites the other. rc 1 when it could not be written.
+stage_findings_add() {
+    local f="$1" add="${2:-[]}" j=""
+    [[ -n "$add" && "$add" != "[]" ]] || return 0
+    j="$(jq -c --argjson a "$add" '(.data.findings // []) as $o | ([$o[]?.n? | numbers] | max // 0) as $m
+        | .data.findings = $o + ($a | to_entries | map({n: ($m + .key + 1), text: (.value | if type == "object" then .text else . end | tostring)}))' \
+        "$f" 2>/dev/null)" || j=""
+    [[ "$j" == "{"* ]] \
+        || j="$(jq -nc --argjson a "$add" '{data: {findings: ($a | to_entries | map({n: (.key + 1), text: (.value | if type == "object" then .text else . end | tostring)}))}}' 2>/dev/null)"
+    [[ "$j" == "{"* ]] && atomic_write "$f" <<< "$j" 2>/dev/null
+}
+
+# stage_findings_route_each <dir> <name> <default-topic> — stage_findings_route
+# for a finding more than one stage can fix (#2569, ADR-071 §1): a line
+# "<topic>,<topic><TAB><text>" goes to each topic's output; "report<TAB><text>"
+# goes to none — it is only in the stage's own result, for the report. Prints
+# the stage's own findings, numbered, each text once.
+stage_findings_route_each() {
+    local dir="$1" name="$2" def="$3" _in="" l t x tt routed="" own=""
+    local re='^(report|(design|test|code)-findings(,(design|test|code)-findings)*)$'
+    local -A seen=()
+    local -a ts=()
+    IFS= read -r -d '' _in || true
+    while IFS= read -r l; do
+        [[ -n "${l//[[:space:]]/}" ]] || continue
+        t=""; x="$l"
+        if [[ "$l" == *$'\t'* && "${l%%$'\t'*}" =~ $re ]]; then t="${l%%$'\t'*}"; x="${l#*$'\t'}"; fi
+        [[ -n "${seen[$x]+x}" ]] || { seen[$x]=1; own+="$x"$'\n'; }
+        case "$t" in
+            report) ;;
+            "") routed+="$x"$'\n' ;;
+            *) IFS=, read -ra ts <<< "$t"
+               for tt in "${ts[@]}"; do routed+="$tt"$'\t'"$x"$'\n'; done ;;
+        esac
+    done <<< "$_in"
+    stage_findings_route "$dir" "$name" "$def" <<< "$routed" >/dev/null
+    if [[ -n "$own" ]]; then stage_findings_json <<< "$own"; else printf '[]'; fi
 }

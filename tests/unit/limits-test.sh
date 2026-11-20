@@ -187,7 +187,7 @@ assert_contains "[LM8] issue-acceptance is shown each limit" "$_ip" "- RQNCI-1: 
 assert_contains "[LM8] ...and asked KEPT or BROKEN for each" "$_ip" "BROKEN: <id> | WHY:"
 assert_eq "[LM8] every limit kept: it passes" "pass" "$(jq -r '.outcome' "$A/issue-acceptance-result.json" 2>/dev/null)"
 _ia 'MET: RQCLM-1
-BROKEN: RQNCI-1 | WHY: the change adds a CI status check | QUOTE: core/a.sh | ci_job_status_check() { :; }
+BROKEN: RQNCI-1 | WHY: the change adds a CI status check | ACCEPTED IF: it is accepted | QUOTE: core/a.sh | ci_job_status_check() { :; }
 KEPT: RQSTG-1
 UNASKED: none'
 assert_eq "[LM8] a broken limit fails it" "fail" "$(jq -r '.outcome' "$A/issue-acceptance-result.json" 2>/dev/null)"

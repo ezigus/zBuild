@@ -12,6 +12,9 @@
 
 [[ -n "${_ZBUILD_TEST_OWN_CHECKS_LOADED:-}" ]] && return 0
 _ZBUILD_TEST_OWN_CHECKS_LOADED=1
+# shellcheck source=../../../../scripts/lib/stage-handoff.sh
+declare -F stage_findings_route_each >/dev/null 2>&1 \
+    || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/stage-handoff.sh"
 
 # _test_assertion_fingerprints <repo_root>
 # The assertion files' fingerprints are found by what they are, never by which
@@ -111,11 +114,13 @@ _test_own_checks() {
                 why+=("$name failed: $(jq -r '.reason // ""' "$f" 2>/dev/null)")
                 # #2428 (ADR-071 §2): a finding lives in one output — the
                 # check's own result, whose topic decides who reads it. A
-                # check that failed with no findings gets its reason as one.
+                # check that failed with no findings gets its reason as one;
+                # #2569 (review): it does not say what must change, so it goes
+                # to every stage that can change something.
                 if [[ "$(jq -r '(.data.findings // []) | length' "$f" 2>/dev/null)" == 0 ]]; then
                     local fj1 tmp1
                     local _fn1="${f##*/}"; _fn1="${_fn1%-result.json}"
-                    fj1="$(printf '%s failed: %s\n' "$name" "$(jq -r '(.reason // "") | gsub("[\r\n]+"; " ")' "$f" 2>/dev/null)" | stage_findings_route "$art" "$_fn1" requirement-findings)"
+                    fj1="$(printf 'design-findings,test-findings,code-findings\t%s failed: %s\n' "$name" "$(jq -r '(.reason // "") | gsub("[\r\n]+"; " ")' "$f" 2>/dev/null)" | stage_findings_route_each "$art" "$_fn1" design-findings)"
                     tmp1="$(jq --argjson f "${fj1:-[]}" '.data = ((.data // {}) + {findings: $f})' "$f" 2>/dev/null)" \
                         && printf '%s\n' "$tmp1" | atomic_write "$f" || true
                 fi ;;
@@ -134,7 +139,9 @@ _test_own_checks() {
     if [[ ${#_TEST_SLOW_FINDINGS[@]} -gt 0 ]]; then
         [[ "$outcome" == pass || "$outcome" == fail ]] && outcome=fail
         why+=("a test file this change added or changed is far slower than the rest of the suite")
-        texts+=("${_TEST_SLOW_FINDINGS[@]}")
+        # #2569 (ADR-071 §1): the test, or the code it runs, can make it faster.
+        local _sl
+        for _sl in "${_TEST_SLOW_FINDINGS[@]}"; do texts+=("code-findings,test-findings"$'\t'"$_sl"); done
     fi
 
     # No fingerprints given: nothing to compare — a warning, never a failure.
@@ -145,7 +152,7 @@ _test_own_checks() {
     fi
 
     local fj tmp reason
-    fj="$( { [[ ${#texts[@]} -gt 0 ]] && printf '%s\n' "${texts[@]}"; } | stage_findings_route "$art" test code-findings)"
+    fj="$( { [[ ${#texts[@]} -gt 0 ]] && printf '%s\n' "${texts[@]}"; } | stage_findings_route_each "$art" test code-findings)"
     tmp="$(jq --argjson f "${fj:-[]}" '.data = ((.data // {}) + {findings: $f})' "$out" 2>/dev/null)" \
         && printf '%s\n' "$tmp" | atomic_write "$out" || true
     # A check's failure the loop cannot fix (a malformed contract) still ends

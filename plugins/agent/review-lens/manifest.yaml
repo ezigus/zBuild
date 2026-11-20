@@ -110,25 +110,25 @@ outputs:
     summary: true
   # #2433 (ADR-071 §1): one output per topic the lens writes findings to —
   # those that send the run back, numbered; each passes when it holds none.
-  # #2491, #2556: a finding the code must fix goes to its own output,
-  # change-findings, so it reaches build only, not test-author or
-  # issue-acceptance; one a test must fix goes to code-findings.
+  # #2569: a finding's fix: word is its topic — fix: code goes to code-findings
+  # (build), fix: test to test-findings (test-author), fix: design to
+  # design-findings (design); each output is named by that word.
   - id: review_lens_code
     topic: code-findings
-    description: "the lens's findings that send the run back and that a test must fix"
+    description: "the lens's findings that send the run back and that the code must fix"
     path: "${artifact_dir}/lens-${ZBUILD_REVIEW_LENS_ID}-code-result.json"
     type: review-lens-routed.json@1
     format: json
     required: false
-  - id: review_lens_change
-    topic: change-findings
-    description: "the lens's findings that send the run back and that only the code can fix"
-    path: "${artifact_dir}/lens-${ZBUILD_REVIEW_LENS_ID}-change-result.json"
+  - id: review_lens_test
+    topic: test-findings
+    description: "the lens's findings that send the run back and that a test must fix"
+    path: "${artifact_dir}/lens-${ZBUILD_REVIEW_LENS_ID}-test-result.json"
     type: review-lens-routed.json@1
     format: json
     required: false
   - id: review_lens_design
-    topic: requirement-findings
+    topic: design-findings
     description: "the lens's findings that send the run back and that the design must fix, or that say the issue itself is wrong"
     path: "${artifact_dir}/lens-${ZBUILD_REVIEW_LENS_ID}-design-result.json"
     type: review-lens-routed.json@1

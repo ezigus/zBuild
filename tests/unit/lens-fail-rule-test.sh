@@ -44,9 +44,9 @@ _lens() {  # <fail_on> <findings json> — prints the lens's outcome
         _review_lens_run_inner red-team "$TEST_TEMP_DIR/scope-manifest.md" "$ART/diff.patch" "$ART/lens-red-team.json" "$ART" >/dev/null 2>&1 || true
     jq -r '.outcome // "none"' "$ART/lens-red-team.json" 2>/dev/null
 }
-_med='[{"trigger":"a caller passes this on a normal run","quote":"x=1","file":"a.sh","category":"x","severity":"medium","line":1,"message":"m","introduced":true}]'
-_high_old='[{"trigger":"a caller passes this on a normal run","quote":"x=1","file":"a.sh","category":"x","severity":"high","line":1,"message":"h","introduced":false}]'
-_high='[{"trigger":"a caller passes this on a normal run","quote":"x=1","file":"a.sh","category":"x","severity":"high","line":1,"message":"h","introduced":true}]'
+_med='[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","quote":"x=1","file":"a.sh","category":"x","severity":"medium","line":1,"message":"m","introduced":true}]'
+_high_old='[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","quote":"x=1","file":"a.sh","category":"x","severity":"high","line":1,"message":"h","introduced":false}]'
+_high='[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","quote":"x=1","file":"a.sh","category":"x","severity":"high","line":1,"message":"h","introduced":true}]'
 assert_eq "[F2] fail_on medium: a medium problem the change introduced fails" "fail" "$(_lens "medium" "$_med")"
 assert_eq "[F2] fail_on critical: a high problem passes" "pass" "$(_lens "critical" "$_high")"
 assert_eq "[F2] fail_on high: a high problem the change did NOT introduce passes" "pass" "$(_lens "high critical" "$_high_old")"

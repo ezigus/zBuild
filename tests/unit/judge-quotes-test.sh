@@ -130,19 +130,19 @@ OUTSIDE: (none)
 DONE_WRONG: none"; _R2=""; _cov
     echo "Q2b|${#_DESIGN_UNCOVERED[@]}${#_DESIGN_OUTSIDE[@]}${#_DESIGN_STATUS_WRONG[@]}|$_DESIGN_COV_OUTCOME"
 
-    _R1=$'RQRQST-1: covered\nRQRQST-2: uncovered | WHY: no SPEC refuses an unreadable file | QUOTE: "refuse a missing config file"\nDSWORK-1: ok\nDSCNFG-1: ok\n'"$_sc"; _R2=""; _cov
+    _R1=$'RQRQST-1: covered\nRQRQST-2: uncovered | WHY: no SPEC refuses an unreadable file | ACCEPTED IF: it is accepted | QUOTE: "refuse a missing config file"\nDSWORK-1: ok\nDSCNFG-1: ok\n'"$_sc"; _R2=""; _cov
     echo "Q2c|${#_DESIGN_UNCOVERED[@]}|${_DESIGN_UNCOVERED[0]:-}|$(cat "$_N")"
 
     _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSCNFG-1: ok\n'"$_sc"; _R2="$_ok"; _cov
     echo "Q2d|$(cat "$_N")|$_DESIGN_COV_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
 
-    _R1=$'RQRQST-1: covered\nRQRQST-2: uncovered | WHY: x | QUOTE: "accept a flag"\nDSWORK-1: ok\nDSCNFG-1: ok\n'"$_sc"; _R2=""; _cov
+    _R1=$'RQRQST-1: covered\nRQRQST-2: uncovered | WHY: x | ACCEPTED IF: it is accepted | QUOTE: "accept a flag"\nDSWORK-1: ok\nDSCNFG-1: ok\n'"$_sc"; _R2=""; _cov
     echo "Q2e|$(cat "$_N")|$_DESIGN_COV_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
 
-    _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-1: ok\nDSCNFG-1 Title: status | DOC: no | BEFORE: no | WORK: yes | WHY: it returns 2 only when the file is absent | QUOTE: scripts/cfg.sh | [[ -f "$1" ]] || return 2\n'"$_sc"; _R2=""; _cov
+    _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-1: ok\nDSCNFG-1 Title: status | DOC: no | BEFORE: no | WORK: yes | WHY: it returns 2 only when the file is absent | ACCEPTED IF: it is accepted | QUOTE: scripts/cfg.sh | [[ -f "$1" ]] || return 2\n'"$_sc"; _R2=""; _cov
     echo "Q2f|${#_DESIGN_STATUS_WRONG[@]}|${_DESIGN_STATUS_WRONG[0]:-}|$_DESIGN_COV_OUTCOME"
 
-    _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-1 Title: status | DOC: no | BEFORE: no | WORK: yes | WHY: x | QUOTE: scripts/cfg.sh | line one\nDSCNFG-1: ok\n'"$_sc"; _R2="$_R1"; _cov
+    _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-1 Title: status | DOC: no | BEFORE: no | WORK: yes | WHY: x | ACCEPTED IF: it is accepted | QUOTE: scripts/cfg.sh | line one\nDSCNFG-1: ok\n'"$_sc"; _R2="$_R1"; _cov
     echo "Q2h|$_DESIGN_COV_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
 
     _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-1: ok\nDSCNFG-1: ok\nSCOPE: scripts/thing.sh: ok\nSCOPE: scripts/telemetry.sh: outside | WHY: the issue asks for no telemetry\n'; _R2=""; _cov
@@ -185,19 +185,19 @@ print_test_section "Q3: test-author's assertion check"
 
     # #2467 (ADR-073 §6): a line per failing part (this one-line SPEC is its
     # one Then), named by its word (#2470).
-    _R1=$'DSLOOP-1 Then: missing | WHY: only a fresh run is tested | QUOTE: "nested re-entries"'; _R2=""; _j
+    _R1=$'DSLOOP-1 Then: missing | WHY: only a fresh run is tested | ACCEPTED IF: it is accepted | QUOTE: "nested re-entries"'; _R2=""; _j
     echo "Q3a|${#_TA_CORR_FINDINGS[@]}|${_TA_CORR_FINDINGS[0]:-}|$_TA_CORR_OUTCOME|$(cat "$_N")"
     echo "Q3p|$([[ "$(cat "$_P.1")" == *'QUOTE: <that part'"'"'s own words'* ]] && echo asked)"
 
     _R1=$'DSLOOP-1 Then: missing | WHY: only a fresh run is tested'
-    _R2=$'DSLOOP-1 Then: missing | WHY: only a fresh run is tested | QUOTE: "nested re-entries"'; _j
+    _R2=$'DSLOOP-1 Then: missing | WHY: only a fresh run is tested | ACCEPTED IF: it is accepted | QUOTE: "nested re-entries"'; _j
     echo "Q3b|$(cat "$_N")|${#_TA_CORR_FINDINGS[@]}|$_TA_CORR_OUTCOME"
 
     _R1=$'DSLOOP-1 Then: missing | WHY: only a fresh run is tested'
     _R2="$_R1"; _j
     echo "Q3c|$(cat "$_N")|${#_TA_CORR_FINDINGS[@]}|$_TA_CORR_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.3" 2>/dev/null)"
 
-    _R1=$'DSLOOP-1 Then: wrong | WHY: x | QUOTE: "a resumed run reads the saved round"'
+    _R1=$'DSLOOP-1 Then: wrong | WHY: x | ACCEPTED IF: it is accepted | QUOTE: "a resumed run reads the saved round"'
     _R2="$_R1"; _j
     echo "Q3d|${#_TA_CORR_FINDINGS[@]}|$_TA_CORR_OUTCOME"
 
@@ -258,13 +258,13 @@ _mk_inputs() {  # <dir> — the issue, its requirements, a design, a diff, a tes
     echo "Q4w|$([[ "$_p1" =~ \ [0-9]+\|\  ]] && echo window || echo nowindow)"
     echo "Q4w2|$([[ "$_p1" == *'scripts/cfg.sh:"refuse_missing_config()"'* ]] && echo named)"
 
-    _R1=$'MET: RQFLAG-1\nUNMET: [fix-code] RQCNFG-1 | WHY: an unreadable file is not refused | QUOTE: "refuse a missing config file"'; _R2=""
+    _R1=$'MET: RQFLAG-1\nUNMET: [fix-code] RQCNFG-1 | WHY: an unreadable file is not refused | ACCEPTED IF: it is accepted | QUOTE: "refuse a missing config file"'; _R2=""
     echo "Q4b|$(_ia)|$(jq -r '.data.findings[0].text // ""' "$A/issue-acceptance-result.json")"
 
     _R1=$'MET: RQFLAG-1'; _R2=$'MET: RQFLAG-1\nMET: RQCNFG-1'
     echo "Q4c|$(_ia)|$(cat "$_N")|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
 
-    _R1=$'MET: RQFLAG-1\nUNMET: [fix-code] RQCNFG-1 | WHY: x | QUOTE: scripts/cfg.sh | return 9'; _R2=""
+    _R1=$'MET: RQFLAG-1\nUNMET: [fix-code] RQCNFG-1 | WHY: x | ACCEPTED IF: it is accepted | QUOTE: scripts/cfg.sh | return 9'; _R2=""
     echo "Q4d|$(_ia)|$(cat "$_N")|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
 
     _R1=$'MET: RQFLAG-1\nMET: RQCNFG-1\nUNMET: none\nUNSURE: omitted'; _R2=""
@@ -303,13 +303,13 @@ print_test_section "Q5: a review lens quotes each finding"
             _review_lens_run_inner red-team "$TEST_TEMP_DIR/q5-scope.md" "$ART/diff.patch" "$ART/lens-red-team.json" "$ART" >/dev/null 2>&1 || true
         jq -r '.outcome // "none"' "$ART/lens-red-team.json" 2>/dev/null
     }
-    _f() { printf '{"score":5,"findings":[{"trigger":"a caller passes this on a normal run","file":"scripts/cfg.sh","severity":"high","message":"exit code changed","introduced":true,"quote":%s}]}' "$1"; }
+    _f() { printf '{"score":5,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","file":"scripts/cfg.sh","severity":"high","message":"exit code changed","introduced":true,"quote":%s}]}' "$1"; }
     _R1="$(_f '"[[ -r \"$1\" ]] || return 3"')"; _R2=""
     echo "Q5a|$(_lens)|$(cat "$_N")|$(jq -r '.findings[0].quote // ""' "$ART/lens-red-team.json")"
     echo "Q5p|$([[ "$(cat "$_P.1")" == *'"quote": "<the exact text'* ]] && echo asked)"
     _R1="$(_f '"[[ -f \"$1\" ]] || return 2"')"; _R2=""
     echo "Q5b|$(_lens)"
-    _R1='{"score":5,"findings":[{"trigger":"a caller passes this on a normal run","file":"scripts/cfg.sh","severity":"high","message":"m","introduced":true}]}'; _R2="$(_f '"[[ -r \"$1\" ]] || return 3"')"
+    _R1='{"score":5,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","file":"scripts/cfg.sh","severity":"high","message":"m","introduced":true}]}'; _R2="$(_f '"[[ -r \"$1\" ]] || return 3"')"
     echo "Q5c|$(_lens)|$(cat "$_N")|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
     _R1="$(_f '"return 9"')"; _R2=""
     echo "Q5d|$(_lens)|$(cat "$_N")|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"

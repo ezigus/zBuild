@@ -49,7 +49,7 @@ printf '%s' '{"schema_version":1,"goal":"g","steps":[{"id":"s1","description":"d
 # ─── [#2441] build says a test is wrong → build-tests-result.json ────────────
 # ADR-068 §6 / ADR-071 §1 (amended 2026-10-31): build's answer that a test is
 # wrong is a finding for the stage that owns the test, in its own output on
-# topic code-findings; nothing else of build's is in it.
+# topic test-findings (#2569); nothing else of build's is in it.
 print_test_section "[#2441] a 'test is wrong' answer becomes a finding in build-tests-result.json"
 ARTIFACT_DIR_TW="$TEST_TEMP_DIR/artifacts_testwrong"
 mkdir -p "$ARTIFACT_DIR_TW"

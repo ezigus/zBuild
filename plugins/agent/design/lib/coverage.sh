@@ -11,7 +11,8 @@
 # #2464 (ADR-072): the check judges — it reads the code itself, read-only, and
 # a [done] claim on the code from before the change; it answers one line for
 # every requirement and every SPEC, each complaint quoted; and its answer is
-# kept while nothing it judged has changed.
+# kept while nothing it judged has changed. #2569: an item it refused, which
+# design answered, is judged again, shown the finding and the answer.
 #
 # Sourced library: no set -euo pipefail.
 
@@ -97,30 +98,65 @@ _dcov_ev_items_v() {
     if [[ -n "$3" ]]; then _dei="${2//"$3/"/}"; else _dei="$2"; fi
 }
 
-# _dcov_disputes_v <assoc_var> <answers> <verdict_json> — each `wrong` answer
-# (zb_answer_kind_v) by the item its finding is about: a SPEC id, or
-# `requirements` for a requirement's. A finding's first word names it, as
-# _design_coverage_findings writes it; one that names nothing known disputes
-# every item (#2470, ADR-072 §5).
-_dcov_disputes_v() {
-    local -n _ddv="$1"; local _ddv_a _ddv_n _ddv_t _ddv_id _ddv_k
-    local -A _ddv_txt=()
-    [[ "$2" == *wrong* ]] || return 0
-    if [[ -s "$3" ]]; then
-        while IFS=$'\t' read -r _ddv_n _ddv_t; do _ddv_txt["$_ddv_n"]="$_ddv_t"; done \
-            < <(jq -r '(.data.findings // [])[]? | "\(.n)\t\(.text | tostring | split("\n")[0])"' "$3" 2>/dev/null)
-    fi
+# _dcov_answered_v <assoc_var> <answers> <verdict_json> [held_assoc] — each
+# answer design gave a finding of this check, done, wrong or not mine
+# (zb_answer_kind_v), by the item its finding is about: a SPEC id,
+# `requirements` for a requirement's, `steps` or `decision`. An item it refused
+# that design answered is judged again (judge_kept_get_all_v, disputed);
+# [held_assoc] gets each answer with the finding as design was given it, for
+# the check to be held to (#2569, ADR-072 §5): "<key><FS><finding and
+# answer><FS><1 when the finding names no item>", one per GS, rendered by
+# _dcov_held_v. A finding's first word names its item, as
+# _design_coverage_findings writes it; one that names nothing known is every
+# SPEC's and the requirements' (#2470).
+_dcov_answered_v() {
+    local -n _ddv="$1"; local _ddv_hn="${4:-_ddv_noh}" _ddv_a _ddv_t _ddv_id _ddv_k _ddv_e _ddv_x
+    local -A _ddv_noh=()
+    local -n _ddv_h="$_ddv_hn"
+    [[ "$2" == *"design finding "* ]] || return 0
+    local -A _ddv_af=()
+    judge_answered_findings_v _ddv_af "$2" "design=$3"
     while IFS= read -r _ddv_a; do
         [[ "$_ddv_a" =~ ^design\ finding\ ([0-9]+)[[:space:]]*: ]] || continue
-        _ddv_n="${BASH_REMATCH[1]}"; zb_answer_kind_v _ddv_k "$_ddv_a"; [[ "$_ddv_k" == wrong ]] || continue
-        _ddv_t="${_ddv_txt[$_ddv_n]:-}"; _ddv_id="${_ddv_t%%[: ]*}"
-        if [[ -n "${first[$_ddv_id]+x}" ]]; then _ddv["$_ddv_id"]+="$_ddv_a"$'\n'
-        elif [[ -n "${req_text[$_ddv_id]+x}" ]]; then _ddv["requirements"]+="$_ddv_a"$'\n'
-        elif [[ "$_ddv_id" == Steps ]]; then _ddv["steps"]+="$_ddv_a"$'\n'
-        elif [[ "$_ddv_id" == Decision ]]; then _ddv["decision"]+="$_ddv_a"$'\n'
+        _ddv_k="design finding ${BASH_REMATCH[1]}"
+        [[ -n "${_ddv_af[$_ddv_k]+x}" ]] || continue
+        zb_answer_kind_v _ddv_x "$_ddv_a"; [[ -n "$_ddv_x" ]] || continue
+        _ddv_t="${_ddv_af[$_ddv_k]%%$'\x1f'*}"; _ddv_e="$_ddv_k"$'\x1c'"${_ddv_af[$_ddv_k]}"
+        unset '_ddv_af[$_ddv_k]'
+        _ddv_id="${_ddv_t%%[: ]*}"
+        if [[ -n "${first[$_ddv_id]+x}" ]]; then :
+        elif [[ -n "${req_text[$_ddv_id]+x}" ]]; then _ddv_id=requirements
+        elif [[ "$_ddv_id" == Steps ]]; then _ddv_id=steps
+        elif [[ "$_ddv_id" == Decision ]]; then _ddv_id=decision
         else
-            for _ddv_k in ${ids[@]+"${ids[@]}"} requirements; do _ddv["$_ddv_k"]+="$_ddv_a"$'\n'; done
+            for _ddv_x in ${ids[@]+"${ids[@]}"} requirements; do _ddv["$_ddv_x"]+="$_ddv_a"$'\n'; _ddv_h["$_ddv_x"]+="$_ddv_e"$'\x1c'1$'\x1d'; done
+            continue
         fi
+        _ddv["$_ddv_id"]+="$_ddv_a"$'\n'; _ddv_h["$_ddv_id"]+="$_ddv_e"$'\x1c'0$'\x1d'
+    done <<< "$2"
+}
+
+# _dcov_held_v <var> <items> — the earlier findings on each item of <items>
+# (one per line) and design's answers, in _design_coverage's scope (held,
+# kwhy): each finding once, with whether its item is the same as when it was
+# refused (judge_held_entry_v; review on #2569). A finding that names no item
+# is every item's, so nothing is said of one.
+_dcov_held_v() {
+    local -n _dhv="$1"; local _dhv_k _dhv_e _dhv_key _dhv_val _dhv_bc _dhv_f _dhv_r
+    local -A _dhv_seen=()
+    _dhv=""
+    while IFS= read -r _dhv_k; do
+        [[ -n "$_dhv_k" && -n "${held[$_dhv_k]:-}" ]] || continue
+        while IFS= read -r -d $'\x1d' _dhv_e; do
+            _dhv_key="${_dhv_e%%$'\x1c'*}"; _dhv_e="${_dhv_e#*$'\x1c'}"
+            _dhv_val="${_dhv_e%$'\x1c'*}"; _dhv_bc="${_dhv_e##*$'\x1c'}"
+            [[ -n "${_dhv_seen[$_dhv_key]+x}" ]] && continue
+            _dhv_seen["$_dhv_key"]=1; _dhv_f=""
+            if [[ "$_dhv_bc" != 1 ]]; then
+                case "${kwhy[$_dhv_k]:-}" in disputed) _dhv_f=same ;; fingerprint|file) _dhv_f=changed ;; esac
+            fi
+            judge_held_entry_v _dhv_r "$_dhv_key" "$_dhv_val" "$_dhv_f"; _dhv+="$_dhv_r"
+        done <<< "${held[$_dhv_k]}"
     done <<< "$2"
 }
 
@@ -168,32 +204,40 @@ _design_coverage() {
     local kf="" eng id _kd="${artifact_dir:-${ZBUILD_ARTIFACT_DIR:-}}"
     [[ -n "$_kd" ]] && kf="${_kd%/}/design-judged.json"
     judge_engine_v eng
-    local -A disp=() fps=() kept=()
-    _dcov_disputes_v disp "$answers" "${_kd:+${_kd%/}/design-verdict.json}"
+    # Review on #2569 (ADR-072 §4 §5): an answer is not in an item's
+    # fingerprint. A kept refusal of an item design answered is judged again,
+    # held to its finding; a kept pass stays, so the next try, with no answer,
+    # does not judge the item from scratch (#1764's flip).
+    local -A disp=() held=() fps=() kept=() kwhy=() _earl=() dfp=()
+    _dcov_answered_v disp "$answers" "${_kd:+${_kd%/}/design-verdict.json}" held
+    # Each answered item's answers, by fingerprint: a verdict is kept with the
+    # answers it heard, so the same answer again is not judged again.
+    local k _fpv
+    for k in "${!disp[@]}"; do judge_fp_v _fpv "${disp[$k]}"; dfp["$k"]="$_fpv"; done
     local _all="" _ev_all="" _evi _fpv
     for id in ${ids[@]+"${ids[@]}"}; do
         _dcov_ev_items_v _evi "${ev[$id]:-}" "$base"
         _ev_all+="$_evi"; _all+="${render[$id]}"$'\n'
-        judge_fp_v _fpv "$eng"$'\n'"$id"$'\n'"${render[$id]}"$'\n'"$_evi"$'\n'"$base_sha"$'\n'"${disp[$id]:-}"$'\n'"$lims"$'\n'"$terms"
+        judge_fp_v _fpv "$eng"$'\n'"$id"$'\n'"${render[$id]}"$'\n'"$_evi"$'\n'"$base_sha"$'\n'"$lims"$'\n'"$terms"
         fps["$id"]="$_fpv"
     done
-    judge_fp_v _fpv "$eng"$'\n'"$reqs"$'\n'"$_all"$'\n'"$_ev_all"$'\n'"$base_sha"$'\n'"${disp[requirements]:-}"$'\n'"$lims"$'\n'"$terms"
+    judge_fp_v _fpv "$eng"$'\n'"$reqs"$'\n'"$_all"$'\n'"$_ev_all"$'\n'"$base_sha"$'\n'"$lims"$'\n'"$terms"
     fps["requirements"]="$_fpv"
     # #2555 (ADR-072 §3): the design's steps are an item of their own, judged
     # for a new owner where one exists, and judged again only when they change.
     local steps=""; _dcov_steps_v steps "$design_md"
     if [[ -n "$steps" ]]; then
         # #2567: judged against the requirements, limits and terms too.
-        judge_fp_v _fpv "$eng"$'\n'steps$'\n'"$steps"$'\n'"$base_sha"$'\n'"${disp[steps]:-}"$'\n'"$reqs"$'\n'"$lims"$'\n'"$terms"
+        judge_fp_v _fpv "$eng"$'\n'steps$'\n'"$steps"$'\n'"$base_sha"$'\n'"$reqs"$'\n'"$lims"$'\n'"$terms"
         fps["steps"]="$_fpv"
     fi
     # #2567 (ADR-073 §5): the design's decisions are an item too.
     local decision=""; _dcov_decision_v decision "$design_md"
     if [[ -n "$decision" ]]; then
-        judge_fp_v _fpv "$eng"$'\n'decision$'\n'"$decision"$'\n'"$base_sha"$'\n'"${disp[decision]:-}"$'\n'"$reqs"$'\n'"$lims"$'\n'"$terms"
+        judge_fp_v _fpv "$eng"$'\n'decision$'\n'"$decision"$'\n'"$base_sha"$'\n'"$reqs"$'\n'"$lims"$'\n'"$terms"
         fps["decision"]="$_fpv"
     fi
-    [[ -n "$kf" ]] && judge_kept_get_all_v kept "$kf" fps disp
+    [[ -n "$kf" ]] && judge_kept_get_all_v kept "$kf" fps dfp _earl "ok covered" kwhy
 
     # A kept answer is read as it was given; one that no longer reads is judged again.
     local kept_raw="" kept_want="" k
@@ -226,9 +270,12 @@ _design_coverage() {
     local reqs_ctx=""
     [[ -z "$reqs_asked" && ( -n "$steps_asked" || -n "$decision_asked" ) ]] && reqs_ctx="$reqs"
     [[ -n "$reqs_asked$steps_asked$decision_asked" ]] && issue="$(earlier_issue_text "${artifact_dir:-${ZBUILD_ARTIFACT_DIR:-}}" "${state_dir:-}" 2>/dev/null || true)"
-    for k in "${!disp[@]}"; do [[ $'\n'"$want" == *$'\n'"$k"$'\n'* ]] && _disp_shown+="${disp[$k]}"; done
+    # #2569 (ADR-072 §5): each item asked that it refused before, with design's
+    # answer to its finding, in the order the items are asked.
+    _dcov_held_v _disp_shown "$want"
+    judge_held_block_v _disp_shown "$_disp_shown"
     # #2458: it judges, so it composes fresh — no notes, and no rule to confirm earlier work.
-    if ! framed="$(stage_prompt_compose_text --fresh "$(_dcov_prompt_own "$reqs_asked" "$steps_asked" "$decision_asked")" "$(_dcov_prompt_judge "$design_md" "${shown%$'\n'}" "$reqs_asked" "${others%$'\n'}" "$done_ev" "$base" "$issue" "$lims" "$terms" "$steps_asked" "$decision_asked" "$reqs_ctx")$(judge_disputes_block "$_disp_shown")" "$(_dcov_prompt_limits)")"; then
+    if ! framed="$(stage_prompt_compose_text --fresh "$(_dcov_prompt_own "$reqs_asked" "$steps_asked" "$decision_asked")" "$(_dcov_prompt_judge "$design_md" "${shown%$'\n'}" "$reqs_asked" "${others%$'\n'}" "$done_ev" "$base" "$issue" "$lims" "$terms" "$steps_asked" "$decision_asked" "$reqs_ctx")$_disp_shown" "$(_dcov_prompt_limits)")"; then
         _DESIGN_COV_OUTCOME=misconfigured
         return 0
     fi
@@ -282,6 +329,7 @@ _design_coverage() {
     # Each item judged is kept with what it depended on: the files the call
     # opened, and the files its own quotes name — even when another item's
     # lines could not be used (#2472).
+    # shellcheck disable=SC2034  # putfp is passed by name to judge_kept_put_all
     local -A put=() putfp=() deps=()
     local _opened_all="" f q
     for f in ${files[@]+"${files[@]}"}; do _opened_all+="$f"$'\n'; done
@@ -289,7 +337,7 @@ _design_coverage() {
     while IFS= read -r k; do
         [[ -n "$k" && -n "${got[$k]+x}" ]] || continue
         # shellcheck disable=SC2034  # passed by name to judge_kept_put_all
-        { put["$k"]="${got[$k]}"; putfp["$k"]="${fps[$k]}"; deps["$k"]="$_opened_all"; }
+        { put["$k"]="${got[$k]}"; judge_kept_fp_v "putfp[$k]" "${fps[$k]}" "${dfp[$k]:-}"; deps["$k"]="$_opened_all"; }
         while IFS= read -r q; do [[ -n "$q" ]] && deps["$k"]+="$repo/$q"$'\n'; done <<< "${gotq[$k]:-}"
         new_raw+="${got[$k]}"; new_want+="$k"$'\n'
     done <<< "$want"

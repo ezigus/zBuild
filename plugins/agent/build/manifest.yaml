@@ -9,15 +9,12 @@ takes:
   - topic: ask
     for: "the design to build"
   - topic: tests
-    for: "the tests the change must pass"
+    for: "the tests the change must pass, and how they ran"
   - topic: change
     for: "the change made so far"
-  - topic: requirement-findings
-    for: "findings against the requirements the change must meet"
+  # #2569 (ADR-071 §3): the findings the code must fix — the only ones build can.
   - topic: code-findings
-    for: "failing tests and problems found in the code"
-  - topic: change-findings
-    for: "findings only the code can fix: a lens's code finding, a failing test that is not one of this change's"
+    for: "what the code must change: a failing test, a requirement the change does not meet yet, a lens's code finding, a part of the change no requirement asks for"
 description: |
   Build stage agent. Reads the plan.json artifact produced by the plan stage
   and invokes the LLM (T2) to produce a diff.patch and build-summary.json.
@@ -112,10 +109,10 @@ outputs:
     # drives indicator. Added in build-summary schema_version=3.
     primary: true
   # #2441 (ADR-068 §6, ADR-071 §1): build's answers that a test is wrong — on
-  # code-findings, which the stage that owns the tests takes; build's code stays
-  # on change, which it does not.
+  # test-findings (#2569), which the stage that owns the tests takes; build's
+  # code stays on change, which it does not.
   - id: build_tests
-    topic: code-findings
+    topic: test-findings
     description: "tests build says are wrong and cannot pass, each with the file and why"
     path: "${artifact_dir}/build-tests-result.json"
     type: build-tests.json@1

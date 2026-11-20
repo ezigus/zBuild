@@ -43,7 +43,7 @@ mkdir -p "$STATE_DIR" "$ARTIFACTS_DIR" "$EVENTS_DIR"
 # #476: envelope-aware via the shared helper.
 # A lens finding quotes a real line of a real file (ADR-072 §3).
 install_envelope_mock_claude \
-    '{"score":8,"findings":[{"file":"scripts/lib/helpers.sh","category":"injection","severity":"low","message":"m","quote":"_ZBUILD_HELPERS_LOADED=1","trigger":"a caller sources helpers.sh twice","introduced":false,"fix":"code"}]}'
+    '{"score":8,"findings":[{"file":"scripts/lib/helpers.sh","category":"injection","severity":"low","message":"m","quote":"_ZBUILD_HELPERS_LOADED=1","accepted_if":"the change no longer does this","trigger":"a caller sources helpers.sh twice","introduced":false,"fix":"code"}]}'
 
 # ─── Write a minimal scope manifest so redaction passes ──────────────────────
 printf '+ ./\n' | atomic_write "$STATE_DIR/scope-manifest.md"

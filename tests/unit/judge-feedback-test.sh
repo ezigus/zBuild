@@ -23,7 +23,8 @@
 # F6 the judges answer one line for a SPEC that is fine and one per failing
 #    part; a SPEC with no line is asked again; each SPEC's answer is kept, so an
 #    unchanged SPEC is not judged again, and requirement coverage is asked again
-#    whenever any SPEC changes
+#    whenever any SPEC changes; an answer to a SPEC it refused has that SPEC
+#    alone judged again
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -111,7 +112,7 @@ print_test_section "F3-F6: design's check"
     _fresh; _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-2: ok\nDSFRSH-1 Then: how | WHY: x | INSTEAD: the event the run emits | QUOTE: "it is started again"\n'; _R2="$_R1"; _cov
     echo "F2d|$_DESIGN_COV_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
     # F5: a SPEC-level verdict marks the SPEC's own line; an uncovered requirement is one line.
-    _fresh; _R1=$'RQRQST-1: covered\nRQRQST-2: uncovered | WHY: nothing reads the flag from the config file | QUOTE: "read the flag"\nDSWORK-2: ok\nDSFRSH-1 Title: not-asked | WHY: the issue asks for no fresh start | QUOTE: "a new run starts from the first stage"\n'; _R2=""; _cov
+    _fresh; _R1=$'RQRQST-1: covered\nRQRQST-2: uncovered | WHY: nothing reads the flag from the config file | ACCEPTED IF: a SPEC reads the flag from the config file | QUOTE: "read the flag"\nDSWORK-2: ok\nDSFRSH-1 Title: not-asked | WHY: the issue asks for no fresh start | ACCEPTED IF: it is accepted | QUOTE: "a new run starts from the first stage"\n'; _R2=""; _cov
     echo "F5b|$(_design_coverage_findings | tr '\n\036' '~~')"
 
     # F6: answers kept per SPEC.
@@ -121,7 +122,10 @@ print_test_section "F3-F6: design's check"
     _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSFRSH-1: ok\n'; _cov
     _p1="$(cat "$_P.1" 2>/dev/null)"
     echo "F6d|$(cat "$_N")|$_DESIGN_COV_OUTCOME|$([[ "$_p1" == *"  And: no stage is skipped, not even the last"* ]] && echo changed-inline)|$([[ "$_p1" == *"  Then: the run uses it"* ]] && echo unchanged-inline)|$([[ "$_p1" == *"<requirement id>: covered"* ]] && echo reqs-asked)"
-    # A dispute on one unchanged SPEC: that SPEC alone, and requirements are not asked again.
+    # A dispute on one unchanged SPEC it refused: that SPEC alone, and
+    # requirements are not asked again. (Review on #2569: an answer has a
+    # SPEC judged again only while its kept verdict is a refusal.)
+    _fresh; _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSFRSH-1: ok\nDSWORK-2 Then: how | WHY: it names no output | ACCEPTED IF: the run shows it used the flag | QUOTE: the run uses it\n'; _cov
     _ta="design finding 1: wrong — DSWORK-2 reads the flag in main()"
     printf '%s\n' '{"result_contract":3,"outcome":"unusable","reason":"r","data":{"findings":[{"n":1,"text":"DSWORK-2: 1 part to fix"}]}}' > "$artifact_dir/design-verdict.json"
     _R1=$'DSWORK-2: ok\n'; _cov "$_ta"
@@ -144,7 +148,7 @@ assert_contains "[F2] a quote in none of the parts it names is asked again" "$(_
 assert_contains "[F2] ...saying so" "$(_l "$F" F2d)" "DSFRSH-1 Then's quote is not in any of its Then lines"
 assert_contains "[F5] a SPEC-level verdict marks the SPEC's own line" "$(_l "$F" F5b)" "DSFRSH-1[code]: a new run starts from the first stage covers: RQRQST-1 [FIX IN DESIGN: the issue asks for no fresh start"
 assert_contains "[F5] an uncovered requirement is one line, marked" "$(_l "$F" F5b)" "RQRQST-2 is not covered: nothing reads the flag from the config file"
-assert_contains "[F5] ...with where it is fixed" "$(_l "$F" F5b)" "[FIX IN DESIGN: add or widen a SPEC"
+assert_contains "[F5] ...with where it is fixed, in the check's words (#2569)" "$(_l "$F" F5b)" "[FIX IN DESIGN: ACCEPTED IF: a SPEC reads the flag from the config file]"
 assert_eq "[F6] unchanged: no call" "0" "$(_l "$F" F6c)"
 assert_eq "[F6] one SPEC changed: judged, that SPEC inline, the other not, requirements asked again" "1||changed-inline||reqs-asked" "$(_l "$F" F6d)"
 assert_eq "[F6] a dispute on an unchanged SPEC: that SPEC alone, the answer shown, requirements kept" "1||shown||" "$(_l "$F" F6e)"
@@ -167,11 +171,11 @@ print_test_section "F5-F6: test-author's check"
     echo "T2a|$([[ "$_p1" == *"  And: no stage is skipped"* ]] && echo written)|$([[ "$_p1" == *"Then 2"* ]] && echo numbered)"
     _R1=$'DSFRSH-1: ok\n'; _R2=$'DSWORK-2: ok\n'; _j
     echo "T6b|$(cat "$_N")|$_TA_CORR_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
-    _R1=$'DSWORK-2: ok\nDSFRSH-1 And: missing | WHY: nothing asserts that no stage was skipped | QUOTE: "no stage is skipped"\n'; _R2=""; _j
+    _R1=$'DSWORK-2: ok\nDSFRSH-1 And: missing | WHY: nothing asserts that no stage was skipped | ACCEPTED IF: it is accepted | QUOTE: "no stage is skipped"\n'; _R2=""; _j
     echo "T5a|${#_TA_CORR_FINDINGS[@]}|$(printf '%s~' "${_TA_CORR_FINDINGS[@]}" | tr '\n\036' '~~')"
-    _R1=$'DSWORK-2: ok\nDSFRSH-1 sections: missing | WHY: there is no Then section\n'; _R2=""; _j
+    _R1=$'DSWORK-2: ok\nDSFRSH-1 sections: missing | WHY: there is no Then section | ACCEPTED IF: the test has Given, When and Then headings\n'; _R2=""; _j
     echo "T5b|$(printf '%s~' "${_TA_CORR_FINDINGS[@]}" | tr '\n\036' '~~')"
-    _R1=$'DSWORK-2: ok\nDSFRSH-1: untestable | WHY: nothing outside can see a skip | QUOTE: "no stage is skipped"\n'; _R2=""; _j
+    _R1=$'DSWORK-2: ok\nDSFRSH-1: untestable | WHY: nothing outside can see a skip | ACCEPTED IF: it is accepted | QUOTE: "no stage is skipped"\n'; _R2=""; _j
     echo "T5c|$(tr '\n\036' '~~' <<< "${_TA_CORR_UNTESTABLE:-}")"
 ) > "$TEST_TEMP_DIR/t.out" 2>/dev/null
 T="$TEST_TEMP_DIR/t.out"
@@ -184,7 +188,7 @@ assert_contains "[F5] a part the test misses: the SPEC whole" "$(_l "$T" T5a)" "
 assert_contains "[F5] ...the line marked [FIX IN TEST: …]" "$(_l "$T" T5a)" "  And: no stage is skipped [FIX IN TEST: nothing asserts that no stage was skipped"
 assert_contains "[F5] ...other parts unmarked" "$(_l "$T" T5a)" "~  Then: every stage is dispatched~"
 assert_lacks "[F5] ...a SPEC that passed is not shown" "$(_l "$T" T5a)" "DSWORK-2"
-assert_contains "[F5] missing sections mark the SPEC's own line" "$(_l "$T" T5b)" "covers: RQRQST-1 [FIX IN TEST: lay the test out in Given, When and Then sections — there is no Then section"
+assert_contains "[F5] missing sections mark the SPEC's own line" "$(_l "$T" T5b)" "covers: RQRQST-1 [FIX IN TEST: there is no Then section — ACCEPTED IF: the test has Given, When and Then headings]"
 assert_contains "[F5] a SPEC no test can prove is marked for design" "$(_l "$T" T5c)" "[FIX IN DESIGN: nothing outside can see a skip"
 
 print_test_section "F3-F5: what the next stage is shown"
@@ -242,7 +246,7 @@ ${BT}
     route_to_model() {
         local _t; _t="$(zb_test_prompt_write_path "$2")"
         if [[ -n "$_t" ]]; then printf '%s\n' "$2" > "$TEST_TEMP_DIR/f1-design-prompt"; printf '%s' "$DRAFT" > "$_t"; return 0; fi
-        printf 'RQDOCS-1: uncovered | WHY: the docs say nothing yet | QUOTE: "the docs say so"\nDSDOCW-1: ok\nDSLEGC-1: ok\n'
+        printf 'RQDOCS-1: uncovered | WHY: the docs say nothing yet | ACCEPTED IF: it is accepted | QUOTE: "the docs say so"\nDSDOCW-1: ok\nDSLEGC-1: ok\n'
     }
     d="$TEST_TEMP_DIR/f1"; mkdir -p "$d/state/artifacts"; git -C "$d" init -q >/dev/null 2>&1
     export ZBUILD_REPO_ROOT="$d" ZBUILD_EVENTS_JSONL="$d/state/events.jsonl"; : > "$ZBUILD_EVENTS_JSONL"

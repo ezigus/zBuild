@@ -10,7 +10,7 @@
 # 1's critical finding (correctness) never reached build or test-author.
 #
 # M1 [change] build is shown a later member's code finding, labelled by its file
-# M2 [change] build, which takes requirement-findings too, is shown its design finding
+# M2 [change] build is not shown its design finding: it takes only code-findings (#2569)
 # M3 [change] design is shown that design finding, and no code finding: each
 #             finding still goes by its topic
 # M4 [change] no lens summary is shown: it lists the findings again, which
@@ -61,7 +61,7 @@ init_state "$STATE/pipeline-state.json" run-1 7 >/dev/null 2>&1
 printf 'diff --git a/a.sh b/a.sh\n+x=1\n' > "$ART/diff.patch"
 printf 'scope: all\n' > "$TEST_TEMP_DIR/scope-manifest.md"
 _lens() {   # <lens> <code finding words> <design finding words>
-    _FINDINGS="[{\"trigger\":\"a caller passes this on a normal run\",\"quote\":\"x=1\",\"file\":\"a.sh\",\"category\":\"x\",\"severity\":\"high\",\"line\":1,\"message\":\"$2\",\"introduced\":true,\"fix\":\"code\"},{\"trigger\":\"a caller passes this on a normal run\",\"quote\":\"x=1\",\"file\":\"a.sh\",\"category\":\"x\",\"severity\":\"medium\",\"line\":1,\"message\":\"$3\",\"introduced\":true,\"fix\":\"design\"}]"
+    _FINDINGS="[{\"accepted_if\":\"the change no longer does this\",\"trigger\":\"a caller passes this on a normal run\",\"quote\":\"x=1\",\"file\":\"a.sh\",\"category\":\"x\",\"severity\":\"high\",\"line\":1,\"message\":\"$2\",\"introduced\":true,\"fix\":\"code\"},{\"accepted_if\":\"the change no longer does this\",\"trigger\":\"a caller passes this on a normal run\",\"quote\":\"x=1\",\"file\":\"a.sh\",\"category\":\"x\",\"severity\":\"medium\",\"line\":1,\"message\":\"$3\",\"introduced\":true,\"fix\":\"design\"}]"
     route_to_model() { zb_test_lens_check_answer "$2" && return 0; printf '%s' "{\"score\":3,\"findings\":$_FINDINGS}"; return 0; }
     _TPL_STAGE_FAIL_ON_review_lenses="medium high critical" ZBUILD_CURRENT_STAGE=review_lenses ZBUILD_REVIEW_LENS_ID="$1" \
         _review_lens_run_inner "$1" "$TEST_TEMP_DIR/scope-manifest.md" "$ART/diff.patch" "$ART/lens-$1.json" "$ART" >/dev/null 2>&1 || true
@@ -84,8 +84,8 @@ DESIGN="$(_pw design)"
 # ── M1 / M2 ──────────────────────────────────────────────────────────────────
 print_test_section "M1/M2: build is shown every lens's findings it takes"
 assert_contains "[M1] build is shown the correctness lens's code finding" "$BUILD" "CORR-CODE resume starts one round early"
-assert_contains "[M1] …labelled by its file, as the open items name it" "$BUILD" "lens-correctness-change finding 1"
-assert_contains "[M2] build is shown the correctness lens's design finding" "$BUILD" "CORR-DESIGN the SPEC names the wrong iteration"
+assert_contains "[M1] …labelled by its file, as the open items name it" "$BUILD" "lens-correctness-code finding 1"
+assert_not_contains "[M2] build is not shown the correctness lens's design finding (#2569)" "$BUILD" "CORR-DESIGN"
 
 # ── M3 ───────────────────────────────────────────────────────────────────────
 print_test_section "M3: each finding still goes by its topic"
@@ -100,7 +100,7 @@ assert_not_contains "[M4] …nor the security lens's" "$BUILD" "review-lens-secu
 # ── M5 ───────────────────────────────────────────────────────────────────────
 print_test_section "M5: the first member too"
 assert_contains "[M5] build is shown the security lens's code finding as a finding" "$BUILD" \
-    "lens-security-change finding 1 (opened by review_lenses): security lens, high: SEC-CODE the issue is read unchecked"
+    "lens-security-code finding 1 (opened by review_lenses): security lens, high: SEC-CODE the issue is read unchecked"
 
 # ── M6 ───────────────────────────────────────────────────────────────────────
 print_test_section "M6: the summary count"

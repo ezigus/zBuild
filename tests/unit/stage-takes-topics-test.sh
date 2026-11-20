@@ -14,10 +14,10 @@
 #   T4 [change]: the line naming the files the work changed is a `change` —
 #                shown only to a stage that takes change
 #   T5 [guard] : a stage's own notes always come back to it
-#   T6 [change]: a manifest naming a topic or a take outside the five is
+#   T6 [change]: a manifest naming a topic or a take outside the six is
 #                refused at load, naming the word
 #   T7 [change]: the shipped stages — each model stage's takes:, and every
-#                output of the shipped stages has a topic from the five
+#                output of the shipped stages has a topic from the six (#2569)
 #   T8 [change]: the dispatch passes the stage's own manifest, so its takes:
 #                apply (stage_blocks_write_v)
 set -uo pipefail
@@ -101,11 +101,11 @@ _consumer() {
 
 init_state "$STATE/pipeline-state.json" run-1 7 >/dev/null 2>&1
 _producer tt-plan ask
-_producer tt-accept requirement-findings
+_producer tt-accept design-findings
 _producer tt-test code-findings
 _producer tt-build change
 _producer tt-plumb ""
-_consumer tt-design "$(_takes ask requirement-findings)"$'\n'
+_consumer tt-design "$(_takes ask design-findings)"$'\n'
 _consumer tt-any ""
 _TPL_STAGES=(tt-plan tt-accept tt-test tt-build tt-plumb tt-design tt-any)
 
@@ -128,7 +128,7 @@ pw="$(_stage_block_previous_work tt-design "$STATE" "$PROOT" "$idx" "$TGT" "$DM"
 
 print_test_section "T1: only the topics the stage takes"
 assert_contains "[T1] an ask summary is shown" "$pw" "SUMMARY-OF-tt-plan"
-assert_contains "[T1] a requirement-findings finding is shown" "$pw" "FINDING-OF-tt-accept"
+assert_contains "[T1] a design-findings finding is shown" "$pw" "FINDING-OF-tt-accept"
 assert_contains "[T1] … and its summary" "$pw" "SUMMARY-OF-tt-accept"
 assert_contains "[T1] … and its errors" "$pw" "ERRORS-OF-tt-accept"
 assert_not_contains "[T1] no code-findings finding" "$pw" "FINDING-OF-tt-test"
@@ -174,7 +174,7 @@ assert_not_contains "[T8] the written block honours the stage's takes:" \
 assert_contains "[T8] … and still holds what it takes" \
     "$(cat "$t8dir/previous-work.md" 2>/dev/null)" "FINDING-OF-tt-accept"
 
-print_test_section "T6: only the five topics"
+print_test_section "T6: only the six topics (#2569)"
 # shellcheck source=../../core/plugin-registry/manifest-validation.sh
 source "$REPO_ROOT/core/plugin-registry/manifest-validation.sh" 2>/dev/null || true
 # _valid <dir> <takes-line> <topic> — a manifest that passes every other check.
@@ -188,9 +188,15 @@ _valid() {
     } > "$1/manifest.yaml"
     printf 'x_run() { return 0; }\n' > "$1/plugin.sh"
 }
-_valid "$TEST_TEMP_DIR/v-ok" "$(_takes ask tests change requirement-findings code-findings)" ask
+_valid "$TEST_TEMP_DIR/v-ok" "$(_takes ask tests change design-findings test-findings code-findings)" ask
 out="$(validate_manifest "$TEST_TEMP_DIR/v-ok/manifest.yaml" 2>&1)"; rc=$?
-assert_eq "[T6] the five words are accepted" "0" "$rc"
+assert_eq "[T6] the six words are accepted" "0" "$rc"
+# #2569: the old words are gone — a manifest naming one is refused.
+_valid "$TEST_TEMP_DIR/v-old" "$(_takes ask requirement-findings)" change-findings
+out="$(validate_manifest "$TEST_TEMP_DIR/v-old/manifest.yaml" 2>&1)"; rc=$?
+assert_eq "[T6] an old word is refused" "1" "$rc"
+assert_contains "[T6] … naming it" "$out" "takes 'requirement-findings'"
+assert_contains "[T6] … and the other" "$out" "topic 'change-findings'"
 _valid "$TEST_TEMP_DIR/v-topic" "" everything
 out="$(validate_manifest "$TEST_TEMP_DIR/v-topic/manifest.yaml" 2>&1)"; rc=$?
 assert_eq "[T6] an unknown topic is refused" "1" "$rc"
@@ -202,10 +208,11 @@ assert_contains "[T6] … naming it" "$out" "takes 'test-logs'"
 
 print_test_section "T7: the shipped stages"
 _takes_of() { local t; _sp_takes_v t "$REPO_ROOT/plugins/agent/$1/manifest.yaml"; t="${t# }"; t="${t% }"; printf '%s' "${t// /,}"; }
-assert_eq "[T7] design takes (test-findings: a Given no test can meet is its to rewrite)" "ask,requirement-findings,test-findings" "$(_takes_of design)"
-assert_eq "[T7] test-author takes (never change; requirement findings, e.g. a test that misses a requirement)" "ask,tests,requirement-findings,code-findings,test-findings" "$(_takes_of test-author)"
-assert_eq "[T7] build takes (change-findings: only the code can fix them; never test-findings)" "ask,tests,change,requirement-findings,code-findings,change-findings" "$(_takes_of build)"
-assert_eq "[T7] issue-acceptance takes" "ask,change,code-findings" "$(_takes_of issue-acceptance)"
+# #2569 (ADR-071 §3): each stage takes the findings it can fix — named by what must change.
+assert_eq "[T7] design takes the design's findings" "ask,design-findings" "$(_takes_of design)"
+assert_eq "[T7] test-author takes the tests' findings (never change)" "ask,tests,test-findings" "$(_takes_of test-author)"
+assert_eq "[T7] build takes the code's findings, and the tests and how they ran" "ask,tests,change,code-findings" "$(_takes_of build)"
+assert_eq "[T7] issue-acceptance takes the tests and how they ran, as evidence; no findings" "ask,change,tests" "$(_takes_of issue-acceptance)"
 assert_eq "[T7] review-lens takes" "ask,change" "$(_takes_of review-lens)"
 assert_eq "[T7] monitor takes" "ask,change" "$(_takes_of monitor)"
 
@@ -219,26 +226,27 @@ _topics_of() {
 assert_eq "[T7] intake: every output is ask" \
     "intake_result=ask scope_manifest=ask intake_goal=ask requirements=ask intake_summary=ask " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/intake/manifest.yaml")"
-assert_eq "[T7] design: the design is ask, its checks are requirement-findings" \
-    "design=ask work_steps=ask design_draft=ask design_result=requirement-findings design_summary=requirement-findings " \
+assert_eq "[T7] design: the design is ask, its checks are design-findings" \
+    "design=ask work_steps=ask design_draft=ask design_result=design-findings design_summary=design-findings " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/design/manifest.yaml")"
-# #2491: test-author's check is about a test against its SPEC — design is shown
-# it; test-findings, so build, which may not edit a test, is not (#1805 run 42523805245).
-# #2565: what a try that changed nothing hands on is requirement-findings, for design.
-assert_eq "[T7] test-author: its checker is test-findings, its handoff requirement-findings, its list of tests is tests" \
-    "test_author_result=test-findings test_author_handoff=requirement-findings test_author_summary=tests " \
+# #2569: test-author's check finds what a test must change: test-findings, which
+# build, which may not edit a test, does not take. What a try that changed
+# nothing hands on (#2565) is design-findings, for design.
+assert_eq "[T7] test-author: its checker is test-findings, its handoff design-findings, its list of tests is tests" \
+    "test_author_result=test-findings test_author_handoff=design-findings test_author_summary=tests " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/test-author/manifest.yaml")"
-assert_eq "[T7] build: change; its answers that a test is wrong are code-findings (#2441)" "diff_patch=change build_summary=change build_tests=code-findings build_stage_summary=change " \
+assert_eq "[T7] build: change; its answers that a test is wrong are test-findings (#2441, #2569)" "diff_patch=change build_summary=change build_tests=test-findings build_stage_summary=change " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/build/manifest.yaml")"
 # #2556 (ADR-071 §1): each result names no topic; one output per topic holds its findings.
+# #2569: the suite's and the check's logs are how the tests ran: tests.
 assert_eq "[T7] test: the suite's findings by topic, the acceptance check's by topic" \
-    "test_errors=code-findings test_results= test_failures_summary= test_output_log=code-findings test_timing=code-findings test_code=code-findings test_change=change-findings acceptance_result= acceptance_requirement=requirement-findings acceptance_code=code-findings acceptance_detail=requirement-findings acceptance_errors=requirement-findings " \
+    "test_errors=tests test_results= test_failures_summary= test_output_log=tests test_timing=tests test_code=code-findings test_test=test-findings acceptance_result= acceptance_design=design-findings acceptance_test=test-findings acceptance_code=code-findings acceptance_detail=tests acceptance_errors=tests " \
     "$(_topics_of "$REPO_ROOT/plugins/tool/test/manifest.yaml")"
 assert_eq "[T7] issue-acceptance: one output per topic; its result and summary name none" \
-    "issue_acceptance_result= issue_acceptance_summary= issue_acceptance_requirement=requirement-findings issue_acceptance_code=code-findings issue_acceptance_change=change-findings " \
+    "issue_acceptance_result= issue_acceptance_summary= issue_acceptance_design=design-findings issue_acceptance_test=test-findings issue_acceptance_code=code-findings " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/issue-acceptance/manifest.yaml")"
 # #2491: its verdict, summary and replies reach no stage; its findings do.
-assert_eq "[T7] review-lens: only its findings have a topic" "lens_result= review_lens_summary= review_lens_code=code-findings review_lens_change=change-findings review_lens_design=requirement-findings review_lens_replies= " \
+assert_eq "[T7] review-lens: only its findings have a topic, one per fix: word" "lens_result= review_lens_summary= review_lens_code=code-findings review_lens_test=test-findings review_lens_design=design-findings review_lens_replies= " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/review-lens/manifest.yaml")"
 # Every model stage composes its prompt through stage_prompt_compose*; each one
 # declares takes:.

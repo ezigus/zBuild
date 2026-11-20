@@ -89,7 +89,7 @@ _reset
     printf 'assert_eq "[KEEP-1] resume reads the saved round" "2" "$got"\n' > "$R/tests/keep-test.sh"
     route_to_model() { printf '%s' "$_R"; }
     # #2467 (ADR-073 §6): a line per part (a one-line SPEC is its one Then), and the sections.
-    _R=$'LOOP-1 Then 1: missing | WHY: only fresh | QUOTE: "fresh runs"\nLOOP-1 sections: ok\nKEEP-1 Then 1: ok\nKEEP-1 sections: ok\n'
+    _R=$'LOOP-1 Then 1: missing | WHY: only fresh | ACCEPTED IF: it is accepted | QUOTE: "fresh runs"\nLOOP-1 sections: ok\nKEEP-1 Then 1: ok\nKEEP-1 sections: ok\n'
     _ta_correspondence "$D" "$R" T2 "$A"
     printf 'MARK1\n' >> "$ZBUILD_EVENTS_JSONL"
     _ta_correspondence "$D" "$R" T2 "$A"

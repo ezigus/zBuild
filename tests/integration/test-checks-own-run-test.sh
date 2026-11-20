@@ -15,11 +15,11 @@
 # R4 [change] the acceptance check runs inside test: an untagged requirement
 #             fails test; the finding lives only in the check's own result
 #             (#2428), and test's reason names the check
-# R6 [change] design's Previous work shows the acceptance check's finding, and
-#             build's shows it once (#2428, ADR-071 §2)
-# R8 [change] a failing test file that is not one of the design's test files is
-#             labelled change-findings, so it reaches build only; one of
-#             the design's keeps test's topic (#2454, ADR-071 §1)
+# R6 [change] test-author's Previous work shows the acceptance check's finding
+#             that a requirement has no tagged assertion, once; design's and
+#             build's do not (#2428, ADR-071 §2; #2569: a test must fix it)
+# R8 [change] a failing test file, one of the design's or not, goes to test's
+#             code output, so it reaches build only (#2569, ADR-071 §1)
 # R5 [change] shape-floor, acceptance-gate and assertion-integrity are no
 #             longer stages; test declares the checks' outputs
 set -uo pipefail
@@ -102,14 +102,16 @@ unset ZBUILD_STAGE_INPUTS
 init_state "$S/pipeline-state.json" run-1 1 >/dev/null 2>&1
 _update_stage_status "$S/pipeline-state.json" test complete
 _zbuild_state_set_stage_verdict "$S/pipeline-state.json" test fail
-_TPL_STAGES=(test design build)
+_TPL_STAGES=(test design test-author build)
 _ap="$(jq -r '.data.findings[0].text // empty' "$A/acceptance-gate-result.json" 2>/dev/null)"
 _pw6() { local idx; idx="$(_inputs_resolve_stage "$1" "$REPO_ROOT/plugins" "$S" 2>/dev/null)"
          _stage_block_previous_work "$1" "$S" "$REPO_ROOT/plugins" "$idx" "$R" "$REPO_ROOT/plugins/agent/$1/manifest.yaml" 2>/dev/null; }
-_pwd="$(_pw6 design)"; _pwb="$(_pw6 build)"
-assert_contains "[R6] design is shown the acceptance check's finding, from its requirement output (#2556)" "$_pwd" "acceptance-gate-requirement finding 1 (opened by test): ${_ap:0:40}"
-assert_eq "[R6] build is shown it as a finding once" "1" \
-    "$(grep -E '^- [a-z-]+ finding [0-9]+ \(opened by test\): ' <<< "$_pwb" | grep -cF -- "${_ap:0:40}")"
+_pwd="$(_pw6 design)"; _pwb="$(_pw6 build)"; _pwt="$(_pw6 test-author)"
+assert_contains "[R6] test-author is shown the acceptance check's finding, from its test output (#2569)" "$_pwt" "acceptance-gate-test finding 1 (opened by test): ${_ap:0:40}"
+assert_eq "[R6] ...once" "1" \
+    "$(grep -E '^- [a-z-]+ finding [0-9]+ \(opened by test\): ' <<< "$_pwt" | grep -cF -- "${_ap:0:40}")"
+assert_eq "[R6] design is not shown it" "0" "$(grep -cF -- "${_ap:0:40}" <<< "$_pwd" || true)"
+assert_eq "[R6] build is not shown it" "0" "$(grep -cF -- "${_ap:0:40}" <<< "$_pwb" || true)"
 
 # ── R7 ───────────────────────────────────────────────────────────────────────
 # A check that fails with no findings and a reason over two lines gets ONE
@@ -119,8 +121,11 @@ _test_own_checks test "$S/pipeline-state.json" "$A/test-results.json" "$R" >/dev
 assert_eq "[R7] a two-line reason is one finding" "1" \
     "$(jq '(.data.findings // []) | length' "$A/acceptance-gate-result.json" 2>/dev/null)"
 assert_contains "[R7] ...holding both lines" "$(jq -r '.data.findings[0].text // ""' "$A/acceptance-gate-result.json")" "line one line two"
-assert_contains "[R7] ...and in the check's requirement output (#2556)" \
-    "$(jq -r '.data.findings[0].text // ""' "$A/acceptance-gate-requirement-result.json" 2>/dev/null)" "line one line two"
+# #2569 (review): nothing says what must change, so every stage that can is shown it.
+for _o in design test code; do
+    assert_contains "[R7] ...and in the check's $_o output" \
+        "$(jq -r '.data.findings[0].text // ""' "$A/acceptance-gate-$_o-result.json" 2>/dev/null)" "line one line two"
+done
 
 # ── R5 ───────────────────────────────────────────────────────────────────────
 for _p in tool/shape-floor agent/spec-acceptance tool/assertion-integrity; do
@@ -149,8 +154,8 @@ export ZBUILD_TEST_CMD="$_r8_saved"; unset A_TEST_BODY
 # #2556: each goes to test's output of its topic.
 _r8() { jq -r '[.data.findings[]?.text] | join(" ")' "$A/test-$1-result.json" 2>/dev/null; }
 assert_contains "[R8] the design's test file goes to test's code output" "$(_r8 code)" "tests/a-test.sh fails"
-assert_contains "[R8] another test file goes to its change output" "$(_r8 change)" "tests/other-test.sh fails"
-assert_eq "[R8] ...and not to the code output" "0" "$(grep -c 'tests/other-test.sh fails' <<< "$(_r8 code)" || true)"
+assert_contains "[R8] another test file goes there too (#2569)" "$(_r8 code)" "tests/other-test.sh fails"
+assert_eq "[R8] ...and no failing file goes to a test output" "" "$(_r8 test)"
 
 cleanup_test_env
 print_test_results

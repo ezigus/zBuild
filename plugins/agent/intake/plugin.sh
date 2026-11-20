@@ -344,13 +344,20 @@ _intake_run_inner() {
                     + ([.removed[] | "\n  - removed: \(.id) \(.text) — \(.reason)"] | join("")) end' <<< "$_chg" 2>/dev/null || true)"; fi
     fi
 
+    # #2569 review (ADR-070 §1): a requirement the check still did not write in
+    # the issue's words after the re-ask is kept, and named here.
+    local _notes="${_req_written:+${_INTAKE_REQ_NOTES:-}}" _n
+    while IFS= read -r _n; do
+        if [[ -n "$_n" ]]; then _chg_md+="${_chg_md:+$'\n'}- note: $_n"; fi
+    done <<< "$_notes"
     # #2364: the result carries the issue text, so a later stage finds it by
     # what it is (data.issue_text), never by intake's file name.
     _intake_write_result "$_art" "pass" \
         "took in the goal for issue #$issue: ${_title_line:0:60}" \
-        "$(jq -nc --arg t "$sanitized" --argjson n "${#platforms[@]}" --argjson c "${_chg:-null}" \
+        "$(jq -nc --arg t "$sanitized" --argjson n "${#platforms[@]}" --argjson c "${_chg:-null}" --arg notes "$_notes" \
             '{goal_len: ($t | length), platform_count: $n, issue_text: $t}
-             + (if $c != null then {requirements_changed: $c} else {} end)')" || return 1
+             + (if $c != null then {requirements_changed: $c} else {} end)
+             + ($notes | split("\n") | map(select(length > 0)) | if length > 0 then {notes: .} else {} end)')" || return 1
     _intake_pass_summary_write "${_intake_art:+$_intake_art/intake-summary.md}" "$issue" \
         "${_req_written:+$_art/requirements.json}" "$_chg_md" "${_title_line:0:60}"
     emit_event "plugin.result" "plugin=intake" \
