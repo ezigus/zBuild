@@ -29,15 +29,16 @@
 [[ -n "${_ZBUILD_TEST_PARSE_LOADED:-}" ]] && return 0
 _ZBUILD_TEST_PARSE_LOADED=1
 
-# Per-file non-passing markers emitted by scripts/run-tests.sh, matched by SHAPE
-# so any suite name is recognized (#1229). Two verbs (#1613):
+# Per-file non-passing markers emitted by scripts/run-tests.sh (#1229, #1613):
 #   <name>: FAIL <path>                                  — assertions failed
 #   <name>: TIMEOUT <path> (exceeded Ns, rc=N)           — killed at its bound
-# ONE definition, because three consumers below must agree: the failing-suite
-# fold, the fail_files count, and _test_extract_failing_files (the red set that
-# drives targeted rerun). A verb recognized by some but not all silently drops
-# files from the rerun set.
-_TEST_FAIL_MARKER_RE='^[A-Za-z][A-Za-z0-9_-]*: (FAIL|TIMEOUT) '
+# #2573 (ADR-054): read by the one shared reader, scripts/lib/test-output-read.sh,
+# for the failing-suite fold, the fail_files count and the red set alike — a
+# verb or a suite name recognized by some readers but not all silently drops
+# files (#1764 run 44782866204 lost `e2e: FAIL …` that way).
+# shellcheck source=../../../../scripts/lib/test-output-read.sh
+declare -F zb_test_output_normalize >/dev/null 2>&1 \
+    || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/test-output-read.sh"
 
 # ─── _test_pattern_runall ─────────────────────────────────────────────────────
 # Matches zbuild's scripts/run-tests.sh aggregated output, counted by SHAPE so
@@ -50,8 +51,9 @@ _TEST_FAIL_MARKER_RE='^[A-Za-z][A-Za-z0-9_-]*: (FAIL|TIMEOUT) '
 # cargo(`test result: ok. 42 passed`) never emit `word: N/M passed`, and a name
 # token cannot precede ` :` — so a generic name class cannot cross-capture.
 _test_pattern_runall() {
-    local raw="$1" rc="$2"
-    grep -qE '^[A-Za-z][A-Za-z0-9_-]*: [0-9]+/[0-9]+ passed' <<< "$raw" || return 1
+    local raw rc="$2"
+    raw="$(zb_test_output_normalize "$1")"
+    grep -qE "$ZB_TEST_TALLY_ERE" <<< "$raw" || return 1
 
     local total_passed=0 total_count=0 fail_files=0 parts="" failing=""
     local line suite n m
@@ -69,7 +71,7 @@ _test_pattern_runall() {
         total_count=$((total_count + m))
         parts="${parts}${suite} ${n}/${m} · "
         [[ "$n" -lt "$m" ]] && failing="${failing}${suite} "
-    done < <(printf '%s\n' "$raw" | grep -E '^[A-Za-z][A-Za-z0-9_-]*: [0-9]+/[0-9]+ passed')
+    done < <(grep -E "$ZB_TEST_TALLY_ERE" <<< "$raw")
 
     # Fold in suite names carried by explicit failure markers (dedup against above).
     # #1613: run-tests.sh reports a file killed at its per-file time bound as
@@ -82,9 +84,9 @@ _test_pattern_runall() {
         [[ -n "$fline" ]] || continue
         fsuite="$(printf '%s' "$fline" | awk -F'[: ]+' '{print $1}')"
         case " $failing " in *" $fsuite "*) : ;; *) failing="${failing}${fsuite} " ;; esac
-    done < <(printf '%s\n' "$raw" | grep -E "$_TEST_FAIL_MARKER_RE")
+    done < <(grep -E "$ZB_TEST_MARKER_ERE" <<< "$raw")
 
-    fail_files="$(printf '%s\n' "$raw" | grep -cE "$_TEST_FAIL_MARKER_RE")"
+    fail_files="$(grep -cE "$ZB_TEST_MARKER_ERE" <<< "$raw")"
     [[ "$fail_files" =~ ^[0-9]+$ ]] || fail_files=0
 
     local failed=$((total_count - total_passed))
@@ -216,34 +218,15 @@ _test_pattern_cargo() {
 }
 
 # ─── _test_extract_failing_files ─────────────────────────────────────────────
-# Parses raw test output for zbuild runall FAIL markers and echoes the unique
-# sorted list of test file paths that failed (ADR-034 / issue #846).
-# Pattern matched by SHAPE (repo-agnostic, #1229): ^<name>: (FAIL|TIMEOUT) <path>
-# Outputs one absolute path per line, sorted, deduplicated.
-# Outputs nothing when no markers are present (empty → no red set to grow).
-# The path is taken as the token AFTER the verb, not $NF (#1613): a TIMEOUT line
-# ends in `(exceeded 480s, rc=124)`, so $NF would yield `rc=124)` and the timed-out
-# file would silently vanish from the rerun set. The token is still filtered to
-# path-like values (must contain `/`) so a non-file suffix such as
-# `lint: FAIL (npm run lint)` → `(npm` is never injected into the build-cycle red
-# set (a failing suite with no file has no path to grow).
-# Usage: _test_extract_failing_files <raw_output>
+# The red set that drives targeted rerun (ADR-034 / #846): every file a FAIL or
+# TIMEOUT marker names, sorted and unique, read by the shared reader (#2573).
+# With <staging_dir>, repo-relative whether the suite printed the path absolute
+# (any spelling of the staging folder) or relative (a targeted rerun); without,
+# as printed. A marker that names no file (`lint: FAIL (npm run lint)`) adds
+# nothing. Outputs nothing when no markers are present.
+# Usage: _test_extract_failing_files <raw_output> [staging_dir]
 _test_extract_failing_files() {
-    local raw="$1"
-    # `grep ... || true`: when no FAIL lines exist grep exits 1; the `|| true`
-    # keeps the pipeline exit code at 0 so callers with `set -e` do not abort.
-    printf '%s\n' "$raw" \
-        | grep -E "$_TEST_FAIL_MARKER_RE" \
-        | awk '{
-              for (i = 1; i < NF; i++) {
-                  if ($i == "FAIL" || $i == "TIMEOUT") {
-                      if ($(i+1) ~ /\//) print $(i+1)
-                      break
-                  }
-              }
-          }' \
-        | sort -u \
-        || true
+    zb_test_output_failing_files "${1:-}" "${2:-}"
 }
 
 # ─── _test_parse_declared_count (#1208, repo-declarable count contract) ──────
