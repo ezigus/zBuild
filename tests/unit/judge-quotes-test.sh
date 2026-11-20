@@ -34,6 +34,8 @@
 # Q12 quote marks — straight, curly, and the apostrophe — are left out on both
 #    sides, as `*`, `_` and backticks are (#2527): a line holding "$x" quoted
 #    as $x holds, and words that are not there are still refused
+# Q13 one un-escape step, shared by every quote check (#2573, ADR-072 §3):
+#    \` \" \$ \| read as the characters they stand for, \\ as one backslash
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -406,6 +408,15 @@ assert_eq "[Q12] an apostrophe left out" "ok" "$(_q "the stage's job" 'it is the
 assert_eq "[Q12] a file line holding quote marks, quoted without them" "ok" "$(_q 'scripts/cfg.sh | if ! _gate $dry_run $mode; then')"
 assert_contains "[Q12] guard: words that are not there are still refused" "$(_q 'refuse a present config' 'refuse a "missing" config file')" "bad:"
 assert_contains "[Q12] guard: the old file:\"text\" form is still refused" "$(_q 'scripts/cfg.sh:"line one"')" "<file> | <one line"
+
+print_test_section "Q13: one shared un-escape step"
+# #1764 run 44782866204: build quoted an ADR line with its inner backticks
+# escaped, and build's own line match, which did not un-escape, refused it.
+_ue=""; _judge_unescape_v _ue '  §1(a) enforcement \`plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh\`'
+assert_eq "[Q13] escaped backticks read as backticks" \
+    '  §1(a) enforcement `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh`' "$_ue"
+_ue=""; _judge_unescape_v _ue 'a \"b\" \$c \| d \\ e'
+assert_eq "[Q13] a quote mark, dollar and bar; a doubled backslash is one" 'a "b" $c | d \ e' "$_ue"
 
 cleanup_test_env
 print_test_results
