@@ -306,7 +306,7 @@ A test you touch that is not laid out this way — one you update, or one you ad
 
 A test that needs data another part of the code writes — a file, a record, a field, a message — makes it with that code, never by hand: hand-made data holds whatever its author assumed. Find how the existing tests and test helpers already make it, and do the same.
 
-Every test and assertion you write traces to a SPEC below, and carries its tag. A test for a change no SPEC asks for is not yours to write: answer a finding that asks for one not mine — no SPEC asks for this change; it is the code's to take out or the design's to ask for. Your own check refuses an assertion that names no SPEC and tests what no SPEC asks for.
+Every test and assertion you write traces to a SPEC below, and carries its tag. What you own is the tests the SPECs ask for: a finding that asks for a test of a change no SPEC asks for, answer not mine — no SPEC asks for this change; it is the code's to take out or the design's to ask for. Your own check refuses an assertion that names no SPEC and tests what no SPEC asks for.
 
 Tag each assertion in its label. Each tag names one SPEC, exactly as shown — e.g. ${_spec_tag1} — and a line holds one tag. An assertion that proves two SPECs is written twice, one line per SPEC, each with its own tag. A tag on a line this branch added is yours: one whose SPEC is not in this contract is stale from an earlier design — remove the tag and keep the assertion.
 

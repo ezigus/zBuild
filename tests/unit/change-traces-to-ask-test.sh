@@ -98,7 +98,7 @@ _ap="$(tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/author-prompt-1" 2>/dev/null)"
 assert_contains "[A2] every test and assertion traces to a SPEC" "$_ap" \
     "Every test and assertion you write traces to a SPEC below, and carries its tag."
 assert_contains "[A2] ...a test for a change no SPEC asks for is not yours: not mine" "$_ap" \
-    "A test for a change no SPEC asks for is not yours to write: answer a finding that asks for one not mine"
+    "What you own is the tests the SPECs ask for: a finding that asks for a test of a change no SPEC asks for, answer not mine"
 
 print_test_section "A3: the check refuses an untagged assertion nothing asks for"
 EXTRA='assert_contains "lists the design plugin" "$(cat config/shape-change-paths.txt)" "plugins/agent/design/plugin.sh"'
