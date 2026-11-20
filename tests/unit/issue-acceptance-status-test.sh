@@ -102,14 +102,15 @@ done
 
 print_test_section "I2: not sure → fail, data.unsure, a finding saying what would settle it, an event"
 _setup i2
-_IA_ANSWER=$'MET: the flag\nUNSURE: the docs | WHY: cannot tell whether the docs cover the flag | QUOTE: "Document it."\nMET: the parser'
+_IA_ANSWER=$'MET: the flag\nUNSURE: the docs | WHY: cannot tell whether the docs cover the flag | ACCEPTED IF: the docs name the flag and what it does | QUOTE: "Document it."\nMET: the parser'
 : > "$ZBUILD_EVENTS_JSONL"
 _run; _rc=$?
 assert_eq "[I2] rc=0 (the verdict is in the artifact)" "0" "$_rc"
 assert_eq "[I2] outcome=fail" "fail" "$(_res .outcome)"
 assert_contains "[I2] data.unsure lists the requirement" "$(_res '.data.unsure[0]')" "the docs: cannot tell whether the docs cover the flag"
+# #2569: what would settle it is the check's own ACCEPTED IF, not the engine's.
 assert_contains "[I2] a numbered finding says what would settle it (#2330)" \
-    "$(_res '.data.findings[0].text')" "What would settle it:"
+    "$(_res '.data.findings[0].text')" "ACCEPTED IF: the docs name the flag and what it does"
 _f2="$(_res '.data.findings[0].text') $(cat "$_A/issue-acceptance-summary.md" 2>/dev/null)"
 assert_eq "[I2] ...and never says who must check it: no 'a person' or 'human' (#2330)" "0" \
     "$(grep -ciE 'a person|human' <<< "$_f2" || true)"

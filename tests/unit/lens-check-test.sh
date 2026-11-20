@@ -31,8 +31,8 @@
 # K13 [change] a trigger that is filler ("unknown", "n/a") is no trigger
 # K14 [change] a knock-down whose line the model wrapped is read whole
 # K15 [change] a knock-down with no QUOTE is asked again, not read as stands
-# K17 [change] (#2556) a finding the code must fix goes to the lens's change
-#              output, one a test must fix to its code output; none names a topic
+# K17 [change] (#2556, #2569) a finding the code must fix goes to the lens's
+#              code output, one a test must fix to its test output; none names a topic
 # K18 [change] (review on #2556) a lens finding the issue wrong stops the run
 #              whatever type its message is
 # K16 [change] a finding written as a plain string is asked again: it has no
@@ -85,7 +85,7 @@ route_to_model() {
 _finding() {  # <severity> <trigger> — a finding about the added guard_off line
     jq -nc --arg s "$1" --arg t "$2" '{file: "core/x.sh", category: "logic", severity: $s,
         message: "guard_off turns the safety check off", quote: "guard_off() { :; }",
-        trigger: $t, introduced: true, fix: "code"}'
+        trigger: $t, accepted_if: "the safety check stays on", introduced: true, fix: "code"}'
 }
 _lens() {  # run the red-team lens once, fresh
     : > "$CALLS"; rm -f "$ART"/lens-red-team*.json "$ART"/*judged*.json
@@ -94,7 +94,7 @@ _lens() {  # run the red-team lens once, fresh
 }
 _out() { jq -r "$1" "$ART/lens-red-team.json" 2>/dev/null; }
 # The findings here are the code's to fix: they go to the change output (#2556).
-_routed() { jq -r '[.data.findings[]?.text] | join("\n")' "$ART/lens-red-team-change-result.json" 2>/dev/null; }
+_routed() { jq -r '[.data.findings[]?.text] | join("\n")' "$ART/lens-red-team-code-result.json" 2>/dev/null; }
 _n() { grep -c "^$1 " "$CALLS" 2>/dev/null || true; }
 
 # ── K1 ───────────────────────────────────────────────────────────────────────
@@ -226,15 +226,15 @@ assert_contains "[K8] the lens is asked for each problem it can say what makes h
     "each problem in the change you can say what makes happen, and quote the code that shows it"
 
 # ── K17 ──────────────────────────────────────────────────────────────────────
-print_test_section "K17: one output per topic (#2556)"
+print_test_section "K17: one output per topic (#2556, #2569)"
 _tfind="$(_finding medium "an operator runs it" | jq -c '.fix = "test" | .message = "the test never checks the guard"')"
 LENS_REPLY="{\"score\":4,\"findings\":[$(_finding medium "an operator runs it"),$_tfind]}"; LENS_REPLY2=""; CHECK_REPLY=$'1: stands\n2: stands'
 _lens
-assert_contains "[K17] a finding the code must fix goes to the change output" \
-    "$(jq -r '[.data.findings[]?.text] | join(" ")' "$ART/lens-red-team-change-result.json" 2>/dev/null)" "guard_off turns the safety check off"
-assert_contains "[K17] one a test must fix goes to the code output" \
-    "$(jq -r '[.data.findings[]?.text] | join(" ")' "$ART/lens-red-team-code-result.json" 2>/dev/null)" "the test never checks the guard"
-assert_eq "[K17] ...and only it" "1" "$(jq -r '.data.findings | length' "$ART/lens-red-team-code-result.json" 2>/dev/null)"
+assert_contains "[K17] a finding the code must fix goes to the code output" \
+    "$(jq -r '[.data.findings[]?.text] | join(" ")' "$ART/lens-red-team-code-result.json" 2>/dev/null)" "guard_off turns the safety check off"
+assert_contains "[K17] one a test must fix goes to the test output" \
+    "$(jq -r '[.data.findings[]?.text] | join(" ")' "$ART/lens-red-team-test-result.json" 2>/dev/null)" "the test never checks the guard"
+assert_eq "[K17] ...and only it" "1" "$(jq -r '.data.findings | length' "$ART/lens-red-team-test-result.json" 2>/dev/null)"
 assert_eq "[K17] no routed finding names a topic of its own" "0" \
     "$(cat "$ART"/lens-red-team-*-result.json 2>/dev/null | grep -c '"topic"' || true)"
 

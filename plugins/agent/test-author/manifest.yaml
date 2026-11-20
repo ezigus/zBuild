@@ -9,13 +9,10 @@ takes:
   - topic: ask
     for: "the design's requirements and test files, to write tests for"
   - topic: tests
-    for: "the tests written so far, and what each covers"
-  - topic: requirement-findings
-    for: "findings that a test misses or misstates a requirement"
-  - topic: code-findings
-    for: "failing tests, test checks, and changes to tests no requirement asks for, to fix the tests it owns"
+    for: "the tests written so far, what each covers, and how they ran"
+  # #2569 (ADR-071 §3): the findings a test must fix — the only ones it can.
   - topic: test-findings
-    for: "what its own check found: an assertion that does not test what its requirement says"
+    for: "what a test must change: an assertion that does not test what its requirement says, a requirement no test checks, a test that never reaches its assertion or passes on the old code, a test build says is wrong, a change to a test no requirement asks for"
 description: |
   Authors the acceptance assertions from the design's SPEC sentences, in the
   target's own language, BEFORE build implements against them.
@@ -82,9 +79,9 @@ personas:
   check: quality-assurance
 
 outputs:
-  # #2491 (ADR-071 §1): its findings are about a test against its SPEC, so
-  # design is shown them: only design can rewrite a Given no test can meet.
-  # test-findings, not requirement-findings: build may not edit a test.
+  # #2569 (ADR-071 §1): its check finds what a test must change: test-findings,
+  # which only test-author takes — build may not edit a test. What only design
+  # can fix reaches it through test_author_handoff below.
   - id: test_author_result
     topic: test-findings
     description: "the tests written for each requirement, with each file's fingerprint; findings: an assertion that does not test what its requirement says"
@@ -95,11 +92,14 @@ outputs:
     primary: true
   # #2565 (ADR-054 §6a, ADR-071 §1): a try that changed nothing and answered a
   # finding wrong or not mine hands it on here — a test that cannot meet its
-  # SPEC is the requirement's to change, so design is shown it.
+  # SPEC is the design's to change, so design is shown it (#2569: design-findings).
+  # #2569 (review): test-author writes here itself too, whenever a SPEC no test
+  # can prove or a requirement the old code already meets ends its round; the
+  # handoff adds to that, never in its place.
   - id: test_author_handoff
-    topic: requirement-findings
-    description: "findings test-author's last try changed nothing for and answered wrong or not mine, with its answer"
-    path: "${artifact_dir}/test-author-requirement-result.json"
+    topic: design-findings
+    description: "what only design can fix: a SPEC no test can prove, a requirement the code from before this change already meets, and findings test-author's last try changed nothing for and answered wrong or not mine, with its answer"
+    path: "${artifact_dir}/test-author-design-result.json"
     type: routed-findings.json@1
     format: json
     required: false

@@ -26,7 +26,7 @@ _dcov_parse() {
     _DESIGN_STEP_WRONG=(); _DESIGN_DECISION_WRONG=()
     local -A seen=()
     local -a bad=()
-    local l id rest word why quote instead w qp key reqs_asked=0 steps_asked=0 steps_seen=0
+    local l id rest word why quote acc w qp key reqs_asked=0 steps_asked=0 steps_seen=0
     local decision_asked=0 decision_seen=0
     [[ "$want" == *$'\nrequirements\n'* ]] && reqs_asked=1
     [[ "$want" == *$'\nsteps\n'* ]] && steps_asked=1
@@ -70,17 +70,20 @@ _dcov_parse() {
                 covered) continue ;;
                 uncovered)
                     if [[ -z "$quote" ]]; then bad+=("$id has no QUOTE"); continue; fi
+                    # #2569 (ADR-072 §3): a refusal says what would be accepted.
+                    [[ -n "$acc" ]] || { bad+=("$id: uncovered $_DCOV_NO_ACC"); continue; }
                     # #2527 (ADR-070 §4): the requirement's words or the issue's, as
                     # issue-acceptance reads them; intake may have left some out.
                     judge_quote_check_v w "$quote" "${req_text[$id]}"$'\n'"${issue:-}" "$repo" "$base" || { bad+=("$id's quote $w"); continue; }
-                    _DESIGN_UNCOVERED+=("$id: ${why:-no SPEC covers it} — $quote") ;;
+                    _DESIGN_UNCOVERED+=("$id: ${why:-no SPEC covers it} — $quote"$'\x1f'"$acc") ;;
                 # #2565 (ADR-073 §5): nothing a test could observe settles it —
                 # the issue's owner fixes it; design cannot.
                 none)
                     if [[ -z "$why" ]]; then bad+=("$id: none has no WHY"); continue; fi
                     if [[ -z "$quote" ]]; then bad+=("$id has no QUOTE"); continue; fi
+                    [[ -n "$acc" ]] || { bad+=("$id: none $_DCOV_NO_ACC"); continue; }
                     judge_quote_check_v w "$quote" "${req_text[$id]}"$'\n'"${issue:-}" "$repo" "$base" || { bad+=("$id's quote $w"); continue; }
-                    _DESIGN_REQ_NONE+=("$id: $why") ;;
+                    _DESIGN_REQ_NONE+=("$id: $why — ACCEPTED IF: $acc") ;;
                 *) bad+=("$id is a requirement: it is covered, uncovered or none, not $word") ;;
             esac
             continue
@@ -112,10 +115,13 @@ _dcov_parse() {
 # _dcov_parse's scope: not-asked and contradicts quote the part's own words;
 # new-owner quotes a line of the code from before the change.
 _dcov_whole_part() {
-    local _wp_k="$1" _wp_l="$2" _wp_txt="$3" _wp_word="$4" why quote instead w qp
+    local _wp_k="$1" _wp_l="$2" _wp_txt="$3" _wp_word="$4" why quote acc w qp
     _dcov_why_quote "$5"
     case "$_wp_word" in
         ok) return 0 ;;
+        not-asked|contradicts|new-owner)
+            # #2569 (ADR-072 §3): a refusal says what would be accepted.
+            [[ -z "$quote" || -n "$acc" ]] || { bad+=("$_wp_l: $_wp_word $_DCOV_NO_ACC"); return 0; } ;;&
         not-asked|contradicts)
             [[ -n "$quote" ]] || { bad+=("$_wp_l has no QUOTE"); return 0; }
             # #2567 (review): the quote names one part — it lies in one step
@@ -136,10 +142,10 @@ _dcov_whole_part() {
     esac
     if [[ "$_wp_k" == steps ]]; then
         # The old new-owner finding's form is kept (#2555).
-        if [[ "$_wp_word" == new-owner ]]; then _DESIGN_NEW_OWNER+=("${why:-something already owns this job}"$'\t'"$quote")
-        else _DESIGN_STEP_WRONG+=("$_wp_word"$'\t'"$why"$'\t'"$quote"); fi
+        if [[ "$_wp_word" == new-owner ]]; then _DESIGN_NEW_OWNER+=("${why:-something already owns this job}"$'\t'"$quote"$'\t'"$acc")
+        else _DESIGN_STEP_WRONG+=("$_wp_word"$'\t'"${why:--}"$'\t'"$quote"$'\t'"$acc"); fi
     else
-        _DESIGN_DECISION_WRONG+=("$_wp_word"$'\t'"$why"$'\t'"$quote")
+        _DESIGN_DECISION_WRONG+=("$_wp_word"$'\t'"${why:--}"$'\t'"$quote"$'\t'"$acc")
     fi
     return 0
 }
@@ -193,13 +199,15 @@ _dcov_need_names() {
 # (#2555, ADR-073): not-asked or contradicts, its QUOTE from that line; status,
 # its three facts and a QUOTE from the code. Read in _dcov_parse's scope.
 _dcov_title_line() {
-    local id="$1" word="$2" why quote instead w qp right=""
+    local id="$1" word="$2" why quote acc w qp right=""
     _dcov_why_quote "$3"
     case "$word" in
         not-asked|contradicts|status|new-owner) ;;
         ok) return 0 ;;
         *) bad+=("$id Title is not-asked, contradicts or status, not $word"); return 0 ;;
     esac
+    # #2569 (ADR-072 §3): a refusal says what would be accepted.
+    [[ -z "$quote" || -n "$acc" ]] || { bad+=("$id Title: $word $_DCOV_NO_ACC"); return 0; }
     # #2543 (ADR-072, ADR-069): a status line gives three facts; the status they
     # give is worked out here, never taken from the judge.
     if [[ "$word" == status ]]; then
@@ -215,11 +223,12 @@ _dcov_title_line() {
         judge_quote_check_v w "$quote" "${text[$id]}" "$repo" "$base" || { bad+=("$id Title's quote $w"); return 0; }
     fi
     judge_quote_path_v qp "$quote" "$repo" "$base"; [[ -n "$qp" ]] && _DCOV_QUOTED["$id"]+="$qp"$'\n'
+    # The check's WHY and ACCEPTED IF go to design together (#2569).
     case "$word" in
-        not-asked)   _DESIGN_OUTSIDE+=("$id"$'\t'"${why:-the issue does not ask for it}"$'\t'"$quote") ;;
-        contradicts) _DESIGN_OUTSIDE+=("$id"$'\t'"${why:-it contradicts the issue}"$'\t'"$quote"$'\t'contradicts) ;;
-        new-owner)   _DESIGN_OUTSIDE+=("$id"$'\t'"${why:-something already owns this job}"$'\t'"$quote"$'\t'new-owner) ;;
-        status)      _DESIGN_STATUS_WRONG+=("$id"$'\t'"$right"$'\t'"${st[$id]:-code}"$'\t'"${why:-its facts say so}"$'\t'"$quote") ;;
+        not-asked)   _DESIGN_OUTSIDE+=("$id"$'\t'"${why:-the issue does not ask for it}"$'\x1f'"$acc"$'\t'"$quote"$'\t'not-asked) ;;
+        contradicts) _DESIGN_OUTSIDE+=("$id"$'\t'"${why:-it contradicts the issue}"$'\x1f'"$acc"$'\t'"$quote"$'\t'contradicts) ;;
+        new-owner)   _DESIGN_OUTSIDE+=("$id"$'\t'"${why:-something already owns this job}"$'\x1f'"$acc"$'\t'"$quote"$'\t'new-owner) ;;
+        status)      _DESIGN_STATUS_WRONG+=("$id"$'\t'"$right"$'\t'"${st[$id]:-code}"$'\t'"${why:-its facts say so}"$'\x1f'"$acc"$'\t'"$quote") ;;
     esac
     return 0
 }
@@ -243,19 +252,15 @@ _dcov_status_from_facts_v() {
     else _dsf="done"; fi
 }
 
-# _dcov_why_quote <rest> — a line's WHY, INSTEAD and QUOTE, into the caller's why,
-# instead and quote.
+# _dcov_why_quote <rest> — a line's WHY, ACCEPTED IF and QUOTE, into the
+# caller's why, acc and quote (judge_reply_field_v: an old INSTEAD is read as
+# ACCEPTED IF by judge_reply_line_v).
 _dcov_why_quote() {
-    why=""; quote=""; instead=""
-    if [[ "$1" == *"| WHY:"* ]]; then why="${1#*| WHY:}"; why="${why%%| QUOTE:*}"; why="${why%%| INSTEAD:*}"; fi
-    if [[ "$1" == *"| INSTEAD:"* ]]; then
-        instead="${1#*| INSTEAD:}"; instead="${instead%%| QUOTE:*}"
-        instead="${instead#"${instead%%[![:space:]]*}"}"; instead="${instead%"${instead##*[![:space:]]}"}"
-    fi
-    why="${why#"${why%%[![:space:]]*}"}"; why="${why%"${why##*[![:space:]]}"}"
-    [[ "$1" == *"| QUOTE:"* ]] && { quote="${1#*| QUOTE:}"; quote="${quote#"${quote%%[![:space:]]*}"}"; quote="${quote%"${quote##*[![:space:]]}"}"; }
+    judge_reply_field_v why "$1" WHY; judge_reply_field_v acc "$1" "ACCEPTED IF"; judge_reply_field_v quote "$1" QUOTE
     return 0
 }
+# What a refusal with no ACCEPTED IF is told (#2569, ADR-072 §3).
+_DCOV_NO_ACC="has no ACCEPTED IF — say what must be true for it to be accepted, in the issue's words"
 
 # _dcov_part_line <id> <word> <number> <verdict> <rest> — one part's line of the
 # answer, read in _dcov_parse's scope. The part is named by the word its line
@@ -263,7 +268,7 @@ _dcov_why_quote() {
 # when the SPEC has several (#2470, ADR-073 §5). An old label with a number
 # (Then 2) is still read.
 _dcov_part_line() {
-    local id="$1" pw="$2" num="$3" word="$4" why quote instead lab="" cand="" c kind
+    local id="$1" pw="$2" num="$3" word="$4" why quote acc lab="" cand="" c kind
     _dcov_why_quote "$5"
     [[ "$word" == ok ]] && return 0
     case "$word" in
@@ -271,6 +276,8 @@ _dcov_part_line() {
         status) bad+=("$id $pw: status is only on Title"); return 0 ;;
         *) bad+=("$id $pw is a line: it is ok, not-asked, untestable, how, contradicts or duplicate, not $word"); return 0 ;;
     esac
+    # #2565, #2569 (ADR-073 §5, ADR-072 §3): a refused line says what would be accepted.
+    [[ -z "$quote" || -n "$acc" ]] || { bad+=("$id $pw: $word $_DCOV_NO_ACC"); return 0; }
     if [[ -n "$num" && "$pw" != And && -n "${ptext[$id $pw $num]+x}" ]]; then
         cand="$pw $num"
     else
@@ -299,38 +306,24 @@ _dcov_part_line() {
     kind="${lab%% *}"
     [[ "$word" == untestable && "$kind" != Then ]] && { bad+=("$id $pw: untestable is only for a Then, or an And under one"); return 0; }
     [[ "$word" == duplicate && "$kind" != When ]] && { bad+=("$id $pw: duplicate is only for the When"); return 0; }
-    # #2565 (ADR-073 §5): a refused wording says what would be accepted.
-    if [[ "$word" == untestable || "$word" == how ]]; then
-        [[ -n "$instead" ]] || { bad+=("$id $pw: $word has no INSTEAD — say what a test could observe after the When instead"); return 0; }
-        why+=$'\x1f'"$instead"
-    fi
-    _DESIGN_PART_WRONG+=("$word"$'\t'"$id $lab"$'\t'"${why:-}"$'\t'"$quote")
+    _DESIGN_PART_WRONG+=("$word"$'\t'"$id $lab"$'\t'"${why:--}"$'\x1f'"$acc"$'\t'"$quote")
     return 0
 }
 
-# _dcov_fix_v <var> <verdict> <why> <quote> — what to do about one thing the
-# check found, as the bracket on the line it is about says it.
+# _dcov_fix_v <var> <verdict> <why> <quote> — the bracket on the line a thing
+# the check found is about: the check's own WHY and ACCEPTED IF (#2569, ADR-072
+# §3: the engine writes no advice). <why> carries the ACCEPTED IF after a unit
+# separator. A new owner names the existing one; a status, the status its facts
+# give, worked out from them.
 _dcov_fix_v() {
     local -n _dfx="$1"
-    # #2565: an untestable or how <why> carries, after a unit separator, what a
-    # test could observe instead.
-    local _dfw="${3%%$'\x1f'*}" _dfi=""
-    [[ "$3" == *$'\x1f'* ]] && _dfi="; a test could observe instead: ${3#*$'\x1f'}"
+    local _dfw="${3%%$'\x1f'*}" _dfa="${3#*$'\x1f'}"
     case "$2" in
-        untestable)    _dfx="$_dfw — say what a test can see the code do after the When$_dfi" ;;
-        how)           _dfx="$_dfw — say the situation, the action, or what can be seen — not how it is built or how a test does it$_dfi" ;;
-        contradicts)   _dfx="$3 — it cannot be true together with that; make them agree" ;;
-        duplicate)     _dfx="$3 — another SPEC has this action; keep one of them" ;;
-        not-asked)     _dfx="$3 — the issue does not ask for this; take it out, or make it what the issue asks" ;;
-        new-owner)     _dfx="$3 — it builds a new owner where one exists: $4; build on it, or say why it cannot" ;;
+        new-owner) _dfx="$_dfw — it builds a new owner where one exists: $4 — ACCEPTED IF: $_dfa" ;;
         status:*)
             local _dfr="${2#status:}"; _dfr="${_dfr%%:*}"; local _dfo="${2##*:}"
-            case "$_dfr" in
-                done)    _dfx="$3: $4 — it is [done], not [$_dfo]: the code from before this change already does it; mark it [done], naming this evidence" ;;
-                code)    _dfx="$3: $4 — it is [code], not [$_dfo]: the code from before this change does not do it" ;;
-                no-code) _dfx="$3: $4 — it is [no-code], not [$_dfo]: the code already behaves so, and the work left changes no behaviour" ;;
-                doc)     _dfx="$3: $4 — it is [doc], not [$_dfo]: write it on one line, saying what the doc must tell a reader" ;;
-            esac ;;
+            _dfx="$_dfw: $4 — it is [$_dfr], not [$_dfo] — ACCEPTED IF: $_dfa" ;;
+        *) _dfx="$_dfw — ACCEPTED IF: $_dfa" ;;
     esac
 }
 
@@ -338,38 +331,43 @@ _dcov_fix_v() {
 # _DESIGN_COV_FINDINGS, in _design_coverage's scope. #2470 (ADR-073 §5): a SPEC
 # with something to fix is one finding, shown whole — its first line and each
 # part as written, the lines joined by a record separator — with
-# [FIX IN DESIGN: …] on exactly the lines to fix. A SPEC that passed is not shown.
+# [FIX IN DESIGN: <the check's WHY> — ACCEPTED IF: <the check's>] on exactly
+# the lines to fix (#2569). A SPEC that passed is not shown.
 _dcov_findings_build() {
     _DESIGN_COV_FINDINGS=()
     local x _v _k _w _q _id _lab _fix out pl
     local -A on_first=() on_part=() count=()
     for x in ${_DESIGN_UNCOVERED[@]+"${_DESIGN_UNCOVERED[@]}"}; do
-        _DESIGN_COV_FINDINGS+=("${x%%: *} is not covered: ${x#*: } [FIX IN DESIGN: add or widen a SPEC so it covers this]")
+        _w="${x%%$'\x1f'*}"
+        _DESIGN_COV_FINDINGS+=("${_w%%: *} is not covered: ${_w#*: } [FIX IN DESIGN: ACCEPTED IF: ${x#*$'\x1f'}]")
     done
     local -a spec_level=()
     local _ox _oid _ow _oq _ok
     for x in ${_DESIGN_OUTSIDE[@]+"${_DESIGN_OUTSIDE[@]}"}; do
         IFS=$'\t' read -r _oid _ow _oq _ok <<< "$x"
-        spec_level+=("${_ok:-not-asked}"$'\t'"$_oid"$'\t'"$_ow"$'\t'"$_oq")
+        spec_level+=("$_ok"$'\t'"$_oid"$'\t'"$_ow"$'\t'"$_oq")
     done
+    # #2569 (ADR-072 §3): each says what the check found and what it would
+    # accept — its own WHY and ACCEPTED IF; the engine adds no advice.
+    local _pw _pwy _pq _pa
     for x in ${_DESIGN_NEW_OWNER[@]+"${_DESIGN_NEW_OWNER[@]}"}; do
-        _DESIGN_COV_FINDINGS+=("Steps: the design's steps build a new owner where one exists: ${x%%$'\t'*} — ${x#*$'\t'} [FIX IN DESIGN: build on what exists, or say in the design why it cannot]")
+        IFS=$'\t' read -r _pwy _pq _pa <<< "$x"
+        _DESIGN_COV_FINDINGS+=("Steps: the design's steps build a new owner where one exists: $_pwy — $_pq [FIX IN DESIGN: ACCEPTED IF: $_pa]")
     done
     # #2567: a step or a decision against the issue, or that no requirement needs.
-    local _pw _pwy _pq
     for x in ${_DESIGN_STEP_WRONG[@]+"${_DESIGN_STEP_WRONG[@]}"}; do
-        IFS=$'\t' read -r _pw _pwy _pq <<< "$x"
+        IFS=$'\t' read -r _pw _pwy _pq _pa <<< "$x"
         case "$_pw" in
-            not-asked) _DESIGN_COV_FINDINGS+=("Steps: a step no requirement needs: ${_pwy:-no requirement asks for it} — $_pq [FIX IN DESIGN: take the step out, or make it what a requirement asks]") ;;
-            *)         _DESIGN_COV_FINDINGS+=("Steps: a step goes against the issue: ${_pwy:-it contradicts the issue} — $_pq [FIX IN DESIGN: make the step agree with the issue]") ;;
+            not-asked) _DESIGN_COV_FINDINGS+=("Steps: a step no requirement needs: $_pwy — $_pq [FIX IN DESIGN: ACCEPTED IF: $_pa]") ;;
+            *)         _DESIGN_COV_FINDINGS+=("Steps: a step goes against the issue: $_pwy — $_pq [FIX IN DESIGN: ACCEPTED IF: $_pa]") ;;
         esac
     done
     for x in ${_DESIGN_DECISION_WRONG[@]+"${_DESIGN_DECISION_WRONG[@]}"}; do
-        IFS=$'\t' read -r _pw _pwy _pq <<< "$x"
+        IFS=$'\t' read -r _pw _pwy _pq _pa <<< "$x"
         case "$_pw" in
-            not-asked) _DESIGN_COV_FINDINGS+=("Decision: the design's decisions commit to something no requirement needs: ${_pwy:-no requirement asks for it} — $_pq [FIX IN DESIGN: take it out, or make it what a requirement asks]") ;;
-            new-owner) _DESIGN_COV_FINDINGS+=("Decision: the design's decisions build a new owner where one exists: ${_pwy:-something already owns this job} — $_pq [FIX IN DESIGN: build on what exists, or say in the design why it cannot]") ;;
-            *)         _DESIGN_COV_FINDINGS+=("Decision: the design's decisions go against the issue: ${_pwy:-they contradict the issue} — $_pq [FIX IN DESIGN: make the decisions agree with the issue]") ;;
+            not-asked) _DESIGN_COV_FINDINGS+=("Decision: the design's decisions commit to something no requirement needs: $_pwy — $_pq [FIX IN DESIGN: ACCEPTED IF: $_pa]") ;;
+            new-owner) _DESIGN_COV_FINDINGS+=("Decision: the design's decisions build a new owner where one exists: $_pwy — $_pq [FIX IN DESIGN: ACCEPTED IF: $_pa]") ;;
+            *)         _DESIGN_COV_FINDINGS+=("Decision: the design's decisions go against the issue: $_pwy — $_pq [FIX IN DESIGN: ACCEPTED IF: $_pa]") ;;
         esac
     done
     local _sr _so

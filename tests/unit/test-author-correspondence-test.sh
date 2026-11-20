@@ -119,7 +119,7 @@ assert_eq "[SPEC-2] ...and the check was judged" "" "$_TA_CORR_OUTCOME"
 _contract 3
 # #2470: one line for a SPEC whose test is right, one per part it is not.
 _REPLY='SPEC-1: ok
-SPEC-2 Then: missing | WHY: one case of several | QUOTE: "thing 2 holds"
+SPEC-2 Then: missing | WHY: one case of several | ACCEPTED IF: the test asserts thing 2 holds | QUOTE: "thing 2 holds"
 SPEC-3: ok'
 _judge
 assert_eq "[#2143] all 3 SPECs are judged in ONE model call" "1" "$(wc -l < "$_CALLS" | tr -d ' ')"
@@ -128,7 +128,7 @@ for _id in SPEC-1 SPEC-2 SPEC-3; do
 done
 assert_eq "[SPEC-3] a part short of its SPEC is one finding" "1" "${#_TA_CORR_FINDINGS[@]}"
 assert_contains "[SPEC-3] ...headed with the SPEC, the part and why (#2480)" "${_TA_CORR_FINDINGS[0]:-}" "SPEC-2 Then: one case of several"$'\x1e'
-assert_contains "[SPEC-3] ...marking the part with why and what to do" "${_TA_CORR_FINDINGS[0]:-}" "[FIX IN TEST: one case of several — assert this"
+assert_contains "[SPEC-3] ...marking the part with why and what to do" "${_TA_CORR_FINDINGS[0]:-}" "[FIX IN TEST: one case of several — ACCEPTED IF: the test asserts thing 2 holds]"
 
 # ── #2108: a stdin-draining model still leaves every SPEC judged ────────────
 _REPLY=""

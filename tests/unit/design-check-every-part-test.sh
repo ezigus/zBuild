@@ -13,7 +13,7 @@
 # E1 [change] the prompt states one rule for every part — SPEC lines, steps,
 #             decisions — against requirements, limits, terms and the issue's
 #             words, new or carried over; and the Steps and Decision forms
-# E2 [change] `Steps: contradicts | WHY | QUOTE: <the step's words>` is a
+# E2 [change] `Steps: contradicts | WHY  | ACCEPTED IF: it is accepted| QUOTE: <the step's words>` is a
 #             finding for design naming the step
 # E3 [change] `Steps: not-asked | …` is a finding for design naming the step
 # E4 [change] a step quote that is not the steps' words cannot be used
@@ -84,34 +84,34 @@ _P="$(tr -s '[:space:]' ' ' < "$_P_FILE")"
 assert_contains "[E1] one rule: every part judged against everything intake gave" "$_P" \
     "Judge every part of the design — each SPEC line, the steps and the decisions — against everything the issue gives you: its REQUIREMENTS, its LIMITS, its TERMS and its own words."
 assert_contains "[E1] ...new or carried over" "$_P" "A part carried over from an earlier design is judged the same as a new one."
-assert_contains "[E1] ...a step no requirement needs" "$_P" "Steps: not-asked | WHY: <no requirement needs this step> | QUOTE: <the step's words>"
-assert_contains "[E1] ...a step against the issue" "$_P" "Steps: contradicts | WHY: <which requirement, limit or term, and how> | QUOTE: <the step's words>"
-assert_contains "[E1] ...the decisions" "$_P" "Decision: contradicts | WHY: <which requirement, limit or term, and how> | QUOTE: <the decisions' words>"
+assert_contains "[E1] ...a step no requirement needs" "$_P" "Steps: not-asked | WHY: <no requirement needs this step> | ACCEPTED IF: <what must be true for the steps to be accepted> | QUOTE: <the step's words>"
+assert_contains "[E1] ...a step against the issue" "$_P" "Steps: contradicts | WHY: <which requirement, limit or term, and how> | ACCEPTED IF: <what must be true for the steps to be accepted> | QUOTE: <the step's words>"
+assert_contains "[E1] ...the decisions" "$_P" "Decision: contradicts | WHY: <which requirement, limit or term, and how> | ACCEPTED IF: <what must be true for the decisions to be accepted> | QUOTE: <the decisions' words>"
 assert_contains "[E1] ...shown the decisions" "$_P" "The claim lives in core/claim/claim.sh, which calls gh issue edit itself."
 assert_contains "[E1] ...terms held against any part" "$_P" "Any part of the design — a SPEC line, a step, the decisions — that uses a term differently from its definition contradicts it"
 
 print_test_section "E2-E4: the steps"
-_run "$OK"$'\nSteps: contradicts | WHY: the label calls belong in the plugin, not core/ | QUOTE: Create core/claim/claim.sh: thin wiring bridge that adds zbuild:claimed\nDecision: ok'
+_run "$OK"$'\nSteps: contradicts | WHY: the label calls belong in the plugin, not core/ | ACCEPTED IF: it is accepted | QUOTE: Create core/claim/claim.sh: thin wiring bridge that adds zbuild:claimed\nDecision: ok'
 assert_eq "[E2] a contradicting step is read" "" "$_DESIGN_COV_OUTCOME"
 assert_contains "[E2] ...a finding for design naming the step" "$FX" \
     "Steps: a step goes against the issue: the label calls belong in the plugin, not core/ — Create core/claim/claim.sh: thin wiring bridge that adds zbuild:claimed [FIX IN DESIGN:"
-_run "$OK"$'\nSteps: not-asked | WHY: no requirement asks for shape tests | QUOTE: Add core/claim/claim.sh to config/shape-change-paths.txt\nDecision: ok'
+_run "$OK"$'\nSteps: not-asked | WHY: no requirement asks for shape tests | ACCEPTED IF: it is accepted | QUOTE: Add core/claim/claim.sh to config/shape-change-paths.txt\nDecision: ok'
 assert_contains "[E3] a step no requirement needs is a finding naming it" "$FX" \
     "Steps: a step no requirement needs: no requirement asks for shape tests — Add core/claim/claim.sh to config/shape-change-paths.txt [FIX IN DESIGN:"
-_run "$OK"$'\nSteps: not-asked | WHY: w | QUOTE: no such step words\nDecision: ok'
+_run "$OK"$'\nSteps: not-asked | WHY: w | ACCEPTED IF: it is accepted | QUOTE: no such step words\nDecision: ok'
 assert_eq "[E4] a step quote not in the steps cannot be used" "unusable" "$_DESIGN_COV_OUTCOME"
 assert_contains "[E4] ...and the re-ask names the quote" "$(cat "$_P_FILE")" "Steps's quote"
 
 print_test_section "E11: a quote names one part"
-_run "$OK"$'\nSteps: not-asked | WHY: w | QUOTE: the\nDecision: ok'
+_run "$OK"$'\nSteps: not-asked | WHY: w | ACCEPTED IF: it is accepted | QUOTE: the\nDecision: ok'
 assert_eq "[E11] a one-word quote cannot be used" "unusable" "$_DESIGN_COV_OUTCOME"
-_run "$OK"$'\nSteps: not-asked | WHY: w | QUOTE: adds zbuild:claimed | areas: core/claim/claim.sh - Add core/claim/claim.sh\nDecision: ok'
+_run "$OK"$'\nSteps: not-asked | WHY: w | ACCEPTED IF: it is accepted | QUOTE: adds zbuild:claimed | areas: core/claim/claim.sh - Add core/claim/claim.sh\nDecision: ok'
 assert_eq "[E11] a quote spanning two steps cannot be used" "unusable" "$_DESIGN_COV_OUTCOME"
-_run "$OK"$'\nSteps: not-asked | WHY: no requirement asks for it | QUOTE: to config/shape-change-paths.txt so future changes\nDecision: ok'
+_run "$OK"$'\nSteps: not-asked | WHY: no requirement asks for it | ACCEPTED IF: it is accepted | QUOTE: to config/shape-change-paths.txt so future changes\nDecision: ok'
 assert_eq "[E11] a quote within one step is used" "" "$_DESIGN_COV_OUTCOME"
 
 print_test_section "E5/E6: the decisions"
-_run "$OK"$'\nSteps: ok\nDecision: contradicts | WHY: the terms put the label calls in the plugin | QUOTE: which calls gh issue edit itself'
+_run "$OK"$'\nSteps: ok\nDecision: contradicts | WHY: the terms put the label calls in the plugin | ACCEPTED IF: it is accepted | QUOTE: which calls gh issue edit itself'
 assert_eq "[E5] a contradicting decision is read" "" "$_DESIGN_COV_OUTCOME"
 assert_contains "[E5] ...a finding for design" "$FX" \
     "Decision: the design's decisions go against the issue: the terms put the label calls in the plugin — which calls gh issue edit itself [FIX IN DESIGN:"
@@ -120,7 +120,7 @@ assert_eq "[E6] no Decision line: the answer cannot be used" "unusable" "$_DESIG
 assert_contains "[E6] ...and the re-ask names it" "$(cat "$_P_FILE")" "Answer again only for: the Decision line"
 
 print_test_section "E7/E8: guards"
-_run "$OK"$'\nSteps: new-owner | WHY: the plugin already adds the label | QUOTE: '"$QCODE"$'\nDecision: ok'
+_run "$OK"$'\nSteps: new-owner | WHY: the plugin already adds the label | ACCEPTED IF: it is accepted | QUOTE: '"$QCODE"$'\nDecision: ok'
 assert_contains "[E7] an old new-owner line still reads" "$FX" "Steps: the design's steps build a new owner where one exists: the plugin already adds the label"
 D2="$TEST_TEMP_DIR/nodecision.md"
 /usr/bin/grep -v -e '^## Decision' -e '^The claim lives' "$D" > "$D2"

@@ -121,12 +121,12 @@ _I2="$TEST_TEMP_DIR/i2"; mkdir -p "$_I2"
 zb_test_issue_output "$_I2" $'## Required behavior\n- **R2.** Refuse a missing config, even an unreadable one (a symlink counts).' >/dev/null
 jq -n --arg i "$_I2/intake-result.json" '{inputs: {a: $i}}' > "$_I2/stage-inputs.json"
 _REPLY='RQST-1: covered
-RQST-2: uncovered | WHY: no SPEC refuses an unreadable one | QUOTE: even an unreadable one (a symlink counts)
+RQST-2: uncovered | WHY: no SPEC refuses an unreadable one | ACCEPTED IF: it is accepted | QUOTE: even an unreadable one (a symlink counts)
 WORK-1: ok'
 ZBUILD_STAGE_INPUTS="$_I2/stage-inputs.json" _cov
 assert_eq "[I2] an uncovered quote in the issue's words is a finding" "1|" "${#_DESIGN_UNCOVERED[@]}|$_DESIGN_COV_OUTCOME"
 _REPLY='RQST-1: covered
-RQST-2: uncovered | WHY: x | QUOTE: words neither of them says
+RQST-2: uncovered | WHY: x | ACCEPTED IF: it is accepted | QUOTE: words neither of them says
 WORK-1: ok'
 ZBUILD_STAGE_INPUTS="$_I2/stage-inputs.json" _cov
 assert_eq "[I2] guard: a quote in neither the requirement nor the issue cannot be used" "unusable" "$_DESIGN_COV_OUTCOME"
@@ -139,9 +139,9 @@ REQS3="$REQS"'
 - RQST-3: B
 - RQST-4: C'
 _REPLY='RQST-1: covered
-RQST-2: uncovered | WHY: no SPEC refuses it | QUOTE: "refuse a missing config"
-RQST-3: uncovered | WHY: nothing covers B | QUOTE: "B"
-RQST-4: uncovered | WHY: nothing covers C | QUOTE: "C"
+RQST-2: uncovered | WHY: no SPEC refuses it | ACCEPTED IF: it is accepted | QUOTE: "refuse a missing config"
+RQST-3: uncovered | WHY: nothing covers B | ACCEPTED IF: it is accepted | QUOTE: "B"
+RQST-4: uncovered | WHY: nothing covers C | ACCEPTED IF: it is accepted | QUOTE: "C"
 WORK-1: ok'
 _design_coverage "$D" "$REQS3" T2
 assert_eq "[SPEC-1][E3] each uncovered requirement is one entry" "3" "${#_DESIGN_UNCOVERED[@]}"
@@ -244,14 +244,15 @@ assert_contains "[X4] the check is pointed at the file a [done] SPEC's evidence 
 assert_contains "[X4] ...and asked whether its status is the one the facts give" "$_P" "<SPEC id> Title: status | DOC: <yes or no> | BEFORE: <yes or no> | WORK: <yes or no>"
 _REPLY='RQST-1: covered
 RQST-2: covered
-WORK-1 Title: not-asked | WHY: also renames the flag | QUOTE: "a --dry-run flag is accepted"
-CNFG-1 Title: status | DOC: no | BEFORE: no | WORK: yes | WHY: it returns 2 only when the file is absent, not when it is unreadable | QUOTE: scripts/cfg.sh | [[ -f "$1" ]] || return 2'
+WORK-1 Title: not-asked | WHY: also renames the flag | ACCEPTED IF: it is accepted | QUOTE: "a --dry-run flag is accepted"
+CNFG-1 Title: status | DOC: no | BEFORE: no | WORK: yes | WHY: it returns 2 only when the file is absent, not when it is unreadable | ACCEPTED IF: it is accepted | QUOTE: scripts/cfg.sh | [[ -f "$1" ]] || return 2'
 ZBUILD_REPO_ROOT="$XR" _design_coverage "$DX" "$REQS" T2
 assert_eq "[X2] each item outside the issue is one entry, whatever the coverage verdict" "1" "${#_DESIGN_OUTSIDE[@]}"
 assert_eq "[X5] each [done] SPEC the code does not do is one entry" "1" "${#_DESIGN_STATUS_WRONG[@]}"
 _fx="$(_design_coverage_findings)"
-# #2470 (ADR-073 §5): the line to fix is marked with what to do.
-assert_contains "[X2] ...the SPEC's own line marked" "$_fx" "WORK-1[code]: a --dry-run flag is accepted covers: RQST-1 [FIX IN DESIGN: also renames the flag — the issue does not ask for this"
+# #2470 (ADR-073 §5): the line to fix is marked — #2569: with the check's WHY
+# and ACCEPTED IF.
+assert_contains "[X2] ...the SPEC's own line marked" "$_fx" "WORK-1[code]: a --dry-run flag is accepted covers: RQST-1 [FIX IN DESIGN: also renames the flag — ACCEPTED IF: it is accepted]"
 assert_contains "[X5] ...and a finding too" "$_fx" "CNFG-1: 1 part to fix"
 assert_contains "[X5] ...its line marked with what the code does" "$_fx" "[FIX IN DESIGN: it returns 2 only when the file is absent, not when it is unreadable: scripts/cfg.sh |"
 

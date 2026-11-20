@@ -74,7 +74,7 @@ print_test_section "K1-K3: design's coverage check"
     D="$TEST_TEMP_DIR/k1.md"
     printf '# Design\n```acceptance\nWORK-1[code]: a --dry-run flag is accepted covers: RQST-1\nWIRING: none\n```\n' > "$D"
     REQS='- RQST-1: add a --dry-run flag'
-    _R=$'RQST-1: uncovered | WHY: no SPEC refuses it | QUOTE: "add a --dry-run flag"\nWORK-1: ok\n'
+    _R=$'RQST-1: uncovered | WHY: no SPEC refuses it | ACCEPTED IF: it is accepted | QUOTE: "add a --dry-run flag"\nWORK-1: ok\n'
     _cov() { printf 0 > "$_N"; _design_coverage "$D" "$REQS" T2 "${1:-}" >/dev/null 2>&1; printf '%s|%s|%s' "$(_calls)" "${#_DESIGN_UNCOVERED[@]}" "$_DESIGN_COV_OUTCOME"; }
     echo "K1a|$(_cov)"
     echo "K1b|$(_cov)"
@@ -153,7 +153,7 @@ print_test_section "K4-K5: test-author's check, per SPEC"
     printf 'assert_eq "[LOOP-1] a fresh run starts at 1" "1" "$got"\n' > "$R/tests/loop-test.sh"
     printf 'assert_eq "[KEEP-1] resume reads the saved round" "2" "$got"\n' > "$R/tests/keep-test.sh"
     # #2467 (ADR-073 §6): a line per part (a one-line SPEC is its one Then), and the sections.
-    _R=$'LOOP-1 Then 1: missing | WHY: only a fresh run | QUOTE: "nested re-entries"\nLOOP-1 sections: ok\nKEEP-1 Then 1: ok\nKEEP-1 sections: ok\n'
+    _R=$'LOOP-1 Then 1: missing | WHY: only a fresh run | ACCEPTED IF: it is accepted | QUOTE: "nested re-entries"\nLOOP-1 sections: ok\nKEEP-1 Then 1: ok\nKEEP-1 sections: ok\n'
     _j() { printf 0 > "$_N"; _ta_correspondence "$D" "$R" T2 "$A" >/dev/null 2>&1; printf '%s|%s' "$(_calls)" "${#_TA_CORR_FINDINGS[@]}"; }
     echo "K4a|$(_j)"
     echo "K4b|$(_j)"
@@ -205,7 +205,7 @@ print_test_section "K7: issue-acceptance"
     jq -n --arg i "$IN/intake-result.json" --arg d "$IN/design.md" --arg p "$IN/diff.patch" --arg t "$IN/test-results.json" \
         '{inputs: {a: $i, b: $d, c: $p, d: $t}}' > "$S/stage-inputs.json"
     export ZBUILD_STAGE_INPUTS="$S/stage-inputs.json" ZBUILD_ARTIFACT_DIR="$A"
-    _R=$'UNMET: [fix-code] the flag | WHY: it is never read | QUOTE: "Add a --dry-run flag"'
+    _R=$'UNMET: [fix-code] the flag | WHY: it is never read | ACCEPTED IF: it is accepted | QUOTE: "Add a --dry-run flag"'
     _ia() { printf 0 > "$_N"; issue_acceptance_run issue-acceptance "$S/pipeline-state.json" >/dev/null 2>&1; printf '%s|%s' "$(_calls)" "$(jq -r '.outcome' "$A/issue-acceptance-result.json" 2>/dev/null)"; }
     echo "K7a|$(_ia)"
     echo "K7b|$(_ia)"
@@ -236,7 +236,7 @@ print_test_section "K8: a review lens"
     printf '%s\n' 'diff --git a/scripts/cfg.sh b/scripts/cfg.sh' '+refuse_missing_config() { [[ -f "$1" ]] || return 2; }' > "$ART/diff.patch"
     printf 'scope: all\n' > "$TEST_TEMP_DIR/k8-scope.md"
     _counting_judge _R
-    _R='{"score":5,"findings":[{"trigger":"a caller passes this on a normal run","file":"scripts/cfg.sh","severity":"high","message":"exit code 2 is not documented","introduced":true,"quote":"|| return 2"}]}'
+    _R='{"score":5,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","file":"scripts/cfg.sh","severity":"high","message":"exit code 2 is not documented","introduced":true,"quote":"|| return 2"}]}'
     _lens() {
         printf 0 > "$_N"
         _TPL_STAGE_FAIL_ON_review_lenses="medium high critical" ZBUILD_CURRENT_STAGE=review_lenses ZBUILD_REVIEW_LENS_ID=red-team \
@@ -249,6 +249,7 @@ print_test_section "K8: a review lens"
         source "$REPO_ROOT/plugins/agent/build/plugin.sh" >/dev/null 2>&1
         output_summary_json="$ART/build-summary.json"; terminated_reason=done_sentinel files_changed_count=1 files_changed_json='["scripts/cfg.sh"]' iterations=1 repo_root="$XR"
         scope_violations=(); scope_violations_created=()  # build sets them before it writes
+        # The finding is one the code must fix: it is in the lens's code output (#2556, #2569).
         _ROUTE_LOOP_LAST_RESPONSE=$'ANSWER lens-red-team-code finding 1: wrong — exit code 2 is in the README\nLOOP_COMPLETE'
         _build_write_build_summary >/dev/null 2>&1
     )

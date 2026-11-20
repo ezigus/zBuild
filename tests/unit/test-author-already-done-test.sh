@@ -22,6 +22,9 @@
 # D4 [guard]  a report for a requirement not marked [code] changes nothing
 # D5 [change] a reported requirement counts as handled for ending the call
 # D6 [guard]  the finding keeps test-author's own topic (not one build takes)
+# D7 [change] (review on #2569) the finding reaches design: it is in
+#             test-author's design-findings output, and design's Previous work
+#             shows it
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -134,6 +137,33 @@ assert_eq "[D4] it does not end the round" "false" "$ENDS"
 print_test_section "D6: the finding's topic"
 REPLY_LINES="$REPORT_OK" _run
 assert_eq "[D6] the finding names no topic of its own: it goes by test-author's" "" "$TOPICS"
+
+print_test_section "D7: the finding reaches design"
+REPLY_LINES="$REPORT_OK" _run
+assert_contains "[D7] it is in test-author's design-findings output" \
+    "$(jq -r '[.data.findings[]?.text] | join(" ")' "$A/test-author-design-result.json" 2>/dev/null)" "SPEC-1: the code from before this change already does this"
+# shellcheck source=../../core/plugin-registry/registry.sh
+source "$REPO_ROOT/core/plugin-registry/registry.sh"
+# shellcheck source=../../core/pipeline/template.sh
+source "$REPO_ROOT/core/pipeline/template.sh"
+# shellcheck source=../../core/state/resume.sh
+source "$REPO_ROOT/core/state/resume.sh"
+# shellcheck source=../../core/pipeline/state_helpers.sh
+source "$REPO_ROOT/core/pipeline/state_helpers.sh"
+# shellcheck source=../../core/pipeline/input-resolve.sh
+source "$REPO_ROOT/core/pipeline/input-resolve.sh"
+# shellcheck source=../../scripts/lib/stage-prompt.sh
+source "$REPO_ROOT/scripts/lib/stage-prompt.sh"
+S7="$TEST_TEMP_DIR/run/state"
+init_state "$S7/pipeline-state.json" run-1 7 >/dev/null 2>&1
+export ZBUILD_ARTIFACT_DIR="$A"
+_TPL_STAGES=(design test-author build)
+_update_stage_status "$S7/pipeline-state.json" design complete
+_update_stage_status "$S7/pipeline-state.json" test-author complete
+_idx7="$(_inputs_resolve_stage design "$REPO_ROOT/plugins" "$S7")"
+assert_contains "[D7] design's Previous work shows it" \
+    "$(_stage_block_previous_work design "$S7" "$REPO_ROOT/plugins" "$_idx7" "" "$REPO_ROOT/plugins/agent/design/manifest.yaml")" \
+    "SPEC-1: the code from before this change already does this"
 
 cleanup_test_env
 print_test_results

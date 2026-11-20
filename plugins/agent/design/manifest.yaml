@@ -8,10 +8,9 @@ version: 0.1.0
 takes:
   - topic: ask
     for: "the issue and its requirements, to design against"
-  - topic: requirement-findings
-    for: "findings against the requirements or the design: what its acceptance contract or WIRING gets wrong"
-  - topic: test-findings
-    for: "what test-author's check found wrong in a test: a Given or Then no test can meet is the design's to rewrite"
+  # #2569 (ADR-071 §3): the findings the design must fix — the only ones it can.
+  - topic: design-findings
+    for: "what the design must change: a requirement it misses or gets wrong, its acceptance contract or WIRING, a Given or Then no test can meet"
 description: |
   Design stage agent. Invokes the LLM (T2) to produce an ADR-style design.md
   with a ```steps block of ordered work items (#2445: the plan stage is gone)
@@ -100,7 +99,7 @@ outputs:
   # as timed_out, not as "design.md present"). Written on every exit after
   # the model call (plugin.sh), so it is never stale.
   - id: design_result
-    topic: requirement-findings
+    topic: design-findings
     description: "design's checks on the design; findings: a missing acceptance block, a requirement with no status, a WIRING file that is missing or is in a test folder, an issue requirement no SPEC covers, an UNCLEAR line not in its form"
     path: "${artifact_dir}/design-verdict.json"
     type: design-verdict.json@1
@@ -110,7 +109,7 @@ outputs:
   # ADR-055 §9: this stage's statement of what it DID. required:true —
   # written on every terminal verdict, so absence means something went wrong.
   - id: design_summary
-    topic: requirement-findings
+    topic: design-findings
     description: "design's summary of the round, and what it did about each finding"
     path: "${artifact_dir}/design-summary.md"
     type: design-summary.md@1

@@ -215,7 +215,7 @@ _build_test_wrong() {
 
 # _build_write_test_findings <artifact_dir> — build-tests-result.json (ADR-068
 # §6, ADR-071 §1, #2441): build's answers that a test is wrong, as findings on
-# topic code-findings, so the stage that owns the tests is given them. Nothing
+# topic test-findings (#2569), so the stage that owns the tests is given them. Nothing
 # else of build's is in it: build's code stays on change. A try with no such
 # answer leaves no file, so no earlier try's answers are passed on.
 _build_write_test_findings() {

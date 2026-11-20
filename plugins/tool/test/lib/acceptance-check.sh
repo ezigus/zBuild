@@ -478,7 +478,7 @@ acceptance_gate_run() {
     else
         # #2556: no findings — an earlier try's outputs by topic are removed.
         local _ag_rn="${result_file##*/}"; _ag_rn="${_ag_rn%-result.json}"
-        stage_findings_route "$(dirname "$result_file")" "$_ag_rn" requirement-findings < /dev/null >/dev/null
+        stage_findings_route "$(dirname "$result_file")" "$_ag_rn" design-findings < /dev/null >/dev/null
     fi
     # #2366 (contract 3): one outcome — pass or fail, or `broken` when the gate
     # could not check anything. severity and failures stay top-level, where

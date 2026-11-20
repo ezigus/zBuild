@@ -88,7 +88,7 @@ printf 'diff --git a/a.sh b/a.sh\n+x=1\n' > "$ART/diff.patch"
 printf 'scope: all\n' > "$TEST_TEMP_DIR/scope-manifest.md"
 # A model that still sends a line: the line is not passed on.
 route_to_model() { zb_test_lens_check_answer "$2" && return 0;
-    printf '%s' '{"score":3,"findings":[{"trigger":"a caller passes this on a normal run","quote":"x=1","file":"a.sh","category":"x","severity":"high","line":4242,"message":"LINE-FINDING the read is unchecked","introduced":true,"fix":"code"}]}'
+    printf '%s' '{"score":3,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","quote":"x=1","file":"a.sh","category":"x","severity":"high","line":4242,"message":"LINE-FINDING the read is unchecked","introduced":true,"fix":"code"}]}'
 }
 _TPL_STAGE_FAIL_ON_review_lenses="medium high critical" ZBUILD_CURRENT_STAGE=review_lenses ZBUILD_REVIEW_LENS_ID=correctness \
     _review_lens_run_inner correctness "$TEST_TEMP_DIR/scope-manifest.md" "$ART/diff.patch" "$ART/lens-correctness.json" "$ART" >/dev/null 2>&1 || true
@@ -96,7 +96,7 @@ _update_stage_status "$STATE/pipeline-state.json" review_lenses complete
 _idx="$(_inputs_resolve_stage build "$PROOT" "$STATE")"
 _bpw="$(_stage_block_previous_work build "$STATE" "$PROOT" "$_idx" "")"
 assert_contains "[L3] build is shown the lens finding" "$_bpw" "LINE-FINDING the read is unchecked"
-assert_contains "[L3] ...with its file, quote and trigger (#2552)" "$_bpw" 'LINE-FINDING the read is unchecked (a.sh: "x=1"; happens when: a caller passes this on a normal run; fix: code)'
+assert_contains "[L3] ...with its file, quote and trigger (#2552), and what the lens would accept (#2569)" "$_bpw" 'LINE-FINDING the read is unchecked (a.sh: "x=1"; happens when: a caller passes this on a normal run; fix: code; ACCEPTED IF: the change no longer does this)'
 assert_not_contains "[L3] ...and no line" "$_bpw" "4242"
 
 # ── L4 / L5 ──────────────────────────────────────────────────────────────────

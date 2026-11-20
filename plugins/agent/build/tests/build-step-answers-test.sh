@@ -134,7 +134,7 @@ DONE2="step 2: done — QUOTE: $P/release.sh | claim_release() {"
 
 # ── BS1: #1764's case ────────────────────────────────────────────────────────
 print_test_section "BS1: step 1 answered done with the plugin's source line is refused"
-JUDGE_REPLY=$'1: does not | WHY: the line sources core/claim/claim.sh, which the step says plugin.sh must not do, and the label is unchanged\n2: does'
+JUDGE_REPLY=$'1: does not | WHY: the line sources core/claim/claim.sh, which the step says plugin.sh must not do, and the label is unchanged | ACCEPTED IF: claim_coordinator_claim uses zbuild:claimed, and plugin.sh does not source core/claim/claim.sh\n2: does'
 # Prose straight before the answers: each answer is read as its own line.
 _run bs1 "Status: COMPLETE — all tests pass."$'\n'"$DONE1"$'\n'"$DONE2"$'\nLOOP_COMPLETE'
 assert_eq "[BS1] build's try is unusable, so build goes round again" "unusable" "$(_outcome)"
@@ -194,7 +194,7 @@ _lacks "[BS5] ...without asking the judge about it" "$(cat "$JPROMPT" 2>/dev/nul
 # ── BS15–BS17: a not-needed is judged ────────────────────────────────────────
 print_test_section "BS15: a not needed whose reason does not hold is refused"
 NN1="step 1: not needed — plugin.sh's hooks retain the old claimed:<machine> logic used by legacy tests; the new bridge in core/claim/claim.sh is what the acceptance tests exercise"
-JUDGE_REPLY=$'1: does not | WHY: the step says to change claim_coordinator_claim to zbuild:claimed; the reason says it keeps the old label\n2: does'
+JUDGE_REPLY=$'1: does not | WHY: the step says to change claim_coordinator_claim to zbuild:claimed; the reason says it keeps the old label | ACCEPTED IF: claim_coordinator_claim uses zbuild:claimed\n2: does'
 _run bs15 "$NN1"$'\n'"$DONE2"$'\nLOOP_COMPLETE'
 assert_eq "[BS15] build's try is unusable" "unusable" "$(_outcome)"
 assert_eq "[BS15] ...after one judging call for both steps" "1" "$(_ncalls)"

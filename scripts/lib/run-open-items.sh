@@ -12,13 +12,14 @@
 # An item comes from the checks' latest results (ADR-068 §8): every check whose
 # result did not pass — each of its numbered findings, or its reason when it has
 # none. Nothing is kept beside those results.
-# A finding may say what would settle it itself, after "What would settle it:".
+# A finding may say what would settle it itself, after "What would settle it:"
+# or, as every check's refusal says it (#2569, ADR-072 §3), "ACCEPTED IF:".
 #
 # Source-only; no `set -e` at top level. Needs jq.
 [[ -n "${_ZBUILD_RUN_OPEN_ITEMS_LOADED:-}" ]] && return 0
 _ZBUILD_RUN_OPEN_ITEMS_LOADED=1
 
-_OPEN_ITEMS_SETTLE_RE='[[:space:]]*What would settle it:[[:space:]]*'
+_OPEN_ITEMS_SETTLE_RE='[[:space:]]*(What would settle it|ACCEPTED IF):[[:space:]]*'
 # The one rule for a check result that passed — every reader of results uses it.
 # A contract-3 result carries `outcome` (#2366); a contract-2 one `verdict`.
 _OPEN_ITEMS_JQ_PASSED='def passed: (.outcome // "" | ascii_downcase)
@@ -72,8 +73,8 @@ open_items_render() {
     jq -r --arg re "$_OPEN_ITEMS_SETTLE_RE" "$_RSC_JQ_ESC"'
         to_entries[] | .key as $i | .value as $it
         | ($it.text // "" | esc | [splits($re)]) as $p
-        | ($p[0] | sub("[[:space:]]+$"; "")) as $what
-        | (if ($p | length) > 1 and ($p[1:] | join(" ") | length) > 0 then ($p[1:] | join(" "))
+        | ($p[0] | sub("[[:space:]]*(\\[FIX IN [A-Z]+:|—|;)?[[:space:]]*$"; "")) as $what
+        | (if ($p | length) > 1 and ($p[1:] | join(" ") | length) > 0 then ($p[1:] | join(" ") | sub("\\]+[[:space:]]*$"; ""))
            else "the " + $it.opener + " check no longer reports it when it runs again: a change that resolves it, or evidence that it is already resolved"
            end) as $settle
         | "\($i + 1). **\($it.ref)**" + (if $it.ref == $it.opener then "" else " (opened by \($it.opener))" end)

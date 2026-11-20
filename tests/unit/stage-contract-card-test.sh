@@ -70,7 +70,7 @@ print_test_section "C1: a take is { topic, for }"
 _card "$TEST_TEMP_DIR/c1-ok" 'takes:
   - topic: ask
     for: the issue to work from
-  - topic: requirement-findings
+  - topic: design-findings
     for: findings about the requirements' "$_DESC"
 out="$(validate_manifest "$TEST_TEMP_DIR/c1-ok/manifest.yaml" 2>&1)"; rc=$?
 assert_eq "[C1] the new form is accepted" "0" "$rc"
@@ -104,7 +104,7 @@ assert_eq "[C2] an output with no topic needs no description" "0" "$rc"
 print_test_section "C3: Previous work reads the new form"
 takes=""
 _sp_takes_v takes "$TEST_TEMP_DIR/c1-ok/manifest.yaml"
-assert_eq "[C3] the topics of the new form" " ask requirement-findings " "$takes"
+assert_eq "[C3] the topics of the new form" " ask design-findings " "$takes"
 
 print_test_section "C4: every taken output's findings, labelled by their output"
 PROOT="$TEST_TEMP_DIR/plugins"; STATE="$TEST_TEMP_DIR/state"; ART="$STATE/artifacts"
@@ -128,7 +128,7 @@ outputs:
     path: ${artifact_dir}/tt-check-result.json
     type: json
     required: false
-    topic: requirement-findings
+    topic: design-findings
     description: the check's result
 EOF
 printf 'x_run() { return 0; }\n' > "$PROOT/tool/tt-test/plugin.sh"
@@ -147,9 +147,9 @@ _consumer() {   # _consumer <name> <topic>...
     } > "$PROOT/agent/$s/manifest.yaml"
     printf 'x_run() { return 0; }\n' > "$PROOT/agent/$s/plugin.sh"
 }
-_consumer tt-req requirement-findings
+_consumer tt-req design-findings
 _consumer tt-code code-findings
-_consumer tt-both requirement-findings code-findings
+_consumer tt-both design-findings code-findings
 _TPL_STAGES=(tt-test tt-req tt-code tt-both)
 _pw() { local idx; idx="$(_inputs_resolve_stage "$1" "$PROOT" "$STATE")"
         _stage_block_previous_work "$1" "$STATE" "$PROOT" "$idx" "$TEST_TEMP_DIR" "$PROOT/agent/$1/manifest.yaml"; }

@@ -8,8 +8,11 @@
 # R-16; design's carried-over work did not cover them and design's first try
 # failed its checks, ten minutes spent finding out.
 #
-# P1 [change] the writing call is shown the list from the last run, and told to
-#             start from it
+# P1 [change] the writing call is shown the list from the last run, and told it
+#             is a starting point, not the whole issue: read the whole issue
+#             for requirements the old list does not have (#2569 R6: on #1764
+#             run 44530053809 intake copied its 19 old requirements and missed
+#             the new R6)
 # P2 [change] a list that differs from the last says what was added and what was
 #             removed, in intake's result and in its summary
 # P3 [change] a list the same as the last says so
@@ -61,7 +64,9 @@ CHECK_REPLY='MISSING: RQCNT-1 Say how many lines it printed.'
 _intake
 _p1="$(tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/prompt-1" 2>/dev/null)"
 assert_contains "[P1] the writing call is shown the last run's list" "$_p1" "Exit 2 on a bad flag."
-assert_contains "[P1] ...and told to start from it" "$_p1" "start from it"
+assert_contains "[P1] ...told it is a starting point, not the whole issue" "$_p1" "a starting point, not the whole issue"
+assert_contains "[P1] ...and to read the whole issue for requirements the old list does not have" "$_p1" \
+    "read the whole issue for every requirement it states, and add each one the old list does not have"
 assert_eq "[P2] the result names what was added" "Say how many lines it printed." \
     "$(jq -r '.data.requirements_changed.added[]?.text' "$RES" 2>/dev/null)"
 assert_eq "[P2] ...and what was removed" "Exit 2 on a bad flag." \

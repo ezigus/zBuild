@@ -12,9 +12,8 @@
 #   O1 [change]: acceptance_list_testfiles prints each test file once (#2508:
 #                the files holding a SPEC's tag, sorted)
 #   (O2–O4 went with finding_topics: — #2556, tests/unit/finding-topics-test.sh F9)
-#   O5 [change]: a failing file that is one of the design's test files (#2508:
-#                test-folder files holding its tags) goes to test's code output;
-#                any other to its change output (#2556)
+#   O5 [change]: a failing file, one of the design's test files or not, goes
+#                to test's code output (#2569: what the code must make pass)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -68,22 +67,21 @@ assert_eq "[O1] each test file is listed once, sorted" \
     $'tests/a-test.sh\ntests/b-test.sh' "$(acceptance_list_testfiles "$DESIGN")"
 
 # ── O5 ───────────────────────────────────────────────────────────────────────
-print_test_section "O5: the test stage labels by whose test it is"
-# shellcheck source=../../plugins/tool/test/lib/findings.sh
-source "$REPO_ROOT/plugins/tool/test/lib/findings.sh"
-# shellcheck source=../../scripts/lib/stage-summary.sh
-source "$REPO_ROOT/scripts/lib/stage-summary.sh"
+print_test_section "O5: a failing file is the code's to fix"
+# #2569 (ADR-071 §1): a failing file — one of the design's tests or not — is
+# what the code must make pass: test's code output, which build takes. A test
+# that is wrong reaches test-author as build's answer (build-tests, test-findings).
+# shellcheck source=../../plugins/tool/test/plugin.sh
+source "$REPO_ROOT/plugins/tool/test/plugin.sh"
 O5D="$TEST_TEMP_DIR/o5"; mkdir -p "$O5D"
-printf 'tests/a-test.sh\tA-FAILS\ntests/other-test.sh\tOTHER-FAILS\n' \
-    | _test_findings_by_owner "$DESIGN" | stage_findings_route "$O5D" test code-findings >/dev/null
-assert_eq "[O5] the design's own test file goes to test's code output" "A-FAILS" \
+cp "$DESIGN" "$O5D/design.md"
+_test_write_result "$O5D/test-results.json" fail exited 1 0 2 "out" true "cmd" "" full "" "" "" "" "" "" \
+    '[{"file":"tests/a-test.sh","reason":"A-FAILS","points_at":[]},{"file":"tests/other-test.sh","reason":"OTHER-FAILS","points_at":[]}]' >/dev/null 2>&1
+assert_eq "[O5] the design's own test file and any other go to test's code output" \
+    "tests/a-test.sh fails: A-FAILS tests/other-test.sh fails: OTHER-FAILS" \
     "$(jq -r '[.data.findings[].text] | join(" ")' "$O5D/test-code-result.json" 2>/dev/null)"
-assert_eq "[O5] any other test file goes to its change output" "OTHER-FAILS" \
-    "$(jq -r '[.data.findings[].text] | join(" ")' "$O5D/test-change-result.json" 2>/dev/null)"
-printf 'tests/other-test.sh\tNO-DESIGN\n' | _test_findings_by_owner "" | stage_findings_route "$O5D" test code-findings >/dev/null
-assert_eq "[O5] with no design, every file goes to the change output" "NO-DESIGN" \
-    "$(jq -r '[.data.findings[].text] | join(" ")' "$O5D/test-change-result.json" 2>/dev/null)"
-assert_file_not_exists "[O5] ...and no code output is left" "$O5D/test-code-result.json"
+assert_file_not_exists "[O5] ...and no output under the old word change" "$O5D/test-change-result.json"
+assert_file_not_exists "[O5] ...nor a test output" "$O5D/test-test-result.json"
 
 cleanup_test_env
 print_test_results

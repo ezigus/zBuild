@@ -31,8 +31,8 @@ stage_findings_json() {
 }
 
 # The topics a finding line may be routed to, and each one's word in its file's
-# name: <name>-<word>-result.json.
-_ZB_FINDING_TOPICS='^(requirement-findings|code-findings|change-findings|test-findings)\t'
+# name: <name>-<word>-result.json. #2569: the word is what must change.
+_ZB_FINDING_TOPICS='^(design-findings|test-findings|code-findings)\t'
 
 # stage_findings_route <dir> <name> <default-topic> — reads finding lines on
 # stdin, "<topic><TAB><text>" or "<text>" (the default topic); writes each
@@ -48,7 +48,7 @@ stage_findings_route() {
     # No findings: no jq — only the files of an earlier try are removed, and
     # rm runs only when there is one (ADR-065).
     if [[ -z "${_in//[[:space:]]/}" ]]; then
-        for _w in requirement code change test; do
+        for _w in design test code; do
             [[ -e "$dir/$name-$_w-result.json" ]] && _sfr_gone+=("$dir/$name-$_w-result.json")
         done
         [[ ${#_sfr_gone[@]} -gt 0 ]] && rm -f "${_sfr_gone[@]}"
@@ -67,7 +67,7 @@ stage_findings_route() {
         | ([$l[].t] | unique[] | . as $t
            | "\($t | sub("-findings$"; ""))\t" + ({data: {findings: ([$l[] | select(.t == $t) | .x] | to_entries | map({n: (.key + 1), text: .value}))}} | tojson)),
           "ALL\t" + ($l | to_entries | map({n: (.key + 1), text: .value.x}) | tojson)' <<< "$_in" 2>/dev/null)
-    for _w in requirement code change test; do
+    for _w in design test code; do
         [[ -z "${_sfr_has[$_w]:-}" && -e "$dir/$name-$_w-result.json" ]] && _sfr_gone+=("$dir/$name-$_w-result.json")
     done
     [[ ${#_sfr_gone[@]} -gt 0 ]] && rm -f "${_sfr_gone[@]}"
@@ -79,7 +79,7 @@ stage_findings_route() {
 # adds to them keeps each one's topic.
 stage_findings_routed_lines() {
     local _w _f; local -a _fs=()
-    for _w in requirement code change test; do
+    for _w in design test code; do
         _f="$1/$2-$_w-result.json"; [[ -s "$_f" ]] && _fs+=("$_f")
     done
     [[ ${#_fs[@]} -gt 0 ]] || return 0

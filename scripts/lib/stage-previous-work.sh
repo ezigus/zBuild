@@ -58,22 +58,34 @@ _sp_no_output() {
 # line), i.e. the last attempt that produced its output
 # (core/plugin-registry/attempt-archive.sh keeps a copy of every dispatch's
 # outputs). Prints its directory; nothing when there is none.
+# Newest is by the time the archive recorded (attempt.json `generated_at`), then
+# by iteration and attempt number (#2569, ADR-068 §8): an earlier run's round 3
+# is older than this run's round 2, and a restored file's mtime is when it was
+# restored. #1764 run 44530053809 named iter-3-attempt-1 (11-17) over
+# iter-2-attempt-9 (11-19).
 _sp_last_good_attempt() {
-    local base="$1/artifacts/attempts/${2//[^A-Za-z0-9_-]/_}" name="$3" req="${4:-}" d best="" content r ok
+    local base="$1/artifacts/attempts/${2//[^A-Za-z0-9_-]/_}" name="$3" req="${4:-}" d best="" bestkey="" key at it n content r ok
     [[ -d "$base" && -n "$name" ]] || return 0
-    while IFS= read -r d; do
-        [[ -s "$d/$name" ]] || continue
-        content="$(<"$d/$name")"
+    for d in "$base"/iter-*-attempt-*; do
+        [[ -d "$d" && -s "$d/$name" ]] || continue
+        n="${d##*/iter-}"; it="${n%%-attempt-*}"; n="${n##*-attempt-}"
+        [[ "$it" =~ ^[0-9]+$ && "$n" =~ ^[0-9]+$ ]] || continue
+        at=""
+        if [[ -s "$d/attempt.json" ]]; then
+            IFS= read -r -d '' content < "$d/attempt.json" || true
+            [[ "$content" =~ \"generated_at\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && at="${BASH_REMATCH[1]}"
+        fi
+        printf -v key '%-20s %09d %09d' "$at" "$((10#$it))" "$((10#$n))"
+        [[ -z "$bestkey" || "$key" > "$bestkey" ]] || continue
+        IFS= read -r -d '' content < "$d/$name" || true
         _sp_no_output "$content" && continue
         ok=1
         while IFS= read -r r; do
             [[ -z "$r" || -s "$d/$r" ]] || { ok=0; break; }
         done <<< "$req"
         (( ok )) || continue
-        best="$d"
-    done < <(find "$base" -mindepth 1 -maxdepth 1 -type d -name 'iter-*-attempt-*' 2>/dev/null \
-                | awk -F'iter-|-attempt-' '{ printf "%09d %09d %s\n", $(NF-1), $NF, $0 }' \
-                | LC_ALL=C sort | cut -d' ' -f3-)
+        best="$d"; bestkey="$key"
+    done
     [[ -n "$best" ]] && printf '%s' "$best"
     return 0
 }

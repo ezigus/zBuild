@@ -24,6 +24,8 @@ declare -F zb_reply_join_v >/dev/null 2>&1 \
     || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/reply-units.sh" 2>/dev/null || true
 # shellcheck source=../../../../scripts/lib/judge.sh
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/judge.sh"
+# shellcheck source=./correspondence-prompt.sh
+source "${BASH_SOURCE[0]%/*}/correspondence-prompt.sh"
 
 _ta_sc_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
 
@@ -40,61 +42,6 @@ _sc_spec_parts_v() {
         _ssp+=("${_ssp_p[_ssp_i]%%$'\t'*}"$'\t'"${_ssp_w[_ssp_i]}"$'\t'"${_ssp_p[_ssp_i]#*$'\t'}")
     done
     [[ ${#_ssp[@]} -gt 0 ]] || _ssp=("Then 1"$'\t'"Then"$'\t'"${_ACC_SPEC_TEXT:-}")
-}
-
-# _sc_batch_prompt <ids_arr> <shown_arr> <srcs_arr> [files] (namerefs) — each
-# SPEC, shown with its parts as written, and the assertion tagged for it; one
-# answer line for a SPEC whose test is right, one per part it is not (#2143,
-# #2467, #2470). A one-SPEC call is the same prompt with one SPEC.
-_sc_batch_prompt() {
-    local -n _bp_ids="$1" _bp_txts="$2" _bp_srcs="$3"
-    local _bp_files="${4:-}"
-    cat <<'EOF'
-You are checking acceptance requirements against the tests tagged as covering them, one SPEC at a time.
-
-## What you own
-For EACH SPEC, judge every part of it against its test, and the test's layout:
-- a Given: does the test set it up?
-- the When: does the test do it?
-- a Then: does the test assert it — would the test fail if it were not so?
-- cleanup: does the test change anything outside its own sandbox — an exported variable, a file outside its own folder, global config or git state — and not put it back?
-- sections: is each part's code under its own heading — a comment, in the language's own form, marking Given, When and Then (and Cleanup, when the test puts something back)? The headings are the only comments you are shown.
-
-A test aimed at the right thing but narrower than the part — fewer of its cases, a weaker check — does not do that part: answer missing, and say what it leaves out.
-
-Answer at least one line for every SPEC, each starting with that SPEC's identifier from its `###` heading, exactly as written there. When its test does every part and is laid out in sections, one line:
-
-<identifier>: ok
-
-Otherwise one line for each thing wrong, and no ok line:
-
-<identifier> <part>: missing | WHY: <what the test does not do> | QUOTE: <that part's own words>
-<identifier> <part>: wrong | WHY: <what the test does instead> | QUOTE: <that part's own words>
-<identifier> sections: missing | WHY: <which heading is not there, or which part's code is not under its own> | QUOTE: <test file> | <the heading or line of the test that shows it>
-<identifier> cleanup: missing | WHY: <what the test leaves changed> | QUOTE: <test file> | <the line that changes it>
-
-<part> is the word the part's line starts with: Given, When, Then or And. The QUOTE is copied from that line, and says which line it is when the SPEC has several.
-
-When no test could ever prove a SPEC — it describes what a file or a test contains, or it has no pass or fail — answer instead:
-
-<identifier>: untestable | WHY: <why no test could prove it> | QUOTE: <the SPEC's own words>
-
-Copy each QUOTE as it is, with no quote marks around it: it is checked, and a quote that is not there cannot be used.
-
-## What you judge against
-The SPECs below, each a REQUIREMENT with its parts and the ASSERTION tagged as covering it. In each ASSERTION, the lines marked >> are the ones tagged for the requirement; the lines above them set up the test, and what they do counts. Each test file is also shown whole, under THE TEST FILES: setup anywhere in the file counts — a helper function, a block shared by several cases — so judge what the test really does, not only the lines next to the assertion. The failure you are looking for is a test that does something real and specific, but not what a part says — including its opposite.
-EOF
-    local _i
-    for (( _i=0; _i<${#_bp_ids[@]}; _i++ )); do
-        printf '\n### %s\nREQUIREMENT:\n%s\n\nASSERTION:\n%s\n' "${_bp_ids[_i]}" "${_bp_txts[_i]}" "${_bp_srcs[_i]}"
-    done
-    [[ -n "$_bp_files" ]] && printf '\nTHE TEST FILES:\n%s\n' "$_bp_files"
-    cat <<'EOF'
-
-## What you must not do
-- Judge what each test does, not what the code under test does: open the test files and any helper or fixture they use, never the code they test.
-- Do not suggest a fix. Do not rewrite anything.
-EOF
 }
 
 # _sc_call <tier> <task> [rc_file] [what-was-wrong reply] — compose the task and
@@ -148,8 +95,9 @@ _sc_call() {
 # line starts with; the quote, its own words, picks which line when there are
 # several. Sets _SC_V (corresponds, partial, mismatch or untestable), _SC_F (the
 # finding: the SPEC whole, its first line <first> and each part as written, the
-# lines joined by a record separator, [FIX IN TEST: …] on each line to fix), _SC_U
-# (the same, for a SPEC no test can prove, marked [FIX IN DESIGN: …]), _SC_LINES
+# lines joined by a record separator, [FIX IN TEST: <WHY> — ACCEPTED IF: <the
+# check's>] on each line to fix, #2569), _SC_U (the same, for a SPEC no test can
+# prove, marked [FIX IN DESIGN: …]), _SC_LINES
 # (its own lines, which are what is kept) and _SC_PROBLEM (what makes them
 # unusable: no line for it, a word that is not a verdict, a quote not there).
 _sc_judge() {
@@ -158,7 +106,8 @@ _sc_judge() {
     _SC_V="" _SC_F="" _SC_U="" _SC_LINES="" _SC_PROBLEM=""
     local -A _scj_text=() _scj_pw=() _scj_mark=()
     local -a _scj_order=() _scj_bad=() _scj_head=()
-    local _scj_x _scj_l _scj_lab _scj_pw1 _scj_num _scj_word _scj_rest _scj_why _scj_q _scj_w _scj_c _scj_cand
+    local _scj_x _scj_l _scj_lab _scj_pw1 _scj_num _scj_word _scj_rest _scj_why _scj_q _scj_w _scj_c _scj_cand _scj_acc _scj_sacc=""
+    local _scj_noacc="has no ACCEPTED IF — say what the test must have, in the SPEC's words"
     local _scj_seen=0 _scj_miss=0 _scj_wrong=0 _scj_sect="" _scj_unt="" _scj_n=0 _scj_clean=0
     for _scj_x in ${_scj_parts[@]+"${_scj_parts[@]}"}; do
         _scj_lab="${_scj_x%%$'\t'*}"; _scj_x="${_scj_x#*$'\t'}"
@@ -177,11 +126,14 @@ _sc_judge() {
         fi
         _SC_LINES+="$_scj_l"$'\n'; _scj_seen=1
         [[ "$_scj_word" == ok ]] && continue
-        _scj_why=""; _scj_q=""
-        if [[ "$_scj_rest" == *"| WHY:"* ]]; then _scj_why="${_scj_rest#*| WHY:}"; _scj_why="${_scj_why%%| QUOTE:*}"; fi
-        _scj_why="${_scj_why#"${_scj_why%%[![:space:]]*}"}"; _scj_why="${_scj_why%"${_scj_why##*[![:space:]]}"}"
-        if [[ "$_scj_rest" == *"| QUOTE:"* ]]; then
-            _scj_q="${_scj_rest#*| QUOTE:}"; _scj_q="${_scj_q#"${_scj_q%%[![:space:]]*}"}"; _scj_q="${_scj_q%"${_scj_q##*[![:space:]]}"}"
+        judge_reply_field_v _scj_why "$_scj_rest" WHY; judge_reply_field_v _scj_q "$_scj_rest" QUOTE
+        # #2569 (ADR-072 §3): every refusal says what would be accepted. A
+        # part's ACCEPTED IF is the SPEC line it is judged against, used when
+        # the check leaves it out (review); the sections and cleanup lines
+        # judge the test as a whole, so the check writes theirs.
+        judge_reply_field_v _scj_acc "$_scj_rest" "ACCEPTED IF"
+        if [[ -z "$_scj_acc" && "$_scj_word" == missing && ( "$_scj_pw1" == sections || "$_scj_pw1" == cleanup ) ]]; then
+            _scj_bad+=("$_scj_sid $_scj_pw1 $_scj_noacc"); continue
         fi
         if [[ "$_scj_pw1" == sections ]]; then
             [[ "$_scj_word" == missing ]] || { _scj_bad+=("$_scj_sid sections is ok or missing, not $_scj_word"); continue; }
@@ -190,7 +142,7 @@ _sc_judge() {
                 judge_quote_check_v _scj_w "$_scj_q" "" "$_scj_repo" || { _scj_bad+=("$_scj_sid's quote $_scj_w"); continue; }
             fi
             _scj_miss=$((_scj_miss + 1)); _scj_n=$((_scj_n + 1))
-            _scj_sect="${_scj_why:-a section is missing}"
+            _scj_sect="${_scj_why:-a section is missing}"; _scj_sacc="$_scj_acc"
             _scj_head+=("sections: $_scj_sect")
             continue
         fi
@@ -203,7 +155,7 @@ _sc_judge() {
             fi
             _scj_miss=$((_scj_miss + 1)); _scj_n=$((_scj_n + 1)); _scj_clean=1
             _scj_head+=("cleanup: ${_scj_why:-it leaves something changed}")
-            _scj_mark["^"]+=" [FIX IN TEST: ${_scj_why:-it leaves something changed} — put it back at the end of the test, under its Cleanup section]"
+            _scj_mark["^"]+=" [FIX IN TEST: ${_scj_why:-it leaves something changed} — ACCEPTED IF: $_scj_acc]"
             continue
         fi
         if [[ -z "$_scj_pw1" ]]; then
@@ -216,9 +168,9 @@ _sc_judge() {
             for _scj_lab in "${_scj_order[@]}"; do
                 _judge_holds "${_scj_text[$_scj_lab]}" "$_scj_q" && { _scj_c="$_scj_lab"; break; }
             done
-            _scj_n=$((_scj_n + 1))
+            _scj_n=$((_scj_n + 1)); [[ -n "$_scj_acc" ]] || _scj_acc="${_scj_c:+${_scj_text[$_scj_c]}}"; : "${_scj_acc:=$_scj_q}"
             _scj_head+=("${_scj_c:+${_scj_pw[$_scj_c]}: }$_scj_unt — no test can prove it")
-            _scj_mark["${_scj_c:-^}"]+=" [FIX IN DESIGN: $_scj_unt — no test can prove it; say something a test can see the code do]"
+            _scj_mark["${_scj_c:-^}"]+=" [FIX IN DESIGN: $_scj_unt — ACCEPTED IF: $_scj_acc]"
             continue
         fi
         case "$_scj_word" in
@@ -251,20 +203,15 @@ _sc_judge() {
             esac
             continue
         fi
+        [[ -n "$_scj_acc" ]] || _scj_acc="${_scj_text[$_scj_lab]}"
         if [[ "$_scj_word" == wrong ]]; then
             _scj_wrong=$((_scj_wrong + 1)); _scj_n=$((_scj_n + 1))
             _scj_head+=("${_scj_pw[$_scj_lab]}: the test does something else: ${_scj_why:-not what this line says}")
-            _scj_mark["$_scj_lab"]+=" [FIX IN TEST: the test does something else: ${_scj_why:-not what this line says} — make it do what this line says]"
+            _scj_mark["$_scj_lab"]+=" [FIX IN TEST: the test does something else: ${_scj_why:-not what this line says} — ACCEPTED IF: $_scj_acc]"
         else
             _scj_miss=$((_scj_miss + 1)); _scj_n=$((_scj_n + 1))
-            case "$_scj_lab" in
-                Given*)   _scj_x="set this up in the test" ;;
-                When*)    _scj_x="do this in the test" ;;
-                Cleanup*) _scj_x="put this back at the end of the test" ;;
-                *)        _scj_x="assert this, so the test fails when it is not so" ;;
-            esac
             _scj_head+=("${_scj_pw[$_scj_lab]}: ${_scj_why:-the test does not do it}")
-            _scj_mark["$_scj_lab"]+=" [FIX IN TEST: ${_scj_why:-the test does not do it} — $_scj_x]"
+            _scj_mark["$_scj_lab"]+=" [FIX IN TEST: ${_scj_why:-the test does not do it} — ACCEPTED IF: $_scj_acc]"
         fi
     done <<< "$_scj_reply"
     (( _scj_seen )) || _scj_bad=("it has no line for $_scj_sid" ${_scj_bad[@]+"${_scj_bad[@]}"})
@@ -273,12 +220,7 @@ _sc_judge() {
         return 0
     fi
     _SC_LINES="${_SC_LINES%$'\n'}"
-    if [[ -n "$_scj_sect" ]]; then
-        local _scj_secs="Given, When and Then"
-        for _scj_lab in "${_scj_order[@]}"; do [[ "$_scj_lab" == Cleanup* ]] && _scj_secs="Given, When, Then and Cleanup"; done
-        (( _scj_clean )) && _scj_secs="Given, When, Then and Cleanup"
-        _scj_mark["^"]+=" [FIX IN TEST: lay the test out in $_scj_secs sections — $_scj_sect]"
-    fi
+    [[ -n "$_scj_sect" ]] && _scj_mark["^"]+=" [FIX IN TEST: $_scj_sect — ACCEPTED IF: $_scj_sacc]"
     if [[ -n "$_scj_unt" ]]; then _SC_V=untestable
     elif (( _scj_wrong )); then _SC_V=mismatch
     elif (( _scj_miss )); then _SC_V=partial
@@ -295,24 +237,44 @@ _sc_judge() {
     return 0
 }
 
-# _sc_disputes <artifact_dir> <assoc_var> — test-author's `wrong` answers
-# (zb_answer_kind_v) to its own check's findings (ADR-072 §5), by the SPEC each finding
-# names: <assoc>[SID] = the answers. The finding is its last result's, by number.
-_sc_disputes() {
-    local art="$1"; local -n _scd="$2"
-    local a n t k
+# _sc_answered <artifact_dir> <assoc_var> <held_assoc> — test-author's answers
+# to its own check's findings, done, wrong or not mine (zb_answer_kind_v), by
+# the SPEC each finding names: <assoc>[SID] = the answers — a SPEC whose kept
+# answer refused it is judged again; <held_assoc>[SID] = each with the finding
+# as test-author was given it, "<key><FS><finding and answer>" one per GS,
+# rendered by _sc_held_v, for the check to be held to (#2569, ADR-072 §5). The
+# finding is its last result's, by number.
+_sc_answered() {
+    local art="$1"; local -n _scd="$2" _sch="$3"
+    local a k t e
     [[ -n "$art" && -s "$art/test-author-result.json" && ${#_TA_ANSWERS[@]} -gt 0 ]] || return 0
-    local -A _scd_text=()
-    while IFS=$'\t' read -r n t; do
-        [[ -n "$n" ]] && _scd_text["$n"]="$t"
-    done < <(jq -r '(.data.findings // [])[]? | "\(.n)\t\(.text)"' "$art/test-author-result.json" 2>/dev/null)
+    local -A _scd_af=()
+    local _scd_all; printf -v _scd_all '%s\n' "${_TA_ANSWERS[@]}"
+    judge_answered_findings_v _scd_af "$_scd_all" "test-author=$art/test-author-result.json"
     for a in "${_TA_ANSWERS[@]}"; do
         [[ "$a" =~ ^test-author[[:space:]]+finding[[:space:]]+([0-9]+)[[:space:]]*: ]] || continue
-        n="${BASH_REMATCH[1]}"; zb_answer_kind_v k "$a"; [[ "$k" == wrong ]] || continue
-        t="${_scd_text[$n]:-}"
+        k="test-author finding ${BASH_REMATCH[1]}"
+        [[ -n "${_scd_af[$k]+x}" ]] || continue
+        zb_answer_kind_v t "$a"; [[ -n "$t" ]] || continue
+        t="${_scd_af[$k]%%$'\x1f'*}"
         [[ "$t" =~ ^(${_ACCEPTANCE_ID_ERE})(\'s|:|[[:space:]]) ]] || continue
-        _scd["${BASH_REMATCH[1]}"]+="${_scd[${BASH_REMATCH[1]}]:+; }$a"
+        e="$k"$'\x1c'"${_scd_af[$k]}"$'\x1d'; unset '_scd_af[$k]'
+        _scd["${BASH_REMATCH[1]}"]+="${_scd[${BASH_REMATCH[1]}]:+; }$a"; _sch["${BASH_REMATCH[1]}"]+="$e"
     done
+}
+
+# _sc_held_v <var> <held> <why> — a SPEC's earlier findings and test-author's
+# answers (_sc_answered's <held_assoc> entry), each rendered by
+# judge_held_entry_v with whether the SPEC and its test are the same as when it
+# was refused: <why> is how its kept answer went (_JUDGE_KEPT_WHY; review on
+# #2569).
+_sc_held_v() {
+    local -n _shv="$1"; local _shv_e _shv_r _shv_f=""
+    _shv=""
+    case "${3:-}" in disputed) _shv_f=same ;; fingerprint|file) _shv_f=changed ;; esac
+    while IFS= read -r -d $'\x1d' _shv_e; do
+        judge_held_entry_v _shv_r "${_shv_e%%$'\x1c'*}" "${_shv_e#*$'\x1c'}" "$_shv_f"; _shv+="$_shv_r"
+    done <<< "${2:-}"
 }
 
 # _ta_correspondence <design.md> <repo_root> <tier> [artifact_dir]
@@ -371,17 +333,25 @@ _ta_correspondence() {
     for (( _i=0; _i<n; _i++ )); do _verdicts+=(""); _finds+=(""); _unt+=(""); _lines+=(""); _fps+=(""); _kept+=(0); done
 
     # ADR-072 §4 §5: a SPEC whose requirement, assertion, test files and engine
-    # are as they were keeps its answer — unless test-author disputes it.
+    # are as they were keeps its answer — unless it refused the SPEC and
+    # test-author answered its finding (#2569: then it is judged again, held to
+    # that finding). The answer is not in the fingerprint (review on #2569): a
+    # pass after an answer is kept for the next try, which gives none.
     local kf="" eng _k="" _f
     [[ -n "$art" ]] && kf="${art%/}/test-author-judged.json"
-    local -A _disp=()
-    _sc_disputes "$art" _disp
+    local -A _disp=() _dheld=()
+    local -a _kwhy=() _dfps=()
+    _sc_answered "$art" _disp _dheld
     judge_engine_v eng
     for (( _i=0; _i<n; _i++ )); do
-        judge_fp_v _k "$eng"$'\n'"${_ids[_i]}"$'\n'"${_txts[_i]}"$'\n'"${_srcs[_i]}"$'\n'"${_disp[${_ids[_i]}]:-}"
-        _fps[_i]="$_k"
+        # The answers' own fingerprint: a verdict kept with them is not judged again for them.
+        _k=""; [[ -n "${_disp[${_ids[_i]}]:-}" ]] && judge_fp_v _k "${_disp[${_ids[_i]}]}"
+        _dfps[_i]="$_k"
+        judge_fp_v _k "$eng"$'\n'"${_ids[_i]}"$'\n'"${_txts[_i]}"$'\n'"${_srcs[_i]}"
+        _fps[_i]="$_k"; _kwhy[_i]=""
         [[ -n "$kf" ]] || continue
-        judge_kept_get_v _k "$kf" "${_ids[_i]}" "${_fps[_i]}" "${_disp[${_ids[_i]}]:+1}"
+        judge_kept_get_v _k "$kf" "${_ids[_i]}" "${_fps[_i]}" "${_dfps[_i]}" ok
+        _kwhy[_i]="$_JUDGE_KEPT_WHY"
         [[ -n "$_k" ]] || continue
         _sc_judge "$_k" "${_ids[_i]}" "${_pnames[_i]}" "${_txts[_i]}" "$repo" "${_firsts[_i]}"
         [[ -z "$_SC_PROBLEM" ]] || continue
@@ -392,12 +362,12 @@ _ta_correspondence() {
     # with the tags of every judged SPEC marked — the batch call reads it; a
     # one-SPEC call reads its own files.
     local -a _jx=() _jids=() _jtxts=() _jsrcs=() _tags=() _otags=() _files_seen=()
+    local _held="" _held1=""
     for (( _i=0; _i<n; _i++ )); do
         (( _kept[_i] )) && continue
         _jx+=("$_i"); _jids+=("${_ids[_i]}"); _jtxts+=("${_txts[_i]}")
-        _src="${_srcs[_i]}"
-        [[ -n "${_disp[${_ids[_i]}]:-}" ]] && _src+=$'\n\n'"THE TEST AUTHOR SAYS YOUR EARLIER FINDING ON THIS ONE IS WRONG — judge again with it in mind: ${_disp[${_ids[_i]}]}"
-        _jsrcs+=("$_src")
+        _sc_held_v _held1 "${_dheld[${_ids[_i]}]:-}" "${_kwhy[_i]}"
+        _jsrcs+=("${_srcs[_i]}"); _held+="$_held1"
         local -a _ctg=(); acceptance_spec_tags_v _ctg "${_ids[_i]}"
         _tags+=("${_ctg[0]}"); _otags+=("${_ctg[1]:-}")
     done
@@ -420,7 +390,8 @@ _ta_correspondence() {
         local -x ZBUILD_ROUTER_OPENED_FILE="$_opened"
 
         local _batch_raw _one_raw _one_task _j
-        _batch_raw="$(_sc_call "$tier" "$(_sc_batch_prompt _jids _jtxts _jsrcs "$_files_text")" "$_rc_file")"
+        judge_held_block_v _held "$_held"
+        _batch_raw="$(_sc_call "$tier" "$(_sc_batch_prompt _jids _jtxts _jsrcs "$_files_text" "$_held")" "$_rc_file")"
         zb_reply_join_v _batch_raw "$_batch_raw"
         local -a _bprob=()
         for _i in "${_jx[@]}"; do
@@ -440,7 +411,9 @@ _ta_correspondence() {
                 _x+="--- $_f ---"$'\n'"$(acceptance_testfile_source "$repo" "$_f" "${_tags[_j]}" ${_otags[_j]:+"${_otags[_j]}"})"$'\n'
             done
             _oid=("${_ids[_i]}"); _otxt=("${_txts[_i]}"); _osrc=("${_jsrcs[_j]}")
-            _one_task="$(_sc_batch_prompt _oid _otxt _osrc "$_x")"
+            _sc_held_v _held1 "${_dheld[${_ids[_i]}]:-}" "${_kwhy[_i]}"
+            judge_held_block_v _held "$_held1"
+            _one_task="$(_sc_batch_prompt _oid _otxt _osrc "$_x" "$_held")"
             if [[ -n "${_bprob[_i]:-}" && -n "$_batch_raw" ]]; then
                 _one_raw="$(_sc_call "$tier" "$_one_task" "$_rc_file" "${_bprob[_i]}" "$_batch_raw")"
             else
@@ -486,7 +459,8 @@ _ta_correspondence() {
                 [[ -n "${_verdicts[_i]}" ]] || continue
                 _deps=(${_open_files[@]+"${_open_files[@]}"} ${_wired[@]+"${_wired[@]}"})
                 for _f in ${_tfss[_i]}; do _deps+=("$repo/$_f"); done
-                judge_kept_put "$kf" "${_ids[_i]}" "${_fps[_i]}" "${_lines[_i]}" "${_deps[@]}"
+                judge_kept_fp_v _k "${_fps[_i]}" "${_dfps[_i]}"
+                judge_kept_put "$kf" "${_ids[_i]}" "$_k" "${_lines[_i]}" "${_deps[@]}"
             done
         fi
     fi

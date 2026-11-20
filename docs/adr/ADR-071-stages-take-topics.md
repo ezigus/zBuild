@@ -1,6 +1,6 @@
 # ADR-071 — Each output names its topic; each stage takes only the topics it needs
 
-**Status:** Accepted (2026-10-27); amended 2026-11-18 (#2565, §1: build answers every design step, and a step it did not do sends it round again); amended 2026-11-16 (#2556, §1 §2: one output, one kind of finding; finding_topics: and a finding's own topic are gone); amended 2026-11-14 (§1 §2: design's steps are the code work; which tests, in which files and how is test-author's, and it is shown the issue; retires #2458's step topics); amended 2026-11-11 (#2523, §1: an unasked part of the change in a test file is code-findings, which test-author takes); amended 2026-11-09 (#2508, §1: issue-acceptance's finding that no requirement asks for a part of the change is a change-findings; "the design's test files" are the test-folder files holding its tags; a work step on a file in the test folders is `tests`; build's "the test must change" answer goes to test-author); amended 2026-11-08 (#2503, §1 §3: one topic, one kind of item — change-findings and test-findings); amended 2026-11-08 (#2491, §1 §3: a lens finding goes by what fixes it, and reaches a stage once; test-author's check findings are requirement-findings); amended 2026-11-06 (#2480, §2: a map group's outputs are read member by member); amended 2026-10-28 (§3: test-author takes requirement-findings); amended 2026-10-30 (#2428, §1 §2: each stage states its contract; every finding a stage takes reaches it); amended 2026-10-31 (#2441, §1: build writes its answers that a test is wrong to its own code-findings output); amended 2026-11-02 (#2452, §1 §2: each finding can carry its own topic); amended 2026-11-02 (#2454, §1 §2: every stage result declares where its findings may go; the test stage labels by whose test it is)
+**Status:** Accepted (2026-10-27); amended 2026-11-20 (#2569, §1 §3: one set of topics, named by what must change — design-findings, test-findings, code-findings; a lens finding's fix: word is its topic); amended 2026-11-18 (#2565, §1: build answers every design step, and a step it did not do sends it round again); amended 2026-11-16 (#2556, §1 §2: one output, one kind of finding; finding_topics: and a finding's own topic are gone); amended 2026-11-14 (§1 §2: design's steps are the code work; which tests, in which files and how is test-author's, and it is shown the issue; retires #2458's step topics); amended 2026-11-11 (#2523, §1: an unasked part of the change in a test file is code-findings, which test-author takes); amended 2026-11-09 (#2508, §1: issue-acceptance's finding that no requirement asks for a part of the change is a change-findings; "the design's test files" are the test-folder files holding its tags; a work step on a file in the test folders is `tests`; build's "the test must change" answer goes to test-author); amended 2026-11-08 (#2503, §1 §3: one topic, one kind of item — change-findings and test-findings); amended 2026-11-08 (#2491, §1 §3: a lens finding goes by what fixes it, and reaches a stage once; test-author's check findings are requirement-findings); amended 2026-11-06 (#2480, §2: a map group's outputs are read member by member); amended 2026-10-28 (§3: test-author takes requirement-findings); amended 2026-10-30 (#2428, §1 §2: each stage states its contract; every finding a stage takes reaches it); amended 2026-10-31 (#2441, §1: build writes its answers that a test is wrong to its own code-findings output); amended 2026-11-02 (#2452, §1 §2: each finding can carry its own topic); amended 2026-11-02 (#2454, §1 §2: every stage result declares where its findings may go; the test stage labels by whose test it is)
 **Issue:** #1944 (run 40393999128)
 **Amends:** ADR-067 §8 (Previous work), ADR-068 §6 and §8 (every stage's latest output goes to every later stage)
 **Related:** ADR-055 (inter-stage data contract), ADR-060 (stages return structure), ADR-066 (every ADR statement has a test)
@@ -22,6 +22,7 @@ The prompt was not enough. A stage should not be handed what its job does not us
    *Amended 2026-11-08 (#2503):* and two that only findings carry, so that no topic holds two kinds of item:
    - `change-findings` — what only the code can fix: a lens's finding the code must fix, a failing file that is not one of the design's tests;
    - `test-findings` — what test-author's own check found wrong in a test against its requirement.
+   *Superseded 2026-11-20 (#2569): the findings topics are `design-findings`, `test-findings` and `code-findings`, named by what must change; `requirement-findings` and `change-findings` are gone, and how the tests ran is `tests` (see the amendment below).*
    A finding takes the topic of the output it is in, and lives in one output: a stage does not copy one output's findings into another. ~~*Amended 2026-11-02 (#2452):* a finding may name its own topic, and then goes by it; one that names none goes by its output's.~~ *Superseded 2026-11-16 (#2556): a finding goes by its output's topic only; a stage with findings for several topics writes one output per topic.* The words are checked at load: a manifest naming any other topic is refused, naming the word.
 
    *Amended 2026-10-30 (#2428):* every output that names a topic also has a one-line `description:` saying what it holds, including the kinds of findings it can carry. The description sits on the output entry in the producing stage's manifest; two stages may produce the same type, and each describes its own output. A template author reads these, with each take's `for:` (§2), to see whether a finding reaches a stage that can act on it; the engine does not judge them. `validate_manifest` refuses an output with a topic and no description.
@@ -43,6 +44,8 @@ The prompt was not enough. A stage should not be handed what its job does not us
    | build | ask, tests, change, requirement-findings, code-findings |
    | issue-acceptance | ask, change, code-findings |
    | review lenses, monitor | ask, change |
+
+   *Superseded 2026-11-20 (#2569): design takes ask, design-findings; test-author ask, tests, test-findings; build ask, tests, change, code-findings; issue-acceptance ask, change, tests.*
 
    *Amended 2026-10-28:* test-author takes `requirement-findings`. Without it, a finding that a test misses a requirement (#1944: "R-4's test builds no `persist` stage") reached build, which may not edit the acceptance tests, and design, which does not run inside the build-and-test loop — so no stage in that loop could answer it, and every round repeated it.
 
@@ -162,6 +165,8 @@ On #1805 run 42523805245 two topics each carried two kinds of item, so findings 
   | build | ask, tests, change, requirement-findings, code-findings, change-findings |
   | issue-acceptance, review lenses, monitor | unchanged: none of them takes either new topic |
 
+  *Superseded 2026-11-20 (#2569): see that amendment's table.*
+
 ## Amendment 2026-11-09 (#2508) — §1: issue-acceptance's unasked parts are change-findings
 
 - *(Superseded by #2556: one output per topic, not `finding_topics:`.)* **issue-acceptance's result declares `finding_topics: code-findings requirement-findings change-findings`.** Its
@@ -216,11 +221,12 @@ On #1764 run 43772987273 issue-acceptance wrote one result holding requirement-f
   - issue-acceptance: `issue-acceptance-requirement` (`[fix-design]`, an unmarked or unsure line), `-code` (`[fix-code]`, an unasked `[fix-test]` part), `-change` (any other unasked part).
   - test: `test-code` (a failing file that is one of the design's tests, an assertion file changed after its tests were written, a test file far slower than the rest) and `test-change` (any other failing file); the acceptance check: `acceptance-gate-requirement` and `acceptance-gate-code`.
   - a lens: `lens-<id>-code` (a test must fix it), `lens-<id>-change` (only the code can), `lens-<id>-design`.
+  - *Superseded 2026-11-20 (#2569): the words are `design`, `test` and `code` — issue-acceptance `-design`, `-test`, `-code`; test `test-code`, `test-test`; the acceptance check `-design`, `-test`, `-code`; a lens `lens-<id>-<fix>`.*
 - **§2: Previous work shows a finding when the stage takes its output's topic** — never by a topic the finding names. A judge reads answers to its findings under every one of its outputs' names (`judge_answers_to_v`).
 
 ## Amendment 2026-11-18 (#2565) — §1: a stage's handoff output
 
-- **§1: an output marked `handoff: true` holds the findings a try that changed nothing handed on** (ADR-054 §6a, amended 2026-11-18), each with what the stage answered. It is an output of one topic like any other: its topic decides which stages are shown it, and it has no verdict of its own. test-author's is `test-author-requirement-result.json`, topic `requirement-findings`, which design takes.
+- **§1: an output marked `handoff: true` holds the findings a try that changed nothing handed on** (ADR-054 §6a, amended 2026-11-18), each with what the stage answered. It is an output of one topic like any other: its topic decides which stages are shown it, and it has no verdict of its own. test-author's is `test-author-requirement-result.json`, topic `requirement-findings`, which design takes. *Superseded 2026-11-20 (#2569): `test-author-design-result.json`, topic `design-findings`.*
 
 ## Amendment 2026-11-18 (#2565) — §1: build answers every design step
 
@@ -230,7 +236,52 @@ On #1764 runs 43959139598 and 44090911022 design's step 1 said "amend `plugins/c
 - **A done is checked twice.** The shell checks that its quote is one whole line this branch added (against the merge base; its ends' spaces and the quote marks around it set aside), in a file in that step's areas — a piece of a line is not enough. A judging call then reads each done line beside its step and says whether the line does what the step says (ADR-072 §3).
 - **A step with no answer, a not needed with no reason, or a done that fails either check is a finding naming that step.** Build's try is `unusable` with those findings (ADR-054 §6a), so build goes round again for those steps only; each other step's answer stands. A step answered not needed with its reason is passed on, in build's result (`data.steps`) and summary.
 
+## Amendment 2026-11-20 (#2569) — §1 §3: one set of topics, named by what must change
+
+On #1764 run 44530053809 the topic names mixed two ideas. `requirement-findings` named what a finding is about; `change-findings` was described as "findings only the code can fix"; `code-findings` held mostly what a test must fix, and was taken by test-author. The lenses had their own words (`fix: code / test / design / issue`, ADR-038), and the lens code translated them: `fix: code` went to `change-findings`, `fix: test` to `code-findings`. `test-findings` was test-author's private channel to design.
+
+- **§1: the findings topics are named by what must change,** the same three words a lens's `fix:` already uses:
+  - `design-findings` — the design must change: a requirement it misses or gets wrong, its acceptance contract, its WIRING, code no requirement covers;
+  - `test-findings` — a test must change: an assertion that does not test what its requirement says, a requirement no assertion is tagged with, a test that passes on the old code or never reaches its assertion, a test file far slower than the rest, a test build says is wrong, a part of a test no requirement asks for;
+  - `code-findings` — the code must change: a failing test, a requirement the change does not meet yet, a part of the change outside the tests no requirement asks for.
+
+  `ask`, `tests` and `change` stay: they hold work, not findings. How the tests ran — the suite's output, errors and timings, the acceptance check's detail and errors — is `tests`: it is evidence, not a finding. The words are short and plain, and each says who can act: the design is design's, a test is test-author's, the code is build's. `requirement-findings` and `change-findings` are gone; a manifest naming one is refused at load, naming it.
+- **§1: a routed output is named by its topic's word:** `<name>-<word>-result.json` for `<word>-findings` (`stage_findings_route`, unchanged): issue-acceptance `-design`, `-test`, `-code`; test `test-code`, `test-test`; the acceptance check `acceptance-gate-design`, `-test`, `-code`; test-author's handoff `test-author-design-result.json`.
+- **§1: a lens finding's `fix:` word is its topic** (ADR-038, amended 2026-11-20): `fix: code` goes to `lens-<id>-code-result.json` (`code-findings`), `fix: test` to `lens-<id>-test-result.json` (`test-findings`), `fix: design` to `lens-<id>-design-result.json` (`design-findings`). The translation table is gone. `fix: issue` at a fail rule's severity still stops the run (`misconfigured`); it is written with the design's.
+- **§1: a finding more than one stage can fix goes to each of them** — one output per topic, the same finding in each (`stage_findings_route_each`, scripts/lib/stage-handoff.sh); the stage's own result holds it once. A finding no stage can fix — a problem in the pipeline — goes to none: it is in the stage's own result, for the report.
+- **§1: issue-acceptance's `[fix-<word>]` mark is its topic:** `[fix-code]` → code and test (the code or its tests must change), `[fix-design]` → design, an unasked part in a test file (`[fix-test]`) → test, any other unasked part → code. An UNSURE line may carry the same mark and goes by it. An unmet or unsure line with no mark says nothing of what must change, so it goes to design, test and code.
+- **§1: the mechanical checks route by what must change, to every stage that can fix it:**
+
+  | Finding | Topics |
+  |---|---|
+  | a [code] requirement's test passes on the code from before the change | design (the code may already do it: design marks it [done], with evidence), test |
+  | a test does not pass on the new code | code, test |
+  | code no requirement covers | design, code |
+  | a requirement no assertion is tagged with; no test file carries its tag; a test never ran on the old code, or died on a signal | test |
+  | a test never reached its assertion on the new code; a changed file no test checks | test, code |
+  | a WIRING file the change does not run through, or does not touch; an acceptance block that cannot be read | design |
+  | a test file past its time limit in the acceptance check; a test file far slower than the rest (the suite) | code, test |
+  | an assertion file changed after its tests were written; a failing test file (the suite) | code |
+  | the acceptance check failed with no findings (its reason only) | design, test, code |
+  | the acceptance check could not do a run ("a problem in the pipeline, not in your change") | none — in its result for the report; alone it is advisory and the check passes (ADR-036) |
+  | the acceptance check's own code did not load, or it checked nothing | none — the check is `broken` (a load failure `severity: terminal`), which stops the run |
+- **§1: a failing test file is the code's to make pass,** whoever's test it is (retires #2454's split by owner): it goes to `test-code-result.json`. A test that is wrong reaches test-author as build's answer (`build-tests-result.json`, now `test-findings`, #2441). A test file far slower than the rest goes to `test-test-result.json`.
+- **§1: test-author's check is `test-findings`,** a normal topic: any stage that takes it is shown it. What only design can fix reaches it in test-author's design-findings output (`test-author-design-result.json`): test-author writes it there itself whenever a SPEC no test can prove, or a [code] requirement the old code already meets, ends its round; and its handoff (#2565) adds to the same file, never in place of it, what a try that changed nothing answered wrong or not mine.
+- **§3, amended — each stage takes the findings it can fix:**
+
+  | Stage | Takes |
+  |---|---|
+  | design | ask, design-findings |
+  | test-author | ask, tests, test-findings — never `change` |
+  | build | ask, tests, change, code-findings |
+  | issue-acceptance | ask, change, tests |
+  | review lenses, monitor | ask, change (unchanged) |
+
+- **An output under an old name is not read.** Hydrate restores an earlier run's artifacts; one written under a retired file name (`issue-acceptance-requirement-result.json`, `lens-<id>-change-result.json`, `test-change-result.json`, `test-author-requirement-result.json`, …) is declared by no manifest, so it is in no stage's inputs and reaches no stage, and the reports skip it as older than the run. No alias is kept: every producer writes its outputs again in its next try, so an alias would only carry an earlier engine's routing into this one. A restored `*-code-result.json` from before the change is read as `code-findings`, and goes to build, which took that file before too.
+
 ## Enforced by
+
+- §1 §3 amendment 2026-11-20 (#2569: one set of topics, named by what must change) → `tests/unit/topic-vocabulary-test.sh` V1 (the six topics), V2 (every manifest uses them; a routed output is named by its topic's word), V3 (a lens finding's fix: word is its topic), V4 (each lens finding reaches only the stage that can fix it), V5 (issue-acceptance by what must change; an unmarked UNMET or UNSURE line to design, test and code; a marked UNSURE by its mark), V6 (the acceptance check to every stage that can fix each finding), V7 (an output under an old name reaches no stage), V8 (a pipeline problem and a load failure reach no stage; a load failure is broken, terminal); `tests/unit/judge-reply-format-test.sh` F6 (an UNSURE line's mark is read); `tests/integration/test-checks-own-run-test.sh` R7 (a check failed with no findings reaches design, test and code); `tests/unit/test-author-already-done-test.sh` D7 (a requirement the old code already meets reaches design's Previous work); `tests/unit/gwt-judges-test.sh` T8 (an untestable SPEC in test-author's design-findings output, kept beside what the handoff adds); `tests/unit/stage-takes-topics-test.sh` T6 (an old word is refused), T7 (each stage's takes and outputs); `tests/unit/finding-owner-topics-test.sh` O5 (every failing file to test's code output); `tests/unit/test-slow-file-check-test.sh` T7 (a slow test file to test's test and code outputs, once in its result); `tests/unit/no-change-handoff-test.sh` H7 (test-author's handoff is design-findings)
 
 - §1 amendment 2026-11-18 (#2565: a stage's handoff output) → `tests/unit/no-change-handoff-test.sh` H2 (numbered, no verdict), H7 (test-author's, of topic requirement-findings, shown to design)
 - §1 amendment 2026-11-18 (#2565: build answers every design step) → `plugins/agent/build/tests/build-step-answers-test.sh` BS1 (#1764's case: a done the judge does not accept is refused, naming the step and why), BS2 (a step with no answer), BS3 (a quote this branch did not add), BS4 (a quote outside the step's areas), BS5 (not needed with its reason passes; with none, refused), BS6 (every step accepted passes), BS9 (no steps: nothing asked), BS12 (a piece of an added line is refused; a whole line in backticks is taken), BS13 (`step 01:` answers step 1), BS14 (an area is never a glob)

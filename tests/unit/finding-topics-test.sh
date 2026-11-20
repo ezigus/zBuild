@@ -21,24 +21,25 @@
 #   F5 [change]: stage_findings_route writes each tag's findings, numbered, to an
 #                output of its own, removes one with none, and gives every
 #                finding, untagged, for the stage's own result
-#   F6 [change]: issue-acceptance writes one output per tag — [fix-design] and an
-#                unmarked line to -requirement, [fix-code] and an unasked
-#                [fix-test] to -code, any other unasked line to -change — none
+#   F6 [change]: issue-acceptance writes one output per tag (#2569: named by
+#                what must change) — [fix-design] and an unmarked line to
+#                -design, [fix-code] and an unasked part outside the tests to
+#                -code, an unasked [fix-test] part to -test — none
 #                with a verdict of its own; its own result holds all three,
 #                untagged; its summary does not list them
 #   F7 [change]: with issue-acceptance's real manifest, design's Previous work
 #                holds no [fix-code] finding and no issue-acceptance path; build's
 #                holds the finding
-#   F8 [change]: the acceptance check writes its code findings to
-#                acceptance-gate-code-result.json and the rest to
-#                acceptance-gate-requirement-result.json
+#   F8 [change]: the acceptance check writes what the code must fix to
+#                acceptance-gate-code-result.json, what a test must fix to
+#                acceptance-gate-test-result.json (#2569)
 #   F9 [change]: no shipped manifest has finding_topics:, and validate_manifest
 #                refuses an output that does
 #   F10 [change] (review): an acceptance check that skips (a precondition unmet)
 #                leaves no output by topic from an earlier try
 #   F11 [change] (review): test's failures summary names no topic — a stage that
-#                takes code-findings is not shown a failing file only the code
-#                can fix
+#                takes test-findings is not shown a failing file the code must
+#                fix (#2569), but is shown a test's finding
 #   F12 [change] (review): a stage with no takes: is shown each finding once —
 #                from the output by topic, not again from the untagged result
 set -uo pipefail
@@ -122,14 +123,14 @@ _consumer() {
     printf 'x_run() { return 0; }\n' > "$PROOT/agent/$s/plugin.sh"
 }
 
-# ft-accept: a requirement-findings output; one finding carries a tag of its own.
-_producer ft-accept requirement-findings '[{"n":1,"text":"SELF-TAGGED-CODE","topic":"code-findings"},{"n":2,"text":"DESIGN-GAP"}]'
+# ft-accept: a design-findings output; one finding carries a tag of its own.
+_producer ft-accept design-findings '[{"n":1,"text":"SELF-TAGGED-CODE","topic":"code-findings"},{"n":2,"text":"DESIGN-GAP"}]'
 # ft-own: an output with no tag at all.
 _producer ft-own - '[{"n":1,"text":"UNTAGGED-OUTPUT-FINDING"}]'
 # ft-quoted: a manifest that quotes its tag, as YAML allows.
-_producer ft-quoted requirement-findings '[{"n":1,"text":"QUOTED-TOPIC-FINDING"}]'
-sed -i.bak 's/topic: requirement-findings/topic: "requirement-findings"/' "$PROOT/tool/ft-quoted/manifest.yaml"
-_consumer ft-design "$(_takes ask requirement-findings)"
+_producer ft-quoted design-findings '[{"n":1,"text":"QUOTED-TOPIC-FINDING"}]'
+sed -i.bak 's/topic: design-findings/topic: "design-findings"/' "$PROOT/tool/ft-quoted/manifest.yaml"
+_consumer ft-design "$(_takes ask design-findings)"
 _consumer ft-coder "$(_takes ask code-findings)"
 _TPL_STAGES=(ft-accept ft-own ft-quoted ft-design ft-coder)
 
@@ -140,7 +141,7 @@ _pw() {
 _pwd="$(_pw ft-design)"; _pwc="$(_pw ft-coder)"
 
 print_test_section "F2-F4: a finding goes by its output's tag"
-assert_contains "[F2] design is shown the self-tagged finding of a requirement-findings output" "$_pwd" "SELF-TAGGED-CODE"
+assert_contains "[F2] design is shown the self-tagged finding of a design-findings output" "$_pwd" "SELF-TAGGED-CODE"
 assert_not_contains "[F2] a stage taking only code-findings is not shown it" "$_pwc" "SELF-TAGGED-CODE"
 assert_not_contains "[F3] an untagged output's finding reaches no stage" "$_pwd$_pwc" "UNTAGGED-OUTPUT-FINDING"
 assert_not_contains "[F3] ...nor its summary" "$_pwd$_pwc" "SUMMARY-OF-ft-own"
@@ -150,13 +151,13 @@ assert_contains "[F4] a quoted tag is that tag" "$_pwd" "QUOTED-TOPIC-FINDING"
 # ── F5 ───────────────────────────────────────────────────────────────────────
 print_test_section "F5: stage_findings_route"
 R5="$TEST_TEMP_DIR/route"; mkdir -p "$R5"
-printf '{"stale":true}\n' > "$R5/x-change-result.json"
-_all="$(printf 'code-findings\tCODE-ONE\nREQ-DEFAULT\ncode-findings\tCODE-TWO\n' | stage_findings_route "$R5" x requirement-findings)"
+printf '{"stale":true}\n' > "$R5/x-test-result.json"
+_all="$(printf 'code-findings\tCODE-ONE\nREQ-DEFAULT\ncode-findings\tCODE-TWO\n' | stage_findings_route "$R5" x design-findings)"
 assert_eq "[F5] the code findings, numbered, in x-code-result.json" "1:CODE-ONE 2:CODE-TWO" \
     "$(jq -r '[.data.findings[] | "\(.n):\(.text)"] | join(" ")' "$R5/x-code-result.json" 2>/dev/null)"
 assert_eq "[F5] an untagged line goes by the default tag" "1:REQ-DEFAULT" \
-    "$(jq -r '[.data.findings[] | "\(.n):\(.text)"] | join(" ")' "$R5/x-requirement-result.json" 2>/dev/null)"
-assert_file_not_exists "[F5] a tag with no findings has no output (an old one is removed)" "$R5/x-change-result.json"
+    "$(jq -r '[.data.findings[] | "\(.n):\(.text)"] | join(" ")' "$R5/x-design-result.json" 2>/dev/null)"
+assert_file_not_exists "[F5] a tag with no findings has no output (an old one is removed)" "$R5/x-test-result.json"
 assert_eq "[F5] a routed output carries no verdict" "null" "$(jq -r '.outcome' "$R5/x-code-result.json" 2>/dev/null)"
 assert_eq "[F5] every finding, untagged, for the stage's own result" "1:CODE-ONE:null 2:REQ-DEFAULT:null 3:CODE-TWO:null" \
     "$(jq -r '[.[] | "\(.n):\(.text):\(.topic)"] | join(" ")' <<< "$_all")"
@@ -184,17 +185,17 @@ mkdir -p "$_S/tests"; printf 'x=1\n' > "$_S/p.sh"; printf 'log_checked=1\n' > "$
 jq -n --arg i "$_in/intake-result.json" --arg d "$_in/design.md" --arg p "$_in/diff.patch" --arg t "$_in/test-results.json" \
     '{inputs: {a: $i, b: $d, c: $p, d: $t}}' > "$_S/stage-inputs.json"
 export ZBUILD_STAGE_INPUTS="$_S/stage-inputs.json" ZBUILD_ARTIFACT_DIR="$_A" ZBUILD_REPO_ROOT="$_S"
-_IA_ANSWER=$'UNMET: [fix-code] resume | WHY: intake still runs on resume | QUOTE: "resume skips done stages"\nUNMET: [fix-design] the design | WHY: the design never says only on a resume | QUOTE: "resume skips done stages"\nUNASKED: [fix-test] tests/t.sh | WHY: the test also checks the log | QUOTE: tests/t.sh | log_checked=1\nUNASKED: p.sh | WHY: it sets x | QUOTE: p.sh | x=1'
+_IA_ANSWER=$'UNMET: [fix-code] resume | WHY: intake still runs on resume | ACCEPTED IF: it is accepted | QUOTE: "resume skips done stages"\nUNMET: [fix-design] the design | WHY: the design never says only on a resume | ACCEPTED IF: it is accepted | QUOTE: "resume skips done stages"\nUNASKED: [fix-test] tests/t.sh | WHY: the test also checks the log | ACCEPTED IF: it is accepted | QUOTE: tests/t.sh | log_checked=1\nUNASKED: p.sh | WHY: it sets x | ACCEPTED IF: it is accepted | QUOTE: p.sh | x=1'
 issue_acceptance_run issue-acceptance "$_S/pipeline-state.json" >/dev/null 2>&1
 unset ZBUILD_STAGE_INPUTS
 _txt() { jq -r '[.data.findings[]?.text] | join(" || ")' "$_A/issue-acceptance-$1-result.json" 2>/dev/null; }
 print_test_section "F6: issue-acceptance writes one output per tag"
-assert_contains "[F6] -requirement holds the [fix-design] finding" "$(_txt requirement)" "the design never says only on a resume"
-assert_not_contains "[F6] ...and not the [fix-code] one" "$(_txt requirement)" "intake still runs on resume"
+assert_contains "[F6] -design holds the [fix-design] finding" "$(_txt design)" "the design never says only on a resume"
+assert_not_contains "[F6] ...and not the [fix-code] one" "$(_txt design)" "intake still runs on resume"
 assert_contains "[F6] -code holds the [fix-code] finding" "$(_txt code)" "intake still runs on resume"
-assert_contains "[F6] ...and the unasked [fix-test] one" "$(_txt code)" "the test also checks the log"
-assert_contains "[F6] -change holds the other unasked one" "$(_txt change)" "it sets x"
-assert_not_contains "[F6] ...and only it" "$(_txt change)" "intake still runs on resume"
+assert_contains "[F6] ...and the unasked part outside the tests" "$(_txt code)" "it sets x"
+assert_contains "[F6] -test holds the unasked [fix-test] one" "$(_txt test)" "the test also checks the log"
+assert_contains "[F6] ...and the [fix-code] one: the code or its tests must change (#2569)" "$(_txt test)" "intake still runs on resume"
 assert_eq "[F6] its own result holds all four, untagged" "4 0" \
     "$(jq -r '"\(.data.findings | length) \([.data.findings[] | select(has("topic"))] | length)"' "$_A/issue-acceptance-result.json" 2>/dev/null)"
 assert_eq "[F6] a routed output has no verdict, so no report counts it twice" "null" "$(jq -r '.outcome' "$_A/issue-acceptance-code-result.json" 2>/dev/null)"
@@ -226,8 +227,8 @@ R8="$TEST_TEMP_DIR/ag"; mkdir -p "$R8"
 _ag_route_findings "$R8/acceptance-gate-result.json" not_passing_at_head:SPEC-2 tautology:SPEC-1 >/dev/null
 assert_contains "[F8] a test failing on the new code → acceptance-gate-code-result.json" \
     "$(jq -r '[.data.findings[].text] | join(" ")' "$R8/acceptance-gate-code-result.json" 2>/dev/null)" "does not pass on the new code"
-assert_contains "[F8] a test passing on the old code → acceptance-gate-requirement-result.json" \
-    "$(jq -r '[.data.findings[].text] | join(" ")' "$R8/acceptance-gate-requirement-result.json" 2>/dev/null)" "already passes on the code from before"
+assert_contains "[F8] a test passing on the old code → acceptance-gate-test-result.json (#2569)" \
+    "$(jq -r '[.data.findings[].text] | join(" ")' "$R8/acceptance-gate-test-result.json" 2>/dev/null)" "already passes on the code from before"
 
 # ── F9 ───────────────────────────────────────────────────────────────────────
 print_test_section "F9: no finding_topics"
@@ -239,7 +240,6 @@ printf 'id: m9\nname: m9\nkind: tool\nversion: 0.0.1\nhooks:\n  run: x\noutputs:
 assert_eq "[F9] validate_manifest refuses an output with finding_topics:" "1" "$(cat "$TEST_TEMP_DIR/m9.rc" 2>/dev/null)"
 assert_contains "[F9] ...naming it" "$(cat "$TEST_TEMP_DIR/m9.out" 2>/dev/null)" "finding_topics"
 
-_test_findings_by_owner_stub() { local f t; while IFS=$'\t' read -r f t; do if [[ "$f" == tests/* ]]; then printf '%s\n' "$t"; else printf 'change-findings\t%s\n' "$t"; fi; done; }
 # ── F10 ──────────────────────────────────────────────────────────────────────
 print_test_section "F10: a skipped acceptance check leaves no old findings"
 R10="$TEST_TEMP_DIR/ag10"; mkdir -p "$R10"
@@ -251,28 +251,28 @@ assert_file_not_exists "[F10] the earlier try's code findings are gone" "$R10/ac
 print_test_section "F11/F12: test's summary, and a stage with no takes:"
 TS="$TEST_TEMP_DIR/ts"; mkdir -p "$TS/artifacts"
 init_state "$TS/pipeline-state.json" run-3 7 >/dev/null 2>&1
-printf 'tests/a-test.sh\tA-OWN fails\nlib/x.sh\tOTHER-ONLY-CODE fails\n' \
-    | _test_findings_by_owner_stub | stage_findings_route "$TS/artifacts" test code-findings > "$TEST_TEMP_DIR/ts.all"
+printf 'test-findings\ttests/a-test.sh A-SLOW\nlib/x.sh OTHER-ONLY-CODE fails\n' \
+    | stage_findings_route "$TS/artifacts" test code-findings > "$TEST_TEMP_DIR/ts.all"
 stage_result_write "$TS/artifacts/test-results.json" fail "2 failed" "{\"findings\":$(cat "$TEST_TEMP_DIR/ts.all")}" >/dev/null
 printf '## test — fail\n\n## Failing files\n- lib/x.sh: OTHER-ONLY-CODE fails\n' > "$TS/artifacts/test-failures-summary.md"
 _update_stage_status "$TS/pipeline-state.json" test complete
 _zbuild_state_set_stage_verdict "$TS/pipeline-state.json" test fail
 # The acceptance check's findings too: a result with no topic beside its outputs by topic.
 stage_result_write "$TS/artifacts/acceptance-gate-result.json" fail "x" '{"findings":[{"n":1,"text":"AG-REQ-ONCE"}]}' >/dev/null
-printf 'AG-REQ-ONCE\n' | stage_findings_route "$TS/artifacts" acceptance-gate requirement-findings >/dev/null
+printf 'AG-REQ-ONCE\n' | stage_findings_route "$TS/artifacts" acceptance-gate design-findings >/dev/null
 _TPL_STAGES=(test test-author pr-delivery)
 _pwt() {
     local idx; idx="$(_inputs_resolve_stage "$1" "$REPO_ROOT/plugins" "$TS")"
     _stage_block_previous_work "$1" "$TS" "$REPO_ROOT/plugins" "$idx" "" "$REPO_ROOT/plugins/agent/$1/manifest.yaml"
 }
 _pta="$(_pwt test-author)"
-assert_contains "[F11] test-author is shown its own failing file" "$_pta" "A-OWN fails"
-assert_not_contains "[F11] ...and not the file only the code can fix, from the summary or anywhere" "$_pta" "OTHER-ONLY-CODE"
+assert_contains "[F11] test-author is shown a test's finding" "$_pta" "A-SLOW"
+assert_not_contains "[F11] ...and not the failing file the code must fix, from the summary or anywhere" "$_pta" "OTHER-ONLY-CODE"
 _ppr="$(_pwt pr-delivery)"
-assert_eq "[F12] a stage with no takes: is shown each finding once" "1" "$(grep -cE 'finding [0-9]+ \(opened by test\): OTHER-ONLY-CODE fails' <<< "$_ppr")"
+assert_eq "[F12] a stage with no takes: is shown each finding once" "1" "$(grep -cE 'finding [0-9]+ \(opened by test\): lib/x.sh OTHER-ONLY-CODE fails' <<< "$_ppr")"
 assert_eq "[F12] ...the acceptance check's too (review)" "1" "$(grep -cE 'finding [0-9]+ \(opened by test\): AG-REQ-ONCE' <<< "$_ppr")"
 R13="$TEST_TEMP_DIR/r13"; mkdir -p "$R13"; chmod 500 "$R13"
-printf 'code-findings\tNEW\n' | stage_findings_route "$R13" t requirement-findings >/dev/null 2>&1
+printf 'code-findings\tNEW\n' | stage_findings_route "$R13" t design-findings >/dev/null 2>&1
 chmod 700 "$R13"
 assert_eq "[F5] a routed output that cannot be written leaves no .tmp behind (review)" "" "$(ls "$R13")"
 

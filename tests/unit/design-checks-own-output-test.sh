@@ -108,7 +108,7 @@ assert_contains "[C1] the result carries the finding" "$FINDINGS" "WIRING"
 
 # ── C2 ───────────────────────────────────────────────────────────────────────
 DESIGNS=("$GOOD"); # #2464 (ADR-072 §3): one line per item, the complaint quoted.
-JUDGE=($'RQWANT-1: uncovered | WHY: RQWANT-1 is only half covered | QUOTE: "the docs say so"\nDSDOCS-1: ok' $'RQWANT-1: covered\nDSDOCS-1: ok'); JUDGE_RC=0
+JUDGE=($'RQWANT-1: uncovered | WHY: RQWANT-1 is only half covered | ACCEPTED IF: it is accepted | QUOTE: "the docs say so"\nDSDOCS-1: ok' $'RQWANT-1: covered\nDSDOCS-1: ok'); JUDGE_RC=0
 _run
 assert_eq "[C2] an uncovered requirement: unusable" "unusable" "$OUTCOME"
 assert_contains "[C2] the finding names the uncovered requirement and its words" "$FINDINGS" 'RQWANT-1 is not covered: RQWANT-1 is only half covered — "the docs say so"'

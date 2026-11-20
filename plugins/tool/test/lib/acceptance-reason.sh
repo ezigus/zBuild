@@ -2,6 +2,10 @@
 # plugins/agent/spec-acceptance/lib/reason.sh — the acceptance gate's reason,
 # operator summary and small helpers, sourced by plugin.sh. No set -euo pipefail.
 
+# shellcheck source=../../../../scripts/lib/stage-handoff.sh
+declare -F stage_findings_route_each >/dev/null 2>&1 \
+    || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/stage-handoff.sh"
+
 # _ag_resolve_negctl_timeout <stage_id> — per-test negctl/reachability timeout (s).
 # Precedence (ADR-036 #1188): explicit ZBUILD_NEGCTL_TIMEOUT env > per-stage
 # template `negctl_timeout_s:` > 60s default. Env wins so CI/operators (and the
@@ -127,9 +131,15 @@ _ag_slow_testfiles() {
     printf '%s' "${out:-its test files}"
 }
 
-# A clause about the code or a test starts with this: it is a code-findings
-# finding (#2452). The joined reason drops it.
-_AG_CODE=$'code-findings\t'
+# A clause starts with the topics of what must change (#2569, ADR-071 §1), and
+# goes to every stage that can fix it (stage_findings_route_each); one with none
+# is the design's (the default topic). A problem in the pipeline is no stage's
+# to fix: `report`, in the check's own result only. The joined reason drops it.
+_AG_TEST=$'test-findings\t'
+_AG_CODE_TEST=$'code-findings,test-findings\t'
+_AG_DESIGN_CODE=$'design-findings,code-findings\t'
+_AG_DESIGN_TEST=$'design-findings,test-findings\t'
+_AG_REPORT=$'report\t'
 
 # _ag_build_reason <failure...> — compose the human-readable operator reason
 # (#1220) that NAMES the offending SPEC ids grouped by violation class, so the
@@ -162,8 +172,8 @@ _ag_build_reason() {
     done
     local -a clauses=()
     # #1752: nothing below was checked, so these lead.
-    [[ -n "$loadfail" ]] && clauses+=("its own code did not load ($loadfail), so no requirement was checked — this is not a pass")
-    [[ -n "$nothing" ]] && clauses+=("the acceptance block lists $nothing requirement(s) and none of them was checked — the check stopped before reporting on any, so this is not a pass")
+    [[ -n "$loadfail" ]] && clauses+=("${_AG_REPORT}its own code did not load ($loadfail), so no requirement was checked — this is not a pass")
+    [[ -n "$nothing" ]] && clauses+=("${_AG_REPORT}the acceptance block lists $nothing requirement(s) and none of them was checked — the check stopped before reporting on any, so this is not a pass")
     # #2163: state the finding, never a remedy addressed to another stage.
     # #2269: each clause says what was tried, what happened, and what to change,
     # in words the reader was given — never the name of the check.
@@ -175,19 +185,19 @@ _ag_build_reason() {
             _uc_names="$_uc_names, ${unclaimed[$_uc_i]}"
         done
         [[ ${#unclaimed[@]} -gt 3 ]] && _uc_names="$_uc_names and $(( ${#unclaimed[@]} - 3 )) more"
-        clauses+=("this change edits code ($_uc_names) but no requirement says what that code must now do — add a [code] requirement with a test")
+        clauses+=("${_AG_DESIGN_CODE}this change edits code ($_uc_names) but no requirement says what that code must now do — add a [code] requirement with a test")
     fi
-    [[ -n "$taut"     ]] && clauses+=("$(_ag_join_ids "$taut"): its test already passes on the code from before this change, so it cannot tell whether the change was made — make it check something the old code gets wrong")
-    [[ -n "$nohead"   ]] && clauses+=("${_AG_CODE}$(_ag_join_ids "$nohead"): its test does not pass on the new code — the code or the test is wrong")
-    [[ -n "$untagged" ]] && clauses+=("$(_ag_join_ids "$untagged"): no assertion in the test files carries its tag — add one labelled with it")
-    [[ -n "$notf"     ]] && clauses+=("$(_ag_join_ids "$notf"): no test file in the test folders carries its tag — add an assertion labelled with it")
+    [[ -n "$taut"     ]] && clauses+=("${_AG_DESIGN_TEST}$(_ag_join_ids "$taut"): its test already passes on the code from before this change, so it cannot tell whether the change was made — make it check something the old code gets wrong")
+    [[ -n "$nohead"   ]] && clauses+=("${_AG_CODE_TEST}$(_ag_join_ids "$nohead"): its test does not pass on the new code — the code or the test is wrong")
+    [[ -n "$untagged" ]] && clauses+=("${_AG_TEST}$(_ag_join_ids "$untagged"): no assertion in the test files carries its tag — add one labelled with it")
+    [[ -n "$notf"     ]] && clauses+=("${_AG_TEST}$(_ag_join_ids "$notf"): no test file in the test folders carries its tag — add an assertion labelled with it")
     [[ -n "$inert"    ]] && clauses+=("$(_ag_join_ids "$inert") was put back to its old version and every test still passed, so it is not what runs the new behaviour — name the file whose code calls it, or write WIRING: none")
-    [[ -n "$untested" ]] && clauses+=("${_AG_CODE}$(_ag_join_ids "$untested") was put back to its old version on its own and every test still passed, so no test checks what this change does to it — add a test that fails without the change to it")
-    [[ -n "$nofiles"  ]] && clauses+=("$(_ag_join_ids "$nofiles"): no test file carries a requirement's tag, so putting it back could not be checked")
+    [[ -n "$untested" ]] && clauses+=("${_AG_CODE_TEST}$(_ag_join_ids "$untested") was put back to its old version on its own and every test still passed, so no test checks what this change does to it — add a test that fails without the change to it")
+    [[ -n "$nofiles"  ]] && clauses+=("${_AG_TEST}$(_ag_join_ids "$nofiles"): no test file carries a requirement's tag, so putting it back could not be checked")
     [[ -n "$notpath"  ]] && clauses+=("$(_ag_join_ids "$notpath") is not changed by this change — name a file the change touches, or write WIRING: none")
-    [[ -n "$unb" ]] && clauses+=("${_AG_CODE}$(_ag_unreached_where "$unb"): its test never ran on the code from before this change — an earlier step in its test file stops the file there, so it is not shown to fail on the old code")
-    [[ -n "$unh" ]] && clauses+=("${_AG_CODE}$(_ag_unreached_where "$unh"): its test never ran on the new code — an earlier step in its test file stops the file before the assertion, so it was not checked")
-    [[ -n "$sig"      ]] && clauses+=("${_AG_CODE}$(_ag_join_ids "$sig"): its test file died on a signal before the assertion ran (not a timeout) — usually a test that signals its own process (\$\$) where no handler exists yet; signal a child process instead")
+    [[ -n "$unb" ]] && clauses+=("${_AG_TEST}$(_ag_unreached_where "$unb"): its test never ran on the code from before this change — an earlier step in its test file stops the file there, so it is not shown to fail on the old code")
+    [[ -n "$unh" ]] && clauses+=("${_AG_CODE_TEST}$(_ag_unreached_where "$unh"): its test never ran on the new code — an earlier step in its test file stops the file before the assertion, so it was not checked")
+    [[ -n "$sig"      ]] && clauses+=("${_AG_TEST}$(_ag_join_ids "$sig"): its test file died on a signal before the assertion ran (not a timeout) — usually a test that signals its own process (\$\$) where no handler exists yet; signal a child process instead")
     [[ "$malformed" -eq 1 ]] && clauses+=("the acceptance block could not be read")
     if [[ -n "$infra" ]]; then
         local _i _ib="" _ir="" _tb="" _tr=""
@@ -202,10 +212,10 @@ _ag_build_reason() {
         # ADR-040 (amended 2026-10-31): a run of the change's own test file that
         # goes past its limit is the change's to fix: say which file, how long
         # the test run measured it, and the limit.
-        [[ -n "$_tb" ]] && clauses+=("${_AG_CODE}$(_ag_join_ids "$_tb"): its test file ran past its time limit on the code from before this change — $(_ag_slow_testfiles spec "$_tb"); a test file this slow cannot be checked: make it, or the code it runs, faster")
-        [[ -n "$_tr" ]] && clauses+=("${_AG_CODE}putting $(_ag_join_ids "$_tr") back to its old version, the tests ran past their time limit — $(_ag_slow_testfiles all ""); a test file this slow cannot be checked: make it, or the code it runs, faster")
-        [[ -n "$_ib" ]] && clauses+=("the run of $(_ag_join_ids "$_ib")'s test on the code from before this change could not be done (a problem in the pipeline, not in your change)")
-        [[ -n "$_ir" ]] && clauses+=("putting $(_ag_join_ids "$_ir") back to its old version could not be done (a problem in the pipeline, not in your change)")
+        [[ -n "$_tb" ]] && clauses+=("${_AG_CODE_TEST}$(_ag_join_ids "$_tb"): its test file ran past its time limit on the code from before this change — $(_ag_slow_testfiles spec "$_tb"); a test file this slow cannot be checked: make it, or the code it runs, faster")
+        [[ -n "$_tr" ]] && clauses+=("${_AG_CODE_TEST}putting $(_ag_join_ids "$_tr") back to its old version, the tests ran past their time limit — $(_ag_slow_testfiles all ""); a test file this slow cannot be checked: make it, or the code it runs, faster")
+        [[ -n "$_ib" ]] && clauses+=("${_AG_REPORT}the run of $(_ag_join_ids "$_ib")'s test on the code from before this change could not be done (a problem in the pipeline, not in your change)")
+        [[ -n "$_ir" ]] && clauses+=("${_AG_REPORT}putting $(_ag_join_ids "$_ir") back to its old version could not be done (a problem in the pipeline, not in your change)")
     fi
     local out="" c
     if [[ -n "${_AG_REASON_LINES:-}" ]]; then
@@ -213,7 +223,7 @@ _ag_build_reason() {
         return 0
     fi
     for c in ${clauses[@]+"${clauses[@]}"}; do
-        c="${c#"$_AG_CODE"}"
+        [[ "$c" == *$'\t'* ]] && c="${c#*$'\t'}"
         if [[ -z "$out" ]]; then out="$c"; else out="$out; $c"; fi
     done
     printf 'the acceptance check failed — %s' "$out"
@@ -221,14 +231,16 @@ _ag_build_reason() {
 
 # _ag_route_findings <result_file> <failure...> — the gate's numbered findings,
 # one per kind of problem (#2271), printed for its own result. #2556 (ADR-071
-# §1): each goes to an output of its topic beside <result_file> — one about the
-# code or a test to <name>-code-result.json, the rest, about the requirements,
-# to <name>-requirement-result.json — so it reaches only the stages that take
-# that topic.
+# §1): each goes to an output of each topic beside <result_file> — what the
+# code must fix to <name>-code-result.json, what a test must fix to
+# <name>-test-result.json, what the design must fix to
+# <name>-design-result.json; #2569 (review): one more than one stage can fix
+# goes to each, and a problem in the pipeline to none — so it reaches only the
+# stages that can fix it.
 _ag_route_findings() {
     local _agr_f="$1" _agr_n; shift
     _agr_n="${_agr_f##*/}"; _agr_n="${_agr_n%-result.json}"
-    _AG_REASON_LINES=1 _ag_build_reason "$@" | stage_findings_route "${_agr_f%/*}" "$_agr_n" requirement-findings
+    _AG_REASON_LINES=1 _ag_build_reason "$@" | stage_findings_route_each "${_agr_f%/*}" "$_agr_n" design-findings
 }
 
 # The lib functions acceptance_gate_run calls. One undefined after loading means
@@ -265,7 +277,9 @@ _ag_fail_load() {
     failures_json="$(printf 'gate_load_failed:%s\n' $problems | jq -R . | jq -sc .)"
     reason="$(_ag_build_reason "gate_load_failed:${problems// /, }")"
     local _agl_n="${result_file##*/}"; _agl_n="${_agl_n%-result.json}"
-    fnd="$(printf '%s\n' "${reason#the acceptance check failed — }" | stage_findings_route "$(dirname "$result_file")" "$_agl_n" requirement-findings)"
+    # #2569 (review): no stage can fix the check's own code — it stops the run
+    # (broken, terminal), its finding in its own result only.
+    fnd="$(printf 'report\t%s\n' "${reason#the acceptance check failed — }" | stage_findings_route_each "$(dirname "$result_file")" "$_agl_n" design-findings)"
     _ag_write_result "$result_file" broken "$reason" \
         "$(jq -cn --argjson f "$failures_json" --argjson fnd "${fnd:-[]}" \
             '{severity:"terminal",failures:$f,data:{findings:$fnd}}')"
@@ -295,7 +309,7 @@ _ag_noop_precondition_unmet() {
     local result_file="$1" pc="$2" _agp_n
     # #2556: a check that did not run leaves no findings by topic of an earlier try.
     _agp_n="${result_file##*/}"; _agp_n="${_agp_n%-result.json}"
-    stage_findings_route "$(dirname "$result_file")" "$_agp_n" requirement-findings < /dev/null >/dev/null
+    stage_findings_route "$(dirname "$result_file")" "$_agp_n" design-findings < /dev/null >/dev/null
     _ag_write_result "$result_file" pass "precondition_unmet" \
         "$(jq -cn --arg pc "$pc" '{precondition:$pc,severity:"none",failures:[]}')"
     local _summary_dir; _summary_dir="$(dirname "$result_file")"

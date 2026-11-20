@@ -44,49 +44,78 @@ zb_reply_plain_v() {
 # judge_reply_line_v <var> <line> — one line of a judge's reply as every reader
 # reads it (#2474, ADR-072 §3). Its structure — the id, the part and the word —
 # is read with formatting and spacing aside: bold, italics, code marks, a list
-# bullet or number, a quote or heading mark, a table's borders and cells. WHY:
-# and QUOTE: are the separators, written back as " | WHY: " and " | QUOTE: ";
-# what follows each is kept as written, without the marks around it.
+# bullet or number, a quote or heading mark, a table's borders and cells. WHY:,
+# ACCEPTED IF: and QUOTE: are the separators, written back in that order as
+# " | WHY: ", " | ACCEPTED IF: " and " | QUOTE: " whatever order they came in;
+# what follows each is kept as written, without the marks around it. #2569
+# (ADR-072 §3): ACCEPTED IF is every check's word for what would be accepted;
+# an old INSTEAD: is read as it. A label in capitals is read anywhere; one in
+# any other case ("Accepted if:") only after a `|`, so a word in a WHY is never
+# taken for one. After the QUOTE, only a label after a `|` ends it: a QUOTE is
+# copied text, and what follows its own label is the quote (review on #2569).
+_ZB_JR_ANY='(^|[^A-Za-z0-9])(WHY|ACCEPTED IF|INSTEAD|QUOTE)[*_`]*:'
+_ZB_JR_BAR='[|][[:space:]*_`]*(WHY|ACCEPTED IF|INSTEAD|QUOTE)[*_`]*:'
+_ZB_JR_BARQ='[|][[:space:]*_`]*(WHY|ACCEPTED IF|INSTEAD)[*_`]*:'
 judge_reply_line_v() {
     local -n _jrl="$1"
-    local _jr_l="$2" _jr_head="$2" _jr_rest="" _jr_why="" _jr_quote="" _jr_has_w=0 _jr_has_q=0 _jr_a
-    local _jr_ins="" _jr_has_i=0
-    if [[ "$_jr_l" == *WHY* ]]; then
-        _jr_a="${_jr_l#*WHY}"
-        [[ "$_jr_a" =~ ^[*_\`]*:(.*)$ ]] && { _jr_head="${_jr_l%%WHY*}"; _jr_rest="${BASH_REMATCH[1]}"; _jr_has_w=1; }
-    fi
-    if (( _jr_has_w )); then
-        _jr_why="$_jr_rest"
-        if [[ "$_jr_rest" == *QUOTE* ]]; then
-            _jr_a="${_jr_rest##*QUOTE}"
-            [[ "$_jr_a" =~ ^[*_\`]*:(.*)$ ]] && { _jr_why="${_jr_rest%QUOTE*}"; _jr_quote="${BASH_REMATCH[1]}"; _jr_has_q=1; }
+    local _jr_l="$2" _jr_u="${2^^}" _jr_off=0 _jr_r _jr_ru _jr_m _jr_pre _jr_p1 _jr_p2 _jr_n1 _jr_n2 _jr_s1 _jr_s2
+    local _jr_head="" _jr_qseen=0 _jr_name="" _jr_vs=0 _jr_cut
+    local -A _jr_f=()
+    # Each label, leftmost first: the text before the first is the head, and
+    # each label's text runs to the next label.
+    while :; do
+        _jr_r="${_jr_l:_jr_off}"; _jr_ru="${_jr_u:_jr_off}"; _jr_p1=-1; _jr_p2=-1
+        if (( ! _jr_qseen )) && [[ "$_jr_r" =~ $_ZB_JR_ANY ]]; then
+            _jr_m="${BASH_REMATCH[0]}"; _jr_pre="${_jr_r%%"$_jr_m"*}"
+            _jr_p1=$(( ${#_jr_pre} + ${#BASH_REMATCH[1]} )); _jr_s1=$(( ${#_jr_pre} + ${#_jr_m} )); _jr_n1="${BASH_REMATCH[2]}"
         fi
-    elif [[ "$_jr_head" == *QUOTE* ]]; then
-        _jr_a="${_jr_head##*QUOTE}"
-        [[ "$_jr_a" =~ ^[*_\`]*:(.*)$ ]] && { _jr_head="${_jr_head%QUOTE*}"; _jr_quote="${BASH_REMATCH[1]}"; _jr_has_q=1; }
-    fi
-    # #2565 (ADR-073 §5): INSTEAD: is a separator too, after WHY or, with no
-    # WHY, after the head.
-    if (( _jr_has_w )) && [[ "$_jr_why" == *INSTEAD* ]]; then
-        _jr_a="${_jr_why##*INSTEAD}"
-        [[ "$_jr_a" =~ ^[*_\`]*:(.*)$ ]] && { _jr_why="${_jr_why%INSTEAD*}"; _jr_ins="${BASH_REMATCH[1]}"; _jr_has_i=1; }
-    elif (( ! _jr_has_w )) && [[ "$_jr_head" == *INSTEAD* ]]; then
-        _jr_a="${_jr_head##*INSTEAD}"
-        [[ "$_jr_a" =~ ^[*_\`]*:(.*)$ ]] && { _jr_head="${_jr_head%INSTEAD*}"; _jr_ins="${BASH_REMATCH[1]}"; _jr_has_i=1; }
-    fi
+        if (( _jr_qseen )); then [[ "$_jr_ru" =~ $_ZB_JR_BARQ ]] || _jr_ru=""
+        else [[ "$_jr_ru" =~ $_ZB_JR_BAR ]] || _jr_ru=""; fi
+        if [[ -n "$_jr_ru" ]]; then
+            _jr_m="${BASH_REMATCH[0]}"; _jr_pre="${_jr_ru%%"$_jr_m"*}"
+            _jr_p2=${#_jr_pre}; _jr_s2=$(( ${#_jr_pre} + ${#_jr_m} )); _jr_n2="${BASH_REMATCH[1]}"
+        fi
+        if (( _jr_p2 >= 0 && ( _jr_p1 < 0 || _jr_p2 < _jr_p1 ) )); then _jr_p1=$_jr_p2; _jr_s1=$_jr_s2; _jr_n1="$_jr_n2"
+        elif (( _jr_p1 < 0 )); then break; fi
+        _jr_cut="${_jr_l:_jr_vs:_jr_off + _jr_p1 - _jr_vs}"
+        if [[ -z "$_jr_name" ]]; then _jr_head="$_jr_cut"
+        elif [[ -z "${_jr_f[$_jr_name]+x}" ]]; then _jr_f["$_jr_name"]="$_jr_cut"; fi
+        _jr_name="$_jr_n1"; [[ "$_jr_name" == QUOTE ]] && _jr_qseen=1
+        _jr_vs=$(( _jr_off + _jr_s1 )); _jr_off=$_jr_vs
+    done
+    if [[ -z "$_jr_name" ]]; then _jr_head="$_jr_l"
+    elif [[ -z "${_jr_f[$_jr_name]+x}" ]]; then _jr_f["$_jr_name"]="${_jr_l:_jr_vs}"; fi
+    # An old INSTEAD is ACCEPTED IF, when there is no ACCEPTED IF.
+    [[ -z "${_jr_f[ACCEPTED IF]+x}" && -n "${_jr_f[INSTEAD]+x}" ]] && _jr_f["ACCEPTED IF"]="${_jr_f[INSTEAD]}"
     zb_reply_plain_v _jr_head "$_jr_head"
     _jr_head="${_jr_head#"${_jr_head%%[![:space:]>#|+-]*}"}"
     [[ "$_jr_head" =~ ^[0-9]+[.\)][[:space:]]+(.*)$ ]] && _jr_head="${BASH_REMATCH[1]}"
-    _judge_reply_trim_v _jr_head "$_jr_head"; _judge_reply_trim_v _jr_why "$_jr_why"; _judge_reply_trim_v _jr_quote "$_jr_quote"
-    (( _jr_has_i )) && _judge_reply_trim_v _jr_ins "$_jr_ins"
+    _judge_reply_trim_v _jr_head "$_jr_head"
     # A table row's cells: the first border after the id is its colon.
     [[ "$_jr_head" != *:* && "$_jr_head" == *" | "* ]] && _jr_head="${_jr_head/ | /: }"
     _jr_head="${_jr_head//|/ }"; while [[ "$_jr_head" == *"  "* ]]; do _jr_head="${_jr_head//  / }"; done
     _jrl="$_jr_head"
-    (( _jr_has_w )) && _jrl+=" | WHY: $_jr_why"
-    (( _jr_has_i )) && _jrl+=" | INSTEAD: $_jr_ins"
-    (( _jr_has_q )) && _jrl+=" | QUOTE: $_jr_quote"
+    local _jr_k _jr_v
+    for _jr_k in WHY "ACCEPTED IF" QUOTE; do
+        [[ -n "${_jr_f[$_jr_k]+x}" ]] || continue
+        _judge_reply_trim_v _jr_v "${_jr_f[$_jr_k]}"; _jrl+=" | $_jr_k: $_jr_v"
+    done
     return 0
+}
+
+# judge_reply_field_v <var> <rest> <FIELD> — the text of one separator a line
+# read by judge_reply_line_v carries (WHY, ACCEPTED IF or QUOTE), up to the next
+# one; empty when it has none (#2569: the one reader every check uses).
+judge_reply_field_v() {
+    local -n _jrf="$1"; local _jrf_r="$2"
+    _jrf=""
+    [[ "$_jrf_r" == *"| $3:"* ]] || return 0
+    _jrf_r="${_jrf_r#*"| $3:"}"
+    case "$3" in
+        WHY) _jrf_r="${_jrf_r%%| ACCEPTED IF:*}"; _jrf_r="${_jrf_r%%| QUOTE:*}" ;;
+        "ACCEPTED IF") _jrf_r="${_jrf_r%%| QUOTE:*}" ;;
+    esac
+    _jrf_r="${_jrf_r#"${_jrf_r%%[![:space:]]*}"}"; _jrf="${_jrf_r%"${_jrf_r##*[![:space:]]}"}"
 }
 
 # _judge_reply_trim_v <var> <text> — <text> without the spaces, table borders and

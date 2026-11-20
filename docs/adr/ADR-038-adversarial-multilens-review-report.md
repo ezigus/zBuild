@@ -1,6 +1,6 @@
 # ADR-038 — Adversarial multi-lens review report (evidence-fed, advisory)
 
-**Status:** Accepted (2026-06-19); amended 2026-11-09 (#2508: no planned scope is shown to a lens — design writes none); amended 2026-11-15 (#2548: each lens has its own job text; the persona is who does it); amended 2026-11-15 (#2552: every finding names its trigger; a check call tries to knock each lens's findings down)
+**Status:** Accepted (2026-06-19); amended 2026-11-09 (#2508: no planned scope is shown to a lens — design writes none); amended 2026-11-15 (#2548: each lens has its own job text; the persona is who does it); amended 2026-11-15 (#2552: every finding names its trigger; a check call tries to knock each lens's findings down); amended 2026-11-20 (#2569: every finding says what would be accepted; a lens is held to its earlier findings); amended 2026-11-20 (#2569: a finding's fix: word is its topic)
 **Related** — dispositions below are **PLANNED** (the map lives in ADR-037 §6, executed in I13 / #979); **this PR edits no existing ADR**:
 - peer: ADR-037 (objective gates vs. semantic judgment); EPIC #966
 - supersede-planned: ADR-022, ADR-026
@@ -247,7 +247,7 @@ its persona before; the definitions live only in the charter.
 Each finding also says what would fix it — `code`, `test`, `design`, or `issue` (the issue itself is
 wrong: it contradicts an ADR or asks for something that cannot be built as written) — never which stage.
 A word off that list is read as `code`. Scope is no longer warn-only: its findings send the change back
-like any lens's.
+like any lens's. *Amended 2026-11-20 (#2569): the fix word is the finding's topic, untranslated — see that amendment.*
 
 Enforced by: `plugins/agent/review-lens/tests/review-lens-loop-test.sh` R1 (the four levels and the fix
 words are in every lens's prompt), R1b (each lens's job text gives an example of each level, #2548; scope is no
@@ -298,3 +298,23 @@ Enforced by: `tests/unit/lens-check-test.sh` K1 (no trigger: asked again, then u
 On #1764 run 44417314654 the scope lens found that `plugins/claim-coordinator/github-labels/plugin.sh` still used `claimed:<machine>`, which the design said to change. It marked the finding `introduced: false`, because the code before the change used it too. So the finding was listed as pre-existing and never went back to be fixed.
 
 `introduced` (§3) also covers what the change was asked to do. Something the issue or the design asks this change to do, and the change does not do, is the change's: `introduced: true`, even where the code before the change behaved the same way. `introduced: false` is only for what the code already did when nothing asked this change to change it. Every lens is told so in its prompt (`_rl_build_lens_prompt`, `plugins/agent/review-lens/lib/charters.sh`). A design step build answered not needed, its check accepting the reason (ADR-072 §3), is not undone work: every lens is shown those answers (THE DESIGN STEPS BUILD FOUND NOT NEEDED, read from build's steps lines) and reports one only by showing its reason wrong, quoting the code. Enforced by `tests/unit/lens-task-test.sh` L6, L7.
+
+## Amendment (2026-11-20, #2569): every finding says what would be accepted; a lens is held to its earlier findings
+
+On #1764 run 44530053809 a check refused a step with advice the engine wrote ("make the step agree with the issue"), and design took the issue's words the wrong way. Every check's refusal now says what would be accepted, in the check's own words (ADR-072 §3, amended 2026-11-20).
+
+- **Every lens finding carries `accepted_if`:** what must be true for it to be resolved, in the issue's words — never how to build it (no file, function, command or change to make). The lens is told so, with #1764's example: not `ACCEPTED IF: runner.sh calls plugin_hook_call on the claim-coordinator folder`; this: `ACCEPTED IF: the engine itself calls the claim coordinator's claim and release hooks through the plugin registry` (`_rl_build_lens_prompt`, `plugins/agent/review-lens/lib/charters.sh`). A finding with none, or with filler ("unknown", "n/a"), makes the reply unusable, asked again once, as one with no trigger does (`_rl_quote_problem_v`). The finding a stage is sent ends with it ("; ACCEPTED IF: …").
+- **A lens is held to its earlier findings** (ADR-072 §5, amended 2026-11-20). Every answer a stage gives one of its findings — done, wrong or not mine — is in its kept report's fingerprint, and it is shown its findings from last time with every answer (`judge_last_findings_block_v`) and asked, for each answered one, whether the answer resolves it: when it does, it does not report it again; when it does not, it reports it again, saying why. The separate disputes block is gone: last time's findings carry every answer.
+
+*Review, 2026-11-20 (#2569):* a finding with no `accepted_if` is asked again, as before, and then costs only itself: when the only thing wrong with a reply is findings with no `accepted_if`, the report without those findings is used if no reply can be used whole (`_rl_quote_problem_v` names them, `_RL_NO_ACC`). It is not kept for a later round. A lens's kept report still has every answer to its findings in its fingerprint (ADR-072 §4 §5, review).
+
+Enforced by: `tests/unit/checks-accepted-if-test.sh` A8 (no accepted_if: asked again, then only that finding is dropped, the report's others used; the routed finding shows it; the lens is told what it says, with #1764's example, and the field is in its schema); `tests/unit/checks-held-to-findings-test.sh` H4 (every answer reaches the lens); `tests/unit/finding-answers-test.sh` A2, C3.
+
+## Amendment (2026-11-20, #2569): a finding's fix: word is its topic
+
+The lens code translated a finding's `fix:` word into a topic of different words: `fix: code` went to `change-findings`, `fix: test` to `code-findings`, `fix: design` to `requirement-findings` (ADR-071 §1, #2491, #2556). The topics are now named by what must change, in the lens's own words (ADR-071, amended 2026-11-20), so the table is gone.
+
+- **A finding's `fix:` word is its topic, `<fix>-findings`, and names its output, `lens-<id>-<fix>-result.json`:** `code` → `code-findings` (build), `test` → `test-findings` (test-author), `design` → `design-findings` (design). The FIX list a lens is given is unchanged. A word off the list is still read as `code`.
+- **`fix: issue` stays a run stop:** at the stage's fail rule's severity the lens's outcome is `misconfigured`; the finding is written with the design's, as before.
+
+Enforced by: `tests/unit/topic-vocabulary-test.sh` V3 (a lens finding's fix: word names its output and is that output's topic), V4 (each reaches only the stage that can fix it); `plugins/agent/review-lens/tests/review-lens-loop-test.sh` R3 (one output per fix: word), R7 (`fix: issue` stops the run); `tests/unit/lens-check-test.sh` K17.

@@ -621,6 +621,9 @@ The lens group ran after `delivery_loop`, so no stage that could fix a finding r
   (ADR-071 §1): `code` and `test` findings to `lens-<id>-code-result.json` (`code-findings`, read by
   test-author and build), `design` findings to `lens-<id>-design-result.json` (`requirement-findings`,
   read by design). Each is numbered and fails when it holds a finding, so the run's open items list them.
+  *Superseded 2026-11-20 (#2569, ADR-071 and ADR-038 amendments): one output per `fix:` word —
+  `lens-<id>-code-result.json` (`code-findings`, build), `lens-<id>-test-result.json` (`test-findings`,
+  test-author), `lens-<id>-design-result.json` (`design-findings`, design).*
 - **Two tries.** `delivery_loop` keeps `max_iterations: 2, on_max: halt`: if the lenses still fail in the
   second round, the run stops with their findings as its open items, and no PR is opened.
 - **A lens that does not finish stops the run at once** (as #1753 made it at top level): the loop records

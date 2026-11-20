@@ -27,7 +27,8 @@
 # T6 a SPEC with no line is asked again on its own, and the answer counts
 # T7 ...still none: not judged
 # T8 a SPEC no test can prove ends the round, naming it as design's to fix,
-#    so the loop goes round to design (#2474, ADR-068 §3)
+#    so the loop goes round to design (#2474, ADR-068 §3); the finding is in
+#    test-author's design-findings output, which design takes (#2569)
 # T9 a SPEC written on one line is judged as one Then, its words
 # T10 test-author is told to write the sections, and to rewrite an old test it
 #     touches into them
@@ -86,11 +87,11 @@ MD
     echo "J4|$(_design_coverage_findings | tr '\n\036' '~~')|$_DESIGN_COV_OUTCOME"
     _R1="$R"$'FRSH-1 When: untestable | WHY: x | INSTEAD: the event the run emits | QUOTE: "it is started again"\n'; _R2="$_R1"; _cov
     echo "J5|$_DESIGN_COV_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
-    _R1="$R"$'FRSH-1 Then: duplicate | WHY: x | QUOTE: "every stage is dispatched"\n'; _R2="$_R1"; _cov
+    _R1="$R"$'FRSH-1 Then: duplicate | WHY: x | ACCEPTED IF: it is accepted | QUOTE: "every stage is dispatched"\n'; _R2="$_R1"; _cov
     echo "J5b|$_DESIGN_COV_OUTCOME"
     _R1="$R"$'FRSH-1 When: how | WHY: it names the call, not what happens | INSTEAD: the event the run emits | QUOTE: "it is started again"\n'; _R2=""; _cov
     echo "J6|$(_design_coverage_findings | tr '\n\036' '~~')"
-    _R1="$R"$'FRSH-1: needs_cleanup | WHY: the run it sets up stays in the state folder | QUOTE: "a run whose stages all completed"\n'; _R2=""; _cov
+    _R1="$R"$'FRSH-1: needs_cleanup | WHY: the run it sets up stays in the state folder | ACCEPTED IF: it is accepted | QUOTE: "a run whose stages all completed"\n'; _R2=""; _cov
     echo "J7|$_DESIGN_COV_OUTCOME"
     _R1="$R"$'FRSH-1 Then: untestable | WHY: x | INSTEAD: the event the run emits | QUOTE: "it is started again"\n'; _R2="$_R1"; _cov
     echo "J8|$(cat "$_N")|$_DESIGN_COV_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
@@ -119,7 +120,7 @@ assert_contains "[J4] ...and why" "$(_l "$J" J4)" "a test cannot observe what a 
 assert_eq "[J5] untestable on a When cannot be used" "unusable" "$(_l "$J" J5 | cut -d'|' -f1)"
 assert_contains "[J5] ...and is asked again saying so" "$(_l "$J" J5)" "untestable is only for a Then"
 assert_eq "[J5] duplicate on a Then cannot be used" "unusable" "$(_l "$J" J5b)"
-assert_contains "[J6] a part that says how is a finding" "$(_l "$J" J6)" "  When: it is started again [FIX IN DESIGN: it names the call, not what happens — say the situation, the action, or what can be seen"
+assert_contains "[J6] a part that says how is a finding" "$(_l "$J" J6)" "  When: it is started again [FIX IN DESIGN: it names the call, not what happens — ACCEPTED IF: the event the run emits]"
 # #2543 (ADR-073, amended): putting things back is the test's; the check asks no needs_cleanup.
 assert_eq "[J7] needs_cleanup is no verdict: the answer cannot be used" "unusable" "$(_l "$J" J7)"
 assert_contains "[J8] a quote from another part: asked again, then unusable" "$(_l "$J" J8)" "2|unusable|"
@@ -158,30 +159,30 @@ MD
     _R1="$OK"; _R2=""; _R3=""; _j
     echo "T1|$(tr -s '[:space:]' ' ' < "$_P.1")"
     echo "T2|${#_TA_CORR_FINDINGS[@]}|$_TA_CORR_OUTCOME|$(cat "$_N")"
-    _R1=$'DOCS-1: ok\nLOOP-1 And: missing | WHY: nothing asserts the outer round | QUOTE: "the outer loop is still at round 2"\n'; _j
+    _R1=$'DOCS-1: ok\nLOOP-1 And: missing | WHY: nothing asserts the outer round | ACCEPTED IF: it is accepted | QUOTE: "the outer loop is still at round 2"\n'; _j
     echo "T3|${#_TA_CORR_FINDINGS[@]}|$(tr '\036' '~' <<< "${_TA_CORR_FINDINGS[0]:-}")|$_TA_CORR_OUTCOME"
-    _R1=$'DOCS-1: ok\nLOOP-1 sections: missing | WHY: there is no Cleanup section\n'; _j
+    _R1=$'DOCS-1: ok\nLOOP-1 sections: missing | WHY: there is no Cleanup section | ACCEPTED IF: the test has Given, When, Then and Cleanup headings\n'; _j
     echo "T4|${#_TA_CORR_FINDINGS[@]}|${_TA_CORR_FINDINGS[0]:-}"
     # #2474: the sections line may quote the test file; the quote is checked.
-    _R1=$'DOCS-1: ok\nLOOP-1 sections: missing | WHY: the assertion is under Given | QUOTE: tests/loop-test.sh | # Given\n'; _j
+    _R1=$'DOCS-1: ok\nLOOP-1 sections: missing | WHY: the assertion is under Given | ACCEPTED IF: it is accepted | QUOTE: tests/loop-test.sh | # Given\n'; _j
     echo "T4b|$(cat "$_N")|${#_TA_CORR_FINDINGS[@]}|${_TA_CORR_FINDINGS[0]:-}"
-    _R1=$'DOCS-1: ok\nLOOP-1 sections: missing | WHY: x | QUOTE: tests/loop-test.sh:"# Arrange"\n'; _R2=$'LOOP-1: ok\n'; _j
+    _R1=$'DOCS-1: ok\nLOOP-1 sections: missing | WHY: x | ACCEPTED IF: it is accepted | QUOTE: tests/loop-test.sh:"# Arrange"\n'; _R2=$'LOOP-1: ok\n'; _j
     echo "T4c|$(cat "$_N")|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
     _R2=""
-    _R1=$'DOCS-1: ok\nLOOP-1 When: wrong | WHY: it enters the outer loop | QUOTE: "the inner loop is entered again"\n'; _j
+    _R1=$'DOCS-1: ok\nLOOP-1 When: wrong | WHY: it enters the outer loop | ACCEPTED IF: it is accepted | QUOTE: "the inner loop is entered again"\n'; _j
     echo "T5|${#_TA_CORR_FINDINGS[@]}|$(tr '\036' '~' <<< "${_TA_CORR_FINDINGS[0]:-}")"
     _R1=$'DOCS-1: ok\n'; _R2=$'LOOP-1: ok\n'; _j
     echo "T6|$(cat "$_N")|${#_TA_CORR_FINDINGS[@]}|$_TA_CORR_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
     _R1=$'DOCS-1: ok\n'; _R2="$_R1"; _R3="$_R1"; _j
     echo "T7|$(cat "$_N")|$_TA_CORR_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P.3" 2>/dev/null)"
-    _R1=$'DOCS-1: ok\nLOOP-1: untestable | WHY: no test can see the outer loop from outside | QUOTE: "the outer loop is still at round 2"\n'; _R2=""; _R3=""; _j
+    _R1=$'DOCS-1: ok\nLOOP-1: untestable | WHY: no test can see the outer loop from outside | ACCEPTED IF: it is accepted | QUOTE: "the outer loop is still at round 2"\n'; _R2=""; _R3=""; _j
     echo "T8|${_TA_CORR_UNTESTABLE:-}"
     # #2527 (#1805 run 43130129438): the check's quotes had no quote marks.
-    _R1=$'DOCS-1: ok\nLOOP-1 When: wrong | WHY: it enters the outer loop | QUOTE: the inner loop is entered again\n'; _R2=""; _R3=""; _j
+    _R1=$'DOCS-1: ok\nLOOP-1 When: wrong | WHY: it enters the outer loop | ACCEPTED IF: it is accepted | QUOTE: the inner loop is entered again\n'; _R2=""; _R3=""; _j
     echo "T11|$(cat "$_N")|${#_TA_CORR_FINDINGS[@]}|$(tr '\036' '~' <<< "${_TA_CORR_FINDINGS[0]:-}")|$_TA_CORR_OUTCOME"
-    _R1=$'DOCS-1: ok\nLOOP-1 And: missing | WHY: nothing asserts the outer round | QUOTE: the outer loop is still at round 2\n'; _j
+    _R1=$'DOCS-1: ok\nLOOP-1 And: missing | WHY: nothing asserts the outer round | ACCEPTED IF: it is accepted | QUOTE: the outer loop is still at round 2\n'; _j
     echo "T12|$(cat "$_N")|${#_TA_CORR_FINDINGS[@]}|$(tr '\036' '~' <<< "${_TA_CORR_FINDINGS[0]:-}")"
-    _R1=$'DOCS-1: ok\nLOOP-1: untestable | WHY: no test can see the outer loop from outside | QUOTE: the outer loop is still at round 2\n'; _j
+    _R1=$'DOCS-1: ok\nLOOP-1: untestable | WHY: no test can see the outer loop from outside | ACCEPTED IF: it is accepted | QUOTE: the outer loop is still at round 2\n'; _j
     echo "T13|$(tr '\036' '~' <<< "${_TA_CORR_UNTESTABLE:-}")"
     _R1="$OK"; _j
     echo "T9|$([[ "$(cat "$_P.1")" == *"  Then: the README says how to resume"* ]] && echo one-then)"
@@ -238,17 +239,32 @@ print_test_section "T8: a SPEC no test can prove ends the round"
         } > "$R/tests/acc-test.sh"
         _ROUTE_LOOP_TERMINATED_REASON=done_sentinel; _ROUTE_LOOP_LAST_RESPONSE=LOOP_COMPLETE; return 0
     }
-    route_to_model() { printf 'LOOP-1: untestable | WHY: round 1 cannot be seen from outside | QUOTE: "the inner loop is at round 1"\n'; }
+    route_to_model() { printf 'LOOP-1: untestable | WHY: round 1 cannot be seen from outside | ACCEPTED IF: it is accepted | QUOTE: "the inner loop is at round 1"\n'; }
     export ZBUILD_REPO_ROOT="$R" ZBUILD_EVENTS_JSONL="$d/events.jsonl"
     test_author_run test-author "$d/state/pipeline-state.json" >/dev/null 2>&1
     echo "T8b|$(jq -r '.outcome' "$A/test-author-result.json" 2>/dev/null)|$(jq -r '.reason' "$A/test-author-result.json" 2>/dev/null)"
     # shellcheck source=../../core/pipeline/verdict.sh
     source "$REPO_ROOT/core/pipeline/verdict.sh"
     echo "T8c|$(_verdict_report_from_file "$A/test-author-result.json" | jq -r '.ends_round // false')"
+    # #2569: the finding reaches design — test-author's design-findings output.
+    echo "T8d|$(jq -r '[.data.findings[]?.text] | join(" ")' "$A/test-author-design-result.json" 2>/dev/null)"
+    # Review on #2569: the same try answered one of its own findings not mine
+    # and changed nothing, so the engine's handoff writes to the same output —
+    # both reach design, neither overwrites the other.
+    source "$REPO_ROOT/core/plugin-registry/registry.sh"
+    _TA_ANSWERS=("test-author finding 1: not mine — design owns LOOP-1's Then")
+    _ta_write_result "$A" fail "LOOP-1 cannot be proven by any test" 1 \
+        "$(jq -c '.data.findings' "$A/test-author-result.json")" ends_round
+    export ZBUILD_ARTIFACT_DIR="$A"
+    stage_handoff_unchanged "$REPO_ROOT/plugins/agent/test-author" test-author "$d/state/pipeline-state.json"
+    echo "T8e|$(jq -r '[.data.findings[]? | "\(.n)=\(.text | .[0:22])"] | join(";")' "$A/test-author-design-result.json" 2>/dev/null)"
 ) > "$TEST_TEMP_DIR/t8.out" 2>/dev/null
 assert_contains "[T8] ...the try ends fail, not misconfigured: it does not stop the run" "$(_l "$TEST_TEMP_DIR/t8.out" T8b)" "fail|"
 assert_eq "[T8] ...and the engine reads it as ending the round" "true" "$(_l "$TEST_TEMP_DIR/t8.out" T8c)"
 assert_contains "[T8] ...naming the SPEC as design's to rewrite" "$(_l "$TEST_TEMP_DIR/t8.out" T8b)" "LOOP-1 cannot be proven by any test"
+assert_contains "[T8] ...and the SPEC no test can prove reaches design, in its design-findings output (#2569)" "$(_l "$TEST_TEMP_DIR/t8.out" T8d)" "LOOP-1"
+assert_contains "[T8] the SPEC no test can prove stays in that output when the try's handoff writes there too" "$(_l "$TEST_TEMP_DIR/t8.out" T8e)" "1=LOOP-1"
+assert_contains "[T8] ...beside what the handoff wrote, numbered after it" "$(_l "$TEST_TEMP_DIR/t8.out" T8e)" ";2=test-author changed no"
 
 print_test_section "T10: test-author's prompt"
 _tp="$(tr -s '[:space:]' ' ' < "$REPO_ROOT/plugins/agent/test-author/plugin.sh")"

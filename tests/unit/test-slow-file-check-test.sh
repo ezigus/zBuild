@@ -15,6 +15,9 @@
 # T4 [guard]  under the floor (a fast suite): no finding
 # T5 [guard]  no untouched file was measured (a targeted re-run): no finding
 # T6 [change] test's own checks fail the run on it, the finding in test's result
+# T7 [change] (#2569, ADR-071 §1) the test or the code it runs can fix it: it
+#             goes to test's test output (test-findings) and its code output
+#             (code-findings), and is in test's own result once
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -86,6 +89,12 @@ assert_eq "[T6] test fails" "fail" "$(jq -r '.outcome // "MISSING"' "$A/test-res
 assert_contains "[T6] ...with the finding in its result" \
     "$(jq -r '.data.findings[]?.text // empty' "$A/test-results.json")" "tests/new-test.sh"
 assert_contains "[T6] ...and its reason says why" "$(jq -r '.reason // ""' "$A/test-results.json")" "slower"
+assert_contains "[T7] the finding goes to test's test output" \
+    "$(jq -r '.data.findings[]?.text // empty' "$A/test-test-result.json" 2>/dev/null)" "tests/new-test.sh"
+assert_contains "[T7] ...and to its code output" \
+    "$(jq -r '.data.findings[]?.text // empty' "$A/test-code-result.json" 2>/dev/null)" "tests/new-test.sh"
+assert_eq "[T7] ...and is in test's own result once" "1" \
+    "$(jq -r '[.data.findings[]?.text | select(contains("tests/new-test.sh"))] | length' "$A/test-results.json" 2>/dev/null)"
 
 cleanup_test_env
 print_test_results
