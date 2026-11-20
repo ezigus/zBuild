@@ -1,0 +1,15 @@
+{
+  "stage": "release",
+  "cycle_iter": 2,
+  "attempt": 1,
+  "rc": "0",
+  "generated_at": "2026-11-20T20:16:13Z",
+  "files": 2,
+  "outputs": {
+    "teardown-result.json": "changed",
+    "teardown-summary.md": "unchanged",
+    "__notes__": "absent",
+    "__cutoff__": "absent"
+  },
+  "progress": false
+}
