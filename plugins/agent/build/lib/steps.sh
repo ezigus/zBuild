@@ -105,7 +105,7 @@ _build_steps_check() {
     local count=${#_BUILD_STEP_DESC[@]}
     (( count > 0 )) || return 0
     local joined l low n rest q _jqs_path _jqs_txt
-    local -A kind=() said=() qpath=() qtxt=()
+    local -A kind=() said=() qpath=() qtxt=() qune=()
     local re='^step[[:space:]]+([0-9]+)[[:space:]]*:[[:space:]]*(done|not[[:space:]]+needed)(.*)$'
     zb_reply_join_v joined "$reply"
     while IFS= read -r l; do
@@ -118,9 +118,14 @@ _build_steps_check() {
         kind[$n]="${BASH_REMATCH[2]%%[[:space:]]*}"; rest="${l:${#l}-${#BASH_REMATCH[3]}}"
         q=""; [[ "$rest" == *"| QUOTE:"* ]] && { q="${rest#*| QUOTE:}"; rest="${rest%%| QUOTE:*}"; }
         _build_steps_strip_v rest "$rest"; said[$n]="$rest"; _build_steps_strip_v q "$q"
-        qpath[$n]=""; qtxt[$n]=""
+        qpath[$n]=""; qtxt[$n]=""; qune[$n]=""
         if [[ "${kind[$n]}" == "done" ]] && _judge_quote_split "$q"; then
             qpath[$n]="${_jqs_path#"$repo"/}"; _build_steps_line_v "qtxt[$n]" "$_jqs_txt"
+            # #2573 (ADR-072 §3): the quote as written, and with its escapes
+            # read by the one un-escape step every quote check shares.
+            if [[ "$_jqs_txt" == *\\* ]]; then
+                _judge_unescape_v q "$_jqs_txt"; _build_steps_line_v "qune[$n]" "$q"
+            fi
         fi
     done <<< "$joined"
 
@@ -190,6 +195,8 @@ _build_steps_check() {
                 # One whole added line, not a piece of one (a `}` is in many).
                 [[ -n "${qtxt[$n]}" && $'\x1e'"${added[${qpath[$n]}]:-}" == *$'\x1e'"${qtxt[$n]}"$'\x1e'* ]] \
                     && { judged+=("$n"); continue; }
+                [[ -n "${qune[$n]}" && $'\x1e'"${added[${qpath[$n]}]:-}" == *$'\x1e'"${qune[$n]}"$'\x1e'* ]] \
+                    && { qtxt[$n]="${qune[$n]}"; judged+=("$n"); continue; }
             else
                 # No base to say what this branch added: the line is in the file.
                 judge_quote_check_v l "${qpath[$n]} | ${qtxt[$n]}" "" "$repo" && { judged+=("$n"); continue; }

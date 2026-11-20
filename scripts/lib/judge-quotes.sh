@@ -26,6 +26,15 @@ _judge_marks_v() {
     _jmk="${2//[*_\`\"\']/}"; _jmk="${_jmk//“/}"; _jmk="${_jmk//”/}"; _jmk="${_jmk//‘/}"; _jmk="${_jmk//’/}"
 }
 
+# _judge_unescape_v <var> <quote> — the quote with each escape a model writes
+# read as the character it stands for: \\ as one backslash, and a backslash
+# before any other character (\" \` \$ \|) left out (#2487, #2525). The one
+# un-escape step every quote check shares (#2573, ADR-072 §3).
+_judge_unescape_v() {
+    local -n _jue="$1"
+    _jue="${2//\\\\/$'\x01'}"; _jue="${_jue//\\/}"; _jue="${_jue//$'\x01'/\\}"
+}
+
 # _judge_holds <text> <quote> — rc 0 when <text> holds <quote>, spacing and
 # the marks _judge_marks_v leaves out aside (#2472: the issue wrote `stage *k*`,
 # the judge quoted "stage k", as it reads).
@@ -40,7 +49,7 @@ _judge_holds() {
     [[ -n "$_jh_q" ]] || return 1
     [[ " $_jh_t " == *"$_jh_q"* ]] && return 0
     [[ "$2" == *\\* ]] || return 1
-    _jh_u="${2//\\\\/$'\x01'}"; _jh_u="${_jh_u//\\/}"; _jh_u="${_jh_u//$'\x01'/\\}"
+    _judge_unescape_v _jh_u "$2"
     _judge_marks_v _jh_u "$_jh_u"; _judge_words_v _jh_u "$_jh_u"
     [[ -n "$_jh_u" && " $_jh_t " == *"$_jh_u"* ]]
 }
