@@ -1,6 +1,6 @@
 ## intake — pass
 
-- 23 requirement(s): RQCLA-1, RQCLA-2, RQCLA-3, RQCLA-4, RQCLA-5, RQCLA-6, RQCLA-7, RQCLA-8, RQCLA-9, RQCLA-10, RQLAB-1, RQLAB-2, RQADR-1, RQADR-2, RQADR-3, RQADR-4, RQADR-5, RQDOC-1, RQCLA-11, RQCLA-12, RQCLA-13, RQARC-1, RQARC-2; 2 limit(s): RQMECH-1, RQMECH-2
+- 25 requirement(s): RQCLA-1, RQCLA-2, RQCLA-3, RQCLA-4, RQCLA-5, RQCLA-6, RQCLA-7, RQCLA-8, RQCLA-9, RQCLA-10, RQLAB-1, RQLAB-2, RQADR-1, RQADR-2, RQADR-3, RQADR-4, RQADR-5, RQDOC-1, RQCLA-11, RQCLA-12, RQCLA-13, RQARC-1, RQARC-2, RQARC-3, RQCLA-14; 2 limit(s): RQMECH-1, RQMECH-2
 
 - RQCLA-1: When the issue has no `zbuild:claimed` label, the run adds it before the first stage dispatches
 - RQCLA-2: When the label is added, the run's run-status comment names the holder: run id and machine, or CI run URL
@@ -27,8 +27,9 @@
 - RQCLA-13: The coordinator's release hook removes the `zbuild:claimed` label
 - RQARC-1: The label calls (`gh issue edit`) are in `plugins/claim-coordinator/github-labels/`
 - RQARC-2: Nothing under `core/` calls `gh` for the label
+- RQARC-3: The engine claims and releases only through the claim coordinator's `claim` and `release` hooks, called through the plugin registry
+- RQCLA-14: A test that registers a stub claim coordinator sees its `claim` hook called before the first stage and its `release` hook called on exit.
 - the requirements changed since the last run:
-  - added: RQCLA-12 The coordinator's claim hook adds the `zbuild:claimed` label
-  - added: RQCLA-13 The coordinator's release hook removes the `zbuild:claimed` label
-  - added: RQARC-1 The label calls (`gh issue edit`) are in `plugins/claim-coordinator/github-labels/`
-  - added: RQARC-2 Nothing under `core/` calls `gh` for the label
+  - added: RQARC-3 The engine claims and releases only through the claim coordinator's `claim` and `release` hooks, called through the plugin registry
+  - added: RQCLA-14 A test that registers a stub claim coordinator sees its `claim` hook called before the first stage and its `release` hook called on exit.
+- note: RQARC-3 is not in the issue's words: "The engine claims and releases only through the claim coordinator's `claim` and `release` hooks, cal" — kept as the check wrote it
