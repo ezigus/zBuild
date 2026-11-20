@@ -55,14 +55,16 @@ print_test_header "fork budget: external execs of a mocked full run (#2151, ADR-
 setup_test_env "fork-budget"
 
 # #2573 (ADR-065 §2 amendment 2026-11-20): each budget is its last measure plus
-# a small margin. Run to run, every figure moves by one (465/298 a dispatch one
-# run, 464/297 the next; 1852 execs in all, then 1851 — the same tree), and the
+# a small margin. Run to run, every figure but the start-up moves by one either
+# way (464–466 / 297–299 a dispatch, 1850–1852 execs in all — the same tree), and the
 # budgets had been set to the exact measure, so the test failed now and then
-# with no change. The margin is set
-# from that noise: 2 a dispatch, 5 for a total. Each change that cuts cost
-# still lowers the measure written below, and the budget with it.
+# with no change. The margin is set from that noise: 2 a dispatch, 5 for the
+# run's totals; 1 for the start-up, which showed none. Each change that cuts
+# cost still lowers the measure written below, and the budget with it: SPEC-9
+# fails a budget more than its margin + 1 above the measure (review on #2573).
 BUDGET_MARGIN_TOTAL=5
 BUDGET_MARGIN_DISPATCH=2
+BUDGET_MARGIN_STARTUP=1
 
 # ADR-065 §2. Ratchets down only. History: 8000 (#2151, measured 7,128 macOS);
 # 4800 (#2152 manifest index, measured 4,335 macOS); 4600 (#1849 follow-up:
@@ -164,10 +166,12 @@ BUDGET_MARGIN_DISPATCH=2
 # output, then all the rest at once — not one an output until a match: renamed
 # output ids had moved the match further down the index. Measured on macOS:
 # 2399 processes and 1852 execs in all, 465 processes and 298 execs a dispatch.
-# #2573: measured on macOS, six runs of the same tree: 2394–2395 processes and
-# 1851–1852 execs in all; 464–465 processes and 297–298 execs a dispatch; 428
-# start-up processes and 232 execs. Budgets: the highest measure plus the margin.
-FORK_BUDGET=$(( 1852 + BUDGET_MARGIN_TOTAL ))
+# #2573: measured on macOS, nine runs of the same tree: 2393–2395 processes and
+# 1850–1852 execs in all; 464–466 processes and 297–299 execs a dispatch; 428
+# start-up processes and 232 execs every run. The written measure is the middle
+# of each range, so a run at either end stays within budget and within the
+# margin + 1 the SPEC-9 slack check allows. Budgets: that measure plus the margin.
+FORK_BUDGET=$(( 1851 + BUDGET_MARGIN_TOTAL ))
 # PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
 # the programs above plus each `$( )` subshell, a copy of the whole engine shell
 # that FORK_BUDGET cannot see. Ratchets down only, like FORK_BUDGET. History:
@@ -227,8 +231,8 @@ FORK_BUDGET=$(( 1852 + BUDGET_MARGIN_TOTAL ))
 # extractor in the shell (design_decisions_prose_v), not awk and sed. Measured
 # on macOS: 2399 processes and 1865 execs in all, 465 processes and 305 execs a
 # dispatch.
-# #2573: see FORK_BUDGET — 2395 processes, plus the margin.
-PROCESS_BUDGET=$(( 2395 + BUDGET_MARGIN_TOTAL ))
+# #2573: see FORK_BUDGET — 2394 processes, plus the margin.
+PROCESS_BUDGET=$(( 2394 + BUDGET_MARGIN_TOTAL ))
 # The run's cost in two parts (ADR-065 §6, #2472). Each budget ratchets down
 # like the totals; each floor is the goal, an estimate, measured again when
 # reached. History: 505 / 298 a dispatch, 12 / 7 a plugin at start-up (#2472 —
@@ -284,8 +288,8 @@ PROCESS_BUDGET=$(( 2395 + BUDGET_MARGIN_TOTAL ))
 # on macOS: 2399 processes and 1865 execs in all, 465 processes and 305 execs a
 # dispatch.
 # #2569: see FORK_BUDGET — 465 processes and 298 execs a dispatch.
-# #2573: see FORK_BUDGET — at most 465 and 298 a dispatch, 428 and 232 at
-# start-up, each plus its margin.
+# #2573: see FORK_BUDGET — 465 and 298 a dispatch (the middle of 464–466 and
+# 297–299), 428 and 232 at start-up, each plus its margin.
 DISPATCH_PROCS_BUDGET=$(( 465 + BUDGET_MARGIN_DISPATCH ))
 DISPATCH_PROCS_FLOOR=20
 DISPATCH_EXECS_BUDGET=$(( 298 + BUDGET_MARGIN_DISPATCH ))
@@ -293,8 +297,8 @@ DISPATCH_EXECS_FLOOR=50
 STARTUP_PROCS_PER_PLUGIN_BUDGET=11
 STARTUP_PROCS_PER_PLUGIN_FLOOR=1
 STARTUP_EXECS_PER_PLUGIN_BUDGET=6
-STARTUP_PROCS_BUDGET=$(( 428 + BUDGET_MARGIN_TOTAL ))
-STARTUP_EXECS_BUDGET=$(( 232 + BUDGET_MARGIN_TOTAL ))
+STARTUP_PROCS_BUDGET=$(( 428 + BUDGET_MARGIN_STARTUP ))
+STARTUP_EXECS_BUDGET=$(( 232 + BUDGET_MARGIN_STARTUP ))
 STARTUP_EXECS_PER_PLUGIN_FLOOR=1
 
 # ─── the harness and the counter (tests/lib/fork-census.sh) ────────────────
