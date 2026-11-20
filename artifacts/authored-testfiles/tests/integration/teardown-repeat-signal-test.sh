@@ -752,6 +752,106 @@ else
         "label still present in claim store after runner returned — zbuild_claim_release not called on early exit"
 fi
 
+# ── DSCLA-22: stub claim coordinator hook called before first stage and on exit ──
+#
+# Tests that when a stub claim-coordinator plugin is present in the
+# ZBUILD_PLUGINS_ROOT discovery tree, its claim hook is called before the
+# first stage dispatches and its release hook is called on runner exit.
+#
+# This test FAILS on base code: runner.sh never calls zbuild_claim_acquire,
+# so the stub's claim hook is never called and the stage's claim-present check
+# never writes the stage-started marker.
+
+# Given: a stub claim-coordinator plugin is present in the ZBUILD_PLUGINS_ROOT
+#        discovery tree; a run starts with an issue number
+_DSCLA22_ISSUE="90001772"
+_DSCLA22_CLAIM_CALLED="$TEST_TEMP_DIR/dscla22-claim-called"
+_DSCLA22_RELEASE_CALLED="$TEST_TEMP_DIR/dscla22-release-called"
+_DSCLA22_STAGE_STARTED="$TEST_TEMP_DIR/dscla22-stage-started"
+rm -f "$_DSCLA22_CLAIM_CALLED" "$_DSCLA22_RELEASE_CALLED" "$_DSCLA22_STAGE_STARTED"
+
+# Create stub claim-coordinator in the ZBUILD_PLUGINS_ROOT discovery tree
+_DSCLA22_STUB_DIR="$PLUGINS_ROOT/claim-coordinator/stub"
+mkdir -p "$_DSCLA22_STUB_DIR"
+cat > "$_DSCLA22_STUB_DIR/manifest.yaml" <<STUBMANI
+id: stub-claim-coordinator-dscla22
+name: Stub Claim Coordinator (DSCLA-22)
+kind: claim-coordinator
+version: 0.1.0
+hooks:
+  claim: stub_dscla22_claim
+  release: stub_dscla22_release
+  heartbeat: stub_dscla22_heartbeat
+  list_claims: stub_dscla22_list_claims
+provides:
+  role: claim-coordinator
+  alias: stub
+STUBMANI
+cat > "$_DSCLA22_STUB_DIR/plugin.sh" <<STUBPLUG
+stub_dscla22_claim() {
+    local _issue="\${1:-}"
+    : > "$_DSCLA22_CLAIM_CALLED"
+    printf '{"acquired": true, "lease_id": "stub:%s"}\n' "\$_issue"
+    return 0
+}
+stub_dscla22_release() {
+    : > "$_DSCLA22_RELEASE_CALLED"
+    return 0
+}
+stub_dscla22_heartbeat() { return 0; }
+stub_dscla22_list_claims() { echo '[]'; return 0; }
+STUBPLUG
+
+# Stage: writes started marker ONLY if claim was called first (proving ordering)
+cat > "$PLUGINS_ROOT/agent/outcome/plugin.sh" <<PLUG
+outcome_run() {
+    # Only write the stage-started marker if the stub's claim hook already fired
+    if [[ -e "$_DSCLA22_CLAIM_CALLED" ]]; then
+        : > "$_DSCLA22_STAGE_STARTED"
+    fi
+    local _art; _art="\${ZBUILD_ARTIFACT_DIR:-\$(dirname "\$2")/artifacts}"; mkdir -p "\$_art"
+    source "$_SRL"
+    stage_result_write "\$_art/outcome-result.json" "pass" "dscla22 ok"
+    return 0
+}
+PLUG
+
+_claim_prep "dscla22"
+
+# When: the run executes and exits normally
+( cd "$_CLAIM_REPO" && exec bash "$RUNNER" \
+    --issue "$_DSCLA22_ISSUE" --no-resume \
+    --template claim-test ) \
+    > "$TEST_TEMP_DIR/dscla22.out" 2>&1
+_dscla22_rc=$?
+
+# Then: the stub's claim hook is called before the first stage is dispatched
+# (stage-started marker is written only if claim marker exists when stage runs)
+if [[ -e "$_DSCLA22_CLAIM_CALLED" ]]; then
+    assert_pass "[DSCLA-22] stub's claim hook was called"
+else
+    assert_fail "[DSCLA-22] stub's claim hook was called" \
+        "claim marker not found; rc=$_dscla22_rc output=$(tail -5 "$TEST_TEMP_DIR/dscla22.out")"
+fi
+
+if [[ -e "$_DSCLA22_STAGE_STARTED" ]]; then
+    assert_pass "[DSCLA-22] stub's claim hook was called before the first stage dispatched"
+else
+    assert_fail "[DSCLA-22] stub's claim hook was called before the first stage dispatched" \
+        "stage did not see claim marker; rc=$_dscla22_rc output=$(tail -5 "$TEST_TEMP_DIR/dscla22.out")"
+fi
+
+# Then: the stub's release hook is called on exit
+if [[ -e "$_DSCLA22_RELEASE_CALLED" ]]; then
+    assert_pass "[DSCLA-22] stub's release hook was called on exit"
+else
+    assert_fail "[DSCLA-22] stub's release hook was called on exit" \
+        "release marker not found; rc=$_dscla22_rc output=$(tail -5 "$TEST_TEMP_DIR/dscla22.out")"
+fi
+
+# Cleanup: remove the stub so it does not affect other tests
+rm -rf "$_DSCLA22_STUB_DIR"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # End of DSCLA claim tests
 # ─────────────────────────────────────────────────────────────────────────────
