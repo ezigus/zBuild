@@ -33,6 +33,9 @@
 #         - per dispatch: the same run again with three more review lenses —
 #           the extra processes and execs over the extra dispatches.
 #         A stage or plugin added moves the totals, not these.
+# SPEC-9: each budget is its last measure plus a small margin (#2573, ADR-065
+#         §2 amendment 2026-11-20): run-to-run noise moves a figure by one, and a
+#         budget set to the exact measure failed now and then with no change.
 # SPEC-6: the worker pool's execs scale with its work units, not with how long
 #         they take: its poll sleep is exempt, and no counted pool line runs
 #         more than once per unit (#2236).
@@ -47,6 +50,16 @@ source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "fork budget: external execs of a mocked full run (#2151, ADR-065)"
 setup_test_env "fork-budget"
+
+# #2573 (ADR-065 §2 amendment 2026-11-20): each budget is its last measure plus
+# a small margin. Run to run, every figure moves by one (465/298 a dispatch one
+# run, 464/297 the next; 1852 execs in all, then 1851 — the same tree), and the
+# budgets had been set to the exact measure, so the test failed now and then
+# with no change. The margin is set
+# from that noise: 2 a dispatch, 5 for a total. Each change that cuts cost
+# still lowers the measure written below, and the budget with it.
+BUDGET_MARGIN_TOTAL=5
+BUDGET_MARGIN_DISPATCH=2
 
 # ADR-065 §2. Ratchets down only. History: 8000 (#2151, measured 7,128 macOS);
 # 4800 (#2152 manifest index, measured 4,335 macOS); 4600 (#1849 follow-up:
@@ -148,7 +161,10 @@ setup_test_env "fork-budget"
 # output, then all the rest at once — not one an output until a match: renamed
 # output ids had moved the match further down the index. Measured on macOS:
 # 2399 processes and 1852 execs in all, 465 processes and 298 execs a dispatch.
-FORK_BUDGET=1851
+# #2573: measured on macOS, six runs of the same tree: 2394–2395 processes and
+# 1851–1852 execs in all; 464–465 processes and 297–298 execs a dispatch; 428
+# start-up processes and 232 execs. Budgets: the highest measure plus the margin.
+FORK_BUDGET=$(( 1852 + BUDGET_MARGIN_TOTAL ))
 # PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
 # the programs above plus each `$( )` subshell, a copy of the whole engine shell
 # that FORK_BUDGET cannot see. Ratchets down only, like FORK_BUDGET. History:
@@ -208,7 +224,8 @@ FORK_BUDGET=1851
 # extractor in the shell (design_decisions_prose_v), not awk and sed. Measured
 # on macOS: 2399 processes and 1865 execs in all, 465 processes and 305 execs a
 # dispatch.
-PROCESS_BUDGET=2397
+# #2573: see FORK_BUDGET — 2395 processes, plus the margin.
+PROCESS_BUDGET=$(( 2395 + BUDGET_MARGIN_TOTAL ))
 # The run's cost in two parts (ADR-065 §6, #2472). Each budget ratchets down
 # like the totals; each floor is the goal, an estimate, measured again when
 # reached. History: 505 / 298 a dispatch, 12 / 7 a plugin at start-up (#2472 —
@@ -264,15 +281,17 @@ PROCESS_BUDGET=2397
 # on macOS: 2399 processes and 1865 execs in all, 465 processes and 305 execs a
 # dispatch.
 # #2569: see FORK_BUDGET — 465 processes and 298 execs a dispatch.
-DISPATCH_PROCS_BUDGET=465
+# #2573: see FORK_BUDGET — at most 465 and 298 a dispatch, 428 and 232 at
+# start-up, each plus its margin.
+DISPATCH_PROCS_BUDGET=$(( 465 + BUDGET_MARGIN_DISPATCH ))
 DISPATCH_PROCS_FLOOR=20
-DISPATCH_EXECS_BUDGET=298
+DISPATCH_EXECS_BUDGET=$(( 298 + BUDGET_MARGIN_DISPATCH ))
 DISPATCH_EXECS_FLOOR=50
 STARTUP_PROCS_PER_PLUGIN_BUDGET=11
 STARTUP_PROCS_PER_PLUGIN_FLOOR=1
 STARTUP_EXECS_PER_PLUGIN_BUDGET=6
-STARTUP_PROCS_BUDGET=428
-STARTUP_EXECS_BUDGET=232
+STARTUP_PROCS_BUDGET=$(( 428 + BUDGET_MARGIN_TOTAL ))
+STARTUP_EXECS_BUDGET=$(( 232 + BUDGET_MARGIN_TOTAL ))
 STARTUP_EXECS_PER_PLUGIN_FLOOR=1
 
 # ─── the harness and the counter (tests/lib/fork-census.sh) ────────────────
@@ -444,6 +463,12 @@ assert_eq "[SPEC-8] ${_sE} start-up execs ≤ STARTUP_EXECS_BUDGET ${STARTUP_EXE
 echo "  start-up per plugin: ${_spp} processes (target ${STARTUP_PROCS_PER_PLUGIN_BUDGET}), ${_spe} execs (target ${STARTUP_EXECS_PER_PLUGIN_BUDGET})"
 assert_eq "[SPEC-8] each floor is below its budget: the goal still ahead" "1" \
     "$(( DISPATCH_PROCS_FLOOR < DISPATCH_PROCS_BUDGET && DISPATCH_EXECS_FLOOR < DISPATCH_EXECS_BUDGET && STARTUP_PROCS_PER_PLUGIN_FLOOR < STARTUP_PROCS_PER_PLUGIN_BUDGET && STARTUP_EXECS_PER_PLUGIN_FLOOR < STARTUP_EXECS_PER_PLUGIN_BUDGET ))"
+
+# ─── SPEC-9: a small margin above the measure ───────────────────────────────
+print_test_section "SPEC-9: each budget sits a small margin above its measure"
+_mt="${BUDGET_MARGIN_TOTAL:-0}" _md="${BUDGET_MARGIN_DISPATCH:-0}"
+assert_eq "[SPEC-9] the totals' margin is above 0 and at most 5 (${_mt})" "1" "$(( _mt > 0 && _mt <= 5 ))"
+assert_eq "[SPEC-9] the per-dispatch margin is above the noise of 1 and at most 2 (${_md})" "1" "$(( _md > 1 && _md <= 2 ))"
 
 cleanup_test_env
 print_test_results

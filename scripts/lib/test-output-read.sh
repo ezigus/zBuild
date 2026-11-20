@@ -23,8 +23,11 @@ _ZBUILD_TEST_OUTPUT_READ_LOADED=1
 # The canonical lines zb_test_output_normalize writes, for a reader's block
 # logic. A marker that names a file has the file as its third word; one that
 # names none has its words in brackets, `lint: FAIL (npm run lint)`.
+# shellcheck disable=SC2034  # read by the sourcing readers
 ZB_TEST_MARKER_ERE='^[A-Za-z0-9_-]+: (FAIL|TIMEOUT) '
+# shellcheck disable=SC2034
 ZB_TEST_MARKER_FILE_ERE='^[A-Za-z0-9_-]+: (FAIL|TIMEOUT) [^(]'
+# shellcheck disable=SC2034
 ZB_TEST_TALLY_ERE='^[A-Za-z0-9_-]+: [0-9]+/[0-9]+ passed'
 
 # zb_test_output_normalize <raw> [staging_dir] — the output with colour codes
