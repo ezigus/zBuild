@@ -95,7 +95,7 @@ _judge_topic_receivers_v() {
     _jtr=""
     [[ $# -gt 0 ]] || return 0
     _judge_run_stages_v stages
-    [[ -n "$self" && " ${stages[*]:-} " == *" $self "* ]] && before=1
+    local IFS=$' \t\n'; [[ -n "$self" && " ${stages[*]:-} " == *" $self "* ]] && before=1
     root="${mf%/manifest.yaml}"; root="${root%/*}"; root="${root%/*}"
     for s in ${stages[@]+"${stages[@]}"}; do
         (( before )) && [[ "$s" == "$self" ]] && break

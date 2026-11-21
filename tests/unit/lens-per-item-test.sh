@@ -28,6 +28,9 @@
 #              and may find something only on a line added since; a finding
 #              quoting a line that was there is not taken (judge.held), one
 #              quoting a line added since is, shown the finding and the answer
+# LP12 [change] (CI on #2574) which files are asked does not hang on the
+#              caller's IFS: under IFS=, the first call still reviews each
+#              file, and a file's finding is kept
 # LP4 [change] the next try gives no answer and nothing changed: no call — the
 #              kept reports stand
 # LP5 [change] an answer to a finding about a file whose kept report found
@@ -245,6 +248,15 @@ printf 'read_cfg "$2"\n' >> "$XR/a.sh"; _commit "a, a new unchecked read"
 FINDINGS="[${FA/read_cfg \\\"\$1\\\"/read_cfg \\\"\$2\\\"}]"
 _lens
 assert_contains "[LP11] a finding quoting a line added since is taken" "$MSGS" "read unchecked"
+
+print_test_section "LP12: the caller's IFS"
+# b.sh was moved to c.sh above.
+rm -f "$ART/lens-red-team-judged.json"; FINDINGS="[${FB/\"b.sh\"/\"c.sh\"}]"
+_ifs_lens() { local IFS=,; _lens; }
+_ifs_lens
+assert_contains "[LP12] under IFS=, c.sh's finding is kept" "$MSGS" "b is set twice"
+_keys="$(jq -r 'keys | join(" ")' "$ART/lens-red-team-judged.json" 2>/dev/null)"
+assert_contains "[LP12] ...and a report is kept for each file" " $_keys " " a.sh c.sh "
 
 cleanup_test_env
 print_test_results

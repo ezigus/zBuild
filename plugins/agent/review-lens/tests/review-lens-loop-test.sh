@@ -30,6 +30,10 @@ export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 mkdir -p "$ZBUILD_EVENTS_DIR"
+# The change is the round's patch alone, wherever the test is run from (CI on
+# #2574): a folder that is no repository has no starting commit, so the lens
+# is pointed at the patch, as on a checkout with no history.
+export ZBUILD_REPO_ROOT="$TEST_TEMP_DIR/no-repo"; mkdir -p "$ZBUILD_REPO_ROOT"
 
 # shellcheck source=../../../../core/plugin-registry/registry.sh
 source "$REPO_ROOT/core/plugin-registry/registry.sh"

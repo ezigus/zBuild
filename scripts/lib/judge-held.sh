@@ -237,7 +237,7 @@ source "${BASH_SOURCE[0]%/*}/judge-handoff.sh"
 # words changed, it is judged afresh.
 judge_pass_entries_v() {
     local -n _jpe="$1" _jpe_e="$2" _jpe_w="$3"; local _jpe_words="$4" _jpe_whys=" $5 " _jpe_i _jpe_p
-    local -a _jpe_wa=(); read -ra _jpe_wa <<< "$_jpe_words"
+    local -a _jpe_wa=(); IFS=$' \t\n' read -ra _jpe_wa <<< "$_jpe_words"
     shift 5
     _jpe=""; _JUDGE_QUOTE_KEPT=()
     for _jpe_i in "$@"; do
@@ -382,7 +382,7 @@ judge_pass_flip_ok() {
 judge_pass_hold_lines() {
     local kf="$1" it="$2" repo="$3" earlier="$4" words="$6" l q
     local -n _jphl="$5"
-    local -a wa=() qs=(); read -ra wa <<< "$words"
+    local -a wa=() qs=(); IFS=$' \t\n' read -ra wa <<< "$words"
     judge_refused "$earlier" ${wa[@]+"${wa[@]}"} && return 1
     judge_refused "$_jphl" ${wa[@]+"${wa[@]}"} || return 1
     while IFS= read -r l; do judge_reply_field_v q "$l" QUOTE; [[ -n "$q" ]] && qs+=("$q"); done <<< "$_jphl"

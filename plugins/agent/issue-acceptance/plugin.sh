@@ -275,6 +275,8 @@ _ia_write() {
 # ADR-054 §4: rc is binary; the verdict lives in the result.
 _IA_ANSWERS=() _IA_ANS_KNOWN=0
 issue_acceptance_run() {
+    # The check splits its item lists on blanks, whatever its caller's IFS.
+    local IFS=$' \t\n'
     local stage_id="${1:-issue-acceptance}"; : "$stage_id"
     _IA_ANSWERS=(); _IA_ANS_KNOWN=0; _IA_HANDOFF_NOTES=""
     local state_file="${2:-}"

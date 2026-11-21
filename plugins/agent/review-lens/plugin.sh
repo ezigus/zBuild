@@ -111,6 +111,7 @@ review_lens_run() {
 #       starting commit is known  $4=out lens-<name>.json
 #       $5=(optional) artifact dir for the intermediate redacted prompt
 _review_lens_run_inner() {
+    local IFS=$' \t\n'   # item lists split on blanks, whatever the caller's IFS
     # $2 (the scope manifest) is the redaction allow-list, not the plan; there
     # is no planned scope since #2508 (design names no files).
     # Redaction of the assembled prompt is the router's, by construction (ADR-043).

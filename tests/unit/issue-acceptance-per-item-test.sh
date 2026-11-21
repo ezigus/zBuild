@@ -10,6 +10,8 @@
 # unless that requirement's inputs changed, an answer only has a kept refusal
 # judged again (held to its finding), and only the changed items are asked, in
 # one call.
+# PI11 (CI on #2574): which requirements are asked does not hang on the
+# caller's IFS: under IFS=, a fresh call asks each one and keeps a verdict each
 #
 # PI1 [change] the first call judges every requirement in one call, and keeps
 #              a verdict for each
@@ -248,6 +250,15 @@ FLAG='UNMET: [fix-code] RQFLAG-1 | WHY: the check is gone | ACCEPTED IF: the fla
 _ia
 assert_contains "[PI10] the judge is given the diff since its verdict" "$(_flat "$_P.1")" "p.sh changed since: git diff"
 assert_eq "[PI10] the removed line, quoted as it was: refused" "fail" "$OUT"
+
+print_test_section "PI11: the caller's IFS"
+rm -f "$A/issue-acceptance-judged.json"; FLAG="MET: RQFLAG-1"; CNFG="$REFUSE"
+_ifs_ia() { local IFS=,; _ia; }
+_ifs_ia
+assert_eq "[PI11] under IFS=, RQFLAG-1 is asked" "1" "$(_asked RQFLAG-1)"
+assert_eq "[PI11] ...RQCNFG-1 too, and it fails the check" "1 fail" "$(_asked RQCNFG-1) $OUT"
+_keys="$(jq -r 'keys | join(" ")' "$A/issue-acceptance-judged.json" 2>/dev/null)"
+assert_contains "[PI11] ...a verdict is kept for each" "$_keys" "RQCNFG-1 RQFLAG-1"
 
 cleanup_test_env
 print_test_results
