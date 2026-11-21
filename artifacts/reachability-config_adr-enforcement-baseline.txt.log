@@ -50,17 +50,16 @@
   [38;2;74;222;128m✓[0m [DSCLA-20] label removed has no hostname component (zbuild:claimed, not claimed:<host>)
 [event-bus] WARN: unknown event type 'plugin.claim.start' (run_id=run-dscla2-123)
 [event-bus] WARN: unknown event type 'plugin.claim.complete' (run_id=run-dscla2-123)
-  [38;2;74;222;128m✓[0m [DSCLA-19] coordinator's claim hook was called (zbuild:claimed in claim store)
+  [38;2;74;222;128m✓[0m [DSCLA-19] coordinator's claim hook was called with the issue number
   [38;2;74;222;128m✓[0m [DSCLA-19] gh is not invoked directly within zbuild_claim_acquire
 [event-bus] WARN: unknown event type 'plugin.release.start' (run_id=run-dscla2-123)
 [event-bus] WARN: unknown event type 'plugin.release.complete' (run_id=run-dscla2-123)
   [38;2;74;222;128m✓[0m [DSCLA-21] coordinator's release hook was called (zbuild:claimed removed from claim store)
   [38;2;74;222;128m✓[0m [DSCLA-21] gh is not invoked directly within zbuild_claim_release
-  [38;2;74;222;128m✓[0m core/claim/claim.sh is listed in config/shape-change-paths.txt
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 37 tests passed[0m
+  [38;2;74;222;128m[1mAll 36 tests passed[0m
 
 ### config/adr-enforcement-baseline.txt head plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
 
@@ -114,17 +113,16 @@
   [38;2;74;222;128m✓[0m [DSCLA-20] label removed has no hostname component (zbuild:claimed, not claimed:<host>)
 [event-bus] WARN: unknown event type 'plugin.claim.start' (run_id=run-dscla2-123)
 [event-bus] WARN: unknown event type 'plugin.claim.complete' (run_id=run-dscla2-123)
-  [38;2;74;222;128m✓[0m [DSCLA-19] coordinator's claim hook was called (zbuild:claimed in claim store)
+  [38;2;74;222;128m✓[0m [DSCLA-19] coordinator's claim hook was called with the issue number
   [38;2;74;222;128m✓[0m [DSCLA-19] gh is not invoked directly within zbuild_claim_acquire
 [event-bus] WARN: unknown event type 'plugin.release.start' (run_id=run-dscla2-123)
 [event-bus] WARN: unknown event type 'plugin.release.complete' (run_id=run-dscla2-123)
   [38;2;74;222;128m✓[0m [DSCLA-21] coordinator's release hook was called (zbuild:claimed removed from claim store)
   [38;2;74;222;128m✓[0m [DSCLA-21] gh is not invoked directly within zbuild_claim_release
-  [38;2;74;222;128m✓[0m core/claim/claim.sh is listed in config/shape-change-paths.txt
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 37 tests passed[0m
+  [38;2;74;222;128m[1mAll 36 tests passed[0m
 
 ### config/adr-enforcement-baseline.txt reverted tests/integration/teardown-repeat-signal-test.sh
 
@@ -243,7 +241,7 @@ lint-adr-enforced-by: 1 problem(s) among 70 live ADR(s)
   [38;2;74;222;128m✓[0m [#1951/SPEC-5] ADR-001-plugin-contract.md is not in config/adr-enforcement-baseline.txt
   [38;2;74;222;128m✓[0m [#1764/DSADR-7] ADR-005-claim-coordinator.md carries an ## Enforced by section
   [38;2;248;113;113m✗[0m [#1764/DSADR-7] ADR-005-claim-coordinator.md must be removed from config/adr-enforcement-baseline.txt
-    [2mADR-005 still listed in /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.TTWR4H/config/adr-enforcement-baseline.txt; remove the entry once the ## Enforced by section is added[0m
+    [2mADR-005 still listed in /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.cIv7Hp/config/adr-enforcement-baseline.txt; remove the entry once the ## Enforced by section is added[0m
 
 [2m  ──────────────────────────────────────────[0m
 

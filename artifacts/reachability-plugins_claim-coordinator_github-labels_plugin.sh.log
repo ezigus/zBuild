@@ -13,44 +13,48 @@
   [38;2;74;222;128m✓[0m list_claims returns [] after release
 {"acquired": true, "lease_id": "test-machine-1:99"}
   [38;2;74;222;128m✓[0m claim_coordinator_heartbeat → rc=0
-/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.6HFYre/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: line 114: zbuild_claim_acquire: command not found
+[event-bus] WARN: unknown event type 'plugin.claim.start' (run_id=test-run-dscla1)
+[event-bus] WARN: unknown event type 'plugin.claim.complete' (run_id=test-run-dscla1)
   [38;2;248;113;113m✗[0m [DSCLA-1] zbuild_claim_acquire returns 0 when zbuild:claimed is absent
-    [2mexpected: 0, got: 127[0m
+    [2mexpected: 0, got: 1[0m
   [38;2;248;113;113m✗[0m [DSCLA-1] gh is called to add zbuild:claimed to the issue
-    [2mcalls recorded: [0m
-  [38;2;74;222;128m✓[0m [DSCLA-1] label is exactly zbuild:claimed with no hostname suffix
-/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.6HFYre/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: line 178: zbuild_claim_acquire: command not found
+    [2mcalls recorded: issue ⏎ view ⏎ 1001 ⏎ --json ⏎ labels ⏎ --jq ⏎ .labels[].name ⏎ issue ⏎ edit ⏎ 1001 ⏎ --add-label ⏎ claimed:test-machine-dscla1 ⏎ issue ⏎ view ⏎ 1001 ⏎ --json ⏎ labels ⏎ --jq ⏎ .labels[].name[0m
+  [38;2;248;113;113m✗[0m [DSCLA-1] label is exactly zbuild:claimed with no hostname suffix
+    [2mhostname-specific label found: claimed:test-machine-dscla1[0m
+[event-bus] WARN: unknown event type 'plugin.claim.start' (run_id=run-dscla2-123)
+[event-bus] WARN: unknown event type 'plugin.claim.complete' (run_id=run-dscla2-123)
   [38;2;248;113;113m✗[0m [DSCLA-2] zbuild_claim_acquire returns 0 (claim acquired via gh)
-    [2mexpected: 0, got: 127[0m
+    [2mexpected: 0, got: 1[0m
   [38;2;248;113;113m✗[0m [DSCLA-2] gh called with zbuild:claimed label
-    [2mcalls recorded: [0m
-  [38;2;74;222;128m✓[0m [DSCLA-2] label has no hostname component (machine-specific label not used)
+    [2mcalls recorded: issue ⏎ view ⏎ 1002 ⏎ --json ⏎ labels ⏎ --jq ⏎ .labels[].name ⏎ issue ⏎ edit ⏎ 1002 ⏎ --add-label ⏎ claimed:testmachine-dscla2 ⏎ issue ⏎ view ⏎ 1002 ⏎ --json ⏎ labels ⏎ --jq ⏎ .labels[].name[0m
+  [38;2;248;113;113m✗[0m [DSCLA-2] label has no hostname component (machine-specific label not used)
+    [2mhostname-specific label found: claimed:testmachine-dscla2[0m
   [38;2;74;222;128m✓[0m [DSCLA-2] gh issue comment was NOT called (holder goes into run-status comment)
   [38;2;248;113;113m✗[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains run_id after successful acquire
     [2m_ZBUILD_CLAIM_HOLDER='' (expected to contain 'run-dscla2-123')[0m
   [38;2;248;113;113m✗[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains machine name after successful acquire
     [2m_ZBUILD_CLAIM_HOLDER='' (expected to contain 'testmachine-dscla2')[0m
   [38;2;74;222;128m✓[0m [DSCLA-2] run-status comment header contains <!-- zbuild-holder: run_id=<id> machine=<hostname> -->
-/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.6HFYre/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: line 273: zbuild_claim_acquire: command not found
+[event-bus] WARN: unknown event type 'plugin.claim.start' (run_id=run-dscla2-123)
+[event-bus] WARN: unknown event type 'plugin.claim.complete' (run_id=run-dscla2-123)
   [38;2;248;113;113m✗[0m [DSCLA-2] zbuild_claim_acquire returns 0 (CI mode)
-    [2mexpected: 0, got: 127[0m
+    [2mexpected: 0, got: 1[0m
   [38;2;248;113;113m✗[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains CI run URL when GITHUB_ACTIONS=true
-    [2m_ZBUILD_CLAIM_HOLDER='run_id=run-dscla2-123 machine=testmachine-dscla2' (expected CI URL with 99887766 or testowner/testrepo)[0m
+    [2m_ZBUILD_CLAIM_HOLDER='' (expected CI URL with 99887766 or testowner/testrepo)[0m
   [38;2;74;222;128m✓[0m [DSCLA-12] rendered header contains <!-- zbuild-holder: CI_URL -->
-/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.6HFYre/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: line 331: zbuild_claim_acquire: command not found
+[event-bus] WARN: unknown event type 'plugin.claim.start' (run_id=run-dscla2-123)
+[event-bus] WARN: unknown event type 'plugin.claim.complete' (run_id=run-dscla2-123)
   [38;2;248;113;113m✗[0m [DSCLA-3] zbuild_claim_acquire returns 1 when zbuild:claimed is present
-    [2mexpected: 1, got: 127[0m
-/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.6HFYre/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: line 355: zbuild_claim_acquire: command not found
+    [2mexpected: 1, got: 0[0m
+[event-bus] WARN: unknown event type 'plugin.claim.start' (run_id=run-dscla2-123)
+[event-bus] WARN: unknown event type 'plugin.claim.complete' (run_id=run-dscla2-123)
   [38;2;248;113;113m✗[0m zbuild_claim_acquire returns 1 when issue already claimed (pre-stage check)
-    [2mexpected: 1, got: 127[0m
-  [38;2;248;113;113m✗[0m _ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim
-    [2m_ZBUILD_CLAIM_HOLDER was empty or unset[0m
+    [2mexpected: 1, got: 0[0m
+  [38;2;74;222;128m✓[0m _ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim
   [38;2;248;113;113m✗[0m _ZBUILD_CLAIM_HOLDER contains holder string from run-status comment
-    [2m_ZBUILD_CLAIM_HOLDER='' (expected to contain 'run-holder-99')[0m
-/home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.6HFYre/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: line 396: zbuild_claim_acquire: command not found
+    [2m_ZBUILD_CLAIM_HOLDER='run_id=run-dscla2-123 machine=testmachine-dscla2' (expected to contain 'run-holder-99')[0m
   [38;2;74;222;128m✓[0m [DSCLA-8] no gh calls made for empty issue
-  [38;2;248;113;113m✗[0m [DSCLA-8] zbuild_claim_acquire returns 0 for empty issue
-    [2mexpected: 0, got: 127[0m
+  [38;2;74;222;128m✓[0m [DSCLA-8] zbuild_claim_acquire returns 0 for empty issue
   [38;2;74;222;128m✓[0m [DSCLA-17] no gh calls made when _ZBUILD_CLAIM_ACQUIRED is not set
   [38;2;74;222;128m✓[0m [DSCLA-10] event-schema emitted-coverage check does not report pipeline.refused.claimed as unregistered (failed for other reasons)
 {"acquired": false, "lease_id": "test-machine-dscla18:2018", "reason": "our_label_missing_after_add"}
@@ -64,39 +68,36 @@
     [2mhostname-specific label found in calls: claimed:test-machine-dscla20[0m
 [event-bus] WARN: unknown event type 'plugin.claim.start' (run_id=run-dscla2-123)
 [event-bus] WARN: unknown event type 'plugin.claim.complete' (run_id=run-dscla2-123)
-  [38;2;248;113;113m✗[0m [DSCLA-19] coordinator's claim hook was called (zbuild:claimed in claim store)
-    [2mzbuild:claimed not found in /home/runner/work/_temp/zbuild-state/scratch/test/claim-coordinator-unit.aOwVBH/claim-store/2019/labels.txt; contents: claimed:test-machine-dscla20[0m
+  [38;2;74;222;128m✓[0m [DSCLA-19] coordinator's claim hook was called with the issue number
   [38;2;74;222;128m✓[0m [DSCLA-19] gh is not invoked directly within zbuild_claim_acquire
 [event-bus] WARN: unknown event type 'plugin.release.start' (run_id=run-dscla2-123)
 [event-bus] WARN: unknown event type 'plugin.release.complete' (run_id=run-dscla2-123)
   [38;2;248;113;113m✗[0m [DSCLA-21] coordinator's release hook was called (zbuild:claimed removed from claim store)
-    [2mzbuild:claimed still present in /home/runner/work/_temp/zbuild-state/scratch/test/claim-coordinator-unit.aOwVBH/claim-store/2021/labels.txt after zbuild_claim_release[0m
+    [2mzbuild:claimed still present in /home/runner/work/_temp/zbuild-state/scratch/test/claim-coordinator-unit.0abhMc/claim-store/2021/labels.txt after zbuild_claim_release[0m
   [38;2;74;222;128m✓[0m [DSCLA-21] gh is not invoked directly within zbuild_claim_release
-  [38;2;74;222;128m✓[0m core/claim/claim.sh is listed in config/shape-change-paths.txt
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m20 of 37 tests failed[0m
+  [38;2;248;113;113m[1m19 of 36 tests failed[0m
 
   [38;2;248;113;113m✗[0m label is exactly zbuild:claimed (no machine name)
   [38;2;248;113;113m✗[0m [DSCLA-1] zbuild_claim_acquire returns 0 when zbuild:claimed is absent
   [38;2;248;113;113m✗[0m [DSCLA-1] gh is called to add zbuild:claimed to the issue
+  [38;2;248;113;113m✗[0m [DSCLA-1] label is exactly zbuild:claimed with no hostname suffix
   [38;2;248;113;113m✗[0m [DSCLA-2] zbuild_claim_acquire returns 0 (claim acquired via gh)
   [38;2;248;113;113m✗[0m [DSCLA-2] gh called with zbuild:claimed label
+  [38;2;248;113;113m✗[0m [DSCLA-2] label has no hostname component (machine-specific label not used)
   [38;2;248;113;113m✗[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains run_id after successful acquire
   [38;2;248;113;113m✗[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains machine name after successful acquire
   [38;2;248;113;113m✗[0m [DSCLA-2] zbuild_claim_acquire returns 0 (CI mode)
   [38;2;248;113;113m✗[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains CI run URL when GITHUB_ACTIONS=true
   [38;2;248;113;113m✗[0m [DSCLA-3] zbuild_claim_acquire returns 1 when zbuild:claimed is present
   [38;2;248;113;113m✗[0m zbuild_claim_acquire returns 1 when issue already claimed (pre-stage check)
-  [38;2;248;113;113m✗[0m _ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim
   [38;2;248;113;113m✗[0m _ZBUILD_CLAIM_HOLDER contains holder string from run-status comment
-  [38;2;248;113;113m✗[0m [DSCLA-8] zbuild_claim_acquire returns 0 for empty issue
   [38;2;248;113;113m✗[0m [DSCLA-18] gh issue edit is called to add zbuild:claimed
   [38;2;248;113;113m✗[0m [DSCLA-18] label added has no hostname component (zbuild:claimed, not claimed:<host>)
   [38;2;248;113;113m✗[0m [DSCLA-20] gh issue edit is called to remove zbuild:claimed
   [38;2;248;113;113m✗[0m [DSCLA-20] label removed has no hostname component (zbuild:claimed, not claimed:<host>)
-  [38;2;248;113;113m✗[0m [DSCLA-19] coordinator's claim hook was called (zbuild:claimed in claim store)
   [38;2;248;113;113m✗[0m [DSCLA-21] coordinator's release hook was called (zbuild:claimed removed from claim store)
 
 ### plugins/claim-coordinator/github-labels/plugin.sh head plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
@@ -151,15 +152,14 @@
   [38;2;74;222;128m✓[0m [DSCLA-20] label removed has no hostname component (zbuild:claimed, not claimed:<host>)
 [event-bus] WARN: unknown event type 'plugin.claim.start' (run_id=run-dscla2-123)
 [event-bus] WARN: unknown event type 'plugin.claim.complete' (run_id=run-dscla2-123)
-  [38;2;74;222;128m✓[0m [DSCLA-19] coordinator's claim hook was called (zbuild:claimed in claim store)
+  [38;2;74;222;128m✓[0m [DSCLA-19] coordinator's claim hook was called with the issue number
   [38;2;74;222;128m✓[0m [DSCLA-19] gh is not invoked directly within zbuild_claim_acquire
 [event-bus] WARN: unknown event type 'plugin.release.start' (run_id=run-dscla2-123)
 [event-bus] WARN: unknown event type 'plugin.release.complete' (run_id=run-dscla2-123)
   [38;2;74;222;128m✓[0m [DSCLA-21] coordinator's release hook was called (zbuild:claimed removed from claim store)
   [38;2;74;222;128m✓[0m [DSCLA-21] gh is not invoked directly within zbuild_claim_release
-  [38;2;74;222;128m✓[0m core/claim/claim.sh is listed in config/shape-change-paths.txt
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 37 tests passed[0m
+  [38;2;74;222;128m[1mAll 36 tests passed[0m
 

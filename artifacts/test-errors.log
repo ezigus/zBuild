@@ -1,49 +1,17 @@
-unit: FAIL tests/e2e/claim-race-test.sh
+e2e: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zocGNj/tests/e2e/parity-local-vs-ci-test.sh
 
-[38;2;0;212;255m[1m  claim-coordinator race (ADR-005, issue #308)[0m
-[2m  ══════════════════════════════════════════[0m
+  CI/CLI parity — engine behavior is environmentally agnostic (ADR-010)
+  ══════════════════════════════════════════
 
-  [38;2;74;222;128m✓[0m github-labels manifest validates as claim-coordinator
-
-  [38;2;0;212;255m1. 3-way race: exactly-one-winner invariant[0m
-  [38;2;74;222;128m✓[0m 3-way race: no backend errors
-  [38;2;74;222;128m✓[0m 3-way race: no JSON parse errors
-  [38;2;248;113;113m✗[0m 3-way race must produce ≤1 winner
-    [2mgot 3 winners[0m
-
-  [38;2;0;212;255m2. solo claim always wins[0m
-  [38;2;74;222;128m✓[0m solo claimant always wins
-
-  [38;2;0;212;255m3. losers do not leave orphaned claimed:* labels[0m
-  [38;2;74;222;128m✓[0m 4-way race: no backend errors
-  [38;2;74;222;128m✓[0m ≤1 claimed:* label remains after race (0 present)
-
-  [38;2;0;212;255m4. release removes the holder's label[0m
-  [38;2;74;222;128m✓[0m release removed claimed:releaser label
-
-  [38;2;0;212;255m5. list_claims emits JSON array of current holders[0m
-  [38;2;74;222;128m✓[0m list_claims contains the claimed issue
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;248;113;113m[1m1 of 9 tests failed[0m
-
-  [38;2;248;113;113m✗[0m 3-way race must produce ≤1 winner
-
-unit: FAIL tests/e2e/parity-local-vs-ci-test.sh
-
-[38;2;0;212;255m[1m  CI/CLI parity — engine behavior is environmentally agnostic (ADR-010)[0m
-[2m  ══════════════════════════════════════════[0m
-
-  [38;2;74;222;128m✓[0m fixture script exists and is executable
-  [38;2;74;222;128m✓[0m fixture runs exit 0 in local mode
-  [38;2;74;222;128m✓[0m pipeline-state.json created (local)
-  [38;2;74;222;128m✓[0m events.jsonl created (local)
-  [38;2;74;222;128m✓[0m fixture runs exit 0 in CI mode
-  [38;2;74;222;128m✓[0m local run pipeline status=complete
-  [38;2;74;222;128m✓[0m CI run pipeline status=complete
-  [38;2;74;222;128m✓[0m event type sequence identical in local and CI modes
-  [38;2;74;222;128m✓[0m stage_statuses identical in local and CI modes
+  ✓ fixture script exists and is executable
+  ✓ fixture runs exit 0 in local mode
+  ✓ pipeline-state.json created (local)
+  ✓ events.jsonl created (local)
+  ✓ fixture runs exit 0 in CI mode
+  ✓ local run pipeline status=complete
+  ✓ CI run pipeline status=complete
+  ✓ event type sequence identical in local and CI modes
+  ✓ stage_statuses identical in local and CI modes
   [golden] DIFF for parity/event-sequence:
 2a3,4
 > plugin.claim.start
@@ -51,16 +19,16 @@ unit: FAIL tests/e2e/parity-local-vs-ci-test.sh
 114a117,118
 > plugin.release.start
 > plugin.release.complete
-  [38;2;248;113;113m✗[0m event sequence matches golden snapshot
-    [2mgolden mismatch (run UPDATE_GOLDEN=1 to regenerate)[0m
-  [38;2;74;222;128m✓[0m full pipeline-state.json identical after normalization
-  [38;2;74;222;128m✓[0m artifact filename list identical across modes
-  [38;2;74;222;128m✓[0m all artifact contents identical across modes (sha256, timestamps normalized)
-  [38;2;74;222;128m✓[0m normalized state.json matches golden snapshot
-  [38;2;74;222;128m✓[0m artifact filename list matches golden snapshot
+  ✗ event sequence matches golden snapshot
+    golden mismatch (run UPDATE_GOLDEN=1 to regenerate)
+  ✓ full pipeline-state.json identical after normalization
+  ✓ artifact filename list identical across modes
+  ✓ all artifact contents identical across modes (sha256, timestamps normalized)
+  ✓ normalized state.json matches golden snapshot
+  ✓ artifact filename list matches golden snapshot
 
-[2m  ──────────────────────────────────────────[0m
+  ──────────────────────────────────────────
 
-  [38;2;248;113;113m[1m1 of 15 tests failed[0m
+  1 of 15 tests failed
 
-  [38;2;248;113;113m✗[0m event sequence matches golden snapshot
+  ✗ event sequence matches golden snapshot

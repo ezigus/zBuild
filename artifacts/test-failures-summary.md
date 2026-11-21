@@ -1,28 +1,27 @@
 # Test stage summary
 
-- 2 test(s) failed
+- failed: tests/e2e/parity-local-vs-ci-test.sh
 - verdict: fail
-- passed: 14
-- failed: 2
+- passed: 916
+- failed: 1
 - exit_code: 1
+
+## Failing files
+
+- tests/e2e/parity-local-vs-ci-test.sh — ✗ event sequence matches golden snapshot — golden mismatch (run UPDATE_GOLDEN=1 to regenerate) (and 1 more failing check in this file)
 
 ## Failing lines (extracted)
 
 ```
-unit: FAIL tests/e2e/claim-race-test.sh
-unit: FAIL tests/e2e/parity-local-vs-ci-test.sh
-  [38;2;74;222;128m✓[0m release removed claimed:releaser label
-  [38;2;0;212;255m5. list_claims emits JSON array of current holders[0m
-  [38;2;74;222;128m✓[0m list_claims contains the claimed issue
-[2m  ──────────────────────────────────────────[0m
-  [38;2;248;113;113m[1m1 of 9 tests failed[0m
-  [38;2;248;113;113m✗[0m 3-way race must produce ≤1 winner
-  [38;2;74;222;128m✓[0m all artifact contents identical across modes (sha256, timestamps normalized)
-  [38;2;74;222;128m✓[0m normalized state.json matches golden snapshot
-  [38;2;74;222;128m✓[0m artifact filename list matches golden snapshot
-  [38;2;248;113;113m[1m1 of 15 tests failed[0m
-  [38;2;248;113;113m✗[0m event sequence matches golden snapshot
+  ✗ event sequence matches golden snapshot ⏎ golden mismatch (run UPDATE_GOLDEN=1 to regenerate)
+  ✗ event sequence matches golden snapshot
+e2e: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zocGNj/tests/e2e/parity-local-vs-ci-test.sh
+  ✓ all artifact contents identical across modes (sha256, timestamps normalized)
+  ✓ normalized state.json matches golden snapshot
+  ✓ artifact filename list matches golden snapshot
+  ──────────────────────────────────────────
+  1 of 15 tests failed
 ```
 
 ## The checks of this run
-- the acceptance check failed: the acceptance check failed — config/shape-change-paths.txt was put back to its old version on its own and every test still passed, so no test checks what this change does to it — add a test that fails without the change to it
+- the acceptance check failed: the acceptance check failed — config/shape-change-paths.txt was put back to its old version on its own and every test still passed, and the design names it nowhere — not in a step, a SPEC, WIRING or its text: nothing asks for this change — take it out, or name what asks for it

@@ -1,4 +1,3 @@
 [
-  "tests/e2e/claim-race-test.sh",
   "tests/e2e/parity-local-vs-ci-test.sh"
 ]

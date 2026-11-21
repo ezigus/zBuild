@@ -1,0 +1,1 @@
+{"data":{"findings":[{"n":1,"text":"tests/e2e/parity-local-vs-ci-test.sh fails: ✗ event sequence matches golden snapshot — golden mismatch (run UPDATE_GOLDEN=1 to regenerate) (and 1 more failing check in this file)","id":"TEFND-2"}]}}

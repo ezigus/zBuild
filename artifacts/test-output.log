@@ -1,34 +1,10 @@
-unit: FAIL tests/e2e/claim-race-test.sh
 
-  claim-coordinator race (ADR-005, issue #308)
+> zbuild@0.1.0 test
+> bash tests/run-all.sh
 
-  ✓ github-labels manifest validates as claim-coordinator
-
-  1. 3-way race: exactly-one-winner invariant
-  ✓ 3-way race: no backend errors
-  ✓ 3-way race: no JSON parse errors
-  ✗ 3-way race must produce ≤1 winner
-    got 3 winners
-
-  2. solo claim always wins
-  ✓ solo claimant always wins
-
-  3. losers do not leave orphaned claimed:* labels
-  ✓ 4-way race: no backend errors
-  ✓ ≤1 claimed:* label remains after race (0 present)
-
-  4. release removes the holder's label
-  ✓ release removed claimed:releaser label
-
-  5. list_claims emits JSON array of current holders
-  ✓ list_claims contains the claimed issue
-
-
-  1 of 9 tests failed
-
-  ✗ 3-way race must produce ≤1 winner
-
-unit: FAIL tests/e2e/parity-local-vs-ci-test.sh
+unit: 616/616 passed (5 skipped)
+integration: 264/264 passed
+e2e: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zocGNj/tests/e2e/parity-local-vs-ci-test.sh
 
   CI/CLI parity — engine behavior is environmentally agnostic (ADR-010)
 
@@ -61,4 +37,9 @@ unit: FAIL tests/e2e/parity-local-vs-ci-test.sh
 
   ✗ event sequence matches golden snapshot
 
-unit: 14/16 passed
+e2e: 9/10 passed
+golden: 1/1 passed
+mutation: 25/25 passed
+lint: 1/1 passed
+
+total: 916/917 passed (5 skipped)

@@ -51,17 +51,16 @@
   [38;2;74;222;128m✓[0m [DSCLA-20] label removed has no hostname component (zbuild:claimed, not claimed:<host>)
 [event-bus] WARN: unknown event type 'plugin.claim.start' (run_id=run-dscla2-123)
 [event-bus] WARN: unknown event type 'plugin.claim.complete' (run_id=run-dscla2-123)
-  [38;2;74;222;128m✓[0m [DSCLA-19] coordinator's claim hook was called (zbuild:claimed in claim store)
+  [38;2;74;222;128m✓[0m [DSCLA-19] coordinator's claim hook was called with the issue number
   [38;2;74;222;128m✓[0m [DSCLA-19] gh is not invoked directly within zbuild_claim_acquire
 [event-bus] WARN: unknown event type 'plugin.release.start' (run_id=run-dscla2-123)
 [event-bus] WARN: unknown event type 'plugin.release.complete' (run_id=run-dscla2-123)
   [38;2;74;222;128m✓[0m [DSCLA-21] coordinator's release hook was called (zbuild:claimed removed from claim store)
   [38;2;74;222;128m✓[0m [DSCLA-21] gh is not invoked directly within zbuild_claim_release
-  [38;2;74;222;128m✓[0m core/claim/claim.sh is listed in config/shape-change-paths.txt
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 37 tests failed[0m
+  [38;2;248;113;113m[1m1 of 36 tests failed[0m
 
   [38;2;248;113;113m✗[0m [DSCLA-10] Given: pipeline.refused.claimed must be in config/event-schema.json
 
@@ -117,15 +116,14 @@
   [38;2;74;222;128m✓[0m [DSCLA-20] label removed has no hostname component (zbuild:claimed, not claimed:<host>)
 [event-bus] WARN: unknown event type 'plugin.claim.start' (run_id=run-dscla2-123)
 [event-bus] WARN: unknown event type 'plugin.claim.complete' (run_id=run-dscla2-123)
-  [38;2;74;222;128m✓[0m [DSCLA-19] coordinator's claim hook was called (zbuild:claimed in claim store)
+  [38;2;74;222;128m✓[0m [DSCLA-19] coordinator's claim hook was called with the issue number
   [38;2;74;222;128m✓[0m [DSCLA-19] gh is not invoked directly within zbuild_claim_acquire
 [event-bus] WARN: unknown event type 'plugin.release.start' (run_id=run-dscla2-123)
 [event-bus] WARN: unknown event type 'plugin.release.complete' (run_id=run-dscla2-123)
   [38;2;74;222;128m✓[0m [DSCLA-21] coordinator's release hook was called (zbuild:claimed removed from claim store)
   [38;2;74;222;128m✓[0m [DSCLA-21] gh is not invoked directly within zbuild_claim_release
-  [38;2;74;222;128m✓[0m core/claim/claim.sh is listed in config/shape-change-paths.txt
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 37 tests passed[0m
+  [38;2;74;222;128m[1mAll 36 tests passed[0m
 
