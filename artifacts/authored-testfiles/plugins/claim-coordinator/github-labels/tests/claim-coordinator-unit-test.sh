@@ -651,12 +651,16 @@ provides:
   role: claim-coordinator
   alias: stub
 STUBMANI
-    # The stub's claim hook writes a marker AND returns {"acquired": true} on
-    # stdout — this is the Given condition being established explicitly.
+    # The stub's claim hook writes the issue number to the marker file AND
+    # returns {"acquired": true} on stdout — this is the Given condition being
+    # established explicitly.  Writing the actual argument (not just touching
+    # the file) means the Then assertion can verify the right issue was passed:
+    # if zbuild_claim_acquire calls _dscla19_stub_claim "" or the wrong value,
+    # the grep below will fail.
     cat > "$_dscla19_stub_dir/plugin.sh" <<STUBPLUG
 _dscla19_stub_claim() {
     local _issue="\${1:-}"
-    : > "$_dscla19_hook_called"
+    printf '%s\n' "\$_issue" > "$_dscla19_hook_called"
     printf '{"acquired": true, "lease_id": "stub:%s"}\n' "\$_issue"
     return 0
 }
@@ -680,12 +684,14 @@ STUBPLUG
     set +e; zbuild_claim_acquire "$_dscla19_issue"; _dscla19_rc=$?; set -e
 
     # Then: the coordinator's claim hook function is called with the issue number
-    # (the stub writes a marker when called; this is the definitive check)
-    if [[ -e "$_dscla19_hook_called" ]]; then
+    # The stub writes the received argument to the marker file; grep for the
+    # exact issue number so the test fails if the wrong value (or empty string)
+    # was forwarded to the hook.
+    if grep -Fxq "$_dscla19_issue" "$_dscla19_hook_called" 2>/dev/null; then
         assert_pass "[DSCLA-19] coordinator's claim hook was called with the issue number"
     else
         assert_fail "[DSCLA-19] coordinator's claim hook was called with the issue number" \
-            "stub hook marker not found; rc=$_dscla19_rc"
+            "marker file content: $(cat "$_dscla19_hook_called" 2>/dev/null || echo '<absent>'); rc=$_dscla19_rc"
     fi
 
     # And: gh is not invoked directly within zbuild_claim_acquire

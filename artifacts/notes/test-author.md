@@ -1,47 +1,53 @@
 # Test Author Notes — DSCLA tests (issue 1764)
 
-## Status: COMPLETE (iteration 11 — fixed DSCLA-19 to use explicit stub)
+## Status: COMPLETE (iteration 12 — fixed TAFND-4; updated golden file for IAFND-1)
 
 All test files are written and in place. All SPECs have assertions.
 
-## Changes made in this run (iteration 11)
+## Changes made in this run (iteration 12)
 
-### Fixed DSCLA-19 to explicitly register a stub coordinator (TAFND-3)
+### Fixed DSCLA-19 to verify the correct issue number is forwarded to the hook (TAFND-4)
 
 **File:** `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh`
 
-**Problem (TAFND-3):** The DSCLA-19 test relied on the actual local-fs backend's
-behaviour (writing `zbuild:claimed` to the claim store) to verify the coordinator
-hook was called. It did not explicitly establish that the plugin's claim hook
-returns `{"acquired": true}` on stdout — a requirement of the Given condition.
+**Problem (TAFND-4):** The stub hook wrote the marker file unconditionally with
+`': > "$_dscla19_hook_called"'`, so the Then assertion `[[ -e "$_dscla19_hook_called" ]]`
+passed whether or not the correct issue number was passed to the hook.
 
 **Fix:**
-- Create a stub plugin in `$TEST_TEMP_DIR/plugins-dscla19/claim-coordinator/stub/`
-  with a `manifest.yaml` and `plugin.sh`
-- The stub's claim hook (`_dscla19_stub_claim`) uses **unique** function names
-  (not `claim_coordinator_*`) to avoid colliding with the already-loaded plugin.sh
-  — no restore/re-source needed after the test
-- The stub's claim hook writes a marker file AND returns `{"acquired": true}` on
-  stdout — explicitly establishing the Given condition
-- Set `ZBUILD_PLUGINS_ROOT` to the temp plugins root so `zbuild_claim_acquire`
-  can discover the stub via the plugin registry
-- Source the stub's plugin.sh explicitly (puts functions in scope for the unit
-  test context)
-- Verify the marker was written (hook was called) and no direct gh calls
+- Changed the stub to write the actual received argument into the marker file:
+  `printf '%s\n' "$_issue" > "$_dscla19_hook_called"`
+- Changed the Then assertion from `[[ -e "$_dscla19_hook_called" ]]` to
+  `grep -Fxq "$_dscla19_issue" "$_dscla19_hook_called"`, which requires the
+  exact issue number string to be present in the marker file.
 
-**Red step (base code):** `core/claim/claim.sh` does not exist → the guard
-`if [[ ! -f "$_dscla19_claim_sh" ]]` fires → `assert_fail` on existence check.
+Now if `zbuild_claim_acquire` calls `_dscla19_stub_claim ""` or any wrong value,
+`grep -Fxq "2019"` fails → `assert_fail` fires.
 
-## Previous changes (iteration 10)
+### Updated golden event-sequence snapshot for new claim/release events (IAFND-1)
 
-### Removed shape-change-paths.txt assertions from unit test (TAFND-1, TAFND-2)
-No SPEC asks for `core/claim/claim.sh` to be in `config/shape-change-paths.txt`.
+**File:** `tests/golden/parity/event-sequence.golden`
 
-## Previous changes (iteration 9)
+**Problem (IAFND-1):** The parity e2e test (`tests/e2e/parity-local-vs-ci-test.sh`)
+was failing because the golden file did not include the four events the claim
+coordinator now emits: `plugin.claim.start`, `plugin.claim.complete`,
+`plugin.release.start`, `plugin.release.complete`.
 
-### Added explicit source of core/claim/claim.sh in unit test
-Explicit guarded `source "$REPO_ROOT/core/claim/claim.sh"` block after `source
-plugin.sh`. Guard means source is skipped on base code → intended red step.
+**Fix:** Applied the diff reported by the failing test:
+- Inserted `plugin.claim.start` and `plugin.claim.complete` after `pipeline.init`
+  (before `pipeline.branch.ready`)
+- Appended `plugin.release.start` and `plugin.release.complete` after the final
+  `plugin.run.complete`
+
+The golden file is in `tests/golden/` (a test folder), so it is mine to update.
+
+## Previous changes (iteration 11)
+
+### Fixed DSCLA-19 to use explicit stub coordinator (TAFND-3)
+- Created stub plugin at `$TEST_TEMP_DIR/plugins-dscla19/claim-coordinator/stub/`
+- Stub uses unique function names (`_dscla19_stub_*`) to avoid collisions
+- Stub returns `{"acquired": true}` on stdout (explicitly establishes the Given)
+- Set `ZBUILD_PLUGINS_ROOT` so zbuild_claim_acquire discovers stub via registry
 
 ## Full SPEC coverage
 
@@ -61,8 +67,8 @@ plugin.sh`. Guard means source is skipped on base code → intended red step.
 - DSCLA-16: teardown (zbuild:claimed absent after _runner_enter_worktree failure)
 - DSCLA-17: unit test (no gh calls when _ZBUILD_CLAIM_ACQUIRED not set)
 - DSCLA-18: unit test (claim_coordinator_claim adds zbuild:claimed, no hostname)
-- DSCLA-19: unit test (stub in ZBUILD_PLUGINS_ROOT with unique names; marker file
-  proves hook was called; no direct gh calls from zbuild_claim_acquire)
+- DSCLA-19: unit test (stub with unique names; marker file contains issue number;
+  no direct gh calls from zbuild_claim_acquire)
 - DSCLA-20: unit test (claim_coordinator_release removes zbuild:claimed, no hostname)
 - DSCLA-21: unit test (zbuild_claim_release delegates to coordinator, no direct gh)
 - DSCLA-22: teardown integration (stub in ZBUILD_PLUGINS_ROOT; claim before stage;
@@ -79,14 +85,9 @@ plugin.sh`. Guard means source is skipped on base code → intended red step.
   DSCLA-15, DSCLA-16, DSCLA-22
 - `tests/unit/lint-adr-enforced-by-test.sh`
   [#1764/DSADR-7]
-
-## Collateral test failures (not mine)
-
-- `tests/e2e/claim-race-test.sh`: No DSCLA SPEC covers the race condition; that
-  is Part 3 (#2534). Not mine.
-- `tests/e2e/parity-local-vs-ci-test.sh`: No DSCLA SPEC covers golden snapshot
-  update. Not mine.
+- `tests/golden/parity/event-sequence.golden`
+  Updated to include new claim/release events (IAFND-1)
 
 ## Open findings
 
-All addressed in this call.
+None.
