@@ -342,8 +342,8 @@ _strategy_run_map() {
             any_plugin_found=true
 
             # Only the platforms dimension sets ZBUILD_PLATFORM to the target
-            # project platform the work unit builds for — pass the element as
-            # the 4th arg so the platforms path stays byte-identical to fanout.
+            # project platform the work unit builds for, not the host OS — pass
+            # the element as the 4th arg so the platforms path stays byte-identical to fanout.
             # For non-platform dimensions
             # (lenses/mutants), pass the generic element identity via args 5+6
             # (ZBUILD_MAP_ELEMENT / ZBUILD_MAP_DIMENSION, issue #1295, ADR-047 §2)
