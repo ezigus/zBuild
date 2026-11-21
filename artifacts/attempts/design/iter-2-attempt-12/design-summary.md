@@ -1,0 +1,32 @@
+## design — pass
+
+- 27 SPEC(s): DSCLA-1, DSCLA-2, DSCLA-12, DSCLA-3, DSCLA-9, DSCLA-5, DSCLA-6, DSCLA-7, DSCLA-8, DSCLA-17, DSCLA-10, DSCLA-11, DSCLA-15, DSCLA-16, DSCLA-13, DSCLA-18, DSCLA-20, DSCLA-19, DSCLA-21, DSCLA-22, DSADR-4, DSADR-5, DSADR-6, DSADR-7, DSADR-8, DSCLA-14, DSCLA-23
+
+- DSCLA-1 (covers RQCLA-1, RQLAB-1, RQLAB-2, RQCLA-12): When an issue-bound run starts and zbuild:claimed is absent, the label is added before the first stage dispatches
+- DSCLA-2 (covers RQCLA-2): When a local run starts with an issue, rsc_render_header embeds the holder in the run-status comment header
+- DSCLA-12 (covers RQCLA-2): When a CI run starts with an issue, the rendered run-status comment header contains the CI run URL as the holder
+- DSCLA-3 (covers RQCLA-3, RQCLA-9): When a run starts on a claimed issue, it refuses with non-zero exit before any stage
+- DSCLA-9 (covers RQCLA-4): When a run is refused because zbuild:claimed is on the issue, the run's output names the holder
+- DSCLA-5 (covers RQCLA-5): On normal pipeline completion, zbuild:claimed is removed from the issue
+- DSCLA-6 (covers RQCLA-6): On pipeline failure, zbuild:claimed is removed from the issue
+- DSCLA-7 (covers RQCLA-7): On TERM signal, zbuild:claimed is removed from the issue
+- DSCLA-8 (covers RQCLA-8): When zbuild_claim_acquire is called with an empty issue argument, it returns 0 without calling the coordinator's claim hook
+- DSCLA-17 (covers RQCLA-8): When zbuild_claim_release is called without a prior successful acquire, it returns 0 without calling the coordinator's release hook
+- DSCLA-10 (covers RQCLA-10): When the event-schema emitted-coverage check runs, it accepts pipeline.refused.claimed as a registered event
+- DSCLA-11 (covers RQCLA-5, RQCLA-6, RQCLA-7): The run-status comment shows terminal status when the runner exits on any path
+- DSCLA-15 (covers RQCLA-4): The holder string is printed without interpreting escape sequences in the run's refusal output
+- DSCLA-16 (covers RQCLA-6): When claim acquisition succeeds but runner infrastructure setup fails before the EXIT trap is installed, zbuild:claimed is removed before the runner function returns
+- DSCLA-13 (covers RQCLA-11): When a second SIGTERM arrives during the runner's claim release, zbuild:claimed is still removed
+- DSCLA-18 (covers RQCLA-12, RQARC-1): When claim_coordinator_claim is called on an issue with no zbuild:claimed label, it adds the label zbuild:claimed via gh issue edit
+- DSCLA-20 (covers RQCLA-13, RQARC-1): When claim_coordinator_release is called on an issue, it removes the label zbuild:claimed via gh issue edit
+- DSCLA-19 (covers RQARC-2): When zbuild_claim_acquire is called with an issue number, it delegates to the claim-coordinator plugin's claim hook and contains no direct gh calls
+- DSCLA-21 (covers RQARC-2): When zbuild_claim_release is called after a prior successful acquire, it delegates to the claim-coordinator plugin's release hook and contains no direct gh calls
+- DSCLA-22 (covers RQCLA-14, RQARC-3): When a stub claim coordinator is registered in the plugin discovery tree and an issue-bound run executes, the stub's claim hook is called before the first stage and its release hook is called on exit
+- DSADR-4 (covers RQADR-1): ADR-005 tells the reader that the engine calls the claim coordinator's claim hook after the admission lock and before the first stage, and release in the EXIT path
+- DSADR-5 (covers RQADR-2): ADR-005 tells the reader that the shared claim label is zbuild:claimed (no hostname) and that the holder is identified in the run-status comment
+- DSADR-6 (covers RQADR-3): ADR-005 corrects stale content: coordinator selection is not from config/zbuild.yaml, and the engine now has a built-in claim mechanism
+- DSADR-7 (covers RQADR-4): ADR-005 has an ## Enforced by section with the §1 bullet naming a test for each §1 statement: §1(a) claim hook called after admission lock and before first stage — claim-coordinator-unit-test.sh [DSCLA-22]; §1(b) release hook called in the EXIT path — claim-coordinator-unit-test.sh [DSCLA-22]; §1(c) refused run exits non-zero with no stage and event emitted — claim-coordinator-unit-test.sh [DSCLA-3]; §1(c) refused output names holder — claim-coordinator-unit-test.sh [DSCLA-9]; and the §2 bullet naming [DSCLA-1] for the "shared label is zbuild:claimed (no hostname)" statement and [DSCLA-2] and [DSCLA-12] for the holder rendering cases
+- DSADR-8 (covers RQADR-5): ADR-059 §4 tells the reader that cross-machine exclusion is the claim coordinator's job and the admission lock (flock) handles intra-machine serialisation; the amendment's Enforced by entry names DSCLA-3 as the test that enforces the cross-machine exclusion statement
+- DSCLA-14 (covers RQDOC-1): README.md in plugins/claim-coordinator/github-labels/ tells the reader the shared claim label is zbuild:claimed (not claimed:<machine>) and does not reference machine-suffixed labels
+- DSCLA-23 (covers RQCLA-4): When _ccgl_read_holder reads the holder from the issue's comments, it only reads from comments authored by the authenticated GitHub actor
+- no finding was open for it
