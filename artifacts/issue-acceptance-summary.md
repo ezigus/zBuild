@@ -1,5 +1,6 @@
-## issue-acceptance — unavailable
+## issue-acceptance — fail
 
-- the model call failed (router_rc_nonzero) — the change was not judged
+- judged the change against the issue: 1 requirement(s) not met or not sure, 1 part(s) of the change no requirement asks for
 
-- the change was not judged against the issue
+- see result
+- no finding was open for it
