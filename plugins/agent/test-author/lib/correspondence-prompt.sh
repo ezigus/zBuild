@@ -26,6 +26,7 @@ _ta_changed_specs_v() {
     shift 3; _tcs=""
     [[ -s "$kf" && $# -gt 0 ]] || return 0
     local -A _none=() _got=()
+    # No keys asked: this only loads _JUDGE_KEPT_TEXT from the kept file.
     judge_kept_get_all_v _got "$kf" _none
     for sid in "$@"; do
         _sc_spec_shown_v t "$blk" "$sid"

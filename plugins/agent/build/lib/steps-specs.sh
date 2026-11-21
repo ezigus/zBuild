@@ -50,6 +50,7 @@ _build_steps_changed_v() {
     _bsc=""
     [[ ${#_BUILD_STEP_DESC[@]} -gt 0 && -s "$kf" ]] || return 0
     local -A _none=() _got=() _now=()
+    # No keys asked: this only loads _JUDGE_KEPT_TEXT from the kept file.
     judge_kept_get_all_v _got "$kf" _none
     _build_steps_texts_v _now
     for (( n = 1; n <= ${#_BUILD_STEP_DESC[@]}; n++ )); do

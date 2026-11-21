@@ -311,9 +311,10 @@ _judge_json_str_v() {
     _jjs="\"$_jjs_s\""
 }
 
-# judge_kept_put_one <kept_file> <key> <fp> <payload> [file]... — the same as
+# judge_kept_put_one <kept_file> <key> <fp> <payload> [file]... — like
 # judge_kept_put for a check that keeps one answer: the file holds only it, and
-# the shell writes it (ADR-065 §5: no program on every judging call).
+# the shell writes it (ADR-065 §5: no program on every judging call). It saves
+# no item text (#2579): a single whole-check verdict has no item to show as changed.
 judge_kept_put_one() {
     local _jpo_kf="$1" _jpo_key="$2" _jpo_fp="$3" _jpo_p="$4"; shift 4
     [[ -n "$_jpo_kf" && -n "$_jpo_fp" ]] || return 0
@@ -342,7 +343,9 @@ judge_kept_put_one() {
 # fingerprint of the stage's answers to its finding, and a disputed key is
 # judged again only when its kept answer, otherwise usable, refused it and was
 # not kept with those answers (why=disputed). [why_assoc] gets each kept key's
-# why: used, fingerprint, file or disputed.
+# why: used, fingerprint, file or disputed. It always reads the whole file and
+# fills _JUDGE_KEPT_TEXT for every record, even with an empty <fps_assoc>:
+# callers rely on that to load the kept item text (#2579).
 declare -gA _JUDGE_KEPT_FILES=() _JUDGE_KEPT_BASE=()
 judge_kept_get_all_v() {
     local -n _jga="$1" _jga_fp="$3"; local _jga_kf="$2" _jga_dn="${4:-_jga_nod}" _jga_en="${5:-_jga_noe}" _jga_chk
