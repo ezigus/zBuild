@@ -79,6 +79,7 @@ _judge_quote_split() {
 # file in the repository or in the code from before the change, or the item's
 # own words as they are (#2519). Otherwise rc 1 and <why_var> says what is
 # wrong, to follow "<id>'s quote " in a re-ask.
+declare -gA _JUDGE_QUOTE_KEPT=()
 judge_quote_check_v() {
     local -n _jqw="$1"
     local _judge__q="$2" _judge__own="$3" _judge__repo="${4:+${4%/}}" _judge__base="${5:+${5%/}}" _judge__path _judge__txt _judge__f _judge__seen=0
@@ -117,6 +118,14 @@ judge_quote_check_v() {
         [[ "$_judge__txt" == *$'\n'* ]] || _judge__body="${_judge__body//$'\n'/ $'\x1e' }"
         _judge_holds "$_judge__body" "$_judge__txt" && return 0
     done
+    # #2574 (review): for a pass judged again, the file as its verdict saw it
+    # (_JUDGE_QUOTE_KEPT, judge-held.sh): a line since removed is a quote too.
+    if [[ -n "${_JUDGE_QUOTE_KEPT[$_judge__path]+x}" ]]; then
+        _judge__body="${_JUDGE_QUOTE_KEPT[$_judge__path]}"
+        [[ "$_judge__txt" == *$'\n'* ]] || _judge__body="${_judge__body//$'\n'/ $'\x1e' }"
+        _judge_holds "$_judge__body" "$_judge__txt" && return 0
+        _judge__seen=1
+    fi
     if (( _judge__seen )); then
         _jqw="is not in $_judge__path, on one line: $_judge__txt"
     else

@@ -27,7 +27,27 @@ _rl_finding_code_v() {
     local -n _rfc="$1"; local _rfc_t="${2^^}"
     _rfc_t="${_rfc_t//[^A-Z0-9]/}"
     [[ "$_rfc_t" =~ ^[A-Z] ]] || _rfc_t="L$_rfc_t"
-    zb_finding_code_v _rfc "$_RL_DIR/manifest.yaml" "${_rfc_t:0:20}"
+    zb_finding_code_v _rfc "$_RL_DIR/manifest.yaml" "$_rfc_t"
+}
+
+# _rl_lens_code_ok_v <var> <lens> <out> — the lens's code (_rl_finding_code_v),
+# and rc 1, its result written misconfigured, when it cannot be one of its own:
+# it is longer than a code may be, or another lens of the run (its map group's
+# elements) takes the same one (`red-team` and `red_team`). No program.
+_rl_lens_code_ok_v() {
+    local -n _rlc="$1"; local lens="$2" out="$3" mv e c why=""
+    _rl_finding_code_v _rlc "$lens"
+    (( ${#_rlc} <= 24 )) || why="the $lens lens's name is too long for its findings' code ($_rlc)"
+    mv="_TPL_MAP_ELEMENTS_${ZBUILD_CURRENT_STAGE:-none}"; mv="${mv//[^A-Za-z0-9_]/_}"
+    local els="${!mv:-}"
+    for e in ${els//,/ }; do
+        [[ -z "$why" && "$e" != "$lens" ]] || continue
+        _rl_finding_code_v c "$e"; [[ "$c" == "$_rlc" ]] && why="the $lens and $e lenses' findings would both take the code $_rlc"
+    done
+    [[ -z "$why" ]] && return 0
+    error "$why — rename one (#2574)"
+    _review_lens_write_result "$out" misconfigured "$why"
+    return 1
 }
 
 # _rl_changed_files_v <array> <change_fp> <patch_body> — the files of the
@@ -70,7 +90,7 @@ _rl_area_of_v() {
 # content is in its own kept report's files; `change` depends on every file of
 # the change (_rl_items_keep).
 declare -gA _RL_IT_FPS=() _RL_IT_DFP=()
-_RL_IT_KEPT="{}" _RL_IT_WANT="" _RL_IT_NOTES="" _RL_IT_HELD="" _RL_IT_PASSED="" _RL_IT_EARLIER_FILES=""
+_RL_IT_KEPT="{}" _RL_IT_WANT="" _RL_IT_NOTES="" _RL_IT_HELD="" _RL_IT_PASSED="" _RL_IT_EARLIER_FILES="" _RL_IT_HELD_FILES=""
 _rl_items_prepare() {
     local kf="$1" eng="$2" base="$3" ans="$4" f fp it a k kj
     local -n _rip_af="$5"
@@ -103,7 +123,7 @@ _rl_items_prepare() {
     # Review on #2574: a file whose kept report was clean, judged again because
     # the code moved, is shown so; a finding on it is taken only on a line added
     # since (_rl_items_hold_passes).
-    _RL_IT_PASSED=""; local pe=""
+    _RL_IT_PASSED="" _RL_IT_HELD_FILES=""; local pe=""
     for it in ${_RL_IT_FILES[@]+"${_RL_IT_FILES[@]}"}; do
         [[ -z "${kept[$it]+x}" && "${earlier[$it]:-}" == clean:* && " file fingerprint " == *" ${why[$it]:-none} "* ]] && _RL_IT_PASSED+=" $it"
     done
@@ -223,7 +243,13 @@ _rl_items_keep() {
         done
     done <<< "$out"
     # shellcheck disable=SC2034  # read by judge_kept_put_all through their names
-    [[ ${#put[@]} -gt 0 ]] && judge_kept_put_all "$kf" put putfp deps
+    # Kept with the repository as it is; a file held clean keeps the baseline of
+    # the report that passed it (#2574 review).
+    local -A carry=()
+    # shellcheck disable=SC2034  # carry is read by judge_kept_put_all by name
+    for t in $_RL_IT_HELD_FILES; do carry["$t"]=1; done
+    local _JUDGE_KEEP_BASE=""; [[ ${#put[@]} -gt 0 ]] && judge_keep_baseline_v _JUDGE_KEEP_BASE "$repo"
+    [[ ${#put[@]} -gt 0 ]] && judge_kept_put_all "$kf" put putfp deps carry
     judge_handoff_done "$kf"
     return 0
 }
@@ -243,7 +269,7 @@ _rl_items_hold_passes() {
         # The record's files, as judge_kept_get_all_v gave them.
         while IFS= read -r -d $'\x1e' l; do [[ "${l%%$'\x1f'*}" == "$f" ]] && _JUDGE_KEPT_FILES["$f"]="${l#*$'\x1f'}"; done <<< "$_RL_IT_EARLIER_FILES"
         local -a ql=(); IFS=$'\x1e' read -r -a ql <<< "${qs[$f]%$'\x1e'}"
-        judge_pass_flip_ok "$kf" "$f" "$repo" "${ql[@]}" || drop+=" $f"
+        judge_pass_flip_ok "$kf" "$f" "$repo" "${ql[@]}" || { drop+=" $f"; _RL_IT_HELD_FILES+=" $f"; }
     done
     [[ -n "$drop" ]] || return 0
     _rhp="$(jq -c --arg d "$drop " '.findings |= [ (. // [])[] | select((objects | .file) as $f | ($f == null) or ($d | contains(" \($f) ") | not)) ]' <<< "$_rhp" 2>/dev/null)" || true

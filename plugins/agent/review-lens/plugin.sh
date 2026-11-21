@@ -133,7 +133,7 @@ _review_lens_run_inner() {
     # #2464, #2569, #2574 (ADR-072 §4 §5): every answer to one of its findings,
     # with the finding it answers, read before its routed results are cleared.
     local _rl_fc="" _rl_ans="" _rl_w; local -A _rl_af=()
-    _rl_finding_code_v _rl_fc "$lens"
+    _rl_lens_code_ok_v _rl_fc "$lens" "$out" || return 0
     judge_answers_to_v _rl_ans "$artifact_dir" "lens-${lens}-code" "lens-${lens}-test" "lens-${lens}-design" ${_rl_fc:+"$_rl_fc"}
     local -a _rl_lf=(); for _rl_w in code test design; do _rl_lf+=("lens-${lens}-$_rl_w=${out%.json}-$_rl_w-result.json"); done
     [[ -n "$_rl_ans" ]] && judge_answered_findings_v _rl_af "$_rl_ans" "${_rl_lf[@]}"

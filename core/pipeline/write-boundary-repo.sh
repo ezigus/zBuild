@@ -47,15 +47,22 @@ _wb_repo_snapshot() {
         [[ "$_xy" == R* || "$_xy" == C* ]] && _skip_next=1
     done < <(git -C "$_repo" status --porcelain=v1 -z --untracked-files=all 2>/dev/null)
     [[ ${#_paths[@]} -gt 0 ]] || return 0
-    local _p
+    local _p _i
+    local -a _have=() _hs=()
+    for _p in "${_paths[@]}"; do [[ -f "$_repo/$_p" ]] && _have+=("$_p"); done
+    # One hash-object for every file (#2574: was one a file). `keep` (the
+    # pre-dispatch snapshot) stores the content as a blob, so an undo can bring
+    # back uncommitted work exactly, not HEAD.
+    [[ ${#_have[@]} -gt 0 ]] && mapfile -t _hs < <(git -C "$_repo" hash-object ${_keep:+-w} -- "${_have[@]}" 2>/dev/null)
+    local -A _h=()
+    # A file it could not read stops the batch: then one a file, as before.
+    if [[ ${#_hs[@]} -ne ${#_have[@]} ]]; then
+        _hs=(); for _p in ${_have[@]+"${_have[@]}"}; do _hs+=("$(git -C "$_repo" hash-object ${_keep:+-w} -- "$_p" 2>/dev/null || printf 'unreadable')"); done
+    fi
+    for _i in "${!_have[@]}"; do _h["${_have[_i]}"]="${_hs[_i]:-unreadable}"; done
     for _p in "${_paths[@]}"; do
-        if [[ -f "$_repo/$_p" ]]; then
-            # `keep` (the pre-dispatch snapshot) stores the content as a blob,
-            # so an undo can bring back uncommitted work exactly, not HEAD.
-            printf '%s\t%s\n' "$_p" "$(git -C "$_repo" hash-object ${_keep:+-w} -- "$_p" 2>/dev/null || printf 'unreadable')"
-        else
-            printf '%s\tdeleted\n' "$_p"
-        fi
+        if [[ -f "$_repo/$_p" ]]; then printf '%s\t%s\n' "$_p" "${_h[$_p]:-unreadable}"
+        else printf '%s\tdeleted\n' "$_p"; fi
     done | LC_ALL=C sort -u
 }
 

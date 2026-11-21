@@ -34,6 +34,11 @@
 #              quoting a line the change added since; a refusal quoting a line
 #              that was there leaves the MET standing (judge.held), one quoting
 #              a line added since is taken
+# PI9 [change] (held-pass review, H1) a held pass keeps the baseline that passed
+#              it: round 2 adds break_it and the judge quotes an unchanged line
+#              — held; round 3 it quotes break_it — refused
+# PI10 [change] (H2) a line removed since the MET: the judge quotes it as it
+#              was, and the refusal is taken
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -212,6 +217,37 @@ printf '%s\n' 'diff --git a/p.sh b/p.sh' '+flag=1' '+flag_parsed=4' > "$IN/diff.
 FLAG='UNMET: [fix-code] RQFLAG-1 | WHY: the flag is now ignored | ACCEPTED IF: the flag is read | QUOTE: p.sh | flag_ignored=1'
 _ia
 assert_eq "[PI8] a refusal quoting a line added since: refused" "fail" "$OUT"
+
+print_test_section "PI9: a held pass keeps the baseline that passed it"
+FLAG="MET: RQFLAG-1"; OPENS="$XR/p.sh"; CNFG='MET: RQCNFG-1'
+printf 'flag=1\nflag_read=1\n' > "$XR/p.sh"
+printf '%s\n' 'diff --git a/p.sh b/p.sh' '+flag=1' '+flag_parsed=9' > "$IN/diff.patch"
+_ia
+assert_eq "[PI9] setup: met" "pass" "$OUT"
+OPENS=""
+printf 'flag=1\nflag_read=1\nbreak_it=1\n' > "$XR/p.sh"
+printf '%s\n' 'diff --git a/p.sh b/p.sh' '+flag=1' '+flag_parsed=10' > "$IN/diff.patch"
+FLAG='UNMET: [fix-code] RQFLAG-1 | WHY: the flag is broken | ACCEPTED IF: the flag is read | QUOTE: p.sh | flag_read=1'
+_ia
+assert_eq "[PI9] round 2: a quote of an unchanged line is held" "pass" "$OUT"
+printf '%s\n' 'diff --git a/p.sh b/p.sh' '+flag=1' '+flag_parsed=11' > "$IN/diff.patch"
+FLAG='UNMET: [fix-code] RQFLAG-1 | WHY: the flag is broken | ACCEPTED IF: the flag is read | QUOTE: p.sh | break_it=1'
+_ia
+assert_eq "[PI9] round 3: break_it, added since the MET, is refused" "fail" "$OUT"
+
+print_test_section "PI10: a line removed since the MET"
+FLAG="MET: RQFLAG-1"; OPENS="$XR/p.sh"
+printf 'flag=1\ncheck_flag || exit 1\n' > "$XR/p.sh"
+printf '%s\n' 'diff --git a/p.sh b/p.sh' '+flag=1' '+flag_parsed=12' > "$IN/diff.patch"
+_ia
+assert_eq "[PI10] setup: met" "pass" "$OUT"
+OPENS=""
+printf 'flag=1\n' > "$XR/p.sh"
+printf '%s\n' 'diff --git a/p.sh b/p.sh' '+flag=1' '+flag_parsed=13' > "$IN/diff.patch"
+FLAG='UNMET: [fix-code] RQFLAG-1 | WHY: the check is gone | ACCEPTED IF: the flag is checked | QUOTE: p.sh | check_flag || exit 1'
+_ia
+assert_contains "[PI10] the judge is given the diff since its verdict" "$(_flat "$_P.1")" "p.sh changed since: git diff"
+assert_eq "[PI10] the removed line, quoted as it was: refused" "fail" "$OUT"
 
 cleanup_test_env
 print_test_results

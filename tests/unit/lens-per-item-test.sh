@@ -20,8 +20,9 @@
 #              about a file it was not asked about is set aside
 # LP3 [change] build answers the finding, nothing changed: only its file is
 #              reviewed again
-# LP10 [change] (review) a lens's findings' code is its whole name, so two
-#              lenses' codes are never the same
+# LP10 [change] (review) a lens's findings' code is its whole name; two lenses
+#              of a run that would still share one (red-team, red_team), or a
+#              name too long for a code, are refused
 # LP11 [change] (review) a file whose kept report found nothing, reviewed
 #              again because the code moved: the lens is shown that it passed,
 #              and may find something only on a line added since; a finding
@@ -223,6 +224,11 @@ printf 'x\n' | stage_findings_json "$ART" RLSECURITY >/dev/null
 assert_eq "[LP10] a finding takes such a code" "RLSECURITY-1" "$(jq -r '.ids | to_entries[0].value' "$ART/finding-ids-RLSECURITY.json" 2>/dev/null)"
 _a=(); zb_answers_collect_v _a "ANSWER RLSECURITY-1: done — fixed"
 assert_eq "[LP10] ...and an answer by it is read" "RLSECURITY-1: done — fixed" "${_a[0]:-}"
+_TPL_MAP_ELEMENTS_review_lenses="red-team,red_team" ZBUILD_CURRENT_STAGE=review_lenses _rl_lens_code_ok_v _c1 red-team "$ART/lens-x.json" >/dev/null 2>&1
+assert_eq "[LP10] red-team and red_team in one run would share RLREDTEAM: refused" "1 misconfigured" "$? $(jq -r .outcome "$ART/lens-x.json" 2>/dev/null)"
+rm -f "$ART/lens-x.json"
+_rl_lens_code_ok_v _c1 an-extremely-long-lens-name-indeed "$ART/lens-x.json" >/dev/null 2>&1
+assert_eq "[LP10] a name too long for a code: refused" "1 misconfigured" "$? $(jq -r .outcome "$ART/lens-x.json" 2>/dev/null)"
 
 print_test_section "LP11: a clean file is found wanting only on a line added since"
 FINDINGS="[]"; printf '# quiet\n' >> "$XR/a.sh"; _commit "a, quiet"

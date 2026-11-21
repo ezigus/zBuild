@@ -239,13 +239,43 @@ judge_pass_entries_v() {
     local -n _jpe="$1" _jpe_e="$2" _jpe_w="$3"; local _jpe_words="$4" _jpe_whys=" $5 " _jpe_i _jpe_p
     local -a _jpe_wa=(); read -ra _jpe_wa <<< "$_jpe_words"
     shift 5
-    _jpe=""
+    _jpe=""; _JUDGE_QUOTE_KEPT=()
     for _jpe_i in "$@"; do
         [[ -n "${_jpe_e[$_jpe_i]+x}" && -n "${_jpe_w[$_jpe_i]:-}" && "$_jpe_whys" == *" ${_jpe_w[$_jpe_i]} "* ]] || continue
         judge_refused "${_jpe_e[$_jpe_i]}" ${_jpe_wa[@]+"${_jpe_wa[@]}"} && continue
         _jpe_p="${_jpe_e[$_jpe_i]//$'\n'/ }"; (( ${#_jpe_p} > _JUDGE_HELD_MAX_TEXT )) && _jpe_p="${_jpe_p:0:_JUDGE_HELD_MAX_TEXT}… (cut)"
         _jpe+="- $_jpe_i — you passed it: $_jpe_p"$'\n'
+        _judge_pass_diffs_v _jpe_p "$_jpe_i"; _jpe+="$_jpe_p"
     done
+}
+
+# _judge_pass_diffs_v <var> <item> — for a pass judged again: the command that
+# shows each file it read as it was then against now (both stored, so the
+# command runs read-only), and the commit the repository was on for any other
+# file. Each file's content then is kept for the quote checks too
+# (_JUDGE_QUOTE_KEPT): a quote of a line since removed is a quote.
+declare -gA _JUDGE_QUOTE_KEPT=()
+_judge_pass_diffs_v() {
+    local -n _jpd="$1"; local it="$2" repo="${ZBUILD_REPO_ROOT:-}" l h rel b
+    local -a files=() hs=() nows=()
+    _jpd=""
+    repo="${repo%/}"; [[ -n "$repo" && -e "$repo/.git" ]] || return 0
+    while IFS=$'\t' read -r l h; do
+        [[ "$l" == "$repo/"* && "$h" =~ ^[0-9a-f]{40,64}$ && -f "$l" ]] || continue
+        files+=("$l"); hs+=("$h")
+    done <<< "${_JUDGE_KEPT_FILES[$it]:-}"
+    if [[ ${#files[@]} -gt 0 ]]; then
+        mapfile -t nows < <(git -C "$repo" hash-object -w -- "${files[@]}" 2>/dev/null)
+        for l in "${!files[@]}"; do
+            rel="${files[l]#"$repo"/}"
+            [[ "${nows[l]:-}" == "${hs[l]}" ]] && continue
+            _jpd+="    $rel changed since: git diff ${hs[l]} ${nows[l]:-<it now>}"$'\n'
+            _JUDGE_QUOTE_KEPT["$rel"]="$(git -C "$repo" cat-file -p "${hs[l]}" 2>/dev/null)"
+        done
+    fi
+    b="${_JUDGE_KEPT_BASE[$it]:-}"
+    [[ "$b" =~ \"head\":\"([0-9a-f]+)\" ]] && _jpd+="    any other file, as the repository was then against now: git diff ${BASH_REMATCH[1]} -- <file>"$'\n'
+    return 0
 }
 
 # judge_pass_block_v <var> <entries> — what a check is shown of the passes it
@@ -253,44 +283,92 @@ judge_pass_entries_v() {
 judge_pass_block_v() {
     local -n _jpb="$1"; _jpb=""
     [[ -n "${2//[[:space:]]/}" ]] || return 0
-    _jpb=$'\n''YOUR EARLIER VERDICTS ON PARTS YOU PASSED — each part below passed when you judged it before, and the code it depends on has moved since. Judge it again, but refuse it only if a line the change added or changed since then breaks it, and give that line as the QUOTE (<file> | <the line>). A refusal whose QUOTE is not such a line is not taken: the pass stands.'$'\n'"$2"
+    _jpb=$'\n''YOUR EARLIER VERDICTS ON PARTS YOU PASSED — each part below passed when you judged it before, and the code it depends on has moved since; under it, the command that shows what changed. Judge it again, but refuse it only if a line the change added, changed or removed since then breaks it, and give that line, whole, as the QUOTE (<file> | <the line>) — a removed line as it was: a guard taken out, a line cut short and a call no longer made count as much as a line added. A refusal whose QUOTE is not such a line is not taken: the pass stands.'$'\n'"$2"
+}
+
+# _judge_norm_line_v <var> <text> — a line as quotes compare it: its marks and
+# spacing aside (_judge_holds' own steps), escapes read.
+_judge_norm_line_v() {
+    local -n _jnl="$1"; local _jnl_u
+    _judge_marks_v _jnl "$2"; _judge_words_v _jnl "$_jnl"
+    [[ "$2" == *\\* ]] && { _judge_unescape_v _jnl_u "$2"; _judge_marks_v _jnl_u "$_jnl_u"; _judge_words_v _jnl_u "$_jnl_u"; _jnl+=$'\x1f'"$_jnl_u"; }
+    return 0
+}
+
+# _judge_kept_blob_v <var> <item> <repo> <file> — the content id of <file> as
+# the item's kept verdict saw it: the verdict's own record of the file, else
+# the repository as it was then (_JUDGE_KEPT_BASE: a changed file's stored
+# content, or the file at the commit it was on); `absent` when it did not
+# exist; empty when nothing says (an old record).
+_judge_kept_blob_v() {
+    local -n _jkbv="$1"; local it="$2" repo="$3" f="$4" l w b=""
+    _jkbv=""
+    # The record names the file as the check gave it; the repository may be
+    # reached by another path to the same place (/tmp and /private/tmp).
+    while IFS=$'\t' read -r l w; do
+        [[ "$l" == "$repo/$f" || ( -n "${_JUDGE_REPO_GIVEN:-}" && "$l" == "$_JUDGE_REPO_GIVEN/$f" ) ]] && { _jkbv="$w"; return 0; }
+    done <<< "${_JUDGE_KEPT_FILES[$it]:-}"
+    b="${_JUDGE_KEPT_BASE[$it]:-}"; [[ -n "$b" ]] || return 0
+    local fj rest; _judge_json_str_v fj "$f"
+    # judge_keep_baseline_v writes `"<path>":"<id>"`, with no space.
+    rest="${b#*"$fj":\"}"
+    if [[ "$rest" != "$b" ]]; then _jkbv="${rest%%\"*}"; [[ "$_jkbv" == deleted ]] && _jkbv=absent; return 0; fi
+    [[ "$b" =~ \"head\":\"([0-9a-f]+)\" ]] || return 0
+    _jkbv="$(git -C "$repo" rev-parse -q --verify "${BASH_REMATCH[1]}:$f" 2>/dev/null)" || _jkbv=absent
+    [[ -n "$_jkbv" ]] || _jkbv=absent
 }
 
 # judge_pass_flip_ok <kept_file> <item> <repo> <quote>... — rc 0 when a <quote>
-# ("<file> | <text>", one line or several) is text the change added or removed
-# since the item's kept verdict: the file holds it now and did not as that
-# verdict saw it, or held it then and does not now. The file as the verdict
-# saw it is its content stored in the repository's objects when the verdict
-# was kept (_JUDGE_KEPT_FILES from judge_kept_get_all_v), or, for a file the
-# verdict did not depend on, the file at the commit the branch started from.
-# With neither, nothing can be shown to have changed. Otherwise rc 1, and
-# judge.held is emitted. Runs only when a pass is refused.
+# ("<file> | <text>", one line or several) is a change since the item's kept
+# verdict: every line of its text is, read whole, a line the diff between the
+# file as that verdict saw it (_judge_kept_blob_v) and the file now adds or
+# removes — a removed line covers a deletion, a shortened line and a call no
+# longer made. A verdict whose stored content cannot be read is judged afresh:
+# rc 0, and judge.held.no_baseline says so. Otherwise rc 1, and judge.held is
+# emitted. Runs only when a pass is refused.
 judge_pass_flip_ok() {
-    local kf="$1" it="$2" repo="${3%/}" q f txt w h base="" chk l now old n o
+    local kf="$1" it="$2" repo q f txt old now chk l ln ok d _JUDGE_REPO_GIVEN="${3%/}"
+    # Paths compared once resolved: `..` and a link such as /tmp → /private/tmp.
+    repo="$(cd "${3%/}" 2>/dev/null && pwd -P)" || repo="${3%/}"
     shift 3
-    declare -F zbuild_resolve_merge_base_v >/dev/null 2>&1 \
-        || source "${_ZB_JUDGE_DIR:-${BASH_SOURCE[0]%/*}}/merge-base.sh" 2>/dev/null || true
+    _judge_check_name_v chk "$kf"
     for q in "$@"; do
         _judge_quote_split "$q" || continue
         # shellcheck disable=SC2154  # set by _judge_quote_split
-        f="${_jqs_path#"$repo"/}"
+        f="$_jqs_path"
         # shellcheck disable=SC2154  # set by _judge_quote_split
         txt="$_jqs_txt"
-        [[ "$f" != /* && "$f" != *..* ]] || continue
-        now=""; [[ -f "$repo/$f" ]] && { IFS= read -r -d '' now < "$repo/$f" || true; }
-        h=""
-        while IFS=$'\t' read -r l w; do [[ "$l" == "$repo/$f" ]] && h="$w"; done <<< "${_JUDGE_KEPT_FILES[$it]:-}"
-        if ! { [[ "$h" =~ ^[0-9a-f]{40,64}$ ]] && old="$(git -C "$repo" cat-file -p "$h" 2>/dev/null)"; }; then
-            [[ -n "$base" ]] || { declare -F zbuild_resolve_merge_base_v >/dev/null 2>&1 && zbuild_resolve_merge_base_v base "$repo"; }
-            [[ -n "$base" ]] || continue
-            old="$(git -C "$repo" show "$base:$f" 2>/dev/null)" || old=""
+        if [[ "$f" == /* ]]; then
+            f="$(cd "${f%/*}" 2>/dev/null && pwd -P)/${f##*/}"; f="${f#"$repo"/}"
+        elif [[ "/$f/" == *"/../"* || "/$f/" == *"/./"* ]]; then
+            f="$(cd "$repo/${f%/*}" 2>/dev/null && pwd -P)/${f##*/}"; f="${f#"$repo"/}"
         fi
-        n=0; o=0
-        _judge_holds "${now//$'\n'/ }" "$txt" && n=1
-        _judge_holds "${old//$'\n'/ }" "$txt" && o=1
-        (( n != o )) && return 0
+        [[ "$f" != /* && "/$f/" != *"/../"* ]] || continue
+        _judge_kept_blob_v old "$it" "$repo" "$f"
+        if [[ -z "$old" ]] || { [[ "$old" != absent ]] && ! git -C "$repo" cat-file -e "$old" 2>/dev/null; }; then
+            _judge_emit judge.held.no_baseline "check=$chk" "item=$it" "file=$f"
+            return 0
+        fi
+        now=absent; [[ -f "$repo/$f" ]] && now="$(git -C "$repo" hash-object -w -- "$f" 2>/dev/null)"
+        [[ "$old" == "$now" ]] && continue
+        # The lines the diff adds or removes, each read as quotes compare it.
+        local -A chg=()
+        if [[ "$old" == absent ]]; then d="$(<"$repo/$f")"; d="${d//$'\n'/$'\n'+}"; d="+$d"
+        elif [[ "$now" == absent ]]; then d="$(git -C "$repo" cat-file -p "$old" 2>/dev/null)"; d="${d//$'\n'/$'\n'-}"; d="-$d"
+        else d="$(git -C "$repo" diff --no-color --no-ext-diff -U0 "$old" "$now" 2>/dev/null)"; fi
+        while IFS= read -r l; do
+            [[ "$l" == [+-]* && "$l" != "+++ "* && "$l" != "--- "* ]] || continue
+            _judge_norm_line_v ln "${l:1}"; [[ -n "${ln%%$'\x1f'*}" ]] && chg["${ln%%$'\x1f'*}"]=1
+        done <<< "$d"
+        ok=0
+        while IFS= read -r l; do
+            _judge_norm_line_v ln "$l"; [[ -n "${ln%%$'\x1f'*}" ]] || continue
+            ok=1
+            [[ -n "${chg[${ln%%$'\x1f'*}]+x}" || ( "$ln" == *$'\x1f'* && -n "${chg[${ln#*$'\x1f'}]+x}" ) ]] || { ok=0; break; }
+        done <<< "$txt"
+        unset chg
+        (( ok )) && return 0
     done
-    _judge_check_name_v chk "$kf"
     _judge_emit judge.held "check=$chk" "item=$it"
     return 1
 }

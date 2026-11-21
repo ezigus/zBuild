@@ -177,7 +177,7 @@ _ia_judge() {
     _ia_call "$(_ia_prompt "$issue" "${acc:-<none>}" "${change:-<no change found>}" "${test_verdict:-unknown}" "${areqs%$'\n'}" "$_held" "${alims%$'\n'}" "$_terms" "$rev" "${others%$'\n'}")" "$want" || return "$_IA_STOP_RC"
     # Each item asked is kept with the files the call read and those its own
     # lines quote; the verdict is every item's: the kept ones and this call's.
-    local -A pay=() put=() putfp=() deps=()
+    local -A pay=() put=() putfp=() deps=() carry=()
     local _opened_all="" q qp
     for l in ${_IA_DEPS[@]+"${_IA_DEPS[@]}"}; do _opened_all+="$l"$'\n'; done
     while IFS= read -r l; do
@@ -191,8 +191,8 @@ _ia_judge() {
         [[ -n "${earlier[$it]+x}" && -n "${pay[$it]:-}" ]] || continue
         case "${kwhy[$it]:-}" in fingerprint|file) ;; *) continue ;; esac
         judge_pass_hold_lines "$kf" "$it" "$_root_q" "${earlier[$it]}" "pay[$it]" "$_IA_PASS_WORDS" || continue
-        pay["$it"]+=$'\n'
-        while IFS=$'\t' read -r l q; do [[ -n "$l" ]] && deps["$it"]+="$l"$'\n'; done <<< "${_JUDGE_KEPT_FILES[$it]:-}"
+        # A held pass keeps the baseline of the verdict that passed it.
+        pay["$it"]+=$'\n'; carry["$it"]=1
     done
     local nraw=""
     # A question raised now, with no question carried, is read, and carried
@@ -203,7 +203,9 @@ _ia_judge() {
         { put["$it"]="${pay[$it]:-}"; judge_kept_fp_v "putfp[$it]" "${fps[$it]}" "${dfp[$it]:-}"; deps["$it"]+="$_opened_all"; }
         [[ "$it" == answers ]] || nraw+="${pay[$it]:-}"
     done
-    judge_kept_put_all "$kf" put putfp deps
+    # Each verdict kept with the repository as it is now (#2574 review).
+    local _JUDGE_KEEP_BASE=""; judge_keep_baseline_v _JUDGE_KEEP_BASE "$_root_q"
+    judge_kept_put_all "$kf" put putfp deps carry
     judge_handoff_done "$kf"
     _ia_parse "$kraw$nraw" "$_reqs" "$issue" "$_root_q" "$_lims"
     _ia_finish "$art"

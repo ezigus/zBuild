@@ -6,8 +6,10 @@
 # LP11) are held the same way.
 #
 # P1 [change] the steps passed; a file the check read moves; the check refuses
-#             them quoting their own words: the pass stands, and judge.held
-#             records it
+#             them quoting a line of that file that did not change: the pass
+#             stands, and judge.held records it
+# P3 [change] the check refuses them quoting a line added to that file since:
+#             the refusal is taken
 # P2 [guard]  the steps' own words change: they are judged afresh, and a
 #             refusal is taken
 set -uo pipefail
@@ -27,7 +29,8 @@ export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; : > "$ZBUILD_EVENT
 ( # shellcheck source=../../plugins/agent/design/plugin.sh
   source "$REPO_ROOT/plugins/agent/design/plugin.sh"
   _P_FILE="$TEST_TEMP_DIR/prompt.txt"; _CALLS="$TEST_TEMP_DIR/calls"
-  REFUSE="Steps: contradicts | WHY: bypassing plugin_hook_call | ACCEPTED IF: the engine calls the hooks through the registry | QUOTE: Create core/claim/claim.sh: thin wiring bridge"
+  REFUSE="Steps: new-owner | WHY: core/claim/lib.sh already claims | ACCEPTED IF: the steps build on the claim code that exists | QUOTE: core/claim/lib.sh | claim_take() { :; }"
+  REFUSE_NEW="Steps: new-owner | WHY: core/claim/lib.sh now claims on its own | ACCEPTED IF: the steps build on the claim code that exists | QUOTE: core/claim/lib.sh | skip_claim=1"
   STEPS_LINE="Steps: ok"
   route_to_model() {
       printf 'x\n' >> "$_CALLS"; printf '%s' "$2" > "$_P_FILE"
@@ -66,6 +69,9 @@ MD
   _run held
   cp "$_P_FILE" "$TEST_TEMP_DIR/held-prompt.txt"
   grep -c '"judge.held"' "$ZBUILD_EVENTS_JSONL" | sed 's/^/held_events=/'
+  printf 'skip_claim=1\n' >> "$XR/core/claim/lib.sh"
+  STEPS_LINE="$REFUSE_NEW"
+  _run taken
   _design " through plugin_hook_call"
   _run fresh
 ) > "$TEST_TEMP_DIR/p.log" 2>&1
@@ -74,7 +80,9 @@ print_test_section "P1: a pass judged again because a file moved"
 assert_contains "[P1] setup: the steps pass" "$_l" "pass1: findings=0 calls=1"
 assert_contains "[P1] the file moved: judged again" "$_l" "held: findings=0 calls=1"
 assert_contains "[P1] ...shown that it passed" "$(cat "$TEST_TEMP_DIR/held-prompt.txt" 2>/dev/null)" "YOUR EARLIER VERDICTS ON PARTS YOU PASSED"
-assert_contains "[P1] ...the refusal quoting the steps' own words is not taken: judge.held" "$_l" "held_events=1"
+assert_contains "[P1] ...the refusal quoting an unchanged line is not taken: judge.held" "$_l" "held_events=1"
+print_test_section "P3: a line added since"
+assert_contains "[P3] a refusal quoting a line added since is taken" "$_l" "taken: findings=1 calls=1"
 print_test_section "P2: the steps' own words change"
 assert_contains "[P2] judged afresh: the refusal is taken" "$_l" "fresh: findings=1 calls=1"
 

@@ -128,17 +128,17 @@ judge_handoff_receivers_v() {
     _judge_topic_receivers_v _jhr "$mf" ${topics[@]+"${topics[@]}"}
 }
 
-# judge_handoff_own_receivers_v <var> <manifest> — the stages of this run a
+# judge_handoff_own_receivers_v <var> <manifest> [artifact_dir] — the stages of this run a
 # stage hands its own check's findings to: those that take the topic of its
 # handoff output (handoff: true). The engine clears that output as a dispatch
 # starts and writes it after the last try (stage_handoff_unchanged), so the
 # check of a try never sees it written: the stage's own `not mine` is the
 # hand-off (review on #2574).
 judge_handoff_own_receivers_v() {
-    local -n _jhor="$1"; local mf="$2" o
+    local -n _jhor="$1"; local mf="$2" ad="${3:-${ZBUILD_ARTIFACT_DIR:-.}}" o
     local -a outs=() topics=()
     _jhor=""
-    _judge_manifest_outputs_v outs "$mf" "${ZBUILD_ARTIFACT_DIR:-.}"
+    _judge_manifest_outputs_v outs "$mf" "$ad"
     for o in ${outs[@]+"${outs[@]}"}; do [[ "${o##*$'\t'}" == 1 ]] && topics+=("${o%%$'\t'*}"); done
     _judge_topic_receivers_v _jhor "$mf" ${topics[@]+"${topics[@]}"}
 }
@@ -182,7 +182,9 @@ judge_handoff_put() {
     [[ -n "${_JUDGE_HANDOFF_JUDGED[$1|$2]+x}" ]] && return 1
     judge_handoff_last_round && return 1
     # Already waiting: the cap counts waits, not answers, and the wait keeps
-    # the time it started (review on #2574).
+    # the time it started (review on #2574). The answer and finding it holds are
+    # the ones it was handed on with: a later answer while it waits is not
+    # written over them.
     [[ -s "$p" ]] && return 0
     [[ -s "$c" ]] && { IFS= read -r n < "$c" || true; }
     [[ "$n" =~ ^[0-9]+$ ]] || n=0
@@ -305,7 +307,7 @@ judge_handoff_record_own() {
         k="${a%%:*}"; [[ -n "${_jhro_map[$k]:-}" ]] || continue
         zb_answer_kind_v kd "$a"; [[ "$kd" == "not mine" ]] || continue
         judge_handoff_receivers_v rcv "$mf" "$ad" "$k"
-        [[ -n "$rcv" ]] || judge_handoff_own_receivers_v rcv "$mf"
+        [[ -n "$rcv" ]] || judge_handoff_own_receivers_v rcv "$mf" "$ad"
         [[ -n "$rcv" ]] || continue
         for it in ${_jhro_map[$k]}; do
             judge_handoff_state_v st "$kf" "$it"; [[ "$st" == back ]] && continue
