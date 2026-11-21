@@ -39,18 +39,23 @@ zb_design_step_lines_v() {
 
 # zb_design_step_split <step> — one step line's parts: _ZB_STEP_DESC, what to
 # do; _ZB_STEP_AREAS, the text after " | areas:"; _ZB_STEP_SERVES, the ids
-# after " | serves:", space separated, a tag's brackets taken off. Either part
+# after " | serves:", space separated, each once: a trailing [tag] or brackets
+# taken off, a word that is no id (_ACCEPTANCE_ID_ERE) set aside. Either part
 # may come first; each runs to the other or the end.
 _ZB_STEP_DESC="" _ZB_STEP_AREAS="" _ZB_STEP_SERVES=""
 zb_design_step_split() {
     local s="$1" a="" v="" w
+    [[ -n "${_ACCEPTANCE_ID_ERE:-}" ]] || source "${BASH_SOURCE[0]%/*}/acceptance-block.sh" 2>/dev/null || true
     _ZB_STEP_DESC="${s%% | areas:*}"; _ZB_STEP_DESC="${_ZB_STEP_DESC%% | serves:*}"
     [[ "$s" == *" | areas:"* ]] && { a="${s#* | areas:}"; a="${a%% | serves:*}"; }
     [[ "$s" == *" | serves:"* ]] && { v="${s#* | serves:}"; v="${v%% | areas:*}"; }
     _ZB_STEP_DESC="${_ZB_STEP_DESC#"${_ZB_STEP_DESC%%[![:space:]]*}"}"; _ZB_STEP_DESC="${_ZB_STEP_DESC%"${_ZB_STEP_DESC##*[![:space:]]}"}"
     _ZB_STEP_AREAS="$a" _ZB_STEP_SERVES=""
-    local -a ws=(); read -ra ws <<< "${v//[\[\],;]/ }"
-    for w in ${ws[@]+"${ws[@]}"}; do _ZB_STEP_SERVES+="${_ZB_STEP_SERVES:+ }${w%.}"; done
+    local -a ws=(); IFS=$' \t\n' read -ra ws <<< "${v//[,;]/ }"
+    for w in ${ws[@]+"${ws[@]}"}; do
+        w="${w#\[}"; w="${w%.}"; w="${w%\]}"; [[ "$w" == *\[* ]] && w="${w%%\[*}"
+        [[ "$w" =~ ^${_ACCEPTANCE_ID_ERE}$ && " $_ZB_STEP_SERVES " != *" $w "* ]] && _ZB_STEP_SERVES+="${_ZB_STEP_SERVES:+ }$w"
+    done
     return 0
 }
 
@@ -69,14 +74,15 @@ zb_design_write_steps() {
     title="$(grep -m1 -E '^# ' "$design" 2>/dev/null || true)"; title="${title#\# }"
     for l in "${lines[@]}"; do
         zb_design_step_split "$l"
-        rows+="${_ZB_STEP_DESC//$'\x1f'/ }"$'\x1f'"${_ZB_STEP_AREAS//$'\x1f'/ }"$'\x1f'"$_ZB_STEP_SERVES"$'\x1e'
+        l="${_ZB_STEP_DESC//[$'\x1e\x1f']/ }"$'\x1f'"${_ZB_STEP_AREAS//[$'\x1e\x1f']/ }"
+        rows+="$l"$'\x1f'"$_ZB_STEP_SERVES"$'\x1e'
         all+="${_ZB_STEP_SERVES:+ $_ZB_STEP_SERVES}"
     done
     if [[ -n "$all" ]]; then
         declare -F acceptance_spec_render_v >/dev/null 2>&1 \
             || source "${BASH_SOURCE[0]%/*}/acceptance-block.sh" 2>/dev/null || true
         blk="$(extract_acceptance_block "$design" 2>/dev/null)" || blk=""
-        local -a ids=(); read -ra ids <<< "$all"
+        local -a ids=(); IFS=$' \t\n' read -ra ids <<< "$all"
         for id in "${ids[@]}"; do
             [[ -z "${seen[$id]+x}" ]] || continue
             seen[$id]=1; txt=""

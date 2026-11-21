@@ -267,6 +267,8 @@ TERMS (what the issue says each of these words means, and only this):
 ${_ta_terms}
 "
 
+    # #2579 (ADR-072 §4): a SPEC that changed since its check last judged it.
+    local _ta_chg=""; [[ -n "$_ta_need" ]] && declare -F _ta_changed_specs_v >/dev/null 2>&1 && _ta_changed_specs_v _ta_chg "$art" "$_ta_blk" $_ta_need
     # #2445: what is already written, found by script, not re-read by the model.
     local written_block; written_block="$(_ta_written_list "$design" "$repo" "$_ta_need")"
 
@@ -334,7 +336,7 @@ LOOP_COMPLETE
 The requirements below. Write what each requirement DEMANDS, not what some implementation might do.
 
 REQUIREMENTS:
-${spec_block}${sup_section}${terms_section}${issue_section}${base_section}
+${spec_block}${_ta_chg}${sup_section}${terms_section}${issue_section}${base_section}
 ## What you must not do
 - Do not read code in the working copy, other than files in the repository's test folders: read the existing code in the copy of the code from before this change. Do not guess at code this change has not written yet; write what the requirement demands of it.
 - Run nothing else: run only a test file of yours that you are told fails, and never the suite or lint. When you finish, the test files you create or change are run on the code from before this change. A test for a requirement that needs code must fail there for the reason you intend, not because of a mistake in the test; one that passes there, or prints no line tagged for its SPEC, comes back to you.

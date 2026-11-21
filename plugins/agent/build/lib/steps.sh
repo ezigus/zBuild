@@ -332,11 +332,11 @@ _build_steps_judge() {
     local -a ask_n=()
     judge_engine_v eng
     local _bsj_why
-    _JUDGE_ITEM_TEXT=()
+    # #2579: every step's words and the SPECs it serves (a step judged is kept
+    # with its own; all of them tell a moved step from a changed one).
+    local -A stxt=(); _build_steps_texts_v stxt
     for n in "$@"; do
-        # #2579: the step's words and the SPECs it serves, kept with its verdict.
-        _build_steps_text_v "_JUDGE_ITEM_TEXT[step-$n]" "$n"
-        item="### step $n"$'\n'"step: ${_JUDGE_ITEM_TEXT[step-$n]}"$'\n'"areas: ${_BUILD_STEP_AREAS[n-1]:-(any)}"$'\n'
+        item="### step $n"$'\n'"step: ${stxt[step-$n]}"$'\n'"areas: ${_BUILD_STEP_AREAS[n-1]:-(any)}"$'\n'
         if [[ "${kind[$n]}" == "done" ]]; then
             item+="answered done; the line: ${qpath[$n]} | ${qtxt[$n]}"$'\n'
             judge_fp_v fp "$eng"$'\n'"$item"; deps[step-$n]="$repo/${qpath[$n]}"
@@ -375,8 +375,8 @@ _build_steps_judge() {
         # #2579 (ADR-072 §4): a step that changed since it was last answered.
         local _bsj_c="" _bsj_x
         for n in "${ask_n[@]}"; do
-            judge_item_was_v _bsj_x "step-$n"; [[ -n "$_bsj_x" ]] || continue
-            judge_changed_entry_v _bsj_e "step $n" "$_bsj_x" "${_JUDGE_ITEM_TEXT[step-$n]}"; _bsj_c+="$_bsj_e"
+            judge_item_was_v _bsj_x "step-$n" "${stxt[step-$n]}" stxt; [[ -n "$_bsj_x" ]] || continue
+            judge_changed_entry_v _bsj_e "step $n" "$_bsj_x" "${stxt[step-$n]}"; _bsj_c+="$_bsj_e"
         done
         judge_changed_block_v _bsj_c "$_bsj_c"; held+="$_bsj_c"
         if ! prompt="$(stage_prompt_compose_parts --fresh "$(_build_steps_judge_prompt "$list" "$held")")"; then
@@ -426,10 +426,9 @@ _build_steps_judge() {
                 keep[step-$n]="${_BSJ_ANS[$n]/$'\x1f'/ | WHY: }"; keep[step-$n]="${keep[step-$n]/$'\x1f'/ | ACCEPTED IF: }"
                 judge_kept_fp_v "kfp[step-$n]" "${fps[step-$n]}" "${dfp[step-$n]:-}"; kdeps[step-$n]="${deps[step-$n]}"
             done
-            [[ ${#keep[@]} -gt 0 ]] && judge_kept_put_all "$kf" keep kfp kdeps
+            [[ ${#keep[@]} -gt 0 ]] && judge_kept_put_all "$kf" keep kfp kdeps "" stxt
         fi
     fi
-    _JUDGE_ITEM_TEXT=()
     local refused=0 yours _bsj_w _bsj_a
     for n in "$@"; do
         _build_steps_said_v l "$n"; yours="your answer: ${l#step $n: }"

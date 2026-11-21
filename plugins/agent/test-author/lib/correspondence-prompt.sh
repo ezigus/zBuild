@@ -8,6 +8,34 @@
 [[ -n "${_ZBUILD_TA_CORRESPONDENCE_PROMPT_LOADED:-}" ]] && return 0
 _ZBUILD_TA_CORRESPONDENCE_PROMPT_LOADED=1
 
+# _sc_spec_shown_v <var> <block> <sid> — a SPEC as its check is shown it: its
+# words, then each part by the word design wrote (#2470). Kept with the
+# check's verdict (#2579), and compared with it in test-author's own prompt.
+_sc_spec_shown_v() {
+    local -n _sss="$1"; local -a _sss_p=(); local _sss_x
+    _sc_spec_parts_v _sss_p "$2" "$3"
+    _sss="$_ACC_SPEC_TEXT"
+    for _sss_x in ${_sss_p[@]+"${_sss_p[@]}"}; do _sss_x="${_sss_x#*$'\t'}"; _sss+=$'\n'"  ${_sss_x%%$'\t'*}: ${_sss_x#*$'\t'}"; done
+}
+
+# _ta_changed_specs_v <var> <artifact_dir> <block> <sid>... — for test-author's
+# own prompt: each SPEC whose words changed since its check last judged it,
+# with what it was (#2579, ADR-072 §4); empty when none did.
+_ta_changed_specs_v() {
+    local -n _tcs="$1"; local kf="${2%/}/test-author-judged.json" blk="$3" sid w e t
+    shift 3; _tcs=""
+    [[ -s "$kf" && $# -gt 0 ]] || return 0
+    local -A _none=() _got=()
+    judge_kept_get_all_v _got "$kf" _none
+    for sid in "$@"; do
+        _sc_spec_shown_v t "$blk" "$sid"
+        judge_item_was_v w "$sid" "$t"; [[ -n "$w" ]] || continue
+        judge_changed_entry_v e "$sid changed since you last answered it" "$w" "$t"; _tcs+="$e"
+    done
+    [[ -n "$_tcs" ]] && _tcs=$'\n'"These SPECs changed since your tests for them were last checked. Test the part that is new: \"done before\" does not cover it."$'\n'"$_tcs"
+    return 0
+}
+
 # _sc_batch_prompt <ids_arr> <shown_arr> <srcs_arr> [files] [held] (namerefs)
 # — each SPEC, shown with its parts as written, and the assertion tagged for
 # it; one answer line for a SPEC whose test is right, one per part it is not
@@ -17,10 +45,10 @@ _ZBUILD_TA_CORRESPONDENCE_PROMPT_LOADED=1
 # judged is shown as it was and is now (judge-changed.sh, #2579).
 _sc_batch_prompt() {
     local -n _bp_ids="$1" _bp_txts="$2" _bp_srcs="$3"
-    local _bp_files="${4:-}" _bp_held="${5:-}" _bp_c="" _bp_w _bp_e _bp_id
-    for _bp_id in "${_bp_ids[@]}"; do
-        judge_item_was_v _bp_w "$_bp_id"; [[ -n "$_bp_w" ]] || continue
-        judge_changed_entry_v _bp_e "$_bp_id" "$_bp_w" "${_JUDGE_ITEM_TEXT[$_bp_id]}"; _bp_c+="$_bp_e"
+    local _bp_files="${4:-}" _bp_held="${5:-}" _bp_c="" _bp_w _bp_e _bp_i
+    for _bp_i in "${!_bp_ids[@]}"; do
+        judge_item_was_v _bp_w "${_bp_ids[_bp_i]}" "${_bp_txts[_bp_i]}"; [[ -n "$_bp_w" ]] || continue
+        judge_changed_entry_v _bp_e "${_bp_ids[_bp_i]}" "$_bp_w" "${_bp_txts[_bp_i]}"; _bp_c+="$_bp_e"
     done
     judge_changed_block_v _bp_c "$_bp_c"; _bp_held+="$_bp_c"
     cat <<'EOF'

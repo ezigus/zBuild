@@ -11,28 +11,39 @@
 [[ -n "${_ZBUILD_JUDGE_CHANGED_LOADED:-}" ]] && return 0
 _ZBUILD_JUDGE_CHANGED_LOADED=1
 
-# _JUDGE_ITEM_TEXT: each item's text now (key → text), set by the check before
-# it keeps its verdicts; judge_kept_put and judge_kept_put_all keep it with
-# the verdict. _JUDGE_KEPT_TEXT: each item's text as last kept, read back by
-# judge_kept_get_v and judge_kept_get_all_v; a record kept before #2579 has
-# none.
-declare -gA _JUDGE_ITEM_TEXT=() _JUDGE_KEPT_TEXT=()
+# A check passes each item's text now to judge_kept_put_all by name (its
+# [text_assoc]), or to judge_kept_put as _JUDGE_KEEP_TEXT on the call; it is
+# kept with the verdict. _JUDGE_KEPT_TEXT: each item's text as last kept, read
+# back by judge_kept_get_v and judge_kept_get_all_v; a record kept before
+# #2579 has none.
+declare -gA _JUDGE_KEPT_TEXT=()
+_JUDGE_CHANGED_MAX=1000
 
-# judge_item_was_v <var> <key> — <key>'s text when it was last answered, when
-# its text now (_JUDGE_ITEM_TEXT) differs; empty when unchanged, or nothing
-# was kept.
+# judge_item_was_v <var> <key> <now> [now_assoc] — <key>'s text when it was
+# last answered, when <now> differs; empty when unchanged or nothing was kept.
+# Items keyed by position (build's step-N) move: an item whose text now is one
+# kept under any key moved, and so did the item kept under <key> when its text
+# is that of another item now (<now_assoc>, key → text) — neither is changed.
 judge_item_was_v() {
-    local -n _jiw="$1"; local _jiw_o="${_JUDGE_KEPT_TEXT[$2]:-}"
+    local -n _jiw="$1"; local _jiw_o="${_JUDGE_KEPT_TEXT[$2]:-}" _jiw_k
     _jiw=""
-    [[ -n "$_jiw_o" && -n "${_JUDGE_ITEM_TEXT[$2]+x}" && "$_jiw_o" != "${_JUDGE_ITEM_TEXT[$2]}" ]] && _jiw="$_jiw_o"
-    return 0
+    [[ -n "$_jiw_o" && "$_jiw_o" != "$3" ]] || return 0
+    for _jiw_k in "${!_JUDGE_KEPT_TEXT[@]}"; do [[ "${_JUDGE_KEPT_TEXT[$_jiw_k]}" == "$3" ]] && return 0; done
+    if [[ -n "${4:-}" ]]; then
+        local -n _jiw_n="$4"
+        for _jiw_k in "${!_jiw_n[@]}"; do [[ "${_jiw_n[$_jiw_k]}" == "$_jiw_o" ]] && return 0; done
+    fi
+    _jiw="$_jiw_o"
 }
 
 # judge_changed_entry_v <var> <label> <was> <now> — one changed item, as the
-# check is shown it: each text's lines after the first indented.
+# check is shown it: each side capped (_JUDGE_CHANGED_MAX), its lines after the
+# first indented.
 judge_changed_entry_v() {
-    local -n _jce="$1"
-    _jce="- $2"$'\n'"  was: ${3//$'\n'/$'\n'    }"$'\n'"  now: ${4//$'\n'/$'\n'    }"$'\n'
+    local -n _jce="$1"; local _jce_w="$3" _jce_n="$4"
+    (( ${#_jce_w} > _JUDGE_CHANGED_MAX )) && _jce_w="${_jce_w:0:_JUDGE_CHANGED_MAX}…"
+    (( ${#_jce_n} > _JUDGE_CHANGED_MAX )) && _jce_n="${_jce_n:0:_JUDGE_CHANGED_MAX}…"
+    _jce="- $2"$'\n'"  was: ${_jce_w//$'\n'/$'\n'    }"$'\n'"  now: ${_jce_n//$'\n'/$'\n'    }"$'\n'
 }
 
 # judge_changed_block_v <var> <entries> — what a check is shown of the items

@@ -35,6 +35,8 @@
 #              whose quote spans several lines, all added since, is taken (no
 #              judge.held); one whose quote holds a line that was there before
 #              is held — every line of the quote is compared, line breaks kept
+# LP14 [change] (#2579 review) a quote whose lines end in a carriage return
+#              (CRLF) is the lines it quotes: taken when they were added since
 # LP4 [change] the next try gives no answer and nothing changed: no call — the
 #              kept reports stand
 # LP5 [change] an answer to a finding about a file whose kept report found
@@ -279,6 +281,17 @@ FINDINGS="[$_FM]"; : > "$ZBUILD_EVENTS_JSONL"
 _lens
 assert_contains "[LP13] a finding quoting the added block, line breaks and all, is taken" "$MSGS" "the fallback reads any commenter"
 _lacks "[LP13] ...and judge.held does not drop it" "$(cat "$ZBUILD_EVENTS_JSONL")" '"judge.held"'
+
+print_test_section "LP14: a quote with carriage returns"
+FINDINGS="[]"; printf '# quiet again\n' >> "$XR/a.sh"; _commit "a, quiet again"
+_lens
+assert_contains "[LP14] setup: a.sh's kept report is clean" "$(jq -r '.["a.sh"].payload // ""' "$ART/lens-red-team-judged.json" 2>/dev/null)" "clean"
+printf 'y=2\nz=3\n' >> "$XR/a.sh"; _commit "a, y and z"
+FINDINGS='[{"accepted_if":"y is checked","trigger":"any run","quote":"y=2\r\nz=3\r","file":"a.sh","severity":"high","message":"y is set blind","introduced":true,"fix":"code"}]'
+: > "$ZBUILD_EVENTS_JSONL"
+_lens
+assert_contains "[LP14] a CRLF quote of lines added since is taken" "$MSGS" "y is set blind"
+_lacks "[LP14] ...and judge.held does not drop it" "$(cat "$ZBUILD_EVENTS_JSONL")" '"judge.held"'
 
 cleanup_test_env
 print_test_results

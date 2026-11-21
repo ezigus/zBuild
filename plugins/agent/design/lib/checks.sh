@@ -438,7 +438,7 @@ _design_checks() {
         _sn=$((_sn + 1)); zb_design_step_split "$_s"
         if [[ -z "$_ZB_STEP_SERVES" ]]; then violations+=("STEP_NO_SPEC $_sn ($_ZB_STEP_DESC)"); continue; fi
         (( _accept_ok )) || continue
-        local -a _svs=(); read -ra _svs <<< "$_ZB_STEP_SERVES"
+        local -a _svs=(); IFS=$' \t\n' read -ra _svs <<< "$_ZB_STEP_SERVES"
         for _sv in "${_svs[@]}"; do
             [[ " ${_na:-} " == *" $_sv "* ]] || violations+=("STEP_UNKNOWN_SPEC $_sv (step $_sn serves an id the acceptance block has no SPEC for)")
         done

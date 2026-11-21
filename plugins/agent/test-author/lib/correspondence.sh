@@ -322,10 +322,7 @@ _ta_correspondence() {
         _pn="_sc_parts_${#_ids[@]}"
         local -a "$_pn=()"
         _sc_spec_parts_v "$_pn" "$_blk" "$sid"
-        local -n _sc_pp="$_pn"
-        _shown="$_ACC_SPEC_TEXT"
-        for _p in "${_sc_pp[@]}"; do _p="${_p#*$'\t'}"; _shown+=$'\n'"  ${_p%%$'\t'*}: ${_p#*$'\t'}"; done
-        unset -n _sc_pp
+        _sc_spec_shown_v _shown "$_blk" "$sid"
         _ids+=("$sid"); _txts+=("$_shown"); _srcs+=("$_src"); _tfss+=("$_tfs"); _pnames+=("$_pn")
     done < <(acceptance_list_spec_ids "$design" 2>/dev/null || true)
     local n=${#_ids[@]}
@@ -348,13 +345,13 @@ _ta_correspondence() {
     # carries the finding) waits, its refusal standing; back, it is judged again.
     judge_handoff_record_own "$kf" "${_TA_MANIFEST:-}" "$art" _SC_KEY_SPEC ${_TA_ANSWERS[@]+"${_TA_ANSWERS[@]}"}
     local -a _sc_back=(); local _hs
-    judge_engine_v eng; _JUDGE_ITEM_TEXT=()
+    judge_engine_v eng
     for (( _i=0; _i<n; _i++ )); do
         # The answers' own fingerprint: a verdict kept with them is not judged again for them.
         _k=""; [[ -n "${_disp[${_ids[_i]}]:-}" ]] && judge_fp_v _k "${_disp[${_ids[_i]}]}"
         _dfps[_i]="$_k"
         judge_fp_v _k "$eng"$'\n'"${_ids[_i]}"$'\n'"${_txts[_i]}"$'\n'"${_srcs[_i]}"
-        _fps[_i]="$_k"; _kwhy[_i]=""; _JUDGE_ITEM_TEXT["${_ids[_i]}"]="${_txts[_i]}"
+        _fps[_i]="$_k"; _kwhy[_i]=""
         [[ -n "$kf" ]] || continue
         judge_handoff_state_v _hs "$kf" "${_ids[_i]}"
         [[ "$_hs" == waiting ]] && _dfps[_i]=""
@@ -473,12 +470,11 @@ _ta_correspondence() {
                 _deps=(${_open_files[@]+"${_open_files[@]}"} ${_wired[@]+"${_wired[@]}"})
                 for _f in ${_tfss[_i]}; do _deps+=("$repo/$_f"); done
                 judge_kept_fp_v _k "${_fps[_i]}" "${_dfps[_i]}"
-                judge_kept_put "$kf" "${_ids[_i]}" "$_k" "${_lines[_i]}" "${_deps[@]}"
+                _JUDGE_KEEP_TEXT="${_txts[_i]}" judge_kept_put "$kf" "${_ids[_i]}" "$_k" "${_lines[_i]}" "${_deps[@]}"
             done
             for _f in ${_sc_back[@]+"${_sc_back[@]}"}; do judge_handoff_clear "$kf" "$_f"; done
         fi
     fi
-    _JUDGE_ITEM_TEXT=()
 
     local _unjudged=0
     for (( _i=0; _i<n; _i++ )); do

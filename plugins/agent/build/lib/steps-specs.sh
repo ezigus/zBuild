@@ -11,8 +11,8 @@ _ZBUILD_BUILD_STEPS_SPECS_LOADED=1
 
 # _build_steps_load <plan_json> — design's steps, in order, into _BUILD_STEP_DESC,
 # _BUILD_STEP_AREAS (space separated) and _BUILD_STEP_SPECS (each SPEC the step
-# serves, "- <id>: <text>", its parts under it, from design-steps.json's specs):
-# one jq, none when there is no step.
+# serves, "- <id>: <text>", its parts under it, from design-steps.json's specs,
+# each capped like a not-needed reason): one jq, none when there is no step.
 _BUILD_STEP_DESC=() _BUILD_STEP_AREAS=() _BUILD_STEP_SPECS=()
 _build_steps_load() {
     _BUILD_STEP_DESC=() _BUILD_STEP_AREAS=() _BUILD_STEP_SPECS=()
@@ -22,7 +22,7 @@ _build_steps_load() {
         [[ -n "$d" ]] || continue
         _BUILD_STEP_DESC+=("$d"); _BUILD_STEP_AREAS+=("$a"); _BUILD_STEP_SPECS+=("${s//$'\x1e'/$'\n'}")
     done < <(jq -r '(.specs // {}) as $sp | .steps // [] | .[] | select(type == "object")
-        | "\(.description // "" | tostring | gsub("[\r\n\u001f]+"; " "))\u001f\((.areas // .files // []) | map(tostring) | join(" "))\u001f\((.serves // []) | map(tostring | . as $id | "- \($id): \($sp[$id] // "(the design has no such SPEC)" | tostring)") | join("\n") | gsub("\u001f"; " ") | gsub("\n"; "\u001e"))"' <<< "$1" 2>/dev/null)
+        | "\(.description // "" | tostring | gsub("[\r\n\u001f]+"; " "))\u001f\((.areas // .files // []) | map(tostring) | join(" "))\u001f\((.serves // []) | map(tostring | . as $id | ($sp[$id] // "(the design has no such SPEC)" | tostring) as $t | "- \($id): \(if ($t | length) > 1000 then $t[0:1000] + "…" else $t end)") | join("\n") | gsub("\u001f"; " ") | gsub("\n"; "\u001e"))"' <<< "$1" 2>/dev/null)
 }
 
 # _build_steps_text_v <var> <n> — step <n> as its check judges it: its words,
@@ -35,22 +35,27 @@ _build_steps_text_v() {
     return 0
 }
 
+# _build_steps_texts_v <assoc> — every step's text, keyed step-<n>.
+_build_steps_texts_v() {
+    local -n _bsts="$1"; local _bsts_n
+    _bsts=()
+    for (( _bsts_n = 1; _bsts_n <= ${#_BUILD_STEP_DESC[@]}; _bsts_n++ )); do _build_steps_text_v "_bsts[step-$_bsts_n]" "$_bsts_n"; done
+}
+
 # _build_steps_changed_v <var> <artifact_dir> — for build's own prompt: each
 # step whose words or SPECs changed since its check last answered it, with what
-# it was; empty when none did, or nothing was kept.
+# it was; empty when none did, nothing was kept, or a step only moved.
 _build_steps_changed_v() {
     local -n _bsc="$1"; local kf="${2%/}/build-steps-judged.json" n w e
     _bsc=""
     [[ ${#_BUILD_STEP_DESC[@]} -gt 0 && -s "$kf" ]] || return 0
-    local -A _none=() _got=()
-    _JUDGE_ITEM_TEXT=()
+    local -A _none=() _got=() _now=()
     judge_kept_get_all_v _got "$kf" _none
+    _build_steps_texts_v _now
     for (( n = 1; n <= ${#_BUILD_STEP_DESC[@]}; n++ )); do
-        _build_steps_text_v "_JUDGE_ITEM_TEXT[step-$n]" "$n"
-        judge_item_was_v w "step-$n"; [[ -n "$w" ]] || continue
-        judge_changed_entry_v e "step $n changed since you last answered it" "$w" "${_JUDGE_ITEM_TEXT[step-$n]}"; _bsc+="$e"
+        judge_item_was_v w "step-$n" "${_now[step-$n]}" _now; [[ -n "$w" ]] || continue
+        judge_changed_entry_v e "step $n changed since you last answered it" "$w" "${_now[step-$n]}"; _bsc+="$e"
     done
-    _JUDGE_ITEM_TEXT=()
     [[ -n "$_bsc" ]] && _bsc=$'\n'"These steps changed since you last answered them. Do the part that is new: \"done before\" does not cover it."$'\n'"$_bsc"
     return 0
 }

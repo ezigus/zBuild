@@ -129,14 +129,15 @@ The design document MUST include:
 2. A \`\`\`steps block: the ordered work items that change the code, one per
    line, each with the areas of the code it is about and the SPECs it serves:
 \`\`\`steps
-- <what to do, in one sentence> | areas: path/to/file1, path/to/file2 | serves: ${_DCK_ID_PREFIX}LOOP-1, ${_DCK_ID_PREFIX}LOOP-2
+- <what to do, in one sentence> | areas: path/to/file1, path/to/file2 | serves: <SPEC ids>
 \`\`\`
    The build follows them in order. A step does part of what its SPECs say:
-   name each one it serves, by its id from the acceptance block — the step's
-   check is shown them, and a step's answer must not break any of them. A step is code work only: it names no file
-   or folder in the test folders. What you own of the tests is your SPECs:
-   they say what the tests must prove. The test author writes the tests —
-   which cases, in which files and how.
+   name each one it serves, by its id from the acceptance block
+   (serves: ${_DCK_ID_PREFIX}LOOP-1, ${_DCK_ID_PREFIX}LOOP-2) — the step's
+   check is shown them, and a step's answer must not break any of them.
+   A step is code work only: it names no file or folder in the test folders.
+   What you own of the tests is your SPECs: they say what the tests must
+   prove. The test author writes the tests — which cases, in which files and how.
 
 3. A \`\`\`acceptance block listing what this change must deliver. Each line is
    one requirement: an id, a status, and ONE behaviour someone could observe and test.

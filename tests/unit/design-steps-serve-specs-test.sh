@@ -17,6 +17,11 @@
 # SV4 [change] design-steps.json holds each step's served SPECs, and the text
 #              of each SPEC a step serves, with its parts
 # SV5 [change] design's prompt asks for each step's SPECs after " | serves:"
+# SV6 [change] (review) a served id keeps its id alone: a trailing [tag] is
+#              taken off, words that are no id are set aside, an id named twice
+#              counts once — under the caller's IFS too
+# SV7 [change] (review) a step's words holding a record separator are written
+#              to design-steps.json as one step
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -91,6 +96,26 @@ export ZBUILD_REPO_ROOT="$D" ZBUILD_EVENTS_JSONL="$ST/events.jsonl" ZBUILD_EVENT
 : > "$ZBUILD_EVENTS_JSONL"
 _design_stage_run_inner "$ST/scope-manifest.md" "$AD/design.md" "$AD" >/dev/null 2>&1
 assert_contains "[SV5] design's prompt asks for each step's SPECs" "$(cat "$TEST_TEMP_DIR/design-prompt.txt" 2>/dev/null)" "| serves: "
+
+# ── SV6 ──────────────────────────────────────────────────────────────────────
+_l='- filter | areas: core/a.sh | serves: DSCLA-23[code], DSCLA-1 (the filter), DSCLA-1'
+zb_design_step_split "$_l"
+assert_eq "[SV6] a tag taken off, prose set aside, a repeat counted once" "DSCLA-23 DSCLA-1" "$_ZB_STEP_SERVES"
+_ifs_split() { local IFS=$'\n\t'; zb_design_step_split "$_l"; }
+_ifs_split
+assert_eq "[SV6] ...under a caller IFS of newline and tab too" "DSCLA-23 DSCLA-1" "$_ZB_STEP_SERVES"
+_draft "$TEST_TEMP_DIR/ifs.md" "- filter | areas: core/a.sh | serves: DSCLA-1, DSCLA-2"
+_ifs_check() { local IFS=$'\n\t'; _design_checks "$TEST_TEMP_DIR/ifs.md" "$CR" ""; }
+_ifs_check
+assert_eq "[SV6] design's check under that IFS: no step violation" "" "$(_viol STEP_)"
+_ifs_write() { local IFS=$'\n\t'; _design_write_steps "$TEST_TEMP_DIR/ifs.md" "$TEST_TEMP_DIR/ifs.json"; }
+_ifs_write
+assert_eq "[SV6] ...and design-steps.json holds both SPECs' text" "DSCLA-1 DSCLA-2" "$(jq -r '.specs | keys | join(" ")' "$TEST_TEMP_DIR/ifs.json" 2>/dev/null)"
+
+# ── SV7 ──────────────────────────────────────────────────────────────────────
+_draft "$TEST_TEMP_DIR/rs.md" "- filter$(printf '\036')first | areas: core/a.sh | serves: DSCLA-1" "- share | areas: core/a.sh | serves: DSCLA-2"
+_design_write_steps "$TEST_TEMP_DIR/rs.md" "$TEST_TEMP_DIR/rs.json"
+assert_eq "[SV7] two steps, the first in one piece" "2|filter first" "$(jq -r '"\(.steps | length)|\(.steps[0].description)"' "$TEST_TEMP_DIR/rs.json" 2>/dev/null)"
 
 cleanup_test_env
 print_test_results

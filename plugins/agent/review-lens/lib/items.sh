@@ -265,7 +265,7 @@ _rl_items_hold_passes() {
     local -A qs=()
     # A quote keeps its line breaks (#2579): judge_pass_flip_ok reads it line by line.
     while IFS=$'\x1f' read -r -d $'\x1e' f q; do [[ -n "$f" ]] && qs["$f"]+="$f | $q"$'\x1e'; done < <(jq -j --arg fs "$_RL_IT_PASSED " \
-        '(.findings // [])[] | objects | select(.file as $f | $fs | contains(" \($f) ")) | "\(.file)\u001f\(.quote // "" | tostring | gsub("[\u001e\u001f]"; " "))\u001e"' <<< "$_rhp" 2>/dev/null)
+        '(.findings // [])[] | objects | select(.file as $f | $fs | contains(" \($f) ")) | "\(.file)\u001f\(.quote // "" | tostring | gsub("\r"; "") | gsub("[\u001e\u001f]"; " "))\u001e"' <<< "$_rhp" 2>/dev/null)
     for f in "${!qs[@]}"; do
         # The record's files, as judge_kept_get_all_v gave them.
         while IFS= read -r -d $'\x1e' l; do [[ "${l%%$'\x1f'*}" == "$f" ]] && _JUDGE_KEPT_FILES["$f"]="${l#*$'\x1f'}"; done <<< "$_RL_IT_EARLIER_FILES"

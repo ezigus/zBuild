@@ -219,9 +219,8 @@ judge_kept_get_v() {
         "$_judge__kf" 2>/dev/null)" || return 0
     [[ -n "$_judge__rec" ]] || return 0
     if [[ "$_judge__rec" == *$'\nT\t'* ]]; then
-        _judge__chk="${_judge__rec#*$'\nT\t'}"; _judge__chk="${_judge__chk%%$'\n'*}"; _judge__chk="${_judge__chk//$'\x1e'/$'\n'}"
-        _JUDGE_KEPT_TEXT["$_judge__key"]="${_judge__chk//$'\x1f'/$'\t'}"
-        _judge_check_name_v _judge__chk "$_judge__kf"
+        local _judge__txt="${_judge__rec#*$'\nT\t'}"; _judge__txt="${_judge__txt%%$'\n'*}"; _judge__txt="${_judge__txt//$'\x1e'/$'\n'}"
+        _JUDGE_KEPT_TEXT["$_judge__key"]="${_judge__txt//$'\x1f'/$'\t'}"
     fi
     if [[ "$_judge__rec" != *$'\nP\t'* ]]; then
         local _judge__why=fingerprint; [[ "${5:-0}" == 1 && -z "${6:-}" ]] && _judge__why=disputed
@@ -278,7 +277,8 @@ _judge_kept_write() {
 }
 
 # judge_kept_put <kept_file> <key> <fp> <payload> [file]... — keep <payload> for
-# <key> under fingerprint <fp>, with the hash of each file it depends on.
+# <key> under fingerprint <fp>, with the hash of each file it depends on, and
+# the item's text when _JUDGE_KEEP_TEXT is set on the call (#2579).
 judge_kept_put() {
     local _judge__kf="$1" _judge__key="$2" _judge__fp="$3" _judge__payload="$4"; shift 4
     [[ -n "$_judge__kf" && -n "$_judge__fp" ]] || return 0
@@ -290,7 +290,7 @@ judge_kept_put() {
     [[ -s "$_judge__kf" ]] && _judge__cur="$(<"$_judge__kf")"
     local _judge__new
     _judge__new="$(jq -c --arg k "$_judge__key" --arg fp "$_judge__fp" --arg p "$_judge__payload" --arg pairs "$_judge__pairs" \
-        --arg t "${_JUDGE_ITEM_TEXT[$_judge__key]:-}" \
+        --arg t "${_JUDGE_KEEP_TEXT:-}" \
         '(if type == "object" then . else {} end)
          + {($k): ({fp: $fp, payload: $p,
                    files: ([$pairs | split("\n")[] | select(length > 0) | split("\t") | {(.[0]): .[1]}] | add // {})}
@@ -420,16 +420,18 @@ judge_kept_get_all_v() {
     return 0
 }
 
-# judge_kept_put_all <kept_file> <payload_assoc> <fp_assoc> <deps_assoc> [carry_assoc] — keep
+# judge_kept_put_all <kept_file> <payload_assoc> <fp_assoc> <deps_assoc> [carry_assoc] [text_assoc] — keep
 # every key of <payload_assoc> under its fingerprint, with the hash of each file
 # its <deps_assoc> entry names (one per line): one hash of all the files, one
 # write (#2470). The file's other answers stay as they are. #2574: with
 # _JUDGE_KEEP_BASE set (judge_keep_baseline_v), each is kept with the
 # repository as it was; a key of [carry_assoc] — a pass held — keeps the files
-# and base of the verdict that passed it, so its baseline never moves.
+# and base of the verdict that passed it, so its baseline never moves. #2579:
+# [text_assoc], each item's text, is kept with it (judge-changed.sh).
 judge_kept_put_all() {
     local _jpa_kf="$1"; local -n _jpa_p="$2" _jpa_fp="$3" _jpa_d="$4"
-    local _jpa_cn="${5:-_jpa_nocarry}"; local -A _jpa_nocarry=(); local -n _jpa_c="$_jpa_cn"
+    local _jpa_cn="${5:-_jpa_nocarry}" _jpa_tn="${6:-_jpa_notext}"; local -A _jpa_nocarry=() _jpa_notext=()
+    local -n _jpa_c="$_jpa_cn" _jpa_tx="$_jpa_tn"
     [[ -n "$_jpa_kf" && ${#_jpa_p[@]} -gt 0 ]] || return 0
     local -a _jpa_all=(); local _jpa_k _jpa_f
     for _jpa_k in "${!_jpa_p[@]}"; do
@@ -450,7 +452,7 @@ judge_kept_put_all() {
             _judge_json_str_v _jpa_j "$_jpa_f"; _jpa_files+="${_jpa_files:+,}$_jpa_j:\"${_jpa_hs[$_jpa_f]:-absent}\""
         done <<< "${_jpa_d[$_jpa_k]:-}"
         _judge_json_str_v _jpa_j "$_jpa_k"; _judge_json_str_v _jpa_v "${_jpa_p[$_jpa_k]}"; _judge_json_str_v _jpa_x "${_jpa_fp[$_jpa_k]:-}"
-        _jpa_t=""; [[ -n "${_JUDGE_ITEM_TEXT[$_jpa_k]:-}" ]] && { _judge_json_str_v _jpa_t "${_JUDGE_ITEM_TEXT[$_jpa_k]}"; _jpa_t=",\"text\":$_jpa_t"; }
+        _jpa_t=""; [[ -n "${_jpa_tx[$_jpa_k]:-}" ]] && { _judge_json_str_v _jpa_t "${_jpa_tx[$_jpa_k]}"; _jpa_t=",\"text\":$_jpa_t"; }
         _jpa_new+="${_jpa_new:+,}$_jpa_j:{\"fp\":$_jpa_x,\"payload\":$_jpa_v,\"files\":{$_jpa_files}$_jpa_t${_JUDGE_KEEP_BASE:+,\"base\":$_JUDGE_KEEP_BASE}${_jpa_c[$_jpa_k]:+,\"carry\":true}}"
     done
     if [[ -s "$_jpa_kf" ]]; then

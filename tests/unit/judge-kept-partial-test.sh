@@ -17,6 +17,11 @@
 #    since it was last judged is shown as it was and as it is now, and the
 #    judge is told the new part must be shown done — "done before" cannot
 #    cover it
+# D5 (#2579 review, ADR-072 §4) test-author's own prompt marks a SPEC that
+#    changed since its check last judged it, with its old and new words
+# D4 (#2579 review, ADR-072 §4) design's check: the issue's requirements
+#    changed since they were last judged — the check is shown them as they were
+#    and as they are now, with the rule
 # P1 design's check, a partly bad reply: the re-ask asks only for the items
 #    whose lines are bad; the good items are kept even when the check ends
 #    unusable; the next try asks only for what is missing
@@ -98,6 +103,16 @@ print_test_section "D1 + P1: design's check"
     _cov
     echo "D1b|$(cat "$_N")|$(jq -r 'select(.type == "judge.kept.stale" and .data.item == "FRSH-1") | .data.why' "$ZBUILD_EVENTS_JSONL" 2>/dev/null)"
 
+    # D4: a requirement's words change.
+    _R1="$OK"; _cov
+    REQS='- RQST-1: start from the *first* stage
+- RQST-2: read the flag and print it'
+    _R1=$'RQST-1: covered\nRQST-2: covered\n'; _cov
+    _p1="$(cat "$_P.1" 2>/dev/null)"
+    echo "D4|$([[ "$_p1" == *"was: - RQST-1: start from the *first* stage"*"- RQST-2: read the flag"$'\n'* ]] && echo was)|$([[ "$_p1" == *"now: - RQST-1"*"read the flag and print it"* ]] && echo now)|$([[ "$_p1" == *'"done before" cannot cover it'* ]] && echo rule)"
+    REQS='- RQST-1: start from the *first* stage
+- RQST-2: read the flag'
+
     # P1: requirement lines bad twice, both SPECs good: SPECs kept, check unusable.
     _spec_design "$D"
     _BADQ=$'RQST-1: covered\nRQST-2: uncovered | WHY: nothing reads it | ACCEPTED IF: it is accepted | QUOTE: "reads the flag"\nFRSH-1: ok\nWORK-2: ok\n'
@@ -118,6 +133,7 @@ print_test_section "D1 + P1: design's check"
 F="$TEST_TEMP_DIR/d.out"
 assert_eq "[D1] one SPEC changed: one call, the other SPEC's answer used, not stale, not shown" "1||1|0|" "$(_l "$F" D1a)"
 assert_eq "[D1] a code file the judge opened changed: judged again, why=file" "1|file" "$(_l "$F" D1b)"
+assert_eq "[D4] changed requirements are shown as they were and are now, with the rule" "was|now|rule" "$(_l "$F" D4)"
 assert_eq "[P1] requirements bad twice: unusable, and both SPECs kept, requirements not" "2|unusable|1|1|0" "$(_l "$F" P1a)"
 assert_eq "[P1] ...the re-ask asks only for the requirements" "Answer again only for: every requirement" "$(_l "$F" P1b)"
 assert_eq "[P1] ...the next try asks only for them, no SPEC inline" "1|||reqs-asked" "$(_l "$F" P1c)"
@@ -140,10 +156,16 @@ print_test_section "D2: test-author's check"
     echo "D2a|$(cat "$_N")|$_TA_CORR_OUTCOME|$(_ev judge.kept.used test-author FRSH-1)|$(_ev judge.kept.stale test-author FRSH-1)"
     _p1="$(cat "$_P.1" 2>/dev/null)"
     echo "D3|$([[ "$_p1" == *"was: the flag is read"* ]] && echo was)|$([[ "$_p1" == *"Then: the run uses it"$'\n'* ]] && echo old-then)|$([[ "$_p1" == *"now: the flag is read"* ]] && echo now)|$([[ "$_p1" == *'"done before" cannot cover it'* ]] && echo rule)"
+    _spec_design "$D" "the run uses the flag twice"
+    route_to_model_loop() { cp "$2" "$TEST_TEMP_DIR/ta-prompt.txt"; _ROUTE_LOOP_TERMINATED_REASON=done_sentinel; return 0; }
+    ZBUILD_REPO_ROOT="$R" ZBUILD_ARTIFACT_DIR="$A" test_author_run test-author "" >/dev/null 2>&1
+    _tp="$(cat "$TEST_TEMP_DIR/ta-prompt.txt" 2>/dev/null)"
+    echo "D5|$([[ -n "$_tp" ]] && echo prompt)|$([[ "$_tp" == *"WORK-2 changed since you last answered it"* ]] && echo marked)|$([[ "$_tp" == *"Then: the run uses the flag"$'\n'*"now:"* ]] && echo was)|$([[ "$_tp" == *"Then: the run uses the flag twice"* ]] && echo now)"
 ) > "$TEST_TEMP_DIR/t.out" 2>/dev/null
 T="$TEST_TEMP_DIR/t.out"
 assert_eq "[D2] one SPEC changed in the design: the other SPEC's answer used, not stale" "1||1|0" "$(_l "$T" D2a)"
 assert_eq "[D3] the changed SPEC is shown as it was and is now, with the rule" "was|old-then|now|rule" "$(_l "$T" D3)"
+assert_eq "[D5] test-author's prompt marks the changed SPEC, with its old and new words" "prompt|marked|was|now" "$(_l "$T" D5)"
 
 cleanup_test_env
 print_test_results

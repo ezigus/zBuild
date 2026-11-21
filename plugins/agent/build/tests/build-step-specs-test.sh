@@ -21,6 +21,13 @@
 #          and new words
 # SS5 [R3] a step kept before its words were saved (an older record) is judged
 #          afresh, with no "was"
+# SS7 [review] a check that ends early (its call interrupted) leaves no item
+#          text behind for another check's kept record
+# SS8 [review] a step that only moved (design inserts a new step 1; the old
+#          step 1 is now step 2) is not shown as changed, and neither is the
+#          new step 1
+# SS9 [review] each SPEC's text in a step's item, and each side of was / now,
+#          is capped
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -139,6 +146,48 @@ JUDGE_REPLY='1: does'
 _run "$DONE1"$'\nLOOP_COMPLETE'
 assert_eq "[SS5] the step is judged afresh" "1" "$(_ncalls)"
 _lacks "[SS5] ...with no \"was\"" "$(cat "$JPROMPT" 2>/dev/null)" "was: "
+
+# ── SS7 ──────────────────────────────────────────────────────────────────────
+print_test_section "SS7: a check that ends early leaves no item text behind"
+rm -f "$AD/build-steps-judged.json"
+route_to_model() { printf '%s\n' "${ZBUILD_ROUTE_CALL:-main}" >> "$CALLS"; return 130; }
+_run "$DONE1"$'\nLOOP_COMPLETE'
+assert_eq "[SS7] setup: the step check was called and interrupted" "check" "$(cat "$CALLS" 2>/dev/null)"
+declare -A _op=([step-1]="1: does") _of=([step-1]=fp1) _od=()
+judge_kept_put_all "$TEST_TEMP_DIR/other-judged.json" _op _of _od
+assert_eq "[SS7] another check's record holds no text it was not given" "null" "$(jq -c '.["step-1"].text' "$TEST_TEMP_DIR/other-judged.json" 2>/dev/null)"
+route_to_model() {
+    printf '%s\n' "${ZBUILD_ROUTE_CALL:-main}" >> "$CALLS"
+    printf '%s' "$2" > "$JPROMPT"
+    printf '%s\n' "$JUDGE_REPLY"
+}
+
+# ── SS8 ──────────────────────────────────────────────────────────────────────
+print_test_section "SS8: a moved step is not a changed step"
+_design "$STEP1" "$SPEC23"
+JUDGE_REPLY='1: does'
+_run "$DONE1"$'\nLOOP_COMPLETE'
+assert_eq "[SS8] setup: step 1 judged and kept" "1" "$(_ncalls)"
+# Design inserts a new step 1; the old step 1 is now step 2, word for word.
+sed -i.bak "s#^- $STEP1 #- log each holder read | areas: lib/holder.sh | serves: DSCLA-23\\
+- $STEP1 #" "$DESIGN_MD"; rm -f "$DESIGN_MD.bak"
+( source "$REPO_ROOT/plugins/agent/design/plugin.sh" >/dev/null 2>&1; _design_write_steps "$DESIGN_MD" "$STEPS" )
+assert_eq "[SS8] setup: two steps, the old one second" "log each holder read|$STEP1" "$(jq -r '[.steps[].description] | join("|")' "$STEPS" 2>/dev/null)"
+JUDGE_REPLY=$'1: does\n2: does'
+_run "$DONE1"$'\nstep 2: done — QUOTE: lib/holder.sh | '"$LINE"$'\nLOOP_COMPLETE'
+_lacks "[SS8] build's prompt marks no step as changed" "$(cat "$AD/build-prompt.txt" 2>/dev/null)" "changed since you last answered it"
+_lacks "[SS8] the step check is shown no step as changed" "$(cat "$JPROMPT" 2>/dev/null)" "CHANGED SINCE IT WAS LAST ANSWERED"
+
+# ── SS9 ──────────────────────────────────────────────────────────────────────
+print_test_section "SS9: caps"
+_long="$(printf 'a%.0s' {1..1500})"
+_design "$STEP1" "$SPEC23 $_long"
+_run "$DONE1"$'\nLOOP_COMPLETE'
+_jp="$(cat "$JPROMPT" 2>/dev/null)"
+assert_eq "[SS9] a SPEC's text in the step's item is capped" "0" "$([[ "$_jp" == *"$_long"* ]] && echo 1 || echo 0)"
+assert_contains "[SS9] ...and says so" "$_jp" "…"
+_e=""; judge_changed_entry_v _e "x" "$_long" "$_long"
+assert_eq "[SS9] each side of was / now is capped" "0" "$([[ "$_e" == *"$_long"* ]] && echo 1 || echo 0)"
 
 cleanup_test_env
 print_test_results
