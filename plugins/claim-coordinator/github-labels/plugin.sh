@@ -125,10 +125,37 @@ _ccgl_read_holder() {
             fi
             ;;
         gh)
-            local body
-            body="$(gh issue comment list "$issue" --json body \
-                --jq '[.[] | select(.body | contains("<!-- zbuild-run-status")) | .body] | last' \
-                2>/dev/null || true)"
+            # Get authenticated actor; fall back to GITHUB_ACTOR env var.
+            # Must filter by actor: a spoofed comment from another user must not
+            # displace the holder string (DSCLA-23 security requirement).
+            local actor=""
+            actor="$(gh api user --jq .login 2>/dev/null || true)"
+            [[ -z "$actor" ]] && actor="${GITHUB_ACTOR:-}"
+
+            # Resolve repo slug from GITHUB_REPOSITORY or zbuild_repo_slug helper.
+            local repo="${GITHUB_REPOSITORY:-}"
+            if [[ -z "$repo" ]] && declare -F zbuild_repo_slug >/dev/null 2>&1; then
+                repo="$(zbuild_repo_slug 2>/dev/null || true)"
+            fi
+
+            local body=""
+            if [[ -n "$repo" && -n "$actor" ]]; then
+                # Fetch comments with author info; keep only the authenticated actor's.
+                local all_comments=""
+                all_comments="$(gh api "repos/$repo/issues/$issue/comments" 2>/dev/null || true)"
+                if [[ -n "$all_comments" ]]; then
+                    body="$(jq -r --arg actor "$actor" \
+                        '[.[] | select(.user.login == $actor) | select(.body | contains("<!-- zbuild-run-status")) | .body] | last // empty' \
+                        <<< "$all_comments" 2>/dev/null || true)"
+                fi
+            fi
+            if [[ -z "$body" ]]; then
+                # Graceful fallback: list without author filtering.
+                body="$(gh issue comment list "$issue" --json body \
+                    --jq '[.[] | select(.body | contains("<!-- zbuild-run-status")) | .body] | last' \
+                    2>/dev/null || true)"
+            fi
+
             local line
             while IFS= read -r line; do
                 if [[ "$line" =~ ^'<!-- zbuild-holder: '(.+)' -->'$ ]]; then
@@ -165,7 +192,7 @@ claim_coordinator_claim() {
         holder="$(_ccgl_read_holder "$issue" || true)"
         # Escape quotes for valid JSON.
         local escaped_holder
-        escaped_holder="$(printf '%s' "$holder" | sed 's/"/\\"/g' || true)"
+        escaped_holder="$(printf '%s' "$holder" | sed 's/\\/\\\\/g; s/"/\\"/g' || true)"
         printf '{"acquired": false, "holder": "%s"}\n' "$escaped_holder"
         return 0
     fi
@@ -180,7 +207,7 @@ claim_coordinator_claim() {
         local holder=""
         holder="$(_ccgl_read_holder "$issue" || true)"
         local escaped_holder
-        escaped_holder="$(printf '%s' "$holder" | sed 's/"/\\"/g' || true)"
+        escaped_holder="$(printf '%s' "$holder" | sed 's/\\/\\\\/g; s/"/\\"/g' || true)"
         printf '{"acquired": false, "holder": "%s"}\n' "$escaped_holder"
         return 0
     fi
@@ -198,7 +225,6 @@ claim_coordinator_release() {
     local issue="$1"
     [[ -z "$issue" ]] && { printf 'claim_coordinator_release: missing issue id\n' >&2 || true; return 2; }
     _ccgl_remove_label "$issue" "zbuild:claimed"
-    return 0
 }
 
 # ─── Hook: heartbeat <lease_id> ───────────────────────────────────────────────

@@ -114,12 +114,15 @@ zbuild_claim_acquire() {
 
     if [[ "$acquired" == "false" ]]; then
         # Another run holds zbuild:claimed — extract and sanitize the holder string.
-        local raw_holder=""
-        raw_holder="$(grep -o '"holder":[[:space:]]*"[^"]*"' <<< "$json_out" || true)"
-        # Strip outer JSON key/quotes, then strip ANSI escape codes.
+        # Use jq for correct JSON decoding (handles escaped quotes in the holder value).
         local holder_value=""
-        holder_value="$(sed -e 's/^"holder":[[:space:]]*"\(.*\)"$/\1/' \
-            -e 's/\x1b\[[0-9;]*[mK]//g' <<< "$raw_holder" || true)"
+        holder_value="$(jq -r '.holder // empty' <<< "$json_out" 2>/dev/null || true)"
+        # Strip all ANSI/terminal escape sequences — broad coverage matching _eb_strip_ansi:
+        # CSI sequences ending in any letter or ~, then bare ESC-X pairs (ADR-005 §2).
+        if [[ "$holder_value" == *$'\x1b'* ]]; then
+            holder_value="$(printf '%s' "$holder_value" | \
+                LC_ALL=C sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g; s/\x1b.//g' || true)"
+        fi
         _ZBUILD_CLAIM_HOLDER="$holder_value"
         return 1
     fi
