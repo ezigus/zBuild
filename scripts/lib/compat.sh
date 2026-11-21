@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ╔═══════════════════════════════════════════════════════════════════════════╗
-# ║  zBuild compat — Bash 5+ floor; platform detection                       ║
+# ║  zBuild compat — Bash 5+ floor; flock and sed probes                     ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 #
 # zBuild requires Bash 5+. No Bash 3.2 polyfills (cleared from legacy per
