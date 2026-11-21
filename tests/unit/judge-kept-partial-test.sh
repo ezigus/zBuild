@@ -13,6 +13,10 @@
 #    the judge opened; a code file it opened still counts
 # D2 test-author's check: a kept answer does not depend on the design the judge
 #    opened
+# D3 (#2579 R3, ADR-072 §4) test-author's check: a SPEC whose words changed
+#    since it was last judged is shown as it was and as it is now, and the
+#    judge is told the new part must be shown done — "done before" cannot
+#    cover it
 # P1 design's check, a partly bad reply: the re-ask asks only for the items
 #    whose lines are bad; the good items are kept even when the check ends
 #    unusable; the next try asks only for what is missing
@@ -134,9 +138,12 @@ print_test_section "D2: test-author's check"
     _spec_design "$D" "the run uses the flag"
     _R1=$'WORK-2: ok\n'; _j
     echo "D2a|$(cat "$_N")|$_TA_CORR_OUTCOME|$(_ev judge.kept.used test-author FRSH-1)|$(_ev judge.kept.stale test-author FRSH-1)"
+    _p1="$(cat "$_P.1" 2>/dev/null)"
+    echo "D3|$([[ "$_p1" == *"was: the flag is read"* ]] && echo was)|$([[ "$_p1" == *"Then: the run uses it"$'\n'* ]] && echo old-then)|$([[ "$_p1" == *"now: the flag is read"* ]] && echo now)|$([[ "$_p1" == *'"done before" cannot cover it'* ]] && echo rule)"
 ) > "$TEST_TEMP_DIR/t.out" 2>/dev/null
 T="$TEST_TEMP_DIR/t.out"
 assert_eq "[D2] one SPEC changed in the design: the other SPEC's answer used, not stale" "1||1|0" "$(_l "$T" D2a)"
+assert_eq "[D3] the changed SPEC is shown as it was and is now, with the rule" "was|old-then|now|rule" "$(_l "$T" D3)"
 
 cleanup_test_env
 print_test_results

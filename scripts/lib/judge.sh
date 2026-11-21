@@ -23,6 +23,8 @@ source "$_ZB_JUDGE_DIR/judge-quotes.sh"
 source "$_ZB_JUDGE_DIR/judge-held.sh"
 # shellcheck source=judge-baseline.sh
 source "$_ZB_JUDGE_DIR/judge-baseline.sh"
+# shellcheck source=judge-changed.sh
+source "$_ZB_JUDGE_DIR/judge-changed.sh"
 
 # _judge_emit <type> [k=v]... — an event, when the event bus is loaded (#2466).
 _judge_emit() { declare -F eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" 2>/dev/null; return 0; }
@@ -210,11 +212,17 @@ judge_kept_get_v() {
     _jkg=""; _JUDGE_KEPT_WHY=""
     [[ -n "$_judge__fp" && -s "$_judge__kf" ]] || return 0
     _judge_check_name_v _judge__chk "$_judge__kf"
+    unset "_JUDGE_KEPT_TEXT[$_judge__key]"
     _judge__rec="$(jq -r --arg k "$_judge__key" --arg fp "$_judge__fp" --arg pw "${6:-}" \
-        '.[$k] // empty | ("X\t\(.fp)"), (select(.fp == $fp or ($pw != "" and ((.fp | tostring) | startswith($fp + "+"))))
+        '.[$k] // empty | ("X\t\(.fp)"), (if .text then "T\t\(.text | tostring | gsub("\n"; "\u001e") | gsub("\t"; "\u001f"))" else empty end), (select(.fp == $fp or ($pw != "" and ((.fp | tostring) | startswith($fp + "+"))))
           | ((.files // {} | to_entries[] | "F\t\(.key)\t\(.value)"), "P\t\(.payload | @json)"))' \
         "$_judge__kf" 2>/dev/null)" || return 0
     [[ -n "$_judge__rec" ]] || return 0
+    if [[ "$_judge__rec" == *$'\nT\t'* ]]; then
+        _judge__chk="${_judge__rec#*$'\nT\t'}"; _judge__chk="${_judge__chk%%$'\n'*}"; _judge__chk="${_judge__chk//$'\x1e'/$'\n'}"
+        _JUDGE_KEPT_TEXT["$_judge__key"]="${_judge__chk//$'\x1f'/$'\t'}"
+        _judge_check_name_v _judge__chk "$_judge__kf"
+    fi
     if [[ "$_judge__rec" != *$'\nP\t'* ]]; then
         local _judge__why=fingerprint; [[ "${5:-0}" == 1 && -z "${6:-}" ]] && _judge__why=disputed
         _judge_emit judge.kept.stale "check=$_judge__chk" "item=$_judge__key" "why=$_judge__why"
@@ -282,9 +290,11 @@ judge_kept_put() {
     [[ -s "$_judge__kf" ]] && _judge__cur="$(<"$_judge__kf")"
     local _judge__new
     _judge__new="$(jq -c --arg k "$_judge__key" --arg fp "$_judge__fp" --arg p "$_judge__payload" --arg pairs "$_judge__pairs" \
+        --arg t "${_JUDGE_ITEM_TEXT[$_judge__key]:-}" \
         '(if type == "object" then . else {} end)
-         + {($k): {fp: $fp, payload: $p,
-                   files: ([$pairs | split("\n")[] | select(length > 0) | split("\t") | {(.[0]): .[1]}] | add // {})}}' \
+         + {($k): ({fp: $fp, payload: $p,
+                   files: ([$pairs | split("\n")[] | select(length > 0) | split("\t") | {(.[0]): .[1]}] | add // {})}
+                   + (if $t != "" then {text: $t} else {} end))}' \
         <<< "$_judge__cur" 2>/dev/null)" && [[ -n "$_judge__new" ]] && _judge_kept_write "$_judge__kf" "$_judge__new"
     # The old content was read first; a write cut short only costs a fresh judgement.
     local _judge__chk; _judge_check_name_v _judge__chk "$_judge__kf"
@@ -345,18 +355,20 @@ judge_kept_get_all_v() {
     _judge_check_name_v _jga_chk "$_jga_kf"
     local -A _jga_rfp=() _jga_rp=() _jga_rf=()
     local _jga_t _jga_k _jga_a _jga_b
-    _JUDGE_KEPT_FILES=(); _JUDGE_KEPT_BASE=()
+    _JUDGE_KEPT_FILES=(); _JUDGE_KEPT_BASE=(); _JUDGE_KEPT_TEXT=()
     while IFS=$'\t' read -r _jga_t _jga_k _jga_a _jga_b; do
         case "$_jga_t" in
             X) _jga_rfp["$_jga_k"]="$_jga_a" ;;
             F) _jga_rf["$_jga_k"]+="$_jga_a"$'\t'"$_jga_b"$'\n' ;;
             B) _JUDGE_KEPT_BASE["$_jga_k"]="$_jga_a" ;;
+            T) _jga_a="${_jga_a//$'\x1e'/$'\n'}"; _JUDGE_KEPT_TEXT["$_jga_k"]="${_jga_a//$'\x1f'/$'\t'}" ;;
             P) _jga_rp["$_jga_k"]="$_jga_a" ;;
         esac
     done < <(jq -r 'to_entries[] | .key as $k | .value
         | ("X\t\($k)\t\(.fp)"),
           (.files // {} | to_entries[] | "F\t\($k)\t\(.key)\t\(.value)"),
           (if .base then "B\t\($k)\t\(.base | tojson)" else empty end),
+          (if .text then "T\t\($k)\t\(.text | tostring | gsub("\n"; "\u001e") | gsub("\t"; "\u001f"))" else empty end),
           ("P\t\($k)\t\(.payload | tostring | gsub("\n"; "\u001e") | gsub("\t"; "\u001f"))")' "$_jga_kf" 2>/dev/null)
     # #2574 (review): each record's files and their hashes, for a pass judged
     # again to be refused only on a line added since (judge_pass_flip_ok).
@@ -425,7 +437,7 @@ judge_kept_put_all() {
     done
     local -A _jpa_hs=()
     _JUDGE_HASH_WRITE=1 _judge_hashes_v _jpa_hs ${_jpa_all[@]+"${_jpa_all[@]}"}
-    local _jpa_new="" _jpa_files _jpa_j _jpa_v _jpa_x _jpa_chk
+    local _jpa_new="" _jpa_files _jpa_j _jpa_v _jpa_x _jpa_chk _jpa_t
     local -A _jpa_seen=()
     for _jpa_k in "${!_jpa_p[@]}"; do
         # As in judge_kept_put: an answer with no fingerprint is never kept, or
@@ -438,7 +450,8 @@ judge_kept_put_all() {
             _judge_json_str_v _jpa_j "$_jpa_f"; _jpa_files+="${_jpa_files:+,}$_jpa_j:\"${_jpa_hs[$_jpa_f]:-absent}\""
         done <<< "${_jpa_d[$_jpa_k]:-}"
         _judge_json_str_v _jpa_j "$_jpa_k"; _judge_json_str_v _jpa_v "${_jpa_p[$_jpa_k]}"; _judge_json_str_v _jpa_x "${_jpa_fp[$_jpa_k]:-}"
-        _jpa_new+="${_jpa_new:+,}$_jpa_j:{\"fp\":$_jpa_x,\"payload\":$_jpa_v,\"files\":{$_jpa_files}${_JUDGE_KEEP_BASE:+,\"base\":$_JUDGE_KEEP_BASE}${_jpa_c[$_jpa_k]:+,\"carry\":true}}"
+        _jpa_t=""; [[ -n "${_JUDGE_ITEM_TEXT[$_jpa_k]:-}" ]] && { _judge_json_str_v _jpa_t "${_JUDGE_ITEM_TEXT[$_jpa_k]}"; _jpa_t=",\"text\":$_jpa_t"; }
+        _jpa_new+="${_jpa_new:+,}$_jpa_j:{\"fp\":$_jpa_x,\"payload\":$_jpa_v,\"files\":{$_jpa_files}$_jpa_t${_JUDGE_KEEP_BASE:+,\"base\":$_JUDGE_KEEP_BASE}${_jpa_c[$_jpa_k]:+,\"carry\":true}}"
     done
     if [[ -s "$_jpa_kf" ]]; then
         local _jpa_cur _jpa_out; IFS= read -r -d '' _jpa_cur < "$_jpa_kf" || true

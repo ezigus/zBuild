@@ -123,6 +123,10 @@ _ia_judge() {
         af["$k"]=""; unset 'af[$k]'
     done <<< "$_ans"
     for it in "${!disp[@]}"; do judge_fp_v _fp "${disp[$it]}"; dfp["$it"]="$_fp"; done
+    # #2579 (ADR-072 §4): each requirement's and limit's words, kept with its verdict.
+    _JUDGE_ITEM_TEXT=()
+    for k in "${!rline[@]}"; do _JUDGE_ITEM_TEXT["$k"]="${rline[$k]}"; done
+    for k in "${!lline[@]}"; do _JUDGE_ITEM_TEXT["$k"]="${lline[$k]}"; done
     judge_kept_get_all_v kept "$kf" fps dfp earlier "$_IA_PASS_WORDS" kwhy
     # #2574 (ADR-072 §5): an item a stage handed on waits, its last verdict
     # standing; one back from the stage it was handed to is judged again.
@@ -146,7 +150,7 @@ _ia_judge() {
         # Nothing to ask: the kept verdicts stand, and so do the answers it gave.
         _ia_parse "$kraw" "$_reqs" "$issue" "$_root_q" "$_lims"
         zb_answers_collect_v _IA_ANSWERS "${kept[answers]:-}"
-        _ia_finish "$art"; return 0
+        _JUDGE_ITEM_TEXT=(); _ia_finish "$art"; return 0
     fi
     # The items asked, and what it is shown of the ones kept.
     local areqs="" alims="" others="" rev=1 _held=""
@@ -170,6 +174,12 @@ _ia_judge() {
         done <<< "${held[$it]:-}"
     done
     judge_held_block_v _held "$_held"
+    local _chg="" _was
+    for it in $want; do
+        judge_item_was_v _was "$it"; [[ -n "$_was" ]] || continue
+        judge_changed_entry_v _he "$it" "$_was" "${_JUDGE_ITEM_TEXT[$it]}"; _chg+="$_he"
+    done
+    judge_changed_block_v _chg "$_chg"; _held+="$_chg"
     # Review on #2574: each pass judged again because the code moved, shown so.
     local _pas=""; judge_pass_entries_v _pas earlier kwhy "$_IA_PASS_WORDS" "fingerprint file" $want
     judge_pass_block_v _pas "$_pas"; _held+="$_pas"
@@ -207,6 +217,7 @@ _ia_judge() {
     # Each verdict kept with the repository as it is now (#2574 review).
     local _JUDGE_KEEP_BASE=""; judge_keep_baseline_v _JUDGE_KEEP_BASE "$_root_q"
     judge_kept_put_all "$kf" put putfp deps carry
+    _JUDGE_ITEM_TEXT=()
     judge_handoff_done "$kf"
     _ia_parse "$kraw$nraw" "$_reqs" "$issue" "$_root_q" "$_lims"
     _ia_finish "$art"

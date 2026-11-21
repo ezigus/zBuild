@@ -209,7 +209,7 @@ _build_stage_run_inner() {
 
     local _build_instructions
     _build_instructions="$(_build_compose_instructions)"
-    local _steps_ask; _build_steps_instructions_v _steps_ask
+    local _steps_ask; _build_steps_instructions_v _steps_ask "$artifact_dir"
     [[ -n "$_steps_ask" ]] && _build_instructions+=$'\n\n'"$_steps_ask"
 
     _build_compose_prompt_body "$prompt_input_file" "$_task_header" "$plan_payload" \

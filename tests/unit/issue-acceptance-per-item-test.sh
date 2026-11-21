@@ -14,6 +14,9 @@
 # caller's IFS: under IFS=, a fresh call asks each one and keeps a verdict each
 # PI12 (review on #2578): a not mine answer to a finding whose requirement is no
 # longer one keys no item: nothing waits (review-lens's rule)
+# PI13 (#2579 R3, ADR-072 §4): a requirement whose words changed since it was
+# last judged is asked again, and the judge is shown it as it was and as it is
+# now, told the new part must be shown done — "done before" cannot cover it
 #
 # PI1 [change] the first call judges every requirement in one call, and keeps
 #              a verdict for each
@@ -291,6 +294,31 @@ _lacks_w() { if [[ "$2" == *"$3"* ]]; then assert_fail "$1" "it has: $3"; else a
 _lacks_w "[PI12] no item waits on it" "$_notes" "waiting"
 _hf="$(find "$A" -name 'issue-acceptance-judged-handed-*' 2>/dev/null)"
 assert_eq "[PI12] ...and no item is handed on" "" "$_hf"
+
+print_test_section "PI13: a requirement whose words changed"
+rm -f "$A/issue-acceptance-judged.json" "$A"/issue-acceptance-judged-hand* "$A/build-summary.json" "$A"/build-tests*.json
+FLAG="MET: RQFLAG-1"; CNFG="$REFUSE"
+_reqs_now() {   # <RQFLAG-1's words> — intake writes the requirements
+    (
+        # shellcheck source=../../plugins/agent/intake/plugin.sh
+        source "$REPO_ROOT/plugins/agent/intake/plugin.sh" >/dev/null 2>&1
+        route_to_model() {
+            if [[ "$2" == *"check a list of requirements"* ]]; then printf 'MISSING: none\n'
+            else printf 'REQUIREMENT: RQFLAG-1 %s\nREQUIREMENT: RQCNFG-1 Refuse a missing config file.\n' "$_W"; fi
+        }
+        _W="$1" _intake_write_requirements "$IN" "$(jq -nc --arg b "$ISSUE_TEXT" '{title: "Add a flag", body: $b}')"
+    ) >/dev/null 2>&1
+}
+_reqs_now "Add a flag."
+_ia
+assert_eq "[PI13] setup: both judged" "1 1" "$(_asked RQFLAG-1) $(_asked RQCNFG-1)"
+_reqs_now "Add a flag, and print its value."
+_ia
+assert_eq "[PI13] the changed requirement is asked again" "1" "$(_asked RQFLAG-1)"
+_pf="$(_flat "$_P.1")"
+assert_contains "[PI13] ...shown as it was" "$_pf" "was: - RQFLAG-1: Add a flag."
+assert_contains "[PI13] ...and as it is now" "$_pf" "now: - RQFLAG-1: Add a flag, and print its value."
+assert_contains "[PI13] ...told \"done before\" cannot cover the new part" "$_pf" '"done before" cannot cover it'
 
 cleanup_test_env
 print_test_results

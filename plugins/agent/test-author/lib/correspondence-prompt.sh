@@ -13,10 +13,16 @@ _ZBUILD_TA_CORRESPONDENCE_PROMPT_LOADED=1
 # it; one answer line for a SPEC whose test is right, one per part it is not
 # (#2143, #2467, #2470). A one-SPEC call is the same prompt with one SPEC.
 # [held]: its earlier findings on these SPECs and test-author's answers
-# (judge_held_block_v, #2569).
+# (judge_held_block_v, #2569). A SPEC whose words changed since it was last
+# judged is shown as it was and is now (judge-changed.sh, #2579).
 _sc_batch_prompt() {
     local -n _bp_ids="$1" _bp_txts="$2" _bp_srcs="$3"
-    local _bp_files="${4:-}" _bp_held="${5:-}"
+    local _bp_files="${4:-}" _bp_held="${5:-}" _bp_c="" _bp_w _bp_e _bp_id
+    for _bp_id in "${_bp_ids[@]}"; do
+        judge_item_was_v _bp_w "$_bp_id"; [[ -n "$_bp_w" ]] || continue
+        judge_changed_entry_v _bp_e "$_bp_id" "$_bp_w" "${_JUDGE_ITEM_TEXT[$_bp_id]}"; _bp_c+="$_bp_e"
+    done
+    judge_changed_block_v _bp_c "$_bp_c"; _bp_held+="$_bp_c"
     cat <<'EOF'
 You are checking acceptance requirements against the tests tagged as covering them, one SPEC at a time.
 

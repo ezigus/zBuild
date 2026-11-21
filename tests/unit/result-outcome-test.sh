@@ -20,6 +20,9 @@
 #   O7 [change] readers that open results directly see the outcome: open items
 #               and a member's terminal failure
 #   O8 [retired] contract 2 is gone (contract2-retired-test V2)
+#   O10 [change] (#2579, ADR-064) an open finding is named by its id — the one
+#               its writer gave it from finding-ids-<code>.json — and by its
+#               file and place only when no id was given
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -151,6 +154,24 @@ _pw="$( _TPL_STAGES=(oc); _stage_block_previous_work later "$W" "$TEST_TEMP_DIR/
         "$(_inputs_resolve_stage later "$TEST_TEMP_DIR/plugins" "$W")" "$W" 2>/dev/null )"
 assert_contains "[O9] the stage's outcome is shown" "$_pw" "(verdict: timed_out)"
 assert_contains "[O9] a timed-out attempt shows the last good output" "$_pw" "iter-0-attempt-1/oc-result.json"
+
+print_test_section "O10: an open finding is named by its id"
+# shellcheck source=../../scripts/lib/stage-summary.sh
+source "$REPO_ROOT/scripts/lib/stage-summary.sh" 2>/dev/null || true
+# shellcheck source=../../scripts/lib/item-ids.sh
+source "$REPO_ROOT/scripts/lib/item-ids.sh" 2>/dev/null || true
+I="$TEST_TEMP_DIR/ids"; mkdir -p "$I/artifacts"
+# Two findings, numbered by the shared writer: it keeps finding-ids-LNFND.json.
+_f="$(printf 'the first thing\nthe second thing\n' | stage_findings_json "$I/artifacts" LNFND)"
+stage_result_write "$I/artifacts/lens-x-result.json" fail "two found" "{\"findings\":$_f}" >/dev/null 2>&1
+# A check whose findings got no id (no code): the old label.
+_f="$(printf 'an old finding\n' | stage_findings_json)"
+stage_result_write "$I/artifacts/old-result.json" fail "one found" "{\"findings\":$_f}" >/dev/null 2>&1
+assert_eq "[O10] setup: the writer kept the id record" "LNFND-2" "$(jq -r '.ids["the second thing"]' "$I/artifacts/finding-ids-LNFND.json" 2>/dev/null)"
+_oi="$(open_items_json "$I")"
+assert_eq "[O10] each finding is named by its id" "LNFND-1 LNFND-2" "$(jq -r '[.[] | select(.opener == "lens-x") | .ref] | join(" ")' <<< "$_oi" 2>/dev/null)"
+assert_eq "[O10] ...and one with no id by its check and place" "old finding 1" "$(jq -r '.[] | select(.opener == "old") | .ref' <<< "$_oi" 2>/dev/null)"
+assert_contains "[O10] the rendered list shows the id" "$(open_items_render "$_oi")" "**LNFND-2** (opened by lens-x): the second thing"
 
 cleanup_test_env
 print_test_results

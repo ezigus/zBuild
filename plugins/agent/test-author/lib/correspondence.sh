@@ -348,13 +348,13 @@ _ta_correspondence() {
     # carries the finding) waits, its refusal standing; back, it is judged again.
     judge_handoff_record_own "$kf" "${_TA_MANIFEST:-}" "$art" _SC_KEY_SPEC ${_TA_ANSWERS[@]+"${_TA_ANSWERS[@]}"}
     local -a _sc_back=(); local _hs
-    judge_engine_v eng
+    judge_engine_v eng; _JUDGE_ITEM_TEXT=()
     for (( _i=0; _i<n; _i++ )); do
         # The answers' own fingerprint: a verdict kept with them is not judged again for them.
         _k=""; [[ -n "${_disp[${_ids[_i]}]:-}" ]] && judge_fp_v _k "${_disp[${_ids[_i]}]}"
         _dfps[_i]="$_k"
         judge_fp_v _k "$eng"$'\n'"${_ids[_i]}"$'\n'"${_txts[_i]}"$'\n'"${_srcs[_i]}"
-        _fps[_i]="$_k"; _kwhy[_i]=""
+        _fps[_i]="$_k"; _kwhy[_i]=""; _JUDGE_ITEM_TEXT["${_ids[_i]}"]="${_txts[_i]}"
         [[ -n "$kf" ]] || continue
         judge_handoff_state_v _hs "$kf" "${_ids[_i]}"
         [[ "$_hs" == waiting ]] && _dfps[_i]=""
@@ -478,6 +478,7 @@ _ta_correspondence() {
             for _f in ${_sc_back[@]+"${_sc_back[@]}"}; do judge_handoff_clear "$kf" "$_f"; done
         fi
     fi
+    _JUDGE_ITEM_TEXT=()
 
     local _unjudged=0
     for (( _i=0; _i<n; _i++ )); do
