@@ -4,6 +4,7 @@
 # ZBUILD_PLATFORM=<single-platform> per per-platform invocation. Verifies the
 # work-unit baked by _strategy_make_work_unit exports both ZBUILD_PLATFORM
 # (canonical, ADR-009) and ZBUILD_TARGET_PLATFORM (legacy alias, ADR-001).
+# DSPLAT-1: sourcing helpers.sh must not overwrite a pre-set ZBUILD_PLATFORM.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -18,14 +19,16 @@ print_test_header "strategy work-unit ZBUILD_PLATFORM contract (#307, ADR-009)"
 
 setup_test_env "strategy-platform-env"
 
-# Set up env that common.sh expects.
+# ─── Test 1: work unit exports ZBUILD_PLATFORM (#307) ────────────────────────
+print_test_section "work unit bakes ZBUILD_PLATFORM per platform (#307)"
+
+# Given
 export ZBUILD_ORCH_SCRATCH="$TEST_TEMP_DIR/orch"
 mkdir -p "$ZBUILD_ORCH_SCRATCH"
 
 # shellcheck source=../core/pipeline/strategies/common.sh
 source "$REPO_ROOT/core/pipeline/strategies/common.sh"
 
-# Build a minimal plugin fixture so the work-unit path validates.
 PLUGIN_DIR="$TEST_TEMP_DIR/plugins/agent/echo-platform"
 mkdir -p "$PLUGIN_DIR"
 cat > "$PLUGIN_DIR/manifest.yaml" <<'EOF'
@@ -52,8 +55,10 @@ mkdir -p "$STATE_DIR"
 STATE_FILE="$STATE_DIR/pipeline-state.json"
 echo '{}' > "$STATE_FILE"
 
-# ─── Test 1: work unit exports ZBUILD_PLATFORM (#307) ────────────────────────
+# When: _strategy_make_work_unit is called with platform ios
 WU="$(_strategy_make_work_unit "$PLUGIN_DIR" "intake" "$STATE_FILE" "ios")"
+
+# Then: work unit exports ZBUILD_PLATFORM='ios' and ZBUILD_TARGET_PLATFORM='ios'
 assert_file_exists "work unit created" "$WU"
 
 if grep -q "^export ZBUILD_PLATFORM='ios'$" "$WU"; then
@@ -68,16 +73,45 @@ else
     assert_fail "work unit exports ZBUILD_TARGET_PLATFORM='ios'" "missing from $WU"
 fi
 
+# Cleanup
+rm -f "$WU"
+
 # ─── Test 2: per-platform values differ in the baked work unit ──────────────
+print_test_section "per-platform work units carry distinct ZBUILD_PLATFORM values"
+
+# Given: same plugin and state as above
+
+# When: _strategy_make_work_unit is called with platform node
 WU_NODE="$(_strategy_make_work_unit "$PLUGIN_DIR" "intake" "$STATE_FILE" "node")"
+
+# Then: second work unit bakes platform='node'
 if grep -q "^export ZBUILD_PLATFORM='node'$" "$WU_NODE"; then
     assert_pass "second work unit bakes platform='node' (no cross-contamination)"
 else
     assert_fail "second work unit bakes platform='node'" "missing from $WU_NODE"
 fi
 
-# Cleanup the work units we made
-rm -f "$WU" "$WU_NODE"
+# Cleanup
+rm -f "$WU_NODE"
+
+# ─── [DSPLAT-1]: helpers.sh must not overwrite a pre-set ZBUILD_PLATFORM ──────
+print_test_section "[DSPLAT-1] helpers.sh preserves a pre-set ZBUILD_PLATFORM"
+
+# Given: a process has ZBUILD_PLATFORM=ios in its environment
+# (simulated by passing it to a fresh bash -c subprocess so the compat.sh
+# guard _ZBUILD_COMPAT_LOADED is not set, forcing a full re-source)
+
+# When: scripts/lib/helpers.sh is sourced in that subprocess
+_dsplat1_result="$(
+    ZBUILD_PLATFORM=ios bash -c "
+        source '$REPO_ROOT/scripts/lib/helpers.sh'
+        printf '%s\n' \"\$ZBUILD_PLATFORM\"
+    "
+)"
+
+# Then: ZBUILD_PLATFORM is still ios
+assert_eq "[DSPLAT-1] ZBUILD_PLATFORM=ios survives sourcing helpers.sh" \
+    "ios" "$_dsplat1_result"
 
 cleanup_test_env
 print_test_results
