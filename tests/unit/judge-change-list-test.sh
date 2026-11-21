@@ -120,7 +120,9 @@ assert_contains "[L3] ...and how to see a change" "$_p" "git diff $BASE HEAD"
 _no_diff "[L3] ...and holds no diff" "$_p"
 : > "$CALLS"; _lens
 assert_eq "[L4] nothing changed: the kept report is used" "0" "$(grep -c . "$CALLS")"
-( cd "$G" && printf 'keep\nNEW_LINE_THIRD\n' > core/a.sh && git commit -qam third ) >/dev/null 2>&1
+# #2574: the old line is back for the verdict kept now, so L5's removal of it
+# is a change since that verdict (a kept pass is refused only on one).
+( cd "$G" && printf 'keep\nOLD_LINE_REMOVED\nNEW_LINE_THIRD\n' > core/a.sh && git commit -qam third ) >/dev/null 2>&1
 : > "$CALLS"; _lens
 assert_eq "[L4] a changed file's content changed: judged again" "1" "$(grep -c . "$CALLS")"
 ANSWER='{"score":4,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","file":"core/a.sh","category":"logic","severity":"medium","line":2,"message":"the old guard is gone","quote":"OLD_LINE_REMOVED","introduced":true,"fix":"code"}]}'

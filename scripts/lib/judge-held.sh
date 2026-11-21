@@ -257,15 +257,16 @@ judge_pass_block_v() {
 }
 
 # judge_pass_flip_ok <kept_file> <item> <repo> <quote>... — rc 0 when a <quote>
-# ("<file> | <line>") is a line of the file now that the change added since the
-# item's kept verdict: one the file did not hold as that verdict saw it (its
-# content, stored in the repository's objects when the verdict was kept —
-# _JUDGE_KEPT_FILES from judge_kept_get_all_v), or, for a file the verdict did
-# not depend on, one the commit the branch started from did not hold. With
-# neither, none can be shown to be new. Otherwise rc 1, and
+# ("<file> | <text>", one line or several) is text the change added or removed
+# since the item's kept verdict: the file holds it now and did not as that
+# verdict saw it, or held it then and does not now. The file as the verdict
+# saw it is its content stored in the repository's objects when the verdict
+# was kept (_JUDGE_KEPT_FILES from judge_kept_get_all_v), or, for a file the
+# verdict did not depend on, the file at the commit the branch started from.
+# With neither, nothing can be shown to have changed. Otherwise rc 1, and
 # judge.held is emitted. Runs only when a pass is refused.
 judge_pass_flip_ok() {
-    local kf="$1" it="$2" repo="${3%/}" q f txt w h base="" chk l
+    local kf="$1" it="$2" repo="${3%/}" q f txt w h base="" chk l now old n o
     shift 3
     declare -F zbuild_resolve_merge_base_v >/dev/null 2>&1 \
         || source "${_ZB_JUDGE_DIR:-${BASH_SOURCE[0]%/*}}/merge-base.sh" 2>/dev/null || true
@@ -275,18 +276,19 @@ judge_pass_flip_ok() {
         f="${_jqs_path#"$repo"/}"
         # shellcheck disable=SC2154  # set by _judge_quote_split
         txt="$_jqs_txt"
-        judge_quote_check_v w "$f | $txt" "" "$repo" || continue
+        [[ "$f" != /* && "$f" != *..* ]] || continue
+        now=""; [[ -f "$repo/$f" ]] && { IFS= read -r -d '' now < "$repo/$f" || true; }
         h=""
         while IFS=$'\t' read -r l w; do [[ "$l" == "$repo/$f" ]] && h="$w"; done <<< "${_JUDGE_KEPT_FILES[$it]:-}"
-        if [[ "$h" =~ ^[0-9a-f]{40,64}$ ]] && w="$(git -C "$repo" cat-file -p "$h" 2>/dev/null)"; then
-            # The file as the kept verdict saw it, stored when it was kept.
-            _judge_holds "${w//$'\n'/ $'\x1e' }" "$txt" || return 0
-            continue
+        if ! { [[ "$h" =~ ^[0-9a-f]{40,64}$ ]] && old="$(git -C "$repo" cat-file -p "$h" 2>/dev/null)"; }; then
+            [[ -n "$base" ]] || { declare -F zbuild_resolve_merge_base_v >/dev/null 2>&1 && zbuild_resolve_merge_base_v base "$repo"; }
+            [[ -n "$base" ]] || continue
+            old="$(git -C "$repo" show "$base:$f" 2>/dev/null)" || old=""
         fi
-        [[ -n "$base" ]] || { declare -F zbuild_resolve_merge_base_v >/dev/null 2>&1 && zbuild_resolve_merge_base_v base "$repo"; }
-        [[ -n "$base" ]] || continue
-        w="$(git -C "$repo" show "$base:$f" 2>/dev/null)" || w=""
-        _judge_holds "${w//$'\n'/ $'\x1e' }" "$txt" || return 0
+        n=0; o=0
+        _judge_holds "${now//$'\n'/ }" "$txt" && n=1
+        _judge_holds "${old//$'\n'/ }" "$txt" && o=1
+        (( n != o )) && return 0
     done
     _judge_check_name_v chk "$kf"
     _judge_emit judge.held "check=$chk" "item=$it"
