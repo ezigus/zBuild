@@ -1,41 +1,16 @@
-# Design notes — issue #1764 GitHub label claim (round 31)
+# Design notes — issue #1764 GitHub label claim (round 33)
 
-## Changes this round (from previous rejected design)
+## Status
 
-### Finding 1 — DSADR-7 must require §1(a) and §1(b) enforcement entries in ADR-005's Enforced by
+Two findings from the previous round fixed:
 
-RQADR-4: "The ADR-005 amendments must include an `## Enforced by` section naming the tests that
-enforce **each statement**."
+**DSFND-1**: DSADR-7 now explicitly names [DSCLA-1] as the test enforcing the §2 "shared label
+is zbuild:claimed (no hostname)" statement in the ADR-005 Enforced by section. The corresponding
+step was also updated to mention this addition.
 
-RQADR-1 adds two statements to ADR-005:
-- §1(a): engine calls the claim hook after the admission lock and before the first stage
-- §1(b): engine calls the release hook in the EXIT path
-
-Previous DSADR-7 only required §1(c) tests (DSCLA-3, DSCLA-9) and §2 (DSCLA-2, DSCLA-12). It
-did not require any tests for §1(a) or §1(b) to appear in the Enforced by section.
-
-DSCLA-22 is the SPEC that covers both §1(a) and §1(b): "When a stub claim coordinator is
-registered and an issue-bound run executes, the stub's claim hook is called before the first
-stage and its release hook is called on exit." This runs in `claim-coordinator-unit-test.sh`.
-
-Fix:
-- DSADR-7 now reads: §1 bullet names a test for each §1 statement: §1(a) → [DSCLA-22];
-  §1(b) → [DSCLA-22]; §1(c) refused non-zero/no-stage/event → [DSCLA-3]; §1(c) refused
-  output → [DSCLA-9]; §2 bullet → [DSCLA-2] and [DSCLA-12]
-- ADR-005 step updated to add §1(a)/(§1(b)) enforcement: claim-coordinator-unit-test.sh [DSCLA-22]
-
-### Previous round finding — teardown-repeat-signal-test.sh is wrong for DSCLA-9
-
-DSADR-7 and the ADR-005 step named "teardown-repeat-signal-test.sh [DSCLA-9]: refused output
-names holder." But teardown-repeat-signal-test.sh is the file for RQCLA-11 (second TERM
-survival, enforced by DSCLA-13) — not for refused-output behavior.
-
-Fix: replace "teardown-repeat-signal-test.sh [DSCLA-9]" with "claim-coordinator-unit-test.sh
-[DSCLA-9]" in both DSADR-7 and the ADR-005 step.
-
-Rationale: DSCLA-3 (refused: non-zero exit, no stage, event) and DSCLA-9 (refused output names
-holder) are both about the refused-run path. They are naturally in the same test file,
-claim-coordinator-unit-test.sh, which the design already names for DSCLA-3.
+**DSFND-2**: The UNCLEAR RQADR-2 line was removed. The issue's Terms section defines
+"Run-status comment" as the existing ADR-064 comment (scripts/lib/run-status-comment.sh) — not
+a new one — so there is nothing unclear to record.
 
 ## Architecture summary
 
@@ -77,7 +52,7 @@ Registry is available when claim.sh's functions are defined and when they are ca
 - RQADR-1: DSADR-4
 - RQADR-2: DSADR-5
 - RQADR-3: DSADR-6
-- RQADR-4: DSADR-7
+- RQADR-4: DSADR-7 (§2 now names DSCLA-1 for label-name statement, plus DSCLA-2/DSCLA-12 for holder rendering)
 - RQADR-5: DSADR-8
 - RQDOC-1: DSCLA-14
 - RQARC-1: DSCLA-18 (claim), DSCLA-20 (release)
@@ -87,7 +62,3 @@ Registry is available when claim.sh's functions are defined and when they are ca
 ## SPEC id high-water marks
 - DSCLA: 22 (1 removed: DSCLA-4)
 - DSADR: 8
-
-## UNCLEAR
-RQADR-2: "holder is in the run-status comment." Assumed: ADR-064 comment (run-status-comment.sh),
-not a new one.
