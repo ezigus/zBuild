@@ -29,4 +29,11 @@
 - DSADR-8 (covers RQADR-5): ADR-059 §4 tells the reader that cross-machine exclusion is the claim coordinator's job and the admission lock (flock) handles intra-machine serialisation; the amendment's Enforced by entry names DSCLA-3 as the test that enforces the cross-machine exclusion statement
 - DSCLA-14 (covers RQDOC-1): README.md in plugins/claim-coordinator/github-labels/ tells the reader the shared claim label is zbuild:claimed (not claimed:<machine>) and does not reference machine-suffixed labels
 - DSCLA-23 (covers RQCLA-4): When _ccgl_read_holder reads the holder from the issue's comments, it only reads from comments authored by the authenticated GitHub actor
-- answered: RLREDTEAM-2: done — Added the authenticated-actor filter to `_ccgl_read_holder` in the Decision section: it now calls `gh api user --jq .login` to get the authenticated actor and filters comments to only those with a matching `user.login` before scanning for the `<!-- zbuild-holder: -->` field. Added corresponding DSCLA-23[code] SPEC and updated step 1 (plugin.sh) to name the filter explicitly. Local-fs test backend reads from `ZBUILD_CLAIM_STORE` per-issue file since that backend has no GitHub comments.
+- answered: DSFND-3: done — Added `| serves: DSCLA-1, DSCLA-3, DSCLA-9, DSCLA-18, DSCLA-20, DSCLA-23` to step 1 (plugin.sh).
+- answered: DSFND-4: done — Added `| serves: DSCLA-14` to step 2 (README.md).
+- answered: DSFND-5: done — Added `| serves: DSCLA-2, DSCLA-12` to step 3 (run-status-render.sh).
+- answered: DSFND-6: done — Added `| serves: DSCLA-8, DSCLA-13, DSCLA-15, DSCLA-17, DSCLA-19, DSCLA-21` to step 4 (claim.sh).
+- answered: DSFND-7: done — Added `| serves: DSCLA-10` to step 5 (event-schema.json).
+- answered: DSFND-8: done — Added `| serves: DSCLA-1, DSCLA-3, DSCLA-5, DSCLA-6, DSCLA-7, DSCLA-9, DSCLA-13, DSCLA-15, DSCLA-16, DSCLA-22` to step 6 (runner.sh).
+- answered: DSFND-9: done — Added `| serves: DSADR-4, DSADR-5, DSADR-6, DSADR-7` to step 7 (ADR-005).
+- answered: DSFND-10: done — Added `| serves: DSADR-8` to step 8 (ADR-059).

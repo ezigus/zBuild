@@ -1,20 +1,18 @@
-# Design notes — issue #1764 GitHub label claim (round 34)
+# Design notes — issue #1764 GitHub label claim (round 35)
 
 ## Status
 
-One open finding addressed this round:
+8 findings (DSFND-3 through DSFND-10) fixed this round: each step was missing `| serves: <SPEC ids>`.
+Added the serves clauses to all 8 steps:
 
-**RLREDTEAM-2**: `_ccgl_read_holder` as designed read `last` from all comments matching the
-`<!-- zbuild-run-status -->` marker, with no authentication check. Any GitHub user who can
-comment on the issue could displace the holder string by posting a spoofed comment. Fixed in
-the design by:
-- Decision section: added requirement that `_ccgl_read_holder` calls `gh api user --jq .login`
-  to get the authenticated actor, then filters comments to only those with `user.login` matching
-  that value before scanning for the `<!-- zbuild-holder: -->` field. Local-fs test backend reads
-  from `ZBUILD_CLAIM_STORE` per-issue file (no GitHub comments in that backend).
-- Step 1 (plugin.sh): updated to mention the authenticated-actor filter.
-- Added DSCLA-23[code] SPEC: when `_ccgl_read_holder` reads the holder, it uses only comments
-  authored by the authenticated GitHub actor, not arbitrary user comments.
+- Step 1 (plugin.sh): serves DSCLA-1, DSCLA-3, DSCLA-9, DSCLA-18, DSCLA-20, DSCLA-23
+- Step 2 (README.md): serves DSCLA-14
+- Step 3 (run-status-render.sh): serves DSCLA-2, DSCLA-12
+- Step 4 (claim.sh): serves DSCLA-8, DSCLA-13, DSCLA-15, DSCLA-17, DSCLA-19, DSCLA-21
+- Step 5 (event-schema.json): serves DSCLA-10
+- Step 6 (runner.sh): serves DSCLA-1, DSCLA-3, DSCLA-5, DSCLA-6, DSCLA-7, DSCLA-9, DSCLA-13, DSCLA-15, DSCLA-16, DSCLA-22
+- Step 7 (ADR-005): serves DSADR-4, DSADR-5, DSADR-6, DSADR-7
+- Step 8 (ADR-059): serves DSADR-8
 
 ## Architecture summary
 
