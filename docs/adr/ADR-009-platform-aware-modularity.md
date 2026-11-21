@@ -233,6 +233,36 @@ Concretely:
 - `tests/e2e/fork-budget-test.sh` — the ADR-065 process budget still holds with the
   probes in place.
 
+## ZBUILD_PLATFORM Contract (amended 2026-11-21, Issue #2532)
+
+`ZBUILD_PLATFORM` is the target platform a work unit builds for. It says
+nothing about the host OS.
+
+Four statements govern its use:
+
+- **§C1** — `ZBUILD_PLATFORM` is the target platform a work unit builds for;
+  it carries a value such as `ios`, `node`, or `generic` and must never be
+  equated with a host OS name.
+- **§C2** — Every strategy that runs a work unit per platform (fanout, map over
+  `platforms`) sets `ZBUILD_PLATFORM` to that platform before invoking the
+  plugin. All other work units receive `ZBUILD_PLATFORM=generic`.
+- **§C3** — Sourcing the shared libraries (`scripts/lib/helpers.sh`,
+  `scripts/lib/compat.sh`, or any file they source) never changes
+  `ZBUILD_PLATFORM`. A value set by the dispatcher is preserved.
+- **§C4** — Nothing in `core/`, `plugins/`, or `scripts/` reads
+  `ZBUILD_PLATFORM` to make a host-OS decision.
+
+### Enforced by
+
+- `tests/unit/zbuild-platform-host-guard-test.sh` — §C4: scans all `.sh`
+  files under `core/`, `plugins/`, and `scripts/` and fails if any non-comment
+  line reads `ZBUILD_PLATFORM` alongside a host OS name (`macos`, `linux`,
+  `unknown`).
+- `tests/integration/strategy-platform-env-test.sh` — §C3 (DSPLAT-1):
+  asserts that `ZBUILD_PLATFORM=ios` survives sourcing `scripts/lib/helpers.sh`
+  in a fresh subprocess; §C2: asserts the work unit baked by
+  `_strategy_make_work_unit` exports `ZBUILD_PLATFORM=<platform>`.
+
 ## References
 
 - [ADR-001 — Plugin Contract](ADR-001-plugin-contract.md) — manifest schema (extended here)

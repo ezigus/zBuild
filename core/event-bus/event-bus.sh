@@ -91,8 +91,8 @@ _eb_strip_ansi_v() {
 }
 
 # _eb_now_iso_v <var>: UTC, with milliseconds, from the shell's own clock (#1806).
-# No `date` process, and no reading of ZBUILD_PLATFORM: a map work unit exports
-# its TARGET platform there (ADR-009 §6), which is not the host the clock is on.
+# No `date` process, and no reading of ZBUILD_PLATFORM: that variable carries the
+# target project platform the work unit builds for, not the host the clock is on.
 # EPOCHREALTIME's separator follows the locale, so both . and , are accepted.
 _eb_now_iso_v() {
     local _er="$EPOCHREALTIME" _s _f _iso

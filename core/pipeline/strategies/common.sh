@@ -130,11 +130,10 @@ _strategy_make_work_unit() {
     # event-bus.sh is sourced so plugin_hook_call emits events to the shared
     # ZBUILD_EVENTS_JSONL (inherited env var from runner).
     #
-    # Issue #307: ADR-009 §"ZBUILD_PLATFORM env contract" promises plugins
-    # see ZBUILD_PLATFORM=<single-platform> per per-platform invocation.
-    # ADR-001's hook-context table lists the older name ZBUILD_TARGET_PLATFORM
-    # for the same value. We export both so plugins can rely on either; the
-    # canonical name going forward is ZBUILD_PLATFORM (ADR-009 §6).
+    # Issue #307: ZBUILD_PLATFORM carries the target project platform this work
+    # unit builds for — not the host OS. ADR-001's hook-context table lists the
+    # older name ZBUILD_TARGET_PLATFORM for the same value. We export both so
+    # plugins can rely on either; the canonical name is ZBUILD_PLATFORM.
     local _map_env_lines=""
     if [[ -n "$map_element" ]]; then
         _map_env_lines="export ZBUILD_MAP_ELEMENT='${map_element}'

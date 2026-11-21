@@ -26,15 +26,6 @@ _zbuild_check_bash() {
 }
 _zbuild_check_bash || return 1
 
-# ─── Platform detection ─────────────────────────────────────────────────────
-ZBUILD_OS="$(uname -s)"
-case "$ZBUILD_OS" in
-    Darwin)  ZBUILD_PLATFORM=macos ;;
-    Linux)   ZBUILD_PLATFORM=linux ;;
-    *)       ZBUILD_PLATFORM=unknown ;;
-esac
-export ZBUILD_OS ZBUILD_PLATFORM
-
 # ─── flock availability (Linux native, macOS via brew) ──────────────────────
 zbuild_has_flock() {
     command -v flock >/dev/null 2>&1
