@@ -441,40 +441,41 @@ Summary:
 - tests/integration/teardown-repeat-signal-test.sh — DSCLA-1, DSCLA-3, DSCLA-9, DSCLA-5, DSCLA-6, DSCLA-7, DSCLA-11, DSCLA-15, DSCLA-16, DSCLA-13, DSCLA-22
 - tests/unit/lint-adr-enforced-by-test.sh — DSADR-7
 - Each [code] requirement's test must fail on the code from before this change, and pass once the code is written.
-- answered: TAFND-10: done — Added a `# Cleanup` section after the last [DSCLA-9] Then assertion in the DSCLA-3/9 block of `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh`. The section contains `unset _ZBUILD_CLAIM_HOLDER 2>/dev/null || true`, which clears the value set as a side effect of `zbuild_claim_acquire "$_dscla4_issue"` in the When step, so it no longer leaks into the DSCLA-8 block.
+- no finding was open for it
 
-### build (verdict: unusable) — your own
+### build (verdict: error) — your own
 Outputs:
 - build_stage_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.md
 - build_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.json
 - diff_patch: /home/runner/work/_temp/zbuild-state/artifacts/diff.patch
 
 Findings:
-- BUFND-3 (opened by build): step 1 has no answer: do it and answer `step 1: done — QUOTE: <file> | <a line this change added>`, or answer `step 1: not needed — <why>` (the step: Amend plugins/claim-coordinator/github-labels/plugin.sh: replace `claimed:<machine>` with `zbuild:claimed` in claim_coordinator_claim (remove local our_label and machine logic) and in claim_coordinator_release; add _ccgl_read_holder to extract the holder from the issue's run-status comment, filtering comments by the authenticated GitHub actor (gh api user --jq .login) before scanning for the zbuild-holder field (local-fs backend reads from ZBUILD_CLAIM_STORE per-issue file); claim_coordinator_claim returns {"acquired": false, "holder": "<holder>"} on conflict; remove any source of core/claim/claim.sh from plugin.sh (the dependency arrow is claim.sh→registry→plugin.sh, not the reverse))
-- BUFND-4 (opened by build): step 2 has no answer: do it and answer `step 2: done — QUOTE: <file> | <a line this change added>`, or answer `step 2: not needed — <why>` (the step: Update plugins/claim-coordinator/github-labels/README.md: remove all references to claimed:<machine>; describe the single shared label zbuild:claimed; update ZBUILD_CLAIM_MACHINE_ID row to note it now affects only the holder string in the run-status comment, not the label name)
-- BUFND-5 (opened by build): step 3 has no answer: do it and answer `step 3: done — QUOTE: <file> | <a line this change added>`, or answer `step 3: not needed — <why>` (the step: Edit scripts/lib/run-status-render.sh: add <!-- zbuild-holder: CI_URL --> (CI) or <!-- zbuild-holder: run_id=X machine=H --> (local) in rsc_render_header after the run_id marker)
-- BUFND-6 (opened by build): step 4 has no answer: do it and answer `step 4: done — QUOTE: <file> | <a line this change added>`, or answer `step 4: not needed — <why>` (the step: Create core/claim/claim.sh: wiring bridge that calls claim-coordinator hooks through the plugin registry; sources core/plugin-registry/registry.sh via $_ZBUILD_ROOT at top (idempotent — registry.sh has a guard; needed because runner.sh sources claim.sh before registry.sh); zbuild_claim_build_holder uses ${HOSTNAME} bash variable (no fork); zbuild_claim_acquire returns 0 immediately without calling discover_plugins or any coordinator hook when issue is empty; zbuild_claim_acquire uses discover_plugins filtered by kind claim-coordinator to find coordinator_dir, stores it in _ZBUILD_COORDINATOR_DIR; calls plugin_hook_call "$coordinator_dir" claim "$issue" with stdout captured to get JSON; on acquired:false sanitizes holder string (strip ANSI codes via sed) and stores in _ZBUILD_CLAIM_HOLDER, returns 1; on backend error (no coordinator found or non-zero hook exit) warns stderr and returns 0 (graceful degradation); on success sets _ZBUILD_CLAIM_ACQUIRED; zbuild_claim_release returns 0 immediately without calling any coordinator hook when _ZBUILD_CLAIM_ACQUIRED is unset; zbuild_claim_release MUST unset _ZBUILD_CLAIM_ACQUIRED BEFORE calling plugin_hook_call "$_ZBUILD_COORDINATOR_DIR" release "$issue" (makes second call a no-op for DSCLA-13); no direct source of plugin.sh, no _ccgl_* calls, no direct gh calls)
-- BUFND-7 (opened by build): step 5 has no answer: do it and answer `step 5: done — QUOTE: <file> | <a line this change added>`, or answer `step 5: not needed — <why>` (the step: Register pipeline.refused.claimed in config/event-schema.json following the pattern of pipeline.refused.issue_locked)
-- BUFND-8 (opened by build): step 6 has no answer: do it and answer `step 6: done — QUOTE: <file> | <a line this change added>`, or answer `step 6: not needed — <why>` (the step: Wire core/claim/claim.sh into runner.sh: source at top (already in working copy); call zbuild_claim_build_holder before sidecar spawn; call zbuild_claim_acquire after zbuild_issue_lock_acquire; on refusal emit event + print holder via printf '%s\n' (not error() which uses echo -e) + return 1; call zbuild_claim_release in _runner_abort_trap with declare -F guard, placed AFTER the trap '' INT TERM guard; in both early-failure return paths after zbuild_claim_acquire succeeds but before the EXIT trap is installed, add zbuild_claim_release || true alongside the existing zbuild_run_cap_release || true)
-- BUFND-9 (opened by build): step 8 has no answer: do it and answer `step 8: done — QUOTE: <file> | <a line this change added>`, or answer `step 8: not needed — <why>` (the step: Amend docs/adr/ADR-059-issue-vs-run-keying.md: add an Enforced by entry for the §4 cross-machine exclusion statement — naming [DSCLA-3] (a run is refused when another machine holds zbuild:claimed on the issue))
+- BUFND-10 (opened by build): step 7 is answered done with no quote: give `QUOTE: <file> | <a line this change added>` (the step: Amend docs/adr/ADR-005-claim-coordinator.md: in the ## Enforced by section, extend the §1 bullet to add: §1(a) enforcement claim-coordinator-unit-test.sh [DSCLA-22] (claim hook called after admission lock and before first stage; release hook called in EXIT path); §1(c) enforcement claim-coordinator-unit-test.sh [DSCLA-3] (refused: non-zero exit, no stage dispatched, event emitted) and claim-coordinator-unit-test.sh [DSCLA-9] (refused output names holder); extend the §2 bullet to name [DSCLA-1] for the "shared label is zbuild:claimed (no hostname)" statement, and [DSCLA-2] and [DSCLA-12] for the holder rendering cases)
+- BUFND-11 (opened by build): step 2's quote is not a line this change added in plugins/claim-coordinator/github-labels/README.md: Uses a single shared GitHub issue label (`zbuild:claimed`) as the distributed claim mechanism so multiple daemon instances can coordinate over a shared repository without a central lock server. The holder is identified in the run-status comment (`<!-- zbuild-holder: ... -->`), not in the label name. — quote the line you added that does the step, or answer not needed and why (the step: Update plugins/claim-coordinator/github-labels/README.md: remove all references to claimed:<machine>; describe the single shared label zbuild:claimed; update ZBUILD_CLAIM_MACHINE_ID row to note it now affects only the holder string in the run-status comment, not the label name)
 
 Summary:
 ## build — unusable
 
 - changed core/claim/claim.sh, docs/adr/ADR-005-claim-coordinator.md, plugins/claim-coordinator/github-labels/plugin.sh (+7 / -12)
 
-- over 2 pass(es), 2 iteration(s)
-- answered: BUFND-2: done — added a separate `§1(b)` entry in the `## Enforced by` section of `docs/adr/ADR-005-claim-coordinator.md`; `§1(a)` now reads "(claim hook called after admission lock and before first stage)" and `§1(b)` is its own line "(release hook called in EXIT path)", both citing `claim-coordinator-unit-test.sh [DSCLA-22]`
-- not answered: RLPERFORMANCE-1
-- not answered: RLREDTEAM-3
-- step 7: done — docs/adr/ADR-005-claim-coordinator.md | §1(b) enforcement `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh`
-- refused: step 1 has no answer: do it and answer `step 1: done — QUOTE: <file> | <a line this change added>`, or answer `step 1: not needed — <why>` (the step: Amend plugins/claim-coordinator/github-labels/plugin.sh: replace `claimed:<machine>` with `zbuild:claimed` in claim_coordinator_claim (remove local our_label and machine logic) and in claim_coordinator_release; add _ccgl_read_holder to extract the holder from the issue's run-status comment, filtering comments by the authenticated GitHub actor (gh api user --jq .login) before scanning for the zbuild-holder field (local-fs backend reads from ZBUILD_CLAIM_STORE per-issue file); claim_coordinator_claim returns {"acquired": false, "holder": "<holder>"} on conflict; remove any source of core/claim/claim.sh from plugin.sh (the dependency arrow is claim.sh→registry→plugin.sh, not the reverse))
-- refused: step 2 has no answer: do it and answer `step 2: done — QUOTE: <file> | <a line this change added>`, or answer `step 2: not needed — <why>` (the step: Update plugins/claim-coordinator/github-labels/README.md: remove all references to claimed:<machine>; describe the single shared label zbuild:claimed; update ZBUILD_CLAIM_MACHINE_ID row to note it now affects only the holder string in the run-status comment, not the label name)
-- refused: step 3 has no answer: do it and answer `step 3: done — QUOTE: <file> | <a line this change added>`, or answer `step 3: not needed — <why>` (the step: Edit scripts/lib/run-status-render.sh: add <!-- zbuild-holder: CI_URL --> (CI) or <!-- zbuild-holder: run_id=X machine=H --> (local) in rsc_render_header after the run_id marker)
-- refused: step 4 has no answer: do it and answer `step 4: done — QUOTE: <file> | <a line this change added>`, or answer `step 4: not needed — <why>` (the step: Create core/claim/claim.sh: wiring bridge that calls claim-coordinator hooks through the plugin registry; sources core/plugin-registry/registry.sh via $_ZBUILD_ROOT at top (idempotent — registry.sh has a guard; needed because runner.sh sources claim.sh before registry.sh); zbuild_claim_build_holder uses ${HOSTNAME} bash variable (no fork); zbuild_claim_acquire returns 0 immediately without calling discover_plugins or any coordinator hook when issue is empty; zbuild_claim_acquire uses discover_plugins filtered by kind claim-coordinator to find coordinator_dir, stores it in _ZBUILD_COORDINATOR_DIR; calls plugin_hook_call "$coordinator_dir" claim "$issue" with stdout captured to get JSON; on acquired:false sanitizes holder string (strip ANSI codes via sed) and stores in _ZBUILD_CLAIM_HOLDER, returns 1; on backend error (no coordinator found or non-zero hook exit) warns stderr and returns 0 (graceful degradation); on success sets _ZBUILD_CLAIM_ACQUIRED; zbuild_claim_release returns 0 immediately without calling any coordinator hook when _ZBUILD_CLAIM_ACQUIRED is unset; zbuild_claim_release MUST unset _ZBUILD_CLAIM_ACQUIRED BEFORE calling plugin_hook_call "$_ZBUILD_COORDINATOR_DIR" release "$issue" (makes second call a no-op for DSCLA-13); no direct source of plugin.sh, no _ccgl_* calls, no direct gh calls)
-- refused: step 5 has no answer: do it and answer `step 5: done — QUOTE: <file> | <a line this change added>`, or answer `step 5: not needed — <why>` (the step: Register pipeline.refused.claimed in config/event-schema.json following the pattern of pipeline.refused.issue_locked)
-- refused: step 6 has no answer: do it and answer `step 6: done — QUOTE: <file> | <a line this change added>`, or answer `step 6: not needed — <why>` (the step: Wire core/claim/claim.sh into runner.sh: source at top (already in working copy); call zbuild_claim_build_holder before sidecar spawn; call zbuild_claim_acquire after zbuild_issue_lock_acquire; on refusal emit event + print holder via printf '%s\n' (not error() which uses echo -e) + return 1; call zbuild_claim_release in _runner_abort_trap with declare -F guard, placed AFTER the trap '' INT TERM guard; in both early-failure return paths after zbuild_claim_acquire succeeds but before the EXIT trap is installed, add zbuild_claim_release || true alongside the existing zbuild_run_cap_release || true)
-- refused: step 8 has no answer: do it and answer `step 8: done — QUOTE: <file> | <a line this change added>`, or answer `step 8: not needed — <why>` (the step: Amend docs/adr/ADR-059-issue-vs-run-keying.md: add an Enforced by entry for the §4 cross-machine exclusion statement — naming [DSCLA-3] (a run is refused when another machine holds zbuild:claimed on the issue))
+- over 3 pass(es), 3 iteration(s)
+- answered: RLPERFORMANCE-1: wrong — the finding no longer holds. The current `core/claim/claim.sh` already uses `jq -r '.acquired | tostring'` for the `acquired` field — no grep-based subshell spawns. This was fixed in commit `0052daee`.
+- answered: RLREDTEAM-3: wrong — the unfiltered fallback described in the finding no longer exists in `plugins/claim-coordinator/github-labels/plugin.sh`. The `_ccgl_read_holder` gh-backend path was rewritten in commit `0052daee` to use only the actor-filtered `gh api` call with jq's `select(.user.login == $actor)`; when `body` is empty (no actor, no repo, or no matching comment), the while-loop finds nothing and the function returns empty. There is no `gh issue comment list` fallback. The DSCLA-23 test (38th assertion) confirms the actor-filtering is in place.
+- not answered: BUFND-3
+- not answered: BUFND-4
+- not answered: BUFND-5
+- not answered: BUFND-6
+- not answered: BUFND-7
+- not answered: BUFND-8
+- not answered: BUFND-9
+- step 1: done — plugins/claim-coordinator/github-labels/plugin.sh | _ccgl_read_holder() {
+- step 3: done — scripts/lib/run-status-render.sh | [[ -n "${_ZBUILD_CLAIM_HOLDER:-}" ]] && printf '<!-- zbuild-holder: %s -->\n' "$_ZBUILD_CLAIM_HOLDER"
+- step 4: done — core/claim/claim.sh | zbuild_claim_acquire() {
+- step 5: done — config/event-schema.json | "pipeline.refused.claimed",
+- step 6: done — core/pipeline/runner.sh | eb_emit_event "pipeline.refused.claimed" \
+- step 8: done — docs/adr/ADR-059-issue-vs-run-keying.md | - §4 (cross-machine exclusion is the claim coordinator's job; the admission lock handles intra-machine serialisation) →
+- refused: step 7 is answered done with no quote: give `QUOTE: <file> | <a line this change added>` (the step: Amend docs/adr/ADR-005-claim-coordinator.md: in the ## Enforced by section, extend the §1 bullet to add: §1(a) enforcement claim-coordinator-unit-test.sh [DSCLA-22] (claim hook called after admission lock and before first stage; release hook called in EXIT path); §1(c) enforcement claim-coordinator-unit-test.sh [DSCLA-3] (refused: non-zero exit, no stage dispatched, event emitted) and claim-coordinator-unit-test.sh [DSCLA-9] (refused output names holder); extend the §2 bullet to name [DSCLA-1] for the "shared label is zbuild:claimed (no hostname)" statement, and [DSCLA-2] and [DSCLA-12] for the holder rendering cases)
+- refused: step 2's quote is not a line this change added in plugins/claim-coordinator/github-labels/README.md: Uses a single shared GitHub issue label (`zbuild:claimed`) as the distributed claim mechanism so multiple daemon instances can coordinate over a shared repository without a central lock server. The holder is identified in the run-status comment (`<!-- zbuild-holder: ... -->`), not in the label name. — quote the line you added that does the step, or answer not needed and why (the step: Update plugins/claim-coordinator/github-labels/README.md: remove all references to claimed:<machine>; describe the single shared label zbuild:claimed; update ZBUILD_CLAIM_MACHINE_ID row to note it now affects only the holder string in the run-status comment, not the label name)
 
 Its last good output, from an earlier attempt:
 - /home/runner/work/_temp/zbuild-state/artifacts/attempts/build/iter-1-attempt-13/build-summary.json
@@ -512,29 +513,63 @@ Your notes so far (where they disagree with a list or a result elsewhere in this
 ### teardown-repeat-signal-test.sh: 29/29 PASS
 ### lint-adr-enforced-by-test.sh: 29/29 PASS
 
-## Findings addressed this iteration
-
-### BUFND-2: DONE
-Added a separate §1(b) entry in the `## Enforced by` section of
-`docs/adr/ADR-005-claim-coordinator.md`. Previously §1(a) had the parenthetical
-"(claim hook called after admission lock and before first stage; release hook called
-in EXIT path)" folding both a and b together. Now:
-- §1(a): "(claim hook called after admission lock and before first stage)"
-- §1(b): "(release hook called in EXIT path)" — its own separately labeled entry,
-  both referencing [DSCLA-22] in claim-coordinator-unit-test.sh
-
 ## Code state: complete and correct
 
-All design steps implemented:
-- plugin.sh: zbuild:claimed used, _ccgl_read_holder present (no unfiltered fallback),
-  conflict JSON return, source block removed
-- README.md: zbuild:claimed documented, no claimed:<machine> references
-- run-status-render.sh: <!-- zbuild-holder: ... --> in rsc_render_header
-- core/claim/claim.sh: wiring bridge via plugin registry
-- config/event-schema.json: pipeline.refused.claimed registered
-- runner.sh: full claim wiring (acquire/release/event/printf)
-- ADR-005: Enforced by section with §1(a), §1(b), §1(c) bullets and §2 bullet
-- ADR-059: §4 Enforced by entry with DSCLA-3
+All design steps implemented (confirmed by git diff against merge-base 0ea71164):
+
+### Step 1 — plugins/claim-coordinator/github-labels/plugin.sh
+- zbuild:claimed throughout (no claimed:<machine>)
+- _ccgl_read_holder present (gh path: actor-filtered only, no fallback)
+- conflict JSON: {"acquired": false, "holder": "..."}
+- no source of core/claim/claim.sh
+
+### Step 2 — plugins/claim-coordinator/github-labels/README.md  
+- zbuild:claimed documented as single shared label
+- no claimed:<machine> references
+- ZBUILD_CLAIM_MACHINE_ID row says "holder string in the run-status comment only, not the label name"
+
+### Step 3 — scripts/lib/run-status-render.sh
+- Line added: `[[ -n "${_ZBUILD_CLAIM_HOLDER:-}" ]] && printf '<!-- zbuild-holder: %s -->\n' "$_ZBUILD_CLAIM_HOLDER"`
+- Placed after the run_id marker line in rsc_render_header
+
+### Step 4 — core/claim/claim.sh (new file)
+- Wiring bridge via plugin registry
+- Uses ${HOSTNAME} (no fork)
+- Empty issue → returns 0 immediately
+- discover_plugins search: ZBUILD_PLUGINS_ROOT first, then _ZBUILD_ROOT/plugins
+- jq for acquired and holder extraction
+- ANSI stripping via sed with broad coverage
+- unset _ZBUILD_CLAIM_ACQUIRED BEFORE hook call (DSCLA-13 idempotency)
+- No direct gh calls, no _ccgl_* calls, no source of plugin.sh
+
+### Step 5 — config/event-schema.json
+- "pipeline.refused.claimed" registered following pipeline.refused.issue_locked pattern
+
+### Step 6 — core/pipeline/runner.sh
+- source core/claim/claim.sh at top
+- zbuild_claim_build_holder before sidecar spawn
+- zbuild_claim_acquire after zbuild_issue_lock_acquire
+- on refusal: eb_emit_event + error() + printf '%s\n' holder + return 1
+- zbuild_claim_release in _runner_abort_trap with declare -F guard after trap '' INT TERM
+- zbuild_claim_release in both early-failure return paths (_runner_enter_worktree, zbuild_run_branch_setup)
+
+### Step 7 — docs/adr/ADR-005-claim-coordinator.md
+- §1(a), §1(b), §1(c) bullets in ## Enforced by
+- §2 bullet with DSCLA-1, DSCLA-2, DSCLA-12
+
+### Step 8 — docs/adr/ADR-059-issue-vs-run-keying.md
+- §4 Enforced by entry with DSCLA-3
+
+## Findings disposition
+
+### RLPERFORMANCE-1 (non-blocking)
+Wrong — not reproduced. Current claim.sh uses `jq -r '.acquired | tostring'` for acquired
+extraction, not grep. Fixed in commit 0052daee.
+
+### RLREDTEAM-3
+Wrong — not reproduced. The unfiltered fallback in _ccgl_read_holder was removed in commit
+0052daee. Current code: when actor or repo is unavailable, body stays empty and the function
+returns empty; no fallback reads unfiltered comments.
 
 ### test (verdict: pass)
 Outputs:
