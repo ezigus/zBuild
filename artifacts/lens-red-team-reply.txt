@@ -6,53 +6,13 @@
       "file": "plugins/claim-coordinator/github-labels/plugin.sh",
       "category": "injection",
       "severity": "medium",
-      "message": "The gh backend reads the holder from the last comment on the issue that contains the zbuild-run-status magic marker, with no check that the comment came from the authenticated sidecar, so any GitHub user who can comment on the issue can displace the legitimate holder string.",
-      "quote": "'[.[] | select(.body | contains(\"<!-- zbuild-run-status\")) | .body] | last'",
-      "trigger": "On a public GitHub repository (or any repo where the attacker has comment access), the attacker posts a comment after the sidecar's run-status comment containing the string '<!-- zbuild-run-status run_id=x -->' and an arbitrary '<!-- zbuild-holder: PAYLOAD -->' line. Because jq's `last` selects the most recently posted matching comment, the attacker's PAYLOAD becomes the holder string extracted by _ccgl_read_holder, which is then returned as the holder in claim_coordinator_claim's refusal JSON and printed to the operator's stderr on the next run that finds zbuild:claimed present.",
-      "accepted_if": "The holder string shown in the refusal message is taken only from comments that the authenticated sidecar process itself wrote, not from any comment any GitHub user can post to the issue.",
-      "introduced": true,
-      "fix": "design"
-    },
-    {
-      "file": "core/claim/claim.sh",
-      "category": "injection",
-      "severity": "medium",
-      "message": "The sed pattern that sanitizes the holder string before printing it to stderr strips only CSI SGR (m) and EL (K) sequences, leaving cursor-movement codes, clear-screen (\\x1b[2J), cursor-position (\\x1b[H), and OSC sequences (\\x1b]…) intact, so those bytes reach the operator's terminal via printf '%s\\n' and are executed as terminal control sequences.",
-      "quote": "sed -e 's/\\x1b\\[[0-9;]*[mK]//g' <<< \"$raw_holder\" || true",
-      "trigger": "An attacker who can post a crafted holder comment (see the companion finding in plugin.sh) includes a sequence such as '\\x1b[2J' (clear screen) or '\\x1b]0;evil\\x07' (window-title injection) in the holder string. The sed pattern does not match these sequences because their terminators are not 'm' or 'K', so they survive into _ZBUILD_CLAIM_HOLDER and are written verbatim to the operator's terminal when the refused run calls printf '%s\\n' \"${_ZBUILD_CLAIM_HOLDER:-unknown}\" >&2. The event-bus uses the broader pattern 's/\\x1b\\[[0-9;?]*[a-zA-Z~]//g; s/\\x1b.//g', which covers these cases; the holder sanitization does not.",
-      "accepted_if": "The holder string passed to printf '%s\\n' on refusal contains no terminal control sequences — meaning the sanitization applied to the extracted holder before it is stored in _ZBUILD_CLAIM_HOLDER strips all CSI sequences (any letter terminator) and all bare-ESC-prefixed sequences, at minimum matching the coverage of the event-bus's _eb_strip_ansi.",
+      "message": "The graceful fallback in _ccgl_read_holder reads any GitHub commenter's holder string when the authenticated-actor filter produces no result, re-opening the spoofed-holder path that the actor filter was added to close.",
+      "quote": "if [[ -z \"$body\" ]]; then\n                # Graceful fallback: list without author filtering.\n                body=\"$(gh issue comment list \"$issue\" --json body \\\n                    --jq '[.[] | select(.body | contains(\"<!-- zbuild-run-status\")) | .body] | last' \\\n                    2>/dev/null || true)\"\n            fi",
+      "trigger": "The fallback fires whenever $body is empty after the actor-filtered path: when gh api user fails and GITHUB_ACTOR is unset, when GITHUB_REPOSITORY is unset, or when the authenticated API call succeeds but returns no matching comment (e.g. the sidecar comment was not yet posted). Any GitHub user with comment access who posts a comment containing <!-- zbuild-run-status --> and <!-- zbuild-holder: PAYLOAD --> before the legitimate sidecar comment is scanned will have their PAYLOAD shown as the holder in the refusal message; ANSI sequences are stripped by claim.sh before printf, so terminal control injection is blocked, but the misleading attribution stands.",
+      "accepted_if": "The holder string shown in the refusal message is taken only from comments that the authenticated sidecar process itself wrote, not from any comment any GitHub user can post to the issue — the fallback that reads without author filtering must be removed or replaced with a path that still restricts to the authenticated actor's comments.",
       "introduced": true,
       "fix": "code"
     }
-  ]
-}
---- reply 2 ---
-The sed expression spans two lines (121–122). The quote in my previous finding used a single-line excerpt that isn't present. I'll use the two-line block as the quote instead.
-
-{
-  "score": 7,
-  "findings": [
-    {
-      "file": "plugins/claim-coordinator/github-labels/plugin.sh",
-      "category": "injection",
-      "severity": "medium",
-      "message": "The gh backend reads the holder from the last comment on the issue that contains the zbuild-run-status magic marker, with no check that the comment came from the authenticated sidecar, so any GitHub user who can comment on the issue can displace the legitimate holder string.",
-      "quote": "'[.[] | select(.body | contains(\"<!-- zbuild-run-status\")) | .body] | last'",
-      "trigger": "On a public GitHub repository (or any repo where the attacker has comment access), the attacker posts a comment containing the string '<!-- zbuild-run-status run_id=x -->' and an arbitrary '<!-- zbuild-holder: PAYLOAD -->' line. Because jq's `last` selects the most recently posted matching comment, the attacker's PAYLOAD becomes the holder string extracted by _ccgl_read_holder, which is returned as the holder in claim_coordinator_claim's refusal JSON and printed to the operator's terminal on the next run that finds zbuild:claimed present.",
-      "accepted_if": "The holder string shown in the refusal message is taken only from comments that the authenticated sidecar process itself wrote, not from any comment any GitHub user can post to the issue.",
-      "introduced": true,
-      "fix": "design"
-    },
-    {
-      "file": "core/claim/claim.sh",
-      "category": "injection",
-      "severity": "medium",
-      "message": "The sed pattern that sanitizes the holder string strips only CSI SGR (m) and EL (K) sequences, leaving cursor-movement, clear-screen, cursor-position, and OSC sequences intact, so those bytes reach the operator's terminal via printf '%s\\n' and are executed as terminal control sequences.",
-      "quote": "holder_value=\"$(sed -e 's/^\"holder\":[[:space:]]*\"\\(.*\\)\"$/\\1/' \\\n            -e 's/\\x1b\\[[0-9;]*[mK]//g' <<< \"$raw_holder\" || true)\"",
-      "trigger": "An attacker who can post a crafted holder comment includes a sequence such as '\\x1b[2J' (clear screen) or '\\x1b]0;evil\\x07' (window-title injection) in the holder string. The sed pattern does not match these sequences because their terminators are not 'm' or 'K', so they survive into _ZBUILD_CLAIM_HOLDER and are written verbatim to the operator's terminal when the refused run calls printf '%s\\n' \"${_ZBUILD_CLAIM_HOLDER:-unknown}\" >&2.",
-      "accepted_if": "The holder string passed to printf '%s\\n' on refusal contains no terminal control sequences — meaning the sanitization applied to the extracted holder before it is stored in _ZBUILD_CLAIM_HOLDER strips all CSI sequences (any letter terminator) and all bare-ESC-prefixed sequences, at minimum matching the coverage of the event-bus's _eb_strip_ansi pattern.",
-      "introduced": true,
-      "fix": "code"
-    }
-  ]
+  ],
+  "unclear": []
 }

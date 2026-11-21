@@ -1,0 +1,19 @@
+{
+  "stage": "review_lenses",
+  "cycle_iter": 2,
+  "attempt": 6,
+  "rc": "0",
+  "generated_at": "2026-11-21T07:09:34Z",
+  "files": 6,
+  "outputs": {
+    "lens-sre.json": "changed",
+    "lens-sre-summary.md": "changed",
+    "lens-sre-code-result.json": "changed",
+    "lens-sre-test-result.json": "unchanged",
+    "lens-sre-design-result.json": "unchanged",
+    "lens-sre-reply.txt": "changed",
+    "__notes__": "absent",
+    "__cutoff__": "absent"
+  },
+  "progress": true
+}

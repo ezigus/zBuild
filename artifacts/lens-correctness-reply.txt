@@ -1,29 +1,20 @@
 --- reply 1 ---
-{
-  "score": 8,
-  "findings": [
-    {
-      "file": "core/claim/claim.sh",
-      "category": "logic",
-      "severity": "medium",
-      "message": "The JSON holder extraction in `zbuild_claim_acquire` uses `grep -o '\"holder\":[[:space:]]*\"[^\"]*\"'`; the `[^\"]*` class stops at the first `\"` character, so a holder whose JSON-escaped form contains `\\\"` (an escaped double-quote, written by `claim_coordinator_claim`'s `sed 's/\"/\\\\\"/g'`) is silently truncated — the regex matches only the bytes before the escaped quote.",
-      "quote": "raw_holder=\"$(grep -o '\"holder\":[[:space:]]*\"[^\"]*\"' <<< \"$json_out\" || true)\"",
-      "trigger": "A holder string containing a literal double-quote character (e.g. a machine name or run-id containing `\"`); `claim_coordinator_claim` JSON-escapes it to `\\\"`, but `[^\"]*` stops at the unescaped `\"` byte, returning a truncated `raw_holder` to the outer `sed` extraction, which then strips only up to the first `\"` it sees.",
-      "accepted_if": "The holder string as printed in the run's refusal output is identical to the holder string embedded in the run-status comment's `<!-- zbuild-holder: -->` field, even when that string contains a double-quote character.",
-      "introduced": true,
-      "fix": "code"
-    },
-    {
-      "file": "plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh",
-      "category": "coverage",
-      "severity": "medium",
-      "message": "The DSCLA-4 unit-test block pre-seeds the run-status comment file with a hand-written `<!-- zbuild-holder: ... -->` line instead of calling `rsc_render_header` to generate it; if `rsc_render_header` changes its holder-comment format and `_ccgl_read_holder`'s regex is not updated to match, this test still passes (the hand-written fixture still matches the stale reader) while the production round-trip is broken.",
-      "quote": "cat > \"$ZBUILD_CLAIM_STORE/$_dscla4_issue/run-status-comment.txt\" <<'RSCEOF'\n<!-- zbuild-run-status run_id=holder-run-99 -->\n<!-- zbuild-holder: run-holder-99 on machine-other -->\nrun is in progress...\nRSCEOF",
-      "trigger": "A change to `rsc_render_header`'s `<!-- zbuild-holder: %>` output format that is not matched by a corresponding update to `_ccgl_read_holder`'s regex; the DSCLA-4 unit test passes because it reads the hand-written old-format fixture, while the DSCLA-9/15 integration tests (which use `rsc_render_header`) would fail.",
-      "accepted_if": "The DSCLA-4 unit test generates its run-status comment fixture using `rsc_render_header` (the same code that writes it in production), so a format divergence between the writer and the reader is caught at the unit level, not only in integration.",
-      "introduced": true,
-      "fix": "test"
-    }
-  ],
-  "unclear": []
-}
+Both previously reported findings have been verified as resolved in the current code:
+
+**RLCORRECTNESS-1** (grep holder truncation): `claim.sh` line 119 now uses `jq -r '.holder // empty'` — confirmed in the file.
+
+**RLCORRECTNESS-2** (hand-written fixture in DSCLA-4): The test at lines 362–369 now generates the run-status comment fixture via `rsc_rows_json` + `rsc_render_header` with `_ZBUILD_CLAIM_HOLDER="$_dscla4_holder_string"` — confirmed in the file. The old heredoc is gone.
+
+Swept the remaining changed code for new correctness concerns:
+
+- `_ZBUILD_CLAIM_HOLDER` reset at claim.sh line 85 then rebuilt at line 131 on success path: correct — sidecar inherits the pre-spawn export; parent rebuilds the same value after acquire.
+- `acquired` JSON parsing via `grep -o '"acquired":[[:space:]]*[a-z]*'`: covers both `true` and `false` outputs the plugin actually emits.
+- Backend-error path (plugin exits 1) → claim.sh `hook_rc != 0` branch → graceful degradation (return 0): correct.
+- `_runner_enter_worktree` and `zbuild_run_branch_setup` failure paths both call `zbuild_claim_release` before returning (runner lines 2546–2550 and 2565–2569): DSCLA-16 satisfied.
+- `printf '%s\n' "${_ZBUILD_CLAIM_HOLDER:-unknown}" >&2` on refusal (runner line 2525): correct; not `echo -e`, backslash sequences in holder are not interpreted (DSCLA-15).
+- DSCLA-21 test relies on re-discovery in `zbuild_claim_release` (not stale `_ZBUILD_COORDINATOR_DIR`): re-discovery path at claim.sh lines 160–168 is in place.
+- `grep -Fxq "zbuild:claimed" <<< "$existing"` in plugin.sh line 190: here-string form, not a pipe from grep — SIGPIPE-safe.
+
+No new correctness issues found.
+
+{"score": 10, "findings": []}
