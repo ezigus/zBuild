@@ -27,6 +27,15 @@ export ZBUILD_CLAIM_MACHINE_ID="test-machine-1"
 
 # shellcheck source=../../../../plugins/claim-coordinator/github-labels/plugin.sh
 source "$REPO_ROOT/plugins/claim-coordinator/github-labels/plugin.sh"
+# Explicitly source claim.sh so DSCLA-1/-2/-3/-8 do not silently rely on
+# plugin.sh's transitive import; a future refactor of plugin.sh that moves
+# the source must not silently break these tests.
+# Guard: on base code claim.sh does not exist yet; zbuild_claim_acquire is
+# therefore undefined and the DSCLA blocks fail on rc≠0 — the intended red step.
+if [[ -f "$REPO_ROOT/core/claim/claim.sh" ]]; then
+    # shellcheck source=../../../../core/claim/claim.sh
+    source "$REPO_ROOT/core/claim/claim.sh"
+fi
 
 # ── claim issue 42 → rc=0 ─────────────────────────────────────────────────────
 : > "$ZBUILD_EVENTS_JSONL"
