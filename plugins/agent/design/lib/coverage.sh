@@ -307,6 +307,16 @@ _design_coverage() {
     # own words did not change) is refused only on a line added since.
     local _dpas=""; judge_pass_entries_v _dpas _earl kwhy "ok covered open" file $want
     judge_pass_block_v _dpas "$_dpas"; _disp_shown+="$_dpas"
+    # #2579 (ADR-072 §4): the requirements, steps or decisions as they were when
+    # last judged, beside them now. A SPEC is design's own item: judged afresh.
+    local -A itxt=() ; local _dch="" _dw _de
+    itxt[requirements]="$reqs"; [[ -n "$steps" ]] && itxt[steps]="$steps"; [[ -n "$decision" ]] && itxt[decision]="$decision"
+    for k in requirements steps decision; do
+        [[ -n "${itxt[$k]+x}" && $'\n'"$want" == *$'\n'"$k"$'\n'* ]] || continue
+        judge_item_was_v _dw "$k" "${itxt[$k]}"; [[ -n "$_dw" ]] || continue
+        judge_changed_entry_v _de "$k" "$_dw" "${itxt[$k]}"; _dch+="$_de"
+    done
+    judge_changed_block_v _dch "$_dch"; _disp_shown+="$_dch"
     local _ublk=""; zb_unclear_judge_block_v _ublk "$unclear_asked"
     [[ -n "$_ublk" ]] && _disp_shown=$'\n'"$_ublk"$'\n'"$_disp_shown"
     # #2458: it judges, so it composes fresh — no notes, and no rule to confirm earlier work.
@@ -384,7 +394,7 @@ _design_coverage() {
     done <<< "$want"
     # Kept with the repository as it is; a held pass keeps its own (#2574 review).
     local _JUDGE_KEEP_BASE=""; [[ -n "$kf" ]] && judge_keep_baseline_v _JUDGE_KEEP_BASE "$repo"
-    [[ -n "$kf" ]] && judge_kept_put_all "$kf" put putfp deps carry
+    [[ -n "$kf" ]] && judge_kept_put_all "$kf" put putfp deps carry itxt
     # Review on #2571 (ADR-069 §12): carried questions still unjudged after the
     # one re-ask stay open — not kept, so the next try judges them — and the
     # other items' answers stand; a note says so. They never fail the try.

@@ -2,6 +2,9 @@
 # scripts/lib/design-steps.sh — a design's ```steps block, read one way, and
 # whether it names a changed file (#2575, ADR-036).
 #
+# A step names the SPECs it serves after " | serves:" (#2579, ADR-068): a step
+# is a summary of part of them, and its checks are shown them.
+#
 # One parser (zb_design_step_lines_v) reads the steps for design's writer
 # (design-steps.json), design's own checks, and the acceptance check. A file
 # is named when the design names it anywhere (zb_design_names_v) — generous on
@@ -34,21 +37,67 @@ zb_design_step_lines_v() {
     return 0
 }
 
+# zb_design_step_split <step> — one step line's parts: _ZB_STEP_DESC, what to
+# do; _ZB_STEP_AREAS, the text after " | areas:"; _ZB_STEP_SERVES, the ids
+# after " | serves:", space separated, each once: a trailing [tag] or brackets
+# taken off, a word that is no id (_ACCEPTANCE_ID_ERE) set aside. Either part
+# may come first; each runs to the other or the end.
+_ZB_STEP_DESC="" _ZB_STEP_AREAS="" _ZB_STEP_SERVES=""
+zb_design_step_split() {
+    local s="$1" a="" v="" w
+    [[ -n "${_ACCEPTANCE_ID_ERE:-}" ]] || source "${BASH_SOURCE[0]%/*}/acceptance-block.sh" 2>/dev/null || true
+    _ZB_STEP_DESC="${s%% | areas:*}"; _ZB_STEP_DESC="${_ZB_STEP_DESC%% | serves:*}"
+    [[ "$s" == *" | areas:"* ]] && { a="${s#* | areas:}"; a="${a%% | serves:*}"; }
+    [[ "$s" == *" | serves:"* ]] && { v="${s#* | serves:}"; v="${v%% | areas:*}"; }
+    _ZB_STEP_DESC="${_ZB_STEP_DESC#"${_ZB_STEP_DESC%%[![:space:]]*}"}"; _ZB_STEP_DESC="${_ZB_STEP_DESC%"${_ZB_STEP_DESC##*[![:space:]]}"}"
+    _ZB_STEP_AREAS="$a" _ZB_STEP_SERVES=""
+    local -a ws=(); IFS=$' \t\n' read -ra ws <<< "${v//[,;]/ }"
+    for w in ${ws[@]+"${ws[@]}"}; do
+        w="${w#\[}"; w="${w%.}"; w="${w%\]}"; [[ "$w" == *\[* ]] && w="${w%%\[*}"
+        [[ "$w" =~ ^${_ACCEPTANCE_ID_ERE}$ && " $_ZB_STEP_SERVES " != *" $w "* ]] && _ZB_STEP_SERVES+="${_ZB_STEP_SERVES:+ }$w"
+    done
+    return 0
+}
+
 # zb_design_write_steps <design_md> <out_json> — the steps as
-# {title, steps:[{id, description, areas}]}. A design with no steps writes none
-# (and removes an earlier one, so a stale list is never read as this design's).
+# {title, steps:[{id, description, areas, serves}], specs:{<id>: <text>}}:
+# specs holds each served SPEC as a model is shown it (acceptance_spec_render_v),
+# so a step's check is shown what the step summarizes (#2579). A design with no
+# steps writes none (and removes an earlier one, so a stale list is never read
+# as this design's).
 zb_design_write_steps() {
-    local design="$1" out="$2" title
+    local design="$1" out="$2" title l rows="" specs="" blk="" id txt all=""
     local -a lines=()
+    local -A seen=()
     zb_design_step_lines_v lines "$design"
     if [[ ${#lines[@]} -eq 0 ]]; then rm -f "$out" 2>/dev/null; return 0; fi
     title="$(grep -m1 -E '^# ' "$design" 2>/dev/null || true)"; title="${title#\# }"
-    printf '%s\n' "${lines[@]}" | jq -Rsc --arg t "$title" '
-        split("\n") | map(select(length > 0))
-        | [.[] | split(" | areas:") as $p
-            | {description: ($p[0] | gsub("^\\s+|\\s+$"; "")),
-               areas: (($p[1] // "") | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0)))}]
-        | {title: $t, steps: [to_entries[] | {id: "step-\(.key + 1)"} + .value]}' \
+    for l in "${lines[@]}"; do
+        zb_design_step_split "$l"
+        l="${_ZB_STEP_DESC//[$'\x1e\x1f']/ }"$'\x1f'"${_ZB_STEP_AREAS//[$'\x1e\x1f']/ }"
+        rows+="$l"$'\x1f'"$_ZB_STEP_SERVES"$'\x1e'
+        all+="${_ZB_STEP_SERVES:+ $_ZB_STEP_SERVES}"
+    done
+    if [[ -n "$all" ]]; then
+        declare -F acceptance_spec_render_v >/dev/null 2>&1 \
+            || source "${BASH_SOURCE[0]%/*}/acceptance-block.sh" 2>/dev/null || true
+        blk="$(extract_acceptance_block "$design" 2>/dev/null)" || blk=""
+        local -a ids=(); IFS=$' \t\n' read -ra ids <<< "$all"
+        for id in "${ids[@]}"; do
+            [[ -z "${seen[$id]+x}" ]] || continue
+            seen[$id]=1; txt=""
+            acceptance_spec_render_v txt "$blk" "$id" 2>/dev/null || txt=""
+            [[ -n "$txt" ]] && specs+="$id"$'\x1f'"${txt//$'\x1e'/ }"$'\x1e'
+        done
+    fi
+    jq -nc --arg t "$title" --arg rows "$rows" --arg specs "$specs" '
+        def trim: gsub("^\\s+|\\s+$"; "");
+        [$rows | split("\u001e")[] | select(length > 0) | split("\u001f")
+          | {description: (.[0] | trim),
+             areas: ((.[1] // "") | split(",") | map(trim) | map(select(length > 0))),
+             serves: ((.[2] // "") | split(" ") | map(select(length > 0)))}] as $s
+        | {title: $t, steps: [$s | to_entries[] | {id: "step-\(.key + 1)"} + .value],
+           specs: ([$specs | split("\u001e")[] | select(length > 0) | split("\u001f") | {(.[0]): .[1]}] | add // {})}' \
         | atomic_write "$out" || rm -f "$out" 2>/dev/null
     return 0
 }
@@ -62,7 +111,8 @@ zb_design_step_areas_v() {
     zb_design_step_lines_v _dsa_lines "${2:-}"
     for _dsa_s in ${_dsa_lines[@]+"${_dsa_lines[@]}"}; do
         [[ "$_dsa_s" == *" | areas:"* ]] || continue
-        IFS=',' read -ra _dsa_ar <<< "${_dsa_s#* | areas:}"
+        zb_design_step_split "$_dsa_s"
+        IFS=',' read -ra _dsa_ar <<< "$_ZB_STEP_AREAS"
         for _dsa_a in ${_dsa_ar[@]+"${_dsa_ar[@]}"}; do
             _dsa_a="${_dsa_a#"${_dsa_a%%[![:space:]]*}"}"; _dsa_a="${_dsa_a%"${_dsa_a##*[![:space:]]}"}"
             [[ -n "$_dsa_a" ]] && _dsa+=("$_dsa_a")

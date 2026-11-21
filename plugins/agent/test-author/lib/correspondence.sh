@@ -322,10 +322,7 @@ _ta_correspondence() {
         _pn="_sc_parts_${#_ids[@]}"
         local -a "$_pn=()"
         _sc_spec_parts_v "$_pn" "$_blk" "$sid"
-        local -n _sc_pp="$_pn"
-        _shown="$_ACC_SPEC_TEXT"
-        for _p in "${_sc_pp[@]}"; do _p="${_p#*$'\t'}"; _shown+=$'\n'"  ${_p%%$'\t'*}: ${_p#*$'\t'}"; done
-        unset -n _sc_pp
+        _sc_spec_shown_v _shown "$_blk" "$sid"
         _ids+=("$sid"); _txts+=("$_shown"); _srcs+=("$_src"); _tfss+=("$_tfs"); _pnames+=("$_pn")
     done < <(acceptance_list_spec_ids "$design" 2>/dev/null || true)
     local n=${#_ids[@]}
@@ -473,7 +470,7 @@ _ta_correspondence() {
                 _deps=(${_open_files[@]+"${_open_files[@]}"} ${_wired[@]+"${_wired[@]}"})
                 for _f in ${_tfss[_i]}; do _deps+=("$repo/$_f"); done
                 judge_kept_fp_v _k "${_fps[_i]}" "${_dfps[_i]}"
-                judge_kept_put "$kf" "${_ids[_i]}" "$_k" "${_lines[_i]}" "${_deps[@]}"
+                _JUDGE_KEEP_TEXT="${_txts[_i]}" judge_kept_put "$kf" "${_ids[_i]}" "$_k" "${_lines[_i]}" "${_deps[@]}"
             done
             for _f in ${_sc_back[@]+"${_sc_back[@]}"}; do judge_handoff_clear "$kf" "$_f"; done
         fi

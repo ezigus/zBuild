@@ -75,7 +75,7 @@ DRAFT='# Design
 Decision: add the label.
 
 ```steps
-- add the label | areas: core/pipeline/runner.sh
+- add the label | areas: core/pipeline/runner.sh | serves: DSCLM-1
 ```
 
 ```acceptance

@@ -301,8 +301,15 @@ On #1805 run 42556446368 nobody settled whether `--from-stage` needs `--resume`:
 - They are read from the design the design stage writes, `artifacts/design.md`, by one reader (`scripts/lib/unclear.sh`), shared with the end-of-run report (ADR-068 §8, amended 2026-11-09) and the PR description (ADR-040, amended 2026-11-09). A line inside a fenced block, or one missing a part, is not a question.
 - What design wrote is text: `\`, `[`, `]`, `<` and `>` are escaped, as the PR body escapes plan text.
 
+## Amendment 2026-11-21 (#2579) — §4: an open finding is named by its id
+
+The run summary named an open finding by its check and its place in the list ("lens-red-team-code finding 1"); the prompts and the answers name it by its id (ADR-068 §5, amended 2026-11-20), so the summary and the run's own words did not match.
+
+- **§4: every report of what is still open names a finding by its id** — the one its writer gave it from the check's `finding-ids-<code>.json` (`open_items_json`, `scripts/lib/run-open-items.sh`) — and by its check and place only when it has none.
+
 ## Enforced by
 
+- §4 amendment 2026-11-21 (#2579: an open finding is named by its id) → `tests/unit/result-outcome-test.sh` O10
 - §4 amendment 2026-11-09 (#2508: the questions design could not settle are shown) → `tests/unit/unclear-questions-shown-test.sh` Q1 (the reader), Q2 (the comment, while running), Q5 (no question, no section)
 
 - §4 amendment 2026-11-06 (#2480: a stage's words are text; every loop's round; each finding once; fail, not unusable; a running member's name) → `tests/unit/status-row-text-test.sh` X1–X3, R1, R2, L1; `tests/unit/status-row-findings-test.sh` W1, W5–W7; `tests/unit/gwt-judges-test.sh` T3, T4; `tests/unit/test-author-correspondence-test.sh` SPEC-3; `tests/unit/judge-feedback-test.sh` F5; `tests/unit/run-status-comment-render-test.sh` SPEC-3, SPEC-9

@@ -31,6 +31,12 @@
 # LP12 [change] (CI on #2574) which files are asked does not hang on the
 #              caller's IFS: under IFS=, the first call still reviews each
 #              file, and a file's finding is kept
+# LP13 [change] (#2579, ADR-072 §4) a file whose kept report was clean: a finding
+#              whose quote spans several lines, all added since, is taken (no
+#              judge.held); one whose quote holds a line that was there before
+#              is held — every line of the quote is compared, line breaks kept
+# LP14 [change] (#2579 review) a quote whose lines end in a carriage return
+#              (CRLF) is the lines it quotes: taken when they were added since
 # LP4 [change] the next try gives no answer and nothing changed: no call — the
 #              kept reports stand
 # LP5 [change] an answer to a finding about a file whose kept report found
@@ -257,6 +263,35 @@ _ifs_lens
 assert_contains "[LP12] under IFS=, c.sh's finding is kept" "$MSGS" "b is set twice"
 _keys="$(jq -r 'keys | join(" ")' "$ART/lens-red-team-judged.json" 2>/dev/null)"
 assert_contains "[LP12] ...and a report is kept for each file" " $_keys " " a.sh c.sh "
+
+print_test_section "LP13: a quote over several lines added since"
+# a.sh's kept report is clean (LP12). A block of several lines is added to it.
+assert_contains "[LP13] setup: a.sh's kept report is clean" "$(jq -r '.["a.sh"].payload // ""' "$ART/lens-red-team-judged.json" 2>/dev/null)" "clean"
+# A quote whose first line was added but whose second was there before is not a
+# change since: every line of it is compared.
+{ printf 'x=1\n'; cat "$XR/a.sh"; } > "$TEST_TEMP_DIR/a.new"; mv "$TEST_TEMP_DIR/a.new" "$XR/a.sh"; _commit "a, x"
+FINDINGS='[{"accepted_if":"x is checked","trigger":"any run","quote":"x=1\n# a line 1","file":"a.sh","severity":"high","message":"x is set blind","introduced":true,"fix":"code"}]'
+: > "$ZBUILD_EVENTS_JSONL"
+_lens
+_lacks "[LP13] a quote over several lines, one of them there before, is not taken" "$MSGS" "x is set blind"
+assert_contains "[LP13] ...judge.held records it" "$(cat "$ZBUILD_EVENTS_JSONL")" '"judge.held"'
+printf 'if [[ -z "$body" ]]; then\n    # Graceful fallback: list without author filtering.\n    body="$(list_any)"\nfi\n' >> "$XR/a.sh"; _commit "a, a fallback block"
+_FM='{"accepted_if":"only the actor is read","trigger":"another commenter","quote":"if [[ -z \"$body\" ]]; then\n    # Graceful fallback: list without author filtering.\n    body=\"$(list_any)\"\nfi","file":"a.sh","severity":"high","message":"the fallback reads any commenter","introduced":true,"fix":"code"}'
+FINDINGS="[$_FM]"; : > "$ZBUILD_EVENTS_JSONL"
+_lens
+assert_contains "[LP13] a finding quoting the added block, line breaks and all, is taken" "$MSGS" "the fallback reads any commenter"
+_lacks "[LP13] ...and judge.held does not drop it" "$(cat "$ZBUILD_EVENTS_JSONL")" '"judge.held"'
+
+print_test_section "LP14: a quote with carriage returns"
+FINDINGS="[]"; printf '# quiet again\n' >> "$XR/a.sh"; _commit "a, quiet again"
+_lens
+assert_contains "[LP14] setup: a.sh's kept report is clean" "$(jq -r '.["a.sh"].payload // ""' "$ART/lens-red-team-judged.json" 2>/dev/null)" "clean"
+printf 'y=2\nz=3\n' >> "$XR/a.sh"; _commit "a, y and z"
+FINDINGS='[{"accepted_if":"y is checked","trigger":"any run","quote":"y=2\r\nz=3\r","file":"a.sh","severity":"high","message":"y is set blind","introduced":true,"fix":"code"}]'
+: > "$ZBUILD_EVENTS_JSONL"
+_lens
+assert_contains "[LP14] a CRLF quote of lines added since is taken" "$MSGS" "y is set blind"
+_lacks "[LP14] ...and judge.held does not drop it" "$(cat "$ZBUILD_EVENTS_JSONL")" '"judge.held"'
 
 cleanup_test_env
 print_test_results

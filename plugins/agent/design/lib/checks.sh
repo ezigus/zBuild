@@ -215,6 +215,9 @@ _dck_plain() {
         GWT_CLEANUP*)        printf '%s has a Cleanup: line — putting things back is the test'"'"'s concern, not the requirement'"'"'s: take the Cleanup: line out' "$id" ;;
         GWT_PART_ON_REMOVED*) printf '%s is removed, so it has no parts — remove the lines under its REMOVED line' "$id" ;;
         STEP_IS_TEST*)       printf 'a step names %s, in the test folders — the tests are test-author'"'"'s to write: which cases, in which files, and how. Name only the code a step changes, and drop a step that is only about tests; the SPECs say what the tests must prove' "$id" ;;
+        STEP_NO_SPEC*)       local _sd="${rest#* (}"; _sd="${_sd%)}"
+            printf 'step %s names no SPEC it serves (%s) — end its line with " | serves: " and the ids of the SPECs it does part of, each a SPEC of the acceptance block: its checks are shown them' "$id" "$_sd" ;;
+        STEP_UNKNOWN_SPEC*)  printf 'a step serves %s, which is no SPEC of the acceptance block — name only the ids of SPECs the block has' "$id" ;;
         WIRING_IS_TEST*)     printf 'the WIRING file %s is in a test folder — a test is not what runs the change; name the file whose code calls the new code, or write WIRING: none' "$id" ;;
         *) printf '%s' "$v" ;;
     esac
@@ -426,6 +429,19 @@ _design_checks() {
     [[ -f "$design_md" ]] && zb_design_steps_unmarked_v _sa "$design_md"
     for _s in ${_sa[@]+"${_sa[@]}"}; do
         violations+=("STEP_UNMARKED $_s (a step line with no list marker — start each step with \"- \")")
+    done
+    # #2579 (ADR-068): each step names the SPECs it serves, each a SPEC of the
+    # block — its checks are shown them.
+    [[ -f "$design_md" ]] && zb_design_step_lines_v _sa "$design_md"
+    local _sn=0 _sv
+    for _s in ${_sa[@]+"${_sa[@]}"}; do
+        _sn=$((_sn + 1)); zb_design_step_split "$_s"
+        if [[ -z "$_ZB_STEP_SERVES" ]]; then violations+=("STEP_NO_SPEC $_sn ($_ZB_STEP_DESC)"); continue; fi
+        (( _accept_ok )) || continue
+        local -a _svs=(); IFS=$' \t\n' read -ra _svs <<< "$_ZB_STEP_SERVES"
+        for _sv in "${_svs[@]}"; do
+            [[ " ${_na:-} " == *" $_sv "* ]] || violations+=("STEP_UNKNOWN_SPEC $_sv (step $_sn serves an id the acceptance block has no SPEC for)")
+        done
     done
 
     # ── C12 UNCLEAR (#2508, #2571, ADR-069 §12): a question design could not

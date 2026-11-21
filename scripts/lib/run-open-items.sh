@@ -12,6 +12,9 @@
 # An item comes from the checks' latest results (ADR-068 §8): every check whose
 # result did not pass — each of its numbered findings, or its reason when it has
 # none. Nothing is kept beside those results.
+# A finding is named by its id (#2579, ADR-064): the one its writer gave it
+# from the check's finding-ids-<code>.json (#2574), as the prompts name it;
+# by its check and place only when it has none.
 # A finding may say what would settle it itself, after "What would settle it:"
 # or, as every check's refusal says it (#2569, ADR-072 §3), "ACCEPTED IF:".
 #
@@ -54,7 +57,7 @@ open_items_json() {
           | $r | select(type == "object" and ((.outcome) | type) == "string")
           | select(passed | not)
           | if ((.data.findings // []) | length) > 0 then
-                (.data.findings[] | {ref: "\($c) finding \(.n)", opener: $c, text: (.text // "")})
+                (.data.findings[] | {ref: (if (.id // "" | tostring) != "" then .id else "\($c) finding \(.n)" end), opener: $c, text: (.text // "")})
             else
                 {ref: $c, opener: $c, text: ("the " + $c + " check did not pass: "
                                               + ((.reason // "") | if . == "" then "it gave no reason" else . end))}

@@ -9,10 +9,11 @@ _ZBUILD_JUDGE_QUOTES_LOADED=1
 
 # ─── Quotes (§3) ─────────────────────────────────────────────────────────────
 
-# _judge_words_v <var> <text> — the text with every run of spacing one space.
+# _judge_words_v <var> <text> — the text with every run of spacing one space; a
+# carriage return is spacing (#2579: a CRLF quote is the lines it quotes).
 _judge_words_v() {
     local -n _jwo="$1"; local -a _jww=()
-    read -r -d '' -a _jww <<< "$2" || true
+    IFS=$' \t\n' read -r -d '' -a _jww <<< "${2//$'\r'/ }" || true
     _jwo="${_jww[*]}"
 }
 
