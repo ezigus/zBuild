@@ -12,19 +12,13 @@
 # FORK_BUDGET, which only ratchets DOWN (raising it needs an ADR-065 amendment).
 # The failure output IS the diagnosis: the top call sites and per-file totals.
 #
-# SPEC-1: a canary script with exactly one external exec counts exactly 1 — the
-#         detector cannot go inert.
-# SPEC-1b: the words inside an assigned value (xtrace quotes them) are data,
-#          never commands (#1842).
+# The counter's own checks are in tests/unit/fork-census-test.sh (#2575: split
+# to keep this file under 500 lines).
 # SPEC-2: the mocked run still exits 0 under tracing and writes events.jsonl.
 # SPEC-3: liveness floor — the trace names ≥ 20 source files and ≥ 1,000
 #         external execs (an fd-7-closed child traces to stderr; a run that died
 #         early must not pass as "under budget").
 # SPEC-4: total external execs ≤ FORK_BUDGET.
-# SPEC-5: a line marked `# fork-budget-exempt: <why>` is not counted (listed
-#         apart instead); an unmarked line in the same loop still is (#2236).
-#         How often a wait loop sleeps measures elapsed time, not code — under
-#         load the same tree counted 4,528 and 4,610.
 # SPEC-7: total processes (programs + subshells) ≤ PROCESS_BUDGET.
 # SPEC-8: the run's cost in two parts (#2472, ADR-065 §6), each within its
 #         budget, which ratchets down toward a floor below it:
@@ -52,6 +46,10 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "fork budget: external execs of a mocked full run (#2151, ADR-065)"
+# #2575: the same paths in every context. macOS's own TMPDIR ends in "/", the
+# test runner's does not; "T//fork-budget…" paths missed the trunk memo (keyed
+# by path) and cost 4 git calls more than inside the full suite.
+export TMPDIR="${TMPDIR:-/tmp}"; TMPDIR="${TMPDIR%/}"
 setup_test_env "fork-budget"
 
 # #2573 (ADR-065 §2 amendment 2026-11-20): each budget is its last measure plus
@@ -171,7 +169,12 @@ BUDGET_MARGIN_STARTUP=1
 # start-up processes and 232 execs every run. The written measure is the middle
 # of each range, so a run at either end stays within budget and within the
 # twice the margin the SPEC-9 slack check allows. Budgets: that measure plus the margin.
-FORK_BUDGET=$(( 1851 + BUDGET_MARGIN_TOTAL ))
+# #2575: the same run in every context (no "T//" paths, its own TMPDIR, a reused
+# process id counted as the second process it is) measures 4 processes and 4
+# execs fewer than #2573's standalone runs: 2391 processes and 1848 execs in
+# all, alone and with the e2e tier's TMPDIR under a load that wraps macOS's
+# process ids; 465 and 298 a dispatch, 428 and 232 at start-up.
+FORK_BUDGET=$(( 1848 + BUDGET_MARGIN_TOTAL ))
 # PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
 # the programs above plus each `$( )` subshell, a copy of the whole engine shell
 # that FORK_BUDGET cannot see. Ratchets down only, like FORK_BUDGET. History:
@@ -232,7 +235,8 @@ FORK_BUDGET=$(( 1851 + BUDGET_MARGIN_TOTAL ))
 # on macOS: 2399 processes and 1865 execs in all, 465 processes and 305 execs a
 # dispatch.
 # #2573: see FORK_BUDGET — 2394 processes, plus the margin.
-PROCESS_BUDGET=$(( 2394 + BUDGET_MARGIN_TOTAL ))
+# #2575: see FORK_BUDGET — 2391.
+PROCESS_BUDGET=$(( 2391 + BUDGET_MARGIN_TOTAL ))
 # The run's cost in two parts (ADR-065 §6, #2472). Each budget ratchets down
 # like the totals; each floor is the goal, an estimate, measured again when
 # reached. History: 505 / 298 a dispatch, 12 / 7 a plugin at start-up (#2472 —
@@ -305,50 +309,9 @@ STARTUP_EXECS_PER_PLUGIN_FLOOR=1
 # shellcheck source=../../tests/lib/fork-census.sh
 source "$REPO_ROOT/tests/lib/fork-census.sh"
 
-# ─── SPEC-1: the canary ──────────────────────────────────────────────────────
-print_test_section "SPEC-1: a script with one external exec counts exactly 1"
-CANARY="$TEST_TEMP_DIR/canary.sh"
-cat > "$CANARY" <<'EOF'
-#!/usr/bin/env bash
-x="$(dirname /a/b)"
-y="${x%/*}"
-printf '%s\n' "$y" >/dev/null
-EOF
-fork_census_traced "$TEST_TEMP_DIR/canary.trace" bash "$CANARY"
-_canary_n="$(fork_census_count "$TEST_TEMP_DIR/canary.trace" "$TEST_TEMP_DIR/canary.sites")"
-assert_eq "[SPEC-1] the canary's one dirname is counted, its builtins are not" "1" "$_canary_n"
-assert_contains "[SPEC-1] …and attributed to its call site" "$(cat "$TEST_TEMP_DIR/canary.sites")" "canary.sh:2"$'\t'"dirname"
-
-# ─── SPEC-1b: an assignment's value is not a command ─────────────────────────
-# xtrace prints `v='review lens: security'` for an assignment whose value has
-# spaces. The words inside the quotes are data; `security` is a binary on macOS,
-# and 178 phantom execs per site were counted from such values (#1842).
-QUOTED="$TEST_TEMP_DIR/quoted.sh"
-cat > "$QUOTED" <<'EOF'
-#!/usr/bin/env bash
-v="first ls second"
-w='x cat y'
-z=$'a\tmkdir b'
-EOF
-fork_census_traced "$TEST_TEMP_DIR/quoted.trace" bash "$QUOTED"
-assert_eq "[SPEC-1b] words inside an assigned value are not counted" "0" \
-    "$(fork_census_count "$TEST_TEMP_DIR/quoted.trace" "$TEST_TEMP_DIR/quoted.sites")"
-
-# ─── SPEC-5: an exempt wait is listed, not counted ───────────────────────────
-print_test_section "SPEC-5: a marked wait is not counted"
-WAITER="$TEST_TEMP_DIR/waiter.sh"
-cat > "$WAITER" <<'EOF'
-#!/usr/bin/env bash
-for _ in 1 2 3; do
-    sleep 0  # fork-budget-exempt: canary wait
-    sleep 0
-done
-EOF
-fork_census_traced "$TEST_TEMP_DIR/waiter.trace" bash "$WAITER"
-_waiter_n="$(fork_census_count "$TEST_TEMP_DIR/waiter.trace" "$TEST_TEMP_DIR/waiter.sites")"
-assert_eq "[SPEC-5] only the unmarked sleep is counted (3 of 6)" "3" "$_waiter_n"
-assert_contains "[SPEC-5] …the marked one is listed apart" \
-    "$(cat "$TEST_TEMP_DIR/waiter.sites.exempt" 2>/dev/null)" "waiter.sh:3"$'\t'"sleep"
+# The counter's own checks (a canary counts one exec, a quoted value is no
+# command, a marked wait is listed apart, a process is its id and the time it
+# first traced) are in tests/unit/fork-census-test.sh SPEC-1, SPEC-2, SPEC-5–SPEC-7.
 
 # ─── SPEC-2: the mocked full run under tracing ───────────────────────────────
 print_test_section "SPEC-2: the mocked full run under tracing"
@@ -359,6 +322,8 @@ TRACE="$TEST_TEMP_DIR/run.trace"
 set +e
 (
     unset GITHUB_ACTIONS CI GITHUB_STEP_SUMMARY RUNNER_OS ZBUILD_DISCOVERY_MEMO_DIR 2>/dev/null || true
+    # #2575: each traced run its own fresh temp folder, whatever the caller's.
+    export TMPDIR="$TEST_TEMP_DIR/tmp-a"; mkdir -p "$TMPDIR"
     export FIXTURE_STATE_DIR="$RUN_DIR" FIXTURE_BIN_DIR="$BIN_DIR"
     fork_census_traced "$TRACE" bash "$FIXTURE" >/dev/null 2>&1
 )
@@ -438,6 +403,7 @@ mkdir -p "$RUN_B/events" "$BIN_B"
 set +e
 (
     unset GITHUB_ACTIONS CI GITHUB_STEP_SUMMARY RUNNER_OS ZBUILD_DISCOVERY_MEMO_DIR 2>/dev/null || true
+    export TMPDIR="$TEST_TEMP_DIR/tmp-b"; mkdir -p "$TMPDIR"
     export FIXTURE_STATE_DIR="$RUN_B" FIXTURE_BIN_DIR="$BIN_B" FIXTURE_LENSES="correctness red-team performance sre"
     fork_census_traced "$TRACE_B" bash "$FIXTURE" >/dev/null 2>&1
 )

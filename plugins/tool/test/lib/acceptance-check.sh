@@ -342,12 +342,12 @@ acceptance_gate_run() {
                         eb_emit_event "acceptance.gate.inert_wiring" "stage=acceptance-gate" \
                             "target=$target"
                         ;;
-                    "REACHABILITY FAIL untested_change "*)
-                        local _uf="${line#REACHABILITY FAIL untested_change }"
-                        failures+=("untested_change:$_uf")
+                    # #2575: untested; unasked — and the design names it nowhere.
+                    "REACHABILITY FAIL untested_change "*|"REACHABILITY FAIL unasked_change "*)
+                        local _uc="${line#REACHABILITY FAIL }"; local _uf="${_uc#* }"; _uc="${_uc%% *}"
+                        failures+=("$_uc:$_uf")
                         verdict="fail"
-                        eb_emit_event "acceptance.gate.untested_change" "stage=acceptance-gate" \
-                            "file=$_uf"
+                        eb_emit_event "acceptance.gate.$_uc" "stage=acceptance-gate" "file=${_uf%@step-*}"
                         ;;
                     "REACHABILITY FAIL not_passing_at_head "*)
                         # #2109: "<target> <tf>" — the file is red at HEAD, so

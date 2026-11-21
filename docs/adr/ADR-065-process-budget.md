@@ -323,8 +323,8 @@ The mocked run's cost is therefore also measured in the two parts that drive it:
 
 ## Verification
 
-`bash tests/e2e/fork-budget-test.sh` — SPEC-1 a canary script with one external exec counts
-exactly 1 (the detector cannot go inert); SPEC-2 the mocked run still exits 0 under tracing;
+`bash tests/unit/fork-census-test.sh` — SPEC-1 a canary script with one external exec counts
+exactly 1 (the detector cannot go inert; moved from the budget test, #2575). `bash tests/e2e/fork-budget-test.sh` — SPEC-2 the mocked run still exits 0 under tracing;
 SPEC-3 the trace names ≥ 20 source files and ≥ 1,000 execs (an fd-7-closed child traces to
 stderr and must not pass as "under budget"); SPEC-4 total ≤ `FORK_BUDGET`. Red step: with the
 counter stubbed, SPEC-1 fails `expected: 1, got: 0`.
@@ -396,14 +396,26 @@ The budgets had been set to the exact measure. Run to run the same tree measures
 - **The written measure is the middle of the observed range**, so a run at either end is within the budget and within the twice-the-margin the slack check allows.
 - Measured on macOS, nine runs of one tree (#2573): 2,393–2,395 processes and 1,850–1,852 execs in all, 464–466 processes and 297–299 execs a dispatch, 428 processes and 232 execs at start-up. Budgets: `FORK_BUDGET` 1856, `PROCESS_BUDGET` 2399, `DISPATCH_PROCS_BUDGET` 467, `DISPATCH_EXECS_BUDGET` 300, `STARTUP_PROCS_BUDGET` 429, `STARTUP_EXECS_BUDGET` 233.
 
+
+## Amendment 2026-11-20 (#2575) — §1 §2: a traced run measures the same in every context
+
+Inside the full suite the mocked run measured 8 processes fewer in all and 8 fewer a dispatch than alone, and the SPEC-9 slack check failed. Two causes, both in the measuring, not the engine:
+
+- **A process is its id and the time it first traced.** `fork_census_processes` counted distinct process ids. A busy suite starts so many processes that macOS wraps its ids within seconds (a run's ids wrapped about every 30 s under load), so a later process got an id an earlier one had used, and the two counted as one. The trace now names each process by its id and the time it first traced, kept per id in the process (`tests/lib/fork-census.sh`). A bash that replaces a process by `exec` keeps that process's name (exported with each traced line and adopted by the new bash when its id is the same): exec starts no process.
+- **The same paths in every context.** macOS's own TMPDIR ends in `/`; the test runner's does not. The `T//…` paths missed the trunk memo, which is keyed by path, and cost 4 git calls. The test drops the trailing `/` and gives each traced run its own fresh TMPDIR.
+
+The written measures move down by what the standalone runs over-counted: 2391 processes and 1848 execs in all; 465 and 298 a dispatch and 428 and 232 at start-up are unchanged.
+
 ## Enforced by
+
+- §1 §2 amendment 2026-11-20 (#2575: the same measure in every context) → `tests/unit/fork-census-test.sh` SPEC-7 (a shell and its subshell are two processes, each named by more than its id; an exec into bash is still one); `tests/e2e/fork-budget-test.sh` SPEC-9 (no slack, measured alone and with the e2e tier's TMPDIR under load)
 
 - §2 §6 amendment 2026-11-20 (#2573: a small margin above the measure) → `tests/e2e/fork-budget-test.sh` SPEC-9 (the totals' margin is above 0 and at most 5; the per-dispatch margin above the noise of 1 and at most 2; the start-up's is 1; on macOS no budget sits more than twice its margin, at least 2, above the measure, run directly or through `scripts/run-tests.sh`), SPEC-4, SPEC-7, SPEC-8 (each budget is the measure plus its margin)
 - §5 amendment 2026-11-06 (#2476: an include checked only when it fails to load) → `tests/unit/route-missing-include-test.sh` SPEC-1–SPEC-6; `tests/e2e/fork-budget-test.sh` (the budgets above)
 - §6 (2026-11-05, #2472: the cost in two parts, each with a budget and a floor) → `tests/e2e/fork-budget-test.sh` SPEC-8 (three more lenses are three more dispatches; the extra processes and execs a dispatch are within `DISPATCH_PROCS_BUDGET` and `DISPATCH_EXECS_BUDGET`; the start-up before the first dispatch is within `STARTUP_PROCS_BUDGET` and `STARTUP_EXECS_BUDGET` — per plugin until #2548; each floor is below its budget)
 - §5 (amended 2026-11-02, #2456: an emit from a signal trap does not wait on its own lock) → `tests/unit/event-bus-trap-reentry-test.sh` T1, T2 (the trap's emit returns at once and is written), T3 (an ordinary emit still takes the lock); `tests/unit/event-bus-emit-cost-test.sh` E1 (still no subshell or extra process)
-- §1 → `tests/e2e/fork-budget-test.sh` SPEC-1 (the canary counts one exec), SPEC-1b (a quoted value is not a command), SPEC-2, SPEC-3, SPEC-4 (the total is within `FORK_BUDGET`)
-- §1 (amended #2236, exempt waits) → `tests/e2e/fork-budget-test.sh` (marked waits are listed apart and not counted)
+- §1 → `tests/unit/fork-census-test.sh` SPEC-1, SPEC-2 (the canary counts one exec), SPEC-5 (a quoted value is not a command); `tests/e2e/fork-budget-test.sh` SPEC-2, SPEC-3, SPEC-4 (the total is within `FORK_BUDGET`)
+- §1 (amended #2236, exempt waits) → `tests/unit/fork-census-test.sh` SPEC-6 (marked waits are listed apart and not counted); `tests/e2e/fork-budget-test.sh` SPEC-6 (the pool's poll sleep is listed as exempt)
 - §2 → `tests/e2e/fork-budget-test.sh` SPEC-4 (`FORK_BUDGET` carries its ratchet history in the comment above it)
 - §3, §4 → `tests/unit/manifest-index-test.sh` (fork counts, the parent fill); `tests/unit/yaml-get-cache-test.sh` SPEC-9 (one awk per prewarm)
 - §5 (amended #1806, the event bus) → `tests/unit/event-bus-emit-cost-test.sh` E1 (one emit starts one `jq` and the lock, nothing per field), E2 (no `sed` for the mirror), E3 (UTC with real milliseconds whatever `ZBUILD_PLATFORM` says), E4 (the envelope is unchanged, and option-like values stay data)

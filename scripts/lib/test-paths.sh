@@ -108,10 +108,15 @@ zb_test_folder_branch_files_v() {
 # committed or not, the numbers of the lines the branch added ("all" for a new
 # file no commit holds yet), space separated (#2520, ADR-069 §11). Empty on the
 # default branch, or with no base to compare with: no line is the branch's own.
+# [removed_assoc]: the lines the branch took out of each such file, joined by a
+# record separator (#2575: an assertion that only lost a tag is not new).
 zb_test_folder_branch_lines_v() {
     local -n _ztl="$1"; local _root="${2:-${ZBUILD_REPO_ROOT:-$PWD}}" _globs _l _f="" _n=0 _db="" _cur=""
     local -a _gl=()
-    _ztl=()
+    local _ztr_name="${3:-}"
+    [[ -n "$_ztr_name" ]] || { local -A _ztr_none=(); _ztr_name=_ztr_none; }
+    local -n _ztr="$_ztr_name"
+    _ztl=(); _ztr=()
     declare -F zbuild_resolve_default_branch_v >/dev/null 2>&1 \
         || source "${BASH_SOURCE[0]%/*}/default-branch.sh" 2>/dev/null || true
     local _gd="$_root/.git" _hl=""
@@ -126,13 +131,22 @@ zb_test_folder_branch_lines_v() {
     # A hunk's added lines run on from its "+<start>"; a removed line takes no
     # number in the new file. The prefixes and path quoting are set here, so a
     # user's diff.mnemonicPrefix or diff.noprefix cannot hide a file (#2554).
+    # #2575: "---"/"+++" are a file's headers only between its "diff --git"
+    # line and its first hunk; inside a hunk they are lines taken out or added.
+    local _hd=0
     while IFS= read -r _l; do
+        if (( _hd )); then
+            case "$_l" in
+                '+++ b/'*) _f="${_l#+++ b/}"; _zb_test_globs_match "$_f" "${_gl[@]}" || _f=""; continue ;;
+                '+++ '*|'--- '*) continue ;;
+            esac
+        fi
         case "$_l" in
             $'\x01nobase') _ztl=(); return 0 ;;
-            '+++ b/'*) _f="${_l#+++ b/}"; _zb_test_globs_match "$_f" "${_gl[@]}" || _f="" ;;
-            '+++ '*|'--- '*) _f="" ;;
-            '@@ '*) [[ "$_l" =~ \+([0-9]+) ]] && _n="${BASH_REMATCH[1]}" ;;
+            'diff --git '*) _hd=1; _f="" ;;
+            '@@ '*) _hd=0; [[ "$_l" =~ \+([0-9]+) ]] && _n="${BASH_REMATCH[1]}" ;;
             '+'*) [[ -n "$_f" ]] && _ztl[$_f]+="$_n "; _n=$(( _n + 1 )) ;;
+            '-'*) [[ -n "$_f" ]] && _ztr[$_f]+="${_l:1}"$'\x1e' ;;
         esac
     done < <(git -C "$_root" -c core.quotePath=false diff -U0 --no-color --no-ext-diff --src-prefix=a/ --dst-prefix=b/ --merge-base "origin/$_db" 2>/dev/null \
         || git -C "$_root" -c core.quotePath=false diff -U0 --no-color --no-ext-diff --src-prefix=a/ --dst-prefix=b/ --merge-base "$_db" 2>/dev/null \

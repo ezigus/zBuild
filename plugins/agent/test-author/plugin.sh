@@ -51,6 +51,9 @@ declare -F _negctl_run >/dev/null 2>&1 || source "$_TA_ROOT/scripts/lib/acceptan
 declare -F zbuild_resolve_merge_base >/dev/null 2>&1 || source "$_TA_ROOT/scripts/lib/merge-base.sh"
 # shellcheck source=./lib/before-run.sh
 source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/lib/before-run.sh"
+# #2575 (ADR-069): an assertion that names no SPEC and tests what none asks for.
+# shellcheck source=./lib/unasked.sh
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/lib/unasked.sh"
 # shellcheck source=./lib/already-done.sh
 source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/lib/already-done.sh"
 # #2571 (ADR-069 §12): what is unclear to test-author is the design's.
@@ -80,8 +83,8 @@ _ta_drop_stale_tags() {
     [[ "$issue" =~ ^[1-9][0-9]*$ ]] || issue=""
     re="\\[(#${issue:-0}/)?${_ACCEPTANCE_ID_ERE}\\]"
     local -A _tfl=()
-    zb_test_folder_branch_lines_v _tfl "$repo"
-    # #2554: the same lines feed the tag-shape check a moment later: one diff.
+    declare -gA _TA_BRANCH_REMOVED=(); zb_test_folder_branch_lines_v _tfl "$repo" _TA_BRANCH_REMOVED
+    # #2554: the same lines feed the tag-shape check a moment later: one diff (#2575: and the unasked one).
     declare -gA _TA_BRANCH_LINES=(); _TA_BRANCH_LINES_REPO="$repo"
     for tf in "${!_tfl[@]}"; do _TA_BRANCH_LINES[$tf]="${_tfl[$tf]}"; done
     for tf in "${!_tfl[@]}"; do
@@ -303,6 +306,8 @@ A test you touch that is not laid out this way — one you update, or one you ad
 
 A test that needs data another part of the code writes — a file, a record, a field, a message — makes it with that code, never by hand: hand-made data holds whatever its author assumed. Find how the existing tests and test helpers already make it, and do the same.
 
+Every test and assertion you write traces to a SPEC below, and carries its tag; a change to an existing test for what a design step changes traces to that step. What you own is the tests the SPECs ask for: a finding that asks for a test of a change no SPEC asks for, answer not mine — no SPEC asks for this change; it is the code's to take out or the design's to ask for. Your own check refuses an assertion that names no SPEC and tests what no SPEC asks for.
+
 Tag each assertion in its label. Each tag names one SPEC, exactly as shown — e.g. ${_spec_tag1} — and a line holds one tag. An assertion that proves two SPECs is written twice, one line per SPEC, each with its own tag. A tag on a line this branch added is yours: one whose SPEC is not in this contract is stale from an earlier design — remove the tag and keep the assertion.
 
 Some test files may already hold assertions from an earlier attempt at this contract: keep what is right, finish what is missing, fix what is wrong.
@@ -314,6 +319,7 @@ If every requirement below already has its test and no finding is open for you, 
 Findings from other stages about your tests are yours (under Previous work): a test that already passes on the code from before this change, a test that fails on the new code, a test that flags code that already meets its requirement, a test file far slower than the rest, a test build says is wrong (build-tests findings), with its reason. Fix the test from its requirement, or say why the test is right. When you are told a test of yours fails, run that test file and find out why before you change it: fix what is wrong, and never delete an assertion to make a test pass. Answer each such finding on its own line, before LOOP_COMPLETE:
 ANSWER <the finding as listed>: done — <what you changed>
 ANSWER <the finding as listed>: wrong — <why the test is right>
+ANSWER <the finding as listed>: not mine — <why no test of yours can fix it>
 
 ${ZB_UNCLEAR_NOT_YOURS}
 
@@ -425,11 +431,13 @@ EOF
     _ta_tag_shape "$design" "$repo"
     # #2464 (ADR-072 §4): its verdicts are kept beside its result.
     _ta_correspondence "$design" "$repo" "$tier" "$art"
+    _TA_UNASKED_FINDINGS=(); _TA_CORR_WHAT=""
+    [[ -n "$_TA_CORR_OUTCOME" ]] || _ta_unasked "$design" "$repo" "$tier" "$art"
     if [[ -n "$_TA_CORR_OUTCOME" ]]; then
         declare -f assertion_integrity_record >/dev/null 2>&1 && assertion_integrity_record "$art" "$repo"
         _ta_commit_testfiles "$design" "$repo" "test-author: acceptance assertions for $n SPEC(s), unchecked"
         _ta_write_result "$art" "$_TA_CORR_OUTCOME" \
-            "the check that each assertion tests its SPEC could not be run ($_TA_CORR_OUTCOME)" "$n"
+            "${_TA_CORR_WHAT:-the check that each assertion tests its SPEC} could not be run ($_TA_CORR_OUTCOME)" "$n"
         return 0
     fi
     # #2467 (ADR-073 §6): a SPEC no test can prove is design's to rewrite. The
@@ -450,6 +458,7 @@ EOF
     fi
     _TA_CORR_FINDINGS+=(${_TA_BEFORE_FINDINGS[@]+"${_TA_BEFORE_FINDINGS[@]}"})
     _TA_CORR_FINDINGS+=(${_TA_TAG_FINDINGS[@]+"${_TA_TAG_FINDINGS[@]}"})
+    _TA_CORR_FINDINGS+=(${_TA_UNASKED_FINDINGS[@]+"${_TA_UNASKED_FINDINGS[@]}"})
     _TA_CORR_FINDINGS+=(${_TA_DONE_FINDINGS[@]+"${_TA_DONE_FINDINGS[@]}"})
     # #2460 (ADR-054 §6a): what its own check found ends the try `unusable`,
     # the findings in its result: the engine runs test-author again, and the

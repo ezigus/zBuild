@@ -64,6 +64,7 @@ provides:
     - acceptance.gate.unknown_failure_class
     - acceptance.gate.untagged_spec
     - acceptance.gate.untested_change
+    - acceptance.gate.unasked_change
     - acceptance.gate.wiring_exempt
     - acceptance.gate.wiring_not_on_path
     - acceptance.gate.worktree_failed
@@ -82,6 +83,7 @@ config:
     - tautology
     - inert_wiring
     - untested_change
+    - unasked_change
     - no_testfile
     - no_testfiles
     - not_passing_at_head
@@ -207,7 +209,7 @@ outputs:
     required: false
   - id: acceptance_code
     topic: code-findings
-    description: "the acceptance check's findings the code can fix: a test that does not pass on the new code, code no requirement covers, a changed file no test checks, a test that never reached its assertion on the new code, a test file that ran too long"
+    description: "the acceptance check's findings the code can fix: a test that does not pass on the new code, code no requirement covers, a changed file no test checks, a changed file nothing in the design asks for, a test that never reached its assertion on the new code, a test file that ran too long"
     path: "${artifact_dir}/acceptance-gate-code-result.json"
     type: routed-findings.json@1
     format: json

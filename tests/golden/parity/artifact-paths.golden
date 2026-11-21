@@ -63,6 +63,8 @@
 ./artifacts/lens-correctness-summary.md
 ./artifacts/lens-correctness-test-result.json
 ./artifacts/lens-correctness.json
+./artifacts/notes/build.asked
+./artifacts/notes/review_lenses-correctness.asked
 ./artifacts/persist-result.json
 ./artifacts/persist-summary.md
 ./artifacts/pr-delivery-summary.md

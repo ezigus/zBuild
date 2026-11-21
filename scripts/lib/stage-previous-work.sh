@@ -15,6 +15,9 @@ _ZBUILD_STAGE_PREVIOUS_WORK_LOADED=1
 # ─── What this issue's work has changed ─────────────────────────────────────
 # shellcheck source=./merge-base.sh
 source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/merge-base.sh"
+# #2575: whether a stage's notes and output were written for what it is asked now.
+# shellcheck source=./stage-notes-version.sh
+source "${BASH_SOURCE[0]%/*}/stage-notes-version.sh"
 
 # _sp_work_changed_line <repo_root> — one line naming the files this
 # issue's work has changed, against where its branch left the default branch,
@@ -257,6 +260,21 @@ _stage_block_previous_work() {
         done
     fi
 
+    # #2575 (ADR-068 §8): what the stage is asked now, against what its notes
+    # and its last output were written for.
+    local _pw_sig="" _pw_np=""
+    stage_notes_path_v _pw_np "$state_dir" "$stage"
+    # A stage that makes no model call has no notes and reads no prompt:
+    # nothing to compare, and no record (its calls: list, ADR-017 §12).
+    local _pw_calls=""
+    declare -F manifest_calls_v >/dev/null 2>&1 \
+        || source "$_ZBUILD_SP_ROOT/core/plugin-registry/manifest-calls.sh" 2>/dev/null || true
+    declare -F manifest_calls_v >/dev/null 2>&1 && manifest_calls_v _pw_calls "$self_manifest"
+    [[ -n "$_pw_calls" ]] && _sp_asked_sig_v _pw_sig "$stage" "$state_dir" "$plugins_root" "$takes" _pw_ins
+    # Compared below, once the stage's own result is found (its roles are read
+    # there anyway); a stage with no section of its own, after the loop.
+    local _pw_nv=0; _SP_NOTES_OLD=""; _SP_OUTPUT_OLD=""
+
     local s manifest roles summ errp res req notes cutoff verdict own body any=0 raw content
     local -a summs=() prims=()
     local listed t_topic t_id t_path
@@ -309,6 +327,7 @@ _stage_block_previous_work() {
             listed+="${outtext[$id]}"
         done
         [[ "$res" == *.json && -s "$res" ]] || res=""
+        [[ "$s" == "$stage" ]] && { _sp_notes_version "$_pw_np" "$_pw_sig" "$res_any"; _pw_nv=1; }
         [[ "$res_any" == *.json && -s "$res_any" ]] || res_any=""
 
         # ADR-071 §2 (#2556): a finding is shown when the stage takes its
@@ -356,6 +375,8 @@ _stage_block_previous_work() {
         # out for a judging call — a judge never sees its stage's earlier output.
         [[ -n "$own" && -n "${_ZB_SP_MARK_OWN:-}" ]] && printf '%s' "$_ZB_SP_SECT_BEGIN"
         printf '\n### %s (verdict: %s)%s\n' "$s" "${verdict:-unknown}" "$own"
+        [[ -n "$own" && -n "$_SP_OUTPUT_OLD" ]] \
+            && printf 'Your output below was written for an earlier version of %s — check it against the current one.\n' "$_SP_OUTPUT_OLD"
         [[ -n "$listed" ]] && printf 'Outputs:\n%s' "$listed"
         [[ -n "$body" ]] && printf '\nFindings:\n%s\n' "$body"
         # #2480: every member's summary, each as a stage's is.
@@ -402,7 +423,9 @@ _stage_block_previous_work() {
         # fresh one (a judging call, a stage with no tools).
         [[ -n "$own" && -n "${_ZB_SP_MARK_OWN:-}" ]] && printf '%s' "$_ZB_SP_OWN_BEGIN"
         if [[ -n "$own" && -n "$notes" ]]; then
-            printf '\nYour notes so far (where they disagree with a list or a result elsewhere in this prompt, the list or the result is right):\n%s\n' "$(_sp_read "$notes" "$_ZB_SP_NOTES_MAX_BYTES")"
+            local _nv=""
+            [[ -n "$_SP_NOTES_OLD" ]] && _nv=", written for an earlier version of $_SP_NOTES_OLD — check them against the current one"
+            printf '\nYour notes so far%s (where they disagree with a list or a result elsewhere in this prompt, the list or the result is right):\n%s\n' "$_nv" "$(_sp_read "$notes" "$_ZB_SP_NOTES_MAX_BYTES")"
         fi
         if [[ -n "$own" && -n "$cutoff" ]]; then
             printf '\nYour last call was cut off at its time limit before it finished. What it did, step by step, up to the cut-off:\n%s\n' \
@@ -411,6 +434,7 @@ _stage_block_previous_work() {
         [[ -n "$own" && -n "${_ZB_SP_MARK_OWN:-}" ]] && printf '%s' "$_ZB_SP_OWN_END"
         [[ -n "$own" && -n "${_ZB_SP_MARK_OWN:-}" ]] && printf '%s' "$_ZB_SP_SECT_END"
     done
+    (( _pw_nv )) || _sp_notes_version "$_pw_np" "$_pw_sig" ""
     [[ "$any" -eq 1 ]] || printf '\nNo stage has run before this one.\n'
     return 0
 }

@@ -136,6 +136,7 @@ _ag_slow_testfiles() {
 # is the design's (the default topic). A problem in the pipeline is no stage's
 # to fix: `report`, in the check's own result only. The joined reason drops it.
 _AG_TEST=$'test-findings\t'
+_AG_CODE=$'code-findings\t'
 _AG_CODE_TEST=$'code-findings,test-findings\t'
 _AG_DESIGN_CODE=$'design-findings,code-findings\t'
 _AG_DESIGN_TEST=$'design-findings,test-findings\t'
@@ -147,7 +148,7 @@ _AG_REPORT=$'report\t'
 # member_terminal_failure. Repo-agnostic: ids come verbatim from the design's
 # acceptance block. Genuine violations lead; infra classes trail.
 _ag_build_reason() {
-    local f untagged="" taut="" nohead="" notf="" inert="" notpath="" infra="" malformed=0 nofiles="" sig="" unb="" unh="" untested=""
+    local f untagged="" taut="" nohead="" notf="" inert="" notpath="" infra="" malformed=0 nofiles="" sig="" unb="" unh="" untested="" unasked=""
     local loadfail="" nothing=""
     local -a unclaimed=()
     for f in "$@"; do
@@ -160,6 +161,7 @@ _ag_build_reason() {
             no_testfiles:*)         nofiles="$nofiles ${f#no_testfiles:}" ;;
             inert_wiring:*)         inert="$inert ${f#inert_wiring:}" ;;
             untested_change:*)      untested="$untested ${f#untested_change:}" ;;
+            unasked_change:*)       unasked="$unasked ${f#unasked_change:}" ;;
             wiring_not_on_path:*)   notpath="$notpath ${f#wiring_not_on_path:}" ;;
             unreached_at_base:*)    unb="$unb ${f#unreached_at_base:}" ;;
             unreached_at_head:*)    unh="$unh ${f#unreached_at_head:}" ;;
@@ -192,7 +194,13 @@ _ag_build_reason() {
     [[ -n "$untagged" ]] && clauses+=("${_AG_TEST}$(_ag_join_ids "$untagged"): no assertion in the test files carries its tag — add one labelled with it")
     [[ -n "$notf"     ]] && clauses+=("${_AG_TEST}$(_ag_join_ids "$notf"): no test file in the test folders carries its tag — add an assertion labelled with it")
     [[ -n "$inert"    ]] && clauses+=("$(_ag_join_ids "$inert") was put back to its old version and every test still passed, so it is not what runs the new behaviour — name the file whose code calls it, or write WIRING: none")
-    [[ -n "$untested" ]] && clauses+=("${_AG_CODE_TEST}$(_ag_join_ids "$untested") was put back to its old version on its own and every test still passed, so no test checks what this change does to it — add a test that fails without the change to it")
+    # #2575: "<file>@step-<n>" names the step that names the file.
+    local _ut _uts=""
+    for _ut in $untested; do [[ "$_ut" == *@step-* ]] && _ut="${_ut%@step-*} (step ${_ut##*@step-})"; _uts+="${_uts:+/}$_ut"; done
+    [[ -n "$untested" ]] && clauses+=("${_AG_CODE_TEST}${_uts} was put back to its old version on its own and every test still passed, so no test checks what this change does to it — add a test that fails without the change to it")
+    # #2575 (ADR-036): untested, and nothing asks for it — the code's to take
+    # out or the design's to ask for, never a test's to pin.
+    [[ -n "$unasked" ]] && clauses+=("${_AG_CODE}$(_ag_join_ids "$unasked") was put back to its old version on its own and every test still passed, and the design names it nowhere — not in a step, a SPEC, WIRING or its text: nothing asks for this change — take it out, or name what asks for it")
     [[ -n "$nofiles"  ]] && clauses+=("${_AG_TEST}$(_ag_join_ids "$nofiles"): no test file carries a requirement's tag, so putting it back could not be checked")
     [[ -n "$notpath"  ]] && clauses+=("$(_ag_join_ids "$notpath") is not changed by this change — name a file the change touches, or write WIRING: none")
     [[ -n "$unb" ]] && clauses+=("${_AG_TEST}$(_ag_unreached_where "$unb"): its test never ran on the code from before this change — an earlier step in its test file stops the file there, so it is not shown to fail on the old code")

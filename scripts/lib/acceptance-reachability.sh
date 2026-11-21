@@ -13,7 +13,9 @@
 #
 # Then every other changed code file (ADR-036, 2026-10-11), listed by git, is
 # put back the same way: some test must fail without it, or
-# REACHABILITY FAIL untested_change <file>. A file whose only changes are
+# REACHABILITY FAIL untested_change <file> (<file>@step-<n> when step <n>
+# names it, #2575). When the design has steps, a file it names nowhere is
+# REACHABILITY FAIL unasked_change <file>. A file whose only changes are
 # comments or blank lines, a deleted file, tests, docs/ and Markdown are skipped.
 #
 # WIRING: none → REACHABILITY EXEMPT none: no file is named for the first part;
@@ -36,6 +38,9 @@ if ! declare -F _negctl_spec_log_check >/dev/null 2>&1; then
 fi
 # shellcheck source=./merge-base.sh
 source "$_ACCEPTANCE_REACHABILITY_DIR/merge-base.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" merge-base.sh"
+# #2575: what the design asks the change to touch.
+# shellcheck source=./design-steps.sh
+source "$_ACCEPTANCE_REACHABILITY_DIR/design-steps.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" design-steps.sh"
 
 # #2010: zbuild_engine_tmpdir names where engine code writes temp files.
 # Lazy-sourced, same pattern lifecycle.sh uses for stage-scratch.sh: this
@@ -244,7 +249,7 @@ _reachability_revert_one() {
 # _reachability_print <outcome> <file> <fail_word> [pass_prefix] — the verdict
 # line for one put-back file. <fail_word> is the class when no test flipped.
 _reachability_print() {
-    local outcome="$1" f="$2" fail_word="$3" pass_prefix="${4:-}"
+    local outcome="$1" f="$2" fail_word="$3" pass_prefix="${4:-}" fail_more="${5:-}"
     case "$outcome" in
         flip)            printf 'REACHABILITY PASS %s%s\n' "$pass_prefix" "$f"; return 0 ;;
         no_testfiles)    printf 'REACHABILITY FAIL no_testfiles %s\n' "$f" ;;
@@ -252,7 +257,7 @@ _reachability_print() {
         harness\ *)      printf 'REACHABILITY ERROR harness:%s %s\n' "$f" "${outcome#harness }" ;;
         red\ *)          printf 'REACHABILITY FAIL not_passing_at_head %s %s\n' "$f" "${outcome#red }" ;;
         worktree_failed) printf 'REACHABILITY ERROR worktree_failed %s\n' "$f" ;;
-        *)               printf 'REACHABILITY FAIL %s %s\n' "$fail_word" "$f" ;;
+        *)               printf 'REACHABILITY FAIL %s %s%s\n' "$fail_word" "$f" "$fail_more" ;;
     esac
     return 1
 }
@@ -270,7 +275,10 @@ _reachability_print() {
 #   REACHABILITY PASS <target>        — ≥1 testfile flips pass→fail; wiring load-bearing
 #   REACHABILITY FAIL inert_wiring <target>  — no testfile flips; wiring is inert
 #   REACHABILITY PASS change <file>   — ≥1 testfile flips with <file> put back
-#   REACHABILITY FAIL untested_change <file> — no testfile flips with <file> put back
+#   REACHABILITY FAIL untested_change <file>[@step-<n>] — no testfile flips with
+#                                       <file> put back (the step that names it)
+#   REACHABILITY FAIL unasked_change <file>  — the same, and the design (which
+#                                       has steps) names <file> nowhere (#2575)
 #   REACHABILITY SKIP no_code <file>  — only comments / blank lines changed
 #   REACHABILITY ERROR <detail>       — infrastructure failure (worktree_failed,
 #                                       empty_wiring_targets, timeout:<target>)
@@ -358,8 +366,12 @@ acceptance_reachability_check() {
         _reachability_print "$(_reachability_revert_one "$target")" "$target" inert_wiring || rc=1
     done
 
-    # Part 2: every other changed code file, put back on its own.
-    local _named
+    # Part 2: every other changed code file, put back on its own. #2575: one
+    # no test checks that the design names nowhere is unasked
+    # (zb_design_names_v). A design with no steps keeps the old rule.
+    local _named _uw _um _cov
+    local -a _asked_steps=(); local -A _asked_words=()
+    zb_design_named_v _asked_steps _asked_words "$design_md"
     for cf in "${changed_files[@]}"; do
         _acceptance_is_production_path "$cf" || continue
         # Deleted here: nothing is left to test.
@@ -373,7 +385,16 @@ acceptance_reachability_check() {
             printf 'REACHABILITY SKIP no_code %s\n' "$cf"
             continue
         fi
-        _reachability_print "$(_reachability_revert_one "$cf")" "$cf" untested_change "change " || rc=1
+        _uw=untested_change; _um=""
+        if [[ "${_ZB_DESIGN_STEP_COUNT:-0}" -gt 0 ]]; then
+            zb_design_names_v _cov "$cf" _asked_steps _asked_words
+            case "$_cov" in
+                step:*) _um="@step-${_cov#step:}" ;;
+                named) ;;
+                *) _uw=unasked_change ;;
+            esac
+        fi
+        _reachability_print "$(_reachability_revert_one "$cf")" "$cf" "$_uw" "change " "$_um" || rc=1
     done
 
     if [[ "$_rc_owner" -eq 1 ]]; then
