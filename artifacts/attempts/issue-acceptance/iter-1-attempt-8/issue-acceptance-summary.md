@@ -1,0 +1,7 @@
+## issue-acceptance — pass
+
+- judged the change against the issue: every requirement is met
+
+- every requirement the issue states is met by the change
+- answered: IAFND-1: wrong — The golden file at lines 3–4 contains `plugin.claim.start` and `plugin.claim.complete`, and lines 117–118 contain `plugin.release.start` and `plugin.release.complete`. Both event pairs are present in the current file. The finding is resolved.
+- answered: IAFND-2: wrong — The build-stage answer confirms `core/claim/claim.sh` was removed from `config/shape-change-paths.txt`. That file is not among the changed files in THE CHANGE, so the removal either predates this change set or was handled in a prior iteration. Either way, no requirement in ISSUE REQUIREMENTS covers `config/shape-change-paths.txt`, and no unasked finding arises from it in this iteration.
