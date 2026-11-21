@@ -1,4 +1,4 @@
 # authored_by: test-author
-67c2fa0720610330433218ea928ea1f837f30bfb51a7e65933f1638459d9843a  plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
-a966870714462432364d1af30459efd037b3cfc17206cb7b962397b47380168d  tests/integration/teardown-repeat-signal-test.sh
+d649e68dd222187e2c4b1afc94e49c20a66735038e565d626ba52a08f6c4c21a  plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
+5106cd7d7b6bf722c909a152cf8a603db16fdcba8fc8d6f015d935e7f43fe3c2  tests/integration/teardown-repeat-signal-test.sh
 9a16a409e0dfbe096e0c0604a06c17fe04445fe1368724976f84969dda73d290  tests/unit/lint-adr-enforced-by-test.sh

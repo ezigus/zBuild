@@ -1,61 +1,36 @@
 # Test Author Notes — DSCLA tests (issue 1764)
 
-## Status: COMPLETE (iteration 14 — TAFND-5 / TAFND-6 fixed)
+## Status: COMPLETE (iteration 16 — TAFND-10 fixed)
 
 All test files are written and in place. All SPECs have assertions.
 
-## Changes made in this run (iteration 14)
+## Changes made in this run (iteration 16)
 
-### Fixed TAFND-5 (DSCLA-8): direct stub hook-not-called check
-
-**File:** `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh`
-
-**Problem:** The old DSCLA-8 Then assertion counted gh calls (indirect proxy). A coordinator
-claim hook that is invoked but returns early for an empty issue without calling gh would
-produce 0 gh calls and pass while the hook was still called.
-
-**Fix:** Replaced the gh-call-count indirect proxy with a stub-coordinator approach:
-1. Create a stub plugin in `$TEST_TEMP_DIR/plugins-dscla8/` with unique function names
-   (`_dscla8_stub_claim`, etc.)
-2. The stub's claim hook writes the received argument to `$TEST_TEMP_DIR/dscla8-hook-called`
-   before returning (so it's detectable even if it were to return early)
-3. Source the stub and set `ZBUILD_PLUGINS_ROOT` to the stub's plugins root
-4. Call `zbuild_claim_acquire ""`
-5. Assert marker file was NOT created (hook was never entered)
-
-**Red step on base code:** `core/claim/claim.sh` does not exist on base code.
-`zbuild_claim_acquire` is not defined → `zbuild_claim_acquire ""` exits non-zero →
-`assert_eq "[DSCLA-8] zbuild_claim_acquire returns 0 for empty issue" "0" "$_dscla8_rc"` fails.
-
-### Fixed TAFND-6 (DSCLA-17): direct stub release hook-not-called check
+### Fixed TAFND-10 (DSCLA-3/9): missing cleanup for _ZBUILD_CLAIM_HOLDER
 
 **File:** `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh`
 
-**Problem:** The old DSCLA-17 Then assertion counted gh calls (indirect proxy). A coordinator
-release hook that is invoked but detects `_ZBUILD_CLAIM_ACQUIRED` is unset and returns early
-without calling gh would produce 0 gh calls and pass while the hook was still called.
+**Problem:** `_ZBUILD_CLAIM_HOLDER` is set as a side effect of `zbuild_claim_acquire "$_dscla4_issue"`
+in the DSCLA-3/DSCLA-9 block (the second DSCLA-3 block that uses the rsc_render_header fixture).
+The [DSCLA-9] Then assertions check its value, but no `# Cleanup` section unsets it afterward.
+It remained set until DSCLA-8's Given called `unset _ZBUILD_CLAIM_HOLDER` at a different block,
+creating hidden state leakage between test blocks.
 
-**Fix:** Replaced the gh-call-count indirect proxy with a stub-coordinator approach (inside
-the existing `if [[ -f "$_dscla17_claim_sh" ]]` else block):
-1. Create a stub plugin in `$TEST_TEMP_DIR/plugins-dscla17/` with unique function names
-   (`_dscla17_stub_release`, etc.)
-2. The stub's release hook writes a marker to `$TEST_TEMP_DIR/dscla17-hook-called`
-3. Source the stub and set `ZBUILD_PLUGINS_ROOT` to the stub's plugins root
-4. Ensure `_ZBUILD_CLAIM_ACQUIRED` is not set
-5. Call `zbuild_claim_release`
-6. Assert marker file was NOT created (hook was never entered)
+**Fix:** Added a `# Cleanup` section after the last [DSCLA-9] Then assertion with:
+```bash
+# Cleanup: unset _ZBUILD_CLAIM_HOLDER set as a side effect of zbuild_claim_acquire above
+unset _ZBUILD_CLAIM_HOLDER 2>/dev/null || true
+```
 
-**Red step on base code:** `core/claim/claim.sh` does not exist on base code →
-outer `if [[ ! -f "$_dscla17_claim_sh" ]]` gate fires
-`assert_fail "[DSCLA-17] core/claim/claim.sh must exist"`.
+## Previous iteration key changes (kept for reference)
 
-## Previous iteration key changes
-
-- iteration 13: Fixed RLCORRECTNESS-2 / RLSCOPE-1 — `_dscla4_issue` block now uses
-  `rsc_render_header` to generate run-status-comment fixture; wrote DSCLA-23
-- iteration 12: Fixed DSCLA-19 to verify correct issue number forwarded to hook (TAFND-4);
-  updated golden event-sequence for new claim/release events (IAFND-1)
-- iteration 11: Fixed DSCLA-19 to use explicit stub coordinator (TAFND-3)
+- iteration 15: Fixed TAFND-7 (DSCLA-2 cleanup), TAFND-8 (DSCLA-7 untagged guard), TAFND-9 (DSCLA-13 untagged guard)
+- iteration 14: Fixed TAFND-5 (DSCLA-8) and TAFND-6 (DSCLA-17) — replaced indirect gh-count
+  proxy with direct stub hook-not-called checks
+- iteration 13: Fixed RLCORRECTNESS-2 / RLSCOPE-1 — rsc_render_header generates run-status
+  comment fixture (not hand-written); wrote DSCLA-23
+- iteration 12: Fixed DSCLA-19 (correct issue number forwarded); updated golden event-sequence
+- iteration 11: Fixed DSCLA-19 to use explicit stub coordinator
 
 ## Full SPEC coverage
 

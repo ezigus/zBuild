@@ -293,6 +293,11 @@ else
         "_ZBUILD_CLAIM_HOLDER='${_ZBUILD_CLAIM_HOLDER:-}' (expected CI URL with 99887766 or testowner/testrepo)"
 fi
 
+# Cleanup: restore ZBUILD_RUN_ID and ZBUILD_CLAIM_MACHINE_ID set in this block
+# (GITHUB_* vars from dscla2b remain set; DSCLA-12 uses them and has its own cleanup)
+export ZBUILD_CLAIM_MACHINE_ID="test-machine-1"
+unset ZBUILD_RUN_ID 2>/dev/null || true
+
 # ─────────────────────────────────────────────────────────────────────────────
 # DSCLA-12: CI run URL as holder in rendered run-status comment header
 # ─────────────────────────────────────────────────────────────────────────────
@@ -392,6 +397,9 @@ else
     assert_fail "[DSCLA-9] _ZBUILD_CLAIM_HOLDER contains holder string from rsc_render_header fixture" \
         "_ZBUILD_CLAIM_HOLDER='${_ZBUILD_CLAIM_HOLDER:-}' (expected to contain '$_dscla4_holder_string')"
 fi
+
+# Cleanup: unset _ZBUILD_CLAIM_HOLDER set as a side effect of zbuild_claim_acquire above
+unset _ZBUILD_CLAIM_HOLDER 2>/dev/null || true
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DSCLA-8: empty issue argument → coordinator's claim hook not called, returns 0
