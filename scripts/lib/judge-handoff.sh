@@ -58,15 +58,16 @@ _judge_manifest_takes_v() {
 }
 
 # _judge_manifest_outputs_v <array> <manifest> <artifact_dir> — each output on a
-# findings topic, "<topic><TAB><resolved path>".
+# findings topic, "<topic><TAB><resolved path><TAB><1 when it is the stage's
+# handoff output (handoff: true), else 0>".
 _judge_manifest_outputs_v() {
-    local -n _jmo="$1"; local mf="$2" ad="${3%/}" l in=0 topic="" path=""
+    local -n _jmo="$1"; local mf="$2" ad="${3%/}" l in=0 topic="" path="" ho=0
     _jmo=()
     [[ -s "$mf" ]] || return 0
     _jmo_take() {
         path="${path//\"/}"; path="${path//\'/}"; path="${path//\$\{artifact_dir\}/$ad}"
-        [[ "$topic" == *-findings && "$path" == *.json ]] && _jmo+=("$topic"$'\t'"$path")
-        topic="" path=""
+        [[ "$topic" == *-findings && "$path" == *.json ]] && _jmo+=("$topic"$'\t'"$path"$'\t'"$ho")
+        topic="" path="" ho=0
     }
     while IFS= read -r l || [[ -n "$l" ]]; do
         if [[ "$l" =~ ^outputs:[[:space:]]*$ ]]; then in=1; continue; fi
@@ -75,38 +76,71 @@ _judge_manifest_outputs_v() {
         [[ "$l" =~ ^[[:space:]]*-[[:space:]] ]] && _jmo_take
         [[ "$l" =~ (^|[[:space:]-])topic:[[:space:]]*([^[:space:]#]+) ]] && topic="${BASH_REMATCH[2]}"
         [[ "$l" =~ (^|[[:space:]-])path:[[:space:]]*([^[:space:]#]+) ]] && path="${BASH_REMATCH[2]}"
+        [[ "$l" =~ ^[[:space:]]+handoff:[[:space:]]*true ]] && ho=1
     done < "$mf"
     (( in )) && _jmo_take
     unset -f _jmo_take
     return 0
 }
 
+# _judge_topic_receivers_v <var> <manifest> <topic>... — the stages of this run
+# that take one of <topic>s and run before the waiting stage (the stage this
+# check is in, ZBUILD_CURRENT_STAGE; review on #2574: a stage after it runs
+# before the part is judged again anyway), the answering stage (<manifest>)
+# aside. With no waiting stage known, or one not in the run, every stage of the
+# run counts.
+_judge_topic_receivers_v() {
+    local -n _jtr="$1"; local mf="$2" s m tk t root self="${ZBUILD_CURRENT_STAGE:-}" before=0
+    local -a stages=(); shift 2
+    _jtr=""
+    [[ $# -gt 0 ]] || return 0
+    _judge_run_stages_v stages
+    [[ -n "$self" && " ${stages[*]:-} " == *" $self "* ]] && before=1
+    root="${mf%/manifest.yaml}"; root="${root%/*}"; root="${root%/*}"
+    for s in ${stages[@]+"${stages[@]}"}; do
+        (( before )) && [[ "$s" == "$self" ]] && break
+        _judge_stage_manifest_v m "$s" "$root"
+        [[ -n "$m" && "$m" -ef "$mf" ]] && continue
+        _judge_manifest_takes_v tk "$m"
+        for t in "$@"; do [[ "$tk" == *" $t "* ]] && { _jtr+="${_jtr:+ }$s"; break; }; done
+    done
+    return 0
+}
+
 # judge_handoff_receivers_v <var> <manifest> <artifact_dir> <key> — the stages
 # of this run the finding <key> (an id, or `<label> finding <n>`) is handed to:
 # those that take the topic of an output of the answering stage (its
-# <manifest>) that carries <key>. Space separated; empty when none.
+# <manifest>) that carries <key> (_judge_topic_receivers_v). Space separated;
+# empty when none.
 judge_handoff_receivers_v() {
-    local -n _jhr="$1"; local mf="$2" ad="${3%/}" key="$4" o body s m tk t root
-    local -a outs=() topics=() stages=()
+    local -n _jhr="$1"; local mf="$2" ad="${3%/}" key="$4" o body f
+    local -a outs=() topics=()
     _jhr=""
     [[ -s "$mf" && -n "$key" && -n "$ad" ]] || return 0
     local kre="(^|[^A-Za-z0-9_-])${key//[^A-Za-z0-9 _-]/.}([^0-9]|$)"
     _judge_manifest_outputs_v outs "$mf" "$ad"
     for o in ${outs[@]+"${outs[@]}"}; do
-        [[ -s "${o#*$'\t'}" ]] || continue
-        body=""; IFS= read -r -d '' body < "${o#*$'\t'}" || true
+        f="${o#*$'\t'}"; f="${f%$'\t'*}"
+        [[ -s "$f" ]] || continue
+        body=""; IFS= read -r -d '' body < "$f" || true
         [[ "$body" =~ $kre ]] && topics+=("${o%%$'\t'*}")
     done
-    [[ ${#topics[@]} -gt 0 ]] || return 0
-    _judge_run_stages_v stages
-    root="${mf%/manifest.yaml}"; root="${root%/*}"; root="${root%/*}"
-    for s in ${stages[@]+"${stages[@]}"}; do
-        _judge_stage_manifest_v m "$s" "$root"
-        [[ -n "$m" && "$m" -ef "$mf" ]] && continue
-        _judge_manifest_takes_v tk "$m"
-        for t in "${topics[@]}"; do [[ "$tk" == *" $t "* ]] && { _jhr+="${_jhr:+ }$s"; break; }; done
-    done
-    return 0
+    _judge_topic_receivers_v _jhr "$mf" ${topics[@]+"${topics[@]}"}
+}
+
+# judge_handoff_own_receivers_v <var> <manifest> — the stages of this run a
+# stage hands its own check's findings to: those that take the topic of its
+# handoff output (handoff: true). The engine clears that output as a dispatch
+# starts and writes it after the last try (stage_handoff_unchanged), so the
+# check of a try never sees it written: the stage's own `not mine` is the
+# hand-off (review on #2574).
+judge_handoff_own_receivers_v() {
+    local -n _jhor="$1"; local mf="$2" o
+    local -a outs=() topics=()
+    _jhor=""
+    _judge_manifest_outputs_v outs "$mf" "${ZBUILD_ARTIFACT_DIR:-.}"
+    for o in ${outs[@]+"${outs[@]}"}; do [[ "${o##*$'\t'}" == 1 ]] && topics+=("${o%%$'\t'*}"); done
+    _judge_topic_receivers_v _jhor "$mf" ${topics[@]+"${topics[@]}"}
 }
 
 # judge_output_manifest_v <var> <result_file> — the manifest of the stage of
@@ -147,6 +181,9 @@ judge_handoff_put() {
     [[ -d "${p%/*}" ]] || return 1
     [[ -n "${_JUDGE_HANDOFF_JUDGED[$1|$2]+x}" ]] && return 1
     judge_handoff_last_round && return 1
+    # Already waiting: the cap counts waits, not answers, and the wait keeps
+    # the time it started (review on #2574).
+    [[ -s "$p" ]] && return 0
     [[ -s "$c" ]] && { IFS= read -r n < "$c" || true; }
     [[ "$n" =~ ^[0-9]+$ ]] || n=0
     (( n >= _JUDGE_HANDOFF_MAX )) && { _judge_emit judge.handoff.capped "item=$2" "times=$n"; return 1; }
@@ -257,9 +294,9 @@ judge_handoff_done() {
 # judge_handoff_record_own <kept_file> <manifest> <artifact_dir> <keymap_assoc>
 #                          <answer>... — for a check whose findings the stage
 # itself answers (test-author's check): each `not mine` answer ("<key>:
-# <answer>") whose finding an output of the stage (<manifest>) carries to a
-# stage of this run is recorded as a hand-off of each item <keymap>[key] names,
-# unless that item is back now.
+# <answer>") is recorded as a hand-off of each item <keymap>[key] names, unless
+# that item is back now, to the stages that take the topic of an output of the
+# stage that carries it, or else of its handoff output.
 judge_handoff_record_own() {
     local kf="$1" mf="$2" ad="$3" a k kd rcv it st
     local -n _jhro_map="$4"; shift 4
@@ -267,7 +304,9 @@ judge_handoff_record_own() {
     for a in "$@"; do
         k="${a%%:*}"; [[ -n "${_jhro_map[$k]:-}" ]] || continue
         zb_answer_kind_v kd "$a"; [[ "$kd" == "not mine" ]] || continue
-        judge_handoff_receivers_v rcv "$mf" "$ad" "$k"; [[ -n "$rcv" ]] || continue
+        judge_handoff_receivers_v rcv "$mf" "$ad" "$k"
+        [[ -n "$rcv" ]] || judge_handoff_own_receivers_v rcv "$mf"
+        [[ -n "$rcv" ]] || continue
         for it in ${_jhro_map[$k]}; do
             judge_handoff_state_v st "$kf" "$it"; [[ "$st" == back ]] && continue
             judge_handoff_put "$kf" "$it" "$rcv" "${a#*: }" "${_JUDGE_ANSWER_FINDING[$k]:-}" || true
