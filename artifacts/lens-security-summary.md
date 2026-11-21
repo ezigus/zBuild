@@ -1,6 +1,8 @@
 ## review-lens-security — fail
 
-- found: medium: The holder string extracted from a GitHub issue comment by _ccgl_read_holder is passed to error(), which uses `echo -e "… $*"`, so backslash sequences (\n, \033[…) in the holder are interpreted by echo, allowing a crafted run-status comment to inject fake log lines or terminal control sequences into the operator's stderr. (core/pipeline/runner.sh)
+- found: medium: ANSI escape sequences from an attacker-controlled GitHub comment survive partial stripping and are emitted to the user's terminal via printf. (core/claim/claim.sh) (and 1 more)
 
-- medium: The holder string extracted from a GitHub issue comment by _ccgl_read_holder is passed to error(), which uses `echo -e "… $*"`, so backslash sequences (\n, \033[…) in the holder are interpreted by echo, allowing a crafted run-status comment to inject fake log lines or terminal control sequences into the operator's stderr. (core/pipeline/runner.sh)
+- medium: ANSI escape sequences from an attacker-controlled GitHub comment survive partial stripping and are emitted to the user's terminal via printf. (core/claim/claim.sh)
+- low: The holder is JSON-encoded by escaping only double-quote characters, leaving literal backslashes unescaped and producing structurally invalid JSON. (plugins/claim-coordinator/github-labels/plugin.sh)
+- the check could not be used (finding 2 has no line), so every finding stands
 - score: 8

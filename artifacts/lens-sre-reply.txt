@@ -1,56 +1,17 @@
 --- reply 1 ---
 {
-  "score": 6,
+  "score": 8,
   "findings": [
     {
       "file": "plugins/claim-coordinator/github-labels/plugin.sh",
-      "category": "resilience",
+      "category": "error-swallowed",
       "severity": "medium",
-      "message": "plugin.sh sources core/claim/claim.sh via a $(cd …) subshell at module-load time, the exact pattern the design explicitly prohibited.",
-      "quote": "_ccgl_plugin_dir=\"$(cd \"${BASH_SOURCE[0]%/*}\" 2>/dev/null || true; pwd)\"",
-      "trigger": "plugin.sh sourced when ${BASH_SOURCE[0]} contains no directory component (bare filename, e.g. `source plugin.sh` from tests or future callers); `cd \"\"` fails, `|| true` swallows it, `pwd` returns the caller's working directory; the subsequent `source \"$_ccgl_plugin_dir/../../../core/claim/claim.sh\"` resolves to a wrong path and fails with 'No such file', aborting every load of plugin.sh on that path. Even in the happy path the `$(cd …)` fork runs on every first load, which the design forbade: \"plugin.sh must not source core/claim/claim.sh — that would create a circular dependency and add a startup $(cd ...) subshell in plugin.sh's load path.\"",
+      "message": "claim_coordinator_release always returns 0 regardless of whether _ccgl_remove_label succeeds, so the advisory warning path in zbuild_claim_release is unreachable and label-removal failures are completely silent.",
+      "quote": "_ccgl_remove_label \"$issue\" \"zbuild:claimed\"\n    return 0",
+      "trigger": "On any run exit, zbuild_claim_release calls plugin_hook_call, which calls claim_coordinator_release. For the gh backend, if `gh issue edit --remove-label` fails (network error, rate limit, permission denied), _ccgl_remove_label returns non-zero and all gh stderr is already suppressed (`>/dev/null 2>&1`). claim_coordinator_release ignores the return code and exits 0. zbuild_claim_release's `plugin_hook_call ... || { printf 'release hook failed...' }` handler never fires. The label silently remains, and every subsequent run on that issue is refused with 'already claimed' and no log explaining why the previous release failed.",
+      "accepted_if": "claim_coordinator_release propagates _ccgl_remove_label's non-zero exit so the advisory warning in zbuild_claim_release fires when the gh backend fails to remove the label; or the design is amended to explicitly accept that label-removal failures are entirely silent with no log or event.",
       "introduced": true,
       "fix": "code"
-    },
-    {
-      "file": "core/claim/claim.sh",
-      "category": "observability",
-      "severity": "medium",
-      "message": "zbuild_claim_acquire silently swallows both a backend read failure and a label-add failure with no log entry and no event, so a run that proceeds without cross-machine protection leaves no trace of that bypass.",
-      "quote": "if ! _zbuild_claim_read_labels_into existing \"$issue\"; then\n        return 0\n    fi",
-      "trigger": "gh is unauthenticated, rate-limited, or the network is unreachable when a run starts; _zbuild_claim_read_labels_into returns 1; zbuild_claim_acquire returns 0; the run proceeds as if everything is fine; two machines execute the same issue concurrently with no log explaining why cross-machine protection was inactive. The same silence applies on the add path: `_zbuild_claim_add_label_direct \"$issue\" \"zbuild:claimed\" || return 0` — a failed add also returns 0 and sets no log. The function's own comment promises \"Logs the skip to the run's state dir\" but the code does not.",
-      "introduced": true,
-      "fix": "code"
-    },
-    {
-      "file": "core/claim/claim.sh",
-      "category": "observability",
-      "severity": "medium",
-      "message": "zbuild_claim_release swallows every gh failure silently with no event, so when the GitHub API is unreachable at cleanup time zbuild:claimed stays on the issue indefinitely with no explanation visible to operators.",
-      "quote": "_ccgl_remove_label \"$issue\" \"zbuild:claimed\" || true",
-      "trigger": "gh is unreachable or returns non-zero (network failure, rate limit, transient API error) when _runner_abort_trap runs; _ccgl_remove_label exits non-zero; `|| true` discards the error; zbuild:claimed remains on the issue; every subsequent run on that issue is blocked and refused until a human removes the label by hand — but nothing in any log or event tells the operator that release failed or why.",
-      "introduced": true,
-      "fix": "code"
-    },
-    {
-      "file": "core/claim/claim.sh",
-      "category": "resilience",
-      "severity": "low",
-      "message": "zbuild_claim_release never clears _ZBUILD_CLAIM_ACQUIRED, so a second call from the same process passes the guard and silently retries the label removal instead of being a no-op as the design required.",
-      "quote": "    # Only release if this process acquired the claim\n    [[ -z \"${_ZBUILD_CLAIM_ACQUIRED:-}\" ]] && return 0\n\n    # Remove zbuild:claimed (advisory; failures never abort the run)\n    _ccgl_remove_label \"$issue\" \"zbuild:claimed\" || true\n\n    return 0",
-      "trigger": "zbuild_claim_release is called twice from the same process (e.g. a future change adds a release on a second exit path alongside _runner_abort_trap); on the second call _ZBUILD_CLAIM_ACQUIRED is still set so the guard passes; _ccgl_remove_label calls `gh issue edit --remove-label zbuild:claimed` on a label no longer present; gh returns non-zero; `|| true` swallows it; the design's idempotency invariant — \"Unsetting first makes a second call a no-op\" — is not met.",
-      "introduced": true,
-      "fix": "code"
-    },
-    {
-      "file": "tests/integration/teardown-repeat-signal-test.sh",
-      "category": "test",
-      "severity": "medium",
-      "message": "The DSCLA-9 fixture for the holder's run-status comment is hand-written instead of produced by rsc_render_header, so the test cannot detect a divergence between the writer's format and the reader's regex.",
-      "quote": "cat > \"$ZBUILD_CLAIM_STORE/$_DSCLA9_ISSUE/run-status-comment.txt\" <<EOF\n<!-- zbuild-run-status run_id=holder-run-prev -->\n<!-- zbuild-holder: $_DSCLA9_HOLDER -->\nrun is in progress\nEOF",
-      "trigger": "rsc_render_header changes the <!-- zbuild-holder: --> comment format (e.g. attribute name or surrounding whitespace); the hand-written fixture keeps the old format; _ccgl_read_holder's regex still matches the fixture; the test passes; in production _ccgl_read_holder no longer matches what rsc_render_header writes; runner output stops naming the holder and DSCLA-9 silently regresses. CLAUDE.md requires: \"A test makes such data with the writer's own code… never by hand.\" The writer here is rsc_render_header in scripts/lib/run-status-render.sh.",
-      "introduced": true,
-      "fix": "test"
     }
   ]
 }

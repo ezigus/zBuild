@@ -1,0 +1,17 @@
+--- reply 1 ---
+{
+  "score": 8,
+  "findings": [
+    {
+      "file": "plugins/claim-coordinator/github-labels/plugin.sh",
+      "category": "error-swallowed",
+      "severity": "medium",
+      "message": "claim_coordinator_release always returns 0 regardless of whether _ccgl_remove_label succeeds, so the advisory warning path in zbuild_claim_release is unreachable and label-removal failures are completely silent.",
+      "quote": "_ccgl_remove_label \"$issue\" \"zbuild:claimed\"\n    return 0",
+      "trigger": "On any run exit, zbuild_claim_release calls plugin_hook_call, which calls claim_coordinator_release. For the gh backend, if `gh issue edit --remove-label` fails (network error, rate limit, permission denied), _ccgl_remove_label returns non-zero and all gh stderr is already suppressed (`>/dev/null 2>&1`). claim_coordinator_release ignores the return code and exits 0. zbuild_claim_release's `plugin_hook_call ... || { printf 'release hook failed...' }` handler never fires. The label silently remains, and every subsequent run on that issue is refused with 'already claimed' and no log explaining why the previous release failed.",
+      "accepted_if": "claim_coordinator_release propagates _ccgl_remove_label's non-zero exit so the advisory warning in zbuild_claim_release fires when the gh backend fails to remove the label; or the design is amended to explicitly accept that label-removal failures are entirely silent with no log or event.",
+      "introduced": true,
+      "fix": "code"
+    }
+  ]
+}

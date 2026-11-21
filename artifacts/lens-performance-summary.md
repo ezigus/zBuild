@@ -1,8 +1,6 @@
 ## review-lens-performance — pass
 
-- found: low: plugin.sh runs a `$(cd ...)` subshell at load time to locate claim.sh, a fork the design decision document explicitly said to avoid by not having plugin.sh source claim.sh at all. (plugins/claim-coordinator/github-labels/plugin.sh) (and 1 more)
+- reviewed the change through the performance lens: found no problem
 
-- low: plugin.sh runs a `$(cd ...)` subshell at load time to locate claim.sh, a fork the design decision document explicitly said to avoid by not having plugin.sh source claim.sh at all. (plugins/claim-coordinator/github-labels/plugin.sh)
-- low: `_ccgl_read_holder` calls `$(_ccgl_backend)` — a subshell that only echoes a variable — while the other new functions in claim.sh (`_zbuild_claim_read_labels_into`, `_zbuild_claim_add_label_direct`) explicitly replaced the same pattern with `${ZBUILD_CLAIM_BACKEND:-gh}` to avoid the fork. (core/claim/claim.sh)
-- the check could not be used (finding 2 has no line), so every finding stands
+- knocked down by the check: `_zbuild_claim_find_coordinator_v` calls `discover_plugins` inside a process substitution, so the in-shell discovery cache (`_ZBUILD_DISCOVERY_CACHE`) filled inside it dies with the subshell; the function is called twice per issue-bound run (once in `zbuild_claim_acquire` and once in `zbuild_claim_release`), so each call falls through to the file memo path, which requires a `find` for the shape check on every invocation rather than once. — runner.sh calls `discover_plugins` directly (not in a subshell) at top-level scope before any stage or claim function runs, populating `_ZBUILD_DISCOVERY_CACHE` in the runner's own shell; process substitutions are bash forks and inherit that warm cache, so each `< <(discover_plugins …)` in `_zbuild_claim_find_coordinator_v` hits the inherited in-shell cache (after the shape `find`) and never reaches the file memo path
 - score: 9
