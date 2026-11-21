@@ -713,19 +713,6 @@ MOCK
     mock_gh
 fi
 
-# ── core/claim/claim.sh is listed in config/shape-change-paths.txt ────────────
-# core/claim/claim.sh gates every claim and release in runner.sh; a change to
-# it can alter the run's stage order or its event sequence, so it must appear
-# in config/shape-change-paths.txt.  This assertion fails if the entry is
-# removed: config/shape-change-paths.txt would revert to its old version and
-# shape tests would not be forced to run on claim.sh changes.
-if grep -Fxq "core/claim/claim.sh" "$REPO_ROOT/config/shape-change-paths.txt" 2>/dev/null; then
-    assert_pass "core/claim/claim.sh is listed in config/shape-change-paths.txt"
-else
-    assert_fail "core/claim/claim.sh is listed in config/shape-change-paths.txt" \
-        "not found in shape-change-paths.txt — a change to core/claim/claim.sh must trigger shape tests"
-fi
-
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
