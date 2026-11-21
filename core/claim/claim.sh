@@ -107,10 +107,10 @@ zbuild_claim_acquire() {
         return 0
     fi
 
-    # Parse JSON: extract "acquired" field.
-    local _acquired_line acquired
-    _acquired_line="$(grep -o '"acquired":[[:space:]]*[a-z]*' <<< "$json_out" || true)"
-    acquired="$(grep -o 'true\|false' <<< "$_acquired_line" || true)"
+    # Parse JSON: extract "acquired" field via jq (single subshell, correct decoding).
+    # Use tostring, not // empty: the alternative operator treats false as falsy.
+    local acquired
+    acquired="$(jq -r '.acquired | tostring' <<< "$json_out" 2>/dev/null || true)"
 
     if [[ "$acquired" == "false" ]]; then
         # Another run holds zbuild:claimed — extract and sanitize the holder string.
