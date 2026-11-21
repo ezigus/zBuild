@@ -15,6 +15,9 @@
 # S1 [change] a step that names a file or folder in the test folders fails
 #             design's check, naming it and saying the tests are test-author's
 # S2 [change] a step that names only code passes that check
+# S7 [change] (#2575) a steps-block line with " | areas:" but no list marker
+#             fails design's check, naming the line: the parser would read it
+#             as the step above carrying on
 # S3 [change] design-steps.json holds each step's words and areas, in order
 # S4 [change] build's prompt holds the design's steps
 # T5 [change] build's prompt gives it no file list (#2508: it may change any
@@ -73,6 +76,15 @@ _draft "$TEST_TEMP_DIR/code.md" "- guard the read in a.sh | areas: core/a.sh"
 _design_checks "$TEST_TEMP_DIR/code.md" "$CR" ""
 _sit=0; for _v in "${_DESIGN_VIOLATIONS[@]}"; do [[ "$_v" == STEP_IS_TEST* ]] && _sit=1; done
 assert_eq "[S2] a design whose steps name only code passes that check" "0" "$_sit"
+
+# ── S7: a step line with no list marker (#2575) ────────────────────────────
+_draft "$TEST_TEMP_DIR/unmarked.md" "Add a helper | areas: core/a.sh" "- do x | areas: core/a.sh"
+_design_checks "$TEST_TEMP_DIR/unmarked.md" "$CR" ""
+_um=""; for _v in "${_DESIGN_VIOLATIONS[@]}"; do [[ "$_v" == STEP_UNMARKED* ]] && _um="$_v"; done
+assert_contains "[S7] a step line with no list marker fails design's check, naming it" "$_um" \
+    "STEP_UNMARKED Add a helper | areas: core/a.sh"
+_um=""; for _v in "${_DESIGN_VIOLATIONS[@]}"; do [[ "$_v" == "STEP_UNMARKED - do x"* ]] && _um="$_v"; done
+assert_eq "[S7] ...and not the marked one" "" "$_um"
 
 # ── S3: the steps design writes ──────────────────────────────────────────────
 route_to_model() {

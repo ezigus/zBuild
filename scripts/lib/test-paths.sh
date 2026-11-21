@@ -131,12 +131,20 @@ zb_test_folder_branch_lines_v() {
     # A hunk's added lines run on from its "+<start>"; a removed line takes no
     # number in the new file. The prefixes and path quoting are set here, so a
     # user's diff.mnemonicPrefix or diff.noprefix cannot hide a file (#2554).
+    # #2575: "---"/"+++" are a file's headers only between its "diff --git"
+    # line and its first hunk; inside a hunk they are lines taken out or added.
+    local _hd=0
     while IFS= read -r _l; do
+        if (( _hd )); then
+            case "$_l" in
+                '+++ b/'*) _f="${_l#+++ b/}"; _zb_test_globs_match "$_f" "${_gl[@]}" || _f=""; continue ;;
+                '+++ '*|'--- '*) continue ;;
+            esac
+        fi
         case "$_l" in
             $'\x01nobase') _ztl=(); return 0 ;;
-            '+++ b/'*) _f="${_l#+++ b/}"; _zb_test_globs_match "$_f" "${_gl[@]}" || _f="" ;;
-            '+++ '*|'--- '*) _f="" ;;
-            '@@ '*) [[ "$_l" =~ \+([0-9]+) ]] && _n="${BASH_REMATCH[1]}" ;;
+            'diff --git '*) _hd=1; _f="" ;;
+            '@@ '*) _hd=0; [[ "$_l" =~ \+([0-9]+) ]] && _n="${BASH_REMATCH[1]}" ;;
             '+'*) [[ -n "$_f" ]] && _ztl[$_f]+="$_n "; _n=$(( _n + 1 )) ;;
             '-'*) [[ -n "$_f" ]] && _ztr[$_f]+="${_l:1}"$'\x1e' ;;
         esac

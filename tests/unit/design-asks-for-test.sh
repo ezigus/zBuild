@@ -1,28 +1,30 @@
 #!/usr/bin/env bash
-# tests/unit/design-asks-for-test.sh — what a design asks the change to touch,
-# read the one way (#2575, ADR-036): its steps through design's own step parser,
-# and its acceptance block's words.
+# tests/unit/design-asks-for-test.sh — whether a design names a changed file
+# (#2575, ADR-036). "Named" is generous: a file the design names anywhere is
+# asked for. Only a file it names nowhere is taken out, so a wrong "not asked"
+# never deletes real work.
 #
-# Review on #2575: covers missed real steps (a wrapped line, `file:func`, a path
-# inside prose, a bare file name, a path in backticks with a note after it) and
-# then told build to take asked-for work out; a bare `*` area covered every file.
+# Second review on #2575 (probes d1.md, cov.sh): a partial path, a path in a
+# step's description, a markdown link and a shared basename were each read as
+# "nothing asks for this", which would tell build to revert asked-for work.
 #
-# D1 [code]  a step's areas cover a file named on a wrapped line, as file:func,
-#            anywhere in the area's words, in backticks with a note after it
-# D2 [code]  a bare file name covers the one changed file of that name, and
-#            none when two changed files share it
-# D3 [code]  an acceptance-block word covers a file, with :func and 's taken off;
-#            the answer says a SPEC covers it, not a step
-# D4 [code]  an area that is only a wildcard, or a pattern with no literal path
-#            before it (*, **, *.sh), covers nothing; scripts/*.sh and
-#            scripts/[ab].sh cover what they match
-# D5 [code]  a step's answer names its number
-# D6 [code]  a design with no steps block has no steps: the caller keeps the old
-#            rule, and does not guess
-# D7 [code]  the asked-for set must be an associative array: anything else is
-#            refused, and nothing is written into it
-# D8 [code]  design's step writer and every reader use the one parser: the
-#            wrapped step's areas reach design-steps.json too
+# D1 [code]  named in a step's areas: the step's number is given — as a full
+#            path, a path suffix on `/` boundaries (build/lib/prompt.sh), in
+#            backticks, as file:func, in a markdown link target
+# D2 [code]  named in a step's description (not its areas): still the step's
+# D3 [code]  a bare basename names every changed file of that name
+# D4 [code]  named only outside the steps — a SPEC's words (also a [no-code]
+#            SPEC), WIRING, prose, design-steps.json — is named, with no step
+# D5 [code]  named nowhere, or by a function name alone, is not named
+# D6 [code]  *, ** and *.sh name nothing; config/*.txt names config/a.txt
+# D7 [code]  a design with no steps block has no steps (the caller keeps the
+#            old rule)
+# D8 [code]  the named set must be an associative array; anything else is
+#            refused and left as it was
+# D9 [code]  design's step writer uses the one parser: a wrapped step's areas
+#            reach design-steps.json
+# D10 [code] a steps-block line with " | areas:" and no list marker is found
+#            (design's check refuses it)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,69 +35,90 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 source "$REPO_ROOT/tests/lib/test-helpers.sh"
 # shellcheck source=../../scripts/lib/design-steps.sh
 source "$REPO_ROOT/scripts/lib/design-steps.sh"
-print_test_header "what a design asks for (#2575)"
+print_test_header "whether a design names a file (#2575)"
 setup_test_env "design-asks-for"
 
 D="$TEST_TEMP_DIR/design.md"
 cat > "$D" <<'MD'
 # Rework
+We also touch docs/notes.txt along the way.
 ```steps
-- rework the claim | areas: scripts/lib/a.sh,
-  scripts/lib/b.sh
-- tidy | areas: scripts/lib/c.sh:zb_fn, the zb_g function in scripts/lib/d.sh, e.sh
-- prompt | areas: `plugins/agent/build/lib/prompt.sh` (_build_compose_instructions)
-- everything | areas: *, **, *.sh
-- some scripts | areas: tools/*.sh, gen/[ab].sh
+- Add the record reader | areas: scripts/lib/stage-notes-version.sh,
+  scripts/lib/wrapped.sh
+- Wire it into the block | areas: the Previous-work block (stage-previous-work.sh:_stage_block_previous_work)
+- Teach build | areas: build/lib/prompt.sh
+- Register events | areas: `plugins/tool/test/manifest.yaml`, acceptance_gate_run()
+- Update core/router/route.sh and the docs | areas: engine
+- Change [the guard](core/pipeline/guard.sh) | areas: [the guard](core/pipeline/guard.sh)
+- Lists | areas: config/*.txt
+- Tidy | areas: e.sh
+- Everything | areas: *, **, *.sh
 ```
 ```acceptance
-SPEC-1[code]: `scripts/lib/f.sh:zb_f` returns 1; scripts/lib/g.sh's reader works
+XX-1: When a stage is prompted, Then its notes are marked
+XX-2[no-code]: refactor of scripts/lib/digest.sh, no behaviour change
+WIRING: scripts/lib/wired.sh
 ```
 MD
-CHANGED=(scripts/lib/a.sh scripts/lib/b.sh scripts/lib/c.sh scripts/lib/d.sh scripts/lib/e.sh
-         plugins/agent/build/lib/prompt.sh scripts/lib/f.sh scripts/lib/g.sh other/x.sh tools/t.sh
-         gen/a.sh gen/c.sh)
+printf '{"title":"Rework","steps":[{"id":"step-1","description":"x","areas":["json/only.sh"]}]}\n' \
+    > "$TEST_TEMP_DIR/design-steps.json"
 declare -a STEPS=(); declare -A WORDS=()
-zb_design_asked_v STEPS WORDS "$D"
-_cov() { local v; zb_design_covered_v v "$1" STEPS WORDS CHANGED; printf '%s' "$v"; }
+zb_design_named_v STEPS WORDS "$D"
+_n() { local v; zb_design_names_v v "$1" STEPS WORDS; printf '%s' "$v"; }
 
-print_test_section "D1/D5: a step's areas"
-assert_eq "[D1] a wrapped step line" "step:1" "$(_cov scripts/lib/b.sh)"
-assert_eq "[D1] file:func" "step:2" "$(_cov scripts/lib/c.sh)"
-assert_eq "[D1] a path inside the area's words" "step:2" "$(_cov scripts/lib/d.sh)"
-assert_eq "[D1] in backticks, with a note after it" "step:3" "$(_cov plugins/agent/build/lib/prompt.sh)"
-assert_eq "[D5] the first line of step 1" "step:1" "$(_cov scripts/lib/a.sh)"
+print_test_section "D1/D2: named by a step"
+assert_eq "[D1] a full path in the areas" "step:1" "$(_n scripts/lib/stage-notes-version.sh)"
+assert_eq "[D1] ...on a wrapped line" "step:1" "$(_n scripts/lib/wrapped.sh)"
+assert_eq "[D1] a path suffix, as file:func" "step:2" "$(_n scripts/lib/stage-previous-work.sh)"
+assert_eq "[D1] a path suffix on / boundaries" "step:3" "$(_n plugins/agent/build/lib/prompt.sh)"
+assert_eq "[D1] ...and not a longer name that only ends the same" "" "$(_n plugins/agent/build/lib/myprompt.sh)"
+assert_eq "[D1] in backticks" "step:4" "$(_n plugins/tool/test/manifest.yaml)"
+assert_eq "[D1] a markdown link target" "step:6" "$(_n core/pipeline/guard.sh)"
+assert_eq "[D2] a path in a step's description" "step:5" "$(_n core/router/route.sh)"
 
-print_test_section "D2: a bare file name"
-assert_eq "[D2] covers the one changed file of that name" "step:2" "$(_cov scripts/lib/e.sh)"
-CHANGED+=(other/e.sh)
-assert_eq "[D2] ...and none when two changed files share it" "" "$(_cov scripts/lib/e.sh)"
+print_test_section "D3: a bare basename"
+assert_eq "[D3] names one changed file of that name" "step:8" "$(_n scripts/lib/e.sh)"
+assert_eq "[D3] ...and another of the same name" "step:8" "$(_n other/e.sh)"
 
-print_test_section "D3: the acceptance block's words"
-assert_eq "[D3] a SPEC naming file:func covers the file" "spec" "$(_cov scripts/lib/f.sh)"
-assert_eq "[D3] a SPEC naming the file's reader ('s)" "spec" "$(_cov scripts/lib/g.sh)"
+print_test_section "D4: named outside the steps"
+assert_eq "[D4] a [no-code] SPEC's words" "named" "$(_n scripts/lib/digest.sh)"
+assert_eq "[D4] WIRING" "named" "$(_n scripts/lib/wired.sh)"
+assert_eq "[D4] the design's prose" "named" "$(_n docs/notes.txt)"
+assert_eq "[D4] design-steps.json beside the design" "named" "$(_n json/only.sh)"
 
-print_test_section "D4: wildcards"
-assert_eq "[D4] *, ** and *.sh cover nothing" "" "$(_cov other/x.sh)"
-assert_eq "[D4] tools/*.sh covers what it matches" "step:5" "$(_cov tools/t.sh)"
-assert_eq "[D4] gen/[ab].sh covers gen/a.sh" "step:5" "$(_cov gen/a.sh)"
-assert_eq "[D4] ...and not gen/c.sh" "" "$(_cov gen/c.sh)"
+print_test_section "D5: named nowhere"
+assert_eq "[D5] a file the design does not name" "" "$(_n plugins/tool/test/lib/acceptance-check.sh)"
+assert_eq "[D5] ...even when one of its functions is named (acceptance_gate_run())" "" \
+    "$(_n plugins/tool/test/lib/acceptance-gate.sh)"
 
-print_test_section "D6: no steps block"
+print_test_section "D6: patterns"
+assert_eq "[D6] *, ** and *.sh name nothing" "" "$(_n other/x.sh)"
+assert_eq "[D6] config/*.txt names config/a.txt" "step:7" "$(_n config/a.txt)"
+
+print_test_section "D7: no steps block"
 printf '```acceptance\nSPEC-1[code]: x\n```\n' > "$TEST_TEMP_DIR/nosteps.md"
-declare -a S6=(); declare -A W6=()
-zb_design_asked_v S6 W6 "$TEST_TEMP_DIR/nosteps.md"
-assert_eq "[D6] no steps are read" "0" "${#S6[@]}"
+declare -a S7=(); declare -A W7=()
+zb_design_named_v S7 W7 "$TEST_TEMP_DIR/nosteps.md"
+assert_eq "[D7] no steps are read" "0" "$_ZB_DESIGN_STEP_COUNT"
 
-print_test_section "D7: the asked-for set's type"
+print_test_section "D8: the named set's type"
 declare -a NOTASSOC=(keep)
-rc=0; zb_design_asked_v STEPS NOTASSOC "$D" || rc=$?
-assert_eq "[D7] an indexed array is refused" "2" "$rc"
-assert_eq "[D7] ...and left as it was" "keep" "${NOTASSOC[0]}"
+rc=0; zb_design_named_v STEPS NOTASSOC "$D" || rc=$?
+assert_eq "[D8] an indexed array is refused" "2" "$rc"
+assert_eq "[D8] ...and left as it was" "keep" "${NOTASSOC[0]}"
 
-print_test_section "D8: one parser"
-zb_design_write_steps "$D" "$TEST_TEMP_DIR/design-steps.json"
-assert_eq "[D8] the wrapped step's areas reach design-steps.json" "scripts/lib/a.sh,scripts/lib/b.sh" \
-    "$(jq -r '.steps[0].areas | join(",")' "$TEST_TEMP_DIR/design-steps.json" 2>/dev/null)"
+print_test_section "D9: one parser"
+zb_design_write_steps "$D" "$TEST_TEMP_DIR/written-steps.json"
+assert_eq "[D9] the wrapped step's areas reach design-steps.json" \
+    "scripts/lib/stage-notes-version.sh,scripts/lib/wrapped.sh" \
+    "$(jq -r '.steps[0].areas | join(",")' "$TEST_TEMP_DIR/written-steps.json" 2>/dev/null)"
+
+print_test_section "D10: a step line with no list marker"
+printf '# T\n```steps\nAdd a helper | areas: tests/lib/test-helpers.sh\n- do x | areas: a.sh\n```\n' > "$TEST_TEMP_DIR/d2.md"
+declare -a UM=()
+zb_design_steps_unmarked_v UM "$TEST_TEMP_DIR/d2.md"
+assert_eq "[D10] the unmarked line is found" "Add a helper | areas: tests/lib/test-helpers.sh" "${UM[0]:-}"
+assert_eq "[D10] ...and only it" "1" "${#UM[@]}"
 
 cleanup_test_env
 print_test_results

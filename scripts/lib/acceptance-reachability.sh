@@ -13,9 +13,8 @@
 #
 # Then every other changed code file (ADR-036, 2026-10-11), listed by git, is
 # put back the same way: some test must fail without it, or
-# REACHABILITY FAIL untested_change <file>. When the design has steps (#2575),
-# that is for a file a SPEC or WIRING names; a file only step <n> names is
-# REACHABILITY FAIL unspecified_change <file> step=<n>, and one nothing names
+# REACHABILITY FAIL untested_change <file> (<file>@step-<n> when step <n>
+# names it, #2575). When the design has steps, a file it names nowhere is
 # REACHABILITY FAIL unasked_change <file>. A file whose only changes are
 # comments or blank lines, a deleted file, tests, docs/ and Markdown are skipped.
 #
@@ -276,12 +275,10 @@ _reachability_print() {
 #   REACHABILITY PASS <target>        — ≥1 testfile flips pass→fail; wiring load-bearing
 #   REACHABILITY FAIL inert_wiring <target>  — no testfile flips; wiring is inert
 #   REACHABILITY PASS change <file>   — ≥1 testfile flips with <file> put back
-#   REACHABILITY FAIL untested_change <file> — no testfile flips with <file> put back
-#                                       (with steps: a SPEC or WIRING names <file>)
-#   REACHABILITY FAIL unspecified_change <file> step=<n> — the same; only step <n>
-#                                       names <file>, no SPEC does (#2575)
-#   REACHABILITY FAIL unasked_change <file>  — the same; no SPEC, WIRING file or
-#                                       step names <file> (#2575)
+#   REACHABILITY FAIL untested_change <file>[@step-<n>] — no testfile flips with
+#                                       <file> put back (the step that names it)
+#   REACHABILITY FAIL unasked_change <file>  — the same, and the design (which
+#                                       has steps) names <file> nowhere (#2575)
 #   REACHABILITY SKIP no_code <file>  — only comments / blank lines changed
 #   REACHABILITY ERROR <detail>       — infrastructure failure (worktree_failed,
 #                                       empty_wiring_targets, timeout:<target>)
@@ -370,11 +367,11 @@ acceptance_reachability_check() {
     done
 
     # Part 2: every other changed code file, put back on its own. #2575: one
-    # no test checks is asked for by a SPEC, only by a step, or by nothing
-    # (zb_design_covered_v). A design with no steps keeps the old rule.
+    # no test checks that the design names nowhere is unasked
+    # (zb_design_names_v). A design with no steps keeps the old rule.
     local _named _uw _um _cov
     local -a _asked_steps=(); local -A _asked_words=()
-    zb_design_asked_v _asked_steps _asked_words "$design_md"
+    zb_design_named_v _asked_steps _asked_words "$design_md"
     for cf in "${changed_files[@]}"; do
         _acceptance_is_production_path "$cf" || continue
         # Deleted here: nothing is left to test.
@@ -389,11 +386,11 @@ acceptance_reachability_check() {
             continue
         fi
         _uw=untested_change; _um=""
-        if [[ ${#_asked_steps[@]} -gt 0 ]]; then
-            zb_design_covered_v _cov "$cf" _asked_steps _asked_words changed_files
+        if [[ "${_ZB_DESIGN_STEP_COUNT:-0}" -gt 0 ]]; then
+            zb_design_names_v _cov "$cf" _asked_steps _asked_words
             case "$_cov" in
-                spec) ;;
-                step:*) _uw=unspecified_change; _um=" step=${_cov#step:}" ;;
+                step:*) _um="@step-${_cov#step:}" ;;
+                named) ;;
                 *) _uw=unasked_change ;;
             esac
         fi

@@ -30,6 +30,8 @@
 # V10 [code] the record beside the notes holds fingerprints, not copies: neither
 #            the notes nor the design are in it, and no temp file is left
 # V11 [code] a byte after a NUL in an input still counts
+# V12 [code] second review on #2575: a large input (100 KB of requirements) is
+#            fingerprinted whole: a change in its last bytes marks the notes
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -216,6 +218,14 @@ _nul two
 _o11="$(_pw nv-build)"
 assert_contains "[V11] a change after the NUL marks the notes" "$_o11" \
     "written for an earlier version of design"
+
+print_test_section "V12: a large input"
+_big() { { printf '{"requirements":[{"id":"R1","text":"'; head -c 100000 /dev/zero | tr '\0' 'a'; printf '%s"}]}\n' "$1"; } > "$ART/requirements.json"; }
+_big one; _pw nv-build >/dev/null; _notes nv-build "notes for big one"; _pw nv-build >/dev/null
+_big two
+_o12="$(_pw nv-build)"
+assert_contains "[V12] a change at the end of a 100 KB input marks the notes" "$_o12" \
+    "written for an earlier version of requirements"
 
 cleanup_test_env
 print_test_results

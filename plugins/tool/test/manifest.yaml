@@ -65,7 +65,6 @@ provides:
     - acceptance.gate.untagged_spec
     - acceptance.gate.untested_change
     - acceptance.gate.unasked_change
-    - acceptance.gate.unspecified_change
     - acceptance.gate.wiring_exempt
     - acceptance.gate.wiring_not_on_path
     - acceptance.gate.worktree_failed
@@ -85,7 +84,6 @@ config:
     - inert_wiring
     - untested_change
     - unasked_change
-    - unspecified_change
     - no_testfile
     - no_testfiles
     - not_passing_at_head
@@ -197,7 +195,7 @@ outputs:
   # stage can fix is in each (ADR-071 §1), a problem in the pipeline in none.
   - id: acceptance_design
     topic: design-findings
-    description: "the acceptance check's findings the design can fix: code no requirement covers, a test that passes on the old code (the code may already do it), a WIRING file that is not what runs the change or that the change does not touch, an acceptance block that cannot be read, a changed file nothing in the design asks for, a file a step changes that no SPEC says what it should do"
+    description: "the acceptance check's findings the design can fix: code no requirement covers, a test that passes on the old code (the code may already do it), a WIRING file that is not what runs the change or that the change does not touch, an acceptance block that cannot be read"
     path: "${artifact_dir}/acceptance-gate-design-result.json"
     type: routed-findings.json@1
     format: json

@@ -422,6 +422,11 @@ _design_checks() {
     for _s in ${_sa[@]+"${_sa[@]}"}; do
         zb_is_test_path "$_s" "$repo_root" && violations+=("STEP_IS_TEST $_s (a work step names a file in the test folders)")
     done
+    # #2575: a step line with no list marker is read as the step above carrying on.
+    [[ -f "$design_md" ]] && zb_design_steps_unmarked_v _sa "$design_md"
+    for _s in ${_sa[@]+"${_sa[@]}"}; do
+        violations+=("STEP_UNMARKED $_s (a step line with no list marker — start each step with \"- \")")
+    done
 
     # ── C12 UNCLEAR (#2508, #2571, ADR-069 §12): a question design could not
     # settle is in the one form, with its assumption, quoting the issue. The

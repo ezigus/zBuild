@@ -31,6 +31,12 @@
 #            stale tag, is not judged
 # A12 [code] an `expect=` variable, or `$assert_ok`, is not a check line
 # A13 [code] a test file whose name holds `=` is read like any other
+# Second review on #2575:
+# A14 [code] only asked answers are kept: an unasked line is judged again on
+#            the next try
+# A15 [code] an asked answer naming a SPEC not in the contract, or a step past
+#            the last, is no answer
+# A16 [code] a try with nothing new to judge does not rewrite the kept answers
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -199,6 +205,26 @@ EXTRA=$'expect="x"\nif $assert_ok; then :; fi'; _run
 assert_eq "[A12] an expect= variable or \$assert_ok is not sent" "0" "$(grep -c 'a-test.sh' <<< "$(cat "$TEST_TEMP_DIR/unasked-keys" 2>/dev/null)" || true)"
 assert_contains "[A13] a file named with = is read" "$(cat "$TEST_TEMP_DIR/unasked-keys" 2>/dev/null)" "tests/a=b-test.sh line 1"
 AUTHOR_HOOK=""
+
+print_test_section "A14/A16: what is kept"
+VERDICT="unasked | WHY: x"; EXTRA='assert_eq "pins it" x x'; AUTHOR_HOOK=""; STEPS_BLOCK=""; _run
+_again
+assert_eq "[A14] an unasked line is judged again on the next try" "1" "$(wc -c < "$TEST_TEMP_DIR/unasked-calls" 2>/dev/null | tr -d ' ' || echo 0)"
+VERDICT="asked | SPEC: SPEC-1"; _run
+: > "$TEST_TEMP_DIR/mark"
+_kt="$TEST_TEMP_DIR/run/state/artifacts/test-author-unasked.tsv"
+touch -t 200001010000 "$_kt" 2>/dev/null
+_again
+assert_eq "[A16] the kept answers are not rewritten when nothing changed" "no" \
+    "$([[ "$_kt" -nt "$TEST_TEMP_DIR/mark" ]] && echo yes || echo no)"
+
+print_test_section "A15: an asked answer is checked"
+VERDICT="asked | SPEC: SPEC-99"; _run
+assert_eq "[A15] a SPEC not in the contract is no answer: unusable" "unusable" "$OUTCOME"
+STEPS_BLOCK=$'```steps\n- one step | areas: scripts/lib/claim.sh\n```\n'
+VERDICT="asked | STEP: 5"; _run
+assert_eq "[A15] a step past the last is no answer: unusable" "unusable" "$OUTCOME"
+STEPS_BLOCK=""
 
 cleanup_test_env
 print_test_results

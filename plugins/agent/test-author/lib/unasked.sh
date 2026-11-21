@@ -117,6 +117,7 @@ _ta_unasked_context_v() {
         _acceptance_spec_line "$blk" "$sid" && _tuc+="- $sid: $_ACC_SPEC_TEXT"$'\n'
     done < <(acceptance_list_spec_ids "$design" 2>/dev/null || true)
     zb_design_step_lines_v steps "$design"
+    _TA_UQ_STEPS=${#steps[@]}
     _tuc+=$'\n'"THE DESIGN'S STEPS:"$'\n'
     [[ ${#steps[@]} -gt 0 ]] || _tuc+="(none)"$'\n'
     for s in ${steps[@]+"${steps[@]}"}; do i=$((i + 1)); _tuc+="$i. $s"$'\n'; done
@@ -162,8 +163,12 @@ _ta_unasked() {
     [[ ${#lines[@]} -gt 0 ]] || return 0
     _ta_unasked_context_v ctx "$design"; zb_digest_v cfp "$ctx"
     [[ -n "$art" ]] && kf="${art%/}/test-author-unasked.tsv"
+    # Only a line found asked (or no assertion) is kept: an unasked one is
+    # judged again on every try.
+    local old=""
     if [[ -n "$kf" && -s "$kf" ]]; then
-        while IFS=$'\t' read -r k v w; do [[ -n "$k" ]] && kept[$k]="$v"$'\t'"$w"; done < "$kf"
+        IFS= read -r -d '' old < "$kf" || true
+        while IFS=$'\t' read -r k v w; do [[ -n "$k" && "$v" == ok ]] && kept[$k]="$v"$'\t'"$w"; done <<< "$old"
     fi
     # The key: the file, the line's content and what it is judged against.
     local -A keyof=()
@@ -172,9 +177,11 @@ _ta_unasked() {
         key="${l%% line *}"$'\x1f'"$lfp"$'\x1f'"$cfp"; keyof[$l]="$key"
         [[ -n "${kept[$key]+x}" ]] && now[$key]="${kept[$key]}" || todo+=("$l")
     done
-    local rc_file router_rc=0 i raw problem
-    rc_file="$(mktemp 2>/dev/null)" || rc_file=""
-    [[ -n "$rc_file" ]] && printf '0' > "$rc_file"
+    local rc_file="" router_rc=0 i raw problem
+    if [[ ${#todo[@]} -gt 0 ]]; then
+        rc_file="$(mktemp 2>/dev/null)" || rc_file=""
+        [[ -n "$rc_file" ]] && printf '0' > "$rc_file"
+    fi
     for (( i = 0; i < ${#todo[@]}; i += _TA_UNASKED_CHUNK )); do
         chunk=("${todo[@]:i:_TA_UNASKED_CHUNK}"); problem=""; raw=""
         local _try
@@ -196,10 +203,14 @@ _ta_unasked() {
     done
     [[ -n "$rc_file" ]] && { router_rc="$(cat "$rc_file" 2>/dev/null || printf 0)"; rm -f "$rc_file"; }
     # The answers for the lines there now, kept for the next try.
+    # Rewritten only when it changes, in the lines' order (the same each try).
     if [[ -n "$kf" ]]; then
         local out=""
-        for key in "${!now[@]}"; do out+="$key"$'\t'"${now[$key]}"$'\n'; done
-        printf '%s' "$out" > "$kf.tmp.$$" 2>/dev/null && mv -f "$kf.tmp.$$" "$kf" 2>/dev/null || rm -f "$kf.tmp.$$" 2>/dev/null
+        for l in "${lines[@]}"; do
+            key="${keyof[$l]}"
+            [[ "${now[$key]:-}" == ok$'\t'* ]] && out+="$key"$'\t'"${now[$key]}"$'\n'
+        done
+        [[ "$out" == "$old" ]] || { printf '%s' "$out" > "$kf.tmp.$$" 2>/dev/null && mv -f "$kf.tmp.$$" "$kf" 2>/dev/null || rm -f "$kf.tmp.$$" 2>/dev/null; }
     fi
     for l in "${lines[@]}"; do
         v="${now[${keyof[$l]}]:-}"; v="${v%$'\t'}"
@@ -221,7 +232,8 @@ _ta_unasked() {
 }
 
 # _ta_unasked_answer_v <var> <reply> <key> — the answer for one line: "ok"
-# (asked, or not an assertion), the WHY of an unasked one, or empty (none).
+# (asked, or not an assertion), the WHY of an unasked one, or empty (none). An
+# asked answer must name a SPEC of this contract or a step that is there.
 _ta_unasked_answer_v() {
     local -n _tua="$1"; local l w
     _tua=""
@@ -230,7 +242,13 @@ _ta_unasked_answer_v() {
         [[ "$l" == "$3:"* ]] || continue
         l="${l#"$3:"}"; l="${l#"${l%%[![:space:]]*}"}"
         case "$l" in
-            asked*|"not an assertion"*) _tua=ok ;;
+            "not an assertion"*) _tua=ok ;;
+            asked*)
+                if [[ "$l" =~ \|[[:space:]]*STEP:[[:space:]]*([0-9]+) ]]; then
+                    w="${BASH_REMATCH[1]}"; (( 10#$w >= 1 && 10#$w <= ${_TA_UQ_STEPS:-0} )) && _tua=ok
+                elif [[ "$l" =~ \|[[:space:]]*SPEC:[[:space:]]*([^][[:space:]|]+) ]]; then
+                    [[ "$_TA_UQ_IDS" == *" ${BASH_REMATCH[1]} "* ]] && _tua=ok
+                fi ;;
             unasked*)
                 judge_reply_field_v w "$l" WHY
                 _tua="${w:-nothing names it}" ;;

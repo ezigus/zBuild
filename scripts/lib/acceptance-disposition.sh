@@ -20,12 +20,11 @@ _ag_failure_class_disposition() {
         # model author (test-author, #2022) and the cycle re-verifies.
         # unclaimed_code (#2304): design adds the [code] requirement.
         # untested_change (ADR-036, 2026-10-11): a test is added for the file.
-        # unasked_change (#2575): build takes it out, or design asks for it.
-        # unspecified_change (#2575): design adds a SPEC, or says why none.
+        # unasked_change (#2575): build takes it out, or says not mine.
         untagged_spec|tautology|inert_wiring|no_testfile|no_testfiles|\
         not_passing_at_head|wiring_not_on_path|unreached_at_base|\
         unreached_at_head|killed_by_signal|unclaimed_code|untested_change|\
-        unasked_change|unspecified_change)
+        unasked_change)
             printf 'recoverable' ;;
         # Infrastructure: a flaky sandbox must never hard-fail the pipeline.
         negctl_error|reachability_error)

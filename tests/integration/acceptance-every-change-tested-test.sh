@@ -25,16 +25,16 @@
 # E6 [code] a changed file no test checks and nothing asks for — no design
 #           step's areas, no WIRING file and no requirement names it — is
 #           reported as unasked_change, not untested_change
-# E7 [code] a file a SPEC names is untested_change (to the code and the tests);
-#           a file only a step's areas name (here a folder holding it) is
-#           unspecified_change
-# E8 [code] the gate's finding for it says "nothing asks for this change — take
-#           it out, or name what asks for it", and goes to the code and the
-#           design, never to the tests
-# E9 [code] review on #2575: a SPEC on a.sh, a step on b.sh, b.sh untested — the
-#           finding is "step 2 changes b.sh but no SPEC says what it should do —
-#           add a SPEC, or say why it needs no test", to the design only: never
-#           to test-author, whose tests trace to a SPEC, so nothing loops
+# E7 [code] a file the design names anywhere — a step's areas (here a folder
+#           holding it), a SPEC's words — is untested_change, with the old
+#           routing; a step that names it gives its number
+# E8 [code] the finding for a file the design names nowhere says "nothing asks
+#           for this change — take it out, or name what asks for it", and goes
+#           to the code only: build takes it out, or answers not mine
+# E9 [code] second review on #2575: a SPEC on a.sh, a step on b.sh, b.sh
+#           untested — b.sh is untested_change naming step 2, to the code and
+#           the tests (test-author's check takes a step's change as asked), not
+#           to the design, which can close nothing there
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -190,8 +190,8 @@ assert_contains "[E6] the leftover change is reported as asked for by nothing" "
     "REACHABILITY FAIL unasked_change config/shape-change-paths.txt"
 assert_eq "[E6] ...not as an untested change" "0" \
     "$(grep -c 'untested_change config/shape-change-paths.txt' <<< "$_out6" || true)"
-assert_contains "[E7] a file only a step's areas name (a folder holding it) has no SPEC" "$_out6" \
-    "REACHABILITY FAIL unspecified_change tools/t.sh step=2"
+assert_contains "[E7] a file in a folder a step names is untested, naming the step" "$_out6" \
+    "REACHABILITY FAIL untested_change tools/t.sh@step-2"
 assert_contains "[E7] a file a requirement names is asked for" "$_out6" \
     "REACHABILITY FAIL untested_change named.sh"
 assert_contains "[E7] the tested change still passes" "$_out6" "REACHABILITY PASS change lib.sh"
@@ -208,12 +208,12 @@ assert_contains "[E8] ...and says to take it out, or name what asks for it" "$_r
 _A8="$R2/.zbuild-state/artifacts"
 _f8() { jq -r '.data.findings[]?.text // empty' "$_A8/acceptance-gate-$1-result.json" 2>/dev/null || true; }
 assert_contains "[E8] the finding goes to the code (build)" "$(_f8 code)" "nothing asks for this change"
-assert_contains "[E8] ...and to the design" "$(_f8 design)" "nothing asks for this change"
-assert_eq "[E8] ...never to the tests" "0" "$(_f8 test | grep -c 'shape-change-paths' || true)"
+assert_eq "[E8] ...not to the design" "0" "$(_f8 design | grep -c 'shape-change-paths' || true)"
+assert_eq "[E8] ...nor to the tests" "0" "$(_f8 test | grep -c 'shape-change-paths' || true)"
 assert_eq "[E8] the event is emitted for the file" "1" \
     "$(grep '"acceptance.gate.unasked_change"' "$R2/.zbuild-state/events/events.jsonl" | grep -c '"file":"config/shape-change-paths.txt"' || true)"
 
-print_test_section "E9: a step's file with no SPEC goes to the design (#2575 review)"
+print_test_section "E9: a step's file is untested, naming the step (#2575 review)"
 R3="$(setup_git_temp_repo "step-no-spec")"
 (
     cd "$R3"
@@ -248,11 +248,10 @@ _run_gate
 _A9="$R3/.zbuild-state/artifacts"
 _f9() { jq -r '.data.findings[]?.text // empty' "$_A9/acceptance-gate-$1-result.json" 2>/dev/null || true; }
 assert_contains "[E9] the gate lists the file with the step's number" "$(jq -r '.failures[]? // empty' <<< "$RESULT")" \
-    "unspecified_change:b.sh step=2"
-assert_contains "[E9] the design is told the step changes it with no SPEC" "$(_f9 design)" \
-    "step 2 changes b.sh but no SPEC says what it should do — add a SPEC, or say why it needs no test"
-assert_eq "[E9] ...test-author is not asked for a test" "0" "$(_f9 test | grep -c 'b.sh' || true)"
-assert_eq "[E9] ...nor build to take it out" "0" "$(_f9 code | grep -c 'b.sh' || true)"
+    "untested_change:b.sh@step-2"
+assert_contains "[E9] test-author is asked for a test, told the step" "$(_f9 test)" "b.sh (step 2)"
+assert_contains "[E9] ...and build, as before" "$(_f9 code)" "b.sh (step 2)"
+assert_eq "[E9] ...not the design" "0" "$(_f9 design | grep -c 'b.sh' || true)"
 assert_eq "[E9] the build loop can act on it" "recoverable" "$(jq -r '.severity // empty' <<< "$RESULT")"
 
 cleanup_test_env
