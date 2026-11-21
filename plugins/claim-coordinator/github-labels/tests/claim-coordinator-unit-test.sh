@@ -394,41 +394,84 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# DSCLA-8: empty issue argument → no gh call, returns 0
+# DSCLA-8: empty issue argument → coordinator's claim hook not called, returns 0
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Given: mock gh that records calls
-_dscla8_calls="$TEST_TEMP_DIR/gh-calls-dscla8.txt"
-: > "$_dscla8_calls"
-cat > "$TEST_TEMP_DIR/bin/gh" <<MOCK
-#!/usr/bin/env bash
-printf '%s\n' "\$@" >> "$_dscla8_calls"
-exit 0
-MOCK
-chmod +x "$TEST_TEMP_DIR/bin/gh"
+# Given: core/claim/claim.sh is loaded
+# Given: a stub claim-coordinator plugin is registered in the discovery tree;
+#        its claim hook writes a marker file when called — if zbuild_claim_acquire
+#        calls the hook at all (even if the hook returns early for an empty issue),
+#        the marker is written and the Then assertion fails.
+_dscla8_plugins_root="$TEST_TEMP_DIR/plugins-dscla8"
+_dscla8_stub_dir="$_dscla8_plugins_root/claim-coordinator/stub-dscla8"
+_dscla8_hook_called="$TEST_TEMP_DIR/dscla8-hook-called"
+mkdir -p "$_dscla8_stub_dir"
+rm -f "$_dscla8_hook_called"
 
-# Switch to gh backend to verify no calls are made
-_prev_backend="$ZBUILD_CLAIM_BACKEND"
-export ZBUILD_CLAIM_BACKEND="gh"
+cat > "$_dscla8_stub_dir/manifest.yaml" <<STUBMANI
+id: dscla8-stub-coordinator
+name: Stub Claim Coordinator (DSCLA-8)
+kind: claim-coordinator
+version: 0.1.0
+hooks:
+  claim: _dscla8_stub_claim
+  release: _dscla8_stub_release
+  heartbeat: _dscla8_stub_heartbeat
+  list_claims: _dscla8_stub_list_claims
+provides:
+  role: claim-coordinator
+  alias: stub-dscla8
+STUBMANI
 
-# When: zbuild_claim_acquire is called with an empty issue argument
+cat > "$_dscla8_stub_dir/plugin.sh" <<STUBPLUG
+_dscla8_stub_claim() {
+    printf '%s\n' "\${1:-}" > "$_dscla8_hook_called"
+    printf '{"acquired": true}\n'
+    return 0
+}
+_dscla8_stub_release() { return 0; }
+_dscla8_stub_heartbeat() { return 0; }
+_dscla8_stub_list_claims() { printf '[]\n'; return 0; }
+STUBPLUG
+
+# shellcheck source=/dev/null
+source "$_dscla8_stub_dir/plugin.sh"
+
+_prev_plugins_root_8="${ZBUILD_PLUGINS_ROOT:-}"
+export ZBUILD_PLUGINS_ROOT="$_dscla8_plugins_root"
+unset _ZBUILD_CLAIM_ACQUIRED 2>/dev/null || true
+
+# When: zbuild_claim_acquire is called with an empty string as the issue argument
 unset _ZBUILD_CLAIM_HOLDER 2>/dev/null || true
 : > "$ZBUILD_EVENTS_JSONL"
 set +e; zbuild_claim_acquire ""; _dscla8_rc=$?; set -e
 
-# Then: no gh label call is made
-_dscla8_call_count="$(wc -l < "$_dscla8_calls" | tr -d ' ')"
-assert_eq "[DSCLA-8] no gh calls made for empty issue" "0" "$_dscla8_call_count"
-
 # Then: function returns 0
 assert_eq "[DSCLA-8] zbuild_claim_acquire returns 0 for empty issue" "0" "$_dscla8_rc"
 
-# Cleanup: restore previous backend and plain gh mock
-export ZBUILD_CLAIM_BACKEND="$_prev_backend"
+# Then: the coordinator's claim hook is not called
+# The stub writes the received argument to the marker file on any call, so a hook
+# that is invoked but returns early for an empty issue still leaves the marker.
+# Absent marker proves the hook was never entered.
+if [[ ! -e "$_dscla8_hook_called" ]]; then
+    assert_pass "[DSCLA-8] coordinator's claim hook was not called for empty issue"
+else
+    assert_fail "[DSCLA-8] coordinator's claim hook was not called for empty issue" \
+        "stub's claim hook was called; marker file contains: $(cat "$_dscla8_hook_called" 2>/dev/null)"
+fi
+
+# Cleanup: restore ZBUILD_PLUGINS_ROOT and local-fs backend
+if [[ -n "$_prev_plugins_root_8" ]]; then
+    export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_8"
+else
+    unset ZBUILD_PLUGINS_ROOT 2>/dev/null || true
+fi
+export ZBUILD_CLAIM_BACKEND="local-fs"
 mock_gh
 
 # ─────────────────────────────────────────────────────────────────────────────
-# DSCLA-17: zbuild_claim_release with no prior acquire invokes no gh label command
+# DSCLA-17: zbuild_claim_release with no prior acquire does not call
+#           the coordinator's release hook
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Given: core/claim/claim.sh is loaded
@@ -441,29 +484,74 @@ else
     # shellcheck source=../../../../core/claim/claim.sh
     source "$_dscla17_claim_sh"
 
-    # Given: _ZBUILD_CLAIM_ACQUIRED is not set
-    _dscla17_calls="$TEST_TEMP_DIR/gh-calls-dscla17.txt"
-    : > "$_dscla17_calls"
-    cat > "$TEST_TEMP_DIR/bin/gh" <<MOCK
-#!/usr/bin/env bash
-printf '%s\n' "\$@" >> "$_dscla17_calls"
-exit 0
-MOCK
-    chmod +x "$TEST_TEMP_DIR/bin/gh"
+    # Given: a stub claim-coordinator plugin is registered in the discovery tree;
+    #        its release hook writes a marker file when called — if zbuild_claim_release
+    #        invokes the hook at all (even if the hook detects _ZBUILD_CLAIM_ACQUIRED
+    #        is unset and returns early), the marker is written and the Then assertion fails.
+    _dscla17_plugins_root="$TEST_TEMP_DIR/plugins-dscla17"
+    _dscla17_stub_dir="$_dscla17_plugins_root/claim-coordinator/stub-dscla17"
+    _dscla17_hook_called="$TEST_TEMP_DIR/dscla17-hook-called"
+    mkdir -p "$_dscla17_stub_dir"
+    rm -f "$_dscla17_hook_called"
 
-    _prev_backend_17="$ZBUILD_CLAIM_BACKEND"
-    export ZBUILD_CLAIM_BACKEND="gh"
+    cat > "$_dscla17_stub_dir/manifest.yaml" <<STUBMANI
+id: dscla17-stub-coordinator
+name: Stub Claim Coordinator (DSCLA-17)
+kind: claim-coordinator
+version: 0.1.0
+hooks:
+  claim: _dscla17_stub_claim
+  release: _dscla17_stub_release
+  heartbeat: _dscla17_stub_heartbeat
+  list_claims: _dscla17_stub_list_claims
+provides:
+  role: claim-coordinator
+  alias: stub-dscla17
+STUBMANI
+
+    cat > "$_dscla17_stub_dir/plugin.sh" <<STUBPLUG
+_dscla17_stub_claim() {
+    printf '{"acquired": true}\n'
+    return 0
+}
+_dscla17_stub_release() {
+    : > "$_dscla17_hook_called"
+    return 0
+}
+_dscla17_stub_heartbeat() { return 0; }
+_dscla17_stub_list_claims() { printf '[]\n'; return 0; }
+STUBPLUG
+
+    # shellcheck source=/dev/null
+    source "$_dscla17_stub_dir/plugin.sh"
+
+    _prev_plugins_root_17="${ZBUILD_PLUGINS_ROOT:-}"
+    export ZBUILD_PLUGINS_ROOT="$_dscla17_plugins_root"
+
+    # Given: _ZBUILD_CLAIM_ACQUIRED is not set
     unset _ZBUILD_CLAIM_ACQUIRED 2>/dev/null || true
 
     # When: zbuild_claim_release is called
     set +e; zbuild_claim_release; _dscla17_rc=$?; set -e
 
-    # Then: no gh label command is invoked
-    _dscla17_call_count="$(wc -l < "$_dscla17_calls" | tr -d ' ')"
-    assert_eq "[DSCLA-17] no gh calls made when _ZBUILD_CLAIM_ACQUIRED is not set" "0" "$_dscla17_call_count"
+    # Then: the coordinator's release hook is not called
+    # A release hook that is invoked but detects _ZBUILD_CLAIM_ACQUIRED is unset
+    # and returns early would still write the marker file; absent marker proves
+    # the hook was never entered.
+    if [[ ! -e "$_dscla17_hook_called" ]]; then
+        assert_pass "[DSCLA-17] coordinator's release hook was not called when _ZBUILD_CLAIM_ACQUIRED is not set"
+    else
+        assert_fail "[DSCLA-17] coordinator's release hook was not called when _ZBUILD_CLAIM_ACQUIRED is not set" \
+            "stub's release hook was called despite _ZBUILD_CLAIM_ACQUIRED being unset"
+    fi
 
-    # Cleanup: restore previous backend and plain gh mock
-    export ZBUILD_CLAIM_BACKEND="$_prev_backend_17"
+    # Cleanup: restore ZBUILD_PLUGINS_ROOT and local-fs backend
+    if [[ -n "$_prev_plugins_root_17" ]]; then
+        export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_17"
+    else
+        unset ZBUILD_PLUGINS_ROOT 2>/dev/null || true
+    fi
+    export ZBUILD_CLAIM_BACKEND="local-fs"
     mock_gh
 fi
 
