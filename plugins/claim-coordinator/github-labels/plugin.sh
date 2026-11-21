@@ -149,13 +149,6 @@ _ccgl_read_holder() {
                         <<< "$all_comments" 2>/dev/null || true)"
                 fi
             fi
-            if [[ -z "$body" ]]; then
-                # Graceful fallback: list without author filtering.
-                body="$(gh issue comment list "$issue" --json body \
-                    --jq '[.[] | select(.body | contains("<!-- zbuild-run-status")) | .body] | last' \
-                    2>/dev/null || true)"
-            fi
-
             local line
             while IFS= read -r line; do
                 if [[ "$line" =~ ^'<!-- zbuild-holder: '(.+)' -->'$ ]]; then
