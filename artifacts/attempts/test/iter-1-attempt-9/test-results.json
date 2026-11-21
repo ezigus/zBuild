@@ -1,0 +1,70 @@
+{
+  "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 616/616 passed (5 skipped)\nintegration: 264/264 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 917/917 passed (5 skipped)",
+  "run_mode": "full",
+  "exit_code": 0,
+  "data": {
+    "exit_code": 0,
+    "passed": 917,
+    "failed": 0,
+    "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 616/616 passed (5 skipped)\nintegration: 264/264 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 917/917 passed (5 skipped)",
+    "diff_applied": false,
+    "test_cmd": "npm test",
+    "run_mode": "full",
+    "timing": {
+      "tiers": {
+        "lint": 104101,
+        "e2e": 73051,
+        "golden": 4878,
+        "unit": 257895,
+        "integration": 209433
+      },
+      "slowest_files": [
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gAT95F/tests/e2e/fork-budget-test.sh",
+          "ms": 67569
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gAT95F/tests/integration/core-pipeline-runner-test.sh",
+          "ms": 38441
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gAT95F/tests/integration/run-timed-out-test.sh",
+          "ms": 35424
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gAT95F/tests/integration/runner-release-exit-paths-test.sh",
+          "ms": 33640
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gAT95F/tests/integration/pipeline-preflight-missing-stage-test.sh",
+          "ms": 28876
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gAT95F/tests/unit/lint-test-engine-state-test.sh",
+          "ms": 25598
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gAT95F/tests/unit/stage-stop-on-signal-test.sh",
+          "ms": 23264
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gAT95F/tests/e2e/parity-local-vs-ci-test.sh",
+          "ms": 22925
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gAT95F/tests/integration/stop-run-on-fail-test.sh",
+          "ms": 22306
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gAT95F/tests/integration/cycle-acceptance-terminal-failure-test.sh",
+          "ms": 20782
+        }
+      ]
+    },
+    "tree_sha": "ff5b3788caa8785ab8d3b81cae6b2ae57b7071d0",
+    "findings": []
+  },
+  "result_contract": 3,
+  "outcome": "pass",
+  "reason": "917 of 917 tests passed"
+}

@@ -12,56 +12,56 @@
     "run_mode": "full",
     "timing": {
       "tiers": {
-        "lint": 107986,
-        "e2e": 73234,
-        "golden": 5794,
-        "unit": 297270,
-        "integration": 250729
+        "lint": 104101,
+        "e2e": 73051,
+        "golden": 4878,
+        "unit": 257895,
+        "integration": 209433
       },
       "slowest_files": [
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.e2X7LP/tests/e2e/fork-budget-test.sh",
-          "ms": 66675
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gAT95F/tests/e2e/fork-budget-test.sh",
+          "ms": 67569
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.e2X7LP/tests/integration/core-pipeline-runner-test.sh",
-          "ms": 43800
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gAT95F/tests/integration/core-pipeline-runner-test.sh",
+          "ms": 38441
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.e2X7LP/tests/integration/run-timed-out-test.sh",
-          "ms": 37191
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gAT95F/tests/integration/run-timed-out-test.sh",
+          "ms": 35424
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.e2X7LP/tests/integration/pipeline-preflight-missing-stage-test.sh",
-          "ms": 34911
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gAT95F/tests/integration/runner-release-exit-paths-test.sh",
+          "ms": 33640
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.e2X7LP/tests/integration/runner-release-exit-paths-test.sh",
-          "ms": 34529
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gAT95F/tests/integration/pipeline-preflight-missing-stage-test.sh",
+          "ms": 28876
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.e2X7LP/tests/integration/acceptance-gate-harness-hermeticity-test.sh",
-          "ms": 26740
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gAT95F/tests/unit/lint-test-engine-state-test.sh",
+          "ms": 25598
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.e2X7LP/tests/integration/stop-run-on-fail-test.sh",
-          "ms": 26514
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gAT95F/tests/unit/stage-stop-on-signal-test.sh",
+          "ms": 23264
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.e2X7LP/tests/e2e/parity-local-vs-ci-test.sh",
-          "ms": 26332
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gAT95F/tests/e2e/parity-local-vs-ci-test.sh",
+          "ms": 22925
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.e2X7LP/tests/integration/leaf-verdict-halts-test.sh",
-          "ms": 25989
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gAT95F/tests/integration/stop-run-on-fail-test.sh",
+          "ms": 22306
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.e2X7LP/tests/integration/cycle-acceptance-terminal-failure-test.sh",
-          "ms": 25743
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.gAT95F/tests/integration/cycle-acceptance-terminal-failure-test.sh",
+          "ms": 20782
         }
       ]
     },
-    "tree_sha": "aede2993caa6c7321ba13d76baddffe566cba6f0",
+    "tree_sha": "ff5b3788caa8785ab8d3b81cae6b2ae57b7071d0",
     "findings": []
   },
   "result_contract": 3,
