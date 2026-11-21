@@ -17,6 +17,9 @@
 #             cannot be written leaves an event
 # W6 [change] stage_findings_add to a file not there yet never reads the
 #             caller's stdin (it waited on it, or took what was on it)
+# W7 [change] a kept-verdict file is rewritten only when it changes, and then
+#             through a temp file moved into place: the same answer kept again
+#             leaves the file as it was
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -109,6 +112,28 @@ print_test_section "W6: stage_findings_add to a file not there yet"
 D6="$TEST_TEMP_DIR/w6"; mkdir -p "$D6"
 stage_findings_add "$D6/new-result.json" '[{"text":"its own finding"}]' TAFND <<< '{"data":{"findings":[{"n":1,"text":"stdin, not its"}]}}'
 assert_eq "[W6] only its own finding" "its own finding" "$(jq -r '[.data.findings[].text] | join("|")' "$D6/new-result.json" 2>/dev/null)"
+
+print_test_section "W7: a kept-verdict file is rewritten only when it changes"
+D7="$TEST_TEMP_DIR/w7"; mkdir -p "$D7"; K="$D7/x-judged.json"
+declare -A _p=([a]="a: ok") _f=([a]="fp1") _d=([a]="")
+judge_kept_put_all "$K" _p _f _d
+judge_kept_put_all "$K" _p _f _d
+: > "$D7/after-first-change"
+touch -t 202001010000 "$K"
+judge_kept_put_all "$K" _p _f _d
+assert_eq "[W7] put_all: the same answer again leaves the file as it was" "old" "$([[ "$K" -nt "$D7/after-first-change" ]] && echo new || echo old)"
+judge_kept_put "$K" a fp1 "a: ok"
+judge_kept_put "$K" a fp1 "a: ok"
+touch -t 202001010000 "$K"
+judge_kept_put "$K" a fp1 "a: ok"
+assert_eq "[W7] put: the same again leaves it as it was" "old" "$([[ "$K" -nt "$D7/after-first-change" ]] && echo new || echo old)"
+K1="$D7/y-judged.json"
+judge_kept_put_one "$K1" lens fp1 "x"; touch -t 202001010000 "$K1"
+judge_kept_put_one "$K1" lens fp1 "x"
+assert_eq "[W7] put_one: the same again leaves it as it was" "old" "$([[ "$K1" -nt "$D7/after-first-change" ]] && echo new || echo old)"
+_p[a]="a: refused"; judge_kept_put_all "$K" _p _f _d
+assert_eq "[W7] a changed answer is written" "a: refused" "$(jq -r .a.payload "$K")"
+assert_eq "[W7] ...with no temp file left" "0" "$(find "$D7" -name '*.tmp*' | wc -l | tr -d ' ')"
 
 cleanup_test_env
 print_test_results

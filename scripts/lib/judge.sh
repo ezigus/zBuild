@@ -221,6 +221,23 @@ judge_kept_get_v() {
     return 0
 }
 
+# _judge_kept_write <kept_file> <content> — a kept-verdict file, written only
+# when it changes (review on #2574): a new file directly; one that is there,
+# through a temp file moved into place, so a write cut short never leaves it
+# torn. The same content again touches nothing, and costs no program.
+_judge_kept_write() {
+    local _jkw_cur=""
+    [[ -d "${1%/*}" ]] || mkdir -p "${1%/*}" 2>/dev/null || true
+    if [[ -e "$1" ]]; then
+        IFS= read -r -d '' _jkw_cur < "$1" || true
+        [[ "$_jkw_cur" == "$2"$'\n' ]] && return 0
+        printf '%s\n' "$2" > "$1.tmp.$$" 2>/dev/null && mv -f "$1.tmp.$$" "$1" 2>/dev/null && return 0
+        [[ -e "$1.tmp.$$" ]] && rm -f "$1.tmp.$$" 2>/dev/null
+        return 1
+    fi
+    printf '%s\n' "$2" > "$1" 2>/dev/null
+}
+
 # judge_kept_put <kept_file> <key> <fp> <payload> [file]... — keep <payload> for
 # <key> under fingerprint <fp>, with the hash of each file it depends on.
 judge_kept_put() {
@@ -232,12 +249,12 @@ judge_kept_put() {
     for _judge__p in "${!_judge__hs[@]}"; do _judge__pairs+="$_judge__p"$'\t'"${_judge__hs[$_judge__p]}"$'\n'; done
     local _judge__cur="{}"
     [[ -s "$_judge__kf" ]] && _judge__cur="$(<"$_judge__kf")"
-    [[ -d "${_judge__kf%/*}" ]] || mkdir -p "${_judge__kf%/*}" 2>/dev/null || true
-    jq -c --arg k "$_judge__key" --arg fp "$_judge__fp" --arg p "$_judge__payload" --arg pairs "$_judge__pairs" \
+    local _judge__new
+    _judge__new="$(jq -c --arg k "$_judge__key" --arg fp "$_judge__fp" --arg p "$_judge__payload" --arg pairs "$_judge__pairs" \
         '(if type == "object" then . else {} end)
          + {($k): {fp: $fp, payload: $p,
                    files: ([$pairs | split("\n")[] | select(length > 0) | split("\t") | {(.[0]): .[1]}] | add // {})}}' \
-        <<< "$_judge__cur" > "$_judge__kf" 2>/dev/null
+        <<< "$_judge__cur" 2>/dev/null)" && [[ -n "$_judge__new" ]] && _judge_kept_write "$_judge__kf" "$_judge__new"
     # The old content was read first; a write cut short only costs a fresh judgement.
     local _judge__chk; _judge_check_name_v _judge__chk "$_judge__kf"
     _judge_emit judge.kept.saved "check=$_judge__chk" "item=$_judge__key"
@@ -266,8 +283,7 @@ judge_kept_put_one() {
         _judge_json_str_v _jpo_j "$_jpo_k"; _jpo_files+="${_jpo_files:+,}$_jpo_j:\"${_jpo_hs[$_jpo_k]}\""
     done
     _judge_json_str_v _jpo_k "$_jpo_key"; _judge_json_str_v _jpo_v "$_jpo_p"; _judge_json_str_v _jpo_j "$_jpo_fp"
-    [[ -d "${_jpo_kf%/*}" ]] || mkdir -p "${_jpo_kf%/*}" 2>/dev/null || true
-    printf '{%s:{"fp":%s,"payload":%s,"files":{%s}}}\n' "$_jpo_k" "$_jpo_j" "$_jpo_v" "$_jpo_files" > "$_jpo_kf" 2>/dev/null
+    _judge_kept_write "$_jpo_kf" "{$_jpo_k:{\"fp\":$_jpo_j,\"payload\":$_jpo_v,\"files\":{$_jpo_files}}}"
     _judge_check_name_v _jpo_j "$_jpo_kf"
     _judge_emit judge.kept.saved "check=$_jpo_j" "item=$_jpo_key"
     return 0
@@ -382,12 +398,12 @@ judge_kept_put_all() {
         _judge_json_str_v _jpa_j "$_jpa_k"; _judge_json_str_v _jpa_v "${_jpa_p[$_jpa_k]}"; _judge_json_str_v _jpa_x "${_jpa_fp[$_jpa_k]:-}"
         _jpa_new+="${_jpa_new:+,}$_jpa_j:{\"fp\":$_jpa_x,\"payload\":$_jpa_v,\"files\":{$_jpa_files}}"
     done
-    [[ -d "${_jpa_kf%/*}" ]] || mkdir -p "${_jpa_kf%/*}" 2>/dev/null || true
     if [[ -s "$_jpa_kf" ]]; then
-        local _jpa_cur; IFS= read -r -d '' _jpa_cur < "$_jpa_kf" || true
-        jq -c --argjson n "{$_jpa_new}" '(if type == "object" then . else {} end) + $n' <<< "$_jpa_cur" > "$_jpa_kf" 2>/dev/null
+        local _jpa_cur _jpa_out; IFS= read -r -d '' _jpa_cur < "$_jpa_kf" || true
+        _jpa_out="$(jq -c --argjson n "{$_jpa_new}" '(if type == "object" then . else {} end) + $n' <<< "$_jpa_cur" 2>/dev/null)" \
+            && [[ -n "$_jpa_out" ]] && _judge_kept_write "$_jpa_kf" "$_jpa_out"
     else
-        printf '{%s}\n' "$_jpa_new" > "$_jpa_kf" 2>/dev/null
+        _judge_kept_write "$_jpa_kf" "{$_jpa_new}"
     fi
     _judge_check_name_v _jpa_chk "$_jpa_kf"
     for _jpa_k in "${!_jpa_p[@]}"; do _judge_emit judge.kept.saved "check=$_jpa_chk" "item=$_jpa_k"; done
