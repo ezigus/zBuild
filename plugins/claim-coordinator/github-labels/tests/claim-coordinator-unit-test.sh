@@ -348,37 +348,49 @@ assert_eq "[DSCLA-3] zbuild_claim_acquire returns 1 when zbuild:claimed is prese
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Given: zbuild:claimed on the issue and a run-status comment with the holder marker
+# (DSCLA-9 integration coverage; unit-level probe of the plugin's holder-read)
 _dscla4_issue="1004"
+_dscla4_holder_string="run-holder-99 on machine-other"
+
+# Given: set up the claim store with the zbuild:claimed label
 mkdir -p "$ZBUILD_CLAIM_STORE/$_dscla4_issue"
 printf 'zbuild:claimed\n' > "$ZBUILD_CLAIM_STORE/$_dscla4_issue/labels.txt"
-# Run-status comment with <!-- zbuild-holder: --> field (the holder's run wrote this via run-status-comment.sh)
-cat > "$ZBUILD_CLAIM_STORE/$_dscla4_issue/run-status-comment.txt" <<'RSCEOF'
-<!-- zbuild-run-status run_id=holder-run-99 -->
-<!-- zbuild-holder: run-holder-99 on machine-other -->
-run is in progress...
-RSCEOF
+
+# Given: generate the run-status comment using rsc_render_header (the same code that
+# writes it in production), so a format divergence between the writer and the reader
+# is caught at the unit level, not only in integration.
+_dscla4_events="$TEST_TEMP_DIR/dscla4-events.jsonl"
+printf '{"type":"pipeline.start","data":{"run_id":"holder-run-99","issue":1004},"ts":"2026-01-01T00:00:00Z"}\n' \
+    > "$_dscla4_events"
+_dscla4_model="$(rsc_rows_json "$_dscla4_events" 2>/dev/null || printf '{}')"
+_ZBUILD_CLAIM_HOLDER="$_dscla4_holder_string"
+_dscla4_rsc_hdr="$(rsc_render_header "$_dscla4_model" "$TEST_TEMP_DIR" 2>/dev/null || printf '')"
+unset _ZBUILD_CLAIM_HOLDER 2>/dev/null || true
+printf '%s\n' "$_dscla4_rsc_hdr" > "$ZBUILD_CLAIM_STORE/$_dscla4_issue/run-status-comment.txt"
 
 # When: zbuild_claim_acquire is called and finds the label present
 unset _ZBUILD_CLAIM_HOLDER 2>/dev/null || true
 : > "$ZBUILD_EVENTS_JSONL"
 set +e; zbuild_claim_acquire "$_dscla4_issue"; _dscla4_rc=$?; set -e
 
-# Then: it returns 1
-assert_eq "zbuild_claim_acquire returns 1 when issue already claimed (pre-stage check)" "1" "$_dscla4_rc"
+# Then: it returns 1 (issue is already claimed)
+assert_eq "[DSCLA-3] zbuild_claim_acquire returns 1 when issue already claimed (with rsc fixture)" "1" "$_dscla4_rc"
 
-# Then: _ZBUILD_CLAIM_HOLDER is set to the holder string from the run-status comment
+# Then: _ZBUILD_CLAIM_HOLDER is set (not empty) — the holder was read from the comment
 if [[ -n "${_ZBUILD_CLAIM_HOLDER:-}" ]]; then
-    assert_pass "_ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim"
+    assert_pass "[DSCLA-9] _ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim"
 else
-    assert_fail "_ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim" \
+    assert_fail "[DSCLA-9] _ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim" \
         "_ZBUILD_CLAIM_HOLDER was empty or unset"
 fi
 
-if grep -q "run-holder-99" <<< "${_ZBUILD_CLAIM_HOLDER:-}"; then
-    assert_pass "_ZBUILD_CLAIM_HOLDER contains holder string from run-status comment"
+# Then: _ZBUILD_CLAIM_HOLDER contains the holder string written by rsc_render_header
+# (derive the expected string from the setup variable, not a hard-coded literal)
+if grep -q "$_dscla4_holder_string" <<< "${_ZBUILD_CLAIM_HOLDER:-}"; then
+    assert_pass "[DSCLA-9] _ZBUILD_CLAIM_HOLDER contains holder string from rsc_render_header fixture"
 else
-    assert_fail "_ZBUILD_CLAIM_HOLDER contains holder string from run-status comment" \
-        "_ZBUILD_CLAIM_HOLDER='${_ZBUILD_CLAIM_HOLDER:-}' (expected to contain 'run-holder-99')"
+    assert_fail "[DSCLA-9] _ZBUILD_CLAIM_HOLDER contains holder string from rsc_render_header fixture" \
+        "_ZBUILD_CLAIM_HOLDER='${_ZBUILD_CLAIM_HOLDER:-}' (expected to contain '$_dscla4_holder_string')"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -763,6 +775,154 @@ MOCK
     # Cleanup
     unset _ZBUILD_CLAIM_ACQUIRED _ZBUILD_CLAIM_ISSUE 2>/dev/null || true
     export ZBUILD_CLAIM_BACKEND="$_prev_backend_21"
+    mock_gh
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DSCLA-23: _ccgl_read_holder only reads from comments authored by the
+#           authenticated GitHub actor
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Given: the issue has two comments that each contain <!-- zbuild-run-status -->
+#        and <!-- zbuild-holder: -->; one was posted by the authenticated actor
+#        and one by a different user
+
+_dscla23_issue="2023"
+_dscla23_actor="dscla23-actor"
+_dscla23_other="dscla23-other-user"
+_dscla23_actor_holder="actor-holder-dscla23"
+_dscla23_other_holder="other-holder-dscla23"
+_dscla23_calls="$TEST_TEMP_DIR/gh-calls-dscla23.txt"
+: > "$_dscla23_calls"
+
+# _ccgl_read_holder does not exist in the base code; the test fails there
+# (function not defined) and passes after the implementation ships.
+if ! declare -f _ccgl_read_holder >/dev/null 2>&1; then
+    assert_fail "[DSCLA-23] _ccgl_read_holder must be defined" \
+        "_ccgl_read_holder is not defined — the function has not been implemented yet"
+else
+    # Given: build comment bodies using rsc_render_header (the same code that
+    # writes run-status comments in production), so a change to the
+    # <!-- zbuild-holder: --> format is reflected in both the writer and the reader.
+    _dscla23_actor_events="$TEST_TEMP_DIR/dscla23-actor-events.jsonl"
+    _dscla23_other_events="$TEST_TEMP_DIR/dscla23-other-events.jsonl"
+    printf '{"type":"pipeline.start","data":{"run_id":"actor-run-%s","issue":%s},"ts":"2026-01-01T00:00:00Z"}\n' \
+        "$_dscla23_issue" "$_dscla23_issue" > "$_dscla23_actor_events"
+    printf '{"type":"pipeline.start","data":{"run_id":"other-run-%s","issue":%s},"ts":"2026-01-01T00:00:00Z"}\n' \
+        "$_dscla23_issue" "$_dscla23_issue" > "$_dscla23_other_events"
+    _dscla23_actor_model="$(rsc_rows_json "$_dscla23_actor_events" 2>/dev/null || printf '{}')"
+    _dscla23_other_model="$(rsc_rows_json "$_dscla23_other_events" 2>/dev/null || printf '{}')"
+
+    _ZBUILD_CLAIM_HOLDER="$_dscla23_actor_holder"
+    _dscla23_actor_body="$(rsc_render_header "$_dscla23_actor_model" "$TEST_TEMP_DIR" 2>/dev/null || printf '')"
+    _ZBUILD_CLAIM_HOLDER="$_dscla23_other_holder"
+    _dscla23_other_body="$(rsc_render_header "$_dscla23_other_model" "$TEST_TEMP_DIR" 2>/dev/null || printf '')"
+    unset _ZBUILD_CLAIM_HOLDER 2>/dev/null || true
+
+    # Given: build JSON fixture files for the mock gh — one array for the raw
+    # GitHub API format (gh api repos/.../issues/.../comments) and one object
+    # for the issue-view format (gh issue view ... --json comments).
+    # Both include the two comments; .user.login (api) and .author.login (view)
+    # carry the author so the implementation can filter to the authenticated actor.
+    jq -n \
+        --arg actor "$_dscla23_actor" \
+        --arg other "$_dscla23_other" \
+        --arg actor_body "$_dscla23_actor_body" \
+        --arg other_body "$_dscla23_other_body" \
+        '[
+          {"id":1,"user":{"login":$actor},"body":$actor_body},
+          {"id":2,"user":{"login":$other},"body":$other_body}
+        ]' > "$TEST_TEMP_DIR/dscla23-api-comments.json"
+
+    jq -n \
+        --arg actor "$_dscla23_actor" \
+        --arg other "$_dscla23_other" \
+        --arg actor_body "$_dscla23_actor_body" \
+        --arg other_body "$_dscla23_other_body" \
+        '{
+          "comments":[
+            {"author":{"login":$actor},"body":$actor_body},
+            {"author":{"login":$other},"body":$other_body}
+          ]
+        }' > "$TEST_TEMP_DIR/dscla23-view-comments.json"
+
+    # Given: provide the repo slug via GITHUB_REPOSITORY and a stub
+    # zbuild_repo_slug — the implementation will need a slug for
+    # "gh api repos/{slug}/issues/{issue}/comments".
+    export GITHUB_REPOSITORY="testowner/testrepo-dscla23"
+    zbuild_repo_slug() { printf '%s\n' "testowner/testrepo-dscla23"; return 0; }
+
+    # Given: set up mock gh that returns the authenticated actor for user queries
+    # and the two-comment fixture for comment-listing queries.
+    # The mock handles both common gh-call patterns:
+    #   "gh api user [--jq .login]"  → actor login (pre-processed for --jq usage)
+    #   "gh api user"                 → JSON {"login":"..."} for separate jq processing
+    #   "gh issue view ..."           → view-format JSON with .comments
+    #   "gh api ..."                  → raw API array format
+    # GITHUB_ACTOR is also set so implementations that read it directly work too.
+    export GITHUB_ACTOR="$_dscla23_actor"
+    _prev_backend_23="$ZBUILD_CLAIM_BACKEND"
+    export ZBUILD_CLAIM_BACKEND="gh"
+
+    cat > "$TEST_TEMP_DIR/bin/gh" <<GHEOF
+#!/usr/bin/env bash
+printf '%s\n' "\$@" >> "$_dscla23_calls"
+_dscla23_has_jq=false
+for _dscla23_a in "\$@"; do
+    [[ "\$_dscla23_a" == "--jq" || "\$_dscla23_a" == "-q" ]] && _dscla23_has_jq=true
+done
+case "\${1:-}:\${2:-}" in
+    api:user)
+        # Return login string (simulates --jq '.login') or full JSON for pipe-to-jq
+        if [[ "\$_dscla23_has_jq" == "true" ]]; then
+            printf '%s\n' "$_dscla23_actor"
+        else
+            printf '{"login":"%s","id":1}\n' "$_dscla23_actor"
+        fi
+        exit 0
+        ;;
+    auth:status)
+        printf 'Logged in to github.com as %s\n' "$_dscla23_actor"
+        exit 0
+        ;;
+    issue:view:*)
+        cat "$TEST_TEMP_DIR/dscla23-view-comments.json"
+        exit 0
+        ;;
+    api:*)
+        cat "$TEST_TEMP_DIR/dscla23-api-comments.json"
+        exit 0
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+GHEOF
+    chmod +x "$TEST_TEMP_DIR/bin/gh"
+
+    # When: _ccgl_read_holder is called with the issue number
+    _dscla23_holder="$(_ccgl_read_holder "$_dscla23_issue" 2>/dev/null || printf '')"
+
+    # Then: the holder string returned is taken from the authenticated actor's comment
+    if grep -qF "$_dscla23_actor_holder" <<< "${_dscla23_holder:-}"; then
+        assert_pass "[DSCLA-23] _ccgl_read_holder returns holder from authenticated actor's comment"
+    else
+        assert_fail "[DSCLA-23] _ccgl_read_holder returns holder from authenticated actor's comment" \
+            "expected holder containing '$_dscla23_actor_holder', got '${_dscla23_holder:-<empty>}'"
+    fi
+
+    # Then: the other user's holder string is NOT returned
+    if ! grep -qF "$_dscla23_other_holder" <<< "${_dscla23_holder:-}"; then
+        assert_pass "[DSCLA-23] _ccgl_read_holder does not return holder from other user's comment"
+    else
+        assert_fail "[DSCLA-23] _ccgl_read_holder does not return holder from other user's comment" \
+            "got '${_dscla23_holder:-}' (must not contain '$_dscla23_other_holder')"
+    fi
+
+    # Cleanup: restore backend, plain gh mock, CI env vars, and repo slug stub
+    unset GITHUB_ACTOR GITHUB_REPOSITORY 2>/dev/null || true
+    unset -f zbuild_repo_slug 2>/dev/null || true
+    export ZBUILD_CLAIM_BACKEND="$_prev_backend_23"
     mock_gh
 fi
 
