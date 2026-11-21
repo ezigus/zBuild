@@ -7,6 +7,11 @@
 [[ -n "${_ZBUILD_TEST_REPORT_LOADED:-}" ]] && return 0
 _ZBUILD_TEST_REPORT_LOADED=1
 
+# #2573 (ADR-054): the suite's marker and tally lines are read by the one reader.
+# shellcheck source=../../../../scripts/lib/test-output-read.sh
+declare -F zb_test_output_normalize >/dev/null 2>&1 \
+    || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/test-output-read.sh"
+
 # ─── _test_write_output_log <path> <raw_output> ─────────────────────────────
 # The suite's raw output, sanitized, replaced each run (#2180). Bounded by
 # ZBUILD_TEST_OUTPUT_MAX_BYTES (default 4 MiB): the TAIL is kept, because a
@@ -45,9 +50,9 @@ _test_write_output_log() {
 # not: a failure nobody has seen before does not match a pattern, which is
 # exactly when it is needed.
 _test_extract_failing_blocks() {
-    printf '%s\n' "${1:-}" | awk '
-        /^[a-z]+: (FAIL|TIMEOUT) / { inblk = 1; print; next }
-        /^[a-z]+: [0-9]+\/[0-9]+ passed/ { inblk = 0; next }
+    zb_test_output_normalize "${1:-}" | awk -v mre="$ZB_TEST_MARKER_ERE" -v sre="$ZB_TEST_TALLY_ERE" '
+        $0 ~ mre { inblk = 1; print; next }
+        $0 ~ sre { inblk = 0; next }
         inblk { print }
     ' 2>/dev/null || true
 }
@@ -115,28 +120,30 @@ _test_emit_failures_summary() {
         # shapes, lint findings (SCnnnn / "In <file> line N:"), and the last
         # 6 non-blank lines of the block — the tail is where bash puts why.
         local _ex_first _ex_rest _ex_tail
+        # #2573: marker and tally lines in the shared reader's one form first.
+        raw_output="$(zb_test_output_normalize "$raw_output")"
         # #2460: each failure with its whole message — every line after the ✗
         # up to the next check, a blank line or the tally of its file — on one
         # line, its line breaks shown as ⏎, so no continued line is lost or
         # merged away as a repeat.
-        _ex_first="$(printf '%s\n' "$raw_output" | awk '
+        _ex_first="$(printf '%s\n' "$raw_output" | awk -v nre="$ZB_TEST_NAMED_LINE_ERE" '
             function flush() { if (blk != "") print blk; blk = "" }
             { line = $0; sub(/^[[:space:]]+/, "", line) }
             line ~ /^(✗|✘)/ { flush(); blk = $0; next }
-            blk != "" && (line == "" || line ~ /^✓/ || line ~ /^[0-9]+ of [0-9]+ tests failed/ || line ~ /^All [0-9]+ tests passed/ || $0 ~ /^[a-z]+: /) { flush(); next }
+            blk != "" && (line == "" || line ~ /^✓/ || line ~ /^[0-9]+ of [0-9]+ tests failed/ || line ~ /^All [0-9]+ tests passed/ || $0 ~ nre) { flush(); next }
             blk != "" { blk = blk " ⏎ " line }
             END { flush() }' 2>/dev/null | head -n 40 || true)"  # sigpipe-ok: || true, and an explicit empty-check follows
         # sigpipe-ok: || true
         _ex_first="${_ex_first}${_ex_first:+$'\n'}$(printf '%s' "$raw_output" \
-            | grep -E '^[a-z]+: (FAIL|TIMEOUT) ' | head -n 10 || true)"
-        _ex_tail="$(printf '%s\n' "$raw_output" | awk '
+            | grep -E "$ZB_TEST_MARKER_ERE" | head -n 10 || true)"
+        _ex_tail="$(printf '%s\n' "$raw_output" | awk -v mre="$ZB_TEST_MARKER_ERE" -v sre="$ZB_TEST_TALLY_ERE" '
             function flush(   i, n) {
                 n = cnt < 6 ? cnt : 6
                 for (i = cnt - n + 1; i <= cnt; i++) print tail[i]
                 cnt = 0
             }
-            /^[a-z]+: (FAIL|TIMEOUT) / { if (inblk) flush(); inblk = 1; cnt = 0; next }
-            /^[a-z]+: [0-9]+\/[0-9]+ passed/ { if (inblk) flush(); inblk = 0; next }
+            $0 ~ mre { if (inblk) flush(); inblk = 1; cnt = 0; next }
+            $0 ~ sre { if (inblk) flush(); inblk = 0; next }
             inblk && NF {
                 if ($0 ~ /line [0-9]+: |command not found|syntax error|No such file|unbound variable|SC[0-9][0-9][0-9][0-9]|^In .* line [0-9]+:/) print
                 tail[++cnt] = $0

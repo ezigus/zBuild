@@ -18,6 +18,11 @@
 [[ -n "${_ZBUILD_TEST_FINDINGS_LOADED:-}" ]] && return 0
 _ZBUILD_TEST_FINDINGS_LOADED=1
 
+# #2573 (ADR-054): the suite's marker lines are read by the one shared reader.
+# shellcheck source=../../../../scripts/lib/test-output-read.sh
+declare -F zb_test_output_normalize >/dev/null 2>&1 \
+    || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/test-output-read.sh"
+
 # _test_failure_findings <raw_output> <staging_dir>
 # Prints a JSON array: [{file, reason, points_at: [..]}], one entry per failing
 # file, paths relative to <staging_dir>. `[]` when nothing failed.
@@ -34,11 +39,13 @@ _test_failure_findings() {
     # awk emits one TSV row per block line: kind \t file \t text. Kinds:
     #   F file-start (FAIL)   T timeout   X ✗ line   D the line after a ✗
     #   P a passing check     E a bash error shape   L path:line: candidate
-    # The suite's real output is coloured: strip ANSI escapes first, or a ✗
-    # behind a colour code is never recognised (#1845 run 36332698182).
-    raw="$(sed $'s/\x1b\\[[0-9;]*[A-Za-z]//g' <<< "$raw")"
+    # #2573: the shared reader writes every marker in one form first — any
+    # suite name, any case, colour codes gone (#1845 run 36332698182), the
+    # file relative to the staging folder whether printed absolute or not.
+    raw="$(zb_test_output_normalize "$raw" "$tmp")"
     local rows
-    rows="$(printf '%s\n' "$raw" | awk -v t="$tmp" -v tl="$tmp_log" -v tp="$tmp_phys" '
+    rows="$(printf '%s\n' "$raw" | awk -v t="$tmp" -v tl="$tmp_log" -v tp="$tmp_phys" \
+        -v mre="$ZB_TEST_MARKER_ERE" -v fre="$ZB_TEST_MARKER_FILE_ERE" -v sre="$ZB_TEST_TALLY_ERE" -v nre="$ZB_TEST_NAMED_LINE_ERE" "$ZB_TEST_MARKER_FILE_AWK"'
         function rel(p) {
             if (tp != "" && index(p, tp "/") == 1) return substr(p, length(tp) + 2)
             if (tl != "" && index(p, tl "/") == 1) return substr(p, length(tl) + 2)
@@ -46,17 +53,14 @@ _test_failure_findings() {
             return ""
         }
         function flushd() { if (after_x) printf "D\t%s\t%s\n", f, det; after_x = 0; det = "" }
-        /^[a-z]+: (FAIL|TIMEOUT) / {
+        $0 ~ mre {
             flushd()
-            # The path is the rest of the line, not $3: a staging dir with a
-            # space would split it (claude-review on #2210).
-            path = $0; sub(/^[a-z]+: (FAIL|TIMEOUT) /, "", path)
-            f = rel(path); kind = ($2 == "TIMEOUT") ? "T" : "F"
+            f = ($0 ~ fre) ? zb_marker_file($0) : ""; kind = ($2 == "TIMEOUT") ? "T" : "F"
             inblk = (f != ""); after_x = 0
             if (inblk) printf "%s\t%s\t\n", kind, f
             next
         }
-        /^[a-z]+: [0-9]+\/[0-9]+ passed/ { flushd(); inblk = 0; next }
+        $0 ~ sre { flushd(); inblk = 0; next }
         !inblk { next }
         {
             line = $0; sub(/^[[:space:]]+/, "", line)
@@ -64,7 +68,7 @@ _test_failure_findings() {
             # the next check, a blank line or the tally of the file - however many
             # lines it spans - kept as one, its line breaks shown as ⏎.
             if (after_x) {
-                if (line == "" || line ~ /^(✗|✘|✓)/ || line ~ /^[0-9]+ of [0-9]+ tests failed/ || line ~ /^All [0-9]+ tests passed/) flushd()
+                if (line == "" || $0 ~ nre || line ~ /^(✗|✘|✓)/ || line ~ /^[0-9]+ of [0-9]+ tests failed/ || line ~ /^All [0-9]+ tests passed/) flushd()
                 else det = (det == "" ? line : det " ⏎ " line)
             }
             if (line ~ /^(✗|✘)/) { printf "X\t%s\t%s\n", f, line; after_x = 1; det = ""; next }

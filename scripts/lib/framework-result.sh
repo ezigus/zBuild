@@ -17,6 +17,9 @@
 [[ -n "${_ZBUILD_FRAMEWORK_RESULT_LOADED:-}" ]] && return 0
 _ZBUILD_FRAMEWORK_RESULT_LOADED=1
 
+# shellcheck source=./test-output-read.sh
+declare -F zb_test_output_tally >/dev/null 2>&1 || source "${BASH_SOURCE[0]%/*}/test-output-read.sh"
+
 # ─── _fr_emit_lint ────────────────────────────────────────────────────────────
 # Render the lint block: {status, exit_code, summary}. exit_code is JSON null
 # unless a bare integer was passed (fail-closed, never crashes jq).
@@ -135,13 +138,12 @@ framework_run_coverage() {
 framework_parse_mutation() {
     local raw="$1"
     local floor="${ZBUILD_MUTATION_FLOOR:-0}"
-    local line
-    line="$(printf '%s\n' "$raw" | grep -E '^mutation: [0-9]+/[0-9]+ passed' | tail -n1)"
-    if [[ -z "$line" ]]; then
+    # #2573 (ADR-054): the tally is read by the one shared reader.
+    local score
+    score="$(zb_test_output_tally "$raw" mutation)"
+    if [[ -z "$score" ]]; then
         _fr_emit_mutation "skipped" "" "$floor"
         return 0
     fi
-    local score
-    score="$(grep -m1 -oE '[0-9]+/[0-9]+' <<< "$line")"
     _fr_emit_mutation "measured" "$score" "$floor"
 }

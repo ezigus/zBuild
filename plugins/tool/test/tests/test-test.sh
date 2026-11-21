@@ -575,6 +575,8 @@ printf 'unit: 1/1 passed\n'
 exit 0
 TARGETED_EOF
 chmod +x "$REPO_T16/tests/unit/targeted-test.sh"
+# #2573: the full run's failing file is one the repository holds.
+printf '#!/usr/bin/env bash\nexit 1\n' > "$REPO_T16/tests/unit/other-test.sh"
 git -C "$REPO_T16" add .
 git -C "$REPO_T16" -c user.name="zbuild-test" -c user.email="test@zbuild" \
     commit -m "add test" -q

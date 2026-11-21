@@ -130,15 +130,15 @@ else
     assert_pass "[SPEC-2] ABORTED line does not match the live tier-summary regex"
 fi
 
-# (b) _TEST_FAIL_MARKER_RE — the red set that drives targeted rerun. It is a
-# plain assignment in parse.sh, so read it straight from the file (sourcing
-# parse.sh would pull in the whole pattern bank).
-_FAIL_RE_SRC="$(grep -m1 '^_TEST_FAIL_MARKER_RE=' "$REPO_ROOT/plugins/tool/test/lib/parse.sh")"
+# (b) ZB_TEST_MARKER_ERE — the shared reader's fail marker, which the red set
+# that drives targeted rerun is read with (#2573). It is a plain assignment in
+# scripts/lib/test-output-read.sh, so read it straight from the file.
+_FAIL_RE_SRC="$(grep -m1 '^ZB_TEST_MARKER_ERE=' "$REPO_ROOT/scripts/lib/test-output-read.sh")"
 _FAIL_RE="${_FAIL_RE_SRC#*=}"
 _FAIL_RE="${_FAIL_RE#\'}"; _FAIL_RE="${_FAIL_RE%\'}"
 [[ -n "$_FAIL_RE" ]] \
-    && assert_pass "[SPEC-2] _TEST_FAIL_MARKER_RE extracted from parse.sh (not a copy)" \
-    || assert_fail "[SPEC-2] _TEST_FAIL_MARKER_RE extracted from parse.sh (not a copy)" "empty"
+    && assert_pass "[SPEC-2] ZB_TEST_MARKER_ERE extracted from the shared reader (not a copy)" \
+    || assert_fail "[SPEC-2] ZB_TEST_MARKER_ERE extracted from the shared reader (not a copy)" "empty"
 if grep -qE "$_FAIL_RE" <<< "$_ABORTED_LINE"; then
     assert_fail "[SPEC-2] ABORTED line must not match the live fail-marker regex" \
         "re: $_FAIL_RE / line: $_ABORTED_LINE"

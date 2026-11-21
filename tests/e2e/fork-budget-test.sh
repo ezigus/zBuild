@@ -33,6 +33,12 @@
 #         - per dispatch: the same run again with three more review lenses —
 #           the extra processes and execs over the extra dispatches.
 #         A stage or plugin added moves the totals, not these.
+# SPEC-9: each budget is its last measure plus a small margin (#2573, ADR-065
+#         §2 amendment 2026-11-20): run-to-run noise moves a figure by one, and a
+#         budget set to the exact measure failed now and then with no change.
+#         The ratchet holds: on macOS, where the measures are written from, a
+#         budget more than twice its margin (at least 2) above this run's measure fails — a
+#         cost cut lowers the written measure, and slack cannot build up.
 # SPEC-6: the worker pool's execs scale with its work units, not with how long
 #         they take: its poll sleep is exempt, and no counted pool line runs
 #         more than once per unit (#2236).
@@ -47,6 +53,18 @@ source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "fork budget: external execs of a mocked full run (#2151, ADR-065)"
 setup_test_env "fork-budget"
+
+# #2573 (ADR-065 §2 amendment 2026-11-20): each budget is its last measure plus
+# a small margin. Run to run, every figure but the start-up moves by one either
+# way (464–466 / 297–299 a dispatch, 1850–1852 execs in all — the same tree), and the
+# budgets had been set to the exact measure, so the test failed now and then
+# with no change. The margin is set from that noise: 2 a dispatch, 5 for the
+# run's totals; 1 for the start-up, which showed none. Each change that cuts
+# cost still lowers the measure written below, and the budget with it: SPEC-9
+# fails a budget more than twice its margin (at least 2) above the measure.
+BUDGET_MARGIN_TOTAL=5
+BUDGET_MARGIN_DISPATCH=2
+BUDGET_MARGIN_STARTUP=1
 
 # ADR-065 §2. Ratchets down only. History: 8000 (#2151, measured 7,128 macOS);
 # 4800 (#2152 manifest index, measured 4,335 macOS); 4600 (#1849 follow-up:
@@ -148,7 +166,12 @@ setup_test_env "fork-budget"
 # output, then all the rest at once — not one an output until a match: renamed
 # output ids had moved the match further down the index. Measured on macOS:
 # 2399 processes and 1852 execs in all, 465 processes and 298 execs a dispatch.
-FORK_BUDGET=1851
+# #2573: measured on macOS, nine runs of the same tree: 2393–2395 processes and
+# 1850–1852 execs in all; 464–466 processes and 297–299 execs a dispatch; 428
+# start-up processes and 232 execs every run. The written measure is the middle
+# of each range, so a run at either end stays within budget and within the
+# twice the margin the SPEC-9 slack check allows. Budgets: that measure plus the margin.
+FORK_BUDGET=$(( 1851 + BUDGET_MARGIN_TOTAL ))
 # PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
 # the programs above plus each `$( )` subshell, a copy of the whole engine shell
 # that FORK_BUDGET cannot see. Ratchets down only, like FORK_BUDGET. History:
@@ -208,7 +231,8 @@ FORK_BUDGET=1851
 # extractor in the shell (design_decisions_prose_v), not awk and sed. Measured
 # on macOS: 2399 processes and 1865 execs in all, 465 processes and 305 execs a
 # dispatch.
-PROCESS_BUDGET=2397
+# #2573: see FORK_BUDGET — 2394 processes, plus the margin.
+PROCESS_BUDGET=$(( 2394 + BUDGET_MARGIN_TOTAL ))
 # The run's cost in two parts (ADR-065 §6, #2472). Each budget ratchets down
 # like the totals; each floor is the goal, an estimate, measured again when
 # reached. History: 505 / 298 a dispatch, 12 / 7 a plugin at start-up (#2472 —
@@ -264,15 +288,17 @@ PROCESS_BUDGET=2397
 # on macOS: 2399 processes and 1865 execs in all, 465 processes and 305 execs a
 # dispatch.
 # #2569: see FORK_BUDGET — 465 processes and 298 execs a dispatch.
-DISPATCH_PROCS_BUDGET=465
+# #2573: see FORK_BUDGET — 465 and 298 a dispatch (the middle of 464–466 and
+# 297–299), 428 and 232 at start-up, each plus its margin.
+DISPATCH_PROCS_BUDGET=$(( 465 + BUDGET_MARGIN_DISPATCH ))
 DISPATCH_PROCS_FLOOR=20
-DISPATCH_EXECS_BUDGET=298
+DISPATCH_EXECS_BUDGET=$(( 298 + BUDGET_MARGIN_DISPATCH ))
 DISPATCH_EXECS_FLOOR=50
 STARTUP_PROCS_PER_PLUGIN_BUDGET=11
 STARTUP_PROCS_PER_PLUGIN_FLOOR=1
 STARTUP_EXECS_PER_PLUGIN_BUDGET=6
-STARTUP_PROCS_BUDGET=428
-STARTUP_EXECS_BUDGET=232
+STARTUP_PROCS_BUDGET=$(( 428 + BUDGET_MARGIN_STARTUP ))
+STARTUP_EXECS_BUDGET=$(( 232 + BUDGET_MARGIN_STARTUP ))
 STARTUP_EXECS_PER_PLUGIN_FLOOR=1
 
 # ─── the harness and the counter (tests/lib/fork-census.sh) ────────────────
@@ -332,7 +358,7 @@ mkdir -p "$RUN_DIR/events" "$BIN_DIR" "$TEST_TEMP_DIR/pc"
 TRACE="$TEST_TEMP_DIR/run.trace"
 set +e
 (
-    unset GITHUB_ACTIONS CI GITHUB_STEP_SUMMARY RUNNER_OS 2>/dev/null || true
+    unset GITHUB_ACTIONS CI GITHUB_STEP_SUMMARY RUNNER_OS ZBUILD_DISCOVERY_MEMO_DIR 2>/dev/null || true
     export FIXTURE_STATE_DIR="$RUN_DIR" FIXTURE_BIN_DIR="$BIN_DIR"
     fork_census_traced "$TRACE" bash "$FIXTURE" >/dev/null 2>&1
 )
@@ -390,8 +416,7 @@ else
     assert_fail "[SPEC-6] the worker pool's poll sleep is listed as an exempt wait" "exempt: $(cat "$SITES.exempt" 2>/dev/null)"
 fi
 _pool_max="$(awk -F'\t' '$2 ~ /^local_engine\.sh:/ && $1 > m { m = $1 } END { print m + 0 }' "$SITES")"
-echo "  busiest counted pool line: ${_pool_max} execs (2 work units)"
-assert_eq "[SPEC-6] …and no counted pool line runs more than once per work unit (max ${_pool_max})" "1" "$(( _pool_max <= 2 ))"
+assert_eq "[SPEC-6] …and no counted pool line runs more than once per work unit (max ${_pool_max} execs, 2 units)" "1" "$(( _pool_max <= 2 ))"
 if (( _procs <= PROCESS_BUDGET )); then
     assert_pass "[SPEC-7] ${_procs} processes ≤ PROCESS_BUDGET ${PROCESS_BUDGET}"
 else
@@ -406,12 +431,13 @@ fi
 # SPEC-8 (#2472): the cost in two parts.
 _fb_disp() { jq -r 'select(.type == "plugin.run.start") | 1' "$1" 2>/dev/null | grep -c . || true; }
 _dA="$(_fb_disp "$RUN_DIR/events/events.jsonl")"; _dA="${_dA:-0}"
-# The same run with three more review lenses: three more dispatches.
+# The same run with three more review lenses: three more dispatches. Each run starts with no inherited
+# discovery memo: run-tests.sh shares one, and B reusing A's walk read as 17 processes a dispatch less (#2573).
 RUN_B="$TEST_TEMP_DIR/run-b"; BIN_B="$TEST_TEMP_DIR/bin-b"; TRACE_B="$TEST_TEMP_DIR/run-b.trace"
 mkdir -p "$RUN_B/events" "$BIN_B"
 set +e
 (
-    unset GITHUB_ACTIONS CI GITHUB_STEP_SUMMARY RUNNER_OS 2>/dev/null || true
+    unset GITHUB_ACTIONS CI GITHUB_STEP_SUMMARY RUNNER_OS ZBUILD_DISCOVERY_MEMO_DIR 2>/dev/null || true
     export FIXTURE_STATE_DIR="$RUN_B" FIXTURE_BIN_DIR="$BIN_B" FIXTURE_LENSES="correctness red-team performance sre"
     fork_census_traced "$TRACE_B" bash "$FIXTURE" >/dev/null 2>&1
 )
@@ -444,6 +470,30 @@ assert_eq "[SPEC-8] ${_sE} start-up execs ≤ STARTUP_EXECS_BUDGET ${STARTUP_EXE
 echo "  start-up per plugin: ${_spp} processes (target ${STARTUP_PROCS_PER_PLUGIN_BUDGET}), ${_spe} execs (target ${STARTUP_EXECS_PER_PLUGIN_BUDGET})"
 assert_eq "[SPEC-8] each floor is below its budget: the goal still ahead" "1" \
     "$(( DISPATCH_PROCS_FLOOR < DISPATCH_PROCS_BUDGET && DISPATCH_EXECS_FLOOR < DISPATCH_EXECS_BUDGET && STARTUP_PROCS_PER_PLUGIN_FLOOR < STARTUP_PROCS_PER_PLUGIN_BUDGET && STARTUP_EXECS_PER_PLUGIN_FLOOR < STARTUP_EXECS_PER_PLUGIN_BUDGET ))"
+
+# ─── SPEC-9: a small margin above the measure ───────────────────────────────
+print_test_section "SPEC-9: each budget sits a small margin above its measure"
+_mt="${BUDGET_MARGIN_TOTAL:-0}" _md="${BUDGET_MARGIN_DISPATCH:-0}" _ms="${BUDGET_MARGIN_STARTUP:-0}"
+assert_eq "[SPEC-9] the totals' margin is above 0 and at most 5 (${_mt})" "1" "$(( _mt > 0 && _mt <= 5 ))"
+assert_eq "[SPEC-9] the per-dispatch margin is above the noise of 1 and at most 2 (${_md})" "1" "$(( _md > 1 && _md <= 2 ))"
+assert_eq "[SPEC-9] the start-up, which showed no noise, has a margin of 1 (${_ms})" "1" "$_ms"
+if [[ "$(uname -s)" == Darwin ]]; then
+    _slack=""
+    _chk() {   # <name> <budget> <measured> <margin>
+        local _tol=$(( 2 * $4 )); (( _tol < 2 )) && _tol=2
+        (( $2 - $3 > _tol )) && _slack+="$1 $2 is $(( $2 - $3 )) above this run's $3 (margin $4, tolerance $_tol) — lower the written measure"$'\n'
+        return 0
+    }
+    _chk FORK_BUDGET "$FORK_BUDGET" "$_total" "$_mt"
+    _chk PROCESS_BUDGET "$PROCESS_BUDGET" "$_procs" "$_mt"
+    _chk DISPATCH_PROCS_BUDGET "$DISPATCH_PROCS_BUDGET" "$_dp" "$_md"
+    _chk DISPATCH_EXECS_BUDGET "$DISPATCH_EXECS_BUDGET" "$_de" "$_md"
+    _chk STARTUP_PROCS_BUDGET "$STARTUP_PROCS_BUDGET" "$_sP" "$_ms"
+    _chk STARTUP_EXECS_BUDGET "$STARTUP_EXECS_BUDGET" "$_sE" "$_ms"
+    assert_eq "[SPEC-9] no budget sits more than twice its margin (at least 2) above the measure (macOS)" "" "$_slack"
+else
+    echo "  SPEC-9 slack check: the measures are written from macOS; $(uname -s) counts differ, so only the budgets are checked here"
+fi
 
 cleanup_test_env
 print_test_results

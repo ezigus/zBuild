@@ -44,7 +44,9 @@ _run() {
     ( cd "$R" && git init -q -b main . && git config user.email t@e.st && git config user.name t \
         && git commit -q --allow-empty -m seed \
         && git checkout -q -b zbuild/issue-1 && printf 'echo hi\n' > app.sh \
-        && printf '%s\n' "${A_TEST_BODY:-assert_eq \"x\" 1 1}" > tests/a-test.sh && git add -A && git commit -q -m change ) >/dev/null 2>&1
+        && printf '%s\n' "${A_TEST_BODY:-assert_eq \"x\" 1 1}" > tests/a-test.sh \
+        && { [[ -z "${EXTRA_TEST_FILE:-}" ]] || printf 'echo x\n' > "$EXTRA_TEST_FILE"; } \
+        && git add -A && git commit -q -m change ) >/dev/null 2>&1
     # #2517: the design's test file is written on the issue's branch, as test-author does.
     printf '{"schema_version":1}' > "$S/pipeline-state.json"
     git -C "$R" diff main HEAD > "$A/diff.patch"
@@ -144,13 +146,15 @@ _r8_cmd='printf "unit: FAIL %s/tests/a-test.sh\n  ✗ A-CHECK\n    expected: 1, 
 _r8_saved="$ZBUILD_TEST_CMD"; export ZBUILD_TEST_CMD="$_r8_cmd"
 # #2508: the design's test file is the test-folder file holding its SPEC's tag.
 A_TEST_BODY="assert_eq \"$(acceptance_spec_tag SPEC-1) hi\" 1 1"
+# #2573: a failing file is one the repository holds (the reader checks it).
+EXTRA_TEST_FILE=tests/other-test.sh
 _run r8 '# Design
 ```acceptance
 SPEC-1[code]: the app says hi
 WIRING: none
 ```
 ' ""
-export ZBUILD_TEST_CMD="$_r8_saved"; unset A_TEST_BODY
+export ZBUILD_TEST_CMD="$_r8_saved"; unset A_TEST_BODY EXTRA_TEST_FILE
 # #2556: each goes to test's output of its topic.
 _r8() { jq -r '[.data.findings[]?.text] | join(" ")' "$A/test-$1-result.json" 2>/dev/null; }
 assert_contains "[R8] the design's test file goes to test's code output" "$(_r8 code)" "tests/a-test.sh fails"

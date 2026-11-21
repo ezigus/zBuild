@@ -1,6 +1,6 @@
 # ADR-054: Stage Contract
 
-**Status:** Accepted (2026-08-09); amended 2026-11-18 (#2563: the run watchdog signals only the runner's own tree)
+**Status:** Accepted (2026-08-09); amended 2026-11-20 (#2573: one shared, forgiving reader of test output); amended 2026-11-18 (#2563: the run watchdog signals only the runner's own tree)
 **Date:** 2026-08-09
 **Issue:** #1820
 **Amended:** 2026-11-08 (#2493) — §7: a signal that arrives while a signal handler runs is ignored, never handled inside it (Amendment at the end).
@@ -660,7 +660,20 @@ On #1764 run 44090911022 test-author's tries 2 and 3 changed no file (`stage.out
 - **The handed-on output is that run's:** the engine removes it when the stage runs again (`stage_handoff_clear`).
 - **`stage.findings.handed_on`** names the stage, how many findings were handed on and how many sent back.
 
+## Amendment 2026-11-20 (#2573) — one shared, forgiving reader of test output
+
+On #1764 run 44782866204, `tests/e2e/claim-race-test.sh` and the parity golden failed in both rounds and reached no stage. The test stage's failing-file reader (`_test_failure_findings`) matched `^[a-z]+: (FAIL|TIMEOUT)`, which drops `e2e: FAIL …` (a digit in the name), and kept only paths under the staging folder, which drops the targeted rerun's `unit: FAIL tests/e2e/…`. Its red set, its summary and its failing blocks each read the same lines with patterns of their own, each a little different.
+
+- **Every failing file in a suite's output becomes a finding.** A file a `<suite>: FAIL <path>` or `<suite>: TIMEOUT <path>` line names is in the test stage's findings (`data.failures`), its red set (`test-red-set.json`), its runner summary's count and its error-channel blocks.
+- **One reader of test output** (`scripts/lib/test-output-read.sh`): `zb_test_output_normalize` writes each marker line in one form — `<suite>: <VERB> <file>`, then a tab and the rest of the line — and the readers match that form with its `ZB_TEST_MARKER_ERE`, `ZB_TEST_MARKER_FILE_ERE` and `ZB_TEST_TALLY_ERE`, and take the file out with `ZB_TEST_MARKER_FILE_AWK`; `zb_test_output_failing_files` lists the files; `zb_test_output_tally` reads one suite's `N/M`.
+- **Loose only where the output really varies:** any suite name of letters, digits, `-` and `_`; colour codes and carriage returns set aside; the whole path, spaces and all (#2210), absolute under a spelling of the staging folder (as given, `pwd -L`, `pwd -P`, a doubled slash) or relative to the repository. With the staging folder given, a path names a file only when it is a file there (`test -f`); a marker that names none (`lint: FAIL (npm run lint)`) names no file. A path under another alias of the staging folder is not recognised (a known gap).
+- **A marker or a tally is what `scripts/run-tests.sh` writes:** at column 0, with the uppercase `FAIL` or `TIMEOUT`. An indented `unit: FAIL …` or `unit: 1/2 passed` is a nested run's output, part of the file that printed it, and a check named `✗ NC-G: timeout …` is a check, the file's reason.
+- **In the failures summary, any column-0 `<name>: ` line ends a check's message** (`ZB_TEST_NAMED_LINE_ERE`): a tool's `jq: error …` is not glued onto the check before it.
+- **No stage reads test output with a pattern of its own.** The test stage's findings, red set, runner summary, failing blocks and failures summary, and the mutation read-out (`framework_parse_mutation`), read through it. Build runs no suite of its own, and test-author's before-run and the acceptance check read a test's tagged lines (ADR-069), not marker lines; a reader of marker lines added anywhere uses this one. `scripts/run-tests.sh` writes the lines and is not a reader.
+
 ## Enforced by
+
+- Amendment 2026-11-20 (#2573: one shared, forgiving reader of test output) → `tests/unit/test-output-reader-test.sh` TR1 (#1764's round 1: the unit file and both `e2e:` files, under three spellings of the staging folder, are findings with their reasons), TR2 (round 2's relative paths are findings), TR3 (the red set holds every failing file, repo-relative), TR4 (every failing file's output reaches the error channel), TR5 (colour codes, a carriage return, a suite name with digits, `_` and `-`; a TIMEOUT's suffix is not the path; a FAIL with no path names no file), TR6 (the runner summary counts every marker), TR7 (no code outside the reader reads the marker or tally lines with a pattern of its own, over a scan that read the engine's files), TR8 (an indented marker or tally is not one), TR9 (a check named like a marker is the reason), TR10 (a green run holding such lines stays green), TR11 (a nested runner fixture makes no finding), TR12 (a path with a space is whole), TR13 (a path that is not a file names none), TR14 (a column-0 `jq: error` line ends a check's message); `tests/unit/run-mutation-empty-dir-clean-gate-test.sh` SPEC-2 (the red set's marker pattern is the reader's)
 
 - §6a amendment 2026-11-18 (#2565: a try that changed nothing hands its findings on) → `tests/unit/no-change-handoff-test.sh` H1 (not run again), H2, H3 (wrong and not mine reach the handoff output; the round ends), H4 (done with nothing changed is a finding back), H5 (the budget's last try too), H6 (a try that changed something hands nothing on; the last run's handoff is removed), H10 (a halting outcome hands nothing on and ends no round), H11 (a wrong to another stage's finding is not handed on), H7 (test-author's handoff reaches design), H9 (the event)
 

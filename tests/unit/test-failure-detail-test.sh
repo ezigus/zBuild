@@ -28,6 +28,7 @@ print_test_header "a failing check's whole message is kept (#2460)"
 setup_test_env "test-failure-detail"
 
 T="$TEST_TEMP_DIR/stage"; mkdir -p "$T/tests"
+: > "$T/tests/a-test.sh"; : > "$T/tests/b-test.sh"   # #2573: a failing file is a real file
 RAW="$(printf '%s\n' \
     "unit: FAIL $T/tests/a-test.sh" \
     "" \

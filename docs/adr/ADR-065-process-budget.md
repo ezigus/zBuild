@@ -1,6 +1,6 @@
 # ADR-065 — Process budget: the engine's fork count is a tested contract
 
-**Status:** Accepted (2026-09-19); amended 2026-11-15 (#2548, §6: the start-up is held in total); amended 2026-11-02 (#2456, §5: an emit from a signal trap does not wait on its own lock); amended 2026-11-05 (#2472, §6: the cost in two parts — one more dispatch, and start-up per plugin — each with a budget and a floor)
+**Status:** Accepted (2026-09-19); amended 2026-11-20 (#2573, §2 §6: each budget sits a small margin above its measure); amended 2026-11-15 (#2548, §6: the start-up is held in total); amended 2026-11-02 (#2456, §5: an emit from a signal trap does not wait on its own lock); amended 2026-11-05 (#2472, §6: the cost in two parts — one more dispatch, and start-up per plugin — each with a budget and a floor)
 **Issue:** #2151
 **Related:** ADR-001 (Discovery + lockfile), ADR-012 (test tiering), ADR-053 (test flake policy — the serial-pin cap that also needs an amendment to raise), ADR-041 (the fd-9 lock discipline the trace harness must respect)
 
@@ -385,8 +385,20 @@ two `jq` and a `sort` on every dispatch), measured on macOS: execs 1,856 (`FORK_
 2,504 (`PROCESS_BUDGET` 2525 → 2507), one more dispatch 476 processes and 270 execs (`DISPATCH_PROCS_BUDGET`
 479 → 477, `DISPATCH_EXECS_BUDGET` 273 → 271).
 
+## Amendment 2026-11-20 (#2573) — §2 §6: each budget sits a small margin above its measure
+
+The budgets had been set to the exact measure. Run to run the same tree measures a process or exec more or less (464–466 / 297–299 a dispatch, 1,850–1,852 execs in all; the start-up never moved), so the budget test failed now and then with no change.
+
+- **Each budget is its last measure plus a small margin:** 2 for each per-dispatch budget (`DISPATCH_PROCS_BUDGET`, `DISPATCH_EXECS_BUDGET`), twice the observed noise; 5 for each of the run's totals (`FORK_BUDGET`, `PROCESS_BUDGET`); 1 for the start-up (`STARTUP_PROCS_BUDGET`, `STARTUP_EXECS_BUDGET`), which showed no noise. The margins are `BUDGET_MARGIN_DISPATCH`, `BUDGET_MARGIN_TOTAL` and `BUDGET_MARGIN_STARTUP` in `tests/e2e/fork-budget-test.sh`, and each budget is written as the measure plus its margin.
+- **It still ratchets down (§2), and the test holds it:** a budget more than twice its margin above the run's measure (at least 2: the start-up, margin 1, has a tolerance of 2) fails the test, so a change that cuts cost must write the new measure, and slack cannot build up; a run at the low end of the noise stays within it.
+- **Each traced run starts with no inherited discovery memo.** `scripts/run-tests.sh` shares one memo across a run (§3), and through it the four-lens run reused the walk the first run had made, so its extra cost read 17 processes and 4 execs a dispatch less than when the test was run on its own (448 / 295 against 465 / 298). The test unsets `ZBUILD_DISCOVERY_MEMO_DIR` for both runs, and the per-dispatch figure is the same however it is run.
+- **The slack check runs on macOS only**, where the measures are written from; on Linux the counts are lower, and only the budgets are checked. A raise still needs an amendment; the margin is not raised to make a change fit.
+- **The written measure is the middle of the observed range**, so a run at either end is within the budget and within the twice-the-margin the slack check allows.
+- Measured on macOS, nine runs of one tree (#2573): 2,393–2,395 processes and 1,850–1,852 execs in all, 464–466 processes and 297–299 execs a dispatch, 428 processes and 232 execs at start-up. Budgets: `FORK_BUDGET` 1856, `PROCESS_BUDGET` 2399, `DISPATCH_PROCS_BUDGET` 467, `DISPATCH_EXECS_BUDGET` 300, `STARTUP_PROCS_BUDGET` 429, `STARTUP_EXECS_BUDGET` 233.
+
 ## Enforced by
 
+- §2 §6 amendment 2026-11-20 (#2573: a small margin above the measure) → `tests/e2e/fork-budget-test.sh` SPEC-9 (the totals' margin is above 0 and at most 5; the per-dispatch margin above the noise of 1 and at most 2; the start-up's is 1; on macOS no budget sits more than twice its margin, at least 2, above the measure, run directly or through `scripts/run-tests.sh`), SPEC-4, SPEC-7, SPEC-8 (each budget is the measure plus its margin)
 - §5 amendment 2026-11-06 (#2476: an include checked only when it fails to load) → `tests/unit/route-missing-include-test.sh` SPEC-1–SPEC-6; `tests/e2e/fork-budget-test.sh` (the budgets above)
 - §6 (2026-11-05, #2472: the cost in two parts, each with a budget and a floor) → `tests/e2e/fork-budget-test.sh` SPEC-8 (three more lenses are three more dispatches; the extra processes and execs a dispatch are within `DISPATCH_PROCS_BUDGET` and `DISPATCH_EXECS_BUDGET`; the start-up before the first dispatch is within `STARTUP_PROCS_BUDGET` and `STARTUP_EXECS_BUDGET` — per plugin until #2548; each floor is below its budget)
 - §5 (amended 2026-11-02, #2456: an emit from a signal trap does not wait on its own lock) → `tests/unit/event-bus-trap-reentry-test.sh` T1, T2 (the trap's emit returns at once and is written), T3 (an ordinary emit still takes the lock); `tests/unit/event-bus-emit-cost-test.sh` E1 (still no subshell or extra process)
