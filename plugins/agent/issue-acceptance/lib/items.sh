@@ -17,8 +17,9 @@
 [[ -n "${_ZBUILD_IA_ITEMS_LOADED:-}" ]] && return 0
 _ZBUILD_IA_ITEMS_LOADED=1
 
-# The verdict words a kept line passes its item with (judge_refused).
-_IA_PASS_WORDS="met kept none"
+# The verdict words a kept line is read by (judge_refused): the pass words, and
+# with a `!` the refusal words a line may start with.
+_IA_PASS_WORDS="met kept none !unmet !unsure !broken"
 
 # _ia_line_name_v <var> <rest> — the id a verdict line names: the text before
 # its first bar, its [fix-…] mark and trailing colon aside.

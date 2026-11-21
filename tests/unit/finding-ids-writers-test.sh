@@ -9,8 +9,10 @@
 # W2 [change] a finding sent to several topics has the same id in every output
 #             and in the stage's own list, and keeps it on the next try —
 #             issue-acceptance's three-topic finding, and the test tool's
-# W3 [change] a kept line that starts with a verdict word is read by that word
-#             alone: `UNMET: None of …` is a refusal
+# W3 [change] a kept line that starts with one of the check's verdict words is
+#             read by that word alone: `UNMET: None of …` is a refusal; a
+#             leading word that is not one (`UNASKED: none`, `VERSION: clean`)
+#             is no verdict
 # W4 [change] an answer in the old form, `<label> finding <n>`, is read only
 #             against a finding that has no id
 # W5 [change] the id record is written whole (atomic_write); a record that
@@ -84,9 +86,17 @@ for _n in 1 2; do
 done
 
 print_test_section "W3: a verdict word at the start of a line is the verdict"
+# The check names its verdict words: pass words, and refusal words with a `!`
+# (second review on #2574); a leading word that is neither is no verdict.
+IAW=(met kept none '!unmet' '!unsure' '!broken')
 for _l in "UNMET: None of the flags are parsed | WHY: x" "UNMET: Kept nothing" "BROKEN: none of LIM-1 holds"; do
-    if judge_refused "$_l" met kept none; then assert_pass "[W3] refused: $_l"; else assert_fail "[W3] refused: $_l" "read as a pass"; fi
+    if judge_refused "$_l" "${IAW[@]}"; then assert_pass "[W3] with its words, refused: $_l"; else assert_fail "[W3] with its words, refused: $_l" "read as a pass"; fi
 done
+for _l in "UNASKED: none" "UNCLEAR: none" "MET: RQX-1 | x"; do
+    if judge_refused "$_l" "${IAW[@]}"; then assert_fail "[W3] passes: $_l" "refused"; else assert_pass "[W3] passes: $_l"; fi
+done
+if judge_refused "VERSION: clean" clean '!found'; then assert_fail "[W3] VERSION: clean passes (VERSION is no verdict word)" "refused"; else assert_pass "[W3] VERSION: clean passes (VERSION is no verdict word)"; fi
+if judge_refused "found: findings" clean '!found'; then assert_pass "[W3] found: is a refusal"; else assert_fail "[W3] found: is a refusal" "passed"; fi
 if judge_refused "MET: RQX-1 | x" met kept none; then assert_fail "[W3] MET passes" "refused"; else assert_pass "[W3] MET passes"; fi
 if judge_refused "RQCL-1: covered" ok covered; then assert_fail "[W3] <id>: covered passes" "refused"; else assert_pass "[W3] <id>: covered passes"; fi
 

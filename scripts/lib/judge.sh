@@ -138,23 +138,24 @@ _judge_check_name_v() { local -n _jcn="$1"; _jcn="${2##*/}"; _jcn="${_jcn%-judge
 # does not have the same verdict judged again).
 judge_kept_fp_v() { local -n _jkf="$1"; _jkf="$2${3:++$3}"; }
 
-# judge_refused <payload> <pass-word>... — rc 0 when a line of a kept answer
-# gives a verdict that is none of the <pass-word>s: the check refused the part
-# (review on #2569). The verdict is the word after the line's first colon
-# (`<id>: covered`) or, #2574, the word the line starts with before its colon
-# (issue-acceptance's `MET: <id>`, `UNMET: …`): a line that starts with a word
-# and a colon is read by that word alone, so `UNMET: None of …` is a refusal.
+# judge_refused <payload> <word>... — rc 0 when a line of a kept answer gives a
+# verdict that is none of the pass words: the check refused the part (review on
+# #2569). <word>s are the check's verdict words: pass words, and refusal words
+# written with a `!` (`!unmet`). The verdict is the word after the line's
+# first colon (`<id>: covered`) or, #2574, the word the line starts with before
+# its colon when that is one of the check's verdict words (`MET: <id>`,
+# `UNMET: None of …`); a leading word that is not one (`UNASKED: none`,
+# `Steps: ok`) is followed by its verdict.
 judge_refused() {
     local _jrd_l _jrd_w _jrd_v _jrd_p _jrd_t="$1"; shift
+    local _jrd_all=" ${*,,} "; _jrd_all="${_jrd_all//!/}"
     while IFS= read -r _jrd_l; do
         [[ "$_jrd_l" == *:* ]] || continue
         _jrd_w="${_jrd_l#*:}"; _jrd_w="${_jrd_w#"${_jrd_w%%[![:space:]*_\`]*}"}"; _jrd_w="${_jrd_w%%[!A-Za-z_-]*}"
-        _jrd_v=""; [[ "$_jrd_l" =~ ^[[:space:]*_\`-]*([A-Za-z_]+): ]] && _jrd_v="${BASH_REMATCH[1]}"
-        # A verdict word is one case throughout (MET, UNMET, clean, found); a
-        # name such as `Steps:` is followed by its verdict.
-        [[ "$_jrd_v" =~ ^[A-Z_]+$ || "$_jrd_v" =~ ^[a-z_]+$ ]] && _jrd_w="$_jrd_v"
+        _jrd_v=""; [[ "$_jrd_l" =~ ^[[:space:]*_\`-]*([A-Za-z_]+): ]] && _jrd_v="${BASH_REMATCH[1],,}"
+        [[ -n "$_jrd_v" && "$_jrd_all" == *" $_jrd_v "* ]] && _jrd_w="$_jrd_v"
         [[ -n "$_jrd_w" ]] || continue
-        for _jrd_p in "$@"; do [[ "${_jrd_w,,}" == "$_jrd_p" ]] && continue 2; done
+        for _jrd_p in "$@"; do [[ "$_jrd_p" != !* && "${_jrd_w,,}" == "${_jrd_p,,}" ]] && continue 2; done
         return 0
     done <<< "$_jrd_t"
     return 1

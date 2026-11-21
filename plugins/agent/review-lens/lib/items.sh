@@ -112,7 +112,7 @@ _rl_items_prepare() {
     done <<< "$ans"
     for it in "${!disp[@]}"; do judge_fp_v fp "${disp[$it]}"; _RL_IT_DFP["$it"]="$fp"; done
     _rl_items_carry_renames "$kf" "${ZBUILD_REPO_ROOT:-$PWD}"
-    judge_kept_get_all_v kept "$kf" _RL_IT_FPS _RL_IT_DFP earlier "clean" why
+    judge_kept_get_all_v kept "$kf" _RL_IT_FPS _RL_IT_DFP earlier "clean !found" why
     # #2574 (ADR-072 §5): a file a stage handed on waits, its findings standing;
     # one back from the stage it was handed to is reviewed again.
     # shellcheck disable=SC2034  # keyit is read by name
