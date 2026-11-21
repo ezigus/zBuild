@@ -219,3 +219,94 @@ judge_last_findings_block_v() {
 # A part handed to another stage waits for it (#2574): judge-handoff.sh.
 # shellcheck source=judge-handoff.sh
 source "${BASH_SOURCE[0]%/*}/judge-handoff.sh"
+
+# ─── A kept pass judged again is refused only on a line added since (§4) ─────
+# Review on #2574: issue-acceptance and the lenses judge an item again whenever
+# the code it depends on moved, so a fresh judgement could flip a pass with
+# nothing relevant changed — the flip #2574 exists to stop. A check is shown
+# each pass it is judging again, and may refuse it only by quoting a line the
+# change added or changed since that verdict; any other refusal of it is not
+# taken: the pass stands, and judge.held records it.
+
+# judge_pass_entries_v <var> <earlier_assoc> <why_assoc> <words> <whys> <item>...
+# — one entry for each <item> whose kept verdict passed (judge_refused with
+# <words>, space separated) and is judged again for one of <whys> (space
+# separated: `file` — a file it depended on moved; `fingerprint` — for a check
+# whose fingerprint holds the change's content, the code moved). A check whose
+# fingerprint is the item's own words (design's) passes `file` only: when its
+# words changed, it is judged afresh.
+judge_pass_entries_v() {
+    local -n _jpe="$1" _jpe_e="$2" _jpe_w="$3"; local _jpe_words="$4" _jpe_whys=" $5 " _jpe_i _jpe_p
+    local -a _jpe_wa=(); read -ra _jpe_wa <<< "$_jpe_words"
+    shift 5
+    _jpe=""
+    for _jpe_i in "$@"; do
+        [[ -n "${_jpe_e[$_jpe_i]+x}" && -n "${_jpe_w[$_jpe_i]:-}" && "$_jpe_whys" == *" ${_jpe_w[$_jpe_i]} "* ]] || continue
+        judge_refused "${_jpe_e[$_jpe_i]}" ${_jpe_wa[@]+"${_jpe_wa[@]}"} && continue
+        _jpe_p="${_jpe_e[$_jpe_i]//$'\n'/ }"; (( ${#_jpe_p} > _JUDGE_HELD_MAX_TEXT )) && _jpe_p="${_jpe_p:0:_JUDGE_HELD_MAX_TEXT}… (cut)"
+        _jpe+="- $_jpe_i — you passed it: $_jpe_p"$'\n'
+    done
+}
+
+# judge_pass_block_v <var> <entries> — what a check is shown of the passes it
+# is judging again; empty when there is none.
+judge_pass_block_v() {
+    local -n _jpb="$1"; _jpb=""
+    [[ -n "${2//[[:space:]]/}" ]] || return 0
+    _jpb=$'\n''YOUR EARLIER VERDICTS ON PARTS YOU PASSED — each part below passed when you judged it before, and the code it depends on has moved since. Judge it again, but refuse it only if a line the change added or changed since then breaks it, and give that line as the QUOTE (<file> | <the line>). A refusal whose QUOTE is not such a line is not taken: the pass stands.'$'\n'"$2"
+}
+
+# judge_pass_flip_ok <kept_file> <item> <repo> <quote>... — rc 0 when a <quote>
+# ("<file> | <line>") is a line of the file now that the change added since the
+# item's kept verdict: one the file did not hold as that verdict saw it (its
+# content, stored in the repository's objects when the verdict was kept —
+# _JUDGE_KEPT_FILES from judge_kept_get_all_v), or, for a file the verdict did
+# not depend on, one the commit the branch started from did not hold. With
+# neither, none can be shown to be new. Otherwise rc 1, and
+# judge.held is emitted. Runs only when a pass is refused.
+judge_pass_flip_ok() {
+    local kf="$1" it="$2" repo="${3%/}" q f txt w h base="" chk l
+    shift 3
+    declare -F zbuild_resolve_merge_base_v >/dev/null 2>&1 \
+        || source "${_ZB_JUDGE_DIR:-${BASH_SOURCE[0]%/*}}/merge-base.sh" 2>/dev/null || true
+    for q in "$@"; do
+        _judge_quote_split "$q" || continue
+        # shellcheck disable=SC2154  # set by _judge_quote_split
+        f="${_jqs_path#"$repo"/}"
+        # shellcheck disable=SC2154  # set by _judge_quote_split
+        txt="$_jqs_txt"
+        judge_quote_check_v w "$f | $txt" "" "$repo" || continue
+        h=""
+        while IFS=$'\t' read -r l w; do [[ "$l" == "$repo/$f" ]] && h="$w"; done <<< "${_JUDGE_KEPT_FILES[$it]:-}"
+        if [[ "$h" =~ ^[0-9a-f]{40,64}$ ]] && w="$(git -C "$repo" cat-file -p "$h" 2>/dev/null)"; then
+            # The file as the kept verdict saw it, stored when it was kept.
+            _judge_holds "${w//$'\n'/ $'\x1e' }" "$txt" || return 0
+            continue
+        fi
+        [[ -n "$base" ]] || { declare -F zbuild_resolve_merge_base_v >/dev/null 2>&1 && zbuild_resolve_merge_base_v base "$repo"; }
+        [[ -n "$base" ]] || continue
+        w="$(git -C "$repo" show "$base:$f" 2>/dev/null)" || w=""
+        _judge_holds "${w//$'\n'/ $'\x1e' }" "$txt" || return 0
+    done
+    _judge_check_name_v chk "$kf"
+    _judge_emit judge.held "check=$chk" "item=$it"
+    return 1
+}
+
+# judge_pass_hold_lines <kept_file> <item> <repo> <earlier> <new_var> <words> —
+# for a check whose verdict lines carry `| QUOTE:` fields (design's check,
+# issue-acceptance): when <item>'s kept verdict <earlier> passed and its new
+# verdict (in <new_var>) refuses it, the refusal is taken only on a QUOTE that
+# judge_pass_flip_ok accepts; otherwise <new_var> becomes <earlier> — the pass
+# stands. rc 0 when it was held.
+judge_pass_hold_lines() {
+    local kf="$1" it="$2" repo="$3" earlier="$4" words="$6" l q
+    local -n _jphl="$5"
+    local -a wa=() qs=(); read -ra wa <<< "$words"
+    judge_refused "$earlier" ${wa[@]+"${wa[@]}"} && return 1
+    judge_refused "$_jphl" ${wa[@]+"${wa[@]}"} || return 1
+    while IFS= read -r l; do judge_reply_field_v q "$l" QUOTE; [[ -n "$q" ]] && qs+=("$q"); done <<< "$_jphl"
+    judge_pass_flip_ok "$kf" "$it" "$repo" ${qs[@]+"${qs[@]}"} && return 1
+    _jphl="$earlier"
+    return 0
+}

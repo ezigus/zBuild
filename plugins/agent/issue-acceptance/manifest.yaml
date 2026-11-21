@@ -53,6 +53,8 @@ provides:
     - judge.handoff.waiting
     - judge.handoff.back
     - judge.handoff.capped
+    # #2574 review: a pass judged again, refused on no line added since, stands.
+    - judge.held
 
 config:
   tier_default: T2

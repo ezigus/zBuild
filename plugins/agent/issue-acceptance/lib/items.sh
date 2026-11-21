@@ -169,6 +169,9 @@ _ia_judge() {
         done <<< "${held[$it]:-}"
     done
     judge_held_block_v _held "$_held"
+    # Review on #2574: each pass judged again because the code moved, shown so.
+    local _pas=""; judge_pass_entries_v _pas earlier kwhy "$_IA_PASS_WORDS" "fingerprint file" $want
+    judge_pass_block_v _pas "$_pas"; _held+="$_pas"
     local _uqb=""; zb_unclear_judge_block_v _uqb "$_IA_UQ_CARRIED"
     [[ -n "$_uqb" ]] && _held+=$'\n'"$_uqb"$'\n'
     _ia_call "$(_ia_prompt "$issue" "${acc:-<none>}" "${change:-<no change found>}" "${test_verdict:-unknown}" "${areqs%$'\n'}" "$_held" "${alims%$'\n'}" "$_terms" "$rev" "${others%$'\n'}")" "$want" || return "$_IA_STOP_RC"
@@ -183,6 +186,14 @@ _ia_judge() {
         judge_reply_field_v q "$l" QUOTE; [[ -n "$q" ]] || continue
         judge_quote_path_v qp "$q" "$_root_q"; [[ -n "$qp" ]] && deps["$it"]+="$_root_q/$qp"$'\n'
     done <<< "$_IA_RAW"
+    # A kept pass judged again is refused only on a line added since; else it stands.
+    for it in $want; do
+        [[ -n "${earlier[$it]+x}" && -n "${pay[$it]:-}" ]] || continue
+        case "${kwhy[$it]:-}" in fingerprint|file) ;; *) continue ;; esac
+        judge_pass_hold_lines "$kf" "$it" "$_root_q" "${earlier[$it]}" "pay[$it]" "$_IA_PASS_WORDS" || continue
+        pay["$it"]+=$'\n'
+        while IFS=$'\t' read -r l q; do [[ -n "$l" ]] && deps["$it"]+="$l"$'\n'; done <<< "${_JUDGE_KEPT_FILES[$it]:-}"
+    done
     local nraw=""
     # A question raised now, with no question carried, is read, and carried
     # by the result (data.unclear), not kept here.

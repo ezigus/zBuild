@@ -262,6 +262,7 @@ _review_lens_run_inner() {
     if [[ -z "$json" && -n "$_rl_salvage" && $router_rc -eq 0 && "${_rl_interrupted:-0}" != "1" ]]; then
         json="$_rl_salvage"; raw_response="$_rl_salvage"; _rl_problem=""; _rl_called=2
     fi
+    (( _rl_called )) && _rl_items_hold_passes "$_rl_kf" "$_rl_repo" json
     if [[ "$_prev_json_env" == "__UNSET__" ]]; then
         unset ZBUILD_ROUTER_JSON_OUTPUT
     else

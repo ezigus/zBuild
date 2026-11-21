@@ -21,7 +21,12 @@
 # LP3 [change] build answers the finding, nothing changed: only its file is
 #              reviewed again
 # LP10 [change] (review) a lens's findings' code is its whole name, so two
-#              lenses' codes are never the same, shown the finding and the answer
+#              lenses' codes are never the same
+# LP11 [change] (review) a file whose kept report found nothing, reviewed
+#              again because the code moved: the lens is shown that it passed,
+#              and may find something only on a line added since; a finding
+#              quoting a line that was there is not taken (judge.held), one
+#              quoting a line added since is, shown the finding and the answer
 # LP4 [change] the next try gives no answer and nothing changed: no call — the
 #              kept reports stand
 # LP5 [change] an answer to a finding about a file whose kept report found
@@ -161,12 +166,15 @@ _lens
 assert_eq "[LP6] b.sh changed: a.sh, whose review read it, is reviewed again" "yes" "$(_asked a.sh)"
 
 print_test_section "LP7: a file with findings depends on every file of the change"
-printf '# its finding\n' >> "$XR/a.sh"; _commit "a with its finding"
-FINDINGS="[$FA]"
+# A clean a.sh is found wanting only on a line added since (LP11's rule).
+printf 'read_cfg "$3"\n' >> "$XR/a.sh"; _commit "a with its finding"
+FA3="${FA/read_cfg \\\"\$1\\\"/read_cfg \\\"\$3\\\"}"
+FINDINGS="[$FA3]"
 _lens
 assert_contains "[LP7] setup: a.sh's report found something" "$MSGS" "the config is read unchecked"
 printf 'b=4\n' >> "$XR/b.sh"; _commit "b, which a.sh's review did not read"
-FINDINGS="[$FA, $FB]"
+FB4="${FB/\"quote\":\"b=1\"/\"quote\":\"b=4\"}"
+FINDINGS="[$FA3, $FB4]"
 _lens
 assert_eq "[LP7] b.sh changed: a.sh, whose report found something, is reviewed again" "yes" "$(_asked a.sh)"
 
@@ -182,7 +190,8 @@ print_test_section "LP9: a file handed to test-author waits for it"
 source "$REPO_ROOT/scripts/lib/stage-dispatch-mark.sh"
 STATE="$TEST_TEMP_DIR"; printf '{}' > "$STATE/pipeline-state.json"
 export ZBUILD_STATE_DIR="$STATE" ZBUILD_INPUTS_FLOW="design test-author build test issue-acceptance review_lenses"
-FINDINGS="[$FA]"; printf '# again\n' >> "$XR/a.sh"; _commit "a once more"
+printf 'read_cfg "$4"\n' >> "$XR/a.sh"; _commit "a once more"
+FINDINGS="[${FA/read_cfg \\\"\$1\\\"/read_cfg \\\"\$4\\\"}]"
 _lens
 FID="$(jq -r '.data.findings[] | select(.text | contains("read unchecked")) | .id' "$ART/lens-red-team-code-result.json" | head -n 1)"
 stage_dispatch_mark "$STATE/pipeline-state.json" test-author
@@ -214,6 +223,22 @@ printf 'x\n' | stage_findings_json "$ART" RLSECURITY >/dev/null
 assert_eq "[LP10] a finding takes such a code" "RLSECURITY-1" "$(jq -r '.ids | to_entries[0].value' "$ART/finding-ids-RLSECURITY.json" 2>/dev/null)"
 _a=(); zb_answers_collect_v _a "ANSWER RLSECURITY-1: done — fixed"
 assert_eq "[LP10] ...and an answer by it is read" "RLSECURITY-1: done — fixed" "${_a[0]:-}"
+
+print_test_section "LP11: a clean file is found wanting only on a line added since"
+FINDINGS="[]"; printf '# quiet\n' >> "$XR/a.sh"; _commit "a, quiet"
+_lens
+_lacks "[LP11] setup: a.sh's report is clean" "$MSGS" "read unchecked"
+printf '# unrelated\n' >> "$XR/a.sh"; _commit "a, unrelated"
+FINDINGS="[$FA]"; : > "$ZBUILD_EVENTS_JSONL"
+_lens
+assert_eq "[LP11] a.sh is reviewed again: the code moved" "yes" "$(_asked a.sh)"
+assert_contains "[LP11] ...shown that it passed" "$(cat "$_P.1")" "YOUR EARLIER VERDICTS ON PARTS YOU PASSED"
+_lacks "[LP11] a finding quoting a line that was there is not taken" "$MSGS" "read unchecked"
+assert_contains "[LP11] ...judge.held records it" "$(cat "$ZBUILD_EVENTS_JSONL")" "judge.held"
+printf 'read_cfg "$2"\n' >> "$XR/a.sh"; _commit "a, a new unchecked read"
+FINDINGS="[${FA/read_cfg \\\"\$1\\\"/read_cfg \\\"\$2\\\"}]"
+_lens
+assert_contains "[LP11] a finding quoting a line added since is taken" "$MSGS" "read unchecked"
 
 cleanup_test_env
 print_test_results

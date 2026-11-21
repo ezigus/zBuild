@@ -29,6 +29,11 @@
 #              test-author: RQCNFG-1 is not judged again, its refusal stands,
 #              noted as waiting; once test-author has run it is judged again,
 #              held to the finding and the answer
+# PI8 [change] (review) a kept MET judged again because the code moved: the
+#              judge is shown its earlier verdict, and may refuse it only by
+#              quoting a line the change added since; a refusal quoting a line
+#              that was there leaves the MET standing (judge.held), one quoting
+#              a line added since is taken
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -82,7 +87,9 @@ REFUSE='UNMET: [fix-code] RQCNFG-1 | WHY: a missing config file is not refused |
 CNFG="$REFUSE"
 route_to_model() {
     local n r=""; n=$(( $(cat "$_N" 2>/dev/null || echo 0) + 1 )); printf '%s' "$n" > "$_N"; printf '%s' "$2" > "$_P.$n"
-    [[ "$2" == *$'\n- RQFLAG-1: '* ]] && r+=$'MET: RQFLAG-1\n'
+    [[ "$2" == *$'\n- RQFLAG-1: '* ]] && r+="${FLAG:-MET: RQFLAG-1}"$'\n'
+    # The files the call reads, as the router lists them.
+    [[ -n "${OPENS:-}" && -n "${ZBUILD_ROUTER_OPENED_FILE:-}" ]] && printf '%s\n' "$OPENS" >> "$ZBUILD_ROUTER_OPENED_FILE"
     [[ "$2" == *$'\n- RQCNFG-1: '* ]] && r+="$CNFG"$'\n'
     [[ "$2" == *"Then answer the reverse question"* ]] && r+=$'UNASKED: none\n'
     printf '%s' "$r"
@@ -158,7 +165,9 @@ print_test_section "PI7: a requirement handed to test-author waits for it"
 # shellcheck source=../../scripts/lib/stage-dispatch-mark.sh
 source "$REPO_ROOT/scripts/lib/stage-dispatch-mark.sh"
 export ZBUILD_STATE_DIR="$S" ZBUILD_INPUTS_FLOW="design test-author build test issue-acceptance"
-CNFG="$REFUSE"
+# A line added since RQCNFG-1 last passed, which breaks it (PI8's rule).
+printf 'config_skip=1\n' >> "$XR/p.sh"
+CNFG='UNMET: [fix-code] RQCNFG-1 | WHY: a missing config file is skipped | ACCEPTED IF: a missing config file is refused | QUOTE: p.sh | config_skip=1'
 printf '%s\n' 'diff --git a/p.sh b/p.sh' '+flag=1' '+flag_parsed=1' > "$IN/diff.patch"
 _ia
 assert_eq "[PI7] setup: RQCNFG-1 refused" "fail" "$OUT"
@@ -182,6 +191,27 @@ _ia
 assert_eq "[PI7] test-author has run: RQCNFG-1 is asked" "1" "$(_asked RQCNFG-1)"
 assert_contains "[PI7] ...held to the finding and the answer" "$(_flat "$_P.1")" "not mine — the test must change"
 assert_eq "[PI7] ...and passes" "pass" "$OUT"
+
+print_test_section "PI8: a kept MET is refused only on a line added since"
+FLAG="MET: RQFLAG-1"; OPENS="$XR/p.sh"; CNFG='MET: RQCNFG-1'
+printf '%s\n' 'diff --git a/p.sh b/p.sh' '+flag=1' '+flag_parsed=2' > "$IN/diff.patch"
+_ia
+assert_eq "[PI8] setup: both met, the call read p.sh" "pass" "$OUT"
+OPENS=""
+printf 'flag_unused=1\n' >> "$XR/p.sh"
+printf '%s\n' 'diff --git a/p.sh b/p.sh' '+flag=1' '+flag_parsed=3' > "$IN/diff.patch"
+FLAG='UNMET: [fix-code] RQFLAG-1 | WHY: the flag is not read | ACCEPTED IF: the flag is read | QUOTE: p.sh | flag=1'
+: > "$ZBUILD_EVENTS_JSONL"
+_ia
+assert_eq "[PI8] RQFLAG-1 is asked again: the code moved" "1" "$(_asked RQFLAG-1)"
+assert_contains "[PI8] ...shown its earlier verdict" "$(_flat "$_P.1")" "YOUR EARLIER VERDICTS ON PARTS YOU PASSED"
+assert_eq "[PI8] a refusal quoting a line that was there: the MET stands" "pass" "$OUT"
+assert_contains "[PI8] ...and judge.held records it" "$(cat "$ZBUILD_EVENTS_JSONL")" "judge.held"
+printf 'flag_ignored=1\n' >> "$XR/p.sh"
+printf '%s\n' 'diff --git a/p.sh b/p.sh' '+flag=1' '+flag_parsed=4' > "$IN/diff.patch"
+FLAG='UNMET: [fix-code] RQFLAG-1 | WHY: the flag is now ignored | ACCEPTED IF: the flag is read | QUOTE: p.sh | flag_ignored=1'
+_ia
+assert_eq "[PI8] a refusal quoting a line added since: refused" "fail" "$OUT"
 
 cleanup_test_env
 print_test_results

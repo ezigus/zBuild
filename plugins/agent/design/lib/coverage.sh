@@ -303,6 +303,10 @@ _design_coverage() {
     # answer to its finding, in the order the items are asked.
     _dcov_held_v _disp_shown "$want"
     judge_held_block_v _disp_shown "$_disp_shown"
+    # Review on #2574: a pass judged again because a file it read moved (its
+    # own words did not change) is refused only on a line added since.
+    local _dpas=""; judge_pass_entries_v _dpas _earl kwhy "ok covered open" file $want
+    judge_pass_block_v _dpas "$_dpas"; _disp_shown+="$_dpas"
     local _ublk=""; zb_unclear_judge_block_v _ublk "$unclear_asked"
     [[ -n "$_ublk" ]] && _disp_shown=$'\n'"$_ublk"$'\n'"$_disp_shown"
     # #2458: it judges, so it composes fresh — no notes, and no rule to confirm earlier work.
@@ -367,9 +371,15 @@ _design_coverage() {
     local new_raw="" new_want=""
     while IFS= read -r k; do
         [[ -n "$k" && -n "${got[$k]+x}" ]] || continue
+        if [[ "${kwhy[$k]:-}" == file && -n "${_earl[$k]+x}" ]] \
+            && judge_pass_hold_lines "$kf" "$k" "$repo" "${_earl[$k]}" "got[$k]" "ok covered open"; then
+            got["$k"]="${got[$k]%$'\n'}"$'\n'; gotq["$k"]=""
+        fi
         # shellcheck disable=SC2034  # passed by name to judge_kept_put_all
         { put["$k"]="${got[$k]}"; judge_kept_fp_v "putfp[$k]" "${fps[$k]}" "${dfp[$k]:-}"; deps["$k"]="$_opened_all"; }
         while IFS= read -r q; do [[ -n "$q" ]] && deps["$k"]+="$repo/$q"$'\n'; done <<< "${gotq[$k]:-}"
+        # A held pass keeps depending on what its kept verdict did.
+        [[ -z "${gotq[$k]:-}" ]] && while IFS=$'\t' read -r f q; do [[ -n "$f" ]] && deps["$k"]+="$f"$'\n'; done <<< "${_JUDGE_KEPT_FILES[$k]:-}"
         new_raw+="${got[$k]}"; new_want+="$k"$'\n'
     done <<< "$want"
     [[ -n "$kf" ]] && judge_kept_put_all "$kf" put putfp deps

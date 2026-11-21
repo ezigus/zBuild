@@ -59,6 +59,8 @@ provides:
     - judge.handoff.waiting
     - judge.handoff.back
     - judge.handoff.capped
+    # #2574 review: a pass judged again, refused on no line added since, stands.
+    - judge.held
     # #2552 (ADR-038): the check of a lens's findings — what it knocked down,
     # or that its answer could not be used (every finding then stands).
     - review_lens.checked

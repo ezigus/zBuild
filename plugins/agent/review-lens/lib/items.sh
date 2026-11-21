@@ -70,7 +70,7 @@ _rl_area_of_v() {
 # content is in its own kept report's files; `change` depends on every file of
 # the change (_rl_items_keep).
 declare -gA _RL_IT_FPS=() _RL_IT_DFP=()
-_RL_IT_KEPT="{}" _RL_IT_WANT="" _RL_IT_NOTES="" _RL_IT_HELD=""
+_RL_IT_KEPT="{}" _RL_IT_WANT="" _RL_IT_NOTES="" _RL_IT_HELD="" _RL_IT_PASSED="" _RL_IT_EARLIER_FILES=""
 _rl_items_prepare() {
     local kf="$1" eng="$2" base="$3" ans="$4" f fp it a k kj
     local -n _rip_af="$5"
@@ -100,6 +100,17 @@ _rl_items_prepare() {
     for it in "${!_JUDGE_HANDOFF_WAIT[@]}"; do judge_handoff_waiting_v k "${_JUDGE_HANDOFF_WAIT[$it]}"; _RL_IT_NOTES+="- $it: $k"$'\n'; done
     for it in "${!_JUDGE_HANDOFF_BACK[@]}"; do judge_held_entry_v k "$it" "${_JUDGE_HANDOFF_BACK[$it]}"; hl+="$k"; done
     [[ -n "$hl" ]] && judge_held_block_v _RL_IT_HELD "$hl"
+    # Review on #2574: a file whose kept report was clean, judged again because
+    # the code moved, is shown so; a finding on it is taken only on a line added
+    # since (_rl_items_hold_passes).
+    _RL_IT_PASSED=""; local pe=""
+    for it in ${_RL_IT_FILES[@]+"${_RL_IT_FILES[@]}"}; do
+        [[ -z "${kept[$it]+x}" && "${earlier[$it]:-}" == clean:* && " file fingerprint " == *" ${why[$it]:-none} "* ]] && _RL_IT_PASSED+=" $it"
+    done
+    # shellcheck disable=SC2086  # the files are words
+    [[ -n "$_RL_IT_PASSED" ]] && judge_pass_entries_v pe earlier why "clean !found" "file fingerprint" $_RL_IT_PASSED
+    [[ -n "$pe" ]] && { judge_pass_block_v pe "$pe"; _RL_IT_HELD+="$pe"; }
+    _RL_IT_EARLIER_FILES=""; for it in $_RL_IT_PASSED; do _RL_IT_EARLIER_FILES+="$it"$'\x1f'"${_JUDGE_KEPT_FILES[$it]:-}"$'\x1e'; done
     local body=""
     for it in ${_RL_IT_FILES[@]+"${_RL_IT_FILES[@]}"} change; do
         if [[ -n "${kept[$it]+x}" && "${kept[$it]}" == *$'\n'* ]]; then
@@ -214,5 +225,27 @@ _rl_items_keep() {
     # shellcheck disable=SC2034  # read by judge_kept_put_all through their names
     [[ ${#put[@]} -gt 0 ]] && judge_kept_put_all "$kf" put putfp deps
     judge_handoff_done "$kf"
+    return 0
+}
+
+# _rl_items_hold_passes <kept_file> <repo> <json_var> — the reply's findings on a
+# file whose kept report was clean are taken only when one quotes a line the
+# change added since (judge_pass_flip_ok); otherwise the file stays clean and
+# judge.held records it. jq only when such a file was asked.
+_rl_items_hold_passes() {
+    local kf="$1" repo="$2" f q l drop="" it
+    local -n _rhp="$3"
+    [[ -n "$_RL_IT_PASSED" && -n "$_rhp" ]] || return 0
+    local -A qs=()
+    while IFS=$'\t' read -r f q; do [[ -n "$f" ]] && qs["$f"]+="$f | $q"$'\x1e'; done < <(jq -r --arg fs "$_RL_IT_PASSED " \
+        '(.findings // [])[] | objects | select(.file as $f | $fs | contains(" \($f) ")) | "\(.file)\t\(.quote // "" | tostring | gsub("[\r\n\t]+"; " "))"' <<< "$_rhp" 2>/dev/null)
+    for f in "${!qs[@]}"; do
+        # The record's files, as judge_kept_get_all_v gave them.
+        while IFS= read -r -d $'\x1e' l; do [[ "${l%%$'\x1f'*}" == "$f" ]] && _JUDGE_KEPT_FILES["$f"]="${l#*$'\x1f'}"; done <<< "$_RL_IT_EARLIER_FILES"
+        local -a ql=(); IFS=$'\x1e' read -r -a ql <<< "${qs[$f]%$'\x1e'}"
+        judge_pass_flip_ok "$kf" "$f" "$repo" "${ql[@]}" || drop+=" $f"
+    done
+    [[ -n "$drop" ]] || return 0
+    _rhp="$(jq -c --arg d "$drop " '.findings |= [ (. // [])[] | select((objects | .file) as $f | ($f == null) or ($d | contains(" \($f) ") | not)) ]' <<< "$_rhp" 2>/dev/null)" || true
     return 0
 }
