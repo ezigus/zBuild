@@ -116,7 +116,7 @@ assert_eq "[W5] written" "1" "$(jq -r .highest "$D5/finding-ids-BUFND.json" 2>/d
 chmod a-w "$D5"
 printf 'b\n' | stage_findings_json "$D5" BUFND >/dev/null 2>&1
 chmod u+w "$D5"
-assert_contains "[W5] a record that could not be written leaves an event" "$(cat "$ZBUILD_EVENTS_JSONL")" "finding_ids.write_failed"
+assert_contains "[W5] a record that could not be written leaves an event" "$(cat "$ZBUILD_EVENTS_JSONL")" "stage.finding_ids.write_failed"
 
 print_test_section "W6: stage_findings_add to a file not there yet"
 D6="$TEST_TEMP_DIR/w6"; mkdir -p "$D6"
