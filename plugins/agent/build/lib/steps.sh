@@ -119,7 +119,7 @@ _build_steps_handed() {
         fans[$n]+="${fans[$n]:+; }${x#*: }"
         [[ "$kd" == "not mine" ]] || continue
         judge_handoff_receivers_v rcv "$_BUILD_STEPS_MANIFEST" "$2" "$k"
-        [[ -n "$rcv" ]] && newho[$n]="$rcv"$'\x1f'"${x#*: }"$'\x1f'"$t"
+        [[ -n "$rcv" ]] && newho[$n]="$rcv"$'\x1f'"$x"$'\x1f'"$t"
     done
     return 0
 }
@@ -136,6 +136,7 @@ _BUILD_STEP_FINDINGS=() _BUILD_STEP_LINES=() _BUILD_STEP_NOTE="" _BUILD_STEP_RC=
 _build_steps_check() {
     local reply="$1" repo="${2%/}" ad="${3%/}" tier="${4:-T2}"
     _BUILD_STEP_FINDINGS=() _BUILD_STEP_LINES=() _BUILD_STEP_NOTE="" _BUILD_STEP_RC=0 _BUILD_STEP_DISP="" _BUILD_STEP_WAITING=()
+    _JUDGE_HANDOFF_JUDGED=()
     local count=${#_BUILD_STEP_DESC[@]}
     (( count > 0 )) || return 0
     local joined l low n rest q _jqs_path _jqs_txt
@@ -167,18 +168,22 @@ _build_steps_check() {
     # not judged until that stage has run; then it is judged, held to the
     # finding and the answer (back). A hand-off made now is recorded now —
     # after this try's judgement for a step that is back.
-    local kf="$ad/build-steps-judged.json" hs w
+    local kf="$ad/build-steps-judged.json" hs w a
     local -A fans=() newho=() back=() wait=()
     _build_steps_handed "$reply" "$ad"
     for (( n = 1; n <= count; n++ )); do
         judge_handoff_state_v hs "$kf" "step-$n"
         [[ "$hs" == back ]] && back[$n]="$_JUDGE_HANDOFF_ANSWER"
         if [[ "$hs" != back && -n "${newho[$n]:-}" ]]; then
-            IFS=$'\x1f' read -r w _ _ <<< "${newho[$n]}"
-            judge_handoff_put "$kf" "step-$n" "$w" "${newho[$n]#*$'\x1f'}" "${newho[$n]##*$'\x1f'}"
+            IFS=$'\x1f' read -r w a _ <<< "${newho[$n]}"
+            judge_handoff_put "$kf" "step-$n" "$w" "$a" "${newho[$n]##*$'\x1f'}" || true
             judge_handoff_state_v hs "$kf" "step-$n"
         fi
-        [[ "$hs" == waiting ]] && wait[$n]="$_JUDGE_HANDOFF_TO"$'\x1f'"$_JUDGE_HANDOFF_FINDING"
+        if [[ "$hs" == waiting ]]; then
+            wait[$n]="$_JUDGE_HANDOFF_TO"$'\x1f'"$_JUDGE_HANDOFF_FINDING"
+            # The receiver is given the finding while the step waits.
+            _build_steps_keep_carried "$ad" "$_JUDGE_HANDOFF_ANSWER"
+        fi
     done
 
     # The mechanical check: an answer for each step; a done's quote is a line
@@ -263,14 +268,24 @@ _build_steps_check() {
     fi
     judged+=(${nn[@]+"${nn[@]}"})
     [[ ${#judged[@]} -gt 0 ]] && _build_steps_judge "$repo" "$ad" "$tier" "${judged[@]}"
-    # A step that was back has been judged: its hand-off is over, unless build
-    # handed it on again in this try (then it waits from now).
-    for n in "${!back[@]}"; do
-        judge_handoff_clear "$kf" "step-$n"
-        [[ -n "${newho[$n]:-}" ]] || continue
-        IFS=$'\x1f' read -r w _ _ <<< "${newho[$n]}"
-        judge_handoff_put "$kf" "step-$n" "$w" "${newho[$n]#*$'\x1f'}" "${newho[$n]##*$'\x1f'}"
-    done
+    # A step that was back has been judged: its hand-off is over. The reply
+    # judged with it hands nothing on; the next try's may.
+    for n in "${!back[@]}"; do judge_handoff_clear "$kf" "step-$n"; done
+    return 0
+}
+
+# _build_steps_keep_carried <artifact_dir> <answer> — while a step waits, the
+# finding build handed on stays in build-tests-result.json, so the stage that
+# takes it is given it even when this try's reply did not answer it again.
+_build_steps_keep_carried() {
+    local f="$1/build-tests-result.json" line body="" j
+    line="$(_build_test_wrong "ANSWER $2")"; [[ -n "$line" ]] || return 0
+    [[ -s "$f" ]] && { IFS= read -r -d '' body < "$f" || true; }
+    _judge_json_str_v j "$line"
+    [[ "$body" == *"$j"* ]] && return 0
+    if [[ -n "$body" ]]; then stage_findings_add "$f" "[{\"text\":$j}]" "${_BUILD_FCODE:-}" || true
+    else stage_result_write "$f" fail "build says 1 test(s) are wrong and cannot pass" \
+        "{\"findings\":$(stage_findings_json "$1" "${_BUILD_FCODE:-}" <<< "$line")}" 2>/dev/null || true; fi
     return 0
 }
 

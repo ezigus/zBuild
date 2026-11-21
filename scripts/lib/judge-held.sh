@@ -21,10 +21,12 @@ judge_answers_to() { local _jat=""; judge_answers_to_v _jat "$@"; [[ -n "$_jat" 
 # _JUDGE_ANSWER_FINDING gets the text of each answered finding the answering
 # stage kept with its answers (data.answer_findings): the finding travels with
 # the answer (#2574).
-declare -gA _JUDGE_ANSWER_FINDING=()
+# _JUDGE_ANSWER_FROM gets the result file each answer is in: the answering
+# stage (#2574: a not mine hands its part on only through that stage's outputs).
+declare -gA _JUDGE_ANSWER_FINDING=() _JUDGE_ANSWER_FROM=()
 judge_answers_to_v() {
     local -n _jatv="$1"; shift
-    _jatv=""; _JUDGE_ANSWER_FINDING=()
+    _jatv=""; _JUDGE_ANSWER_FINDING=(); _JUDGE_ANSWER_FROM=()
     local dir="${1:+${1%/}}"; shift
     [[ -d "$dir" && $# -gt 0 ]] || return 0
     local re="" cre="" l
@@ -44,11 +46,11 @@ judge_answers_to_v() {
     [[ ${#files[@]} -gt 0 ]] || return 0
     while IFS=$'\t' read -r _jat_t _jat_k _jat_x; do
         case "$_jat_t" in
-            A) _jatv+="${_jatv:+$'\n'}$_jat_k" ;;
+            A) _jatv+="${_jatv:+$'\n'}$_jat_x"; _JUDGE_ANSWER_FROM["${_jat_x%%:*}"]="$_jat_k" ;;
             T) [[ -n "$_jat_k" ]] && _JUDGE_ANSWER_FINDING["$_jat_k"]="${_jat_x//$'\x1e'/$'\n'}" ;;
         esac
     done < <(jq -r --arg re "^${key}[[:space:]]*:[[:space:]*_\`]*(done|wrong|not[[:space:]]+mine)([^A-Za-z]|$)" --arg kre "^${key}$" \
-        '((.data.answers // [])[]? | strings | select(test($re; "i")) | "A\t" + gsub("[\t\r\n]"; " ")),
+        '((.data.answers // [])[]? | strings | select(test($re; "i")) | "A\t\(input_filename)\t" + gsub("[\t\r\n]"; " ")),
          ((.data.answer_findings // {}) | objects | to_entries[] | select(.key | test($kre; "i"))
           | "T\t\(.key)\t\(.value | tostring | gsub("\t"; " ") | gsub("\r?\n"; "\u001e"))")' "${files[@]}" 2>/dev/null)
     return 0
@@ -214,115 +216,6 @@ judge_last_findings_block_v() {
     _jlf=$'\n'"YOUR FINDINGS LAST TIME — each with what the stages given it answered. A finding you report again keeps the grade you gave it, unless you quote what changed since that makes it worse. For each one answered — done, wrong or not mine — say whether the answer resolves it: when it does (its ACCEPTED IF now holds, or the answer shows it was wrong), do not report it again; when it does not, report it again, its message saying why the answer does not resolve it."$'\n'"${_jlf_body%$'\n'}"
 }
 
-# ─── A part handed to another stage waits for it (§5, #2574) ────────────────
-# When a stage answers a check's finding `not mine`, the part that finding is
-# about is not judged again until the stage it was handed to has run: on #1764
-# run 44782866204 build's tries 2 and 3 were asked about a step it had handed
-# to test-author, and refused again, while test-author had not run. The
-# hand-off is the check's own record, beside its kept answers
-# (<kept_file>-handed-<key>); its time is the record's own, and whether the
-# receiving stage has run since is read from the engine's records of when each
-# stage last started (runtime/dispatched/<stage>, stage-dispatch-mark.sh). No
-# program is run: a file's time is compared by the shell (-nt).
-
-# judge_handoff_receivers_v <var> <manifest> <artifact_dir> <key> — the stages
-# the finding <key> (an id, or `<label> finding <n>`) is handed to: the stages
-# that take the topic of an output of the answering stage (its <manifest>)
-# that is on a findings topic and carries <key>. Space separated; empty when
-# no output carries it — then nothing waits.
-judge_handoff_receivers_v() {
-    local -n _jhr="$1"; local mf="$2" ad="${3%/}" key="$4" l in=0 topic="" path="" body m id t
-    local -a topics=()
-    _jhr=""
-    [[ -s "$mf" && -n "$key" && -n "$ad" ]] || return 0
-    local kre="(^|[^A-Za-z0-9_-])${key//[^A-Za-z0-9 _-]/.}([^0-9]|$)"
-    _jhr_take() {
-        path="${path//\"/}"; path="${path//\'/}"; path="${path//\$\{artifact_dir\}/$ad}"
-        [[ "$topic" == *-findings && "$path" == *.json ]] || return 0
-        [[ -s "$path" ]] || return 0
-        body=""; IFS= read -r -d '' body < "$path" || true
-        [[ "$body" =~ $kre ]] && topics+=("$topic")
-        return 0
-    }
-    while IFS= read -r l || [[ -n "$l" ]]; do
-        if [[ "$l" =~ ^outputs:[[:space:]]*$ ]]; then in=1; continue; fi
-        (( in )) || continue
-        if [[ "$l" =~ ^[A-Za-z_] ]]; then _jhr_take; break; fi
-        if [[ "$l" =~ ^[[:space:]]*-[[:space:]] ]]; then _jhr_take; topic="" path=""; fi
-        [[ "$l" =~ (^|[[:space:]-])topic:[[:space:]]*([^[:space:]#]+) ]] && topic="${BASH_REMATCH[2]}"
-        [[ "$l" =~ (^|[[:space:]-])path:[[:space:]]*([^[:space:]#]+) ]] && path="${BASH_REMATCH[2]}"
-    done < "$mf"
-    (( in )) && [[ -n "$topic" ]] && _jhr_take
-    unset -f _jhr_take
-    [[ ${#topics[@]} -gt 0 ]] || return 0
-    local root="${mf%/*/*/*}" self=""
-    while IFS= read -r l || [[ -n "$l" ]]; do [[ "$l" =~ ^id:[[:space:]]*([^[:space:]#]+) ]] && { self="${BASH_REMATCH[1]}"; break; }; done < "$mf"
-    for m in "$root"/*/*/manifest.yaml; do
-        [[ -f "$m" ]] || continue
-        id="" in=0; local takes=" "
-        while IFS= read -r l || [[ -n "$l" ]]; do
-            [[ -z "$id" && "$l" =~ ^id:[[:space:]]*([^[:space:]#]+) ]] && id="${BASH_REMATCH[1]}"
-            if [[ "$l" =~ ^takes:[[:space:]]*$ ]]; then in=1; continue; fi
-            (( in )) || continue
-            [[ "$l" =~ ^[a-zA-Z_] ]] && { in=0; continue; }
-            [[ "$l" =~ ^[[:space:]]*-[[:space:]]+topic:[[:space:]]*([^[:space:]#]+) ]] && takes+="${BASH_REMATCH[1]} "
-        done < "$m"
-        [[ -n "$id" && "$id" != "$self" && " $_jhr " != *" $id "* ]] || continue
-        for t in "${topics[@]}"; do
-            [[ "$takes" == *" $t "* ]] && { _jhr+="${_jhr:+ }$id"; break; }
-        done
-    done
-    return 0
-}
-
-# _judge_handoff_path_v <var> <kept_file> <key> — where a hand-off of <key> is kept.
-_judge_handoff_path_v() { local -n _jhp="$1"; _jhp="${2%.json}-handed-${3//[^A-Za-z0-9._-]/_}"; }
-
-# judge_handoff_put <kept_file> <key> <receivers> <answer> [finding] — record
-# that the part <key> was handed to <receivers> now, with the answer and the
-# finding it answered. Nothing is recorded with no receiver, no run state to
-# say when stages ran (ZBUILD_STATE_DIR), or no kept file.
-judge_handoff_put() {
-    local p
-    [[ -n "${1:-}" && -n "${2:-}" && -n "${3:-}" && -n "${ZBUILD_STATE_DIR:-}" ]] || return 0
-    _judge_handoff_path_v p "$1" "$2"
-    [[ -d "${p%/*}" ]] || return 0
-    printf '%s\n%s\n%s\n' "$3" "${4//$'\n'/ }" "${5//$'\n'/$'\x1e'}" > "$p" 2>/dev/null || true
-    _judge_emit judge.handoff.waiting "item=$2" "to=$3"
-    return 0
-}
-
-# judge_handoff_state_v <var> <kept_file> <key> — how the part <key> stands:
-# empty (not handed on), `waiting` (the stage it was handed to has not run
-# since), or `back` (it has: judge it again, held to the finding and the
-# answer). Sets _JUDGE_HANDOFF_TO, _JUDGE_HANDOFF_ANSWER and
-# _JUDGE_HANDOFF_FINDING (its lines joined by a record separator).
-_JUDGE_HANDOFF_TO="" _JUDGE_HANDOFF_ANSWER="" _JUDGE_HANDOFF_FINDING=""
-judge_handoff_state_v() {
-    local -n _jhs="$1"; local p r sd="${ZBUILD_STATE_DIR:-}"
-    _jhs=""; _JUDGE_HANDOFF_TO="" _JUDGE_HANDOFF_ANSWER="" _JUDGE_HANDOFF_FINDING=""
-    [[ -n "$sd" && -n "${2:-}" ]] || return 0
-    _judge_handoff_path_v p "$2" "$3"
-    [[ -s "$p" ]] || return 0
-    { IFS= read -r _JUDGE_HANDOFF_TO; IFS= read -r _JUDGE_HANDOFF_ANSWER; IFS= read -r _JUDGE_HANDOFF_FINDING; } < "$p"
-    [[ -n "$_JUDGE_HANDOFF_TO" ]] || return 0
-    _jhs=waiting
-    for r in $_JUDGE_HANDOFF_TO; do
-        [[ -e "$sd/runtime/dispatched/$r" && "$sd/runtime/dispatched/$r" -nt "$p" ]] && { _jhs=back; break; }
-    done
-    return 0
-}
-
-# judge_handoff_clear <kept_file> <key> — the part is judged again: its hand-off
-# is over.
-judge_handoff_clear() {
-    local p; _judge_handoff_path_v p "$1" "$2"
-    [[ -s "$p" ]] && { : > "$p" 2>/dev/null || true; _judge_emit judge.handoff.back "item=$2"; }
-    return 0
-}
-
-# judge_handoff_waiting_v <var> <receivers> — what a part that waits is shown as.
-judge_handoff_waiting_v() {
-    local -n _jhw="$1"; local _jhw_r="${2// / or }"
-    _jhw="handed to ${_jhw_r:-another stage}, waiting"
-}
+# A part handed to another stage waits for it (#2574): judge-handoff.sh.
+# shellcheck source=judge-handoff.sh
+source "${BASH_SOURCE[0]%/*}/judge-handoff.sh"

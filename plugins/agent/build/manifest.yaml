@@ -68,6 +68,7 @@ provides:
     # judged again once that stage has run.
     - judge.handoff.waiting
     - judge.handoff.back
+    - judge.handoff.capped
 
 config:
   tier_default: T2

@@ -251,7 +251,11 @@ _build_write_build_summary() {
         if [[ "$_BUILD_STEP_RC" -eq 130 ]]; then build_verdict="interrupted"; build_reason="sigint"
         # ADR-072 §3: a judging call that could not run is no pass.
         elif [[ -n "$_BUILD_STEP_DISP" ]]; then build_verdict="$_BUILD_STEP_DISP"; build_reason="design_steps_check_failed"
-        elif [[ ${#_BUILD_STEP_FINDINGS[@]} -gt 0 ]]; then build_verdict="unusable"; build_reason="design_steps_not_done"; fi
+        elif [[ ${#_BUILD_STEP_FINDINGS[@]} -gt 0 ]]; then build_verdict="unusable"; build_reason="design_steps_not_done"
+        # #2574 (ADR-072 §5): a step handed to another stage is open — no pass —
+        # and nothing more build can do this round: the round ends, so the
+        # stage it was handed to runs.
+        elif [[ ${#_BUILD_STEP_WAITING[@]} -gt 0 ]]; then build_verdict="fail"; build_reason="design_steps_handed_on"; fi
     fi
 
     # shellcheck disable=SC2154  # scope_violations[] injected via dynamic scope from caller
@@ -266,7 +270,7 @@ _build_write_build_summary() {
     [[ -n "${_BUILD_STEP_FINDINGS[*]:-}" ]] && printf -v _sum_step_f '%s\n' "${_BUILD_STEP_FINDINGS[@]}"
     [[ -n "${_BUILD_STEP_LINES[*]:-}" ]] && printf -v _sum_step_a '%s\n' "${_BUILD_STEP_LINES[@]}"
     # #2574 (R1): a step handed to another stage, waiting for it: its finding
-    # stays, and blocks nothing.
+    # stays, and the round ends (ends_round).
     local _sum_step_w="" _sum_reg="{}" _sum_code="${_BUILD_FCODE:-}" _sum_out="" _sum_r=""
     [[ -n "${_BUILD_STEP_WAITING[*]:-}" ]] && printf -v _sum_step_w '%s\n' "${_BUILD_STEP_WAITING[@]}"
     # shellcheck disable=SC2154  # output_summary_json from the caller's scope
@@ -280,7 +284,7 @@ _build_write_build_summary() {
     # -c: the summary is one line, and the id record after it (review on #2574:
     # without it the record came out as a quoted string and was never kept).
     _sum_out="$(jq -nc \
-        --arg step_waiting "$_sum_step_w" --arg reg "$_sum_reg" --arg code "$_sum_code" --argjson afj "$_sum_afj" \
+        --arg step_waiting "$_sum_step_w" --arg build_reason "${build_reason:-}" --arg reg "$_sum_reg" --arg code "$_sum_code" --argjson afj "$_sum_afj" \
         --argjson schema_version 4 \
         --argjson issue "$_sum_issue" \
         --argjson files_changed "${files_changed_json:-[]}" \
@@ -319,7 +323,7 @@ _build_write_build_summary() {
             + (if $failing_acceptance_testfile != "" then [
                 "you said the work was done but changed no file, and \($failing_acceptance_testfile) still fails — make it pass by changing the code"] else [] end)
             + $tx | map({text: .}) )
-            + ($step_waiting | split("\n") | map(select(length > 0) | {text: ., blocking: false})) ) as $items
+            + ($step_waiting | split("\n") | map(select(length > 0) | {text: .})) ) as $items
         | (if $code != "" and ($items | length) > 0 then ($items | zb_fids($reg; $code)) else {out: $items, r: null} end) as $z
         | ({
             schema_version: $schema_version,
@@ -356,6 +360,7 @@ _build_write_build_summary() {
             # #2574: the text of each finding it answered travels with the answer.
             + (if ($afj | length) > 0 then {answer_findings: $afj} else {} end)
             + (if ($z.out | length) > 0 then {findings: [$z.out | to_entries[] | {n: (.key + 1)} + .value]} else {} end)
+            + (if ($step_waiting | length) > 0 and $build_reason == "design_steps_handed_on" then {ends_round: true} else {} end)
             ) as $d | if ($d | length) > 0 then {data: $d} else {} end )),
           (if $z.r then $z.r else "-" end)
         ')"
