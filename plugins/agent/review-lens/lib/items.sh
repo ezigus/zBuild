@@ -29,14 +29,20 @@ _rl_finding_code_v() {
     zb_finding_code_v _rfc "$_RL_DIR/manifest.yaml" "$_rfc_t"
 }
 
-# _rl_changed_files_v <array> <change_text> <patch_body> — the files of the
-# change, as zbuild_change_files_v lists them (`<status><TAB><path>`), or, with
-# no starting commit, as the round's patch names them.
+# _rl_changed_files_v <array> <change_fp> <patch_body> — the files of the
+# change, from the change's raw diff (zbuild_change_files_v's fingerprint:
+# the starting commit, then `:<modes> <old blob> <new blob> <status><TAB><path>`,
+# a renamed file `R<score><TAB><old><TAB><new>`), or, with no starting commit,
+# as the round's patch names them. A renamed file is listed by its new path;
+# _RL_IT_RENAMED[new] = its old path.
+declare -gA _RL_IT_RENAMED=()
 _rl_changed_files_v() {
-    local -n _rcf="$1"; local l
-    _rcf=()
+    local -n _rcf="$1"; local l p
+    _rcf=(); _RL_IT_RENAMED=()
     while IFS= read -r l; do
-        [[ "$l" =~ ^[AMDTRC]$'\t'(.+)$ ]] && _rcf+=("${BASH_REMATCH[1]}")
+        [[ "$l" =~ ^:[0-7]+\ [0-7]+\ ([0-9a-f]+)\ ([0-9a-f]+)\ ([A-Z])[0-9]*$'\t'(.+)$ ]] || continue
+        p="${BASH_REMATCH[4]}"; _rcf+=("${p##*$'\t'}")
+        [[ "${BASH_REMATCH[3]}" == R ]] && _RL_IT_RENAMED["${p##*$'\t'}"]="${p%%$'\t'*}"
     done <<< "${2:-}"
     [[ ${#_rcf[@]} -gt 0 ]] && return 0
     while IFS= read -r l; do
@@ -63,7 +69,7 @@ _rl_area_of_v() {
 # content is in its own kept report's files; `change` depends on every file of
 # the change (_rl_items_keep).
 declare -gA _RL_IT_FPS=() _RL_IT_DFP=()
-_RL_IT_KEPT="{}" _RL_IT_WANT=""
+_RL_IT_KEPT="{}" _RL_IT_WANT="" _RL_IT_NOTES="" _RL_IT_HELD=""
 _rl_items_prepare() {
     local kf="$1" eng="$2" base="$3" ans="$4" f fp it a k kj
     local -n _rip_af="$5"
@@ -80,7 +86,19 @@ _rl_items_prepare() {
         disp["$it"]+="$a"$'\n'
     done <<< "$ans"
     for it in "${!disp[@]}"; do judge_fp_v fp "${disp[$it]}"; _RL_IT_DFP["$it"]="$fp"; done
+    _rl_items_carry_renames "$kf" "${ZBUILD_REPO_ROOT:-$PWD}"
     judge_kept_get_all_v kept "$kf" _RL_IT_FPS _RL_IT_DFP earlier "clean" why
+    # #2574 (ADR-072 §5): a file a stage handed on waits, its findings standing;
+    # one back from the stage it was handed to is reviewed again.
+    # shellcheck disable=SC2034  # keyit is read by name
+    local -A keyit=(); local hl=""
+    # shellcheck disable=SC2034  # keyit is read by name
+    for k in "${!_rip_af[@]}"; do _rl_area_of_v it "${_rip_af[$k]%%$'\x1f'*}"; [[ -n "${_RL_IT_FPS[$it]+x}" ]] && keyit["$k"]="$it"; done
+    judge_handoff_check "$kf" "$ans" keyit kept earlier ${_RL_IT_FILES[@]+"${_RL_IT_FILES[@]}"}
+    _RL_IT_NOTES="" _RL_IT_HELD=""
+    for it in "${!_JUDGE_HANDOFF_WAIT[@]}"; do judge_handoff_waiting_v k "${_JUDGE_HANDOFF_WAIT[$it]}"; _RL_IT_NOTES+="- $it: $k"$'\n'; done
+    for it in "${!_JUDGE_HANDOFF_BACK[@]}"; do judge_held_entry_v k "$it" "${_JUDGE_HANDOFF_BACK[$it]}"; hl+="$k"; done
+    [[ -n "$hl" ]] && judge_held_block_v _RL_IT_HELD "$hl"
     local body=""
     for it in ${_RL_IT_FILES[@]+"${_RL_IT_FILES[@]}"} change; do
         if [[ -n "${kept[$it]+x}" && "${kept[$it]}" == *$'\n'* ]]; then
@@ -91,6 +109,30 @@ _rl_items_prepare() {
     done
     _RL_IT_KEPT="{${body#,}}"
     [[ -n "$_RL_IT_WANT" && " $_RL_IT_WANT " != *" change "* ]] && _RL_IT_WANT+=" change"
+    return 0
+}
+
+# _rl_items_carry_renames <kept_file> <repo> — a renamed file takes over the
+# report kept under its old path (review on #2574): the record moves to the new
+# path, its file with it, so it holds while the file's content is the content
+# it was judged on. One jq, only when a renamed file has no report of its own.
+_rl_items_carry_renames() {
+    local kf="$1" repo="$2" n o body="" pairs=""
+    [[ ${#_RL_IT_RENAMED[@]} -gt 0 && -s "$kf" ]] || return 0
+    IFS= read -r -d '' body < "$kf" || true
+    for n in "${!_RL_IT_RENAMED[@]}"; do
+        o="${_RL_IT_RENAMED[$n]}"
+        [[ "$body" == *"\"$o\":"* && "$body" != *"\"$n\":"* ]] && pairs+="$o"$'\t'"$n"$'\n'
+    done
+    [[ -n "$pairs" ]] || return 0
+    jq -c --arg p "$pairs" --arg r "$repo/" '. as $d
+        | reduce ($p | split("\n")[] | select(length > 0) | split("\t")) as $x ($d;
+            if .[$x[0]] then .[$x[1]] = (.[$x[0]]
+                | (.fp | tostring) as $f | ($f | index(":file:" + $x[0])) as $i
+                | .fp = (if $i then $f[:$i] + ":file:" + $x[1] + $f[($i + 6 + ($x[0] | length)):] else $f end)
+                | .files |= with_entries(if .key == ($r + $x[0]) then .key = ($r + $x[1]) else . end)) else . end)' \
+        <<< "$body" > "$kf.tmp" 2>/dev/null && mv -f "$kf.tmp" "$kf" 2>/dev/null
+    [[ -e "$kf.tmp" ]] && rm -f "$kf.tmp" 2>/dev/null
     return 0
 }
 
@@ -154,10 +196,14 @@ _rl_items_keep() {
         if [[ "$j" == "[]" || "$j" == *'"findings":[]'* ]]; then put["$it"]="clean: no finding"$'\n'"$j"
         else put["$it"]="found: findings"$'\n'"$j"; fi
         judge_kept_fp_v "putfp[$it]" "${_RL_IT_FPS[$it]}" "${_RL_IT_DFP[$it]:-}"
+        # Review on #2574: what the call read, the other changed files among
+        # them; a report that found something, or `change`, depends on every
+        # file of the change — files work together.
         deps["$it"]="$opened"
-        if [[ "$it" == change ]]; then
+        if [[ "$it" == change || "${put[$it]}" == found:* ]]; then
             for q in ${_RL_IT_FILES[@]+"${_RL_IT_FILES[@]}"}; do deps["$it"]+="$repo/$q"$'\n'; done
-        else deps["$it"]+="$repo/$it"$'\n'; fi
+        fi
+        [[ "$it" == change ]] || deps["$it"]+="$repo/$it"$'\n'
         # The files its findings quote.
         while [[ "$j" =~ \"file\":\"([^\"]+)\" ]]; do
             q="${BASH_REMATCH[1]}"; j="${j/"\"file\":\"$q\""/}"
@@ -166,5 +212,6 @@ _rl_items_keep() {
     done <<< "$out"
     # shellcheck disable=SC2034  # read by judge_kept_put_all through their names
     [[ ${#put[@]} -gt 0 ]] && judge_kept_put_all "$kf" put putfp deps
+    judge_handoff_done "$kf"
     return 0
 }

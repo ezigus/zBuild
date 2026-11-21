@@ -171,11 +171,11 @@ _review_lens_run_inner() {
     # report no longer holds are asked (lib/items.sh).
     local _rl_eng _rl_fpb="${prompt//"$_rl_change"/<the change>}" _rl_only=""
     _rl_fpb="${_rl_fpb//"$evidence"/<the patch>}"
-    _rl_changed_files_v _RL_IT_FILES "$_rl_change" "$_rl_patch"
+    _rl_changed_files_v _RL_IT_FILES "$_rl_cfp" "$_rl_patch"
     judge_engine_v _rl_eng
     # No starting commit: the change is the patch, in every item's fingerprint.
     _rl_items_prepare "${out%.json}-judged.json" "$_rl_eng" "$_rl_fpb"$'\n'"${_rl_base:-$_rl_cfp}" "$_rl_ans" _rl_af
-    [[ -n "$_RL_IT_WANT" ]] && { _rl_items_only_v _rl_only; prompt+="$_rl_only"; }
+    [[ -n "$_RL_IT_WANT" ]] && { _rl_items_only_v _rl_only; prompt+="$_rl_only$_RL_IT_HELD"; }
 
     # ADR-067 §8: the lens's three parts and the engine's blocks — its budget
     # among the engine's rules — in the one prompt order.
@@ -252,8 +252,7 @@ _review_lens_run_inner() {
             # #2574: kept per item once the report is read (below); an item
             # depends on the files outside the change the call read — each file
             # of the change is an item of its own.
-            local -a _rl_deps=() _rl_abs=(); for _rl_w in ${_RL_IT_FILES[@]+"${_RL_IT_FILES[@]}"}; do _rl_abs+=("$_rl_repo/$_rl_w"); done
-            judge_opened_v _rl_deps "$_rl_opened" ${_rl_abs[@]+"${_rl_abs[@]}"}
+            local -a _rl_deps=(); judge_opened_v _rl_deps "$_rl_opened"
             _rl_called=1
             break
         fi
@@ -486,6 +485,7 @@ _review_lens_run_inner() {
         [[ -n "$_rl_kd" ]] && _rl_body+="${_rl_body:+$'\n'}$_rl_kd"
     fi
     [[ -n "$_RL_CHECK_NOTE" ]] && _rl_body+="${_rl_body:+$'\n'}- $_RL_CHECK_NOTE"
+    [[ -n "$_RL_IT_NOTES" ]] && _rl_body+="${_rl_body:+$'\n'}${_RL_IT_NOTES%$'\n'}"
     stage_summary_write "$artifact_dir/lens-${lens}-summary.md" "review-lens-${lens}" "$_rl_outcome" \
         "$_rl_head" "${_rl_body:+$_rl_body$'\n'}- score: $score"
     emit_event "plugin.result" "plugin=review-lens" \
