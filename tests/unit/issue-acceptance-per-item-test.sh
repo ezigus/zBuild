@@ -24,6 +24,11 @@
 #              a pass does not have it judged again
 # PI6 [change] (review) a kept MET does not survive a change to a file no line
 #              quoted: the change's content is in each requirement's fingerprint
+# PI7 [change] (review) build answers RQCNFG-1's finding not mine — the test
+#              must change, and its build-tests output carries it to
+#              test-author: RQCNFG-1 is not judged again, its refusal stands,
+#              noted as waiting; once test-author has run it is judged again,
+#              held to the finding and the answer
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -148,6 +153,35 @@ _ia
 assert_eq "[PI6] one call" "1" "$CALLS"
 assert_eq "[PI6] ...RQFLAG-1 judged again" "1" "$(_asked RQFLAG-1)"
 assert_eq "[PI6] ...and RQCNFG-1" "1" "$(_asked RQCNFG-1)"
+
+print_test_section "PI7: a requirement handed to test-author waits for it"
+# shellcheck source=../../scripts/lib/stage-dispatch-mark.sh
+source "$REPO_ROOT/scripts/lib/stage-dispatch-mark.sh"
+export ZBUILD_STATE_DIR="$S" ZBUILD_INPUTS_FLOW="design test-author build test issue-acceptance"
+CNFG="$REFUSE"
+printf '%s\n' 'diff --git a/p.sh b/p.sh' '+flag=1' '+flag_parsed=1' > "$IN/diff.patch"
+_ia
+assert_eq "[PI7] setup: RQCNFG-1 refused" "fail" "$OUT"
+FID="$(jq -r '.data.findings[] | select(.text | contains("RQCNFG-1")) | .id' "$A/issue-acceptance-result.json" | head -n 1)"
+stage_dispatch_mark "$S/pipeline-state.json" test-author
+touch -t 202001010000 "$(stage_dispatch_mark_path "$S" test-author)"
+# Build's answer, by build's own writers: its build-tests output and its summary.
+( # shellcheck source=../../plugins/agent/build/lib/answers.sh
+  source "$REPO_ROOT/plugins/agent/build/lib/answers.sh"
+  _ROUTE_LOOP_LAST_RESPONSE="ANSWER $FID: not mine — the test must change: tests/cfg-test.sh: it expects the old message"
+  _build_write_test_findings "$A" ) >/dev/null 2>&1
+stage_result_write "$A/build-summary.json" pass "built" \
+    "$(jq -nc --arg a "$FID: not mine — the test must change: tests/cfg-test.sh: it expects the old message" '{answers: [$a]}')" >/dev/null
+CNFG='MET: RQCNFG-1'
+_ia
+assert_eq "[PI7] RQCNFG-1 is not asked" "0" "$CALLS"
+assert_eq "[PI7] ...its refusal stands" "fail" "$OUT"
+assert_contains "[PI7] ...noted as waiting" "$(jq -r '(.data.notes // []) | join("|")' "$A/issue-acceptance-result.json")" "RQCNFG-1: handed to test-author, waiting"
+stage_dispatch_mark "$S/pipeline-state.json" test-author
+_ia
+assert_eq "[PI7] test-author has run: RQCNFG-1 is asked" "1" "$(_asked RQCNFG-1)"
+assert_contains "[PI7] ...held to the finding and the answer" "$(_flat "$_P.1")" "not mine — the test must change"
+assert_eq "[PI7] ...and passes" "pass" "$OUT"
 
 cleanup_test_env
 print_test_results

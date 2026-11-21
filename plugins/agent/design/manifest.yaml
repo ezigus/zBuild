@@ -43,6 +43,10 @@ provides:
     - judge.kept.saved
     - judge.kept.used
     - judge.kept.stale
+    # #2574 (ADR-072 §5): a part handed to another stage waits for it.
+    - judge.handoff.waiting
+    - judge.handoff.back
+    - judge.handoff.capped
     # #2466 (ADR-072 §2): the old-code copy made, or not.
     - judge.base.created
     - judge.base.failed

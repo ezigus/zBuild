@@ -55,6 +55,10 @@ provides:
     - judge.kept.saved
     - judge.kept.used
     - judge.kept.stale
+    # #2574 (ADR-072 §5): a part handed to another stage waits for it.
+    - judge.handoff.waiting
+    - judge.handoff.back
+    - judge.handoff.capped
     # #2552 (ADR-038): the check of a lens's findings — what it knocked down,
     # or that its answer could not be used (every finding then stands).
     - review_lens.checked

@@ -245,7 +245,7 @@ _ia_write() {
     [[ ${#_IA_ANSWERS[@]} -gt 0 ]] && _ia_a="$(_ia_json_list "${_IA_ANSWERS[@]}")"
     zb_answers_findings_json_v _ia_af _IA_ANSWERS
     _data="$(jq -nc --argjson u "$u" --argjson s "$s" --argjson x "$x" --argjson fnd "${_fnd:-[]}" --arg j "$j" --argjson a "$_ia_a" --argjson uq "${_IA_UQ_JSON:-[]}" --argjson af "$_ia_af" \
-        --argjson ud "${_IA_UQ_DROPPED:-[]}" --arg un2 "${_IA_UQ_NOTES:-}" \
+        --argjson ud "${_IA_UQ_DROPPED:-[]}" --arg un2 "${_IA_UQ_NOTES:-}${_IA_HANDOFF_NOTES:-}" \
         --arg known "${_IA_ANS_KNOWN:-0}" --argjson fs "${_ZB_ANS_SHOWN:-0}" --arg un "${_ZB_ANS_MISSING:-}" \
         '{unmet: $u, unsure: $s, findings: $fnd} + (if ($x | length) > 0 then {unasked: $x} else {} end) + (if $j == "" then {} else {judgement: $j} end)
          + (if ($a | length) > 0 then {answers: $a} else {} end)
@@ -276,7 +276,7 @@ _ia_write() {
 _IA_ANSWERS=() _IA_ANS_KNOWN=0
 issue_acceptance_run() {
     local stage_id="${1:-issue-acceptance}"; : "$stage_id"
-    _IA_ANSWERS=(); _IA_ANS_KNOWN=0
+    _IA_ANSWERS=(); _IA_ANS_KNOWN=0; _IA_HANDOFF_NOTES=""
     local state_file="${2:-}"
     local art="${ZBUILD_ARTIFACT_DIR:-}"
     [[ -n "$art" ]] || { [[ -n "$state_file" ]] && art="$(dirname "$state_file")/artifacts"; }

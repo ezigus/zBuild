@@ -112,17 +112,17 @@ judge_handoff_receivers_v() {
 # judge_output_manifest_v <var> <result_file> — the manifest of the stage of
 # this run that writes <result_file> (an output of its, by file name).
 judge_output_manifest_v() {
-    local -n _jom="$1"; local s m root="${ZBUILD_PLUGINS_ROOT:-${_ZB_JUDGE_DIR:-${BASH_SOURCE[0]%/*}}/../../plugins}" o
-    local -a stages=() outs=()
+    local -n _jom="$1"; local _jom_s _jom_m _jom_l _jom_b="/${2##*/}"
+    local _jom_root="${ZBUILD_PLUGINS_ROOT:-${_ZB_JUDGE_DIR:-${BASH_SOURCE[0]%/*}}/../../plugins}"
+    local -a _jom_st=()
     _jom=""
-    _judge_run_stages_v stages
-    local l b="/${1##*/}"
-    for s in ${stages[@]+"${stages[@]}"}; do
-        _judge_stage_manifest_v m "$s" "$root"
-        [[ -f "$m" ]] || continue
-        while IFS= read -r l || [[ -n "$l" ]]; do
-            [[ "$l" =~ (^|[[:space:]-])path:[[:space:]]*[\"\']?([^\"\'[:space:]#]+) && "${BASH_REMATCH[2]}" == *"$b" ]] && { _jom="$m"; return 0; }
-        done < "$m"
+    _judge_run_stages_v _jom_st
+    for _jom_s in ${_jom_st[@]+"${_jom_st[@]}"}; do
+        _judge_stage_manifest_v _jom_m "$_jom_s" "$_jom_root"
+        [[ -f "$_jom_m" ]] || continue
+        while IFS= read -r _jom_l || [[ -n "$_jom_l" ]]; do
+            [[ "$_jom_l" =~ (^|[[:space:]-])path:[[:space:]]*[\"\']?([^\"\'[:space:]#]+) && "${BASH_REMATCH[2]}" == *"$_jom_b" ]] && { _jom="$_jom_m"; return 0; }
+        done < "$_jom_m"
     done
     return 0
 }

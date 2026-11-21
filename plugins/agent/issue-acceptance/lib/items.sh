@@ -110,17 +110,27 @@ _ia_judge() {
     fps[answers]="$eng|answers"
     # Each answer to one of its findings, by the item the finding is about; one
     # that names none is every item's (#2569, ADR-072 §5).
-    local -A af=() disp=() dfp=() held=() kept=() earlier=() kwhy=()
+    local -A af=() disp=() dfp=() held=() kept=() earlier=() kwhy=() keyit=()
     [[ -n "$_ans" ]] && judge_answered_findings_v af "$_ans" "${_ia_lf[@]}"
     while IFS= read -r a; do
         k="${a%%:*}"; [[ -n "$k" && -n "${af[$k]+x}" ]] || continue
         _ia_item_of_finding_v it "${af[$k]%%$'\x1f'*}"
         local -a _to=("$it"); [[ -n "$it" && -n "${fps[$it]+x}" ]] || _to=("${items[@]}")
         for it in "${_to[@]}"; do disp["$it"]+="$a"$'\n'; held["$it"]+="$k"$'\x1c'"${af[$k]}"$'\x1d'; done
+        [[ -n "$it" && -n "${fps[$it]+x}" ]] && keyit["$k"]="$it"
         af["$k"]=""; unset 'af[$k]'
     done <<< "$_ans"
     for it in "${!disp[@]}"; do judge_fp_v _fp "${disp[$it]}"; dfp["$it"]="$_fp"; done
     judge_kept_get_all_v kept "$kf" fps dfp earlier "$_IA_PASS_WORDS" kwhy
+    # #2574 (ADR-072 §5): an item a stage handed on waits, its last verdict
+    # standing; one back from the stage it was handed to is judged again.
+    judge_handoff_check "$kf" "$_ans" keyit kept earlier "${items[@]}"
+    for it in "${!_JUDGE_HANDOFF_WAIT[@]}"; do
+        judge_handoff_waiting_v l "${_JUDGE_HANDOFF_WAIT[$it]}"; _IA_HANDOFF_NOTES+="$it: $l"$'\n'
+    done
+    for it in "${!_JUDGE_HANDOFF_BACK[@]}"; do
+        [[ -n "${held[$it]:-}" ]] || held["$it"]="$it"$'\x1c'"${_JUDGE_HANDOFF_BACK[$it]}"$'\x1d'
+    done
     # A kept answer is read as it was given; kept ones that no longer read are judged again.
     local kraw="" kwant="" want=""
     for it in "${items[@]}"; do
@@ -182,6 +192,7 @@ _ia_judge() {
         [[ "$it" == answers ]] || nraw+="${pay[$it]:-}"
     done
     judge_kept_put_all "$kf" put putfp deps
+    judge_handoff_done "$kf"
     _ia_parse "$kraw$nraw" "$_reqs" "$issue" "$_root_q" "$_lims"
     _ia_finish "$art"
     return 0
