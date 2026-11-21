@@ -1,17 +1,17 @@
 ## build — pass
 
-- changed config/shape-change-paths.txt (+0 / -1)
+- changed core/claim/claim.sh, plugins/claim-coordinator/github-labels/plugin.sh (+41 / -12)
 
 - over 1 pass(es), 1 iteration(s)
-- answered: TEFND-1: done — removed `core/claim/claim.sh` from `config/shape-change-paths.txt`; no design step, SPEC, or requirement names that entry.
-- answered: TEFND-2: wrong — `tests/e2e/parity-local-vs-ci-test.sh` passes on the current tree (15/15 PASS). The golden file at `tests/golden/parity/event-sequence.golden` already includes `plugin.claim.start`, `plugin.claim.complete` (after `pipeline.init`) and `plugin.release.start`, `plugin.release.complete` (at the end). The finding does not reproduce.
-- answered: IAFND-1: wrong — `tests/e2e/parity-local-vs-ci-test.sh` passes on the current tree (15/15 PASS). The golden file was updated in a prior iteration and already contains the four claim events. No change needed.
-- answered: IAFND-2: done — removed `core/claim/claim.sh` from `config/shape-change-paths.txt`; no requirement in the issue asks for this entry.
-- answered: lens-sre-code finding 1: not mine — the DSCLA-9 fixture is hand-written inside `tests/integration/teardown-repeat-signal-test.sh`, which is a test file this stage may not change. The test-author stage must replace the hand-written comment block with a call to `rsc_render_header`.
-- step 1: not needed — plugins/claim-coordinator/github-labels/plugin.sh already has zbuild:claimed throughout, ccgl_add_label "$issue" "zbuild:claimed" add_rc=$?, ccgl_read_holder, conflict JSON return, and no source of core/claim/claim.sh; added in prior iterations.
+- answered: RLSECURITY-1: done — broadened ANSI stripping in core/claim/claim.sh from `[mK]` terminators to `[a-zA-Z~]` plus bare ESC-X pairs, matching `_eb_strip_ansi` coverage, with fast-path guard.
+- answered: RLSECURITY-2: done — fixed both `escaped_holder` assignments in `plugins/claim-coordinator/github-labels/plugin.sh` to escape `\` → `\\` before `"` → `\"`.
+- answered: RLREDTEAM-1: done — same fix as RLSECURITY-1; CSI sequences with any letter/~ terminator and bare ESC-X pairs are now stripped before the holder reaches `printf '%s\n'`.
+- answered: RLCORRECTNESS-1: done — replaced `grep -o '"holder":[[:space:]]*"[^"]*"'` with `jq -r '.holder // empty'` in `core/claim/claim.sh`; jq correctly handles escaped characters in the JSON string value.
+- answered: RLSRE-1: done — removed `return 0` from `claim_coordinator_release` in `plugins/claim-coordinator/github-labels/plugin.sh`; `_ccgl_remove_label`'s exit code now propagates so the advisory warning in `zbuild_claim_release` fires on gh failures.
+- step 1: not needed — plugins/claim-coordinator/github-labels/plugin.sh already has zbuild:claimed throughout; done in prior iterations.
 - step 2: not needed — plugins/claim-coordinator/github-labels/README.md already describes zbuild:claimed with no claimed:<machine> references; done in prior iterations.
-- step 3: not needed — scripts/lib/run-status-render.sh already emits <!-- zbuild-holder: CI_URL --> and <!-- zbuild-holder: run_id=X machine=H --> in rsc_render_header; done in prior iterations.
-- step 4: not needed — core/claim/claim.sh exists as the wiring bridge with all specified behavior; done in prior iterations.
+- step 3: not needed — scripts/lib/run-status-render.sh already emits <!-- zbuild-holder: ... --> in rsc_render_header; done in prior iterations.
+- step 4: not needed — core/claim/claim.sh exists as the wiring bridge; done in prior iterations (this iteration fixed the ANSI/extraction quality but not the step's deliverable).
 - step 5: not needed — config/event-schema.json already registers pipeline.refused.claimed; done in prior iterations.
 - step 6: not needed — core/pipeline/runner.sh already has full claim wiring; done in prior iterations.
 - step 7: not needed — docs/adr/ADR-005-claim-coordinator.md already has the ## Enforced by section with all named tests; done in prior iterations.
