@@ -1,6 +1,6 @@
 ## intake — pass
 
-- 25 requirement(s): RQCLA-1, RQCLA-2, RQCLA-3, RQCLA-4, RQCLA-5, RQCLA-6, RQCLA-7, RQCLA-8, RQCLA-9, RQCLA-10, RQLAB-1, RQLAB-2, RQADR-1, RQADR-2, RQADR-3, RQADR-4, RQADR-5, RQDOC-1, RQCLA-11, RQCLA-12, RQCLA-13, RQARC-1, RQARC-2, RQARC-3, RQCLA-14; 2 limit(s): RQMECH-1, RQMECH-2
+- 25 requirement(s): RQCLA-1, RQCLA-2, RQCLA-3, RQCLA-4, RQCLA-5, RQCLA-6, RQCLA-7, RQCLA-8, RQCLA-9, RQCLA-10, RQCLA-11, RQCLA-12, RQCLA-13, RQCLA-14, RQLAB-1, RQLAB-2, RQADR-1, RQADR-2, RQADR-3, RQADR-4, RQADR-5, RQARC-1, RQARC-2, RQARC-3, RQDOC-1; 2 limit(s): RQMECH-1, RQMECH-2
 
 - RQCLA-1: When the issue has no `zbuild:claimed` label, the run adds it before the first stage dispatches
 - RQCLA-2: When the label is added, the run's run-status comment names the holder: run id and machine, or CI run URL
@@ -12,6 +12,10 @@
 - RQCLA-8: A run with no issue (goal only) makes no claim and calls no coordinator hook
 - RQCLA-9: When the `zbuild:claimed` label is present, the run emits the `pipeline.refused.claimed` event
 - RQCLA-10: The `pipeline.refused.claimed` event is registered in `config/event-schema.json`
+- RQCLA-11: Release must survive a second TERM
+- RQCLA-12: The coordinator's claim hook adds the `zbuild:claimed` label
+- RQCLA-13: The coordinator's release hook removes the `zbuild:claimed` label
+- RQCLA-14: A test that registers a stub claim coordinator sees its `claim` hook called before the first stage and its `release` hook called on exit
 - RQLAB-1: A local run and a CI run use the same label, `zbuild:claimed`
 - RQLAB-2: There is no machine name in the label
 - RQADR-1: Amend ADR-005 with: the engine calls the coordinator: `claim` after the admission lock and before the first stage, `release` in the EXIT path
@@ -19,17 +23,10 @@
 - RQADR-3: Amend ADR-005 to correct the stale parts: selection is not from `config/zbuild.yaml`, and "the engine has no built-in mechanism" no longer holds once the engine calls the coordinator
 - RQADR-4: The ADR-005 amendments must include an `## Enforced by` section naming the tests that enforce each statement
 - RQADR-5: Amend ADR-059 §4 to note that cross-machine exclusion is the claim coordinator's job, and the admission lock stays for one machine
-- RQMECH-1: Do not build a check of a CI job's status through the GitHub Actions API (limit)
-- RQMECH-2: Do not build a "do I still hold the claim" check before each stage (limit)
-- RQDOC-1: README.md in plugins/claim-coordinator/github-labels/ does not reference `claimed:<machine>` labels and reflects the single shared label
-- RQCLA-11: Release must survive a second TERM
-- RQCLA-12: The coordinator's claim hook adds the `zbuild:claimed` label
-- RQCLA-13: The coordinator's release hook removes the `zbuild:claimed` label
 - RQARC-1: The label calls (`gh issue edit`) are in `plugins/claim-coordinator/github-labels/`
 - RQARC-2: Nothing under `core/` calls `gh` for the label
 - RQARC-3: The engine claims and releases only through the claim coordinator's `claim` and `release` hooks, called through the plugin registry
-- RQCLA-14: A test that registers a stub claim coordinator sees its `claim` hook called before the first stage and its `release` hook called on exit.
-- the requirements changed since the last run:
-  - added: RQARC-3 The engine claims and releases only through the claim coordinator's `claim` and `release` hooks, called through the plugin registry
-  - added: RQCLA-14 A test that registers a stub claim coordinator sees its `claim` hook called before the first stage and its `release` hook called on exit.
-- note: RQARC-3 is not in the issue's words: "The engine claims and releases only through the claim coordinator's `claim` and `release` hooks, cal" — kept as the check wrote it
+- RQDOC-1: README.md in plugins/claim-coordinator/github-labels/ does not reference `claimed:<machine>` labels and reflects the single shared label
+- RQMECH-1: Do not build a check of a CI job's status through the GitHub Actions API (limit)
+- RQMECH-2: Do not build a "do I still hold the claim" check before each stage (limit)
+- the requirements are the same as the last run's
