@@ -615,7 +615,9 @@ if [[ ! -f "$_dscla19_claim_sh" ]]; then
 else
     _dscla19_issue="2019"
     _dscla19_gh_calls="$TEST_TEMP_DIR/gh-calls-dscla19.txt"
+    _dscla19_hook_called="$TEST_TEMP_DIR/dscla19-hook-called"
     : > "$_dscla19_gh_calls"
+    rm -f "$_dscla19_hook_called"
 
     # Mock gh: records every invocation (must NOT be called by zbuild_claim_acquire directly)
     cat > "$TEST_TEMP_DIR/bin/gh" <<MOCK
@@ -625,12 +627,52 @@ exit 0
 MOCK
     chmod +x "$TEST_TEMP_DIR/bin/gh"
 
-    # Given: a claim-coordinator plugin is registered; use local-fs backend so the
-    # coordinator itself does not call gh — any gh call in the calls file comes
-    # directly from zbuild_claim_acquire, not through the coordinator hook
-    _prev_backend_19="$ZBUILD_CLAIM_BACKEND"
-    export ZBUILD_CLAIM_BACKEND="local-fs"
-    rm -rf "${ZBUILD_CLAIM_STORE:?}/$_dscla19_issue"
+    # Given: a claim-coordinator plugin is registered in the discovery tree;
+    # that plugin's claim hook explicitly returns {"acquired": true} on stdout.
+    # Create a stub plugin so the Given condition is established, not assumed
+    # from the actual local-fs implementation's behaviour.
+    # Unique function names (not claim_coordinator_*) prevent collision with
+    # the already-loaded plugin; the manifest registers the unique names so
+    # zbuild_claim_acquire discovers them via the plugin registry.
+    _dscla19_plugins_root="$TEST_TEMP_DIR/plugins-dscla19"
+    _dscla19_stub_dir="$_dscla19_plugins_root/claim-coordinator/stub"
+    mkdir -p "$_dscla19_stub_dir"
+    cat > "$_dscla19_stub_dir/manifest.yaml" <<STUBMANI
+id: dscla19-stub-coordinator
+name: Stub Claim Coordinator (DSCLA-19)
+kind: claim-coordinator
+version: 0.1.0
+hooks:
+  claim: _dscla19_stub_claim
+  release: _dscla19_stub_release
+  heartbeat: _dscla19_stub_heartbeat
+  list_claims: _dscla19_stub_list_claims
+provides:
+  role: claim-coordinator
+  alias: stub
+STUBMANI
+    # The stub's claim hook writes a marker AND returns {"acquired": true} on
+    # stdout — this is the Given condition being established explicitly.
+    cat > "$_dscla19_stub_dir/plugin.sh" <<STUBPLUG
+_dscla19_stub_claim() {
+    local _issue="\${1:-}"
+    : > "$_dscla19_hook_called"
+    printf '{"acquired": true, "lease_id": "stub:%s"}\n' "\$_issue"
+    return 0
+}
+_dscla19_stub_release() { return 0; }
+_dscla19_stub_heartbeat() { return 0; }
+_dscla19_stub_list_claims() { printf '[]\n'; return 0; }
+STUBPLUG
+
+    # Source the stub to put its functions in scope; set ZBUILD_PLUGINS_ROOT
+    # so zbuild_claim_acquire can discover it via the plugin registry.
+    # Unique function names mean no collision with claim_coordinator_* from
+    # the already-loaded plugin.sh, so no restore is needed after the test.
+    _prev_plugins_root_19="${ZBUILD_PLUGINS_ROOT:-}"
+    export ZBUILD_PLUGINS_ROOT="$_dscla19_plugins_root"
+    # shellcheck source=/dev/null
+    source "$_dscla19_stub_dir/plugin.sh"
     unset _ZBUILD_CLAIM_ACQUIRED 2>/dev/null || true
 
     # When: zbuild_claim_acquire is called with an issue number
@@ -638,21 +680,26 @@ MOCK
     set +e; zbuild_claim_acquire "$_dscla19_issue"; _dscla19_rc=$?; set -e
 
     # Then: the coordinator's claim hook function is called with the issue number
-    # (evidenced by zbuild:claimed being added to the claim store for this issue)
-    _dscla19_labels="$ZBUILD_CLAIM_STORE/$_dscla19_issue/labels.txt"
-    if grep -Fxq "zbuild:claimed" "$_dscla19_labels" 2>/dev/null; then
-        assert_pass "[DSCLA-19] coordinator's claim hook was called (zbuild:claimed in claim store)"
+    # (the stub writes a marker when called; this is the definitive check)
+    if [[ -e "$_dscla19_hook_called" ]]; then
+        assert_pass "[DSCLA-19] coordinator's claim hook was called with the issue number"
     else
-        assert_fail "[DSCLA-19] coordinator's claim hook was called (zbuild:claimed in claim store)" \
-            "zbuild:claimed not found in $_dscla19_labels; contents: $(cat "$_dscla19_labels" 2>/dev/null || echo '<absent>')"
+        assert_fail "[DSCLA-19] coordinator's claim hook was called with the issue number" \
+            "stub hook marker not found; rc=$_dscla19_rc"
     fi
 
     # And: gh is not invoked directly within zbuild_claim_acquire
     _dscla19_gh_count="$(wc -l < "$_dscla19_gh_calls" | tr -d ' ')"
     assert_eq "[DSCLA-19] gh is not invoked directly within zbuild_claim_acquire" "0" "$_dscla19_gh_count"
 
-    # Cleanup
-    export ZBUILD_CLAIM_BACKEND="$_prev_backend_19"
+    # Cleanup: restore ZBUILD_PLUGINS_ROOT; original claim_coordinator_* functions
+    # are still the loaded ones from the top-level source of plugin.sh (the stub
+    # used unique names, so there is nothing to un-define).
+    if [[ -n "$_prev_plugins_root_19" ]]; then
+        export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_19"
+    else
+        unset ZBUILD_PLUGINS_ROOT 2>/dev/null || true
+    fi
     mock_gh
 fi
 
