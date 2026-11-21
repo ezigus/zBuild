@@ -1,3 +1,13 @@
+diff --git a/config/shape-change-paths.txt b/config/shape-change-paths.txt
+index 007b3443..4569e391 100644
+--- a/config/shape-change-paths.txt
++++ b/config/shape-change-paths.txt
+@@ -10,5 +10,4 @@ core/pipeline/template.sh
+ core/pipeline/runner.sh
+ core/pipeline/cycle-orchestrator.sh
+ core/dispatch/*.sh
+-core/claim/claim.sh
+ config/event-schema.json
 diff --git a/core/claim/claim.sh b/core/claim/claim.sh
 index 9ca5ab98..707f8ea0 100644
 --- a/core/claim/claim.sh
@@ -86,7 +96,7 @@ index e150931b..70e7aca8 100644
 -    source "${BASH_SOURCE[0]%/*}/../../../core/claim/claim.sh"
 -fi
 diff --git a/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh b/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
-index 21c8f70c..7e5a2cb2 100755
+index 21c8f70c..fcfe016b 100755
 --- a/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
 +++ b/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
 @@ -27,6 +27,15 @@ export ZBUILD_CLAIM_MACHINE_ID="test-machine-1"
@@ -115,7 +125,7 @@ index 21c8f70c..7e5a2cb2 100755
  
      # Mock gh: records every invocation (must NOT be called by zbuild_claim_acquire directly)
      cat > "$TEST_TEMP_DIR/bin/gh" <<MOCK
-@@ -616,12 +627,52 @@ exit 0
+@@ -616,12 +627,56 @@ exit 0
  MOCK
      chmod +x "$TEST_TEMP_DIR/bin/gh"
  
@@ -149,12 +159,16 @@ index 21c8f70c..7e5a2cb2 100755
 +  role: claim-coordinator
 +  alias: stub
 +STUBMANI
-+    # The stub's claim hook writes a marker AND returns {"acquired": true} on
-+    # stdout — this is the Given condition being established explicitly.
++    # The stub's claim hook writes the issue number to the marker file AND
++    # returns {"acquired": true} on stdout — this is the Given condition being
++    # established explicitly.  Writing the actual argument (not just touching
++    # the file) means the Then assertion can verify the right issue was passed:
++    # if zbuild_claim_acquire calls _dscla19_stub_claim "" or the wrong value,
++    # the grep below will fail.
 +    cat > "$_dscla19_stub_dir/plugin.sh" <<STUBPLUG
 +_dscla19_stub_claim() {
 +    local _issue="\${1:-}"
-+    : > "$_dscla19_hook_called"
++    printf '%s\n' "\$_issue" > "$_dscla19_hook_called"
 +    printf '{"acquired": true, "lease_id": "stub:%s"}\n' "\$_issue"
 +    return 0
 +}
@@ -174,7 +188,7 @@ index 21c8f70c..7e5a2cb2 100755
      unset _ZBUILD_CLAIM_ACQUIRED 2>/dev/null || true
  
      # When: zbuild_claim_acquire is called with an issue number
-@@ -629,21 +680,26 @@ MOCK
+@@ -629,21 +684,28 @@ MOCK
      set +e; zbuild_claim_acquire "$_dscla19_issue"; _dscla19_rc=$?; set -e
  
      # Then: the coordinator's claim hook function is called with the issue number
@@ -182,14 +196,16 @@ index 21c8f70c..7e5a2cb2 100755
 -    _dscla19_labels="$ZBUILD_CLAIM_STORE/$_dscla19_issue/labels.txt"
 -    if grep -Fxq "zbuild:claimed" "$_dscla19_labels" 2>/dev/null; then
 -        assert_pass "[DSCLA-19] coordinator's claim hook was called (zbuild:claimed in claim store)"
-+    # (the stub writes a marker when called; this is the definitive check)
-+    if [[ -e "$_dscla19_hook_called" ]]; then
++    # The stub writes the received argument to the marker file; grep for the
++    # exact issue number so the test fails if the wrong value (or empty string)
++    # was forwarded to the hook.
++    if grep -Fxq "$_dscla19_issue" "$_dscla19_hook_called" 2>/dev/null; then
 +        assert_pass "[DSCLA-19] coordinator's claim hook was called with the issue number"
      else
 -        assert_fail "[DSCLA-19] coordinator's claim hook was called (zbuild:claimed in claim store)" \
 -            "zbuild:claimed not found in $_dscla19_labels; contents: $(cat "$_dscla19_labels" 2>/dev/null || echo '<absent>')"
 +        assert_fail "[DSCLA-19] coordinator's claim hook was called with the issue number" \
-+            "stub hook marker not found; rc=$_dscla19_rc"
++            "marker file content: $(cat "$_dscla19_hook_called" 2>/dev/null || echo '<absent>'); rc=$_dscla19_rc"
      fi
  
      # And: gh is not invoked directly within zbuild_claim_acquire
@@ -209,7 +225,7 @@ index 21c8f70c..7e5a2cb2 100755
      mock_gh
  fi
  
-@@ -704,19 +760,6 @@ MOCK
+@@ -704,19 +766,6 @@ MOCK
      mock_gh
  fi
  
@@ -229,3 +245,25 @@ index 21c8f70c..7e5a2cb2 100755
  cleanup_test_env
  print_test_results
  exit $((FAIL > 0))
+diff --git a/tests/golden/parity/event-sequence.golden b/tests/golden/parity/event-sequence.golden
+index 5c565eff..f1dc8009 100644
+--- a/tests/golden/parity/event-sequence.golden
++++ b/tests/golden/parity/event-sequence.golden
+@@ -1,5 +1,7 @@
+ memory.backend.init
+ pipeline.init
++plugin.claim.start
++plugin.claim.complete
+ pipeline.branch.ready
+ pipeline.start
+ stage.start
+@@ -111,4 +113,6 @@ stage.previous_work.written
+ plugin.run.start
+ persist.start
+ persist.complete
+-plugin.run.complete
+\ No newline at end of file
++plugin.run.complete
++plugin.release.start
++plugin.release.complete
+\ No newline at end of file

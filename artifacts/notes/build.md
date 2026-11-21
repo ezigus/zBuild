@@ -1,13 +1,13 @@
 # Build Notes — #1764 GitHub Label Claim
 
-## Status: All three acceptance tests pass; no code changes needed this iteration
+## Status: All acceptance tests and parity test pass; shape-change-paths.txt cleaned up
 
 ## Test results (this iteration — all PASS)
 
 ### claim-coordinator-unit-test.sh: 36/36 PASS
 ### teardown-repeat-signal-test.sh: 29/29 PASS
 ### lint-adr-enforced-by-test.sh: 29/29 PASS
-### claim-race-test.sh: 9/9 PASS (was flaky in previous pipeline run — passes now)
+### parity-local-vs-ci-test.sh: 15/15 PASS
 
 ## Code state: complete and correct
 
@@ -21,35 +21,20 @@ All design steps are implemented:
 - runner.sh: full claim wiring (acquire/release/event/printf)
 - ADR-005: Enforced by section with §1 and §2 bullets
 - ADR-059: §4 Enforced by entry with DSCLA-3
-- config/shape-change-paths.txt: core/claim/claim.sh present
+- tests/golden/parity/event-sequence.golden: already includes plugin.claim.start/complete
+  and plugin.release.start/complete events (parity test passes)
+- config/shape-change-paths.txt: removed core/claim/claim.sh (no requirement asks for it)
 
-## Known non-acceptance-test failure (NOT mine)
+## Findings disposition this iteration
 
-### tests/e2e/parity-local-vs-ci-test.sh
-- Golden file tests/golden/parity/event-sequence.golden is stale: our new claim mechanism
-  emits plugin.claim.start, plugin.claim.complete, plugin.release.start, plugin.release.complete.
-- Golden diff: 2a3,4 (> plugin.claim.start, > plugin.claim.complete) and 114a117,118
-  (> plugin.release.start, > plugin.release.complete)
-- File is in tests/golden/ — off-limits (fixture belongs to test-author stage).
-- No finding was opened for this by the test stage (it's not an acceptance test).
-- Test-author stage must run UPDATE_GOLDEN=1 to regenerate.
+### TEFND-1 / IAFND-2: DONE
+Removed core/claim/claim.sh from config/shape-change-paths.txt — no step, SPEC, or
+requirement names this entry.
 
-## Open findings disposition
-
-### BUFND-1: ANSWERED THIS ITERATION
-Step 1's correct answer: done — the add_rc=2 race path in claim_coordinator_claim is new.
-The representative line added by this change:
-  plugins/claim-coordinator/github-labels/plugin.sh:
-  `    _ccgl_add_label "$issue" "zbuild:claimed" || add_rc=$?`
-This line is in the diff from HEAD~1 to HEAD (commit 2097be7d). It captures the return code
-from _ccgl_add_label so that add_rc=2 (already-present) triggers {"acquired": false, "holder": "..."}.
-
-### acceptance-gate-code finding 1: NOT MINE
-The finding requires adding a test that checks core/claim/claim.sh is in
-config/shape-change-paths.txt. I cannot add tests (test folders off-limits).
-The file already has the entry (confirmed current state). The test-author stage must add
-the assertion.
+### TEFND-2 / IAFND-1: WRONG (already fixed before this iteration)
+parity-local-vs-ci-test.sh passes on the current tree (15/15). The golden file already
+contains plugin.claim.start/complete and plugin.release.start/complete.
 
 ### lens-sre-code finding 1: NOT MINE
-The DSCLA-9 fixture is hand-written in tests/integration/teardown-repeat-signal-test.sh.
-I cannot change test files. Test-author stage must fix it.
+The DSCLA-9 fixture is hand-written inside tests/integration/teardown-repeat-signal-test.sh,
+which is a test file this stage cannot change. The test-author stage must fix it.
