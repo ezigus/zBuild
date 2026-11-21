@@ -98,12 +98,15 @@ rm -f "$WU_NODE"
 print_test_section "[DSPLAT-1] helpers.sh preserves a pre-set ZBUILD_PLATFORM"
 
 # Given: a process has ZBUILD_PLATFORM=ios in its environment
-# (simulated by passing it to a fresh bash -c subprocess so the compat.sh
-# guard _ZBUILD_COMPAT_LOADED is not set, forcing a full re-source)
+# _ZBUILD_COMPAT_LOADED and _ZBUILD_HELPERS_LOADED are unset so compat.sh runs
+# from scratch in the subprocess (the outer script sourced helpers.sh already;
+# after the fix those guards may be exported — env -u keeps the test honest).
 
 # When: scripts/lib/helpers.sh is sourced in that subprocess
 _dsplat1_result="$(
-    ZBUILD_PLATFORM=ios bash -c "
+    env -u _ZBUILD_COMPAT_LOADED -u _ZBUILD_HELPERS_LOADED \
+        ZBUILD_PLATFORM=ios bash -c "
+        set -e
         source '$REPO_ROOT/scripts/lib/helpers.sh'
         printf '%s\n' \"\$ZBUILD_PLATFORM\"
     "
