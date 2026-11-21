@@ -28,6 +28,14 @@ add `_ccgl_read_holder` to read the holder from the issue's run-status comment; 
 remove any `source` of `core/claim/claim.sh` from `plugin.sh` — the dependency arrow is
 one-way (`claim.sh` → (registry) → `plugin.sh`).
 
+`_ccgl_read_holder` in the `gh` backend path MUST filter comments by the authenticated GitHub
+actor: call `gh api user --jq .login` once to get the actor's login, then restrict the comment
+scan to only those comments whose `user.login` equals that value before searching for the
+`<!-- zbuild-holder: -->` field. This prevents any GitHub user with comment access from
+displacing the holder string by posting a spoofed comment. In the `local-fs` test backend,
+`_ccgl_read_holder` reads the holder from a per-issue file in `ZBUILD_CLAIM_STORE` (written by
+the test harness), because there are no GitHub comments in that backend.
+
 **`scripts/lib/run-status-render.sh`**: add `<!-- zbuild-holder: ... -->` in `rsc_render_header`
 immediately after the run-id marker: CI path uses `<!-- zbuild-holder: <CI_URL> -->`; local
 path uses `<!-- zbuild-holder: run_id=<id> machine=<host> -->`.
@@ -79,7 +87,7 @@ GitHub; two racing machines may both succeed. Known limitation; strict mutex is 
 (RQMECH-1, RQMECH-2).
 
 ```steps
-- Amend plugins/claim-coordinator/github-labels/plugin.sh: replace `claimed:<machine>` with `zbuild:claimed` in claim_coordinator_claim (remove local our_label and machine logic) and in claim_coordinator_release; add _ccgl_read_holder to extract the holder from the issue's run-status comment; claim_coordinator_claim returns {"acquired": false, "holder": "<holder>"} on conflict; remove any source of core/claim/claim.sh from plugin.sh (the dependency arrow is claim.sh→registry→plugin.sh, not the reverse) | areas: plugins/claim-coordinator/github-labels/plugin.sh
+- Amend plugins/claim-coordinator/github-labels/plugin.sh: replace `claimed:<machine>` with `zbuild:claimed` in claim_coordinator_claim (remove local our_label and machine logic) and in claim_coordinator_release; add _ccgl_read_holder to extract the holder from the issue's run-status comment, filtering comments by the authenticated GitHub actor (gh api user --jq .login) before scanning for the zbuild-holder field (local-fs backend reads from ZBUILD_CLAIM_STORE per-issue file); claim_coordinator_claim returns {"acquired": false, "holder": "<holder>"} on conflict; remove any source of core/claim/claim.sh from plugin.sh (the dependency arrow is claim.sh→registry→plugin.sh, not the reverse) | areas: plugins/claim-coordinator/github-labels/plugin.sh
 - Update plugins/claim-coordinator/github-labels/README.md: remove all references to claimed:<machine>; describe the single shared label zbuild:claimed; update ZBUILD_CLAIM_MACHINE_ID row to note it now affects only the holder string in the run-status comment, not the label name | areas: plugins/claim-coordinator/github-labels/README.md
 - Edit scripts/lib/run-status-render.sh: add <!-- zbuild-holder: CI_URL --> (CI) or <!-- zbuild-holder: run_id=X machine=H --> (local) in rsc_render_header after the run_id marker | areas: scripts/lib/run-status-render.sh
 - Create core/claim/claim.sh: wiring bridge that calls claim-coordinator hooks through the plugin registry; sources core/plugin-registry/registry.sh via $_ZBUILD_ROOT at top (idempotent — registry.sh has a guard; needed because runner.sh sources claim.sh before registry.sh); zbuild_claim_build_holder uses ${HOSTNAME} bash variable (no fork); zbuild_claim_acquire returns 0 immediately without calling discover_plugins or any coordinator hook when issue is empty; zbuild_claim_acquire uses discover_plugins filtered by kind claim-coordinator to find coordinator_dir, stores it in _ZBUILD_COORDINATOR_DIR; calls plugin_hook_call "$coordinator_dir" claim "$issue" with stdout captured to get JSON; on acquired:false sanitizes holder string (strip ANSI codes via sed) and stores in _ZBUILD_CLAIM_HOLDER, returns 1; on backend error (no coordinator found or non-zero hook exit) warns stderr and returns 0 (graceful degradation); on success sets _ZBUILD_CLAIM_ACQUIRED; zbuild_claim_release returns 0 immediately without calling any coordinator hook when _ZBUILD_CLAIM_ACQUIRED is unset; zbuild_claim_release MUST unset _ZBUILD_CLAIM_ACQUIRED BEFORE calling plugin_hook_call "$_ZBUILD_COORDINATOR_DIR" release "$issue" (makes second call a no-op for DSCLA-13); no direct source of plugin.sh, no _ccgl_* calls, no direct gh calls | areas: core/claim/claim.sh
@@ -183,6 +191,10 @@ DSADR-6[doc]: ADR-005 corrects stale content: coordinator selection is not from 
 DSADR-7[doc]: ADR-005 has an ## Enforced by section with the §1 bullet naming a test for each §1 statement: §1(a) claim hook called after admission lock and before first stage — claim-coordinator-unit-test.sh [DSCLA-22]; §1(b) release hook called in the EXIT path — claim-coordinator-unit-test.sh [DSCLA-22]; §1(c) refused run exits non-zero with no stage and event emitted — claim-coordinator-unit-test.sh [DSCLA-3]; §1(c) refused output names holder — claim-coordinator-unit-test.sh [DSCLA-9]; and the §2 bullet naming [DSCLA-1] for the "shared label is zbuild:claimed (no hostname)" statement and [DSCLA-2] and [DSCLA-12] for the holder rendering cases covers: RQADR-4
 DSADR-8[doc]: ADR-059 §4 tells the reader that cross-machine exclusion is the claim coordinator's job and the admission lock (flock) handles intra-machine serialisation; the amendment's Enforced by entry names DSCLA-3 as the test that enforces the cross-machine exclusion statement covers: RQADR-5
 DSCLA-14[doc]: README.md in plugins/claim-coordinator/github-labels/ tells the reader the shared claim label is zbuild:claimed (not claimed:<machine>) and does not reference machine-suffixed labels covers: RQDOC-1
+DSCLA-23[code]: When _ccgl_read_holder reads the holder from the issue's comments, it only reads from comments authored by the authenticated GitHub actor covers: RQCLA-4
+  Given: the issue has two comments that each contain <!-- zbuild-run-status --> and <!-- zbuild-holder: -->; one was posted by the authenticated actor and one by a different user
+  When: _ccgl_read_holder is called with the issue number
+  Then: the holder string returned is taken from the authenticated actor's comment, not from the other user's comment
 REMOVED: DSCLA-4 — RQCLA-4 is fully covered by DSCLA-9, which tests the observable runner output; keeping a separate assertion that _ZBUILD_CLAIM_HOLDER is internally set tests the same interaction path with no additional observable coverage
 WIRING: core/pipeline/runner.sh
 ```

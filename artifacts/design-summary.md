@@ -1,6 +1,6 @@
 ## design — pass
 
-- 26 SPEC(s): DSCLA-1, DSCLA-2, DSCLA-12, DSCLA-3, DSCLA-9, DSCLA-5, DSCLA-6, DSCLA-7, DSCLA-8, DSCLA-17, DSCLA-10, DSCLA-11, DSCLA-15, DSCLA-16, DSCLA-13, DSCLA-18, DSCLA-20, DSCLA-19, DSCLA-21, DSCLA-22, DSADR-4, DSADR-5, DSADR-6, DSADR-7, DSADR-8, DSCLA-14
+- 27 SPEC(s): DSCLA-1, DSCLA-2, DSCLA-12, DSCLA-3, DSCLA-9, DSCLA-5, DSCLA-6, DSCLA-7, DSCLA-8, DSCLA-17, DSCLA-10, DSCLA-11, DSCLA-15, DSCLA-16, DSCLA-13, DSCLA-18, DSCLA-20, DSCLA-19, DSCLA-21, DSCLA-22, DSADR-4, DSADR-5, DSADR-6, DSADR-7, DSADR-8, DSCLA-14, DSCLA-23
 
 - DSCLA-1 (covers RQCLA-1, RQLAB-1, RQLAB-2, RQCLA-12): When an issue-bound run starts and zbuild:claimed is absent, the label is added before the first stage dispatches
 - DSCLA-2 (covers RQCLA-2): When a local run starts with an issue, rsc_render_header embeds the holder in the run-status comment header
@@ -28,4 +28,5 @@
 - DSADR-7 (covers RQADR-4): ADR-005 has an ## Enforced by section with the §1 bullet naming a test for each §1 statement: §1(a) claim hook called after admission lock and before first stage — claim-coordinator-unit-test.sh [DSCLA-22]; §1(b) release hook called in the EXIT path — claim-coordinator-unit-test.sh [DSCLA-22]; §1(c) refused run exits non-zero with no stage and event emitted — claim-coordinator-unit-test.sh [DSCLA-3]; §1(c) refused output names holder — claim-coordinator-unit-test.sh [DSCLA-9]; and the §2 bullet naming [DSCLA-1] for the "shared label is zbuild:claimed (no hostname)" statement and [DSCLA-2] and [DSCLA-12] for the holder rendering cases
 - DSADR-8 (covers RQADR-5): ADR-059 §4 tells the reader that cross-machine exclusion is the claim coordinator's job and the admission lock (flock) handles intra-machine serialisation; the amendment's Enforced by entry names DSCLA-3 as the test that enforces the cross-machine exclusion statement
 - DSCLA-14 (covers RQDOC-1): README.md in plugins/claim-coordinator/github-labels/ tells the reader the shared claim label is zbuild:claimed (not claimed:<machine>) and does not reference machine-suffixed labels
-- no finding was open for it
+- DSCLA-23 (covers RQCLA-4): When _ccgl_read_holder reads the holder from the issue's comments, it only reads from comments authored by the authenticated GitHub actor
+- answered: RLREDTEAM-2: done — Added the authenticated-actor filter to `_ccgl_read_holder` in the Decision section: it now calls `gh api user --jq .login` to get the authenticated actor and filters comments to only those with a matching `user.login` before scanning for the `<!-- zbuild-holder: -->` field. Added corresponding DSCLA-23[code] SPEC and updated step 1 (plugin.sh) to name the filter explicitly. Local-fs test backend reads from `ZBUILD_CLAIM_STORE` per-issue file since that backend has no GitHub comments.

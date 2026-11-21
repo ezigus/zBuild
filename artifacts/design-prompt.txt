@@ -584,8 +584,7 @@ Summary:
 - DSADR-7 (covers RQADR-4): ADR-005 has an ## Enforced by section with the §1 bullet naming a test for each §1 statement: §1(a) claim hook called after admission lock and before first stage — claim-coordinator-unit-test.sh [DSCLA-22]; §1(b) release hook called in the EXIT path — claim-coordinator-unit-test.sh [DSCLA-22]; §1(c) refused run exits non-zero with no stage and event emitted — claim-coordinator-unit-test.sh [DSCLA-3]; §1(c) refused output names holder — claim-coordinator-unit-test.sh [DSCLA-9]; and the §2 bullet naming [DSCLA-1] for the "shared label is zbuild:claimed (no hostname)" statement and [DSCLA-2] and [DSCLA-12] for the holder rendering cases
 - DSADR-8 (covers RQADR-5): ADR-059 §4 tells the reader that cross-machine exclusion is the claim coordinator's job and the admission lock (flock) handles intra-machine serialisation; the amendment's Enforced by entry names DSCLA-3 as the test that enforces the cross-machine exclusion statement
 - DSCLA-14 (covers RQDOC-1): README.md in plugins/claim-coordinator/github-labels/ tells the reader the shared claim label is zbuild:claimed (not claimed:<machine>) and does not reference machine-suffixed labels
-- answered: DSFND-1: done — DSADR-7 now names [DSCLA-1] as the test enforcing the §2 "shared label is zbuild:claimed (no hostname)" statement in ADR-005's Enforced by section; the corresponding step was also updated.
-- answered: DSFND-2: done — the UNCLEAR RQADR-2 line was removed; the issue's Terms section definitively identifies "Run-status comment" as the ADR-064 comment (scripts/lib/run-status-comment.sh), so the ambiguity no longer exists.
+- no finding was open for it
 
 Your notes so far (where they disagree with a list or a result elsewhere in this prompt, the list or the result is right):
 # Design notes — issue #1764 GitHub label claim (round 33)
@@ -662,6 +661,9 @@ Outputs:
     - /home/runner/work/_temp/zbuild-state/artifacts/lens-correctness-design-result.json
     - /home/runner/work/_temp/zbuild-state/artifacts/lens-scope-design-result.json
     - /home/runner/work/_temp/zbuild-state/artifacts/lens-sre-design-result.json
+
+Findings:
+- RLREDTEAM-2 (opened by review_lenses): red-team lens, medium: The gh backend reads the holder from the last comment on the issue that contains the zbuild-run-status magic marker, with no check that the comment came from the authenticated sidecar, so any GitHub user who can comment on the issue can displace the legitimate holder string. (plugins/claim-coordinator/github-labels/plugin.sh: "'[.[] | select(.body | contains("<!-- zbuild-run-status")) | .body] | last'"; happens when: On a public GitHub repository (or any repo where the attacker has comment access), the attacker posts a comment containing the string '<!-- zbuild-run-status run_id=x -->' and an arbitrary '<!-- zbuild-holder: PAYLOAD -->' line. Because jq's `last` selects the most recently posted matching comment, the attacker's PAYLOAD becomes the holder string extracted by _ccgl_read_holder, which is returned as the holder in claim_coordinator_claim's refusal JSON and printed to the operator's terminal on the next run that finds zbuild:claimed present.; fix: design; ACCEPTED IF: The holder string shown in the refusal message is taken only from comments that the authenticated sidecar process itself wrote, not from any comment any GitHub user can post to the issue.)
 
 ## What you must not do
 

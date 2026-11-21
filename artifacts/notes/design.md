@@ -1,16 +1,20 @@
-# Design notes — issue #1764 GitHub label claim (round 33)
+# Design notes — issue #1764 GitHub label claim (round 34)
 
 ## Status
 
-Two findings from the previous round fixed:
+One open finding addressed this round:
 
-**DSFND-1**: DSADR-7 now explicitly names [DSCLA-1] as the test enforcing the §2 "shared label
-is zbuild:claimed (no hostname)" statement in the ADR-005 Enforced by section. The corresponding
-step was also updated to mention this addition.
-
-**DSFND-2**: The UNCLEAR RQADR-2 line was removed. The issue's Terms section defines
-"Run-status comment" as the existing ADR-064 comment (scripts/lib/run-status-comment.sh) — not
-a new one — so there is nothing unclear to record.
+**RLREDTEAM-2**: `_ccgl_read_holder` as designed read `last` from all comments matching the
+`<!-- zbuild-run-status -->` marker, with no authentication check. Any GitHub user who can
+comment on the issue could displace the holder string by posting a spoofed comment. Fixed in
+the design by:
+- Decision section: added requirement that `_ccgl_read_holder` calls `gh api user --jq .login`
+  to get the authenticated actor, then filters comments to only those with `user.login` matching
+  that value before scanning for the `<!-- zbuild-holder: -->` field. Local-fs test backend reads
+  from `ZBUILD_CLAIM_STORE` per-issue file (no GitHub comments in that backend).
+- Step 1 (plugin.sh): updated to mention the authenticated-actor filter.
+- Added DSCLA-23[code] SPEC: when `_ccgl_read_holder` reads the holder, it uses only comments
+  authored by the authenticated GitHub actor, not arbitrary user comments.
 
 ## Architecture summary
 
@@ -36,7 +40,7 @@ Registry is available when claim.sh's functions are defined and when they are ca
 - RQCLA-1: DSCLA-1
 - RQCLA-2: DSCLA-2, DSCLA-12
 - RQCLA-3: DSCLA-3
-- RQCLA-4: DSCLA-9, DSCLA-15
+- RQCLA-4: DSCLA-9, DSCLA-15, DSCLA-23
 - RQCLA-5: DSCLA-5, DSCLA-11
 - RQCLA-6: DSCLA-6, DSCLA-11, DSCLA-16
 - RQCLA-7: DSCLA-7, DSCLA-11
@@ -52,7 +56,7 @@ Registry is available when claim.sh's functions are defined and when they are ca
 - RQADR-1: DSADR-4
 - RQADR-2: DSADR-5
 - RQADR-3: DSADR-6
-- RQADR-4: DSADR-7 (§2 now names DSCLA-1 for label-name statement, plus DSCLA-2/DSCLA-12 for holder rendering)
+- RQADR-4: DSADR-7
 - RQADR-5: DSADR-8
 - RQDOC-1: DSCLA-14
 - RQARC-1: DSCLA-18 (claim), DSCLA-20 (release)
@@ -60,5 +64,5 @@ Registry is available when claim.sh's functions are defined and when they are ca
 - RQARC-3: DSCLA-22
 
 ## SPEC id high-water marks
-- DSCLA: 22 (1 removed: DSCLA-4)
+- DSCLA: 23 (1 removed: DSCLA-4)
 - DSADR: 8
