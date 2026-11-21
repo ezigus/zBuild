@@ -22,6 +22,8 @@
 #              kept verdict stands (the flip #1764 saw is not possible)
 # PI5 [change] an answer to a finding about a requirement whose kept verdict is
 #              a pass does not have it judged again
+# PI6 [change] (review) a kept MET does not survive a change to a file no line
+#              quoted: the change's content is in each requirement's fingerprint
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -138,6 +140,14 @@ stage_result_write "$A/build-summary.json" pass "built" \
 _ia
 assert_eq "[PI5] no call: RQFLAG-1's kept pass stands" "0" "$CALLS"
 assert_eq "[PI5] pass" "pass" "$OUT"
+
+print_test_section "PI6: a change to a file no line quoted"
+# The same file, other content: no name changes, and no line quoted it.
+printf '%s\n' 'diff --git a/p.sh b/p.sh' '+flag=1' '+flag_parsed=0' > "$IN/diff.patch"
+_ia
+assert_eq "[PI6] one call" "1" "$CALLS"
+assert_eq "[PI6] ...RQFLAG-1 judged again" "1" "$(_asked RQFLAG-1)"
+assert_eq "[PI6] ...and RQCNFG-1" "1" "$(_asked RQCNFG-1)"
 
 cleanup_test_env
 print_test_results

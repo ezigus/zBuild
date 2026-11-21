@@ -84,11 +84,13 @@ _ia_judge() {
     done <<< "$_lims"
     local listed=0; [[ ${#rids[@]} -gt 0 ]] && listed=1
     # What a requirement or limit is judged by that is not its own — the
-    # change's files (by name: a file's content is in the files the call
-    # read), the test verdict, the issue's words and terms — is one checksum
+    # change's files, the test verdict, the issue's words and terms — is one checksum
     # for every item (ADR-065 §5); the item's own lines are its words.
     local chg="${change//"${diff_f:-<none>}"/<the patch>}" accl _fp _sfp
-    judge_fp_v _sfp "$eng"$'\n'"$issue"$'\n'"$_terms"$'\n'"$test_verdict"$'\n'"$chg"
+    # Review on #2574: and the change's content (_change_fp: each changed file's
+    # blob, or the patch) — a kept MET must not survive a regression in a file
+    # no line quoted and the call did not open.
+    judge_fp_v _sfp "$eng"$'\n'"$issue"$'\n'"$_terms"$'\n'"$test_verdict"$'\n'"$chg"$'\n'"$_change_fp"
     if (( listed )); then
         for k in "${rids[@]}"; do
             accl=""; while IFS= read -r l; do [[ "$l" == *"$k"* ]] && accl+="$l"$'\n'; done <<< "$acc"
