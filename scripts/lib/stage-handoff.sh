@@ -91,7 +91,7 @@ stage_handoff_unchanged() {
             | . as $r
             | .key = (.a | sub(":.*$"; ""))
             | .orig = ((($docs[$r.f] // {}).data.findings // [])
-                       | map(select(type == "object" and (.n == $r.n or (.id != null and .id == $r.key)))) | .[0].text // "" | tostring) ] as $l
+                       | map(select(type == "object" and (if .id != null then .id == $r.key else .n == $r.n end))) | .[0].text // "" | tostring) ] as $l
         | def tail($o): if $o == "" then "" else "\nThe finding: \($o)" end;
         ([$l[] | select(.kind != "done")
           | "\($s) changed nothing for \(.key) and answered: \(.a | sub("^[^:]*:[[:space:]]*"; ""))" + tail(.orig)]) as $on

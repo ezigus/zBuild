@@ -277,7 +277,9 @@ _build_write_build_summary() {
     [[ "$_sum_issue" =~ ^[0-9]+$ ]] || _sum_issue=0
 
     # shellcheck disable=SC2154  # all remaining vars injected via dynamic scope from caller
-    _sum_out="$(jq -n \
+    # -c: the summary is one line, and the id record after it (review on #2574:
+    # without it the record came out as a quoted string and was never kept).
+    _sum_out="$(jq -nc \
         --arg step_waiting "$_sum_step_w" --arg reg "$_sum_reg" --arg code "$_sum_code" --argjson afj "$_sum_afj" \
         --argjson schema_version 4 \
         --argjson issue "$_sum_issue" \
@@ -355,7 +357,7 @@ _build_write_build_summary() {
             + (if ($afj | length) > 0 then {answer_findings: $afj} else {} end)
             + (if ($z.out | length) > 0 then {findings: [$z.out | to_entries[] | {n: (.key + 1)} + .value]} else {} end)
             ) as $d | if ($d | length) > 0 then {data: $d} else {} end )),
-          (if $z.r then ($z.r | tojson) else "-" end)
+          (if $z.r then $z.r else "-" end)
         ')"
     _sum_r="${_sum_out##*$'\n'}"; _sum_out="${_sum_out%$'\n'*}"
     [[ "$_sum_r" == "{"* ]] && zb_findings_reg_put "${output_summary_json%/*}" "$_sum_code" "$_sum_r"

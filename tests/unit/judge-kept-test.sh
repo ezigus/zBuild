@@ -250,7 +250,9 @@ print_test_section "K8: a review lens"
         output_summary_json="$ART/build-summary.json"; terminated_reason=done_sentinel files_changed_count=1 files_changed_json='["scripts/cfg.sh"]' iterations=1 repo_root="$XR"
         scope_violations=(); scope_violations_created=()  # build sets them before it writes
         # The finding is one the code must fix: it is in the lens's code output (#2556, #2569).
-        _ROUTE_LOOP_LAST_RESPONSE=$'ANSWER lens-red-team-code finding 1: wrong — exit code 2 is in the README\nLOOP_COMPLETE'
+        # #2574: named by its id.
+        _fid="$(jq -r '.data.findings[0].id' "$ART/lens-red-team-code-result.json" 2>/dev/null)"
+        _ROUTE_LOOP_LAST_RESPONSE="ANSWER $_fid: wrong — exit code 2 is in the README"$'\nLOOP_COMPLETE'
         _build_write_build_summary >/dev/null 2>&1
     )
     _R='{"score":9,"findings":[]}'

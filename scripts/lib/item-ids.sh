@@ -257,11 +257,21 @@ zb_findings_reg_v() {
     return 0
 }
 
-# zb_findings_reg_put <dir> <code> <json> — keep the record. A record cut short
-# is read as none (the jq below takes it with fromjson), never as an error.
+# zb_findings_reg_put <dir> <code> <json> — keep the record, written whole
+# (atomic_write); one that cannot be written leaves the event
+# finding_ids.write_failed, and the next numbering starts from the last record
+# kept. A record cut short is read as none (fromjson below), never as an error.
 zb_findings_reg_put() {
     [[ -n "${1:-}" && "${2:-}" =~ ^[A-Z][A-Z0-9]{2,5}$ && "${3:-}" == "{"* ]] || return 0
-    printf '%s\n' "$3" > "$1/finding-ids-$2.json" 2>/dev/null || true
+    local _zfp_ok=1
+    if declare -F atomic_write >/dev/null 2>&1; then
+        atomic_write "$1/finding-ids-$2.json" <<< "$3" 2>/dev/null || _zfp_ok=0
+    else
+        printf '%s\n' "$3" > "$1/finding-ids-$2.json" 2>/dev/null || _zfp_ok=0
+    fi
+    (( _zfp_ok )) && return 0
+    declare -F eb_emit_event >/dev/null 2>&1 && eb_emit_event finding_ids.write_failed "code=$2" "dir=$1" >/dev/null 2>&1
+    return 0
 }
 
 # The jq that gives each finding of an array its id: zb_fids($reg; $code) takes

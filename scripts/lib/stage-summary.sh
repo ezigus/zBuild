@@ -84,12 +84,16 @@ stage_findings_route() {
         [ split("\n")[] | sub("^\\s+"; "") | sub("\\s+$"; "") | select(length > 0)
           | if test($re) then {t: split("\t")[0], x: sub("^[^\t]+\t"; "")} else {t: $d, x: .} end
           | .x |= gsub("\u001e"; "\n") ] as $l0
-        | (if $ids == 1 then ($l0 | map({text: .x, t: .t}) | zb_fids($reg; $code)) else {out: ($l0 | map({text: .x, t: .t})), r: null} end) as $z
-        | $z.out as $l
+        # Ids are given once over the distinct texts, then fanned out: a finding
+        # sent to several topics has one id in each (review on #2574).
+        | (reduce $l0[].x as $x ([]; if any(.[]; . == $x) then . else . + [$x] end)) as $dx
+        | (if $ids == 1 then ($dx | map({text: .}) | zb_fids($reg; $code)) else {out: ($dx | map({text: .})), r: null} end) as $z
+        | ([$z.out[] | select(.id) | {(.text): .id}] | add // {}) as $idof
+        | ($l0 | map({text: .x, t: .t} + (if $idof[.x] then {id: $idof[.x]} else {} end))) as $l
         | def item: {text} + (if .id then {id} else {} end);
         ([$l[].t] | unique[] | . as $t
            | "\($t | sub("-findings$"; ""))\t" + ({data: {findings: ([$l[] | select(.t == $t)] | to_entries | map({n: (.key + 1)} + (.value | item)))}} | tojson)),
-          "ALL\t" + ($l | to_entries | map({n: (.key + 1)} + (.value | item)) | tojson),
+          "ALL\t" + ($dx | to_entries | map({n: (.key + 1), text: .value} + (if $idof[.value] then {id: $idof[.value]} else {} end)) | tojson),
           (if $z.r then "REG\t" + ($z.r | tojson) else empty end)' <<< "$_in" 2>/dev/null)
     for _w in design test code; do
         [[ -z "${_sfr_has[$_w]:-}" && -e "$dir/$name-$_w-result.json" ]] && _sfr_gone+=("$dir/$name-$_w-result.json")

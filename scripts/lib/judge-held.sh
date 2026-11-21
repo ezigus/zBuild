@@ -99,7 +99,8 @@ judge_answered_findings_v() {
     if [[ ${#_jaf_fs[@]} -gt 0 ]]; then
         while IFS=$'\t' read -r _jaf_f _jaf_n _jaf_i _jaf_t; do
             [[ -n "$_jaf_f" ]] || continue
-            [[ "$_jaf_i" != - ]] && _jaf_txt["$_jaf_i"]="$_jaf_t"
+            # An old-form answer names only a finding that has no id (review on #2574).
+            [[ "$_jaf_i" != - ]] && { _jaf_txt["$_jaf_i"]="$_jaf_t"; continue; }
             while IFS= read -r _jaf_l; do
                 [[ -n "$_jaf_l" ]] && _jaf_txt["$_jaf_l finding $_jaf_n"]="$_jaf_t"
             done <<< "${_jaf_label[$_jaf_f]:-}"
@@ -206,7 +207,7 @@ judge_last_findings_block_v() {
             | "\($l) finding \(.n)" as $old
             | (if (.id | type) == "string" then .id else $old end) as $k
             | "- \($k): \(.text | tostring | split("\n")[0])"
-              + ([$ans[] | . as $x | ([$k, $old] | map(select(. as $y | $x | startswith($y + ":"))) | first) as $m
+              + ([$ans[] | . as $x | ([$k] | map(select(. as $y | $x | startswith($y + ":"))) | first) as $m
                   | select($m != null) | "\n  answered: " + ($x | ltrimstr($m + ":") | ltrimstr(" "))] | join(""))' "$_jlf_f" 2>/dev/null)"$'\n'
     done
     [[ -n "${_jlf_body//[[:space:]]/}" ]] || return 0

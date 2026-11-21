@@ -175,7 +175,7 @@ assert_contains "[C2] one that does not block is marked" \
     "lens-performance-code finding 1 (opened by review_lenses, does not block): an extra write"
 # C3: last time's findings, with what was answered, come back to the lens.
 stage_result_write "$ART/build-summary.json" pass "built" \
-    '{"answers":["lens-performance-code finding 1: done — one write a round now"]}' >/dev/null
+    '{"answers":["RLPER-2: done — one write a round now"]}' >/dev/null
 _lens "medium high critical" "$_low"
 _c3="$(cat "$TEST_TEMP_DIR/lens-prompt" 2>/dev/null)"
 assert_contains "[C3] the lens is shown its findings from last time" "$_c3" "RLPER-2: "

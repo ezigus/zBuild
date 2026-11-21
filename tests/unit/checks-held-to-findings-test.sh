@@ -230,8 +230,10 @@ print_test_section "H6: issue-acceptance is held to its finding"
   export ZBUILD_STAGE_INPUTS="$_S/stage-inputs.json" ZBUILD_ARTIFACT_DIR="$_A" ZBUILD_REPO_ROOT="$_S"
   _IA_ANSWER=$'MET: --from-stage starts the run at that stage\nUNASKED: it drops the rule that --from-stage needs --resume | WHY: no requirement asks to drop it | ACCEPTED IF: the change keeps the rule that --from-stage needs --resume | QUOTE: runner.sh | resume_required=0'
   : > "$_IA_CALLS"; issue_acceptance_run issue-acceptance "$_S/pipeline-state.json" >/dev/null 2>&1
+  # #2574: named by its id.
+  _fid="$(jq -r '.data.findings[0].id' "$_A/issue-acceptance-code-result.json")"
   stage_result_write "$_A/build-summary.json" pass "built" \
-      '{"answers":["issue-acceptance-code finding 1: done — the rule is back"]}' >/dev/null
+      "{\"answers\":[\"$_fid: done — the rule is back\"]}" >/dev/null
   _IA_ANSWER=$'MET: --from-stage starts the run at that stage\nUNASKED: none'
   : > "$_IA_CALLS"; : > "$_IA_PROMPT"; issue_acceptance_run issue-acceptance "$_S/pipeline-state.json" >/dev/null 2>&1
   printf 'calls=%s outcome=%s\n' "$(grep -c x "$_IA_CALLS" || true)" "$(jq -r .outcome "$_A/issue-acceptance-result.json")" ) > "$TEST_TEMP_DIR/h6.log" 2>&1
