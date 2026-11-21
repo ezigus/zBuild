@@ -12,7 +12,7 @@ NEGCTL PASS DSCLA-3
       asserts: assert_eq "[DSCLA-3] zbuild_claim_acquire returns 1 when zbuild:claimed is present" "1" "$_dscla3_rc…
 NEGCTL PASS DSCLA-9
       design : When a run is refused because zbuild:claimed is on the issue, the run's output names the holder
-      asserts: assert_pass "[DSCLA-9] runner output contains holder string when zbuild:claimed is present"
+      asserts: assert_pass "[DSCLA-9] _ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim"
 NEGCTL PASS DSCLA-5
       design : On normal pipeline completion, zbuild:claimed is removed from the issue
       asserts: assert_fail "[DSCLA-5] zbuild:claimed was never acquired — cannot verify release"          "claim ne…
@@ -24,7 +24,7 @@ NEGCTL PASS DSCLA-7
       asserts: assert_pass "[DSCLA-7] zbuild:claimed was present before stage started"
 NEGCTL PASS DSCLA-8
       design : When zbuild_claim_acquire is called with an empty issue argument, it returns 0 without calling the c…
-      asserts: assert_eq "[DSCLA-8] no gh calls made for empty issue" "0" "$_dscla8_call_count"
+      asserts: assert_eq "[DSCLA-8] zbuild_claim_acquire returns 0 for empty issue" "0" "$_dscla8_rc"
 NEGCTL PASS DSCLA-17
       design : When zbuild_claim_release is called without a prior successful acquire, it returns 0 without calling…
       asserts: assert_fail "[DSCLA-17] core/claim/claim.sh must exist"          "file not found: $_dscla17_claim_sh…
@@ -76,6 +76,9 @@ NEGCTL SKIP DSADR-8 doc
 NEGCTL SKIP DSCLA-14 doc
       design : README.md in plugins/claim-coordinator/github-labels/ tells the reader the shared claim label is zbu…
       asserts: <none found>
+NEGCTL PASS DSCLA-23
+      design : When _ccgl_read_holder reads the holder from the issue's comments, it only reads from comments autho…
+      asserts: assert_fail "[DSCLA-23] _ccgl_read_holder must be defined"          "_ccgl_read_holder is not define…
 REACHABILITY PASS core/pipeline/runner.sh
 REACHABILITY PASS change config/adr-enforcement-baseline.txt
 REACHABILITY PASS change config/event-schema.json

@@ -13,13 +13,13 @@
   [38;2;74;222;128m✓[0m list_claims returns [] after release
 {"acquired": true, "lease_id": "test-machine-1:99"}
   [38;2;74;222;128m✓[0m claim_coordinator_heartbeat → rc=0
-/home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.wjUOuX/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: line 123: zbuild_claim_acquire: command not found
+/home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.tfcHHR/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: line 123: zbuild_claim_acquire: command not found
   [38;2;248;113;113m✗[0m [DSCLA-1] zbuild_claim_acquire returns 0 when zbuild:claimed is absent
     [2mexpected: 0, got: 127[0m
   [38;2;248;113;113m✗[0m [DSCLA-1] gh is called to add zbuild:claimed to the issue
     [2mcalls recorded: [0m
   [38;2;74;222;128m✓[0m [DSCLA-1] label is exactly zbuild:claimed with no hostname suffix
-/home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.wjUOuX/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: line 187: zbuild_claim_acquire: command not found
+/home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.tfcHHR/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: line 187: zbuild_claim_acquire: command not found
   [38;2;248;113;113m✗[0m [DSCLA-2] zbuild_claim_acquire returns 0 (claim acquired via gh)
     [2mexpected: 0, got: 127[0m
   [38;2;248;113;113m✗[0m [DSCLA-2] gh called with zbuild:claimed label
@@ -31,30 +31,30 @@
   [38;2;248;113;113m✗[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains machine name after successful acquire
     [2m_ZBUILD_CLAIM_HOLDER='' (expected to contain 'testmachine-dscla2')[0m
   [38;2;248;113;113m✗[0m [DSCLA-2] run-status comment header contains <!-- zbuild-holder: run_id=<id> machine=<hostname> -->
-    [2mholder not found in header; header: <!-- zbuild-run-status run_id=run-dscla2-123 --> ⏎ ### zbuild run `run-dscla2-123` · issue #1002 · **running** ⏎ engine `` · started 7:00 PM ET · ceiling 1:00 AM ET (past ceiling) · updated 12:44 AM ET · [run log](https://github.com/ezigus/zBuild/actions/runs/44863026881)[0m
-/home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.wjUOuX/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: line 282: zbuild_claim_acquire: command not found
+    [2mholder not found in header; header: <!-- zbuild-run-status run_id=run-dscla2-123 --> ⏎ ### zbuild run `run-dscla2-123` · issue #1002 · **running** ⏎ engine `` · started 7:00 PM ET · ceiling 1:00 AM ET (past ceiling) · updated 1:58 AM ET · [run log](https://github.com/ezigus/zBuild/actions/runs/44863026881)[0m
+/home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.tfcHHR/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: line 282: zbuild_claim_acquire: command not found
   [38;2;248;113;113m✗[0m [DSCLA-2] zbuild_claim_acquire returns 0 (CI mode)
     [2mexpected: 0, got: 127[0m
   [38;2;248;113;113m✗[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains CI run URL when GITHUB_ACTIONS=true
     [2m_ZBUILD_CLAIM_HOLDER='run_id=run-dscla2-123 machine=testmachine-dscla2' (expected CI URL with 99887766 or testowner/testrepo)[0m
   [38;2;248;113;113m✗[0m [DSCLA-12] rendered header contains <!-- zbuild-holder: CI_URL -->
-    [2mCI holder not found in header; expected '<!-- zbuild-holder: https://github.com/testowner/testrepo/actions/runs/99887766 -->'; header: <!-- zbuild-run-status run_id=run-dscla12 --> ⏎ ### zbuild run `run-dscla12` · issue #1012 · **running** ⏎ engine `` · started 7:00 PM ET · ceiling 1:00 AM ET (past ceiling) · updated 12:44 AM ET · [run log](https://github.com/testowner/testrepo/actions/runs/99887766)[0m
-/home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.wjUOuX/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: line 340: zbuild_claim_acquire: command not found
+    [2mCI holder not found in header; expected '<!-- zbuild-holder: https://github.com/testowner/testrepo/actions/runs/99887766 -->'; header: <!-- zbuild-run-status run_id=run-dscla12 --> ⏎ ### zbuild run `run-dscla12` · issue #1012 · **running** ⏎ engine `` · started 7:00 PM ET · ceiling 1:00 AM ET (past ceiling) · updated 1:58 AM ET · [run log](https://github.com/testowner/testrepo/actions/runs/99887766)[0m
+/home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.tfcHHR/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: line 340: zbuild_claim_acquire: command not found
   [38;2;248;113;113m✗[0m [DSCLA-3] zbuild_claim_acquire returns 1 when zbuild:claimed is present
     [2mexpected: 1, got: 127[0m
-/home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.wjUOuX/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: line 364: zbuild_claim_acquire: command not found
-  [38;2;248;113;113m✗[0m zbuild_claim_acquire returns 1 when issue already claimed (pre-stage check)
+/home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.tfcHHR/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: line 374: zbuild_claim_acquire: command not found
+  [38;2;248;113;113m✗[0m [DSCLA-3] zbuild_claim_acquire returns 1 when issue already claimed (with rsc fixture)
     [2mexpected: 1, got: 127[0m
-  [38;2;248;113;113m✗[0m _ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim
+  [38;2;248;113;113m✗[0m [DSCLA-9] _ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim
     [2m_ZBUILD_CLAIM_HOLDER was empty or unset[0m
-  [38;2;248;113;113m✗[0m _ZBUILD_CLAIM_HOLDER contains holder string from run-status comment
-    [2m_ZBUILD_CLAIM_HOLDER='' (expected to contain 'run-holder-99')[0m
-/home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.wjUOuX/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: line 405: zbuild_claim_acquire: command not found
-  [38;2;74;222;128m✓[0m [DSCLA-8] no gh calls made for empty issue
+  [38;2;248;113;113m✗[0m [DSCLA-9] _ZBUILD_CLAIM_HOLDER contains holder string from rsc_render_header fixture
+    [2m_ZBUILD_CLAIM_HOLDER='' (expected to contain 'run-holder-99 on machine-other')[0m
+/home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.tfcHHR/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh: line 447: zbuild_claim_acquire: command not found
   [38;2;248;113;113m✗[0m [DSCLA-8] zbuild_claim_acquire returns 0 for empty issue
     [2mexpected: 0, got: 127[0m
+  [38;2;74;222;128m✓[0m [DSCLA-8] coordinator's claim hook was not called for empty issue
   [38;2;248;113;113m✗[0m [DSCLA-17] core/claim/claim.sh must exist
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.wjUOuX/core/claim/claim.sh — zbuild_claim_release is not yet implemented[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.tfcHHR/core/claim/claim.sh — zbuild_claim_release is not yet implemented[0m
   [38;2;248;113;113m✗[0m [DSCLA-10] Given: pipeline.refused.claimed must be in config/event-schema.json
     [2mnot found in composed known set; the coverage check cannot accept it if it is not registered[0m
 {"acquired": false, "lease_id": "test-machine-dscla18:2018", "reason": "our_label_missing_after_add"}
@@ -67,13 +67,15 @@
   [38;2;248;113;113m✗[0m [DSCLA-20] label removed has no hostname component (zbuild:claimed, not claimed:<host>)
     [2mhostname-specific label found in calls: claimed:test-machine-dscla20[0m
   [38;2;248;113;113m✗[0m [DSCLA-19] core/claim/claim.sh must exist
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.wjUOuX/core/claim/claim.sh — zbuild_claim_acquire is not yet implemented[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.tfcHHR/core/claim/claim.sh — zbuild_claim_acquire is not yet implemented[0m
   [38;2;248;113;113m✗[0m [DSCLA-21] core/claim/claim.sh must exist
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.wjUOuX/core/claim/claim.sh — zbuild_claim_release is not yet implemented[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/test/zb-negctl.tfcHHR/core/claim/claim.sh — zbuild_claim_release is not yet implemented[0m
+  [38;2;248;113;113m✗[0m [DSCLA-23] _ccgl_read_holder must be defined
+    [2m_ccgl_read_holder is not defined — the function has not been implemented yet[0m
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m24 of 34 tests failed[0m
+  [38;2;248;113;113m[1m25 of 35 tests failed[0m
 
   [38;2;248;113;113m✗[0m label is exactly zbuild:claimed (no machine name)
   [38;2;248;113;113m✗[0m [DSCLA-1] zbuild_claim_acquire returns 0 when zbuild:claimed is absent
@@ -87,9 +89,9 @@
   [38;2;248;113;113m✗[0m [DSCLA-2] _ZBUILD_CLAIM_HOLDER contains CI run URL when GITHUB_ACTIONS=true
   [38;2;248;113;113m✗[0m [DSCLA-12] rendered header contains <!-- zbuild-holder: CI_URL -->
   [38;2;248;113;113m✗[0m [DSCLA-3] zbuild_claim_acquire returns 1 when zbuild:claimed is present
-  [38;2;248;113;113m✗[0m zbuild_claim_acquire returns 1 when issue already claimed (pre-stage check)
-  [38;2;248;113;113m✗[0m _ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim
-  [38;2;248;113;113m✗[0m _ZBUILD_CLAIM_HOLDER contains holder string from run-status comment
+  [38;2;248;113;113m✗[0m [DSCLA-3] zbuild_claim_acquire returns 1 when issue already claimed (with rsc fixture)
+  [38;2;248;113;113m✗[0m [DSCLA-9] _ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim
+  [38;2;248;113;113m✗[0m [DSCLA-9] _ZBUILD_CLAIM_HOLDER contains holder string from rsc_render_header fixture
   [38;2;248;113;113m✗[0m [DSCLA-8] zbuild_claim_acquire returns 0 for empty issue
   [38;2;248;113;113m✗[0m [DSCLA-17] core/claim/claim.sh must exist
   [38;2;248;113;113m✗[0m [DSCLA-10] Given: pipeline.refused.claimed must be in config/event-schema.json
@@ -99,6 +101,7 @@
   [38;2;248;113;113m✗[0m [DSCLA-20] label removed has no hostname component (zbuild:claimed, not claimed:<host>)
   [38;2;248;113;113m✗[0m [DSCLA-19] core/claim/claim.sh must exist
   [38;2;248;113;113m✗[0m [DSCLA-21] core/claim/claim.sh must exist
+  [38;2;248;113;113m✗[0m [DSCLA-23] _ccgl_read_holder must be defined
 
 ### DSCLA-20 head plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
 
@@ -138,12 +141,12 @@
   [38;2;74;222;128m✓[0m [DSCLA-3] zbuild_claim_acquire returns 1 when zbuild:claimed is present
 [event-bus] WARN: unknown event type 'plugin.claim.start' (run_id=run-dscla2-123)
 [event-bus] WARN: unknown event type 'plugin.claim.complete' (run_id=run-dscla2-123)
-  [38;2;74;222;128m✓[0m zbuild_claim_acquire returns 1 when issue already claimed (pre-stage check)
-  [38;2;74;222;128m✓[0m _ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim
-  [38;2;74;222;128m✓[0m _ZBUILD_CLAIM_HOLDER contains holder string from run-status comment
-  [38;2;74;222;128m✓[0m [DSCLA-8] no gh calls made for empty issue
+  [38;2;74;222;128m✓[0m [DSCLA-3] zbuild_claim_acquire returns 1 when issue already claimed (with rsc fixture)
+  [38;2;74;222;128m✓[0m [DSCLA-9] _ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim
+  [38;2;74;222;128m✓[0m [DSCLA-9] _ZBUILD_CLAIM_HOLDER contains holder string from rsc_render_header fixture
   [38;2;74;222;128m✓[0m [DSCLA-8] zbuild_claim_acquire returns 0 for empty issue
-  [38;2;74;222;128m✓[0m [DSCLA-17] no gh calls made when _ZBUILD_CLAIM_ACQUIRED is not set
+  [38;2;74;222;128m✓[0m [DSCLA-8] coordinator's claim hook was not called for empty issue
+  [38;2;74;222;128m✓[0m [DSCLA-17] coordinator's release hook was not called when _ZBUILD_CLAIM_ACQUIRED is not set
   [38;2;74;222;128m✓[0m [DSCLA-10] event-schema emitted-coverage check does not report pipeline.refused.claimed as unregistered (failed for other reasons)
 {"acquired": true}
   [38;2;74;222;128m✓[0m [DSCLA-18] gh issue edit is called to add zbuild:claimed
@@ -158,8 +161,10 @@
 [event-bus] WARN: unknown event type 'plugin.release.complete' (run_id=run-dscla2-123)
   [38;2;74;222;128m✓[0m [DSCLA-21] coordinator's release hook was called (zbuild:claimed removed from claim store)
   [38;2;74;222;128m✓[0m [DSCLA-21] gh is not invoked directly within zbuild_claim_release
+  [38;2;74;222;128m✓[0m [DSCLA-23] _ccgl_read_holder returns holder from authenticated actor's comment
+  [38;2;74;222;128m✓[0m [DSCLA-23] _ccgl_read_holder does not return holder from other user's comment
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 36 tests passed[0m
+  [38;2;74;222;128m[1mAll 38 tests passed[0m
 

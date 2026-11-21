@@ -36,12 +36,12 @@
   [38;2;74;222;128m✓[0m [DSCLA-3] zbuild_claim_acquire returns 1 when zbuild:claimed is present
 [event-bus] WARN: unknown event type 'plugin.claim.start' (run_id=run-dscla2-123)
 [event-bus] WARN: unknown event type 'plugin.claim.complete' (run_id=run-dscla2-123)
-  [38;2;74;222;128m✓[0m zbuild_claim_acquire returns 1 when issue already claimed (pre-stage check)
-  [38;2;74;222;128m✓[0m _ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim
-  [38;2;74;222;128m✓[0m _ZBUILD_CLAIM_HOLDER contains holder string from run-status comment
-  [38;2;74;222;128m✓[0m [DSCLA-8] no gh calls made for empty issue
+  [38;2;74;222;128m✓[0m [DSCLA-3] zbuild_claim_acquire returns 1 when issue already claimed (with rsc fixture)
+  [38;2;74;222;128m✓[0m [DSCLA-9] _ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim
+  [38;2;74;222;128m✓[0m [DSCLA-9] _ZBUILD_CLAIM_HOLDER contains holder string from rsc_render_header fixture
   [38;2;74;222;128m✓[0m [DSCLA-8] zbuild_claim_acquire returns 0 for empty issue
-  [38;2;74;222;128m✓[0m [DSCLA-17] no gh calls made when _ZBUILD_CLAIM_ACQUIRED is not set
+  [38;2;74;222;128m✓[0m [DSCLA-8] coordinator's claim hook was not called for empty issue
+  [38;2;74;222;128m✓[0m [DSCLA-17] coordinator's release hook was not called when _ZBUILD_CLAIM_ACQUIRED is not set
   [38;2;74;222;128m✓[0m [DSCLA-10] event-schema emitted-coverage check does not report pipeline.refused.claimed as unregistered (failed for other reasons)
 {"acquired": true}
   [38;2;74;222;128m✓[0m [DSCLA-18] gh issue edit is called to add zbuild:claimed
@@ -56,10 +56,12 @@
 [event-bus] WARN: unknown event type 'plugin.release.complete' (run_id=run-dscla2-123)
   [38;2;74;222;128m✓[0m [DSCLA-21] coordinator's release hook was called (zbuild:claimed removed from claim store)
   [38;2;74;222;128m✓[0m [DSCLA-21] gh is not invoked directly within zbuild_claim_release
+  [38;2;74;222;128m✓[0m [DSCLA-23] _ccgl_read_holder returns holder from authenticated actor's comment
+  [38;2;74;222;128m✓[0m [DSCLA-23] _ccgl_read_holder does not return holder from other user's comment
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 36 tests passed[0m
+  [38;2;74;222;128m[1mAll 38 tests passed[0m
 
 ### config/adr-enforcement-baseline.txt head plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
 
@@ -99,12 +101,12 @@
   [38;2;74;222;128m✓[0m [DSCLA-3] zbuild_claim_acquire returns 1 when zbuild:claimed is present
 [event-bus] WARN: unknown event type 'plugin.claim.start' (run_id=run-dscla2-123)
 [event-bus] WARN: unknown event type 'plugin.claim.complete' (run_id=run-dscla2-123)
-  [38;2;74;222;128m✓[0m zbuild_claim_acquire returns 1 when issue already claimed (pre-stage check)
-  [38;2;74;222;128m✓[0m _ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim
-  [38;2;74;222;128m✓[0m _ZBUILD_CLAIM_HOLDER contains holder string from run-status comment
-  [38;2;74;222;128m✓[0m [DSCLA-8] no gh calls made for empty issue
+  [38;2;74;222;128m✓[0m [DSCLA-3] zbuild_claim_acquire returns 1 when issue already claimed (with rsc fixture)
+  [38;2;74;222;128m✓[0m [DSCLA-9] _ZBUILD_CLAIM_HOLDER is set (not empty) after refused claim
+  [38;2;74;222;128m✓[0m [DSCLA-9] _ZBUILD_CLAIM_HOLDER contains holder string from rsc_render_header fixture
   [38;2;74;222;128m✓[0m [DSCLA-8] zbuild_claim_acquire returns 0 for empty issue
-  [38;2;74;222;128m✓[0m [DSCLA-17] no gh calls made when _ZBUILD_CLAIM_ACQUIRED is not set
+  [38;2;74;222;128m✓[0m [DSCLA-8] coordinator's claim hook was not called for empty issue
+  [38;2;74;222;128m✓[0m [DSCLA-17] coordinator's release hook was not called when _ZBUILD_CLAIM_ACQUIRED is not set
   [38;2;74;222;128m✓[0m [DSCLA-10] event-schema emitted-coverage check does not report pipeline.refused.claimed as unregistered (failed for other reasons)
 {"acquired": true}
   [38;2;74;222;128m✓[0m [DSCLA-18] gh issue edit is called to add zbuild:claimed
@@ -119,10 +121,12 @@
 [event-bus] WARN: unknown event type 'plugin.release.complete' (run_id=run-dscla2-123)
   [38;2;74;222;128m✓[0m [DSCLA-21] coordinator's release hook was called (zbuild:claimed removed from claim store)
   [38;2;74;222;128m✓[0m [DSCLA-21] gh is not invoked directly within zbuild_claim_release
+  [38;2;74;222;128m✓[0m [DSCLA-23] _ccgl_read_holder returns holder from authenticated actor's comment
+  [38;2;74;222;128m✓[0m [DSCLA-23] _ccgl_read_holder does not return holder from other user's comment
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 36 tests passed[0m
+  [38;2;74;222;128m[1mAll 38 tests passed[0m
 
 ### config/adr-enforcement-baseline.txt reverted tests/integration/teardown-repeat-signal-test.sh
 
@@ -241,7 +245,7 @@ lint-adr-enforced-by: 1 problem(s) among 70 live ADR(s)
   [38;2;74;222;128m✓[0m [#1951/SPEC-5] ADR-001-plugin-contract.md is not in config/adr-enforcement-baseline.txt
   [38;2;74;222;128m✓[0m [#1764/DSADR-7] ADR-005-claim-coordinator.md carries an ## Enforced by section
   [38;2;248;113;113m✗[0m [#1764/DSADR-7] ADR-005-claim-coordinator.md must be removed from config/adr-enforcement-baseline.txt
-    [2mADR-005 still listed in /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.Vo0ntf/config/adr-enforcement-baseline.txt; remove the entry once the ## Enforced by section is added[0m
+    [2mADR-005 still listed in /home/runner/work/_temp/zbuild-state/scratch/test/zb-reach.xh8VJ6/config/adr-enforcement-baseline.txt; remove the entry once the ## Enforced by section is added[0m
 
 [2m  ──────────────────────────────────────────[0m
 
