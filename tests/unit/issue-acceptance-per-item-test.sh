@@ -12,6 +12,8 @@
 # one call.
 # PI11 (CI on #2574): which requirements are asked does not hang on the
 # caller's IFS: under IFS=, a fresh call asks each one and keeps a verdict each
+# PI12 (review on #2578): a not mine answer to a finding whose requirement is no
+# longer one keys no item: nothing waits (review-lens's rule)
 #
 # PI1 [change] the first call judges every requirement in one call, and keeps
 #              a verdict for each
@@ -259,6 +261,36 @@ assert_eq "[PI11] under IFS=, RQFLAG-1 is asked" "1" "$(_asked RQFLAG-1)"
 assert_eq "[PI11] ...RQCNFG-1 too, and it fails the check" "1 fail" "$(_asked RQCNFG-1) $OUT"
 _keys="$(jq -r 'keys | join(" ")' "$A/issue-acceptance-judged.json" 2>/dev/null)"
 assert_contains "[PI11] ...a verdict is kept for each" "$_keys" "RQCNFG-1 RQFLAG-1"
+
+print_test_section "PI12: an answer to a finding no item holds"
+rm -f "$A/issue-acceptance-judged.json" "$A"/issue-acceptance-judged-hand*; FLAG="MET: RQFLAG-1"; CNFG="$REFUSE"
+_ia
+assert_eq "[PI12] setup: RQCNFG-1 refused" "fail" "$OUT"
+FID="$(jq -r '.data.findings[] | select(.text | contains("RQCNFG-1")) | .id' "$A/issue-acceptance-result.json" | head -n 1)"
+# Intake now reads the issue as one requirement: RQCNFG-1 is no item.
+(
+    # shellcheck source=../../plugins/agent/intake/plugin.sh
+    source "$REPO_ROOT/plugins/agent/intake/plugin.sh" >/dev/null 2>&1
+    route_to_model() {
+        if [[ "$2" == *"check a list of requirements"* ]]; then printf 'MISSING: none\n'
+        else printf 'REQUIREMENT: RQFLAG-1 Add a flag.\n'; fi
+    }
+    _intake_write_requirements "$IN" "$(jq -nc --arg b "$ISSUE_TEXT" '{title: "Add a flag", body: $b}')"
+) >/dev/null 2>&1
+stage_dispatch_mark "$S/pipeline-state.json" test-author
+touch -t 202001010000 "$(stage_dispatch_mark_path "$S" test-author)"
+( # shellcheck source=../../plugins/agent/build/lib/answers.sh
+  source "$REPO_ROOT/plugins/agent/build/lib/answers.sh"
+  _ROUTE_LOOP_LAST_RESPONSE="ANSWER $FID: not mine — the test must change: tests/cfg-test.sh: it expects the old message"
+  _build_write_test_findings "$A" ) >/dev/null 2>&1
+stage_result_write "$A/build-summary.json" pass "built" \
+    "$(jq -nc --arg a "$FID: not mine — the test must change: tests/cfg-test.sh: it expects the old message" '{answers: [$a]}')" >/dev/null
+_ia
+_notes="$(jq -r '(.data.notes // []) | join("|")' "$A/issue-acceptance-result.json" 2>/dev/null)"
+_lacks_w() { if [[ "$2" == *"$3"* ]]; then assert_fail "$1" "it has: $3"; else assert_pass "$1"; fi; }
+_lacks_w "[PI12] no item waits on it" "$_notes" "waiting"
+_hf="$(find "$A" -name 'issue-acceptance-judged-handed-*' 2>/dev/null)"
+assert_eq "[PI12] ...and no item is handed on" "" "$_hf"
 
 cleanup_test_env
 print_test_results

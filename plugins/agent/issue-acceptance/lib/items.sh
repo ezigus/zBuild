@@ -68,7 +68,7 @@ _ia_item_of_finding_v() {
 # the rest, and the stage's result. rc as issue_acceptance_run's.
 # shellcheck disable=SC2154,SC2034  # its inputs are the caller's; earlier, putfp are passed by name
 _ia_judge() {
-    local kf="${art%/}/issue-acceptance-judged.json" eng _ans="" l k t it a
+    local kf="${art%/}/issue-acceptance-judged.json" eng _ans="" l k t it ti a
     judge_engine_v eng
     judge_answers_to_v _ans "$art" issue-acceptance issue-acceptance-design issue-acceptance-test issue-acceptance-code ${_IA_FCODE:+"$_IA_FCODE"}
     local -a _ia_lf=(); for l in "" -design -test -code; do _ia_lf+=("issue-acceptance$l=${art%/}/issue-acceptance$l-result.json"); done
@@ -115,10 +115,11 @@ _ia_judge() {
     [[ -n "$_ans" ]] && judge_answered_findings_v af "$_ans" "${_ia_lf[@]}"
     while IFS= read -r a; do
         k="${a%%:*}"; [[ -n "$k" && -n "${af[$k]+x}" ]] || continue
-        _ia_item_of_finding_v it "${af[$k]%%$'\x1f'*}"
-        local -a _to=("$it"); [[ -n "$it" && -n "${fps[$it]+x}" ]] || _to=("${items[@]}")
+        _ia_item_of_finding_v ti "${af[$k]%%$'\x1f'*}"
+        local -a _to=("$ti"); [[ -n "$ti" && -n "${fps[$ti]+x}" ]] || { _to=("${items[@]}"); ti=""; }
         for it in "${_to[@]}"; do disp["$it"]+="$a"$'\n'; held["$it"]+="$k"$'\x1c'"${af[$k]}"$'\x1d'; done
-        [[ -n "$it" && -n "${fps[$it]+x}" ]] && keyit["$k"]="$it"
+        # A finding no item holds is every item's, and hands none on.
+        [[ -n "$ti" ]] && keyit["$k"]="$ti"
         af["$k"]=""; unset 'af[$k]'
     done <<< "$_ans"
     for it in "${!disp[@]}"; do judge_fp_v _fp "${disp[$it]}"; dfp["$it"]="$_fp"; done
