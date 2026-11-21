@@ -2,4 +2,4 @@
 
 - reviewed the change through the security lens: found no problem
 
-- score: 10
+- score: 9

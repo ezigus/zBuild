@@ -1,6 +1,5 @@
 ## review-lens-performance — pass
 
-- found: low: Two grep-based subshell spawns parse the `acquired` field from JSON on every acquire path, while `jq` is already imported and used immediately below for the `holder` field. (core/claim/claim.sh)
+- reviewed the change through the performance lens: found no problem
 
-- low: Two grep-based subshell spawns parse the `acquired` field from JSON on every acquire path, while `jq` is already imported and used immediately below for the `holder` field. (core/claim/claim.sh)
-- score: 9
+- score: 10

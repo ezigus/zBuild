@@ -1,0 +1,17 @@
+--- reply 1 ---
+{
+  "score": 9,
+  "findings": [
+    {
+      "file": "plugins/claim-coordinator/github-labels/manifest.yaml",
+      "category": "coverage",
+      "severity": "low",
+      "message": "The manifest description still names `claimed:<machine>` and the TOCTOU backoff-and-reverify behaviour that was removed from plugin.sh, leaving the manifest inconsistent with the plugin it describes.",
+      "quote": "Uses GitHub issue labels\n  (`claimed:<machine>`) as the cross-machine claim mechanism, ported from\n  legacy-DoNotUse/scripts/lib/daemon-state.sh:602-720.\n\n  Has a documented TOCTOU window between add-label and re-verify. Mitigated\n  by random backoff (300–1100 ms) and a re-read step that drops the claim\n  if multiple `claimed:*` labels are observed.",
+      "trigger": "Anyone reading manifest.yaml to understand the plugin sees a description that names a label format (`claimed:<machine>`) that no longer exists and a backoff mechanism (the `sleep` and re-verify phase) that was deleted from plugin.sh in this change.",
+      "accepted_if": "The manifest description reflects the single shared `zbuild:claimed` label and no longer references `claimed:<machine>` or the removed TOCTOU backoff-and-reverify behaviour.",
+      "introduced": true,
+      "fix": "code"
+    }
+  ]
+}

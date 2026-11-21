@@ -1,2 +1,28 @@
 --- reply 1 ---
-{"score": 10, "findings": []}
+{
+  "score": 7,
+  "findings": [
+    {
+      "file": "tests/integration/teardown-repeat-signal-test.sh",
+      "category": "diagnostic",
+      "severity": "medium",
+      "message": "Removing the DSCLA-7 setup guard makes a CI timing race (TERM sent before the stage starts) indistinguishable from a claim-acquisition code defect: both now produce the same failure message \"claim never appeared in store\", hiding that the problem is test-setup timing rather than the code under test.",
+      "quote": "-if [[ ! -e \"$_DSCLA7_STARTED\" ]]; then\n-    assert_fail \"[setup-DSCLA-7] stage started before TERM\" \\\n-        \"$(tail -10 \"$TEST_TEMP_DIR/dscla7.out\")\"\n-fi",
+      "trigger": "CI host slowness causes the 30-second wait loop to time out before the outcome stage writes `_DSCLA7_STARTED`; TERM is sent anyway; the subsequent `_DSCLA7_PRESENT` check fires with \"claim never appeared in store\" when the real cause is that the signal arrived too early, not that the claim code is broken.",
+      "accepted_if": "A timing-race failure in DSCLA-7 produces an error message that identifies the race (stage did not start before TERM was sent) separately from a code defect (claim label was never added), so a CI failure can be triaged without reading the full runner output log.",
+      "introduced": true,
+      "fix": "test"
+    },
+    {
+      "file": "tests/integration/teardown-repeat-signal-test.sh",
+      "category": "diagnostic",
+      "severity": "medium",
+      "message": "Removing the DSCLA-13 setup guard has the same effect for the double-TERM test: when the first TERM arrives before the outcome stage starts, the subsequent \"zbuild:claimed was never acquired\" message conflates a CI timing race with a claim-acquisition code defect.",
+      "quote": "-# Setup check: outcome stage started (first SIGTERM arrived while outcome was running)\n-if [[ ! -e \"$_DSCLA13_STARTED\" ]]; then\n-    assert_fail \"[setup-DSCLA-13] outcome stage started before first SIGTERM\" \\\n-        \"$(tail -10 \"$TEST_TEMP_DIR/dscla13.out\")\"\n-fi",
+      "trigger": "CI host slowness causes the 30-second wait loop for `_DSCLA13_STARTED` to time out; the first TERM is sent before the stage runs; `_DSCLA13_PRESENT` is never written; the assertion fires with \"zbuild:claimed was never acquired\" when the real cause is a timing race, not a claim code defect.",
+      "accepted_if": "A timing-race failure in DSCLA-13 produces an error message that identifies the race (outcome stage did not start before the first SIGTERM was sent) separately from a code defect (claim label was never added), so a CI failure can be triaged without reading the full runner output log.",
+      "introduced": true,
+      "fix": "test"
+    }
+  ]
+}

@@ -2,4 +2,4 @@
 
 - reviewed the change through the correctness lens: found no problem
 
-- score: 10
+- score: 7
