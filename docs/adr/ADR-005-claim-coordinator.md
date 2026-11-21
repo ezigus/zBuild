@@ -115,7 +115,9 @@ The engine refuses to start with multiple `claim-coordinator` plugins enabled �
   `tests/integration/teardown-repeat-signal-test.sh` [DSCLA-1] (claim present before stage dispatches),
   [DSCLA-5] (released on normal exit), [DSCLA-6] (released on failure), [DSCLA-7] (released on TERM);
   §1(a) enforcement `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh`
-  [DSCLA-22] (claim hook called after admission lock and before first stage; release hook called in EXIT path);
+  [DSCLA-22] (claim hook called after admission lock and before first stage);
+  §1(b) enforcement `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh`
+  [DSCLA-22] (release hook called in EXIT path);
   §1(c) (refused: non-zero exit, no stage dispatched, event emitted) →
   `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh` [DSCLA-3];
   §1(c) enforcement `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh`
