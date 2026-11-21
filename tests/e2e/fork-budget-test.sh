@@ -12,24 +12,13 @@
 # FORK_BUDGET, which only ratchets DOWN (raising it needs an ADR-065 amendment).
 # The failure output IS the diagnosis: the top call sites and per-file totals.
 #
-# SPEC-1: a canary script with exactly one external exec counts exactly 1 — the
-#         detector cannot go inert.
-# SPEC-1c: each process the trace names is named by its id and the time it
-#          first traced, so a process id the system reuses during a run (it
-#          does under a busy full suite: macOS wrapped its ids every ~30 s)
-#          counts as the two processes it is (#2575: 457 a dispatch under load,
-#          465 alone); a bash that replaces a process by exec is still that one
-# SPEC-1b: the words inside an assigned value (xtrace quotes them) are data,
-#          never commands (#1842).
+# The counter's own checks are in tests/unit/fork-census-test.sh (#2575: split
+# to keep this file under 500 lines).
 # SPEC-2: the mocked run still exits 0 under tracing and writes events.jsonl.
 # SPEC-3: liveness floor — the trace names ≥ 20 source files and ≥ 1,000
 #         external execs (an fd-7-closed child traces to stderr; a run that died
 #         early must not pass as "under budget").
 # SPEC-4: total external execs ≤ FORK_BUDGET.
-# SPEC-5: a line marked `# fork-budget-exempt: <why>` is not counted (listed
-#         apart instead); an unmarked line in the same loop still is (#2236).
-#         How often a wait loop sleeps measures elapsed time, not code — under
-#         load the same tree counted 4,528 and 4,610.
 # SPEC-7: total processes (programs + subshells) ≤ PROCESS_BUDGET.
 # SPEC-8: the run's cost in two parts (#2472, ADR-065 §6), each within its
 #         budget, which ratchets down toward a floor below it:
@@ -320,61 +309,9 @@ STARTUP_EXECS_PER_PLUGIN_FLOOR=1
 # shellcheck source=../../tests/lib/fork-census.sh
 source "$REPO_ROOT/tests/lib/fork-census.sh"
 
-# ─── SPEC-1: the canary ──────────────────────────────────────────────────────
-print_test_section "SPEC-1: a script with one external exec counts exactly 1"
-CANARY="$TEST_TEMP_DIR/canary.sh"
-cat > "$CANARY" <<'EOF'
-#!/usr/bin/env bash
-x="$(dirname /a/b)"
-y="${x%/*}"
-printf '%s\n' "$y" >/dev/null
-EOF
-fork_census_traced "$TEST_TEMP_DIR/canary.trace" bash "$CANARY"
-_canary_n="$(fork_census_count "$TEST_TEMP_DIR/canary.trace" "$TEST_TEMP_DIR/canary.sites")"
-assert_eq "[SPEC-1] the canary's one dirname is counted, its builtins are not" "1" "$_canary_n"
-assert_contains "[SPEC-1] …and attributed to its call site" "$(cat "$TEST_TEMP_DIR/canary.sites")" "canary.sh:2"$'\t'"dirname"
-
-# ─── SPEC-1b: an assignment's value is not a command ─────────────────────────
-# xtrace prints `v='review lens: security'` for an assignment whose value has
-# spaces. The words inside the quotes are data; `security` is a binary on macOS,
-# and 178 phantom execs per site were counted from such values (#1842).
-QUOTED="$TEST_TEMP_DIR/quoted.sh"
-cat > "$QUOTED" <<'EOF'
-#!/usr/bin/env bash
-v="first ls second"
-w='x cat y'
-z=$'a\tmkdir b'
-EOF
-fork_census_traced "$TEST_TEMP_DIR/quoted.trace" bash "$QUOTED"
-assert_eq "[SPEC-1b] words inside an assigned value are not counted" "0" \
-    "$(fork_census_count "$TEST_TEMP_DIR/quoted.trace" "$TEST_TEMP_DIR/quoted.sites")"
-
-# ─── SPEC-1c: a process is its id and the time it first traced ─────────────
-fork_census_traced "$TEST_TEMP_DIR/ids.trace" bash -c 'x=1; ( y=2 ); z=3'
-_ids="$(awk '/^\++@/ { p = $0; sub(/@ .*$/, "", p); sub(/^.*#/, "", p); print p }' "$TEST_TEMP_DIR/ids.trace" | sort -u)"
-assert_eq "[SPEC-1c] the shell and its subshell are two processes" "2" "$(grep -c . <<< "$_ids")"
-_short=0
-while IFS= read -r _id; do (( ${#_id} > 10 )) || _short=1; done <<< "$_ids"
-assert_eq "[SPEC-1c] …each named by more than its id (the time it first traced)" "0" "$_short"
-fork_census_traced "$TEST_TEMP_DIR/exec.trace" bash -c 'x=1; exec bash -c "y=2"'
-assert_eq "[SPEC-1c] a bash that replaces a shell by exec is still one process" "1" \
-    "$(fork_census_processes "$TEST_TEMP_DIR/exec.trace")"
-
-# ─── SPEC-5: an exempt wait is listed, not counted ───────────────────────────
-print_test_section "SPEC-5: a marked wait is not counted"
-WAITER="$TEST_TEMP_DIR/waiter.sh"
-cat > "$WAITER" <<'EOF'
-#!/usr/bin/env bash
-for _ in 1 2 3; do
-    sleep 0  # fork-budget-exempt: canary wait
-    sleep 0
-done
-EOF
-fork_census_traced "$TEST_TEMP_DIR/waiter.trace" bash "$WAITER"
-_waiter_n="$(fork_census_count "$TEST_TEMP_DIR/waiter.trace" "$TEST_TEMP_DIR/waiter.sites")"
-assert_eq "[SPEC-5] only the unmarked sleep is counted (3 of 6)" "3" "$_waiter_n"
-assert_contains "[SPEC-5] …the marked one is listed apart" \
-    "$(cat "$TEST_TEMP_DIR/waiter.sites.exempt" 2>/dev/null)" "waiter.sh:3"$'\t'"sleep"
+# The counter's own checks (a canary counts one exec, a quoted value is no
+# command, a marked wait is listed apart, a process is its id and the time it
+# first traced) are in tests/unit/fork-census-test.sh SPEC-1, SPEC-2, SPEC-5–SPEC-7.
 
 # ─── SPEC-2: the mocked full run under tracing ───────────────────────────────
 print_test_section "SPEC-2: the mocked full run under tracing"

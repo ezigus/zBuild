@@ -323,8 +323,8 @@ The mocked run's cost is therefore also measured in the two parts that drive it:
 
 ## Verification
 
-`bash tests/e2e/fork-budget-test.sh` — SPEC-1 a canary script with one external exec counts
-exactly 1 (the detector cannot go inert); SPEC-2 the mocked run still exits 0 under tracing;
+`bash tests/unit/fork-census-test.sh` — SPEC-1 a canary script with one external exec counts
+exactly 1 (the detector cannot go inert; moved from the budget test, #2575). `bash tests/e2e/fork-budget-test.sh` — SPEC-2 the mocked run still exits 0 under tracing;
 SPEC-3 the trace names ≥ 20 source files and ≥ 1,000 execs (an fd-7-closed child traces to
 stderr and must not pass as "under budget"); SPEC-4 total ≤ `FORK_BUDGET`. Red step: with the
 counter stubbed, SPEC-1 fails `expected: 1, got: 0`.
@@ -408,14 +408,14 @@ The written measures move down by what the standalone runs over-counted: 2391 pr
 
 ## Enforced by
 
-- §1 §2 amendment 2026-11-20 (#2575: the same measure in every context) → `tests/e2e/fork-budget-test.sh` SPEC-1c (a shell and its subshell are two processes, each named by more than its id), SPEC-9 (no slack, measured alone and with the e2e tier's TMPDIR under load)
+- §1 §2 amendment 2026-11-20 (#2575: the same measure in every context) → `tests/unit/fork-census-test.sh` SPEC-7 (a shell and its subshell are two processes, each named by more than its id; an exec into bash is still one); `tests/e2e/fork-budget-test.sh` SPEC-9 (no slack, measured alone and with the e2e tier's TMPDIR under load)
 
 - §2 §6 amendment 2026-11-20 (#2573: a small margin above the measure) → `tests/e2e/fork-budget-test.sh` SPEC-9 (the totals' margin is above 0 and at most 5; the per-dispatch margin above the noise of 1 and at most 2; the start-up's is 1; on macOS no budget sits more than twice its margin, at least 2, above the measure, run directly or through `scripts/run-tests.sh`), SPEC-4, SPEC-7, SPEC-8 (each budget is the measure plus its margin)
 - §5 amendment 2026-11-06 (#2476: an include checked only when it fails to load) → `tests/unit/route-missing-include-test.sh` SPEC-1–SPEC-6; `tests/e2e/fork-budget-test.sh` (the budgets above)
 - §6 (2026-11-05, #2472: the cost in two parts, each with a budget and a floor) → `tests/e2e/fork-budget-test.sh` SPEC-8 (three more lenses are three more dispatches; the extra processes and execs a dispatch are within `DISPATCH_PROCS_BUDGET` and `DISPATCH_EXECS_BUDGET`; the start-up before the first dispatch is within `STARTUP_PROCS_BUDGET` and `STARTUP_EXECS_BUDGET` — per plugin until #2548; each floor is below its budget)
 - §5 (amended 2026-11-02, #2456: an emit from a signal trap does not wait on its own lock) → `tests/unit/event-bus-trap-reentry-test.sh` T1, T2 (the trap's emit returns at once and is written), T3 (an ordinary emit still takes the lock); `tests/unit/event-bus-emit-cost-test.sh` E1 (still no subshell or extra process)
-- §1 → `tests/e2e/fork-budget-test.sh` SPEC-1 (the canary counts one exec), SPEC-1b (a quoted value is not a command), SPEC-2, SPEC-3, SPEC-4 (the total is within `FORK_BUDGET`)
-- §1 (amended #2236, exempt waits) → `tests/e2e/fork-budget-test.sh` (marked waits are listed apart and not counted)
+- §1 → `tests/unit/fork-census-test.sh` SPEC-1, SPEC-2 (the canary counts one exec), SPEC-5 (a quoted value is not a command); `tests/e2e/fork-budget-test.sh` SPEC-2, SPEC-3, SPEC-4 (the total is within `FORK_BUDGET`)
+- §1 (amended #2236, exempt waits) → `tests/unit/fork-census-test.sh` SPEC-6 (marked waits are listed apart and not counted); `tests/e2e/fork-budget-test.sh` SPEC-6 (the pool's poll sleep is listed as exempt)
 - §2 → `tests/e2e/fork-budget-test.sh` SPEC-4 (`FORK_BUDGET` carries its ratchet history in the comment above it)
 - §3, §4 → `tests/unit/manifest-index-test.sh` (fork counts, the parent fill); `tests/unit/yaml-get-cache-test.sh` SPEC-9 (one awk per prewarm)
 - §5 (amended #1806, the event bus) → `tests/unit/event-bus-emit-cost-test.sh` E1 (one emit starts one `jq` and the lock, nothing per field), E2 (no `sed` for the mirror), E3 (UTC with real milliseconds whatever `ZBUILD_PLATFORM` says), E4 (the envelope is unchanged, and option-like values stay data)
