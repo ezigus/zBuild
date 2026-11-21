@@ -29,6 +29,8 @@ source "$_ZBUILD_ROOT/core/state/atomic.sh"
 source "$_ZBUILD_ROOT/core/state/resume.sh"
 # shellcheck source=../state/issue-lock.sh
 source "$_ZBUILD_ROOT/core/state/issue-lock.sh"
+# shellcheck source=../claim/claim.sh
+source "$_ZBUILD_ROOT/core/claim/claim.sh"
 # shellcheck source=../state/run-cap.sh
 source "$_ZBUILD_ROOT/core/state/run-cap.sh"
 # shellcheck source=../state/layout.sh
@@ -2423,6 +2425,14 @@ main() {
         # Operator pinned an events location → respect + export as-is.
         export ZBUILD_EVENTS_DIR ZBUILD_EVENTS_JSONL
     fi
+    # #1764 / ADR-005 §2: pre-build and export _ZBUILD_CLAIM_HOLDER before spawning
+    # the sidecar so the sidecar inherits it. The sidecar is a separate exec bash
+    # process; it cannot see variables set after the fork. zbuild_claim_acquire
+    # (called after the sidecar spawns) calls zbuild_claim_build_holder again, but
+    # only the parent process sees that update.
+    if declare -F zbuild_claim_build_holder >/dev/null 2>&1; then
+        zbuild_claim_build_holder
+    fi
     # #2131: the run-status comment sidecar — after the events path is fixed,
     # before the issue lock (so it never inherits the lock fd), from the target
     # repo (the runner has not entered the worktree yet). Never on a dry run.
@@ -2502,6 +2512,23 @@ main() {
             return 1
         fi
     fi
+    # Cross-machine soft claim via zbuild:claimed GitHub label (ADR-005 / #1764).
+    # Runs after the intra-machine flock so the intra-machine guard still wins.
+    if declare -F zbuild_claim_acquire >/dev/null 2>&1; then
+        if ! zbuild_claim_acquire "${_runner_issue:-}"; then
+            eb_emit_event "pipeline.refused.claimed" \
+                "issue=${_runner_issue:-}" "holder=${_ZBUILD_CLAIM_HOLDER:-unknown}" \
+                2>/dev/null || true
+            # Use printf '%s\n' (not error(), which uses echo -e) so backslash
+            # sequences in an attacker-controlled holder are never interpreted.
+            error "issue ${_runner_issue:-} is already claimed"
+            printf '%s\n' "${_ZBUILD_CLAIM_HOLDER:-unknown}" >&2
+            # The exit trap is not set yet; release resources explicitly.
+            zbuild_issue_lock_release || true
+            zbuild_run_cap_release || true
+            return 1
+        fi
+    fi
 
     # ADR-052 (#1640): LAST thing before any stage runs. Everything above is
     # engine bookkeeping that belongs in the main checkout (state, events,
@@ -2515,6 +2542,11 @@ main() {
         _wt_key="$(zbuild_run_key "$_runner_issue" "${goal:-}" 2>/dev/null || true)"
     fi
     if ! _runner_enter_worktree "$state_dir" "$_runner_run_id" "$_wt_key"; then
+        # EXIT trap not installed yet; release all acquired resources explicitly.
+        if declare -F zbuild_claim_release >/dev/null 2>&1; then
+            zbuild_claim_release "${_runner_issue:-}" || true
+        fi
+        zbuild_issue_lock_release || true
         zbuild_run_cap_release || true
         return 1
     fi
@@ -2529,6 +2561,11 @@ main() {
             error "could not set up the run's branch (see above)"
             _set_pipeline_status "$state_file" "failed" 2>/dev/null || true
         fi
+        # EXIT trap not installed yet; release all acquired resources explicitly.
+        if declare -F zbuild_claim_release >/dev/null 2>&1; then
+            zbuild_claim_release "${_runner_issue:-}" || true
+        fi
+        zbuild_issue_lock_release || true
         zbuild_run_cap_release || true
         return 1
     fi
@@ -2723,6 +2760,10 @@ main() {
         # still belong to this run.
         if declare -F zbuild_issue_lock_release >/dev/null 2>&1; then
             zbuild_issue_lock_release || true
+        fi
+        # Cross-machine claim release (ADR-005 / #1764): advisory, never fails the run.
+        if declare -F zbuild_claim_release >/dev/null 2>&1; then
+            zbuild_claim_release "${_runner_issue:-}" || true
         fi
         if declare -F zbuild_run_cap_release >/dev/null 2>&1; then
             zbuild_run_cap_release || true

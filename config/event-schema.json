@@ -16,6 +16,7 @@
     "stage.always_run.unresolved",
     "pipeline.refused.issue_locked",
     "pipeline.refused.run_cap",
+    "pipeline.refused.claimed",
     "stage.verdict.missing",
     "stage.verdict.contract_violation",
     "stage.verdict.stale_artifact",

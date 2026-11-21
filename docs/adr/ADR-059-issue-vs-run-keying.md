@@ -270,6 +270,13 @@ cannot.** `flock`, the pattern `core/state/` already uses throughout, keyed on
 `repos/<repo>/issues/<N>/`. #1764 proposes exactly this primitive for the same race one level
 down.
 
+**The `flock` admission lock handles intra-machine serialisation only.** A filesystem flock is
+invisible outside the machine that holds it. Cross-machine exclusion is the claim coordinator's
+job (ADR-005 §1): `core/claim/claim.sh` acquires `zbuild:claimed` on the GitHub issue after the
+admission flock succeeds, so a run on another machine that checks the label before starting
+sees the claim and refuses. The flock stays for intra-machine serialisation; the label adds the
+cross-machine layer on top of it.
+
 Liveness is decided before admission, not lazily: a lock whose holder is gone is reaped first.
 `zbuild_run_is_live` (ADR-006's staleness gate) supplies the predicate, which is the half of
 `zbuild_worktree_reclaim_dead` this ADR keeps.
@@ -444,6 +451,9 @@ committed, stash ablates nothing and reports a false pass.
 
 ## Enforced by
 
+- §4 (cross-machine exclusion is the claim coordinator's job; the admission lock handles intra-machine serialisation) →
+  `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh` [DSCLA-3]
+  (a run is refused when another machine holds `zbuild:claimed` on the issue)
 - §2/§4 amendment 2026-11-14 (#2541: a tree git no longer lists is reclaimed, under the lock and age guards) → `tests/unit/cleanup-forgotten-trees-test.sh` G1–G5
 
 - `tests/unit/worktree-sparse-legacy-test.sh` — §2 per-worktree sparse-checkout: acquire and
