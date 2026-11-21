@@ -18,6 +18,9 @@ _ZBUILD_BUILD_STEPS_LOADED=1
 # #2574 (ADR-072 §5): build's manifest, where the stages a step's finding is
 # handed to are read from (judge_handoff_receivers_v).
 _BUILD_STEPS_MANIFEST="${BASH_SOURCE[0]%/lib/*}/manifest.yaml"
+# Build's answers to its own step findings, and the steps it hands on.
+# shellcheck source=steps-handoff.sh
+source "${BASH_SOURCE[0]%/*}/steps-handoff.sh"
 declare -F zbuild_resolve_merge_base_v >/dev/null 2>&1 \
     || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/merge-base.sh" 2>/dev/null || true
 
@@ -93,35 +96,6 @@ _build_steps_line_v() {
         esac
         [[ "$_bsl" == "$_p" ]] && break
     done
-}
-
-# _build_steps_handed <reply> <artifact_dir> — build's answers to its own
-# findings about the steps (#2574, ADR-072 §5), in _build_steps_check's scope:
-# fans[n], the answers to step n's findings; newho[n], a not mine that hands
-# step n's finding to another stage — "<stages><US><answer><US><finding>". A
-# finding is about the step its text starts with (`step N…`, `the check of step
-# N…`), as this file writes them.
-_build_steps_handed() {
-    local -a _bsh=(); local x k kd t n rcv all=""
-    zb_answers_collect_v _bsh "$1"
-    [[ ${#_bsh[@]} -gt 0 ]] || return 0
-    for x in "${_bsh[@]}"; do all+="$x"$'\n'; done
-    local -A af=()
-    _JUDGE_ANSWER_FINDING=()
-    judge_answered_findings_v af "$all" "build=$2/build-summary.json"
-    for x in "${_bsh[@]}"; do
-        k="${x%%:*}"
-        [[ "$k" == "build finding "* || ( -n "${_BUILD_FCODE:-}" && "$k" == "$_BUILD_FCODE-"* ) ]] || continue
-        zb_answer_kind_v kd "$x"; [[ -n "$kd" && -n "${af[$k]+x}" ]] || continue
-        t="${af[$k]%%$'\x1f'*}"
-        [[ "$t" =~ ^(the check of )?step\ ([0-9]{1,6})([^0-9]|$) ]] || continue
-        n=$(( 10#${BASH_REMATCH[2]} ))
-        fans[$n]+="${fans[$n]:+; }${x#*: }"
-        [[ "$kd" == "not mine" ]] || continue
-        judge_handoff_receivers_v rcv "$_BUILD_STEPS_MANIFEST" "$2" "$k"
-        [[ -n "$rcv" ]] && newho[$n]="$rcv"$'\x1f'"$x"$'\x1f'"$t"
-    done
-    return 0
 }
 
 # _build_steps_check <reply> <repo> <artifact_dir> <tier> — build's answers to
@@ -271,21 +245,6 @@ _build_steps_check() {
     # A step that was back has been judged: its hand-off is over. The reply
     # judged with it hands nothing on; the next try's may.
     for n in "${!back[@]}"; do judge_handoff_clear "$kf" "step-$n"; done
-    return 0
-}
-
-# _build_steps_keep_carried <artifact_dir> <answer> — while a step waits, the
-# finding build handed on stays in build-tests-result.json, so the stage that
-# takes it is given it even when this try's reply did not answer it again.
-_build_steps_keep_carried() {
-    local f="$1/build-tests-result.json" line body="" j
-    line="$(_build_test_wrong "ANSWER $2")"; [[ -n "$line" ]] || return 0
-    [[ -s "$f" ]] && { IFS= read -r -d '' body < "$f" || true; }
-    _judge_json_str_v j "$line"
-    [[ "$body" == *"$j"* ]] && return 0
-    if [[ -n "$body" ]]; then stage_findings_add "$f" "[{\"text\":$j}]" "${_BUILD_FCODE:-}" || true
-    else stage_result_write "$f" fail "build says 1 test(s) are wrong and cannot pass" \
-        "{\"findings\":$(stage_findings_json "$1" "${_BUILD_FCODE:-}" <<< "$line")}" 2>/dev/null || true; fi
     return 0
 }
 
