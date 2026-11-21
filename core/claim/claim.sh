@@ -151,10 +151,11 @@ zbuild_claim_release() {
     # release cannot trigger a second release).
     unset _ZBUILD_CLAIM_ACQUIRED
 
-    # Resolve coordinator dir; fall back to re-discovery when not set
-    # (DSCLA-21 sets _ZBUILD_CLAIM_ACQUIRED manually without a prior acquire call).
-    local coordinator_dir="${_ZBUILD_COORDINATOR_DIR:-}"
-    if [[ -z "$coordinator_dir" ]] && declare -F _zbuild_claim_find_coordinator_v >/dev/null 2>&1; then
+    # Always re-discover the coordinator: _ZBUILD_COORDINATOR_DIR may be stale
+    # (e.g. DSCLA-21 sets _ZBUILD_CLAIM_ACQUIRED after a test stub left
+    # _ZBUILD_COORDINATOR_DIR pointing at the stub's directory).
+    local coordinator_dir=""
+    if declare -F _zbuild_claim_find_coordinator_v >/dev/null 2>&1; then
         _zbuild_claim_find_coordinator_v coordinator_dir
     fi
     if [[ -z "$coordinator_dir" ]]; then

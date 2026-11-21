@@ -63,15 +63,19 @@ _ccgl_add_label() {
         local-fs)
             local f; f="$(_ccgl_lf_labels_file "$issue")"
             local timeout; timeout="$(_ccgl_flock_timeout_sec)"
+            # Exit 0 when label is freshly added; exit 2 when already present
+            # (lets callers detect a lost race inside the same lock — no TOCTOU).
             (
                 exec 9>"${f}.lock"
                 # Bounded wait — flock -w returns non-zero on timeout so we
                 # surface the failure instead of hanging the pipeline.
                 flock -w "$timeout" 9 || exit 1
                 touch "$f"
-                if ! grep -Fxq "$label" "$f"; then
-                    echo "$label" >> "$f"
+                if grep -Fxq "$label" "$f"; then
+                    exit 2
                 fi
+                echo "$label" >> "$f"
+                exit 0
             )
             ;;
         *) return 1 ;;
@@ -167,10 +171,23 @@ claim_coordinator_claim() {
     fi
 
     # Add the shared claim label zbuild:claimed (no hostname component — RQLAB-2).
-    _ccgl_add_label "$issue" "zbuild:claimed" || {
+    # For local-fs: _ccgl_add_label exits 2 when the label was already present
+    # (atomic check inside the lock — catches races in the window above).
+    local add_rc=0
+    _ccgl_add_label "$issue" "zbuild:claimed" || add_rc=$?
+    if [[ "$add_rc" -eq 2 ]]; then
+        # Lost the race: another claimant added zbuild:claimed in the window.
+        local holder=""
+        holder="$(_ccgl_read_holder "$issue" || true)"
+        local escaped_holder
+        escaped_holder="$(printf '%s' "$holder" | sed 's/"/\\"/g' || true)"
+        printf '{"acquired": false, "holder": "%s"}\n' "$escaped_holder"
+        return 0
+    fi
+    if [[ "$add_rc" -ne 0 ]]; then
         printf '{"acquired": false, "reason": "backend_error"}\n'
         return 1
-    }
+    fi
 
     printf '{"acquired": true}\n'
     return 0
@@ -227,14 +244,3 @@ claim_coordinator_list_claims() {
     esac
     return 0
 }
-
-# Source the cross-machine claim layer (zbuild_claim_acquire / zbuild_claim_release).
-# Use $_ZBUILD_ROOT if available (runner.sh path, no fork); otherwise resolve relative
-# to BASH_SOURCE[0] when it carries a directory component (unit-test path).
-# No $(cd ...) subshell: avoids a fork on every plugin load (ADR-005 / #1764).
-# shellcheck source=../../../core/claim/claim.sh
-if [[ -n "${_ZBUILD_ROOT:-}" ]]; then
-    source "${_ZBUILD_ROOT}/core/claim/claim.sh"
-elif [[ "${BASH_SOURCE[0]}" == */* ]]; then
-    source "${BASH_SOURCE[0]%/*}/../../../core/claim/claim.sh"
-fi
