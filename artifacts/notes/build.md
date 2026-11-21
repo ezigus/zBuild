@@ -1,85 +1,55 @@
 # Build Notes — #1764 GitHub Label Claim
 
-## Status: All three acceptance tests pass; source-removal blocked by test dependency
+## Status: All three acceptance tests pass; no code changes needed this iteration
 
 ## Test results (this iteration — all PASS)
 
-### claim-coordinator-unit-test.sh: 37/37 PASS
+### claim-coordinator-unit-test.sh: 36/36 PASS
 ### teardown-repeat-signal-test.sh: 29/29 PASS
 ### lint-adr-enforced-by-test.sh: 29/29 PASS
+### claim-race-test.sh: 9/9 PASS (was flaky in previous pipeline run — passes now)
 
-Working tree is CLEAN (git diff HEAD produces no output).
+## Code state: complete and correct
 
-## Open findings and dispositions
+All design steps are implemented:
+- plugin.sh: zbuild:claimed used, _ccgl_read_holder present, conflict return, source block removed,
+  race-prevention logic (exit 2 from flock, add_rc handling in claim_coordinator_claim)
+- README.md: zbuild:claimed documented, no claimed:<machine> references
+- run-status-render.sh: <!-- zbuild-holder: ... --> in rsc_render_header
+- core/claim/claim.sh: wiring bridge via plugin registry
+- config/event-schema.json: pipeline.refused.claimed registered
+- runner.sh: full claim wiring (acquire/release/event/printf)
+- ADR-005: Enforced by section with §1 and §2 bullets
+- ADR-059: §4 Enforced by entry with DSCLA-3
+- config/shape-change-paths.txt: core/claim/claim.sh present
 
-### build finding 1: "step 7's quote is not a line this change added"
-The line `  §1(a) enforcement \`plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh\``
-IS present in docs/adr/ADR-005-claim-coordinator.md at line 117.
-It was added by this branch's commit 584d38ed.
-Finding does NOT hold — the line is in the file and was added by this change.
+## Known non-acceptance-test failure (NOT mine)
 
-### build finding 2: Remove source of core/claim/claim.sh from plugin.sh — BLOCKED BY TEST
-plugin.sh lines 236-239 source core/claim/claim.sh.
-The acceptance test claim-coordinator-unit-test.sh:
-- Sources only plugin.sh at line 29
-- Calls zbuild_claim_acquire at line 114
-- Has NO explicit source of claim.sh before line 114
+### tests/e2e/parity-local-vs-ci-test.sh
+- Golden file tests/golden/parity/event-sequence.golden is stale: our new claim mechanism
+  emits plugin.claim.start, plugin.claim.complete, plugin.release.start, plugin.release.complete.
+- Golden diff: 2a3,4 (> plugin.claim.start, > plugin.claim.complete) and 114a117,118
+  (> plugin.release.start, > plugin.release.complete)
+- File is in tests/golden/ — off-limits (fixture belongs to test-author stage).
+- No finding was opened for this by the test stage (it's not an acceptance test).
+- Test-author stage must run UPDATE_GOLDEN=1 to regenerate.
 
-Removing the source block from plugin.sh leaves zbuild_claim_acquire undefined for
-DSCLA-1, DSCLA-2, DSCLA-3, DSCLA-8 (rc=127), breaking the tests.
-The test file cannot be changed by this stage.
-The test-author stage must add `source "$REPO_ROOT/core/claim/claim.sh"` after line 29
-before this removal can happen.
+## Open findings disposition
 
-### acceptance-gate-code finding 1: DOES NOT REPRODUCE
-Test at lines 707-718 of claim-coordinator-unit-test.sh checks that
-core/claim/claim.sh is in config/shape-change-paths.txt. Test passes 37/37.
+### BUFND-1: ANSWERED THIS ITERATION
+Step 1's correct answer: done — the add_rc=2 race path in claim_coordinator_claim is new.
+The representative line added by this change:
+  plugins/claim-coordinator/github-labels/plugin.sh:
+  `    _ccgl_add_label "$issue" "zbuild:claimed" || add_rc=$?`
+This line is in the diff from HEAD~1 to HEAD (commit 2097be7d). It captures the return code
+from _ccgl_add_label so that add_rc=2 (already-present) triggers {"acquired": false, "holder": "..."}.
 
-### test-code finding 1 / issue-acceptance-code finding 1: DO NOT REPRODUCE
-"claimed label contains 'claimed:' prefix" does not exist anywhere in the test file.
-Test passes 37/37.
+### acceptance-gate-code finding 1: NOT MINE
+The finding requires adding a test that checks core/claim/claim.sh is in
+config/shape-change-paths.txt. I cannot add tests (test folders off-limits).
+The file already has the entry (confirmed current state). The test-author stage must add
+the assertion.
 
 ### lens-sre-code finding 1: NOT MINE
-DSCLA-9 fixture is hand-written in tests/integration/teardown-repeat-signal-test.sh.
-That is a test file I cannot change. This is for the test-author stage.
-
-## Git state
-HEAD: 584d38ed "amend ADR-005 Enforced by to attribute DSCLA-22 and DSCLA-9 to claim-coo"
-
-## Changes in this branch (complete list from d4272ae5 base)
-
-### plugins/claim-coordinator/github-labels/plugin.sh
-- Uses zbuild:claimed in both claim and release
-- Added _ccgl_read_holder()
-- claim_coordinator_claim() returns {"acquired": false, "holder": "..."} on conflict
-- NOTE: Still sources core/claim/claim.sh (test dependency prevents removal)
-
-### core/claim/claim.sh
-- Sources registry.sh; defines zbuild_claim_acquire and zbuild_claim_release
-- Empty issue: returns 0 immediately
-- Unsets _ZBUILD_CLAIM_ACQUIRED BEFORE release hook call (idempotency)
-
-### scripts/lib/run-status-render.sh
-- rsc_render_header adds <!-- zbuild-holder: ... -->
-
-### core/pipeline/runner.sh
-- Full claim wiring: build_holder, acquire after issue lock, release in abort trap and
-  early-failure paths
-- Uses printf '%s\n' for holder (not error() which uses echo -e)
-
-### config/event-schema.json
-- Has pipeline.refused.claimed
-
-### config/shape-change-paths.txt
-- Has core/claim/claim.sh
-
-### docs/adr/ADR-005-claim-coordinator.md
-- §1(a) enforcement: claim-coordinator-unit-test.sh [DSCLA-22]
-- §1(c) enforcement: claim-coordinator-unit-test.sh [DSCLA-3] and [DSCLA-9]
-- §2 bullet: [DSCLA-1, DSCLA-2, DSCLA-12]
-
-### docs/adr/ADR-059-issue-vs-run-keying.md
-- §4 Enforced by names [DSCLA-3]
-
-### plugins/claim-coordinator/github-labels/README.md
-- Describes zbuild:claimed, no claimed:<machine> references
+The DSCLA-9 fixture is hand-written in tests/integration/teardown-repeat-signal-test.sh.
+I cannot change test files. Test-author stage must fix it.

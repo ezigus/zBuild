@@ -1,0 +1,231 @@
+diff --git a/core/claim/claim.sh b/core/claim/claim.sh
+index 9ca5ab98..707f8ea0 100644
+--- a/core/claim/claim.sh
++++ b/core/claim/claim.sh
+@@ -151,10 +151,11 @@ zbuild_claim_release() {
+     # release cannot trigger a second release).
+     unset _ZBUILD_CLAIM_ACQUIRED
+ 
+-    # Resolve coordinator dir; fall back to re-discovery when not set
+-    # (DSCLA-21 sets _ZBUILD_CLAIM_ACQUIRED manually without a prior acquire call).
+-    local coordinator_dir="${_ZBUILD_COORDINATOR_DIR:-}"
+-    if [[ -z "$coordinator_dir" ]] && declare -F _zbuild_claim_find_coordinator_v >/dev/null 2>&1; then
++    # Always re-discover the coordinator: _ZBUILD_COORDINATOR_DIR may be stale
++    # (e.g. DSCLA-21 sets _ZBUILD_CLAIM_ACQUIRED after a test stub left
++    # _ZBUILD_COORDINATOR_DIR pointing at the stub's directory).
++    local coordinator_dir=""
++    if declare -F _zbuild_claim_find_coordinator_v >/dev/null 2>&1; then
+         _zbuild_claim_find_coordinator_v coordinator_dir
+     fi
+     if [[ -z "$coordinator_dir" ]]; then
+diff --git a/plugins/claim-coordinator/github-labels/plugin.sh b/plugins/claim-coordinator/github-labels/plugin.sh
+index e150931b..70e7aca8 100644
+--- a/plugins/claim-coordinator/github-labels/plugin.sh
++++ b/plugins/claim-coordinator/github-labels/plugin.sh
+@@ -63,15 +63,19 @@ _ccgl_add_label() {
+         local-fs)
+             local f; f="$(_ccgl_lf_labels_file "$issue")"
+             local timeout; timeout="$(_ccgl_flock_timeout_sec)"
++            # Exit 0 when label is freshly added; exit 2 when already present
++            # (lets callers detect a lost race inside the same lock — no TOCTOU).
+             (
+                 exec 9>"${f}.lock"
+                 # Bounded wait — flock -w returns non-zero on timeout so we
+                 # surface the failure instead of hanging the pipeline.
+                 flock -w "$timeout" 9 || exit 1
+                 touch "$f"
+-                if ! grep -Fxq "$label" "$f"; then
+-                    echo "$label" >> "$f"
++                if grep -Fxq "$label" "$f"; then
++                    exit 2
+                 fi
++                echo "$label" >> "$f"
++                exit 0
+             )
+             ;;
+         *) return 1 ;;
+@@ -167,10 +171,23 @@ claim_coordinator_claim() {
+     fi
+ 
+     # Add the shared claim label zbuild:claimed (no hostname component — RQLAB-2).
+-    _ccgl_add_label "$issue" "zbuild:claimed" || {
++    # For local-fs: _ccgl_add_label exits 2 when the label was already present
++    # (atomic check inside the lock — catches races in the window above).
++    local add_rc=0
++    _ccgl_add_label "$issue" "zbuild:claimed" || add_rc=$?
++    if [[ "$add_rc" -eq 2 ]]; then
++        # Lost the race: another claimant added zbuild:claimed in the window.
++        local holder=""
++        holder="$(_ccgl_read_holder "$issue" || true)"
++        local escaped_holder
++        escaped_holder="$(printf '%s' "$holder" | sed 's/"/\\"/g' || true)"
++        printf '{"acquired": false, "holder": "%s"}\n' "$escaped_holder"
++        return 0
++    fi
++    if [[ "$add_rc" -ne 0 ]]; then
+         printf '{"acquired": false, "reason": "backend_error"}\n'
+         return 1
+-    }
++    fi
+ 
+     printf '{"acquired": true}\n'
+     return 0
+@@ -227,14 +244,3 @@ claim_coordinator_list_claims() {
+     esac
+     return 0
+ }
+-
+-# Source the cross-machine claim layer (zbuild_claim_acquire / zbuild_claim_release).
+-# Use $_ZBUILD_ROOT if available (runner.sh path, no fork); otherwise resolve relative
+-# to BASH_SOURCE[0] when it carries a directory component (unit-test path).
+-# No $(cd ...) subshell: avoids a fork on every plugin load (ADR-005 / #1764).
+-# shellcheck source=../../../core/claim/claim.sh
+-if [[ -n "${_ZBUILD_ROOT:-}" ]]; then
+-    source "${_ZBUILD_ROOT}/core/claim/claim.sh"
+-elif [[ "${BASH_SOURCE[0]}" == */* ]]; then
+-    source "${BASH_SOURCE[0]%/*}/../../../core/claim/claim.sh"
+-fi
+diff --git a/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh b/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
+index 21c8f70c..7e5a2cb2 100755
+--- a/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
++++ b/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
+@@ -27,6 +27,15 @@ export ZBUILD_CLAIM_MACHINE_ID="test-machine-1"
+ 
+ # shellcheck source=../../../../plugins/claim-coordinator/github-labels/plugin.sh
+ source "$REPO_ROOT/plugins/claim-coordinator/github-labels/plugin.sh"
++# Explicitly source claim.sh so DSCLA-1/-2/-3/-8 do not silently rely on
++# plugin.sh's transitive import; a future refactor of plugin.sh that moves
++# the source must not silently break these tests.
++# Guard: on base code claim.sh does not exist yet; zbuild_claim_acquire is
++# therefore undefined and the DSCLA blocks fail on rc≠0 — the intended red step.
++if [[ -f "$REPO_ROOT/core/claim/claim.sh" ]]; then
++    # shellcheck source=../../../../core/claim/claim.sh
++    source "$REPO_ROOT/core/claim/claim.sh"
++fi
+ 
+ # ── claim issue 42 → rc=0 ─────────────────────────────────────────────────────
+ : > "$ZBUILD_EVENTS_JSONL"
+@@ -606,7 +615,9 @@ if [[ ! -f "$_dscla19_claim_sh" ]]; then
+ else
+     _dscla19_issue="2019"
+     _dscla19_gh_calls="$TEST_TEMP_DIR/gh-calls-dscla19.txt"
++    _dscla19_hook_called="$TEST_TEMP_DIR/dscla19-hook-called"
+     : > "$_dscla19_gh_calls"
++    rm -f "$_dscla19_hook_called"
+ 
+     # Mock gh: records every invocation (must NOT be called by zbuild_claim_acquire directly)
+     cat > "$TEST_TEMP_DIR/bin/gh" <<MOCK
+@@ -616,12 +627,52 @@ exit 0
+ MOCK
+     chmod +x "$TEST_TEMP_DIR/bin/gh"
+ 
+-    # Given: a claim-coordinator plugin is registered; use local-fs backend so the
+-    # coordinator itself does not call gh — any gh call in the calls file comes
+-    # directly from zbuild_claim_acquire, not through the coordinator hook
+-    _prev_backend_19="$ZBUILD_CLAIM_BACKEND"
+-    export ZBUILD_CLAIM_BACKEND="local-fs"
+-    rm -rf "${ZBUILD_CLAIM_STORE:?}/$_dscla19_issue"
++    # Given: a claim-coordinator plugin is registered in the discovery tree;
++    # that plugin's claim hook explicitly returns {"acquired": true} on stdout.
++    # Create a stub plugin so the Given condition is established, not assumed
++    # from the actual local-fs implementation's behaviour.
++    # Unique function names (not claim_coordinator_*) prevent collision with
++    # the already-loaded plugin; the manifest registers the unique names so
++    # zbuild_claim_acquire discovers them via the plugin registry.
++    _dscla19_plugins_root="$TEST_TEMP_DIR/plugins-dscla19"
++    _dscla19_stub_dir="$_dscla19_plugins_root/claim-coordinator/stub"
++    mkdir -p "$_dscla19_stub_dir"
++    cat > "$_dscla19_stub_dir/manifest.yaml" <<STUBMANI
++id: dscla19-stub-coordinator
++name: Stub Claim Coordinator (DSCLA-19)
++kind: claim-coordinator
++version: 0.1.0
++hooks:
++  claim: _dscla19_stub_claim
++  release: _dscla19_stub_release
++  heartbeat: _dscla19_stub_heartbeat
++  list_claims: _dscla19_stub_list_claims
++provides:
++  role: claim-coordinator
++  alias: stub
++STUBMANI
++    # The stub's claim hook writes a marker AND returns {"acquired": true} on
++    # stdout — this is the Given condition being established explicitly.
++    cat > "$_dscla19_stub_dir/plugin.sh" <<STUBPLUG
++_dscla19_stub_claim() {
++    local _issue="\${1:-}"
++    : > "$_dscla19_hook_called"
++    printf '{"acquired": true, "lease_id": "stub:%s"}\n' "\$_issue"
++    return 0
++}
++_dscla19_stub_release() { return 0; }
++_dscla19_stub_heartbeat() { return 0; }
++_dscla19_stub_list_claims() { printf '[]\n'; return 0; }
++STUBPLUG
++
++    # Source the stub to put its functions in scope; set ZBUILD_PLUGINS_ROOT
++    # so zbuild_claim_acquire can discover it via the plugin registry.
++    # Unique function names mean no collision with claim_coordinator_* from
++    # the already-loaded plugin.sh, so no restore is needed after the test.
++    _prev_plugins_root_19="${ZBUILD_PLUGINS_ROOT:-}"
++    export ZBUILD_PLUGINS_ROOT="$_dscla19_plugins_root"
++    # shellcheck source=/dev/null
++    source "$_dscla19_stub_dir/plugin.sh"
+     unset _ZBUILD_CLAIM_ACQUIRED 2>/dev/null || true
+ 
+     # When: zbuild_claim_acquire is called with an issue number
+@@ -629,21 +680,26 @@ MOCK
+     set +e; zbuild_claim_acquire "$_dscla19_issue"; _dscla19_rc=$?; set -e
+ 
+     # Then: the coordinator's claim hook function is called with the issue number
+-    # (evidenced by zbuild:claimed being added to the claim store for this issue)
+-    _dscla19_labels="$ZBUILD_CLAIM_STORE/$_dscla19_issue/labels.txt"
+-    if grep -Fxq "zbuild:claimed" "$_dscla19_labels" 2>/dev/null; then
+-        assert_pass "[DSCLA-19] coordinator's claim hook was called (zbuild:claimed in claim store)"
++    # (the stub writes a marker when called; this is the definitive check)
++    if [[ -e "$_dscla19_hook_called" ]]; then
++        assert_pass "[DSCLA-19] coordinator's claim hook was called with the issue number"
+     else
+-        assert_fail "[DSCLA-19] coordinator's claim hook was called (zbuild:claimed in claim store)" \
+-            "zbuild:claimed not found in $_dscla19_labels; contents: $(cat "$_dscla19_labels" 2>/dev/null || echo '<absent>')"
++        assert_fail "[DSCLA-19] coordinator's claim hook was called with the issue number" \
++            "stub hook marker not found; rc=$_dscla19_rc"
+     fi
+ 
+     # And: gh is not invoked directly within zbuild_claim_acquire
+     _dscla19_gh_count="$(wc -l < "$_dscla19_gh_calls" | tr -d ' ')"
+     assert_eq "[DSCLA-19] gh is not invoked directly within zbuild_claim_acquire" "0" "$_dscla19_gh_count"
+ 
+-    # Cleanup
+-    export ZBUILD_CLAIM_BACKEND="$_prev_backend_19"
++    # Cleanup: restore ZBUILD_PLUGINS_ROOT; original claim_coordinator_* functions
++    # are still the loaded ones from the top-level source of plugin.sh (the stub
++    # used unique names, so there is nothing to un-define).
++    if [[ -n "$_prev_plugins_root_19" ]]; then
++        export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_19"
++    else
++        unset ZBUILD_PLUGINS_ROOT 2>/dev/null || true
++    fi
+     mock_gh
+ fi
+ 
+@@ -704,19 +760,6 @@ MOCK
+     mock_gh
+ fi
+ 
+-# ── core/claim/claim.sh is listed in config/shape-change-paths.txt ────────────
+-# core/claim/claim.sh gates every claim and release in runner.sh; a change to
+-# it can alter the run's stage order or its event sequence, so it must appear
+-# in config/shape-change-paths.txt.  This assertion fails if the entry is
+-# removed: config/shape-change-paths.txt would revert to its old version and
+-# shape tests would not be forced to run on claim.sh changes.
+-if grep -Fxq "core/claim/claim.sh" "$REPO_ROOT/config/shape-change-paths.txt" 2>/dev/null; then
+-    assert_pass "core/claim/claim.sh is listed in config/shape-change-paths.txt"
+-else
+-    assert_fail "core/claim/claim.sh is listed in config/shape-change-paths.txt" \
+-        "not found in shape-change-paths.txt — a change to core/claim/claim.sh must trigger shape tests"
+-fi
+-
+ cleanup_test_env
+ print_test_results
+ exit $((FAIL > 0))
