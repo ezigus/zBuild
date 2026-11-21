@@ -48,6 +48,7 @@ mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 # ─── Plugin stub helpers ──────────────────────────────────────────────────────
 # #2366: the stubs write their result with the engine's writer.
 export STAGE_RESULT_LIB="$REPO_ROOT/scripts/lib/stage-result.sh"
+export ROUTER_RC_LIB="$REPO_ROOT/scripts/lib/router-rc-classify.sh"
 
 _make_plugin() {
     local id="$1" role="${2:-}" rc="${3:-0}"
@@ -306,6 +307,8 @@ issue_acceptance_run() {
     local state_dir; state_dir="$(dirname "$2")"
     mkdir -p "$state_dir/artifacts"
     source "$STAGE_RESULT_LIB"
+    # #2582: its model call failed — the router marks that, by its own writer.
+    source "$ROUTER_RC_LIB"; _router_arm_call_failed_marker
     stage_result_write "$state_dir/artifacts/issue-acceptance-result.json" unavailable "router_rc_nonzero"
     printf 'issue-acceptance ran\n' >> "${ZBUILD_TEST_DISPATCH_LOG:?}"
     return 0
@@ -379,6 +382,79 @@ assert_eq "[ADR-063 §4] pipeline-state.json status=aborted (resumable, ADR-050)
 # #1850 (ADR-054 §4): was 9 (the llm-abort rc). Every halt exits 1; the
 # llm_unavailable word above (event + state) is what says why.
 assert_eq "[ADR-063 §4] the runner exits 1 — not 0, not the old llm-abort rc 9" "1" "${_RUNNER_RC:-}"
+
+assert_contains "[ADR-063 §4] the stop line says the model could not be reached (a model call failed)" \
+    "$(cat "$TEST_TEMP_DIR/runner.stderr")" "the model could not be reached"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# R2 (#2582, ADR-054 §6): a stage that stops the run is named, with its own
+# reason. #1764 run 44910536811: the merge code inside `pr` ended `unavailable`
+# with no model call, and the run said "the model could not be reached".
+# ─────────────────────────────────────────────────────────────────────────────
+# _make_stopping_pr_plugin <outcome> <reason> — the pr stage, ending <outcome>
+# with <reason>, having called no model.
+_make_stopping_pr_plugin() {
+    local dir="$PLUGINS_ROOT/agent/pr"
+    rm -rf "$dir"; mkdir -p "$dir"
+    cat > "$dir/manifest.yaml" <<'EOF'
+id: pr
+name: Test pr (stops the run)
+kind: agent
+version: 0.0.1
+hooks:
+  run: pr_run
+requires:
+  core:
+    - redaction
+provides:
+  role: pr
+  result_contract: 3
+outputs:
+  - id: pr_result
+    path: ${artifact_dir}/pr-result.json
+    type: json
+    required: true
+    primary: true
+EOF
+    cat > "$dir/plugin.sh" <<PLUG
+pr_run() {
+    local state_dir; state_dir="\$(dirname "\$2")"
+    mkdir -p "\$state_dir/artifacts"
+    source "\$STAGE_RESULT_LIB"
+    stage_result_write "\$state_dir/artifacts/pr-result.json" $1 "$2"
+    return 1
+}
+PLUG
+}
+_make_plugin "issue-acceptance" "issue_acceptance"   # passes: the loops pass, pr runs
+
+print_test_section "[R2] a stage with no model call that ends unavailable: the stop names it and its reason"
+_make_stopping_pr_plugin unavailable "gh pr create: error connecting to api.github.com"
+_run_pipeline
+_r2_err="$(cat "$TEST_TEMP_DIR/runner.stderr")"
+assert_eq "[R2] pipeline.aborted names the stage and its reason" \
+    "stage_stopped:pr:gh pr create: error connecting to api.github.com" \
+    "$(jq -r 'select(.type=="pipeline.aborted") | .data.reason' "$EVENTS_JSONL" 2>/dev/null | head -1)"
+assert_eq "[R2] the run is aborted, resumable (unavailable)" "aborted" \
+    "$(jq -r '.status // empty' "$STATE_DIR/pipeline-state.json" 2>/dev/null || true)"
+assert_contains "[R2] the stop line names pr and its reason" "$_r2_err" \
+    "pr stopped the run — gh pr create: error connecting to api.github.com"
+if [[ "$_r2_err" == *"the model could not be reached"* ]]; then
+    assert_fail "[R2] no model was called, so the stop does not blame it" "it did"
+else
+    assert_pass "[R2] no model was called, so the stop does not blame it"
+fi
+
+print_test_section "[R2] a stage that ends misconfigured: the stop names it and its reason"
+_make_stopping_pr_plugin misconfigured "PR opened https://github.com/o/r/pull/7; merge refused: gh pr merge: Auto merge is not allowed"
+_run_pipeline
+_r2m_err="$(cat "$TEST_TEMP_DIR/runner.stderr")"
+assert_eq "[R2] pipeline.end names the stage and its reason" \
+    "stage_stopped:pr:PR opened https://github.com/o/r/pull/7; merge refused: gh pr merge: Auto merge is not allowed" \
+    "$(jq -r 'select(.type=="pipeline.end") | .data.reason // empty' "$EVENTS_JSONL" 2>/dev/null | tail -1)"
+assert_contains "[R2] the end-of-run words name pr and its reason" "$_r2m_err" \
+    "The run stopped: pr stopped the run — PR opened https://github.com/o/r/pull/7; merge refused"
+assert_eq "[R2] the runner exits 1" "1" "${_RUNNER_RC:-}"
 
 cleanup_test_env
 print_test_results

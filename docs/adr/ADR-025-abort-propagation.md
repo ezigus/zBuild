@@ -369,7 +369,13 @@ ADR-054 §4 makes exit codes binary everywhere, the engine's own paths included.
 
 The dispatch-site contract is unchanged in shape: pre-flight `_zbuild_check_abort || return 1`, post-flight `_zbuild_propagate_abort $? || return 1`.
 
+## Amendment 2026-11-21 (#2582) — a stage that ends `unavailable` with no model call records its own stop
+
+- **A word is added: `stage_stopped:<stage>:<the stage's reason>`** (one line, capped at 300 characters). A stage that ends `unavailable` when no model call failed records it in place of `llm_unavailable`, which is kept for a failed model call (ADR-054 §6, amended 2026-11-21). The runner ends on it as on `llm_unavailable`: status `aborted`, resumable; `pipeline.aborted` and the state's `reason` carry it; no newer engine is asked about.
+
 ## Enforced by
+
+- Amendment 2026-11-21 (#2582: a stage's own stop is a word) → `tests/integration/cycle-gate-unavailable-aborts-run-test.sh` R2 (pipeline.aborted reason `stage_stopped:pr:…`, status aborted), ADR-063 §4 (a failed model call stays `llm_unavailable`)
 
 - Decision, both layers (#1850: the abort is recorded once as a word, in-process and in the sentinel; the first wins; every helper returns 0 or 1; no state dir → in-process only) → `tests/unit/abort-propagation-test.sh` A1–A9
 - Dispatch site contract — the cycle orchestrator (pre-flight before each member, post-flight after a leaf; the signal handler records the word; a leaf abort ends the loop `aborted` with its reason) → `tests/unit/core-pipeline-cycle-orchestrator-run-test.sh` T9, T14

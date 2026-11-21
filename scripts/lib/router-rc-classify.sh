@@ -238,6 +238,36 @@ _router_budget_observed() {
     local _m; _m="$(_router_budget_marker_path)"
     [[ -n "$_m" && -e "$_m" ]]
 }
+
+# ─── failed-call marker (#2582, ADR-054 §6) ──────────────────────────────────
+# The same boundary again: a stage that ends `unavailable` may never have called
+# a model (the merge code inside `pr` ends so when gh fails). The engine says
+# "the model could not be reached" only when this marker says the stage's last
+# model call failed. route_to_model clears it on entry, so it describes the LAST
+# call; the engine's pre-dispatch clear takes it off too.
+# The path is the throttle marker's, by the same stage rule, built in this
+# shell: it is cleared on every model call and every dispatch (ADR-065 §5).
+_router_call_failed_marker_path_v() {
+    local -n _rcfp="$1"; _rcfp=""
+    [[ -n "${ZBUILD_STATE_DIR:-}" ]] || return 0
+    local _rcf_s="${ZBUILD_CURRENT_STAGE:-}"
+    if [[ "$_rcf_s" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then _rcfp="$ZBUILD_STATE_DIR/.call_failed.$_rcf_s.signal"
+    else _rcfp="$ZBUILD_STATE_DIR/.call_failed.signal"; fi
+}
+_router_arm_call_failed_marker() {
+    local _m; _router_call_failed_marker_path_v _m
+    [[ -n "$_m" ]] && { : > "$_m"; } 2>/dev/null
+    return 0
+}
+_router_clear_call_failed_marker() {
+    local _m; _router_call_failed_marker_path_v _m
+    [[ -n "$_m" && -e "$_m" ]] && rm -f "$_m" 2>/dev/null
+    return 0
+}
+_router_call_failed_observed() {
+    local _m; _router_call_failed_marker_path_v _m
+    [[ -n "$_m" && -e "$_m" ]]
+}
 _router_clear_budget_marker() {
     local _m; _m="$(_router_budget_marker_path)"
     [[ -n "$_m" ]] && rm -f "$_m" 2>/dev/null
@@ -267,6 +297,8 @@ _router_throttle_observed() {
 # into a retry loop on an unrelated defect. This is the cross-member leak #1822
 # fixed for the disposition channel, one channel over.
 _router_clear_throttle_marker() {
+    # #2582: a dispatch starts with no failed model call on record either.
+    _router_clear_call_failed_marker
     local _m; _m="$(_router_throttle_marker_path)"
     [[ -z "$_m" ]] && return 0
     [[ -e "$_m" || -L "$_m" ]] && rm -f "$_m" 2>/dev/null

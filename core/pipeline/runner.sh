@@ -192,6 +192,16 @@ _runner_leaf_contract_halt() {
     return 0
 }
 
+# ─── _runner_stage_stop_word_v <var> <stage> <reason> (#2582) ────────────────
+# The word a run ends on when a stage stopped it (ADR-054 §6): the stage and its
+# own reason, `stage_stopped:<stage>:<reason>` — one line, capped, as the abort
+# sentinel and the events hold it. run_end_words says it in words.
+_runner_stage_stop_word_v() {
+    local -n _rssw="$1"; local _rssw_r="${3:-}"
+    _rssw_r="${_rssw_r//[$'\n\r\t']/ }"; (( ${#_rssw_r} > 300 )) && _rssw_r="${_rssw_r:0:300}…"
+    _rssw="stage_stopped:${2:-a stage}:${_rssw_r:-it gave no reason}"
+}
+
 # ─── _runner_leaf_verdict_halt <state_file> <stage> <class> <raw> ────────────
 # #1798 (ADR-054 §4): a leaf stage that reports a failure ends the run; rc 0
 # when it did. <class> is the classified verdict the runner already read
@@ -1061,7 +1071,7 @@ _render_pipeline_end() {
 _runner_render_open_items() {
     case "${1:-}" in failed|interrupted|aborted|timed_out) ;; *) return 0 ;; esac
     [[ -n "${_runner_state_file:-}" ]] && declare -F open_items_markdown >/dev/null 2>&1 || return 0
-    local sd="${_runner_state_file%/*}" items n reason="${_CYCLE_LAST_TERMINATED_REASON:-}"
+    local sd="${_runner_state_file%/*}" items n reason="${_RUNNER_END_REASON:-${_CYCLE_LAST_TERMINATED_REASON:-}}"
     # The watchdog fires outside any cycle, so the status is the reason (#1944).
     [[ "$1" == timed_out ]] && reason=timed_out
     items="$(open_items_markdown "$sd")" || items=""
@@ -3121,21 +3131,30 @@ main() {
         _run_dispatch_units=1
     fi
 
-    # ─── _runner_note_llm_abort <state_dir> <manifest> <stage> <rc> (#2111) ──
-    # Records WHY the run is about to abort on an unavailable model so the abort
-    # can name it: llm_rate_limited when the router saw a 429 (marker) or the
+    # ─── _runner_note_unavailable_abort <state_dir> <manifest> <stage> <rc> ──
+    # Records WHY the run is about to abort on `unavailable` so the abort can
+    # name it (#2111): llm_rate_limited when the router saw a 429 (marker) or the
     # stage said so, else llm_unavailable; the detail is the reset text the
-    # router surfaced.
+    # router surfaced. #2582 (ADR-054 §6): those words only when a model call
+    # failed — the router's marks, or a router reason the stage carried; any
+    # other stop is the stage's own, in its own words (stage_stopped).
     _RUNNER_LLM_ABORT_REASON=""
     _RUNNER_LLM_ABORT_DETAIL=""
-    _runner_note_llm_abort() {
+    _runner_note_unavailable_abort() {
         local _na_state="$1" _na_manifest="$2" _na_stage="$3" _na_rc="$4"
-        local _na_reason _na_detail="" _na_primary _na_path
+        local _na_reason _na_detail="" _na_primary _na_path _na_model=0
         _na_reason="$(runner_read_stage_reason "$_na_state" "$_na_manifest" "$_na_stage" "$_na_rc" 2>/dev/null || true)"
         if _router_throttle_observed 2>/dev/null; then
             local _na_m; _na_m="$(_router_throttle_marker_path 2>/dev/null || true)"
             [[ -n "$_na_m" && -f "$_na_m" ]] && _na_detail="$(head -c 400 "$_na_m" 2>/dev/null | tr '\n' ' ')"
-            _na_reason="router_rate_limited"
+            _na_reason="router_rate_limited"; _na_model=1
+        fi
+        _router_call_failed_observed 2>/dev/null && _na_model=1
+        [[ "$_na_reason" == router_* ]] && _na_model=1
+        if (( ! _na_model )); then
+            _runner_stage_stop_word_v _RUNNER_LLM_ABORT_REASON "$_na_stage" "$_na_reason"
+            _RUNNER_LLM_ABORT_DETAIL=""
+            return 0
         fi
         _na_primary="$(_verdict_primary_output_path "$_na_manifest" 2>/dev/null || true)"
         if [[ -z "$_na_detail" && -n "$_na_primary" ]]; then
@@ -3149,22 +3168,24 @@ main() {
         esac
         _RUNNER_LLM_ABORT_DETAIL="${_na_detail}"
     }
-    # _runner_llm_abort_reason — the word the abort records and emits.
-    _runner_llm_abort_reason() { printf '%s' "${_RUNNER_LLM_ABORT_REASON:-llm_unavailable}"; }
+    # _runner_unavailable_abort_reason — the word the abort records and emits.
+    _runner_unavailable_abort_reason() { printf '%s' "${_RUNNER_LLM_ABORT_REASON:-llm_unavailable}"; }
 
     # ─── _runner_end_on_abort <state_file> <unit> (#1850) ───────────────────
     # The run ends on a recorded abort (ADR-025); the word says how — it used to
     # be rc 6, 9, 10, 130 or 143, each read by its own copy of this block.
     # <unit> names where, as the event key: cycle=<id> | stage=<id> | parallel=<id>.
-    #   llm_unavailable | llm_rate_limited | scope_too_large → status aborted:
-    #     something outside the work stopped it; resumable (ADR-050).
+    #   llm_unavailable | llm_rate_limited | scope_too_large | stage_stopped:*
+    #     → status aborted: something outside the work stopped it; resumable
+    #     (ADR-050). stage_stopped (#2582): a stage, no model, said so.
     #   sigint | sigterm | cycle_abort → status interrupted.
     _runner_end_on_abort() {
         local _ea_state="$1" _ea_unit="$2" _ea_word _ea_detail="${_RUNNER_LLM_ABORT_DETAIL:-}"
         _ea_word="$(_zbuild_abort_reason)"
         _ea_word="${_ea_word:-sigint}"
+        _RUNNER_END_REASON="$_ea_word"
         case "$_ea_word" in
-            llm_unavailable|llm_rate_limited|scope_too_large)
+            llm_unavailable|llm_rate_limited|scope_too_large|stage_stopped:*)
                 _set_pipeline_status "$_ea_state" "aborted"
                 [[ "$_ea_word" == scope_too_large ]] \
                     || _zbuild_runner_write_llm_abort "$_ea_state" "$_ea_word" "$_ea_detail"
@@ -3360,9 +3381,9 @@ main() {
         # rides a global the abort ending reads (#1850: the word, not rc 9).
         if [[ -n "$_CYCLE_DISPATCH_DISPOSITION" ]] \
            && [[ "$(disposition_response "$_CYCLE_DISPATCH_DISPOSITION" 2>/dev/null || true)" == "halt_unavailable" ]]; then
-            _runner_note_llm_abort "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc"
+            _runner_note_unavailable_abort "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc"
             _CYCLE_DISPATCH_STATUS="failed"
-            _zbuild_abort "$(_runner_llm_abort_reason)"
+            _zbuild_abort "$(_runner_unavailable_abort_reason)"
             return 1
         fi
         # #1823 / #1850 (ADR-054 §4): every stage is held to rc ∈ {0,1}. A stage
@@ -3669,7 +3690,7 @@ main() {
                         # #1791: a newer engine may already have fixed this —
                         # not asked when something outside the work stopped it.
                         case "$(_zbuild_abort_reason)" in
-                            llm_unavailable|llm_rate_limited|scope_too_large) ;;
+                            llm_unavailable|llm_rate_limited|scope_too_large|stage_stopped:*) ;;
                             *) _runner_report_engine_drift "$_CYCLE_LAST_TERMINATED_REASON" || true ;;
                         esac
                         return 1
@@ -3945,12 +3966,24 @@ main() {
                         _set_pipeline_status "$state_file" "interrupted"
                         eb_emit_event "stage.fail" "stage=$_ust" "rc=$_rc" \
                             || { _r=$?; warn "eb_emit_event stage.fail failed (rc=$_r, continuing — disk/perm/lock?)"; true; }
+                        # #2582 (ADR-054 §6): a stage whose outcome halts the
+                        # run (misconfigured, broken) is named, with its reason.
+                        local _ust_stop=""
+                        if [[ -n "${_CYCLE_DISPATCH_DISPOSITION:-}" ]] \
+                           && disposition_is_valid "$_CYCLE_DISPATCH_DISPOSITION" 2>/dev/null \
+                           && disposition_halts "$_CYCLE_DISPATCH_DISPOSITION" 2>/dev/null; then
+                            _runner_stage_stop_word_v _ust_stop "$_ust" "${_CYCLE_DISPATCH_REASON:-}"
+                            _RUNNER_END_REASON="$_ust_stop"
+                            _zbuild_runner_write_llm_abort "$state_file" "$_ust_stop" "" || true
+                        fi
                         eb_emit_event "pipeline.end" "status=failed" "stage=$_ust" "rc=$_rc" \
+                            ${_ust_stop:+"reason=$_ust_stop"} \
                             "run_id=$_runner_run_id" "issue=$_runner_issue" \
                             || { _r=$?; warn "eb_emit_event pipeline.end status=failed failed (rc=$_r, continuing — disk/perm/lock?)"; true; }
                         _render_pipeline_end "failed" "$_ust" "$_rc"
                         _runner_ended=true
-                        error "Stage $_ust failed (rc=$_rc)"
+                        if [[ -n "$_ust_stop" ]]; then error "Stage $_ust: the run $(run_end_words "$_ust_stop" 0)"
+                        else error "Stage $_ust failed (rc=$_rc)"; fi
                         return 1
                     fi
                     if _runner_leaf_contract_halt "$state_file" "$_ust" "${_CYCLE_DISPATCH_REASON:-}"; then

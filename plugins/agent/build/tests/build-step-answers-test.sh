@@ -45,8 +45,9 @@
 # BS9 no design steps: no answer is asked for and no judge is called
 # BS11 [ADR-072 §3] a judging call that fails (rc 1, rc 124) is not a pass:
 #          build's outcome is the call's disposition (unavailable, timed_out)
-# BS12 [R1] a "done" quote must be a whole line this branch added (spaces and
-#          surrounding quote marks set aside), not a piece of one
+# BS12 [R1, #2582] a "done" quote is a whole line this branch added (spaces and
+#          surrounding quote marks set aside), or a piece of exactly one, judged
+#          as the whole line
 # BS13 [R1] `step 01:` answers step 1
 # BS14 an area with a glob character is read as written, never expanded
 # BS20 [#2573 R3, ADR-072 §3] #1764 run 44782866204's step 7: a done quote with
@@ -167,7 +168,8 @@ _run bs3 "step 1: done — QUOTE: $P/plugin.sh | $BASE_LINE"$'\n'"$DONE2"$'\nLOO
 assert_eq "[BS3] build's try is unusable" "unusable" "$(_outcome)"
 _f="$(_findings)"
 assert_contains "[BS3] the finding names step 1" "$_f" "step 1"
-assert_contains "[BS3] ...and says the line is not one this change added" "$_f" "not a line this change added"
+# #2582 (ADR-072 §3): the refusal says what is wrong — the line was there before.
+assert_contains "[BS3] ...and says the line is not one this change added" "$_f" "is a line this change did not add in $P/plugin.sh"
 _lacks "[BS3] the judge is not shown the refused step" "$(cat "$JPROMPT" 2>/dev/null)" "plugin.sh must not source"
 
 # ── BS4: a quote outside the step's areas ────────────────────────────────────
@@ -272,8 +274,11 @@ JUDGE_RC=0
 print_test_section "BS12: a done quote is a whole line this branch added"
 JUDGE_REPLY=$'1: does\n2: does'
 _run bs12 "step 1: done — QUOTE: $P/plugin.sh | core/claim/claim.sh"$'\n'"$DONE2"$'\nLOOP_COMPLETE'
-assert_eq "[BS12] a piece of an added line is refused" "unusable" "$(_outcome)"
-assert_contains "[BS12] ...as not a line this change added" "$(_findings)" "step 1's quote is not a line this change added"
+# #2582 (ADR-072 §3): a piece of exactly one added line is taken, and the
+# judge is shown the whole line; a piece of several is refused
+# (build-step-stands-test.sh SQ3).
+assert_eq "[BS12] a piece of one added line is taken" "pass" "$(_outcome)"
+assert_contains "[BS12] ...and judged as the whole line" "$(cat "$JPROMPT" 2>/dev/null)" "the line: $P/plugin.sh | $SRC_LINE"
 _run bs12b "$DONE1_OK"$'\n'"step 2: done — QUOTE: $P/release.sh | \`claim_release() {\`"$'\nLOOP_COMPLETE'
 assert_eq "[BS12] a whole line in backticks is taken" "pass" "$(_outcome)"
 
@@ -301,7 +306,7 @@ _lacks "[BS9] build's prompt asks for no step answer" "$(cat "$AD/build-prompt.t
 # ── The prompt asks for the answers ──────────────────────────────────────────
 print_test_section "the prompt asks for one answer a step"
 _bp="$(cat "$TEST_TEMP_DIR/bs1/build-prompt.txt" 2>/dev/null)"
-assert_contains "[BS1] build's prompt asks for a done line with its quote" "$_bp" "step N: done — QUOTE: <file> | <a line this change added>"
+assert_contains "[BS1] build's prompt asks for a done line with its quote" "$_bp" "step N: done — <file> | <a line this change added>"
 assert_contains "[BS5] ...or a not needed line with why" "$_bp" "step N: not needed — <why>"
 
 # ── BS10: the judge's call is build's own declared call ──────────────────────

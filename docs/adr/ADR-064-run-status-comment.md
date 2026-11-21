@@ -307,7 +307,15 @@ The run summary named an open finding by its check and its place in the list ("l
 
 - **§4: every report of what is still open names a finding by its id** — the one its writer gave it from the check's `finding-ids-<code>.json` (`open_items_json`, `scripts/lib/run-open-items.sh`) — and by its check and place only when it has none.
 
+## Amendment 2026-11-21 (#2582) — §4: the stop line names the stage that stopped the run, and its reason
+
+On #1764 run 44910536811 the run's comment said "stopped: the model could not be reached"; the merge code inside `pr` had stopped it, and no model was called (ADR-054 §6, amended 2026-11-21).
+
+- **§4: when a stage stopped the run, the status comment, the completion comment and the end-of-run words say so: "stopped: <stage> stopped the run — <the stage's reason>"** (`run_end_words`, `scripts/lib/run-open-items.sh`, from the engine's `stage_stopped:<stage>:<reason>`). "The model could not be reached" is said only when a model call failed.
+
 ## Enforced by
+
+- §4 amendment 2026-11-21 (#2582: the stop line names the stage and its reason) → `tests/unit/run-open-items-test.sh` R2 (the words, and the completion comment); `tests/integration/cycle-gate-unavailable-aborts-run-test.sh` R2 (the end-of-run words of a real run)
 
 - §4 amendment 2026-11-21 (#2579: an open finding is named by its id) → `tests/unit/result-outcome-test.sh` O10
 - §4 amendment 2026-11-09 (#2508: the questions design could not settle are shown) → `tests/unit/unclear-questions-shown-test.sh` Q1 (the reader), Q2 (the comment, while running), Q5 (no question, no section)

@@ -365,11 +365,32 @@ assert_eq "[SPEC-30] gh pr create failure → unavailable" "unavailable" \
 _s30_dir="$TEST_TEMP_DIR/spec30"
 _s30_sf="$(_make_state "$_s30_dir" "pass")"
 _mk_mocks "$TEST_TEMP_DIR/bin30" "zbuild/issue-1849-test"
-sed -i.bak 's|"pr merge")  exit 0 ;;|"pr merge")  exit 1 ;;|' "$TEST_TEMP_DIR/bin30/gh"
+# gh could not reach GitHub: the outcome at the remote is unknown.
+sed -i.bak 's#"pr merge")  exit 0 ;;#"pr merge")  echo "error connecting to api.github.com" >\&2; exit 1 ;;#' "$TEST_TEMP_DIR/bin30/gh"
 ( PATH="$TEST_TEMP_DIR/bin30:$PATH" ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_s30_dir/x")" ZBUILD_STAGE_INPUTS="$_s30_dir/stage-inputs.json" \
   merge_run "pr" "$_s30_sf" ) >/dev/null 2>&1
-assert_eq "[SPEC-30] gh pr merge failure → unavailable" "unavailable" \
+assert_eq "[SPEC-30] gh pr merge that cannot reach GitHub → unavailable" "unavailable" \
     "$(jq -r '.outcome // empty' "$_s30_dir/artifacts/merge-result.json" 2>/dev/null || true)"
+
+# ─── R1 (#2582, ADR-054 §6): a merge GitHub refuses is the setup's ───────────
+# #1764 run 44910536811: the repository has auto-merge off, so GitHub refused
+# `gh pr merge --auto`. The merge code threw gh's words away and ended
+# `unavailable`, which the engine read as "the model could not be reached".
+print_test_section "R1: a refused gh pr merge is misconfigured, with gh's error, and keeps the PR link"
+_r1m_dir="$TEST_TEMP_DIR/r1-refused"
+_r1m_sf="$(_make_state "$_r1m_dir" "pass")"
+_mk_mocks "$TEST_TEMP_DIR/binr1m" "zbuild/issue-1849-test"
+_R1_GH_ERR='GraphQL: Auto merge is not allowed for this repository (enablePullRequestAutoMerge)'
+sed -i.bak "s#\"pr merge\")  exit 0 ;;#\"pr merge\")  echo '$_R1_GH_ERR' >\\&2; exit 1 ;;#" "$TEST_TEMP_DIR/binr1m/gh"
+( PATH="$TEST_TEMP_DIR/binr1m:$PATH" ZBUILD_RUN_LOOPS_PASSED=yes merge_run "pr" "$_r1m_sf" ) >/dev/null 2>&1; _r1m_rc=$?
+_r1m_res="$_r1m_dir/artifacts/merge-result.json"
+assert_eq "[R1] rc=1" "1" "$_r1m_rc"
+assert_eq "[R1] a refused merge ends misconfigured" "misconfigured" \
+    "$(jq -r '.outcome // empty' "$_r1m_res" 2>/dev/null || true)"
+assert_contains "[R1] its reason is gh's own error" \
+    "$(jq -r '.reason // empty' "$_r1m_res" 2>/dev/null || true)" "Auto merge is not allowed for this repository"
+assert_eq "[R1] the PR link is kept in its result" "https://github.com/mock/repo/pull/1849" \
+    "$(jq -r '.data.pr_url // empty' "$_r1m_res" 2>/dev/null || true)"
 
 # ─── Teardown ─────────────────────────────────────────────────────────────────
 cleanup_test_env

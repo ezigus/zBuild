@@ -181,6 +181,28 @@ else
     assert_pass "[SPEC-4] a genuine failure does not emit router.rate_limited"
 fi
 
+# ─────────────────────────────────────────────────────────────────────────────
+# R2 (#2582, ADR-054 §6): the engine says "the model could not be reached" only
+# when a model call failed. The router marks a failed call for its stage, on
+# both call paths; the engine's pre-dispatch clear and a call that succeeds
+# take the mark off.
+print_test_section "R2: a failed model call is marked for the engine; a good call or a new dispatch clears it"
+_cf() { local _rc=0; declare -F _router_call_failed_observed >/dev/null 2>&1 || { printf 'no-reader'; return; }; _router_call_failed_observed || _rc=$?; printf '%s' "$_rc"; }
+export ZBUILD_CURRENT_STAGE=build
+_router_clear_throttle_marker
+assert_eq "[R2] the loop path's genuine failure (above) left no mark under another stage" "1" "$(_cf)"
+_install_json_mock 1 '{"type":"result","subtype":"error","is_error":true,"result":"tool failed"}'
+set +e; route_to_model_loop "T2" "$_PROMPT" "$_WORK" >/dev/null 2>&1; set -e
+assert_eq "[R2] a failed call on the loop path marks it" "0" "$(_cf)"
+_router_clear_throttle_marker
+assert_eq "[R2] the engine's pre-dispatch clear takes the mark off" "1" "$(_cf)"
+set +e; route_to_model "T2" "ping" --skip-precondition >/dev/null 2>&1; set -e
+assert_eq "[R2] a failed call on the single-call path marks it" "0" "$(_cf)"
+_install_json_mock 0 '{"type":"result","subtype":"success","is_error":false,"result":"pong","usage":{"input_tokens":1,"output_tokens":1}}'
+set +e; route_to_model "T2" "ping" --skip-precondition >/dev/null 2>&1; set -e
+assert_eq "[R2] a call that succeeds takes the mark off: it describes the last call" "1" "$(_cf)"
+unset ZBUILD_CURRENT_STAGE
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

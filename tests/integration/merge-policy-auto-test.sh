@@ -249,5 +249,47 @@ _gh_merge5=0
 [[ "$_merge_calls5" == *"merged"* ]] && _gh_merge5=1
 assert_eq "gh pr merge NOT called when no review ran (fail-closed)" "0" "$_gh_merge5"
 
+# ─── R3 (#2582, ADR-064): pr says what the merge code did ─────────────────────
+# #1764 run 44910536811: the merge code opened PR #2581, then GitHub refused the
+# auto-merge. pr-delivery wrote "No PR was delivered" and an empty pr_url
+# without reading what the merge code had recorded. The real merge code runs
+# here, with gh refusing the merge.
+print_test_section "R3: a refused merge — pr reports the PR as opened, with its link, and the merge as refused"
+mkdir -p "$TEST_TEMP_DIR/bin-refuse"
+cat > "$TEST_TEMP_DIR/bin-refuse/gh" <<'GHREFUSE'
+#!/usr/bin/env bash
+case "${1:-} ${2:-}" in
+    "pr create") echo "https://github.com/mock/repo/pull/2581" ;;
+    "pr merge")  echo "GraphQL: Auto merge is not allowed for this repository (enablePullRequestAutoMerge)" >&2; exit 1 ;;
+    *)           exit 0 ;;
+esac
+GHREFUSE
+chmod +x "$TEST_TEMP_DIR/bin-refuse/gh"
+for _r3_policy in auto auto_unless_flagged; do
+    _sf_r3="$(_setup_run "r3-$_r3_policy" pass)"
+    _art_r3="$(dirname "$_sf_r3")/artifacts"
+    _rc_r3=0
+    ( export _TPL_MERGE_POLICY="$_r3_policy"; PATH="$TEST_TEMP_DIR/bin-refuse:$PATH" ZBUILD_RUN_FLAGGED=no \
+      ZBUILD_RUN_LOOPS_PASSED=yes ZBUILD_STAGE_INPUTS="$(dirname "$_sf_r3")/stage-inputs.json" \
+      pr_stage_run "pr" "$_sf_r3" ) >/dev/null 2>&1 || _rc_r3=$?
+    _r3_reason="$(jq -r '.reason // empty' "$_art_r3/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[R3 $_r3_policy] pr stops (rc=1)" "1" "$_rc_r3"
+    assert_eq "[R3 $_r3_policy] pr keeps the PR's link" "https://github.com/mock/repo/pull/2581" \
+        "$(jq -r '.data.pr_url // empty' "$_art_r3/pr-result.json" 2>/dev/null || true)"
+    assert_contains "[R3 $_r3_policy] pr's reason says the PR was opened, with its link" \
+        "$_r3_reason" "PR opened https://github.com/mock/repo/pull/2581"
+    assert_contains "[R3 $_r3_policy] ...and that the merge was refused, with why" \
+        "$_r3_reason" "merge refused: gh pr merge: GraphQL: Auto merge is not allowed"
+    assert_eq "[R3 $_r3_policy] pr ends as the merge code did (misconfigured)" "misconfigured" \
+        "$(jq -r '.outcome // empty' "$_art_r3/pr-result.json" 2>/dev/null || true)"
+    _r3_sum="$(cat "$_art_r3/pr-delivery-summary.md" 2>/dev/null || true)"
+    if [[ "$_r3_sum" == *"No PR was delivered"* ]]; then
+        assert_fail "[R3 $_r3_policy] the summary does not say no PR was delivered" "it does"
+    else
+        assert_pass "[R3 $_r3_policy] the summary does not say no PR was delivered"
+    fi
+    assert_contains "[R3 $_r3_policy] the summary names the PR" "$_r3_sum" "https://github.com/mock/repo/pull/2581"
+done
+
 # ─── Results ──────────────────────────────────────────────────────────────────
 print_test_results

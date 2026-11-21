@@ -97,6 +97,16 @@ assert_contains "[O3] an interrupt names the signal" "$(run_end_words sigint 0)"
 # A leaf stage that reported a failure (#1798) says so, and names the word.
 assert_contains "[O3] a stage that reported a failure says so in words" \
     "$(run_end_words stage_failed:block 0)" "stopped: a stage reported that it failed (block)"
+# R2 (#2582, ADR-054 §6, ADR-064): a stage that stopped the run is named, with
+# its own reason; never "the model could not be reached".
+_w4="$(run_end_words 'stage_stopped:pr:PR opened https://github.com/o/r/pull/7; merge refused: gh pr merge: Auto merge is not allowed' 0)"
+_guard "$_w4"
+assert_contains "[R2] the stop names the stage" "$_w4" "stopped: pr stopped the run"
+assert_contains "[R2] ...and the stage's own reason" "$_w4" "merge refused: gh pr merge: Auto merge is not allowed"
+if [[ "$_w4" == *"model"* ]]; then assert_fail "[R2] a stage's stop is not the model's" "$_w4"
+else assert_pass "[R2] a stage's stop is not the model's"; fi
+_c4="$(run_completion_body failure 'stage_stopped:pr:gh pr merge: refused' "" "" "" "" "")"
+assert_contains "[R2] the completion comment names the stage and its reason" "$_c4" "pr stopped the run — gh pr merge: refused"
 for _r in stage_failed:fail max_iterations_tests_failing blocking_member_failure member_terminal_failure \
           blocked blocked_on_scope cycle_abort sigint sigterm llm_rate_limited llm_unavailable \
           scope_too_large design_timeout_exhausted no_committed_changes some_new_code ""; do

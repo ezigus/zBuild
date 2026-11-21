@@ -165,6 +165,8 @@ _route_try_suffix() {
 route_to_model() {
     _ROUTE_LAST_BUDGET_EXHAUSTED=0   # #2187: set by the call path on a turn-budget hit
     declare -F _router_clear_budget_marker >/dev/null 2>&1 && _router_clear_budget_marker
+    # #2582: the failed-call mark describes the last call too.
+    declare -F _router_clear_call_failed_marker >/dev/null 2>&1 && _router_clear_call_failed_marker
     if [[ $# -lt 2 ]]; then
         error "route_to_model requires <tier> <prompt>"
         return 2
@@ -831,6 +833,9 @@ _route_call_claude() {
                 "api_error_status=${_sync_api_status:-absent}" \
                 "message=$_sync_rl_msg" 2>/dev/null || true
         fi
+        # #2582 (ADR-054 §6): the stage's model call failed — the engine may
+        # say the model could not be reached.
+        _router_arm_call_failed_marker
         eb_emit_event "router.error" "tier=$tier" "model_id=$_ROUTE_MODEL_ID" "rc=$rc" \
             "reason=$([[ "$_sync_rate_limited" == "1" ]] && printf 'router_rate_limited' || printf 'claude_cli_failed')"
         eb_emit_event "router.error.diagnostic" \
@@ -1222,6 +1227,7 @@ route_to_model_loop() {
     # Reset before ANY return: an early exit must not leave the previous loop's
     # reason (a stale done_sentinel reads as success to the caller) — #2225.
     _ROUTE_LOOP_TERMINATED_REASON=""
+    declare -F _router_clear_call_failed_marker >/dev/null 2>&1 && _router_clear_call_failed_marker
     if [[ $# -lt 3 ]]; then
         error "route_to_model_loop requires <tier> <prompt_file> <cwd>"
         return 2
@@ -1679,6 +1685,8 @@ route_to_model_loop() {
         # Read the envelope ONCE. Two `$(cat ...)` substitutions would fork
         # twice per failing iteration for the same bytes (review finding).
         local _loop_rate_limited=0 _loop_rl_msg="" _loop_envelope=""
+        # #2582 (ADR-054 §6): the stage's model call failed.
+        _router_arm_call_failed_marker
         if [[ -n "$_diag_json_path" ]]; then
             _loop_envelope="$(cat "$_diag_json_path" 2>/dev/null || true)"
         fi

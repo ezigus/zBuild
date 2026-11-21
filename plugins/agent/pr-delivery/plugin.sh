@@ -63,6 +63,32 @@ _pr_delivery_delegate_ending() {
     fi
 }
 
+# _pr_delivery_merge_failed <artifacts_dir> <rc> — the merge code returned
+# non-zero: say what it did, from its own result (#2582, ADR-064). It may have
+# opened the PR before the merge was refused; then pr keeps the link and says so.
+_pr_delivery_merge_failed() {
+    local ad="$1" rc="$2" disp url="" why="" mf="${MERGE_RESULT_FILE:-}"
+    disp="$(_pr_delivery_delegate_ending "$mf")"
+    if [[ -s "$mf" ]]; then
+        # A unit separator, not a tab: tabs run together, so an empty link would take the reason.
+        IFS=$'\x1f' read -r url why < <(jq -r '[.data.pr_url // "", .reason // ""] | map(tostring | gsub("[\u001f\r\n]"; " ")) | join("\u001f")' "$mf" 2>/dev/null) || true
+    fi
+    if [[ -n "$url" ]]; then
+        # Refused is the setup's answer (misconfigured); anything else did not finish.
+        local how="did not finish"; [[ "$disp" == misconfigured ]] && how="refused"
+        printf '%s\n' "$url" | atomic_write "$ad/pr-url.txt" || true
+        _pr_delivery_write_result "$ad" "$disp" "PR opened $url; merge $how: ${why:-no reason given}" "$url"
+        stage_summary_write "$ad/pr-delivery-summary.md" "pr-delivery" "fail" \
+            "opened PR $url; the merge $how: ${why:-no reason given}" \
+            "$(printf -- '- pr: %s\n- merge: %s (%s)' "$url" "$how" "${why:-no reason given}")"
+        return 0
+    fi
+    _pr_delivery_write_result "$ad" "$disp" "the merge stage did not complete: ${why:-no reason given}"
+    stage_summary_write "$ad/pr-delivery-summary.md" "pr-delivery" "fail" \
+        "delegated to the merge stage, which did not complete (rc=$rc): ${why:-no reason given}" \
+        "No PR was delivered. See the merge stage-summary.md for why."
+}
+
 _pr_delivery_on_signal() {
     local _disp="${1:-interrupted}" _reason="${2:-signal_interrupt}"
     _pr_delivery_write_result "$_PR_DELIVERY_ARTIFACTS_DIR" "$_disp" "$_reason"
@@ -134,13 +160,8 @@ _pr_stage_run_inner() {
                 local _rc=0
                 merge_run "pr" "$state_file" || _rc=$?
                 if [[ $_rc -ne 0 ]]; then
-                    local _m_disp
-                    _m_disp="$(_pr_delivery_delegate_ending "${MERGE_RESULT_FILE:-}")"
                     stage_signal_end
-                    _pr_delivery_write_result "$artifacts_dir" "$_m_disp" "the merge stage did not complete"
-                    stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "fail" \
-                        "delegated to the merge stage, which did not complete (rc=$_rc)" \
-                        "No PR was delivered. See the merge stage-summary.md for why."
+                    _pr_delivery_merge_failed "$artifacts_dir" "$_rc"
                     return 1
                 fi
                 stage_signal_end
@@ -167,13 +188,8 @@ _pr_stage_run_inner() {
                     local _rc=0
                     merge_run "pr" "$state_file" || _rc=$?
                     if [[ $_rc -ne 0 ]]; then
-                        local _m_disp
-                        _m_disp="$(_pr_delivery_delegate_ending "${MERGE_RESULT_FILE:-}")"
                         stage_signal_end
-                        _pr_delivery_write_result "$artifacts_dir" "$_m_disp" "the merge stage did not complete"
-                        stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "fail" \
-                            "delegated to the merge stage, which did not complete (rc=$_rc)" \
-                            "No PR was delivered. See the merge stage-summary.md for why."
+                        _pr_delivery_merge_failed "$artifacts_dir" "$_rc"
                         return 1
                     fi
                     stage_signal_end
