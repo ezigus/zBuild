@@ -15,6 +15,12 @@
 
 [[ -n "${_ZBUILD_BUILD_STEPS_LOADED:-}" ]] && return 0
 _ZBUILD_BUILD_STEPS_LOADED=1
+# #2574 (ADR-072 §5): build's manifest, where the stages a step's finding is
+# handed to are read from (judge_handoff_receivers_v).
+_BUILD_STEPS_MANIFEST="${BASH_SOURCE[0]%/lib/*}/manifest.yaml"
+# Build's answers to its own step findings, and the steps it hands on.
+# shellcheck source=steps-handoff.sh
+source "${BASH_SOURCE[0]%/*}/steps-handoff.sh"
 declare -F zbuild_resolve_merge_base_v >/dev/null 2>&1 \
     || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/merge-base.sh" 2>/dev/null || true
 
@@ -98,10 +104,13 @@ _build_steps_line_v() {
 # judge could not be used; _BUILD_STEP_RC: 130 when the judge was interrupted;
 # _BUILD_STEP_DISP: build's outcome when the judge could not be run — the
 # failed call's disposition, or misconfigured (ADR-072 §3: it fails closed).
-_BUILD_STEP_FINDINGS=() _BUILD_STEP_LINES=() _BUILD_STEP_NOTE="" _BUILD_STEP_RC=0 _BUILD_STEP_DISP=""
+# _BUILD_STEP_WAITING (#2574): a finding for each step handed to another stage
+# that has not run since — not judged, and blocking nothing.
+_BUILD_STEP_FINDINGS=() _BUILD_STEP_LINES=() _BUILD_STEP_NOTE="" _BUILD_STEP_RC=0 _BUILD_STEP_DISP="" _BUILD_STEP_WAITING=()
 _build_steps_check() {
     local reply="$1" repo="${2%/}" ad="${3%/}" tier="${4:-T2}"
-    _BUILD_STEP_FINDINGS=() _BUILD_STEP_LINES=() _BUILD_STEP_NOTE="" _BUILD_STEP_RC=0 _BUILD_STEP_DISP=""
+    _BUILD_STEP_FINDINGS=() _BUILD_STEP_LINES=() _BUILD_STEP_NOTE="" _BUILD_STEP_RC=0 _BUILD_STEP_DISP="" _BUILD_STEP_WAITING=()
+    _JUDGE_HANDOFF_JUDGED=()
     local count=${#_BUILD_STEP_DESC[@]}
     (( count > 0 )) || return 0
     local joined l low n rest q _jqs_path _jqs_txt
@@ -129,6 +138,28 @@ _build_steps_check() {
         fi
     done <<< "$joined"
 
+    # #2574 (ADR-072 §5): a step whose finding build handed to another stage is
+    # not judged until that stage has run; then it is judged, held to the
+    # finding and the answer (back). A hand-off made now is recorded now —
+    # after this try's judgement for a step that is back.
+    local kf="$ad/build-steps-judged.json" hs w a
+    local -A fans=() newho=() back=() wait=()
+    _build_steps_handed "$reply" "$ad"
+    for (( n = 1; n <= count; n++ )); do
+        judge_handoff_state_v hs "$kf" "step-$n"
+        [[ "$hs" == back ]] && back[$n]="$_JUDGE_HANDOFF_ANSWER"
+        if [[ "$hs" != back && -n "${newho[$n]:-}" ]]; then
+            IFS=$'\x1f' read -r w a _ <<< "${newho[$n]}"
+            judge_handoff_put "$kf" "step-$n" "$w" "$a" "${newho[$n]##*$'\x1f'}" || true
+            judge_handoff_state_v hs "$kf" "step-$n"
+        fi
+        if [[ "$hs" == waiting ]]; then
+            wait[$n]="$_JUDGE_HANDOFF_TO"$'\x1f'"$_JUDGE_HANDOFF_FINDING"
+            # The receiver is given the finding while the step waits.
+            _build_steps_keep_carried "$ad" "$_JUDGE_HANDOFF_ANSWER"
+        fi
+    done
+
     # The mechanical check: an answer for each step; a done's quote is a line
     # this branch added, in a file in the step's areas. One git diff for all.
     local -a paths=() ok=() nn=()
@@ -136,6 +167,11 @@ _build_steps_check() {
     local d a f
     for (( n = 1; n <= count; n++ )); do
         d="${_BUILD_STEP_DESC[n-1]}"; a="${_BUILD_STEP_AREAS[n-1]}"
+        if [[ -n "${wait[$n]:-}" ]]; then
+            judge_handoff_waiting_v w "${wait[$n]%%$'\x1f'*}"; f="${wait[$n]#*$'\x1f'}"
+            _BUILD_STEP_WAITING+=("step $n: $w — the finding it answers: ${f//$'\x1e'/ } (the step: $d)")
+            _BUILD_STEP_LINES+=("step $n: $w"); continue
+        fi
         case "${kind[$n]:-}" in
             "") _BUILD_STEP_FINDINGS+=("step $n has no answer: do it and answer \`step $n: done — QUOTE: <file> | <a line this change added>\`, or answer \`step $n: not needed — <why>\` (the step: $d)") ;;
             not)
@@ -206,6 +242,9 @@ _build_steps_check() {
     fi
     judged+=(${nn[@]+"${nn[@]}"})
     [[ ${#judged[@]} -gt 0 ]] && _build_steps_judge "$repo" "$ad" "$tier" "${judged[@]}"
+    # A step that was back has been judged: its hand-off is over. The reply
+    # judged with it hands nothing on; the next try's may.
+    for n in "${!back[@]}"; do judge_handoff_clear "$kf" "step-$n"; done
     return 0
 }
 
@@ -315,18 +354,23 @@ _build_steps_judge() {
         items[$n]="$item"; fps[step-$n]="$fp"
     done
     # #2569 (ADR-072 §5): a step it refused last time is asked with that
-    # finding beside build's answer now.
-    judge_kept_get_all_v kept "$kf" fps "" earlier
-    local held="" _bsj_e
+    # finding beside build's answer now. #2574: build's answer to a step's
+    # finding (fans) has a kept refusal judged again, held to it; a step back
+    # from the stage it was handed to (back) is judged again whatever was kept.
+    local -A dfp=()
+    for n in "$@"; do [[ -n "${fans[$n]:-}" ]] && judge_fp_v "dfp[step-$n]" "${fans[$n]}"; done
+    judge_kept_get_all_v kept "$kf" fps dfp earlier "does"
+    local held="" _bsj_e _bsj_h
     for n in "$@"; do
+        if [[ -n "${back[$n]+x}" && -n "${kept[step-$n]+x}" ]]; then earlier[step-$n]="${kept[step-$n]}"; unset "kept[step-$n]"; fi
         if [[ -n "${kept[step-$n]+x}" ]]; then
             _build_steps_parse "$n: ${kept[step-$n]}" "$n"
             [[ -z "$_BSJ_PROBLEM" ]] && { pay[$n]="${_BSJ_ANS[$n]}"; continue; }
         fi
         ask_n+=("$n"); list+="${items[$n]}"$'\n'
         if [[ "${earlier[step-$n]:-}" == "does not"* ]]; then
-            _build_steps_said_v l "$n"
-            judge_held_entry_v _bsj_e "step $n" "$n: ${earlier[step-$n]}"$'\x1f'"${l#step $n: }"; held+="$_bsj_e"
+            _build_steps_said_v l "$n"; _bsj_h="${back[$n]:-${fans[$n]:-}}"
+            judge_held_entry_v _bsj_e "step $n" "$n: ${earlier[step-$n]}"$'\x1f'"${_bsj_h:+$_bsj_h — and to the step now: }${l#step $n: }"; held+="$_bsj_e"
         fi
     done
     if [[ ${#ask_n[@]} -gt 0 ]]; then
@@ -368,14 +412,15 @@ _build_steps_judge() {
                 emit_event build.steps.check_unusable "router_rc=0" "reason=${why:-no answer}" >/dev/null 2>&1 || true
                 [[ "$_rc" -eq 0 && -n "$_r" ]] || declare -gA _BSJ_ANS=()
             fi
-            local -A keep=() kfp=() kdeps=()
             # keep, kfp and kdeps are read by judge_kept_put_all through their names.
+            # shellcheck disable=SC2034
+            local -A keep=() kfp=() kdeps=()
             # shellcheck disable=SC2034
             for n in "${ask_n[@]}"; do
                 [[ -n "${_BSJ_ANS[$n]+x}" ]] || { pay[$n]="unread"; continue; }
                 pay[$n]="${_BSJ_ANS[$n]}"
                 keep[step-$n]="${_BSJ_ANS[$n]/$'\x1f'/ | WHY: }"; keep[step-$n]="${keep[step-$n]/$'\x1f'/ | ACCEPTED IF: }"
-                kfp[step-$n]="${fps[step-$n]}"; kdeps[step-$n]="${deps[step-$n]}"
+                judge_kept_fp_v "kfp[step-$n]" "${fps[step-$n]}" "${dfp[step-$n]:-}"; kdeps[step-$n]="${deps[step-$n]}"
             done
             [[ ${#keep[@]} -gt 0 ]] && judge_kept_put_all "$kf" keep kfp kdeps
         fi

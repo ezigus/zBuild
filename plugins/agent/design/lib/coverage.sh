@@ -126,12 +126,14 @@ _dcov_answered_v() {
     local -n _ddv="$1"; local _ddv_hn="${4:-_ddv_noh}" _ddv_a _ddv_t _ddv_id _ddv_k _ddv_e _ddv_x
     local -A _ddv_noh=()
     local -n _ddv_h="$_ddv_hn"
-    [[ "$2" == *"design finding "* ]] || return 0
+    [[ "$2" == *"design finding "* || ( -n "${_DESIGN_FCODE:-}" && "$2" == *"$_DESIGN_FCODE-"* ) ]] || return 0
     local -A _ddv_af=()
     judge_answered_findings_v _ddv_af "$2" "design=$3"
+    # #2574: an answer names the finding's id (DSFND-<n>), or its place.
+    local _ddv_re="^(design finding [0-9]+${_DESIGN_FCODE:+|$_DESIGN_FCODE-[0-9]+})[[:space:]]*:"
     while IFS= read -r _ddv_a; do
-        [[ "$_ddv_a" =~ ^design\ finding\ ([0-9]+)[[:space:]]*: ]] || continue
-        _ddv_k="design finding ${BASH_REMATCH[1]}"
+        [[ "$_ddv_a" =~ $_ddv_re ]] || continue
+        _ddv_k="${BASH_REMATCH[1]}"
         [[ -n "${_ddv_af[$_ddv_k]+x}" ]] || continue
         zb_answer_kind_v _ddv_x "$_ddv_a"; [[ -n "$_ddv_x" ]] || continue
         _ddv_t="${_ddv_af[$_ddv_k]%%$'\x1f'*}"; _ddv_e="$_ddv_k"$'\x1c'"${_ddv_af[$_ddv_k]}"
@@ -301,6 +303,10 @@ _design_coverage() {
     # answer to its finding, in the order the items are asked.
     _dcov_held_v _disp_shown "$want"
     judge_held_block_v _disp_shown "$_disp_shown"
+    # Review on #2574: a pass judged again because a file it read moved (its
+    # own words did not change) is refused only on a line added since.
+    local _dpas=""; judge_pass_entries_v _dpas _earl kwhy "ok covered open" file $want
+    judge_pass_block_v _dpas "$_dpas"; _disp_shown+="$_dpas"
     local _ublk=""; zb_unclear_judge_block_v _ublk "$unclear_asked"
     [[ -n "$_ublk" ]] && _disp_shown=$'\n'"$_ublk"$'\n'"$_disp_shown"
     # #2458: it judges, so it composes fresh — no notes, and no rule to confirm earlier work.
@@ -359,18 +365,26 @@ _design_coverage() {
     # opened, and the files its own quotes name — even when another item's
     # lines could not be used (#2472).
     # shellcheck disable=SC2034  # putfp is passed by name to judge_kept_put_all
-    local -A put=() putfp=() deps=()
+    local -A put=() putfp=() deps=() carry=()
     local _opened_all="" f q
     for f in ${files[@]+"${files[@]}"}; do _opened_all+="$f"$'\n'; done
     local new_raw="" new_want=""
     while IFS= read -r k; do
         [[ -n "$k" && -n "${got[$k]+x}" ]] || continue
+        if [[ "${kwhy[$k]:-}" == file && -n "${_earl[$k]+x}" ]] \
+            && judge_pass_hold_lines "$kf" "$k" "$repo" "${_earl[$k]}" "got[$k]" "ok covered open"; then
+            got["$k"]="${got[$k]%$'\n'}"$'\n'; gotq["$k"]=""
+            # shellcheck disable=SC2034  # carry is read by judge_kept_put_all by name
+            carry["$k"]=1
+        fi
         # shellcheck disable=SC2034  # passed by name to judge_kept_put_all
         { put["$k"]="${got[$k]}"; judge_kept_fp_v "putfp[$k]" "${fps[$k]}" "${dfp[$k]:-}"; deps["$k"]="$_opened_all"; }
         while IFS= read -r q; do [[ -n "$q" ]] && deps["$k"]+="$repo/$q"$'\n'; done <<< "${gotq[$k]:-}"
         new_raw+="${got[$k]}"; new_want+="$k"$'\n'
     done <<< "$want"
-    [[ -n "$kf" ]] && judge_kept_put_all "$kf" put putfp deps
+    # Kept with the repository as it is; a held pass keeps its own (#2574 review).
+    local _JUDGE_KEEP_BASE=""; [[ -n "$kf" ]] && judge_keep_baseline_v _JUDGE_KEEP_BASE "$repo"
+    [[ -n "$kf" ]] && judge_kept_put_all "$kf" put putfp deps carry
     # Review on #2571 (ADR-069 §12): carried questions still unjudged after the
     # one re-ask stay open — not kept, so the next try judges them — and the
     # other items' answers stand; a note says so. They never fail the try.

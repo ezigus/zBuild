@@ -174,7 +174,11 @@ BUDGET_MARGIN_STARTUP=1
 # execs fewer than #2573's standalone runs: 2391 processes and 1848 execs in
 # all, alone and with the e2e tier's TMPDIR under a load that wraps macOS's
 # process ids; 465 and 298 a dispatch, 428 and 232 at start-up.
-FORK_BUDGET=$(( 1848 + BUDGET_MARGIN_TOTAL ))
+# #2574: findings with stable ids, a verdict kept per item with the repository
+# as it was, and a held pass; the write boundary's snapshot hashes every file
+# in one call. Measured on macOS, two runs: 2387 processes and 1845 execs in
+# all, 464 processes and 298 execs a dispatch.
+FORK_BUDGET=$(( 1845 + BUDGET_MARGIN_TOTAL ))
 # PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
 # the programs above plus each `$( )` subshell, a copy of the whole engine shell
 # that FORK_BUDGET cannot see. Ratchets down only, like FORK_BUDGET. History:
@@ -236,7 +240,8 @@ FORK_BUDGET=$(( 1848 + BUDGET_MARGIN_TOTAL ))
 # dispatch.
 # #2573: see FORK_BUDGET — 2394 processes, plus the margin.
 # #2575: see FORK_BUDGET — 2391.
-PROCESS_BUDGET=$(( 2391 + BUDGET_MARGIN_TOTAL ))
+# #2574: see FORK_BUDGET — 2387 processes, plus the margin.
+PROCESS_BUDGET=$(( 2387 + BUDGET_MARGIN_TOTAL ))
 # The run's cost in two parts (ADR-065 §6, #2472). Each budget ratchets down
 # like the totals; each floor is the goal, an estimate, measured again when
 # reached. History: 505 / 298 a dispatch, 12 / 7 a plugin at start-up (#2472 —
@@ -294,7 +299,8 @@ PROCESS_BUDGET=$(( 2391 + BUDGET_MARGIN_TOTAL ))
 # #2569: see FORK_BUDGET — 465 processes and 298 execs a dispatch.
 # #2573: see FORK_BUDGET — 465 and 298 a dispatch (the middle of 464–466 and
 # 297–299), 428 and 232 at start-up, each plus its margin.
-DISPATCH_PROCS_BUDGET=$(( 465 + BUDGET_MARGIN_DISPATCH ))
+# #2574: see FORK_BUDGET — 464 and 298 a dispatch.
+DISPATCH_PROCS_BUDGET=$(( 464 + BUDGET_MARGIN_DISPATCH ))
 DISPATCH_PROCS_FLOOR=20
 DISPATCH_EXECS_BUDGET=$(( 298 + BUDGET_MARGIN_DISPATCH ))
 DISPATCH_EXECS_FLOOR=50

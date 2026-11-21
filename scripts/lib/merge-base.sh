@@ -78,7 +78,9 @@ zbuild_change_files_v() {
     [[ -n "$repo_root" ]] && git=(git -C "$repo_root")
     local _zcf_base _zcf_raw="" _zcf_l _zcf_list="" _zcf_st _zcf_p
     zbuild_resolve_merge_base_v _zcf_base "$repo_root"
-    [[ -n "$_zcf_base" ]] && _zcf_raw="$("${git[@]}" diff --raw --no-abbrev --no-renames "$_zcf_base" HEAD 2>/dev/null || true)"
+    # -M (review on #2574): a moved file is one renamed line, so a lens keeps
+    # its report under the new path.
+    [[ -n "$_zcf_base" ]] && _zcf_raw="$("${git[@]}" diff --raw --no-abbrev -M "$_zcf_base" HEAD 2>/dev/null || true)"
     # The branch's committed change, or — when it has none yet (#952: the
     # work not committed) and the round's patch has some — the patch.
     if [[ -n "$_zcf_base" && ( -n "$_zcf_raw" || -z "$_zcf_patch" || ! -s "$_zcf_patch" ) ]]; then
@@ -90,7 +92,7 @@ zbuild_change_files_v() {
         done <<< "$_zcf_raw"
         _zcff="$_zcf_base"$'\n'"$_zcf_raw"
         printf -v _zcfv '%s\n%s%s\n' \
-            "The branch started at commit $_zcf_base. The files it changed since then (A added, M changed, D deleted):" \
+            "The branch started at commit $_zcf_base. The files it changed since then (A added, M changed, D deleted, R renamed: the old path, then the new):" \
             "${_zcf_list:-(none)
 }" "Read each change yourself: git diff $_zcf_base HEAD -- <file> shows a file's change, git log $_zcf_base..HEAD the commits, and git show $_zcf_base:<file> the file as it was. Open the file in the repository to read it as it is now."
         return 0

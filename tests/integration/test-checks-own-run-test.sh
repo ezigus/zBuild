@@ -109,9 +109,9 @@ _ap="$(jq -r '.data.findings[0].text // empty' "$A/acceptance-gate-result.json" 
 _pw6() { local idx; idx="$(_inputs_resolve_stage "$1" "$REPO_ROOT/plugins" "$S" 2>/dev/null)"
          _stage_block_previous_work "$1" "$S" "$REPO_ROOT/plugins" "$idx" "$R" "$REPO_ROOT/plugins/agent/$1/manifest.yaml" 2>/dev/null; }
 _pwd="$(_pw6 design)"; _pwb="$(_pw6 build)"; _pwt="$(_pw6 test-author)"
-assert_contains "[R6] test-author is shown the acceptance check's finding, from its test output (#2569)" "$_pwt" "acceptance-gate-test finding 1 (opened by test): ${_ap:0:40}"
+assert_contains "[R6] test-author is shown the acceptance check's finding, from its test output (#2569)" "$_pwt" "TEFND-1 (opened by test): ${_ap:0:40}"
 assert_eq "[R6] ...once" "1" \
-    "$(grep -E '^- [a-z-]+ finding [0-9]+ \(opened by test\): ' <<< "$_pwt" | grep -cF -- "${_ap:0:40}")"
+    "$(grep -E '^- [A-Z]+-[0-9]+ \(opened by test\): ' <<< "$_pwt" | grep -cF -- "${_ap:0:40}")"
 assert_eq "[R6] design is not shown it" "0" "$(grep -cF -- "${_ap:0:40}" <<< "$_pwd" || true)"
 assert_eq "[R6] build is not shown it" "0" "$(grep -cF -- "${_ap:0:40}" <<< "$_pwb" || true)"
 

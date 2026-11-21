@@ -73,9 +73,9 @@ print_test_section "A3: a working call is told the forms; a judging call is not"
 _own=$'## What you own\nWrite x.'
 _work="$(stage_prompt_compose_text "$_own" "THE THING" "- do not y" 2>/dev/null)"
 _judge="$(stage_prompt_compose_text --fresh "$_own" "THE THING" "- do not y" 2>/dev/null)"
-assert_contains "[A3] a working call is told every finding gets an answer" "$_work" "ANSWER <the finding as listed>: not mine — <why your job cannot fix it>"
-assert_contains "[A3] ...and the other two forms" "$_work" "ANSWER <the finding as listed>: wrong — <why it does not hold>"
-_a3_j=1; [[ "$_judge" == *"ANSWER <the finding as listed>"* ]] && _a3_j=0
+assert_contains "[A3] a working call is told every finding gets an answer" "$_work" "ANSWER <its id>: not mine — <why your job cannot fix it>"
+assert_contains "[A3] ...and the other two forms" "$_work" "ANSWER <its id>: wrong — <why it does not hold>"
+_a3_j=1; [[ "$_judge" == *"ANSWER <its id>"* ]] && _a3_j=0
 assert_eq "[A3] a judging call is not told to answer findings" "1" "$_a3_j"
 
 print_test_section "A4-A5: what each answer means, and only this reply counts (#2501)"
@@ -138,7 +138,7 @@ print_test_section "B5: issue-acceptance"
 (
     source "$REPO_ROOT/plugins/agent/issue-acceptance/plugin.sh" >/dev/null 2>&1
     _b5="$(_ia_prompt "the issue" "<none>" "<no diff>" pass "" "")"
-    echo "B5|$([[ "$_b5" == *"ANSWER <the finding as listed>: not mine —"* ]] && echo told)"
+    echo "B5|$([[ "$_b5" == *"ANSWER <its id>: not mine —"* ]] && echo told)"
 ) > "$TEST_TEMP_DIR/b5.out" 2>/dev/null
 assert_eq "[B5] issue-acceptance is told how to answer the findings it is given" "told" "$(grep '^B5|' "$TEST_TEMP_DIR/b5.out" | cut -d'|' -f2)"
 
@@ -166,17 +166,19 @@ assert_eq "[C1] a medium finding fails it, and blocks" "fail true" \
     "$(jq -r '.outcome' "$ART/lens-performance.json") $(jq -r '.data.findings[0].blocking' "$ART/lens-performance-code-result.json" 2>/dev/null)"
 source "$REPO_ROOT/scripts/lib/stage-previous-work.sh"
 _c2="$(_sp_findings_for "$ART/lens-performance-code-result.json" review_lenses lens-performance-code code-findings "" "")"
-assert_contains "[C2] a blocking finding is shown as it was" "$_c2" "lens-performance-code finding 1 (opened by review_lenses): "
+# #2574: by its id — the lens's code and a number; the low finding above was
+# RLPERFORMANCE-1, so this other one is RLPERFORMANCE-2.
+assert_contains "[C2] a blocking finding is shown as it was" "$_c2" "RLPERFORMANCE-2 (opened by review_lenses): "
 stage_result_write "$ART/c2.json" pass "x" '{"findings":[{"n":1,"text":"an extra write","blocking":false}]}' >/dev/null
 assert_contains "[C2] one that does not block is marked" \
     "$(_sp_findings_for "$ART/c2.json" review_lenses lens-performance-code code-findings "" "")" \
     "lens-performance-code finding 1 (opened by review_lenses, does not block): an extra write"
 # C3: last time's findings, with what was answered, come back to the lens.
 stage_result_write "$ART/build-summary.json" pass "built" \
-    '{"answers":["lens-performance-code finding 1: done — one write a round now"]}' >/dev/null
+    '{"answers":["RLPERFORMANCE-2: done — one write a round now"]}' >/dev/null
 _lens "medium high critical" "$_low"
 _c3="$(cat "$TEST_TEMP_DIR/lens-prompt" 2>/dev/null)"
-assert_contains "[C3] the lens is shown its findings from last time" "$_c3" "lens-performance-code finding 1"
+assert_contains "[C3] the lens is shown its findings from last time" "$_c3" "RLPERFORMANCE-2: "
 assert_contains "[C3] ...with what was answered" "$_c3" "done — one write a round now"
 assert_contains "[C3] ...and told a finding keeps its grade unless it quotes what changed" "$_c3" \
     "A finding you report again keeps the grade you gave it, unless you quote what changed"

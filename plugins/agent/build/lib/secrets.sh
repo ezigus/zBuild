@@ -159,7 +159,7 @@ _build_stage_run_checked() {
     [[ ${#_BUILD_SECRET_FINDINGS[@]} -eq 0 ]] && return 0
     emit_event "build.checks.failed" "plugin=build" "findings=${#_BUILD_SECRET_FINDINGS[@]}" 2>/dev/null || true
     local _fj _tmp
-    _fj="$(printf '%s\n' "${_BUILD_SECRET_FINDINGS[@]}" | stage_findings_json)"
+    _fj="$(printf '%s\n' "${_BUILD_SECRET_FINDINGS[@]}" | stage_findings_json "${summary_json%/*}" "${_BUILD_FCODE:-}")"
     _tmp="$(jq --argjson f "${_fj:-[]}" '.data = ((.data // {}) + {findings: $f})' "$summary_json" 2>/dev/null)" \
         && printf '%s\n' "$_tmp" | atomic_write "$summary_json" || true
     stage_result_add "$summary_json" unusable \

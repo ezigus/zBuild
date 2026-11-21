@@ -21,6 +21,8 @@ source "$_ZB_JUDGE_DIR/stage-answers.sh"
 source "$_ZB_JUDGE_DIR/judge-quotes.sh"
 # shellcheck source=judge-held.sh
 source "$_ZB_JUDGE_DIR/judge-held.sh"
+# shellcheck source=judge-baseline.sh
+source "$_ZB_JUDGE_DIR/judge-baseline.sh"
 
 # _judge_emit <type> [k=v]... — an event, when the event bus is loaded (#2466).
 _judge_emit() { declare -F eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" 2>/dev/null; return 0; }
@@ -124,9 +126,37 @@ _judge_hashes_v() {
         else _jhs["$__judge_p"]=absent; fi
     done
     [[ ${#__judge_have[@]} -gt 0 ]] || return 0
-    mapfile -t __judge_hs < <(git hash-object -- "${__judge_have[@]}" 2>/dev/null)
-    for __judge_i in "${!__judge_have[@]}"; do _jhs["${__judge_have[__judge_i]}"]="${__judge_hs[__judge_i]:-absent}"; done
+    # A verdict being kept (_JUDGE_HASH_WRITE): its files' content is stored in
+    # the repository's objects too, so a pass judged again later can be refused
+    # only on a line added since (judge_pass_flip_ok) — when every file is in
+    # the repository; one call either way.
+    local __judge_r="${ZBUILD_REPO_ROOT:-}"; __judge_r="${__judge_r%/}"
+    local -a __judge_in=() __judge_out=()
+    if [[ -n "${_JUDGE_HASH_WRITE:-}" && -n "$__judge_r" && -e "$__judge_r/.git" ]]; then
+        # The repository's files with -w, the others without (review on #2574:
+        # one file outside it must not leave the others unstored).
+        # A path to the repository by another way (/tmp and /private/tmp, a
+        # `..`) is the repository's too: resolved only when one does not match.
+        local __judge_rp=""
+        for __judge_p in "${__judge_have[@]}"; do
+            if [[ "$__judge_p" == "$__judge_r/"* && "/$__judge_p/" != *"/../"* ]]; then __judge_in+=("$__judge_p"); continue; fi
+            [[ -n "$__judge_rp" ]] || __judge_rp="$(cd "$__judge_r" 2>/dev/null && pwd -P)"
+            __judge_t="$(cd "${__judge_p%/*}" 2>/dev/null && pwd -P)/${__judge_p##*/}"
+            if [[ -n "$__judge_rp" && "$__judge_t" == "$__judge_rp/"* ]]; then __judge_in+=("$__judge_p"); else __judge_out+=("$__judge_p"); fi
+        done
+    else
+        __judge_out=("${__judge_have[@]}")
+    fi
+    if [[ ${#__judge_in[@]} -gt 0 ]]; then
+        mapfile -t __judge_hs < <(git -C "$__judge_r" hash-object -w -- "${__judge_in[@]}" 2>/dev/null)
+        for __judge_i in "${!__judge_in[@]}"; do _jhs["${__judge_in[__judge_i]}"]="${__judge_hs[__judge_i]:-absent}"; done
+    fi
+    if [[ ${#__judge_out[@]} -gt 0 ]]; then
+        mapfile -t __judge_hs < <(git hash-object -- "${__judge_out[@]}" 2>/dev/null)
+        for __judge_i in "${!__judge_out[@]}"; do _jhs["${__judge_out[__judge_i]}"]="${__judge_hs[__judge_i]:-absent}"; done
+    fi
 }
+
 
 # _judge_check_name_v <var> <kept_file> — the check a kept file belongs to, as
 # its events name it: design, test-author, issue-acceptance, lens-<id>.
@@ -138,16 +168,24 @@ _judge_check_name_v() { local -n _jcn="$1"; _jcn="${2##*/}"; _jcn="${_jcn%-judge
 # does not have the same verdict judged again).
 judge_kept_fp_v() { local -n _jkf="$1"; _jkf="$2${3:++$3}"; }
 
-# judge_refused <payload> <pass-word>... — rc 0 when a line of a kept answer
-# gives a verdict, the word after its first colon, that is none of the
-# <pass-word>s: the check refused the part (review on #2569).
+# judge_refused <payload> <word>... — rc 0 when a line of a kept answer gives a
+# verdict that is none of the pass words: the check refused the part (review on
+# #2569). <word>s are the check's verdict words: pass words, and refusal words
+# written with a `!` (`!unmet`). The verdict is the word after the line's
+# first colon (`<id>: covered`) or, #2574, the word the line starts with before
+# its colon when that is one of the check's verdict words (`MET: <id>`,
+# `UNMET: None of …`); a leading word that is not one (`UNASKED: none`,
+# `Steps: ok`) is followed by its verdict.
 judge_refused() {
-    local _jrd_l _jrd_w _jrd_p _jrd_t="$1"; shift
+    local _jrd_l _jrd_w _jrd_v _jrd_p _jrd_t="$1"; shift
+    local _jrd_all=" ${*,,} "; _jrd_all="${_jrd_all//!/}"
     while IFS= read -r _jrd_l; do
         [[ "$_jrd_l" == *:* ]] || continue
         _jrd_w="${_jrd_l#*:}"; _jrd_w="${_jrd_w#"${_jrd_w%%[![:space:]*_\`]*}"}"; _jrd_w="${_jrd_w%%[!A-Za-z_-]*}"
+        _jrd_v=""; [[ "$_jrd_l" =~ ^[[:space:]*_\`-]*([A-Za-z_]+): ]] && _jrd_v="${BASH_REMATCH[1],,}"
+        [[ -n "$_jrd_v" && "$_jrd_all" == *" $_jrd_v "* ]] && _jrd_w="$_jrd_v"
         [[ -n "$_jrd_w" ]] || continue
-        for _jrd_p in "$@"; do [[ "${_jrd_w,,}" == "$_jrd_p" ]] && continue 2; done
+        for _jrd_p in "$@"; do [[ "$_jrd_p" != !* && "${_jrd_w,,}" == "${_jrd_p,,}" ]] && continue 2; done
         return 0
     done <<< "$_jrd_t"
     return 1
@@ -214,23 +252,40 @@ judge_kept_get_v() {
     return 0
 }
 
+# _judge_kept_write <kept_file> <content> — a kept-verdict file, written only
+# when it changes (review on #2574): a new file directly; one that is there,
+# through a temp file moved into place, so a write cut short never leaves it
+# torn. The same content again touches nothing, and costs no program.
+_judge_kept_write() {
+    local _jkw_cur=""
+    [[ -d "${1%/*}" ]] || mkdir -p "${1%/*}" 2>/dev/null || true
+    if [[ -e "$1" ]]; then
+        IFS= read -r -d '' _jkw_cur < "$1" || true
+        [[ "$_jkw_cur" == "$2"$'\n' ]] && return 0
+        printf '%s\n' "$2" > "$1.tmp.$$" 2>/dev/null && mv -f "$1.tmp.$$" "$1" 2>/dev/null && return 0
+        [[ -e "$1.tmp.$$" ]] && rm -f "$1.tmp.$$" 2>/dev/null
+        return 1
+    fi
+    printf '%s\n' "$2" > "$1" 2>/dev/null
+}
+
 # judge_kept_put <kept_file> <key> <fp> <payload> [file]... — keep <payload> for
 # <key> under fingerprint <fp>, with the hash of each file it depends on.
 judge_kept_put() {
     local _judge__kf="$1" _judge__key="$2" _judge__fp="$3" _judge__payload="$4"; shift 4
     [[ -n "$_judge__kf" && -n "$_judge__fp" ]] || return 0
     local -A _judge__hs=()
-    _judge_hashes_v _judge__hs "$@"
+    _JUDGE_HASH_WRITE=1 _judge_hashes_v _judge__hs "$@"
     local _judge__p _judge__pairs=""
     for _judge__p in "${!_judge__hs[@]}"; do _judge__pairs+="$_judge__p"$'\t'"${_judge__hs[$_judge__p]}"$'\n'; done
     local _judge__cur="{}"
     [[ -s "$_judge__kf" ]] && _judge__cur="$(<"$_judge__kf")"
-    [[ -d "${_judge__kf%/*}" ]] || mkdir -p "${_judge__kf%/*}" 2>/dev/null || true
-    jq -c --arg k "$_judge__key" --arg fp "$_judge__fp" --arg p "$_judge__payload" --arg pairs "$_judge__pairs" \
+    local _judge__new
+    _judge__new="$(jq -c --arg k "$_judge__key" --arg fp "$_judge__fp" --arg p "$_judge__payload" --arg pairs "$_judge__pairs" \
         '(if type == "object" then . else {} end)
          + {($k): {fp: $fp, payload: $p,
                    files: ([$pairs | split("\n")[] | select(length > 0) | split("\t") | {(.[0]): .[1]}] | add // {})}}' \
-        <<< "$_judge__cur" > "$_judge__kf" 2>/dev/null
+        <<< "$_judge__cur" 2>/dev/null)" && [[ -n "$_judge__new" ]] && _judge_kept_write "$_judge__kf" "$_judge__new"
     # The old content was read first; a write cut short only costs a fresh judgement.
     local _judge__chk; _judge_check_name_v _judge__chk "$_judge__kf"
     _judge_emit judge.kept.saved "check=$_judge__chk" "item=$_judge__key"
@@ -253,14 +308,13 @@ judge_kept_put_one() {
     local _jpo_kf="$1" _jpo_key="$2" _jpo_fp="$3" _jpo_p="$4"; shift 4
     [[ -n "$_jpo_kf" && -n "$_jpo_fp" ]] || return 0
     local -A _jpo_hs=()
-    _judge_hashes_v _jpo_hs "$@"
+    _JUDGE_HASH_WRITE=1 _judge_hashes_v _jpo_hs "$@"
     local _jpo_k _jpo_v _jpo_files="" _jpo_j
     for _jpo_k in "${!_jpo_hs[@]}"; do
         _judge_json_str_v _jpo_j "$_jpo_k"; _jpo_files+="${_jpo_files:+,}$_jpo_j:\"${_jpo_hs[$_jpo_k]}\""
     done
     _judge_json_str_v _jpo_k "$_jpo_key"; _judge_json_str_v _jpo_v "$_jpo_p"; _judge_json_str_v _jpo_j "$_jpo_fp"
-    [[ -d "${_jpo_kf%/*}" ]] || mkdir -p "${_jpo_kf%/*}" 2>/dev/null || true
-    printf '{%s:{"fp":%s,"payload":%s,"files":{%s}}}\n' "$_jpo_k" "$_jpo_j" "$_jpo_v" "$_jpo_files" > "$_jpo_kf" 2>/dev/null
+    _judge_kept_write "$_jpo_kf" "{$_jpo_k:{\"fp\":$_jpo_j,\"payload\":$_jpo_v,\"files\":{$_jpo_files}}}"
     _judge_check_name_v _jpo_j "$_jpo_kf"
     _judge_emit judge.kept.saved "check=$_jpo_j" "item=$_jpo_key"
     return 0
@@ -279,6 +333,7 @@ judge_kept_put_one() {
 # judged again only when its kept answer, otherwise usable, refused it and was
 # not kept with those answers (why=disputed). [why_assoc] gets each kept key's
 # why: used, fingerprint, file or disputed.
+declare -gA _JUDGE_KEPT_FILES=() _JUDGE_KEPT_BASE=()
 judge_kept_get_all_v() {
     local -n _jga="$1" _jga_fp="$3"; local _jga_kf="$2" _jga_dn="${4:-_jga_nod}" _jga_en="${5:-_jga_noe}" _jga_chk
     local _jga_pws="${6:-}" _jga_wn="${7:-_jga_now_why}"
@@ -290,16 +345,22 @@ judge_kept_get_all_v() {
     _judge_check_name_v _jga_chk "$_jga_kf"
     local -A _jga_rfp=() _jga_rp=() _jga_rf=()
     local _jga_t _jga_k _jga_a _jga_b
+    _JUDGE_KEPT_FILES=(); _JUDGE_KEPT_BASE=()
     while IFS=$'\t' read -r _jga_t _jga_k _jga_a _jga_b; do
         case "$_jga_t" in
             X) _jga_rfp["$_jga_k"]="$_jga_a" ;;
             F) _jga_rf["$_jga_k"]+="$_jga_a"$'\t'"$_jga_b"$'\n' ;;
+            B) _JUDGE_KEPT_BASE["$_jga_k"]="$_jga_a" ;;
             P) _jga_rp["$_jga_k"]="$_jga_a" ;;
         esac
     done < <(jq -r 'to_entries[] | .key as $k | .value
         | ("X\t\($k)\t\(.fp)"),
           (.files // {} | to_entries[] | "F\t\($k)\t\(.key)\t\(.value)"),
+          (if .base then "B\t\($k)\t\(.base | tojson)" else empty end),
           ("P\t\($k)\t\(.payload | tostring | gsub("\n"; "\u001e") | gsub("\t"; "\u001f"))")' "$_jga_kf" 2>/dev/null)
+    # #2574 (review): each record's files and their hashes, for a pass judged
+    # again to be refused only on a line added since (judge_pass_flip_ok).
+    for _jga_k in "${!_jga_rf[@]}"; do _JUDGE_KEPT_FILES["$_jga_k"]="${_jga_rf[$_jga_k]}"; done
     local -a _jga_paths=()
     local _jga_l
     # A record kept with answers heard is "<fp>+<answers' fp>" (pass-words mode).
@@ -347,19 +408,23 @@ judge_kept_get_all_v() {
     return 0
 }
 
-# judge_kept_put_all <kept_file> <payload_assoc> <fp_assoc> <deps_assoc> — keep
+# judge_kept_put_all <kept_file> <payload_assoc> <fp_assoc> <deps_assoc> [carry_assoc] — keep
 # every key of <payload_assoc> under its fingerprint, with the hash of each file
 # its <deps_assoc> entry names (one per line): one hash of all the files, one
-# write (#2470). The file's other answers stay as they are.
+# write (#2470). The file's other answers stay as they are. #2574: with
+# _JUDGE_KEEP_BASE set (judge_keep_baseline_v), each is kept with the
+# repository as it was; a key of [carry_assoc] — a pass held — keeps the files
+# and base of the verdict that passed it, so its baseline never moves.
 judge_kept_put_all() {
     local _jpa_kf="$1"; local -n _jpa_p="$2" _jpa_fp="$3" _jpa_d="$4"
+    local _jpa_cn="${5:-_jpa_nocarry}"; local -A _jpa_nocarry=(); local -n _jpa_c="$_jpa_cn"
     [[ -n "$_jpa_kf" && ${#_jpa_p[@]} -gt 0 ]] || return 0
     local -a _jpa_all=(); local _jpa_k _jpa_f
     for _jpa_k in "${!_jpa_p[@]}"; do
         while IFS= read -r _jpa_f; do [[ -n "$_jpa_f" ]] && _jpa_all+=("$_jpa_f"); done <<< "${_jpa_d[$_jpa_k]:-}"
     done
     local -A _jpa_hs=()
-    _judge_hashes_v _jpa_hs ${_jpa_all[@]+"${_jpa_all[@]}"}
+    _JUDGE_HASH_WRITE=1 _judge_hashes_v _jpa_hs ${_jpa_all[@]+"${_jpa_all[@]}"}
     local _jpa_new="" _jpa_files _jpa_j _jpa_v _jpa_x _jpa_chk
     local -A _jpa_seen=()
     for _jpa_k in "${!_jpa_p[@]}"; do
@@ -373,14 +438,19 @@ judge_kept_put_all() {
             _judge_json_str_v _jpa_j "$_jpa_f"; _jpa_files+="${_jpa_files:+,}$_jpa_j:\"${_jpa_hs[$_jpa_f]:-absent}\""
         done <<< "${_jpa_d[$_jpa_k]:-}"
         _judge_json_str_v _jpa_j "$_jpa_k"; _judge_json_str_v _jpa_v "${_jpa_p[$_jpa_k]}"; _judge_json_str_v _jpa_x "${_jpa_fp[$_jpa_k]:-}"
-        _jpa_new+="${_jpa_new:+,}$_jpa_j:{\"fp\":$_jpa_x,\"payload\":$_jpa_v,\"files\":{$_jpa_files}}"
+        _jpa_new+="${_jpa_new:+,}$_jpa_j:{\"fp\":$_jpa_x,\"payload\":$_jpa_v,\"files\":{$_jpa_files}${_JUDGE_KEEP_BASE:+,\"base\":$_JUDGE_KEEP_BASE}${_jpa_c[$_jpa_k]:+,\"carry\":true}}"
     done
-    [[ -d "${_jpa_kf%/*}" ]] || mkdir -p "${_jpa_kf%/*}" 2>/dev/null || true
     if [[ -s "$_jpa_kf" ]]; then
-        local _jpa_cur; IFS= read -r -d '' _jpa_cur < "$_jpa_kf" || true
-        jq -c --argjson n "{$_jpa_new}" '(if type == "object" then . else {} end) + $n' <<< "$_jpa_cur" > "$_jpa_kf" 2>/dev/null
+        local _jpa_cur _jpa_out; IFS= read -r -d '' _jpa_cur < "$_jpa_kf" || true
+        # A held pass (carry) keeps the files and base of the verdict that
+        # passed it (review on #2574): its baseline does not move.
+        _jpa_out="$(jq -c --argjson n "{$_jpa_new}" '(if type == "object" then . else {} end) as $c
+            | $c + ($n | with_entries(.key as $k | if .value.carry then .value = (
+                if $c[$k] then (.value | del(.carry, .base)) + {files: ($c[$k].files // {})} + (if $c[$k].base then {base: $c[$k].base} else {} end)
+                else (.value | del(.carry)) end) else . end))' <<< "$_jpa_cur" 2>/dev/null)" \
+            && [[ -n "$_jpa_out" ]] && _judge_kept_write "$_jpa_kf" "$_jpa_out"
     else
-        printf '{%s}\n' "$_jpa_new" > "$_jpa_kf" 2>/dev/null
+        _judge_kept_write "$_jpa_kf" "{${_jpa_new//,\"carry\":true/}}"
     fi
     _judge_check_name_v _jpa_chk "$_jpa_kf"
     for _jpa_k in "${!_jpa_p[@]}"; do _judge_emit judge.kept.saved "check=$_jpa_chk" "item=$_jpa_k"; done

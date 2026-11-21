@@ -12,6 +12,8 @@
 _ZBUILD_STAGE_HANDOFF_LOADED=1
 # shellcheck source=stage-answers.sh
 source "${BASH_SOURCE[0]%/*}/stage-answers.sh"
+# shellcheck source=item-ids.sh
+source "${BASH_SOURCE[0]%/*}/item-ids.sh"
 
 # stage_handoff_unchanged <plugin_dir> <stage> <state_file> — each answer in a
 # result that did not pass:
@@ -59,8 +61,10 @@ stage_handoff_unchanged() {
         key="${a%%:*}"; lbl="${key% finding *}"; n="${key##* finding }"; n="${n%%[!0-9]*}"
         # Only the stage's own check's findings are handed on: a wrong or not
         # mine to another stage's finding already goes back to that judge
-        # (ADR-068 §6). The stage's own findings are labelled by the stage.
+        # (ADR-068 §6). The stage's own findings are labelled by the stage, or
+        # (#2574) have an id its result holds.
         f=""; [[ "$lbl" == "$stage" ]] && f="$res"
+        [[ "$key" == *" finding "* ]] || { n=0; [[ "$body" == *"\"id\":\"$key\""* ]] && f="$res"; }
         case "$kind" in
             done) back=$((back + 1)) ;;
             wrong|"not mine") [[ -n "$hraw" && -n "$f" ]] || continue; on=$((on + 1)) ;;
@@ -76,15 +80,18 @@ stage_handoff_unchanged() {
     while IFS=$'\x1f' read -r k f v; do
         [[ -n "$f" && -z "${seen[$f]+x}" ]] && { seen[$f]=1; files+=("$f"); }
     done <<< "$rows"
-    local out hj="" rj=""
-    out="$(jq -nrc --arg s "$stage" --arg rows "$rows" --arg resf "$res" '
+    local out hj="" rj="" code="" reg="" rg=""
+    # #2574: a finding sent back takes its id from the stage's record.
+    zb_finding_code_v code "$plugin_dir/manifest.yaml"
+    zb_findings_reg_v reg "${res%/*}" "$code" || code=""
+    out="$(jq -nrc --arg s "$stage" --arg rows "$rows" --arg resf "$res" --arg reg "$reg" --arg code "$code" "$_ZB_FINDING_IDS_JQ"'
         ([inputs | {(input_filename): .}] | add // {}) as $docs
         | [ $rows | split("\n")[] | select(length > 0) | split("\u001f")
             | {kind: .[0], f: .[1], n: (.[2] | tonumber? // 0), a: (.[3:] | join(" "))}
             | . as $r
             | .key = (.a | sub(":.*$"; ""))
             | .orig = ((($docs[$r.f] // {}).data.findings // [])
-                       | map(select(type == "object" and .n == $r.n)) | .[0].text // "" | tostring) ] as $l
+                       | map(select(type == "object" and (if .id != null then .id == $r.key else .n == $r.n end))) | .[0].text // "" | tostring) ] as $l
         | def tail($o): if $o == "" then "" else "\nThe finding: \($o)" end;
         ([$l[] | select(.kind != "done")
           | "\($s) changed nothing for \(.key) and answered: \(.a | sub("^[^:]*:[[:space:]]*"; ""))" + tail(.orig)]) as $on
@@ -92,12 +99,15 @@ stage_handoff_unchanged() {
           | "\(.key): you answered done, but this try changed nothing — make the change, or answer wrong (it is already right, and why) or not mine (whose change it is)" + tail(.orig)]) as $back
         | (if ($on | length) == 0 then "-" else $on | map({text: .}) | tojson end),
           ($docs[$resf]
+           | (if ($back | length) == 0 or $code == "" then {out: ($back | map({text: .})), r: null}
+              else ($back | map({text: .}) | zb_fids($reg; $code)) end) as $z
            | (if ($back | length) == 0 then . else
                 (.data.findings // []) as $f | ([$f[]?.n? | numbers] | max // 0) as $m
-                | .data.findings = $f + ($back | to_entries | map({n: ($m + .key + 1), text: .value})) end)
+                | .data.findings = $f + ($z.out | to_entries | map({n: ($m + .key + 1)} + .value)) end)
            | (if ($on | length) > 0 then .data.ends_round = true else . end)
-           | tojson)' "${files[@]}" 2>/dev/null)" || return 0
-    { IFS= read -r hj; IFS= read -r rj; } <<< "$out"
+           | tojson, (if $z.r then ($z.r | tojson) else "-" end))' "${files[@]}" 2>/dev/null)" || return 0
+    { IFS= read -r hj; IFS= read -r rj; IFS= read -r rg; } <<< "$out"
+    [[ "$rg" == "{"* ]] && zb_findings_reg_put "${res%/*}" "$code" "$rg"
     [[ -n "$rj" && "$rj" == "{"* ]] || return 0
     local hp="" hprev=""
     if [[ "$hj" == "["* ]]; then
@@ -106,7 +116,7 @@ stage_handoff_unchanged() {
         # untestable SPEC), never in its place. A handoff that could not be
         # written ends no round: nothing changes.
         [[ -n "$hp" && -s "$hp" ]] && { IFS= read -r -d '' hprev < "$hp" || true; }
-        if [[ -z "$hp" ]] || ! stage_findings_add "$hp" "$hj"; then on=0; rj=""; hp=""; fi
+        if [[ -z "$hp" ]] || ! stage_findings_add "$hp" "$hj" "$code"; then on=0; rj=""; hp=""; fi
     fi
     # A result that could not be written takes its handoff with it: a handoff
     # with no ends_round would reach its owner while the round went on.
@@ -124,24 +134,36 @@ stage_handoff_unchanged() {
 # routed-findings file (#2569): numbered after the ones it holds, or the file
 # made when there is none. A stage and its handoff can both write one output in
 # one run; neither overwrites the other. rc 1 when it could not be written.
+# [code]: each added finding's id, from the record the stage's other findings
+# are numbered from (#2574).
 stage_findings_add() {
-    local f="$1" add="${2:-[]}" j=""
+    local f="$1" add="${2:-[]}" code="${3:-}" j="" reg="" ids=0 r="" out=""
     [[ -n "$add" && "$add" != "[]" ]] || return 0
-    j="$(jq -c --argjson a "$add" '(.data.findings // []) as $o | ([$o[]?.n? | numbers] | max // 0) as $m
-        | .data.findings = $o + ($a | to_entries | map({n: ($m + .key + 1), text: (.value | if type == "object" then .text else . end | tostring)}))' \
-        "$f" 2>/dev/null)" || j=""
-    [[ "$j" == "{"* ]] \
-        || j="$(jq -nc --argjson a "$add" '{data: {findings: ($a | to_entries | map({n: (.key + 1), text: (.value | if type == "object" then .text else . end | tostring)}))}}' 2>/dev/null)"
-    [[ "$j" == "{"* ]] && atomic_write "$f" <<< "$j" 2>/dev/null
+    zb_findings_reg_v reg "${f%/*}" "$code" && ids=1
+    # One jq: the file as it is (or none), the added findings numbered after its
+    # own, with their ids, and the record.
+    local -a src=(); [[ -s "$f" ]] && src=("$f")
+    out="$(jq -nrc --argjson a "$add" --arg reg "$reg" --arg code "$code" --argjson ids "$ids" "$_ZB_FINDING_IDS_JQ"'
+        ((try input catch null) // {} | if type == "object" then . else {} end) as $d
+        | ($d.data.findings // []) as $o | ([$o[]?.n? | numbers] | max // 0) as $m
+        | ($a | map({text: (if type == "object" then .text else . end | tostring)})) as $new
+        | (if $ids == 1 then ($new | zb_fids($reg; $code)) else {out: $new, r: null} end) as $z
+        | ($d | .data.findings = $o + ($z.out | to_entries | map({n: ($m + .key + 1)} + .value)) | tojson),
+          (if $z.r then ($z.r | tojson) else "-" end)' ${src[@]+"${src[@]}"} 2>/dev/null < /dev/null)" || out=""
+    { IFS= read -r j; IFS= read -r r; } <<< "$out"
+    [[ "$j" == "{"* ]] || return 1
+    atomic_write "$f" <<< "$j" 2>/dev/null || return 1
+    [[ "$r" == "{"* ]] && zb_findings_reg_put "${f%/*}" "$code" "$r"
+    return 0
 }
 
-# stage_findings_route_each <dir> <name> <default-topic> — stage_findings_route
+# stage_findings_route_each <dir> <name> <default-topic> [code] — stage_findings_route
 # for a finding more than one stage can fix (#2569, ADR-071 §1): a line
 # "<topic>,<topic><TAB><text>" goes to each topic's output; "report<TAB><text>"
 # goes to none — it is only in the stage's own result, for the report. Prints
 # the stage's own findings, numbered, each text once.
 stage_findings_route_each() {
-    local dir="$1" name="$2" def="$3" _in="" l t x tt routed="" own=""
+    local dir="$1" name="$2" def="$3" code="${4:-}" _in="" l t x tt routed="" own=""
     local re='^(report|(design|test|code)-findings(,(design|test|code)-findings)*)$'
     local -A seen=()
     local -a ts=()
@@ -158,6 +180,7 @@ stage_findings_route_each() {
                for tt in "${ts[@]}"; do routed+="$tt"$'\t'"$x"$'\n'; done ;;
         esac
     done <<< "$_in"
-    stage_findings_route "$dir" "$name" "$def" <<< "$routed" >/dev/null
-    if [[ -n "$own" ]]; then stage_findings_json <<< "$own"; else printf '[]'; fi
+    stage_findings_route "$dir" "$name" "$def" "$code" <<< "$routed" >/dev/null
+    # #2574: the same record, so a finding routed and listed has one id.
+    if [[ -n "$own" ]]; then stage_findings_json "$dir" "$code" <<< "$own"; else printf '[]'; fi
 }

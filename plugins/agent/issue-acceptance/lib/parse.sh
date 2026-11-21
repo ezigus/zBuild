@@ -42,8 +42,12 @@ _ia_fields() {
 # carried one with no usable answer — is _IA_UQ_PROBLEM, asked again once and
 # then costing only itself, never _IA_PROBLEM. An UNSURE: line, the form
 # before #2571, is still read.
+# #2574 (ADR-072 §4): [want], the items asked (space separated: requirement
+# and limit ids, `issue`, `unasked`): only their lines are read and required —
+# a line about an item not asked is set aside; with no [want], every item is.
 _ia_parse() {
-    local raw="$1" reqs="$2" issue="$3" repo="$4" lims="${5:-}"
+    local raw="$1" reqs="$2" issue="$3" repo="$4" lims="${5:-}" wm=0 want=" ${6:-} "
+    [[ $# -ge 6 ]] && wm=1
     _IA_UNMET=(); _IA_UNSURE=(); _IA_UNASKED=(); _IA_PROBLEM=""; _IA_QUOTED=()
     _IA_UNCLEAR=(); _IA_UQ_DROP=(); _IA_UQ_KEPT=(); _IA_UQ_BAD=(); _IA_UQ_PROBLEM=""
     local _uq_ans=""; local -a _uq_bad=()
@@ -68,6 +72,7 @@ _ia_parse() {
             # An empty id is no key: refused before the lookup (lens review on #2550).
             [[ -n "$name" ]] || { bad+=("a $kind: line names no limit"); continue; }
             if [[ -z "${ltext[$name]+x}" ]]; then bad+=("$kind names $name, which is not a limit listed"); continue; fi
+            (( wm )) && [[ "$want" != *" $name "* ]] && continue
             lseen["$name"]=1
             [[ "$kind" == KEPT ]] && continue
             _ia_fields "$rest"
@@ -79,6 +84,7 @@ _ia_parse() {
             continue
         fi
         if [[ "$l" =~ ^UNASKED:[[:space:]]*(.*)$ ]]; then
+            (( wm )) && [[ "$want" != *" unasked "* ]] && continue
             _ia_parse_unasked "${BASH_REMATCH[1]}" "$repo"; continue
         fi
         if [[ "$l" =~ ^UNCLEAR([[:space:]]|:) ]]; then
@@ -102,6 +108,10 @@ _ia_parse() {
         if [[ ${#order[@]} -gt 0 && -z "${rtext[$name]+x}" ]]; then
             bad+=("$kind names $name, which is not a requirement listed"); continue
         fi
+        if (( wm )); then
+            if [[ ${#order[@]} -gt 0 ]]; then [[ "$want" == *" $name "* ]] || continue
+            else [[ "$want" == *" issue "* ]] || continue; fi
+        fi
         seen["$name"]=1
         [[ "$kind" == MET ]] && continue
         _ia_fields "$rest"
@@ -114,8 +124,14 @@ _ia_parse() {
         else _IA_UNSURE+=("${fix:+$fix }$name: ${why:-it cannot be told} — $quote — ACCEPTED IF: $acc"); fi
     done <<< "$raw"
     local -a missing=()
-    for name in ${order[@]+"${order[@]}"}; do [[ -n "${seen[$name]+x}" ]] || missing+=("$name"); done
-    for name in "${!ltext[@]}"; do [[ -n "${lseen[$name]+x}" ]] || missing+=("$name"); done
+    for name in ${order[@]+"${order[@]}"}; do
+        (( wm )) && [[ "$want" != *" $name "* ]] && continue
+        [[ -n "${seen[$name]+x}" ]] || missing+=("$name")
+    done
+    for name in "${!ltext[@]}"; do
+        (( wm )) && [[ "$want" != *" $name "* ]] && continue
+        [[ -n "${lseen[$name]+x}" ]] || missing+=("$name")
+    done
     [[ ${#missing[@]} -gt 0 ]] && bad=("it has no line for ${missing[*]}" ${bad[@]+"${bad[@]}"})
     if [[ -n "${_IA_UQ_CARRIED:-}" ]]; then
         local _uq_p=""
@@ -124,7 +140,7 @@ _ia_parse() {
     fi
     for w in ${_uq_bad[@]+"${_uq_bad[@]}"}; do _IA_UQ_PROBLEM+="${_IA_UQ_PROBLEM:+; }$w"; done
     # With no list, an answer must still judge something: no line is no answer.
-    [[ ${#order[@]} -eq 0 && ${#seen[@]} -eq 0 && ${#bad[@]} -eq 0 ]] \
+    [[ ${#order[@]} -eq 0 && ${#seen[@]} -eq 0 && ${#bad[@]} -eq 0 && ( $wm -eq 0 || "$want" == *" issue "* ) ]] \
         && bad=("it has no MET:, UNMET: or UNSURE: line")
     if [[ ${#bad[@]} -gt 0 ]]; then
         local IFS=';'; _IA_PROBLEM="${bad[*]}"; _IA_PROBLEM="${_IA_PROBLEM//;/; }"

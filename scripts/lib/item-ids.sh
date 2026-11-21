@@ -225,3 +225,65 @@ zb_id_prefix_v() {
         [[ "$_l" =~ ^id_prefix:[[:space:]]*([A-Z]+) ]] && { _zip="${BASH_REMATCH[1]}"; return 0; }
     done < "$2"
 }
+
+# ─── Finding ids (#2574, ADR-068 §5) ─────────────────────────────────────────
+# A finding has an id in the same scheme: its stage's prefix and a code of its
+# own (<prefix>FND, or a tag a stage with several checks gives each, such as a
+# lens), a dash and a number. Answers named a finding by its place in the list
+# ("design finding 2"); the list changes between tries, so an answer could
+# attach to another finding. The same finding — the same text — keeps its id;
+# a new one takes the number after the highest its code has had, removed ones
+# counted, so a removed id never comes back. What each code has given is kept
+# beside the stage's outputs, in finding-ids-<code>.json: the stage's own
+# record, read and written by the shell (no program, ADR-065 §5); the numbering
+# is done in the one jq the writer already runs.
+
+# zb_finding_code_v <var> <manifest> [tag] — the code a stage's findings take:
+# its id_prefix and <tag> (FND when none); empty when it declares no prefix.
+zb_finding_code_v() {
+    local -n _zfc="$1"; local _zfc_p=""
+    zb_id_prefix_v _zfc_p "${2:-}"
+    _zfc=""; [[ -n "$_zfc_p" ]] && _zfc="$_zfc_p${3:-FND}"
+    return 0
+}
+
+# zb_findings_reg_v <var> <dir> <code> — the record of the ids <code> has
+# given, as JSON text ("{}" when there is none); rc 1 when <dir> or <code> is
+# missing or the code is not of the id form.
+zb_findings_reg_v() {
+    local -n _zfr="$1"; _zfr="{}"
+    [[ -n "${2:-}" && "${3:-}" =~ ^[A-Z][A-Z0-9]{2,23}$ ]] || return 1
+    [[ -s "$2/finding-ids-$3.json" ]] && { IFS= read -r -d '' _zfr < "$2/finding-ids-$3.json" || true; }
+    return 0
+}
+
+# zb_findings_reg_put <dir> <code> <json> — keep the record, written whole
+# (atomic_write); one that cannot be written leaves the event
+# stage.finding_ids.write_failed, and the next numbering starts from the last record
+# kept. A record cut short is read as none (fromjson below), never as an error.
+zb_findings_reg_put() {
+    [[ -n "${1:-}" && "${2:-}" =~ ^[A-Z][A-Z0-9]{2,23}$ && "${3:-}" == "{"* ]] || return 0
+    local _zfp_ok=1
+    if declare -F atomic_write >/dev/null 2>&1; then
+        atomic_write "$1/finding-ids-$2.json" <<< "$3" 2>/dev/null || _zfp_ok=0
+    else
+        printf '%s\n' "$3" > "$1/finding-ids-$2.json" 2>/dev/null || _zfp_ok=0
+    fi
+    (( _zfp_ok )) && return 0
+    declare -F eb_emit_event >/dev/null 2>&1 && eb_emit_event stage.finding_ids.write_failed "code=$2" "dir=$1" >/dev/null 2>&1
+    return 0
+}
+
+# The jq that gives each finding of an array its id: zb_fids($reg; $code) takes
+# the record as text and gives {out: <findings with .id>, r: <the record>}. A
+# text that comes twice in one list takes a new id the second time.
+# shellcheck disable=SC2016  # jq text, not shell
+_ZB_FINDING_IDS_JQ='def zb_fids($reg; $code):
+  (($reg | try fromjson catch {}) | if type == "object" then . else {} end) as $r0
+  | reduce .[] as $f ({r: {highest: ($r0.highest // 0), ids: ($r0.ids // {})}, out: [], used: {}};
+      (($f | if type == "object" then .text else . end) | tostring) as $t
+      | (.r.ids[$t] // null) as $have
+      | if $have != null and (.used[$have] | not) then .out += [$f + {id: $have}] | .used[$have] = true
+        else (.r.highest + 1) as $n | "\($code)-\($n)" as $id
+          | .r.highest = $n | (if .r.ids[$t] == null then .r.ids[$t] = $id else . end)
+          | .out += [$f + {id: $id}] | .used[$id] = true end);'

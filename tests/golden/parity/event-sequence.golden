@@ -71,6 +71,7 @@ model.route
 model.outcome
 stage.io.captured
 judge.kept.saved
+judge.kept.saved
 redaction.applied
 redaction.applied
 model.route

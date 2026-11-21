@@ -45,11 +45,14 @@ _ta_write_result() {
     # ANSWER lines (_ta_collect_answers).
     local _ans; _ans="$(printf '%s\n' "${_TA_ANSWERS[@]+"${_TA_ANSWERS[@]}"}" | jq -Rnc '[inputs | select(length > 0)]' 2>/dev/null || true)"
     [[ -n "$_ans" ]] || _ans="[]"
-    _data="$(jq -nc --argjson n "${n:-0}" --argjson o "${_owned:-[]}" --argjson t "$_tfh" --argjson f "$fnd" --argjson a "$_ans" --arg e "$ends" \
+    # #2574: each answered finding's text travels with the answer.
+    local _afj="{}"; zb_answers_findings_json_v _afj _TA_ANSWERS
+    _data="$(jq -nc --argjson n "${n:-0}" --argjson o "${_owned:-[]}" --argjson t "$_tfh" --argjson f "$fnd" --argjson a "$_ans" --arg e "$ends" --argjson af "$_afj" \
         --argjson fs "${_ZB_ANS_SHOWN:-0}" --arg un "${_ZB_ANS_MISSING:-}" \
         '{specs_covered: $n, owned_files: $o, testfiles: $t}
          + (if ($f | length) > 0 then {findings: $f} else {} end)
          + (if ($a | length) > 0 then {answers: $a} else {} end)
+         + (if ($af | length) > 0 then {answer_findings: $af} else {} end)
          + {findings_shown: $fs}
          + (if $un != "" then {unanswered: ($un | split("\n"))} else {} end)
          + (if $e == "ends_round" then {ends_round: true} else {} end)')"

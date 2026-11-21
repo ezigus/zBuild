@@ -39,6 +39,9 @@ source "$_IA_ROOT/scripts/lib/judge.sh"
 source "$_IA_ROOT/scripts/lib/stage-handoff.sh"
 # shellcheck source=./lib/parse.sh
 source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/lib/parse.sh"
+# #2574: a verdict kept per item.
+# shellcheck source=./lib/items.sh
+source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/lib/items.sh"
 # shellcheck source=../../../scripts/lib/merge-base.sh
 declare -F zbuild_change_files_v >/dev/null 2>&1 || source "$_IA_ROOT/scripts/lib/merge-base.sh"
 # shellcheck source=../../../scripts/lib/router-rc-classify.sh
@@ -49,6 +52,8 @@ source "$_IA_ROOT/scripts/lib/persona-resolve.sh" 2>/dev/null || true
 source "$_IA_ROOT/core/plugin-registry/persona.sh" 2>/dev/null || true
 
 _ia_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
+# #2574 (ADR-068 §5): the code its findings' ids take (IAFND).
+_IA_FCODE=""; zb_finding_code_v _IA_FCODE "${BASH_SOURCE[0]%/*}/manifest.yaml"
 
 # intake writes the literal "GitHub issue #<N>" when the fetch fails (#1804);
 # judging a change against that must not read as satisfied (spec-coverage's rule).
@@ -59,7 +64,25 @@ _ia_issue_is_placeholder() {
     [[ "$t" =~ ^GitHubissue#[0-9]+$ ]]
 }
 
+# _ia_prompt <issue> <acc> <change> <test_verdict> <reqs> [held] [lims] [terms]
+#            [reverse] [kept] — [reverse] 0: the reverse question keeps its
+# verdict and is not asked; [kept]: the items that keep theirs (#2574).
 _ia_prompt() {
+    local _rev_q="" _kept=""
+    if [[ "${9:-1}" != 0 ]]; then
+        IFS= read -r -d '' _rev_q <<'REV' || true
+Then answer the reverse question: each part of the DIFF that no requirement asks
+for — not the ISSUE, not ISSUE REQUIREMENTS, not REQUIREMENTS. A test for a
+requirement, and a file that test needs, are asked for by that requirement.
+Write one line for each part nothing asks for:
+
+UNASKED: <what the change does> | WHY: <why no requirement asks for it> | ACCEPTED IF: <the change without it, or the requirement that would ask for it> | QUOTE: <file> | <one line of the code that does it>
+
+Its QUOTE is the code that does it. When every part of the DIFF is asked for,
+write one line: UNASKED: none
+REV
+    fi
+    [[ -n "${10:-}" ]] && _kept=$'\n'"ALREADY JUDGED — each keeps the verdict it was given; write no line for them:"$'\n'"${10}"$'\n'
     cat <<EOF
 You are checking whether a finished CHANGE does what an ISSUE asked for.
 
@@ -97,16 +120,7 @@ ISSUE, or the code that shows it: <file> | <one line from it>. Copy it as it
 is, with no quote marks around it: it is checked, and one that is not there
 makes the answer unusable.
 
-Then answer the reverse question: each part of the DIFF that no requirement asks
-for — not the ISSUE, not ISSUE REQUIREMENTS, not REQUIREMENTS. A test for a
-requirement, and a file that test needs, are asked for by that requirement.
-Write one line for each part nothing asks for:
-
-UNASKED: <what the change does> | WHY: <why no requirement asks for it> | ACCEPTED IF: <the change without it, or the requirement that would ask for it> | QUOTE: <file> | <one line of the code that does it>
-
-Its QUOTE is the code that does it. When every part of the DIFF is asked for,
-write one line: UNASKED: none
-${7:+
+${_rev_q}${7:+
 Then judge each LIMIT — something the issue says the change must not do — one
 line for each, by its id:
 
@@ -168,7 +182,7 @@ $1
 
 ISSUE REQUIREMENTS:
 ${5:-<none listed>}
-
+${_kept}
 REQUIREMENTS:
 $2
 ${7:+
@@ -221,19 +235,21 @@ _ia_write() {
         ($x[] | tostring | (if test("^\\[fix-test\\]") then "test-findings\t" else "code-findings\t" end)
             + "The change does this and no requirement asks for it: " + sub("^\\[fix-test\\][[:space:]]*"; "")),
         ($q[] | "design-findings,test-findings,code-findings\tThe issue is unclear here, and issue-acceptance judged by the assumption: " + .)' \
-        <<< "$u" 2>/dev/null | stage_findings_route_each "$dir" issue-acceptance design-findings)"
+        <<< "$u" 2>/dev/null | stage_findings_route_each "$dir" issue-acceptance design-findings "$_IA_FCODE")"
     u="$(jq -c 'map(tostring | sub("^\\[fix-(code|design)\\][[:space:]]*"; ""))' <<< "$u" 2>/dev/null || printf '%s' "$u")"
     [[ "$s" == "[]" ]] || s="$(jq -c 'map(tostring | sub("^\\[fix-(code|design)\\][[:space:]]*"; ""))' <<< "$s" 2>/dev/null || printf '%s' "$s")"
     x="$(jq -c 'map(tostring | sub("^\\[fix-test\\][[:space:]]*"; ""))' <<< "$x" 2>/dev/null || printf '%s' "$x")"
     # ADR-068 §6: what it did about each finding it was given (_IA_ANSWERS),
     # and how many it was shown when it was asked this time.
-    local _data _ia_a="[]"
+    local _data _ia_a="[]" _ia_af="{}"
     [[ ${#_IA_ANSWERS[@]} -gt 0 ]] && _ia_a="$(_ia_json_list "${_IA_ANSWERS[@]}")"
-    _data="$(jq -nc --argjson u "$u" --argjson s "$s" --argjson x "$x" --argjson fnd "${_fnd:-[]}" --arg j "$j" --argjson a "$_ia_a" --argjson uq "${_IA_UQ_JSON:-[]}" \
-        --argjson ud "${_IA_UQ_DROPPED:-[]}" --arg un2 "${_IA_UQ_NOTES:-}" \
+    zb_answers_findings_json_v _ia_af _IA_ANSWERS
+    _data="$(jq -nc --argjson u "$u" --argjson s "$s" --argjson x "$x" --argjson fnd "${_fnd:-[]}" --arg j "$j" --argjson a "$_ia_a" --argjson uq "${_IA_UQ_JSON:-[]}" --argjson af "$_ia_af" \
+        --argjson ud "${_IA_UQ_DROPPED:-[]}" --arg un2 "${_IA_UQ_NOTES:-}${_IA_HANDOFF_NOTES:-}" \
         --arg known "${_IA_ANS_KNOWN:-0}" --argjson fs "${_ZB_ANS_SHOWN:-0}" --arg un "${_ZB_ANS_MISSING:-}" \
         '{unmet: $u, unsure: $s, findings: $fnd} + (if ($x | length) > 0 then {unasked: $x} else {} end) + (if $j == "" then {} else {judgement: $j} end)
          + (if ($a | length) > 0 then {answers: $a} else {} end)
+         + (if ($af | length) > 0 then {answer_findings: $af} else {} end)
          + (if ($uq | length) > 0 then {unclear: $uq} else {} end)
          + (if ($ud | length) > 0 then {unclear_dropped: $ud} else {} end)
          + ($un2 | split("\n") | map(select(length > 0)) | if length > 0 then {notes: .} else {} end)
@@ -259,8 +275,10 @@ _ia_write() {
 # ADR-054 §4: rc is binary; the verdict lives in the result.
 _IA_ANSWERS=() _IA_ANS_KNOWN=0
 issue_acceptance_run() {
+    # The check splits its item lists on blanks, whatever its caller's IFS.
+    local IFS=$' \t\n'
     local stage_id="${1:-issue-acceptance}"; : "$stage_id"
-    _IA_ANSWERS=(); _IA_ANS_KNOWN=0
+    _IA_ANSWERS=(); _IA_ANS_KNOWN=0; _IA_HANDOFF_NOTES=""
     local state_file="${2:-}"
     local art="${ZBUILD_ARTIFACT_DIR:-}"
     [[ -n "$art" ]] || { [[ -n "$state_file" ]] && art="$(dirname "$state_file")/artifacts"; }
@@ -271,6 +289,7 @@ issue_acceptance_run() {
     _ia_unclear_carried_load "${art%/}/issue-acceptance-result.json"
 
     # #2364: each piece of earlier work found by what it contains.
+    # shellcheck disable=SC2034  # change and test_verdict are read by _ia_judge (lib/items.sh)
     local design_f diff_f tests_f issue="" acc="" change="" test_verdict=""
     issue="$(earlier_issue_text "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
     design_f="$(earlier_acceptance_contract "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
@@ -301,6 +320,7 @@ issue_acceptance_run() {
     # what the change is, for the kept answer.
     local _change_fp=""
     zbuild_change_files_v change _change_fp "$diff_f" "$_root"
+    # shellcheck disable=SC2034  # read by _ia_judge
     [[ -n "$tests_f" && -f "$tests_f" ]] && test_verdict="$(jq -r '.outcome // empty' "$tests_f" 2>/dev/null || true)"
 
     local tier="T2"
@@ -314,40 +334,30 @@ issue_acceptance_run() {
     declare -F acceptance_requirements_list >/dev/null 2>&1 && _reqs="$(acceptance_requirements_list "$_req_f")"
     # #2550 (ADR-072 §3): what the change must not do; #2555 (ADR-070): the issue's terms, word for word.
     declare -F acceptance_limits_list >/dev/null 2>&1 && { _lims="$(acceptance_limits_list "$_req_f")"; acceptance_terms_v _terms "$_req_f"; }
-    # #2464, #2569 (ADR-072 §4 §5): the answer is kept while what it judged is
-    # unchanged; a stage's answer to one of its findings has it judge again,
-    # shown the finding and the answer.
-    local _ans="" _held="" _ia_l; local -a _ia_lf=()
-    judge_answers_to_v _ans "$art" issue-acceptance issue-acceptance-design issue-acceptance-test issue-acceptance-code
-    for _ia_l in "" -design -test -code; do _ia_lf+=("issue-acceptance$_ia_l=${art%/}/issue-acceptance$_ia_l-result.json"); done
-    judge_held_entries_v _held "$_ans" "${_ia_lf[@]}"
-    local kf="${art%/}/issue-acceptance-judged.json" eng fp kept="" _root_q="$_root"
-    judge_engine_v eng
-    judge_fp_v fp "$eng"$'\n'"$issue"$'\n'"$_reqs"$'\n'"$_lims"$'\n'"$_terms"$'\n'"$acc"$'\n'"$_change_fp"$'\n'"$test_verdict"$'\n'"$_ans"$'\n'"$_IA_UQ_CARRIED"
-    judge_kept_get_v kept "$kf" issue "$fp" "${_ans:+1}"
-    if [[ -n "$kept" ]]; then
-        _ia_parse "$kept" "$_reqs" "$issue" "$_root_q" "$_lims"
-        # A kept answer was not asked this time: its answers stand as given.
-        zb_answers_collect_v _IA_ANSWERS "$kept"
-        if [[ -z "$_IA_PROBLEM" ]]; then
-            _ia_finish "$art"
-            return 0
-        fi
-    fi
+    # #2464, #2569, #2574 (ADR-072 §4 §5): a verdict is kept per item while
+    # what it judged is unchanged; only the items whose verdict no longer holds
+    # are asked (lib/items.sh).
+    local _root_q="$_root"
+    _ia_judge
+}
 
-    judge_held_block_v _held "$_held"
-    local _uqb=""; zb_unclear_judge_block_v _uqb "$_IA_UQ_CARRIED"
-    [[ -n "$_uqb" ]] && _held+=$'\n'"$_uqb"$'\n'
-    _task="$(_ia_prompt "$issue" "${acc:-<none>}" "${change:-<no change found>}" "${test_verdict:-unknown}" "$_reqs" "$_held" "$_lims" "$_terms")"
-    _framed="$_task"
+# _ia_call <task> <want> — the one call for the items in <want> (space
+# separated), in _ia_judge's scope: asked again once when its answer cannot be
+# used (ADR-060 §6). Sets _IA_RAW (the reply, read whole), _IA_DEPS (the files
+# the call opened) and _IA_ANSWERS. rc 1 when the stage's result is already
+# written (a failed call, an answer that cannot be used), with _IA_STOP_RC the
+# rc the stage returns.
+_IA_RAW="" _IA_DEPS=() _IA_STOP_RC=0
+_ia_call() {
+    local _task="$1" _want="$2" _framed _composed
+    _IA_RAW=""; _IA_DEPS=(); _IA_STOP_RC=0
     # ADR-067 §8: the stage's three parts and the engine's blocks, in the one
     # prompt order. A prompt that cannot be composed is not sent.
-    local _composed
     # #2458: it judges, so it composes fresh — no notes, and no rule to confirm earlier work.
-    if ! _composed="$(stage_prompt_compose_parts --fresh "$_framed")"; then
+    if ! _composed="$(stage_prompt_compose_parts --fresh "$_task")"; then
         _ia_write "$art" misconfigured \
             "the prompt could not be composed — the engine's blocks are missing; the change was not judged"
-        return 1
+        _IA_STOP_RC=1; return 1
     fi
     _framed="$_composed"
     local _raw="" rc=0 _ask="$_framed" _try _opened _first=""
@@ -367,16 +377,15 @@ issue_acceptance_run() {
         # No `| head` (#1886): capture in full, trim in bash. #2460: a wrapped
         # line is read whole.
         zb_reply_join_v _raw "$_raw"
-        _ia_parse "$_raw" "$_reqs" "$issue" "$_root_q" "$_lims"
+        _ia_parse "$_raw" "$_reqs" "$issue" "$_root_q" "$_lims" "$_want"
         # #2571: what is wrong with a question is asked again once, then costs
         # only that question; a re-ask answered worse leaves the first answer.
         [[ -z "$_IA_PROBLEM" && ( -z "$_IA_UQ_PROBLEM" || $_try -eq 2 ) ]] && break
         [[ -z "$_IA_PROBLEM" ]] && _first="$_raw"
         _ask="$(stage_prompt_reask "$_framed" "$_IA_PROBLEM${_IA_PROBLEM:+${_IA_UQ_PROBLEM:+; }}$_IA_UQ_PROBLEM" "$_raw")"
     done
-    [[ $rc -eq 0 && -n "$_IA_PROBLEM" && -n "$_first" ]] && { _raw="$_first"; _ia_parse "$_raw" "$_reqs" "$issue" "$_root_q" "$_lims"; }
-    local -a _deps=()
-    judge_opened_v _deps "$_opened"; rm -f "$_opened" 2>/dev/null
+    [[ $rc -eq 0 && -n "$_IA_PROBLEM" && -n "$_first" ]] && { _raw="$_first"; _ia_parse "$_raw" "$_reqs" "$issue" "$_root_q" "$_lims" "$_want"; }
+    judge_opened_v _IA_DEPS "$_opened"; rm -f "$_opened" 2>/dev/null
     if [[ $rc -ne 0 ]]; then
         local _v="" _reason="" _disp="broken"
         declare -f _llm_router_classify >/dev/null 2>&1 && _llm_router_classify "$rc" _v _reason 2>/dev/null
@@ -384,20 +393,17 @@ issue_acceptance_run() {
             && _disp="$(router_reason_disposition "${_reason:-router_rc_nonzero}")"
         _ia_write "$art" "$_disp" \
             "the model call failed (${_reason:-rc=$rc}) — the change was not judged"
-        return 1
+        _IA_STOP_RC=1; return 1
     fi
     if [[ -n "$_IA_PROBLEM" ]]; then
         # ADR-054 §6a: the stage ran but its output cannot be used — retry.
         _ia_write "$art" unusable \
             "the answer could not be used, even when asked again: $_IA_PROBLEM — the change was not judged"
-        return 0
+        _IA_STOP_RC=0; return 1
     fi
     # ADR-068 §6: a finding it was shown and did not answer stays open.
     _IA_ANSWERS=(); zb_answers_finish _IA_ANSWERS "$_framed" "$_raw"; _IA_ANS_KNOWN=1
-    local _q
-    for _q in ${_IA_QUOTED[@]+"${_IA_QUOTED[@]}"}; do _deps+=("$_root_q/$_q"); done
-    judge_kept_put_one "$kf" issue "$fp" "$_raw" ${_deps[@]+"${_deps[@]}"}
-    _ia_finish "$art"
+    _IA_RAW="$_raw"
     return 0
 }
 

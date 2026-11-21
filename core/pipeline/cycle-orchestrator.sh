@@ -1529,6 +1529,9 @@ _cycle_iter_dispatch() {
         fi
         _cycle_emit_member_dispatch_start "$_cyc_pos" "$s" "$_member_kind_pre"
         export ZBUILD_CYCLE_ITER="$iter"
+        # #2574 (ADR-072 §5): a member knows its loop's last round — a part
+        # handed to another stage does not wait then.
+        export ZBUILD_CYCLE_MAX_ITER="${_CYCLE_MAX_ITER:-}"
         export ZBUILD_CYCLE_ID="${_CYCLE_TRAP_CYCLE_ID}"
         [[ "${_CYCLE_NEST_DEPTH:-0}" -eq 0 ]] && export ZBUILD_OUTER_ROUND="$iter"
         # Wave 19-B (#718): N-level recursive seq label via prefix accumulation.

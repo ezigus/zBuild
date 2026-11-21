@@ -103,7 +103,7 @@ assert_eq "[E4] ...and is not told the ids are R-1, R-2" "0" "$_num"
 
 # ── E5 ───────────────────────────────────────────────────────────────────────
 assert_contains "[E5] design is told it may answer its own check's finding" "$_p" \
-    "ANSWER design finding <n>: wrong — <why>"
+    "ANSWER <its id>: wrong — <why>"
 REPLY=$'Wrote the design.\nANSWER design finding 1: wrong — DSDOCW-1 is the whole of RQDOCS-1'
 _run "" "Write the docs."
 assert_eq "[E5] the answer is kept in design's result" \

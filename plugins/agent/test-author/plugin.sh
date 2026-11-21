@@ -119,10 +119,12 @@ _ta_drop_stale_tags() {
     return 0
 }
 
-# _ta_collect_answers <reply> [prompt] — the model's `ANSWER <the finding as
-# listed>: …` lines, added to _TA_ANSWERS without the word ANSWER; a finding
-# [prompt] showed it and it did not answer stays open (ADR-068 §6).
+# _ta_collect_answers <reply> [prompt] — the model's `ANSWER <its id>: …`
+# lines, added to _TA_ANSWERS without the word ANSWER; a finding [prompt]
+# showed it and it did not answer stays open (ADR-068 §6).
 _TA_ANSWERS=()
+# #2574 (ADR-068 §5): the code its findings' ids take (TAFND).
+_TA_MANIFEST="${BASH_SOURCE[0]%/*}/manifest.yaml"; _TA_FCODE=""; zb_finding_code_v _TA_FCODE "$_TA_MANIFEST"
 # #2460: a wrapped answer is read whole, and a finding answered again keeps
 # only its latest answer (#2464: the one reader build and design use too).
 _ta_collect_answers() { zb_answers_finish _TA_ANSWERS "${2:-}" "${1:-}"; }
@@ -317,9 +319,9 @@ ${written_block}
 If every requirement below already has its test and no finding is open for you, do not rewrite them: confirm they test what their requirement demands and end with LOOP_COMPLETE.
 
 Findings from other stages about your tests are yours (under Previous work): a test that already passes on the code from before this change, a test that fails on the new code, a test that flags code that already meets its requirement, a test file far slower than the rest, a test build says is wrong (build-tests findings), with its reason. Fix the test from its requirement, or say why the test is right. When you are told a test of yours fails, run that test file and find out why before you change it: fix what is wrong, and never delete an assertion to make a test pass. Answer each such finding on its own line, before LOOP_COMPLETE:
-ANSWER <the finding as listed>: done — <what you changed>
-ANSWER <the finding as listed>: wrong — <why the test is right>
-ANSWER <the finding as listed>: not mine — <why no test of yours can fix it>
+ANSWER <its id>: done — <what you changed>
+ANSWER <its id>: wrong — <why the test is right>
+ANSWER <its id>: not mine — <why no test of yours can fix it>
 
 ${ZB_UNCLEAR_NOT_YOURS}
 
@@ -410,7 +412,7 @@ EOF
         declare -f assertion_integrity_record >/dev/null 2>&1 && assertion_integrity_record "$art" "$repo"
         _ta_commit_testfiles "$design" "$repo" "test-author: acceptance assertions for $n SPEC(s); a requirement the old code already meets"
         _ta_emit "test_author.already_done" "specs=${_TA_DONE_IDS// /,}"
-        local _ad_fj; _ad_fj="$(stage_findings_json <<< "$_TA_DONE_VERIFIED")"
+        local _ad_fj; _ad_fj="$(stage_findings_json "$art" "$_TA_FCODE" <<< "$_TA_DONE_VERIFIED")"
         _ta_write_result "$art" "fail" \
             "${_TA_DONE_IDS// /, } already met by the code from before this change — its status must change" "$n" \
             "$_ad_fj" ends_round
@@ -449,7 +451,7 @@ EOF
         local _ut_first="${_TA_CORR_UNTESTABLE%%$'\n'*}"
         declare -f assertion_integrity_record >/dev/null 2>&1 && assertion_integrity_record "$art" "$repo"
         _ta_commit_testfiles "$design" "$repo" "test-author: acceptance assertions for $n SPEC(s); a SPEC cannot be tested"
-        local _ut_fj; _ut_fj="$(stage_findings_json <<< "$_TA_CORR_UNTESTABLE")"
+        local _ut_fj; _ut_fj="$(stage_findings_json "$art" "$_TA_FCODE" <<< "$_TA_CORR_UNTESTABLE")"
         _ta_write_result "$art" "fail" \
             "${_ut_first%%[ :]*} cannot be proven by any test — design must rewrite it" "$n" \
             "$_ut_fj" ends_round
@@ -469,7 +471,7 @@ EOF
         _ta_commit_testfiles "$design" "$repo" "test-author: acceptance assertions for $n SPEC(s), still failing their check"
         _ta_write_result "$art" "unusable" \
             "changed $_TA_CHANGED test file(s); ${#_TA_CORR_FINDINGS[@]} finding(s) about its assertions are open — the next try fixes them" "$n" \
-            "$(printf '%s\n' "${_TA_CORR_FINDINGS[@]}" | stage_findings_json)"
+            "$(printf '%s\n' "${_TA_CORR_FINDINGS[@]}" | stage_findings_json "$art" "$_TA_FCODE")"
         return 1
     fi
 

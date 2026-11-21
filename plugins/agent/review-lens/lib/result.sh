@@ -63,3 +63,20 @@ _review_lens_interrupt_handler() {
     # subshell returns 130. Record the write so the rc=130 branch skips its own.
     _rl_interrupted=1
 }
+
+# Moved from plugin.sh (#2574: under 500 lines).
+# ─── _review_lens_id ─────────────────────────────────────────────────────────
+# Resolve the lens identity: explicit override, else the running stage id, else
+# the manifest default. A leading "lens-"/"lens_"/"review-lens-" prefix on a
+# stage id is stripped so a stage `lens_security` maps to the `security` charter.
+_review_lens_id() {
+    local lens="${ZBUILD_REVIEW_LENS_ID:-${ZBUILD_CURRENT_STAGE:-}}"
+    lens="${lens#review-lens-}"; lens="${lens#lens-}"; lens="${lens#lens_}"
+    printf '%s' "$lens"
+}
+
+# _rl_summary_head_v <var> <lens> <normalized-json> [body-var] — #2476: what
+# the lens found, or that it found nothing (stage_lens_findings_head_v).
+_rl_summary_head_v() {
+    stage_lens_findings_head_v "$1" "$3" "reviewed the change through the $2 lens: found no problem" "${4:-}"
+}
