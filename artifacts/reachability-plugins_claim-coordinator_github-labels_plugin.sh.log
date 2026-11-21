@@ -73,7 +73,7 @@
 [event-bus] WARN: unknown event type 'plugin.release.start' (run_id=run-dscla2-123)
 [event-bus] WARN: unknown event type 'plugin.release.complete' (run_id=run-dscla2-123)
   [38;2;248;113;113m✗[0m [DSCLA-21] coordinator's release hook was called (zbuild:claimed removed from claim store)
-    [2mzbuild:claimed still present in /home/runner/work/_temp/zbuild-state/scratch/test/claim-coordinator-unit.0abhMc/claim-store/2021/labels.txt after zbuild_claim_release[0m
+    [2mzbuild:claimed still present in /home/runner/work/_temp/zbuild-state/scratch/test/claim-coordinator-unit.BWVy4D/claim-store/2021/labels.txt after zbuild_claim_release[0m
   [38;2;74;222;128m✓[0m [DSCLA-21] gh is not invoked directly within zbuild_claim_release
 
 [2m  ──────────────────────────────────────────[0m

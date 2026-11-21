@@ -1,0 +1,26 @@
+{
+  "stage": "test",
+  "cycle_iter": 2,
+  "attempt": 5,
+  "rc": "0",
+  "generated_at": "2026-11-21T05:46:52Z",
+  "files": 7,
+  "outputs": {
+    "test-errors.log": "unchanged",
+    "test-results.json": "changed",
+    "test-failures-summary.md": "changed",
+    "test-output.log": "changed",
+    "test-timing.log": "changed",
+    "test-code-result.json": "absent",
+    "test-test-result.json": "absent",
+    "acceptance-gate-result.json": "changed",
+    "acceptance-gate-design-result.json": "absent",
+    "acceptance-gate-test-result.json": "absent",
+    "acceptance-gate-code-result.json": "absent",
+    "acceptance-summary.txt": "changed",
+    "acceptance-gate-errors.log": "absent",
+    "__notes__": "absent",
+    "__cutoff__": "absent"
+  },
+  "progress": true
+}

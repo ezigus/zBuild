@@ -1,1 +1,76 @@
-{"test_output":"\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 616/616 passed (5 skipped)\nintegration: 264/264 passed\ne2e: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zocGNj/tests/e2e/parity-local-vs-ci-test.sh\n\n  CI/CLI parity — engine behavior is environmentally agnostic (ADR-010)\n\n  ✓ fixture script exists and is executable\n  ✓ fixture runs exit 0 in local mode\n  ✓ pipeline-state.json created (local)\n  ✓ events.jsonl created (local)\n  ✓ fixture runs exit 0 in CI mode\n  ✓ local run pipeline status=complete\n  ✓ CI run pipeline status=complete\n  ✓ event type sequence identical in local and CI modes\n  ✓ stage_statuses identical in local and CI modes\n  [golden] DIFF for parity/event-sequence:\n2a3,4\n> plugin.claim.start\n> plugin.claim.complete\n114a117,118\n> plugin.release.start\n> plugin.release.complete\n  ✗ event sequence matches golden snapshot\n    golden mismatch (run UPDATE_GOLDEN=1 to regenerate)\n  ✓ full pipeline-state.json identical after normalization\n  ✓ artifact filename list identical across modes\n  ✓ all artifact contents identical across modes (sha256, timestamps normalized)\n  ✓ normalized state.json matches golden snapshot\n  ✓ artifact filename list matches golden snapshot\n\n\n  1 of 15 tests failed\n\n  ✗ event sequence matches golden snapshot\n\ne2e: 9/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 916/917 passed (5 skipped)","run_mode":"full","exit_code":1,"data":{"exit_code":1,"passed":916,"failed":1,"test_output":"\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 616/616 passed (5 skipped)\nintegration: 264/264 passed\ne2e: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zocGNj/tests/e2e/parity-local-vs-ci-test.sh\n\n  CI/CLI parity — engine behavior is environmentally agnostic (ADR-010)\n\n  ✓ fixture script exists and is executable\n  ✓ fixture runs exit 0 in local mode\n  ✓ pipeline-state.json created (local)\n  ✓ events.jsonl created (local)\n  ✓ fixture runs exit 0 in CI mode\n  ✓ local run pipeline status=complete\n  ✓ CI run pipeline status=complete\n  ✓ event type sequence identical in local and CI modes\n  ✓ stage_statuses identical in local and CI modes\n  [golden] DIFF for parity/event-sequence:\n2a3,4\n> plugin.claim.start\n> plugin.claim.complete\n114a117,118\n> plugin.release.start\n> plugin.release.complete\n  ✗ event sequence matches golden snapshot\n    golden mismatch (run UPDATE_GOLDEN=1 to regenerate)\n  ✓ full pipeline-state.json identical after normalization\n  ✓ artifact filename list identical across modes\n  ✓ all artifact contents identical across modes (sha256, timestamps normalized)\n  ✓ normalized state.json matches golden snapshot\n  ✓ artifact filename list matches golden snapshot\n\n\n  1 of 15 tests failed\n\n  ✗ event sequence matches golden snapshot\n\ne2e: 9/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 916/917 passed (5 skipped)","diff_applied":false,"test_cmd":"npm test","run_mode":"full","timing":{"tiers":{"lint":113297,"e2e":73216,"golden":6060,"unit":318738,"integration":245017},"slowest_files":[{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zocGNj/tests/e2e/fork-budget-test.sh","ms":66222},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zocGNj/tests/integration/core-pipeline-runner-test.sh","ms":45278},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zocGNj/tests/integration/run-timed-out-test.sh","ms":37382},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zocGNj/tests/integration/runner-release-exit-paths-test.sh","ms":34214},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zocGNj/tests/unit/stage-stop-on-signal-test.sh","ms":26006},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zocGNj/tests/e2e/parity-local-vs-ci-test.sh","ms":25962},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zocGNj/tests/unit/run-status-comment-pages-test.sh","ms":25758},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zocGNj/tests/integration/stop-run-on-fail-test.sh","ms":25656},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zocGNj/tests/integration/leaf-verdict-halts-test.sh","ms":25197},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.zocGNj/tests/integration/cycle-acceptance-terminal-failure-test.sh","ms":25121}]},"tree_sha":"3d130a7930c027deedb351cc72eb7916b551c056","failures":[{"file":"tests/e2e/parity-local-vs-ci-test.sh","reason":"✗ event sequence matches golden snapshot — golden mismatch (run UPDATE_GOLDEN=1 to regenerate) (and 1 more failing check in this file)","points_at":[]}],"findings":[{"n":1,"text":"tests/e2e/parity-local-vs-ci-test.sh fails: ✗ event sequence matches golden snapshot — golden mismatch (run UPDATE_GOLDEN=1 to regenerate) (and 1 more failing check in this file)","id":"TEFND-2"}]},"result_contract":3,"outcome":"fail","reason":"1 of 917 tests failed; the acceptance check failed: the acceptance check failed — config/shape-change-paths.txt was put back to its old version on its own and every test still passed, and the design names it nowhere — not in a step, a SPEC, WIRING or its text: nothing asks for this change — take it out, or name what asks for it"}
+{
+  "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 616/616 passed (5 skipped)\nintegration: 264/264 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 917/917 passed (5 skipped)",
+  "run_mode": "targeted+full",
+  "exit_code": 0,
+  "data": {
+    "exit_code": 0,
+    "passed": 917,
+    "failed": 0,
+    "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 616/616 passed (5 skipped)\nintegration: 264/264 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 917/917 passed (5 skipped)",
+    "diff_applied": false,
+    "test_cmd": "npm test",
+    "run_mode": "targeted+full",
+    "timing": {
+      "tiers": {
+        "lint": 111616,
+        "e2e": 73922,
+        "golden": 5601,
+        "unit": 286489,
+        "integration": 254410
+      },
+      "slowest_files": [
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.xvfZcL/tests/e2e/fork-budget-test.sh",
+          "ms": 67650
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.xvfZcL/tests/integration/core-pipeline-runner-test.sh",
+          "ms": 44997
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.xvfZcL/tests/integration/run-timed-out-test.sh",
+          "ms": 37704
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.xvfZcL/tests/integration/runner-release-exit-paths-test.sh",
+          "ms": 34596
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.xvfZcL/tests/integration/stop-run-on-fail-test.sh",
+          "ms": 27790
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.xvfZcL/tests/integration/leaf-verdict-halts-test.sh",
+          "ms": 27345
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.xvfZcL/tests/integration/cycle-acceptance-terminal-failure-test.sh",
+          "ms": 27185
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.xvfZcL/tests/integration/acceptance-gate-harness-hermeticity-test.sh",
+          "ms": 26395
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.xvfZcL/tests/e2e/parity-local-vs-ci-test.sh",
+          "ms": 26034
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.xvfZcL/tests/integration/cycle-on-max-pipeline-continues-test.sh",
+          "ms": 25799
+        }
+      ]
+    },
+    "tree_sha": "bc20e74a75cc1ac7bf60b6a6e666f4f1ab479d84",
+    "targeted": {
+      "test_cmd": "bash scripts/run-tests.sh --files 'plugins/agent/build/tests/build-step-answers-test.sh' 'plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh' 'tests/e2e/parity-local-vs-ci-test.sh' 'tests/integration/teardown-repeat-signal-test.sh' 'tests/unit/checks-accepted-if-test.sh' 'tests/unit/checks-held-to-findings-test.sh' 'tests/unit/design-check-every-part-test.sh' 'tests/unit/design-one-form-test.sh' 'tests/unit/design-refines-newest-try-test.sh' 'tests/unit/lint-adr-enforced-by-test.sh'",
+      "verdict": "pass",
+      "passed": 10,
+      "failed": 0
+    },
+    "findings": []
+  },
+  "result_contract": 3,
+  "outcome": "pass",
+  "reason": "917 of 917 tests passed"
+}

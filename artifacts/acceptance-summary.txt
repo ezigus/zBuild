@@ -1,4 +1,3 @@
-the acceptance check failed — config/shape-change-paths.txt was put back to its old version on its own and every test still passed, and the design names it nowhere — not in a step, a SPEC, WIRING or its text: nothing asks for this change — take it out, or name what asks for it
 NEGCTL PASS DSCLA-1
       design : When an issue-bound run starts and zbuild:claimed is absent, the label is added before the first sta…
       asserts: assert_eq "[DSCLA-1] zbuild_claim_acquire returns 0 when zbuild:claimed is absent" "0" "$_dscla1_rc"
@@ -80,7 +79,6 @@ NEGCTL SKIP DSCLA-14 doc
 REACHABILITY PASS core/pipeline/runner.sh
 REACHABILITY PASS change config/adr-enforcement-baseline.txt
 REACHABILITY PASS change config/event-schema.json
-REACHABILITY FAIL unasked_change config/shape-change-paths.txt
 REACHABILITY PASS change core/claim/claim.sh
 REACHABILITY PASS change plugins/claim-coordinator/github-labels/plugin.sh
 REACHABILITY PASS change scripts/lib/run-status-render.sh
