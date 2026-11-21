@@ -88,10 +88,13 @@ printf 'b1\n' > "$R/b.sh"
 assert_eq "[B4] ...the same line removed after it is" "taken" "$(_v 'b.sh | call_guard')"
 
 print_test_section "B5: a verdict whose stored content is gone"
-printf 'a1\nkeep_me\n' > "$R/a.sh"
-_keep fp8; _read fp9
-_JUDGE_KEPT_FILES[REQ-1]="$R/a.sh"$'\t'"0000000000000000000000000000000000000001"
-_JUDGE_KEPT_BASE[REQ-1]=""
+printf 'a1\nkeep_me\nb5_only\n' > "$R/a.sh"
+_keep fp8
+# The stored content is gone (a gc, a fresh clone): its object is removed.
+_h="$(jq -r --arg k "$R/a.sh" '.["REQ-1"].files[$k]' "$KF")"
+rm -f "$R/.git/objects/${_h:0:2}/${_h:2}"
+_read fp9
+printf 'a1\nkeep_me\nb5_only\nmore\n' > "$R/a.sh"
 : > "$ZBUILD_EVENTS_JSONL"
 assert_eq "[B5] judged afresh: the refusal is taken" "taken" "$(_v 'a.sh | keep_me')"
 assert_contains "[B5] ...judge.held.no_baseline says why" "$(cat "$ZBUILD_EVENTS_JSONL")" "judge.held.no_baseline"
