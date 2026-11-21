@@ -19,7 +19,9 @@
 #              file's kept finding still stands, and a finding the reply gives
 #              about a file it was not asked about is set aside
 # LP3 [change] build answers the finding, nothing changed: only its file is
-#              reviewed again, shown the finding and the answer
+#              reviewed again
+# LP10 [change] (review) two lenses whose findings' ids would share a code are
+#              refused before either runs; the shipped lenses' codes are unique, shown the finding and the answer
 # LP4 [change] the next try gives no answer and nothing changed: no call — the
 #              kept reports stand
 # LP5 [change] an answer to a finding about a file whose kept report found
@@ -201,6 +203,15 @@ _lens
 assert_eq "[LP9] test-author has run: a.sh is reviewed again" "yes" "$(_asked a.sh)"
 assert_contains "[LP9] ...shown the not mine answer" "$(tr -s '[:space:]' ' ' < "$_P.1")" "not mine — the test must change"
 _lacks "[LP9] ...and its finding is gone" "$MSGS" "read unchecked"
+
+print_test_section "LP10: each lens's code is its own"
+_msg="$(_rl_lens_tags_check security secrets 2>&1)"; _rc=$?
+assert_eq "[LP10] security and secrets share SEC: refused" "1" "$_rc"
+assert_contains "[LP10] ...naming both" "$_msg" "security and secrets"
+_rl_lens_tags_check correctness performance red-team scope security sre >/dev/null 2>&1
+assert_eq "[LP10] the shipped lenses' codes are unique" "0" "$?"
+_TPL_MAP_ELEMENTS_review_lenses="security,secrets" ZBUILD_CURRENT_STAGE=review_lenses _rl_run_lens_tags_ok "$ART/lens-x.json" >/dev/null 2>&1
+assert_eq "[LP10] a run whose lenses share a code: the lens is refused, misconfigured" "1 misconfigured" "$? $(jq -r .outcome "$ART/lens-x.json" 2>/dev/null)"
 
 cleanup_test_env
 print_test_results

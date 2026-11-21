@@ -29,6 +29,31 @@ _rl_finding_code_v() {
     zb_finding_code_v _rfc "$_RL_DIR/manifest.yaml" "$_rfc_t"
 }
 
+# _rl_lens_tags_check <lens>... — rc 1, with an error naming them, when two
+# lenses' findings would take the same code (review on #2574): their ids
+# would be the same.
+_rl_lens_tags_check() {
+    local l c rc=0; local -A seen=()
+    for l in "$@"; do
+        _rl_finding_code_v c "$l"
+        if [[ -n "${seen[$c]:-}" ]]; then
+            error "the ${seen[$c]} and $l lenses' findings would both take the code $c — rename one (#2574)"; rc=1
+        else seen["$c"]="$l"; fi
+    done
+    return "$rc"
+}
+
+# _rl_run_lens_tags_ok <out> — rc 1, the lens's result written misconfigured,
+# when two of the run's lenses (its map group's elements) share a code.
+_rl_run_lens_tags_ok() {
+    local mv="_TPL_MAP_ELEMENTS_${ZBUILD_CURRENT_STAGE:-none}"; mv="${mv//[^A-Za-z0-9_]/_}"
+    [[ -n "${!mv:-}" ]] || return 0
+    # shellcheck disable=SC2086  # the elements are words, one a lens
+    _rl_lens_tags_check ${!mv//,/ } && return 0
+    _review_lens_write_result "$1" misconfigured "two lenses' findings would take the same code"
+    return 1
+}
+
 # _rl_changed_files_v <array> <change_fp> <patch_body> — the files of the
 # change, from the change's raw diff (zbuild_change_files_v's fingerprint:
 # the starting commit, then `:<modes> <old blob> <new blob> <status><TAB><path>`,

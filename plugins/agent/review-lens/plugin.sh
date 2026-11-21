@@ -94,6 +94,8 @@ review_lens_run() {
         lens="${1#review-lens-}"; lens="${lens#lens-}"; lens="${lens#lens_}"
     fi
     [[ -n "$lens" ]] || lens="correctness"
+    # #2574: the run's lenses each take a code of their own for their findings.
+    _rl_run_lens_tags_ok "$artifact_dir/lens-$lens.json" || return 0
 
     # #896/#952: every lens judges the whole branch's change, from the commit
     # it started from (the round's diff.patch when no base resolves) — the same
