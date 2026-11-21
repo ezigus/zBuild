@@ -20,8 +20,8 @@
 #              about a file it was not asked about is set aside
 # LP3 [change] build answers the finding, nothing changed: only its file is
 #              reviewed again
-# LP10 [change] (review) two lenses whose findings' ids would share a code are
-#              refused before either runs; the shipped lenses' codes are unique, shown the finding and the answer
+# LP10 [change] (review) a lens's findings' code is its whole name, so two
+#              lenses' codes are never the same, shown the finding and the answer
 # LP4 [change] the next try gives no answer and nothing changed: no call — the
 #              kept reports stand
 # LP5 [change] an answer to a finding about a file whose kept report found
@@ -123,7 +123,7 @@ _lacks "[LP2] a finding about a file it was not asked about is set aside" "$MSGS
 print_test_section "LP3: build answers b.sh's finding; nothing changed"
 FID="$(jq -r '.data.findings[] | select(.text | contains("set twice")) | .id' "$ART/lens-red-team-code-result.json" 2>/dev/null | head -n 1)"
 FTXT="$(jq -r '.data.findings[] | select(.text | contains("set twice")) | .text' "$ART/lens-red-team-code-result.json" 2>/dev/null | head -n 1)"
-assert_eq "[LP3] the finding has the lens's id" "RLRED-" "${FID%%[0-9]*}"
+assert_eq "[LP3] the finding has the lens's id" "RLREDTEAM-" "${FID%%[0-9]*}"
 stage_result_write "$ART/build-summary.json" pass "built" \
     "$(jq -nc --arg a "$FID: done — b is set once now" --arg k "$FID" --arg t "$FTXT" '{answers: [$a], answer_findings: {($k): $t}}')" >/dev/null
 FINDINGS="[]"
@@ -143,7 +143,7 @@ assert_eq "[LP4] the kept reports stand: nothing found" "" "$MSGS"
 
 print_test_section "LP5: an answer about a file whose kept report found nothing"
 stage_result_write "$ART/build-summary.json" pass "built" \
-    '{"answers":["RLRED-90: wrong — it is checked"],"answer_findings":{"RLRED-90":"red-team lens, high: the config is read unchecked (a.sh: \"read_cfg\"; happens when: x; fix: code; ACCEPTED IF: y)"}}' >/dev/null
+    '{"answers":["RLREDTEAM-90: wrong — it is checked"],"answer_findings":{"RLREDTEAM-90":"red-team lens, high: the config is read unchecked (a.sh: \"read_cfg\"; happens when: x; fix: code; ACCEPTED IF: y)"}}' >/dev/null
 _lens
 assert_eq "[LP5] no call: a.sh's kept clean report stands" "0" "$CALLS"
 
@@ -204,14 +204,16 @@ assert_eq "[LP9] test-author has run: a.sh is reviewed again" "yes" "$(_asked a.
 assert_contains "[LP9] ...shown the not mine answer" "$(tr -s '[:space:]' ' ' < "$_P.1")" "not mine — the test must change"
 _lacks "[LP9] ...and its finding is gone" "$MSGS" "read unchecked"
 
-print_test_section "LP10: each lens's code is its own"
-_msg="$(_rl_lens_tags_check security secrets 2>&1)"; _rc=$?
-assert_eq "[LP10] security and secrets share SEC: refused" "1" "$_rc"
-assert_contains "[LP10] ...naming both" "$_msg" "security and secrets"
-_rl_lens_tags_check correctness performance red-team scope security sre >/dev/null 2>&1
-assert_eq "[LP10] the shipped lenses' codes are unique" "0" "$?"
-_TPL_MAP_ELEMENTS_review_lenses="security,secrets" ZBUILD_CURRENT_STAGE=review_lenses _rl_run_lens_tags_ok "$ART/lens-x.json" >/dev/null 2>&1
-assert_eq "[LP10] a run whose lenses share a code: the lens is refused, misconfigured" "1 misconfigured" "$? $(jq -r .outcome "$ART/lens-x.json" 2>/dev/null)"
+print_test_section "LP10: each lens's code is its own, by construction"
+_c1=""; _c2=""; _rl_finding_code_v _c1 security; _rl_finding_code_v _c2 secrets
+assert_eq "[LP10] security's code is its whole name" "RLSECURITY" "$_c1"
+assert_eq "[LP10] ...secrets' is its own" "RLSECRETS" "$_c2"
+_rl_finding_code_v _c1 red-team
+assert_eq "[LP10] a name's letters and digits, upper case" "RLREDTEAM" "$_c1"
+printf 'x\n' | stage_findings_json "$ART" RLSECURITY >/dev/null
+assert_eq "[LP10] a finding takes such a code" "RLSECURITY-1" "$(jq -r '.ids | to_entries[0].value' "$ART/finding-ids-RLSECURITY.json" 2>/dev/null)"
+_a=(); zb_answers_collect_v _a "ANSWER RLSECURITY-1: done — fixed"
+assert_eq "[LP10] ...and an answer by it is read" "RLSECURITY-1: done — fixed" "${_a[0]:-}"
 
 cleanup_test_env
 print_test_results

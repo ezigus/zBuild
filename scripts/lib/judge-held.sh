@@ -31,7 +31,7 @@ judge_answers_to_v() {
     [[ -d "$dir" && $# -gt 0 ]] || return 0
     local re="" cre="" l
     for l in "$@"; do
-        if [[ "$l" =~ ^[A-Z][A-Z0-9]{2,5}$ ]]; then cre+="${cre:+|}$l"
+        if [[ "$l" =~ ^[A-Z][A-Z0-9]{2,23}$ ]]; then cre+="${cre:+|}$l"
         else re+="${re:+|}${l//[^A-Za-z0-9_-]/.}"; fi
     done
     local key="(${re:+($re) finding [0-9]+}${re:+${cre:+|}}${cre:+($cre)-[0-9]+})"

@@ -167,18 +167,18 @@ assert_eq "[C1] a medium finding fails it, and blocks" "fail true" \
 source "$REPO_ROOT/scripts/lib/stage-previous-work.sh"
 _c2="$(_sp_findings_for "$ART/lens-performance-code-result.json" review_lenses lens-performance-code code-findings "" "")"
 # #2574: by its id — the lens's code and a number; the low finding above was
-# RLPER-1, so this other one is RLPER-2.
-assert_contains "[C2] a blocking finding is shown as it was" "$_c2" "RLPER-2 (opened by review_lenses): "
+# RLPERFORMANCE-1, so this other one is RLPERFORMANCE-2.
+assert_contains "[C2] a blocking finding is shown as it was" "$_c2" "RLPERFORMANCE-2 (opened by review_lenses): "
 stage_result_write "$ART/c2.json" pass "x" '{"findings":[{"n":1,"text":"an extra write","blocking":false}]}' >/dev/null
 assert_contains "[C2] one that does not block is marked" \
     "$(_sp_findings_for "$ART/c2.json" review_lenses lens-performance-code code-findings "" "")" \
     "lens-performance-code finding 1 (opened by review_lenses, does not block): an extra write"
 # C3: last time's findings, with what was answered, come back to the lens.
 stage_result_write "$ART/build-summary.json" pass "built" \
-    '{"answers":["RLPER-2: done — one write a round now"]}' >/dev/null
+    '{"answers":["RLPERFORMANCE-2: done — one write a round now"]}' >/dev/null
 _lens "medium high critical" "$_low"
 _c3="$(cat "$TEST_TEMP_DIR/lens-prompt" 2>/dev/null)"
-assert_contains "[C3] the lens is shown its findings from last time" "$_c3" "RLPER-2: "
+assert_contains "[C3] the lens is shown its findings from last time" "$_c3" "RLPERFORMANCE-2: "
 assert_contains "[C3] ...with what was answered" "$_c3" "done — one write a round now"
 assert_contains "[C3] ...and told a finding keeps its grade unless it quotes what changed" "$_c3" \
     "A finding you report again keeps the grade you gave it, unless you quote what changed"

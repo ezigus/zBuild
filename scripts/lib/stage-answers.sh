@@ -14,7 +14,7 @@ source "${BASH_SOURCE[0]%/*}/reply-units.sh"
 # A finding's id, as an answer names it (#2574, ADR-068 §5): a code and a number
 # (item-ids.sh). An answer in the old form names it `<label> finding <n>`,
 # still read during the change-over.
-_ZB_FID_RE='[A-Z][A-Z0-9]{2,5}-[0-9]+'
+_ZB_FID_RE='[A-Z][A-Z0-9]{2,23}-[0-9]+'
 
 # zb_answers_collect_v <array_var> <reply> — the reply's `ANSWER <id>: …` lines
 # (and, from before #2574, `ANSWER <the finding as listed>: …`), without the

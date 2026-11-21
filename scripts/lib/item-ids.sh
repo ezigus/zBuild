@@ -252,7 +252,7 @@ zb_finding_code_v() {
 # missing or the code is not of the id form.
 zb_findings_reg_v() {
     local -n _zfr="$1"; _zfr="{}"
-    [[ -n "${2:-}" && "${3:-}" =~ ^[A-Z][A-Z0-9]{2,5}$ ]] || return 1
+    [[ -n "${2:-}" && "${3:-}" =~ ^[A-Z][A-Z0-9]{2,23}$ ]] || return 1
     [[ -s "$2/finding-ids-$3.json" ]] && { IFS= read -r -d '' _zfr < "$2/finding-ids-$3.json" || true; }
     return 0
 }
@@ -262,7 +262,7 @@ zb_findings_reg_v() {
 # finding_ids.write_failed, and the next numbering starts from the last record
 # kept. A record cut short is read as none (fromjson below), never as an error.
 zb_findings_reg_put() {
-    [[ -n "${1:-}" && "${2:-}" =~ ^[A-Z][A-Z0-9]{2,5}$ && "${3:-}" == "{"* ]] || return 0
+    [[ -n "${1:-}" && "${2:-}" =~ ^[A-Z][A-Z0-9]{2,23}$ && "${3:-}" == "{"* ]] || return 0
     local _zfp_ok=1
     if declare -F atomic_write >/dev/null 2>&1; then
         atomic_write "$1/finding-ids-$2.json" <<< "$3" 2>/dev/null || _zfp_ok=0
