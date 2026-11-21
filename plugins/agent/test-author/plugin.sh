@@ -124,7 +124,7 @@ _ta_drop_stale_tags() {
 # showed it and it did not answer stays open (ADR-068 §6).
 _TA_ANSWERS=()
 # #2574 (ADR-068 §5): the code its findings' ids take (TAFND).
-_TA_FCODE=""; zb_finding_code_v _TA_FCODE "${BASH_SOURCE[0]%/*}/manifest.yaml"
+_TA_MANIFEST="${BASH_SOURCE[0]%/*}/manifest.yaml"; _TA_FCODE=""; zb_finding_code_v _TA_FCODE "$_TA_MANIFEST"
 # #2460: a wrapped answer is read whole, and a finding answered again keeps
 # only its latest answer (#2464: the one reader build and design use too).
 _ta_collect_answers() { zb_answers_finish _TA_ANSWERS "${2:-}" "${1:-}"; }

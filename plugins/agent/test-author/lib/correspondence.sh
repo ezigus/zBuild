@@ -261,7 +261,7 @@ _sc_answered() {
         t="${_scd_af[$k]%%$'\x1f'*}"
         [[ "$t" =~ ^(${_ACCEPTANCE_ID_ERE})(\'s|:|[[:space:]]) ]] || continue
         e="$k"$'\x1c'"${_scd_af[$k]}"$'\x1d'; unset '_scd_af[$k]'
-        _scd["${BASH_REMATCH[1]}"]+="${_scd[${BASH_REMATCH[1]}]:+; }$a"; _sch["${BASH_REMATCH[1]}"]+="$e"
+        _scd["${BASH_REMATCH[1]}"]+="${_scd[${BASH_REMATCH[1]}]:+; }$a"; _sch["${BASH_REMATCH[1]}"]+="$e"; _SC_KEY_SPEC["$k"]="${BASH_REMATCH[1]}"
     done
 }
 
@@ -343,7 +343,11 @@ _ta_correspondence() {
     [[ -n "$art" ]] && kf="${art%/}/test-author-judged.json"
     local -A _disp=() _dheld=()
     local -a _kwhy=() _dfps=()
-    _sc_answered "$art" _disp _dheld
+    declare -gA _SC_KEY_SPEC=(); _sc_answered "$art" _disp _dheld
+    # #2574 (ADR-072 §5): a SPEC test-author handed on (its design output
+    # carries the finding) waits, its refusal standing; back, it is judged again.
+    judge_handoff_record_own "$kf" "${_TA_MANIFEST:-}" "$art" _SC_KEY_SPEC ${_TA_ANSWERS[@]+"${_TA_ANSWERS[@]}"}
+    local -a _sc_back=(); local _hs
     judge_engine_v eng
     for (( _i=0; _i<n; _i++ )); do
         # The answers' own fingerprint: a verdict kept with them is not judged again for them.
@@ -352,6 +356,13 @@ _ta_correspondence() {
         judge_fp_v _k "$eng"$'\n'"${_ids[_i]}"$'\n'"${_txts[_i]}"$'\n'"${_srcs[_i]}"
         _fps[_i]="$_k"; _kwhy[_i]=""
         [[ -n "$kf" ]] || continue
+        judge_handoff_state_v _hs "$kf" "${_ids[_i]}"
+        [[ "$_hs" == waiting ]] && _dfps[_i]=""
+        if [[ "$_hs" == back ]]; then
+            _sc_back+=("${_ids[_i]}"); _kwhy[_i]=disputed
+            [[ -n "${_dheld[${_ids[_i]}]:-}" ]] || _dheld["${_ids[_i]}"]="${_ids[_i]}"$'\x1c'"$_JUDGE_HANDOFF_FINDING"$'\x1f'"$_JUDGE_HANDOFF_ANSWER"$'\x1d'
+            continue
+        fi
         judge_kept_get_v _k "$kf" "${_ids[_i]}" "${_fps[_i]}" "${_dfps[_i]}" ok
         _kwhy[_i]="$_JUDGE_KEPT_WHY"
         [[ -n "$_k" ]] || continue
@@ -464,6 +475,7 @@ _ta_correspondence() {
                 judge_kept_fp_v _k "${_fps[_i]}" "${_dfps[_i]}"
                 judge_kept_put "$kf" "${_ids[_i]}" "$_k" "${_lines[_i]}" "${_deps[@]}"
             done
+            for _f in ${_sc_back[@]+"${_sc_back[@]}"}; do judge_handoff_clear "$kf" "$_f"; done
         fi
     fi
 

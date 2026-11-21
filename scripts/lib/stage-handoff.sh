@@ -149,7 +149,7 @@ stage_findings_add() {
         | ($a | map({text: (if type == "object" then .text else . end | tostring)})) as $new
         | (if $ids == 1 then ($new | zb_fids($reg; $code)) else {out: $new, r: null} end) as $z
         | ($d | .data.findings = $o + ($z.out | to_entries | map({n: ($m + .key + 1)} + .value)) | tojson),
-          (if $z.r then ($z.r | tojson) else "-" end)' ${src[@]+"${src[@]}"} 2>/dev/null)" || out=""
+          (if $z.r then ($z.r | tojson) else "-" end)' ${src[@]+"${src[@]}"} 2>/dev/null < /dev/null)" || out=""
     { IFS= read -r j; IFS= read -r r; } <<< "$out"
     [[ "$j" == "{"* ]] || return 1
     atomic_write "$f" <<< "$j" 2>/dev/null || return 1

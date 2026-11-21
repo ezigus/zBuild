@@ -15,6 +15,8 @@
 #             against a finding that has no id
 # W5 [change] the id record is written whole (atomic_write); a record that
 #             cannot be written leaves an event
+# W6 [change] stage_findings_add to a file not there yet never reads the
+#             caller's stdin (it waited on it, or took what was on it)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -102,6 +104,11 @@ chmod a-w "$D5"
 printf 'b\n' | stage_findings_json "$D5" BUFND >/dev/null 2>&1
 chmod u+w "$D5"
 assert_contains "[W5] a record that could not be written leaves an event" "$(cat "$ZBUILD_EVENTS_JSONL")" "finding_ids.write_failed"
+
+print_test_section "W6: stage_findings_add to a file not there yet"
+D6="$TEST_TEMP_DIR/w6"; mkdir -p "$D6"
+stage_findings_add "$D6/new-result.json" '[{"text":"its own finding"}]' TAFND <<< '{"data":{"findings":[{"n":1,"text":"stdin, not its"}]}}'
+assert_eq "[W6] only its own finding" "its own finding" "$(jq -r '[.data.findings[].text] | join("|")' "$D6/new-result.json" 2>/dev/null)"
 
 cleanup_test_env
 print_test_results

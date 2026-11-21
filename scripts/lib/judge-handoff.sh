@@ -253,3 +253,25 @@ judge_handoff_done() {
     for it in "${!_JUDGE_HANDOFF_BACK[@]}"; do judge_handoff_clear "$1" "$it"; done
     return 0
 }
+
+# judge_handoff_record_own <kept_file> <manifest> <artifact_dir> <keymap_assoc>
+#                          <answer>... — for a check whose findings the stage
+# itself answers (test-author's check): each `not mine` answer ("<key>:
+# <answer>") whose finding an output of the stage (<manifest>) carries to a
+# stage of this run is recorded as a hand-off of each item <keymap>[key] names,
+# unless that item is back now.
+judge_handoff_record_own() {
+    local kf="$1" mf="$2" ad="$3" a k kd rcv it st
+    local -n _jhro_map="$4"; shift 4
+    [[ -n "$kf" && -n "${ZBUILD_STATE_DIR:-}" ]] || return 0
+    for a in "$@"; do
+        k="${a%%:*}"; [[ -n "${_jhro_map[$k]:-}" ]] || continue
+        zb_answer_kind_v kd "$a"; [[ "$kd" == "not mine" ]] || continue
+        judge_handoff_receivers_v rcv "$mf" "$ad" "$k"; [[ -n "$rcv" ]] || continue
+        for it in ${_jhro_map[$k]}; do
+            judge_handoff_state_v st "$kf" "$it"; [[ "$st" == back ]] && continue
+            judge_handoff_put "$kf" "$it" "$rcv" "${a#*: }" "${_JUDGE_ANSWER_FINDING[$k]:-}" || true
+        done
+    done
+    return 0
+}
