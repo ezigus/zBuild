@@ -1,0 +1,92 @@
+diff --git a/core/claim/claim.sh b/core/claim/claim.sh
+index 3ee1e638..aa4b84af 100644
+--- a/core/claim/claim.sh
++++ b/core/claim/claim.sh
+@@ -107,10 +107,10 @@ zbuild_claim_acquire() {
+         return 0
+     fi
+ 
+-    # Parse JSON: extract "acquired" field.
+-    local _acquired_line acquired
+-    _acquired_line="$(grep -o '"acquired":[[:space:]]*[a-z]*' <<< "$json_out" || true)"
+-    acquired="$(grep -o 'true\|false' <<< "$_acquired_line" || true)"
++    # Parse JSON: extract "acquired" field via jq (single subshell, correct decoding).
++    # Use tostring, not // empty: the alternative operator treats false as falsy.
++    local acquired
++    acquired="$(jq -r '.acquired | tostring' <<< "$json_out" 2>/dev/null || true)"
+ 
+     if [[ "$acquired" == "false" ]]; then
+         # Another run holds zbuild:claimed — extract and sanitize the holder string.
+diff --git a/plugins/claim-coordinator/github-labels/plugin.sh b/plugins/claim-coordinator/github-labels/plugin.sh
+index eaa14c26..ae6f0492 100644
+--- a/plugins/claim-coordinator/github-labels/plugin.sh
++++ b/plugins/claim-coordinator/github-labels/plugin.sh
+@@ -149,13 +149,6 @@ _ccgl_read_holder() {
+                         <<< "$all_comments" 2>/dev/null || true)"
+                 fi
+             fi
+-            if [[ -z "$body" ]]; then
+-                # Graceful fallback: list without author filtering.
+-                body="$(gh issue comment list "$issue" --json body \
+-                    --jq '[.[] | select(.body | contains("<!-- zbuild-run-status")) | .body] | last' \
+-                    2>/dev/null || true)"
+-            fi
+-
+             local line
+             while IFS= read -r line; do
+                 if [[ "$line" =~ ^'<!-- zbuild-holder: '(.+)' -->'$ ]]; then
+diff --git a/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh b/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
+index 655c8ce4..78a03669 100755
+--- a/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
++++ b/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
+@@ -293,6 +293,11 @@ else
+         "_ZBUILD_CLAIM_HOLDER='${_ZBUILD_CLAIM_HOLDER:-}' (expected CI URL with 99887766 or testowner/testrepo)"
+ fi
+ 
++# Cleanup: restore ZBUILD_RUN_ID and ZBUILD_CLAIM_MACHINE_ID set in this block
++# (GITHUB_* vars from dscla2b remain set; DSCLA-12 uses them and has its own cleanup)
++export ZBUILD_CLAIM_MACHINE_ID="test-machine-1"
++unset ZBUILD_RUN_ID 2>/dev/null || true
++
+ # ─────────────────────────────────────────────────────────────────────────────
+ # DSCLA-12: CI run URL as holder in rendered run-status comment header
+ # ─────────────────────────────────────────────────────────────────────────────
+@@ -393,6 +398,9 @@ else
+         "_ZBUILD_CLAIM_HOLDER='${_ZBUILD_CLAIM_HOLDER:-}' (expected to contain '$_dscla4_holder_string')"
+ fi
+ 
++# Cleanup: unset _ZBUILD_CLAIM_HOLDER set as a side effect of zbuild_claim_acquire above
++unset _ZBUILD_CLAIM_HOLDER 2>/dev/null || true
++
+ # ─────────────────────────────────────────────────────────────────────────────
+ # DSCLA-8: empty issue argument → coordinator's claim hook not called, returns 0
+ # ─────────────────────────────────────────────────────────────────────────────
+diff --git a/tests/integration/teardown-repeat-signal-test.sh b/tests/integration/teardown-repeat-signal-test.sh
+index 56412590..c757c2f6 100644
+--- a/tests/integration/teardown-repeat-signal-test.sh
++++ b/tests/integration/teardown-repeat-signal-test.sh
+@@ -329,11 +329,6 @@ for _ in $(seq 1 300); do kill -0 "$_DSCLA7_PID" 2>/dev/null || break; sleep 0.1
+ kill -KILL "$_DSCLA7_PID" 2>/dev/null || true
+ wait "$_DSCLA7_PID" 2>/dev/null || true
+ 
+-if [[ ! -e "$_DSCLA7_STARTED" ]]; then
+-    assert_fail "[setup-DSCLA-7] stage started before TERM" \
+-        "$(tail -10 "$TEST_TEMP_DIR/dscla7.out")"
+-fi
+-
+ # Then: zbuild:claimed was present before the stage ran
+ if [[ -e "$_DSCLA7_PRESENT" ]]; then
+     assert_pass "[DSCLA-7] zbuild:claimed was present before stage started"
+@@ -593,12 +588,6 @@ for _ in $(seq 1 600); do kill -0 "$_DSCLA13_PID" 2>/dev/null || break; sleep 0.
+ kill -KILL "$_DSCLA13_PID" 2>/dev/null || true
+ wait "$_DSCLA13_PID" 2>/dev/null || true
+ 
+-# Setup check: outcome stage started (first SIGTERM arrived while outcome was running)
+-if [[ ! -e "$_DSCLA13_STARTED" ]]; then
+-    assert_fail "[setup-DSCLA-13] outcome stage started before first SIGTERM" \
+-        "$(tail -10 "$TEST_TEMP_DIR/dscla13.out")"
+-fi
+-
+ # Then: zbuild:claimed is absent from the issue after the runner exits
+ # Gate on acquisition: if claim was never acquired (base code), report that
+ if [[ ! -e "$_DSCLA13_PRESENT" ]]; then

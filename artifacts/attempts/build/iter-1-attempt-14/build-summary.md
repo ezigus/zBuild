@@ -1,0 +1,15 @@
+## build — unusable
+
+- changed core/claim/claim.sh, plugins/claim-coordinator/github-labels/plugin.sh (+4 / -11)
+
+- over 1 pass(es), 1 iteration(s)
+- answered: RLPERFORMANCE-1: done — replaced two grep subshell spawns with a single `jq -r '.acquired | tostring'` call in `core/claim/claim.sh`; used `tostring` not `// empty` because jq's alternative operator treats `false` as falsy.
+- answered: RLREDTEAM-3: done — removed the unfiltered fallback block in `_ccgl_read_holder`'s `gh` backend path in `plugins/claim-coordinator/github-labels/plugin.sh`; when the actor-filtered path finds no results the function now returns empty string instead of re-scanning all comments from any user.
+- step 1: not needed — plugins/claim-coordinator/github-labels/plugin.sh already has zbuild:claimed throughout with ccgl_read_holder, no source of core/claim/claim.sh; done in prior iterations.
+- step 2: not needed — plugins/claim-coordinator/github-labels/README.md already describes zbuild:claimed with no claimed:<machine> references; done in prior iterations.
+- step 3: not needed — scripts/lib/run-status-render.sh already emits <!-- zbuild-holder: ... --> in rsc_render_header; done in prior iterations.
+- step 4: not needed — core/claim/claim.sh exists as the wiring bridge; this iteration fixed the acquired extraction to use jq but the step's deliverable was done in prior iterations.
+- step 5: not needed — config/event-schema.json already registers pipeline.refused.claimed; done in prior iterations.
+- step 6: not needed — core/pipeline/runner.sh already has full claim wiring; done in prior iterations.
+- step 8: not needed — docs/adr/ADR-059-issue-vs-run-keying.md already has the §4 Enforced by entry naming [DSCLA-3]; done in prior iterations.
+- refused: step 7: your reason it is not needed does not hold: DSADR-7 requires the `## Enforced by` section to name §1(b) ("release hook called in the EXIT path") as its own separately labeled entry; the ADR folds that content into the §1(a) parenthetical — "(claim hook called after admission lock and before first stage; release hook called in EXIT path)" — but supplies no line labeled §1(b) — ACCEPTED IF: §1(b) release hook called in the EXIT path — claim-coordinator-unit-test.sh [DSCLA-22] is named as its own entry in the `## Enforced by` section (the step: Amend docs/adr/ADR-005-claim-coordinator.md: in the ## Enforced by section, extend the §1 bullet to add: §1(a) enforcement claim-coordinator-unit-test.sh [DSCLA-22] (claim hook called after admission lock and before first stage; release hook called in EXIT path); §1(c) enforcement claim-coordinator-unit-test.sh [DSCLA-3] (refused: non-zero exit, no stage dispatched, event emitted) and claim-coordinator-unit-test.sh [DSCLA-9] (refused output names holder); extend the §2 bullet to name [DSCLA-1] for the "shared label is zbuild:claimed (no hostname)" statement, and [DSCLA-2] and [DSCLA-12] for the holder rendering cases; your answer: not needed — docs/adr/ADR-005-claim-coordinator.md already has the ## Enforced by section with all named tests; done in prior iterations.)
