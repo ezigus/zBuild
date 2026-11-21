@@ -18,11 +18,20 @@
 fork_census_traced() {
     local trace="$1"; shift
     local be="${trace}.bashenv"
-    printf 'set -x\n' > "$be"
+    # A bash that replaced, by exec, a process that traced keeps that process's
+    # name (the exported _ZB_FC_EP/_ZB_FC_E, below): exec starts no process.
+    # shellcheck disable=SC2016
+    printf '%s\nset -x\n' '[[ "${_ZB_FC_EP:-}" == "$$" ]] && _ZB_FC_ID[$$]="$_ZB_FC_E"' > "$be"
     (
-        # #<pid> after the line number names the process each line ran in
-        # (fork_census_processes); the counter strips it.
-        export PS4='+@${BASH_SOURCE[0]-}:${LINENO}#${BASHPID}@ '
+        # #<pid><time> after the line number names the process each line ran
+        # in (fork_census_processes); the counter strips it. The time is when
+        # that process first traced, kept per id in the process itself: an id
+        # the system reuses during the run (a busy suite wraps macOS's ids in
+        # seconds) names a second process, never the first again (#2575). Each
+        # line also exports which process it ran in and its name, so a bash it
+        # execs into carries the name on.
+        export _ZB_FC_E=0 _ZB_FC_EP=0
+        export PS4='+@${BASH_SOURCE[0]-}:${LINENO}#${BASHPID}${_ZB_FC_ID[BASHPID]:=${EPOCHREALTIME/[.,]/}}${PS4:$(( _ZB_FC_E = _ZB_FC_ID[BASHPID], _ZB_FC_EP = BASHPID, 0 )):0}@ '
         export BASH_XTRACEFD=7
         export BASH_ENV="$be"
         "$@" 7>"$trace"

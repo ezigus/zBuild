@@ -14,6 +14,11 @@
 #
 # SPEC-1: a canary script with exactly one external exec counts exactly 1 — the
 #         detector cannot go inert.
+# SPEC-1c: each process the trace names is named by its id and the time it
+#          first traced, so a process id the system reuses during a run (it
+#          does under a busy full suite: macOS wrapped its ids every ~30 s)
+#          counts as the two processes it is (#2575: 457 a dispatch under load,
+#          465 alone); a bash that replaces a process by exec is still that one
 # SPEC-1b: the words inside an assigned value (xtrace quotes them) are data,
 #          never commands (#1842).
 # SPEC-2: the mocked run still exits 0 under tracing and writes events.jsonl.
@@ -52,6 +57,10 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 source "$REPO_ROOT/tests/lib/test-helpers.sh"
 
 print_test_header "fork budget: external execs of a mocked full run (#2151, ADR-065)"
+# #2575: the same paths in every context. macOS's own TMPDIR ends in "/", the
+# test runner's does not; "T//fork-budget…" paths missed the trunk memo (keyed
+# by path) and cost 4 git calls more than inside the full suite.
+export TMPDIR="${TMPDIR:-/tmp}"; TMPDIR="${TMPDIR%/}"
 setup_test_env "fork-budget"
 
 # #2573 (ADR-065 §2 amendment 2026-11-20): each budget is its last measure plus
@@ -171,7 +180,12 @@ BUDGET_MARGIN_STARTUP=1
 # start-up processes and 232 execs every run. The written measure is the middle
 # of each range, so a run at either end stays within budget and within the
 # twice the margin the SPEC-9 slack check allows. Budgets: that measure plus the margin.
-FORK_BUDGET=$(( 1851 + BUDGET_MARGIN_TOTAL ))
+# #2575: the same run in every context (no "T//" paths, its own TMPDIR, a reused
+# process id counted as the second process it is) measures 4 processes and 4
+# execs fewer than #2573's standalone runs: 2391 processes and 1848 execs in
+# all, alone and with the e2e tier's TMPDIR under a load that wraps macOS's
+# process ids; 465 and 298 a dispatch, 428 and 232 at start-up.
+FORK_BUDGET=$(( 1848 + BUDGET_MARGIN_TOTAL ))
 # PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
 # the programs above plus each `$( )` subshell, a copy of the whole engine shell
 # that FORK_BUDGET cannot see. Ratchets down only, like FORK_BUDGET. History:
@@ -232,7 +246,8 @@ FORK_BUDGET=$(( 1851 + BUDGET_MARGIN_TOTAL ))
 # on macOS: 2399 processes and 1865 execs in all, 465 processes and 305 execs a
 # dispatch.
 # #2573: see FORK_BUDGET — 2394 processes, plus the margin.
-PROCESS_BUDGET=$(( 2394 + BUDGET_MARGIN_TOTAL ))
+# #2575: see FORK_BUDGET — 2391.
+PROCESS_BUDGET=$(( 2391 + BUDGET_MARGIN_TOTAL ))
 # The run's cost in two parts (ADR-065 §6, #2472). Each budget ratchets down
 # like the totals; each floor is the goal, an estimate, measured again when
 # reached. History: 505 / 298 a dispatch, 12 / 7 a plugin at start-up (#2472 —
@@ -334,6 +349,17 @@ fork_census_traced "$TEST_TEMP_DIR/quoted.trace" bash "$QUOTED"
 assert_eq "[SPEC-1b] words inside an assigned value are not counted" "0" \
     "$(fork_census_count "$TEST_TEMP_DIR/quoted.trace" "$TEST_TEMP_DIR/quoted.sites")"
 
+# ─── SPEC-1c: a process is its id and the time it first traced ─────────────
+fork_census_traced "$TEST_TEMP_DIR/ids.trace" bash -c 'x=1; ( y=2 ); z=3'
+_ids="$(awk '/^\++@/ { p = $0; sub(/@ .*$/, "", p); sub(/^.*#/, "", p); print p }' "$TEST_TEMP_DIR/ids.trace" | sort -u)"
+assert_eq "[SPEC-1c] the shell and its subshell are two processes" "2" "$(grep -c . <<< "$_ids")"
+_short=0
+while IFS= read -r _id; do (( ${#_id} > 10 )) || _short=1; done <<< "$_ids"
+assert_eq "[SPEC-1c] …each named by more than its id (the time it first traced)" "0" "$_short"
+fork_census_traced "$TEST_TEMP_DIR/exec.trace" bash -c 'x=1; exec bash -c "y=2"'
+assert_eq "[SPEC-1c] a bash that replaces a shell by exec is still one process" "1" \
+    "$(fork_census_processes "$TEST_TEMP_DIR/exec.trace")"
+
 # ─── SPEC-5: an exempt wait is listed, not counted ───────────────────────────
 print_test_section "SPEC-5: a marked wait is not counted"
 WAITER="$TEST_TEMP_DIR/waiter.sh"
@@ -359,6 +385,8 @@ TRACE="$TEST_TEMP_DIR/run.trace"
 set +e
 (
     unset GITHUB_ACTIONS CI GITHUB_STEP_SUMMARY RUNNER_OS ZBUILD_DISCOVERY_MEMO_DIR 2>/dev/null || true
+    # #2575: each traced run its own fresh temp folder, whatever the caller's.
+    export TMPDIR="$TEST_TEMP_DIR/tmp-a"; mkdir -p "$TMPDIR"
     export FIXTURE_STATE_DIR="$RUN_DIR" FIXTURE_BIN_DIR="$BIN_DIR"
     fork_census_traced "$TRACE" bash "$FIXTURE" >/dev/null 2>&1
 )
@@ -438,6 +466,7 @@ mkdir -p "$RUN_B/events" "$BIN_B"
 set +e
 (
     unset GITHUB_ACTIONS CI GITHUB_STEP_SUMMARY RUNNER_OS ZBUILD_DISCOVERY_MEMO_DIR 2>/dev/null || true
+    export TMPDIR="$TEST_TEMP_DIR/tmp-b"; mkdir -p "$TMPDIR"
     export FIXTURE_STATE_DIR="$RUN_B" FIXTURE_BIN_DIR="$BIN_B" FIXTURE_LENSES="correctness red-team performance sre"
     fork_census_traced "$TRACE_B" bash "$FIXTURE" >/dev/null 2>&1
 )

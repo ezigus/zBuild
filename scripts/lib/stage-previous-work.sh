@@ -264,7 +264,13 @@ _stage_block_previous_work() {
     # and its last output were written for.
     local _pw_sig="" _pw_np=""
     stage_notes_path_v _pw_np "$state_dir" "$stage"
-    _sp_asked_sig_v _pw_sig "$stage" "$state_dir" "$plugins_root" "$takes" _pw_ins
+    # A stage that makes no model call has no notes and reads no prompt:
+    # nothing to compare, and no record (its calls: list, ADR-017 §12).
+    local _pw_calls=""
+    declare -F manifest_calls_v >/dev/null 2>&1 \
+        || source "$_ZBUILD_SP_ROOT/core/plugin-registry/manifest-calls.sh" 2>/dev/null || true
+    declare -F manifest_calls_v >/dev/null 2>&1 && manifest_calls_v _pw_calls "$self_manifest"
+    [[ -n "$_pw_calls" ]] && _sp_asked_sig_v _pw_sig "$stage" "$state_dir" "$plugins_root" "$takes" _pw_ins
     # Compared below, once the stage's own result is found (its roles are read
     # there anyway); a stage with no section of its own, after the loop.
     local _pw_nv=0; _SP_NOTES_OLD=""; _SP_OUTPUT_OLD=""

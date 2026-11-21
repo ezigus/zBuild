@@ -32,6 +32,8 @@
 # V11 [code] a byte after a NUL in an input still counts
 # V12 [code] second review on #2575: a large input (100 KB of requirements) is
 #            fingerprinted whole: a change in its last bytes marks the notes
+# V13 [code] a stage that makes no model call (no `calls:`) has no notes and
+#            reads no prompt: no record is written for it
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -72,6 +74,8 @@ _stage() {
             printf 'takes:\n'
             for t in $takes; do printf '  - topic: %s\n    for: x\n' "$t"; done
         fi
+        # A model stage lists its calls; a tool stage lists none.
+        [[ "$kind" == agent ]] && printf 'calls:\n  main: [read-files, edit-files]\n'
         printf 'hooks:\n  run: x_run\noutputs:\n'
         for o in "$@"; do
             IFS=: read -r id f t p <<< "$o"
@@ -226,6 +230,11 @@ _big two
 _o12="$(_pw nv-build)"
 assert_contains "[V12] a change at the end of a 100 KB input marks the notes" "$_o12" \
     "written for an earlier version of requirements"
+
+print_test_section "V13: a stage that makes no model call"
+_pw nv-tool >/dev/null; _pw nv-tool >/dev/null
+_nt="$(stage_notes_path "$STATE" nv-tool)"
+assert_file_not_exists "[V13] no record is written for it" "${_nt%.md}.asked"
 
 cleanup_test_env
 print_test_results
