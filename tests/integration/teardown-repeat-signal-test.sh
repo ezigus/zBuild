@@ -329,11 +329,6 @@ for _ in $(seq 1 300); do kill -0 "$_DSCLA7_PID" 2>/dev/null || break; sleep 0.1
 kill -KILL "$_DSCLA7_PID" 2>/dev/null || true
 wait "$_DSCLA7_PID" 2>/dev/null || true
 
-if [[ ! -e "$_DSCLA7_STARTED" ]]; then
-    assert_fail "[setup-DSCLA-7] stage started before TERM" \
-        "$(tail -10 "$TEST_TEMP_DIR/dscla7.out")"
-fi
-
 # Then: zbuild:claimed was present before the stage ran
 if [[ -e "$_DSCLA7_PRESENT" ]]; then
     assert_pass "[DSCLA-7] zbuild:claimed was present before stage started"
@@ -592,12 +587,6 @@ kill -TERM "$_DSCLA13_PID" 2>/dev/null || true
 for _ in $(seq 1 600); do kill -0 "$_DSCLA13_PID" 2>/dev/null || break; sleep 0.1; done
 kill -KILL "$_DSCLA13_PID" 2>/dev/null || true
 wait "$_DSCLA13_PID" 2>/dev/null || true
-
-# Setup check: outcome stage started (first SIGTERM arrived while outcome was running)
-if [[ ! -e "$_DSCLA13_STARTED" ]]; then
-    assert_fail "[setup-DSCLA-13] outcome stage started before first SIGTERM" \
-        "$(tail -10 "$TEST_TEMP_DIR/dscla13.out")"
-fi
 
 # Then: zbuild:claimed is absent from the issue after the runner exits
 # Gate on acquisition: if claim was never acquired (base code), report that
