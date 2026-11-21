@@ -398,6 +398,9 @@ else
         "_ZBUILD_CLAIM_HOLDER='${_ZBUILD_CLAIM_HOLDER:-}' (expected to contain '$_dscla4_holder_string')"
 fi
 
+# Cleanup: unset _ZBUILD_CLAIM_HOLDER set as a side effect of zbuild_claim_acquire above
+unset _ZBUILD_CLAIM_HOLDER 2>/dev/null || true
+
 # ─────────────────────────────────────────────────────────────────────────────
 # DSCLA-8: empty issue argument → coordinator's claim hook not called, returns 0
 # ─────────────────────────────────────────────────────────────────────────────
