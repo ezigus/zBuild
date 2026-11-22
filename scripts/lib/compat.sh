@@ -26,6 +26,9 @@ _zbuild_check_bash() {
 }
 _zbuild_check_bash || return 1
 
+# ZBUILD_PLATFORM must never be set to a host OS name (macos/linux/unknown) here
+# or in core/, plugins/, or scripts/. Guard: tests/unit/zbuild-platform-host-guard-test.sh (ADR-009 §C4, DSPLAT-2).
+
 # ─── flock availability (Linux native, macOS via brew) ──────────────────────
 zbuild_has_flock() {
     command -v flock >/dev/null 2>&1
