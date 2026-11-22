@@ -109,7 +109,7 @@ _route_call_gh_read() {
     [[ -n "$d" ]] || zbuild_engine_tmpdir_v d
     d="${d%/}/.zb-gh"
     [[ -d "$d" ]] || mkdir -m 700 "$d" 2>/dev/null || return 0
-    printf '%s\n' "$tok" > "$d/token" 2>/dev/null || return 0
+    ( umask 077; printf '%s\n' "$tok" > "$d/token" ) 2>/dev/null || return 0
     _ROUTE_GH_SECRET_DIR="$d"
     _ROUTE_HOOK_FLAGS+=(--secret-dir "$d")
 }

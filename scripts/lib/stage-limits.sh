@@ -169,7 +169,8 @@ _route_template_knob_v() {
 # a dispatch of that stage, resolved here.
 zb_call_limits_v() {
     local -n _zcs="$1" _zct="$2"; local st="${3:-${ZBUILD_CURRENT_STAGE:-}}" r="${ZBUILD_CALL_LIMITS:-}"
-    if [[ "$r" =~ ^([^\ ]+)\ ([0-9]+)\ ([0-9]+)$ && "${BASH_REMATCH[1]}" == "${st:--}" ]]; then
+    local _zre='^([^ ]+) ([0-9]+) ([0-9]+)$'
+    if [[ "$r" =~ $_zre && "${BASH_REMATCH[1]}" == "${st:--}" ]]; then
         _zcs="${BASH_REMATCH[2]}" _zct="${BASH_REMATCH[3]}"; return 0
     fi
     _zcs="$(ZBUILD_CURRENT_STAGE="$st" _route_resolve_timeout)"

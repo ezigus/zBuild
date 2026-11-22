@@ -65,7 +65,9 @@ wd=$!
 rc=0; wait "$pid" 2>/dev/null || rc=$?
 kill -TERM "$wd" 2>/dev/null || true
 wait "$wd" 2>/dev/null || true
-if (( rc != 0 )) && [[ -e "$out.fired" ]]; then
+# Timed out only when the watchdog fired AND gh died of its TERM (143): a gh
+# that exited with its own error as the limit fell keeps that error.
+if (( rc == 143 )) && [[ -e "$out.fired" ]]; then
     printf 'zbuild-gh-get: GitHub did not answer within %s seconds.\n' "$secs" >&2
     exit 124
 fi
