@@ -130,6 +130,67 @@ else
         "scan incorrectly flagged comment: $_zbp_hit"
 fi
 
+# ─── [DSPLAT-2] recursive scan finds injected violation ───────────────────────
+# Prove the multi-file grep scan DOES reach its assert_fail branch when a
+# violating file exists. Uses temp scan dirs so no real source file is touched.
+print_test_section "[DSPLAT-2] recursive scan correctly exits non-zero on injected violation"
+
+# Given: a scripts/ subtree in TEST_TEMP_DIR with a violating .sh file
+_zbp_scan_dir="$TEST_TEMP_DIR/scan-test"
+mkdir -p "$_zbp_scan_dir/scripts/lib" "$_zbp_scan_dir/core" "$_zbp_scan_dir/plugins"
+_zbp_inject="$_zbp_scan_dir/scripts/lib/fake-compat.sh"
+printf '    Darwin)  ZBUILD_PLATFORM=macos ;;\n' > "$_zbp_inject"
+
+# When: the recursive grep scan is run against those directories
+_zbp_inject_hits="$(
+    {
+        grep -rnE '\bZBUILD_PLATFORM\b' \
+            "$_zbp_scan_dir/core" "$_zbp_scan_dir/plugins" "$_zbp_scan_dir/scripts" \
+            --include='*.sh' 2>/dev/null || true
+    } | {
+        grep -vE '^[^:]*:[0-9]+:[[:space:]]*#' || true
+    } | {
+        grep -E '\b(macos|linux|unknown)\b' || true
+    }
+)"
+if [[ -n "$_zbp_inject_hits" ]]; then
+    _zbp_inject_count="$(printf '%s\n' "$_zbp_inject_hits" | grep -cE '.' || true)"
+else
+    _zbp_inject_count=0
+fi
+
+# Then: the scan finds the violation — the guard would exit non-zero
+if [[ "$_zbp_inject_count" -gt 0 ]]; then
+    assert_pass "[DSPLAT-2] recursive scan finds injected ZBUILD_PLATFORM=macos violation"
+else
+    assert_fail "[DSPLAT-2] recursive scan finds injected ZBUILD_PLATFORM=macos violation" \
+        "recursive scan returned 0 matches for a known-bad file; scan logic is broken"
+fi
+
+# Given: the violating file is removed (clean state)
+rm -f "$_zbp_inject"
+
+# When: the same recursive scan is run again
+_zbp_clean_hits="$(
+    {
+        grep -rnE '\bZBUILD_PLATFORM\b' \
+            "$_zbp_scan_dir/core" "$_zbp_scan_dir/plugins" "$_zbp_scan_dir/scripts" \
+            --include='*.sh' 2>/dev/null || true
+    } | {
+        grep -vE '^[^:]*:[0-9]+:[[:space:]]*#' || true
+    } | {
+        grep -E '\b(macos|linux|unknown)\b' || true
+    }
+)"
+
+# Then: scan returns clean after the violating file is removed
+if [[ -z "$_zbp_clean_hits" ]]; then
+    assert_pass "[DSPLAT-2] recursive scan returns clean after injected violation removed"
+else
+    assert_fail "[DSPLAT-2] recursive scan returns clean after injected violation removed" \
+        "scan still matched: $_zbp_clean_hits"
+fi
+
 # ─── [DSPLAT-2] real codebase scan ────────────────────────────────────────────
 print_test_section "[DSPLAT-2] scan core/, plugins/, scripts/ for host-OS ZBUILD_PLATFORM use"
 
