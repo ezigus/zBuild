@@ -45,11 +45,14 @@ knows the hooks, never what a claim is made of.
   no machine name in it.
 - Who holds it is written in the holder's run-status comment (ADR-064): a run that has the claim emits
   `pipeline.claim.acquired holder=<holder>`, and the comment's header carries
-  `<!-- zbuild-holder: <holder> -->`. A run that has no claim names no holder. The holder is the CI run's
+  `<!-- zbuild-holder: <holder> -->` while the run is running. A run that has no claim, or has finished,
+  names no holder. The holder is the CI run's
   URL in CI, and `run_id=<id> machine=<host>` elsewhere.
-- A refused run reads the holder from the newest run-status comment that names one, and only from comments
-  the CI bot or a repository owner, member or collaborator posted: an outside commenter cannot name the
-  holder.
+- A refused run reads the holder from the newest run-status comment, and only from comments the CI bot or a
+  repository owner, member or collaborator posted: an outside commenter cannot name the holder. When that
+  comment names none (a finished run, or a holder that posts no comment: `ZBUILD_STATUS_COMMENT=0`), the
+  holder is unknown — never an older comment's.
+- The coordinator's hook events (`plugin.claim.*`, `plugin.release.*`) carry no stage.
 
 ### §3 — Graceful degradation
 
@@ -88,7 +91,9 @@ list_claims        → stdout JSON: [{"issue": N, "holder": "...", "acquired_at"
 - `claim`: read the issue's labels; `zbuild:claimed` there → refused, with the holder and, on stderr, how to
   clear a claim whose run is gone (remove the label). Otherwise add it. A repository that does not define
   the label gets it (`gh label create --force`) when the add fails with "not found", and the add is tried
-  once more.
+  once more. An add that fails is checked by reading the labels once more: the issue was clear when read,
+  so a label there now is this run's claim, and is released on exit.
+- Every label call names the repository (`--repo`, the same slug the holder reader uses).
 - `release`: remove the label; on failure, say on stderr to remove it by hand.
 - Every `gh` call runs under the run-status comment's watchdog (`rsc_gh`,
   `ZBUILD_STATUS_COMMENT_GH_TIMEOUT`), so a hung `gh` cannot hold up a run's exit.
@@ -122,6 +127,10 @@ Section L wishlist item. Routes all claim operations through an optional dashboa
 **Bad:**
 - Two runs claiming at the same moment can both win (#2534).
 - A run that dies without reaching an exit path leaves the label; until #2533 a person removes it.
+- A cancelled GitHub Actions job leaves the label too: the runner sends INT, then TERM, then KILL a few
+  seconds later, and the KILL can land while the always-run stages and persist are still running in the exit
+  trap — before the release, which comes after them so that persist keeps the run's work. Clear it as after a
+  crash: remove the `zbuild:claimed` label from the issue (until #2533).
 - Plugin contract for `claim-coordinator` is wider than other kinds (4 hooks). Accepted.
 
 ## Implementation Notes (Phase 0.5 — issue #291)
@@ -161,9 +170,11 @@ Section L wishlist item. Routes all claim operations through an optional dashboa
   `tests/integration/claim-holder-status-comment-test.sh` [H1] (the posted comment names it), [H2] (a run
   with no claim names none); `tests/unit/claim-acquire-release-test.sh` (`pipeline.claim.acquired` holder:
   run id and machine, or the CI run's URL)
-- §2 the holder read only from trusted comments, newest first →
+- §2 the holder read only from the newest trusted comment →
   `plugins/claim-coordinator/github-labels/tests/claim-holder-reader-unit-test.sh` (the reader: paginated,
-  the CI bot's comment, an outside commenter cannot name it)
+  the CI bot's comment, a newest comment naming none or a finished run's → none, an outside commenter cannot
+  name it; the writer: a finished run names none)
+- §2 hook events carry no stage → `tests/unit/claim-acquire-release-test.sh` (plugin.claim.*, plugin.release.*)
 - §3 graceful degradation → `tests/unit/claim-acquire-release-test.sh` (no coordinator, a failing or
   skipping coordinator → `pipeline.claim.skipped`; an unreadable answer is a refusal; a failed release →
   `pipeline.claim.release_failed`, the caller's status unchanged);
@@ -172,7 +183,8 @@ Section L wishlist item. Routes all claim operations through an optional dashboa
 - §4 one plugins root, through the registry → `tests/unit/claim-acquire-release-test.sh` (a coordinator
   outside the root is not used); `tests/integration/claim-release-on-exit-test.sh` [C4]
 - Default plugin → `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh` (the label
-  created once when missing; the refusal and the failed release say how to clear the label; a hung gh is
+  created once when missing; an add GitHub applied whose answer was lost is a claim; every gh call names the
+  repository; the refusal and the failed release say how to clear the label; a hung gh is
   stopped by the watchdog); `tests/e2e/claim-race-test.sh` (the local-fs store has one winner)
 
 ## References

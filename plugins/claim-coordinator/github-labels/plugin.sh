@@ -40,11 +40,22 @@ _ccgl_gh() {
     return "$rc"
 }
 
+# The repository every label call and the holder reader name: one slug, the
+# same for both (GITHUB_REPOSITORY in CI, else the origin's). rc 1 when none.
+_CCGL_SLUG=""
+_ccgl_slug() {
+    [[ -n "$_CCGL_SLUG" ]] && return 0
+    _ccgl_gh_lib || return 1
+    _CCGL_SLUG="${GITHUB_REPOSITORY:-}"
+    [[ -n "$_CCGL_SLUG" ]] || _CCGL_SLUG="$(zbuild_repo_slug 2>/dev/null || true)"
+    [[ -n "$_CCGL_SLUG" ]]
+}
+
 # Labels on an issue, one a line, into _CCGL_OUT. rc 1 on a backend error.
 _ccgl_read_labels() {
     local issue="$1"
     case "${ZBUILD_CLAIM_BACKEND:-gh}" in
-        gh) _ccgl_gh issue view "$issue" --json labels --jq '.labels[].name' ;;
+        gh) _ccgl_slug && _ccgl_gh issue view "$issue" --json labels --jq '.labels[].name' --repo "$_CCGL_SLUG" ;;
         local-fs)
             local f; f="$(_ccgl_lf_labels_file "$issue")"
             _CCGL_OUT=""
@@ -54,17 +65,31 @@ _ccgl_read_labels() {
     esac
 }
 
+# rc 0 when <label> is on <issue> now (one read).
+_ccgl_label_on() {
+    local line
+    _ccgl_read_labels "$1" || return 1
+    while IFS= read -r line; do [[ "$line" == "$2" ]] && return 0; done <<< "$_CCGL_OUT"
+    return 1
+}
+
 # Add the label. rc 0 added, 2 already there (local-fs: checked inside the lock),
 # 1 backend error. A repository that does not define the label yet gets it once.
 _ccgl_add_label() {
     local issue="$1" label="$2"
     case "${ZBUILD_CLAIM_BACKEND:-gh}" in
         gh)
-            _ccgl_gh issue edit "$issue" --add-label "$label" && return 0
-            [[ "$_RSC_GH_ERR" == *"not found"* ]] || return 1
-            _ccgl_gh label create "$label" --force --color "5319e7" \
-                --description "a zbuild run is working on this issue" || return 1
-            _ccgl_gh issue edit "$issue" --add-label "$label"
+            _ccgl_slug || return 1
+            _ccgl_gh issue edit "$issue" --add-label "$label" --repo "$_CCGL_SLUG" && return 0
+            if [[ "$_RSC_GH_ERR" == *"not found"* ]]; then
+                _ccgl_gh label create "$label" --force --color "5319e7" \
+                    --description "a zbuild run is working on this issue" --repo "$_CCGL_SLUG" || return 1
+                _ccgl_gh issue edit "$issue" --add-label "$label" --repo "$_CCGL_SLUG" && return 0
+            fi
+            # The add may have reached GitHub with its answer lost (a timeout, a
+            # dropped reply). The issue was clear when read, so a label there now
+            # is this run's: say so, or nothing would ever release it.
+            _ccgl_label_on "$issue" "$label"
             ;;
         local-fs)
             local f; f="$(_ccgl_lf_labels_file "$issue")"
@@ -85,7 +110,7 @@ _ccgl_add_label() {
 _ccgl_remove_label() {
     local issue="$1" label="$2"
     case "${ZBUILD_CLAIM_BACKEND:-gh}" in
-        gh) _ccgl_gh issue edit "$issue" --remove-label "$label" ;;
+        gh) _ccgl_slug && _ccgl_gh issue edit "$issue" --remove-label "$label" --repo "$_CCGL_SLUG" ;;
         local-fs)
             local f; f="$(_ccgl_lf_labels_file "$issue")"
             [[ ! -f "$f" ]] && return 0
@@ -101,24 +126,20 @@ _ccgl_remove_label() {
     esac
 }
 
-# _ccgl_read_holder <issue> — the holder line of the holder's run-status comment.
+# _ccgl_read_holder <issue> — who the newest run-status comment names as holder.
 _ccgl_read_holder() {
-    local issue="$1"
+    local issue="$1" holder=""
+    _ccgl_gh_lib || return 0
     case "${ZBUILD_CLAIM_BACKEND:-gh}" in
         local-fs)
-            local rsc="${ZBUILD_CLAIM_STORE:-}/$issue/run-status-comment.txt" line
+            local rsc="${ZBUILD_CLAIM_STORE:-}/$issue/run-status-comment.txt"
             [[ -f "$rsc" ]] || return 0
-            while IFS= read -r line; do
-                [[ "$line" == '<!-- zbuild-holder: '*' -->' ]] || continue
-                line="${line#'<!-- zbuild-holder: '}"; printf '%s' "${line% -->}"; return 0
-            done < "$rsc"
+            rsc_holder_line_v holder "$(cat "$rsc")"
+            printf '%s' "$holder"
             ;;
         gh)
-            _ccgl_gh_lib || return 0
-            local repo="${GITHUB_REPOSITORY:-}"
-            [[ -n "$repo" ]] || repo="$(zbuild_repo_slug 2>/dev/null || true)"
-            [[ -n "$repo" ]] || return 0
-            rsc_holder_find "${ZBUILD_STATE_DIR:-${TMPDIR:-/tmp}}" "$repo" "$issue"
+            _ccgl_slug || return 0
+            rsc_holder_find "${ZBUILD_STATE_DIR:-${TMPDIR:-/tmp}}" "$_CCGL_SLUG" "$issue"
             ;;
     esac
 }
@@ -190,7 +211,7 @@ claim_coordinator_heartbeat() {
 claim_coordinator_list_claims() {
     case "${ZBUILD_CLAIM_BACKEND:-gh}" in
         gh)
-            _ccgl_gh issue list --label "$_CCGL_LABEL" --json number || {
+            { _ccgl_slug && _ccgl_gh issue list --label "$_CCGL_LABEL" --json number --repo "$_CCGL_SLUG"; } || {
                 printf 'list_claims: gh issue list failed\n' >&2 || true
                 return 1
             }

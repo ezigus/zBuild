@@ -13,7 +13,8 @@
 #     <state_dir>/fail-remove   present: `issue edit --remove-label` fails
 #     <state_dir>/hang          present: every call blocks until <state_dir>/go
 #                               appears (bounded, so no mock outlives a test)
-#     <state_dir>/user-403      present: `api user` fails as it does for a CI token
+#     <state_dir>/add-then-fail present: `issue edit --add-label` applies the label,
+#                               then fails (a reply lost after GitHub acted)
 
 claim_gh_mock_install() {
     local s="$1"
@@ -35,6 +36,7 @@ case "\$1:\$2" in
                 printf "could not add label: '%s' not found\n" "\$label" >&2; exit 1
             fi
             /usr/bin/grep -Fxq "\$label" "\$s/labels" || printf '%s\n' "\$label" >> "\$s/labels"
+            [[ -e "\$s/add-then-fail" ]] && { echo "HTTP 502: bad gateway" >&2; exit 1; }
             exit 0
         fi
         if [[ "\$4" == "--remove-label" ]]; then
@@ -44,9 +46,6 @@ case "\$1:\$2" in
         fi
         exit 1 ;;
     label:create) : > "\$s/repo-label"; exit 0 ;;
-    api:user)
-        [[ -e "\$s/user-403" ]] && { echo "HTTP 403: Resource not accessible by integration" >&2; exit 1; }
-        echo "laptop-user"; exit 0 ;;
     api:--paginate)
         for f in "\$s"/page-*.json; do [[ -e "\$f" ]] && cat "\$f"; done; exit 0 ;;
     api:*)

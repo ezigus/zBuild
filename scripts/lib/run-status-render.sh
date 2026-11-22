@@ -14,6 +14,20 @@ _RSC_ROOT="${_RSC_ROOT:-$(cd "$_RSC_RENDER_DIR/../.." && pwd)}"
 _RSC_MARKER_PREFIX='<!-- zbuild-run-status run_id='
 # ADR-005 §2: the line naming who holds the claim on the issue (rsc_holder_find reads it).
 _RSC_HOLDER_PREFIX='<!-- zbuild-holder: '
+# rsc_holder_line_v <var> <text> — the holder named on a holder line of <text>
+# (a run-status comment), or "" — the one reader of the line.
+rsc_holder_line_v() {
+    local -n _rhl="$1"
+    local _rhl_l
+    _rhl=""
+    while IFS= read -r _rhl_l; do
+        [[ "$_rhl_l" == "$_RSC_HOLDER_PREFIX"*" -->" ]] || continue
+        _rhl_l="${_rhl_l#"$_RSC_HOLDER_PREFIX"}"
+        _rhl="${_rhl_l% -->}"
+        return 0
+    done <<< "$2"
+    return 0
+}
 # shellcheck source=./run-open-items.sh
 source "$_RSC_ROOT/scripts/lib/run-open-items.sh"   # run_end_words, open_items_* (#2330)
 # shellcheck source=./run-status-pages.sh
@@ -307,8 +321,10 @@ rsc_render_header() {
     fi
 
     printf '%s%s -->\n' "$_RSC_MARKER_PREFIX" "$run_id"
-    # ADR-005 §2: the claim's holder, on its own line, for the next run to read.
+    # ADR-005 §2: the claim's holder, on its own line, for the next run to read —
+    # only while the run is going: a finished run holds nothing.
     holder="${holder//[[:cntrl:]]/}"
+    [[ "$status" == running ]] || holder=""
     [[ -n "$holder" ]] && printf '%s%s -->\n' "$_RSC_HOLDER_PREFIX" "${holder//-->/}"
     printf '### zbuild run `%s` · issue #%s · **%s**\n' "$run_id" "$issue" "$status"
     local meta="engine \`${sha}\`"

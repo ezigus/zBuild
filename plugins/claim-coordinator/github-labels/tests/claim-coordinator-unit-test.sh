@@ -40,7 +40,7 @@ assert_eq "heartbeat → rc 0" "0" "$(claim_coordinator_heartbeat 42; echo $?)"
 
 # ── gh backend ───────────────────────────────────────────────────────────────
 export ZBUILD_CLAIM_BACKEND="gh"
-export ZBUILD_STATUS_COMMENT_GH_TIMEOUT=5
+export ZBUILD_STATUS_COMMENT_GH_TIMEOUT=5 GITHUB_REPOSITORY="testowner/testrepo"
 GHS="$TEST_TEMP_DIR/gh"
 _gh_reset() { rm -rf "$GHS"; claim_gh_mock_install "$GHS"; }
 
@@ -50,6 +50,15 @@ set +e; reply="$(claim_coordinator_claim 7001)"; rc=$?; set -e
 assert_eq "claim → rc 0" "0" "$rc"
 assert_eq "claim → acquired true" "true" "$(jq -r .acquired <<< "$reply")"
 assert_eq "the issue now carries exactly zbuild:claimed" "zbuild:claimed" "$(cat "$GHS/labels")"
+assert_eq "every gh call names the repository" "$(wc -l < "$GHS/log" | tr -d ' ')" \
+    "$(/usr/bin/grep -c -- '--repo testowner/testrepo' "$GHS/log" || true)"
+
+print_test_section "gh: an add GitHub applied but whose answer was lost is a claim"
+_gh_reset; : > "$GHS/repo-label"; : > "$GHS/add-then-fail"
+set +e; reply="$(claim_coordinator_claim 7008 2>/dev/null)"; rc=$?; set -e
+assert_eq "claim → rc 0" "0" "$rc"
+assert_eq "…acquired true: the label this run added is this run's to release" "true" \
+    "$(jq -r .acquired <<< "$reply" 2>/dev/null || echo unparsed)"
 
 print_test_section "gh: a repository with no zbuild:claimed label gets one, once"
 _gh_reset
@@ -61,6 +70,8 @@ assert_eq "the label is created with --force (idempotent)" "1" \
 assert_eq "the add is tried twice: before and after the label exists" "2" \
     "$(/usr/bin/grep -c -- '--add-label zbuild:claimed' "$GHS/log" || true)"
 assert_eq "the issue carries zbuild:claimed" "zbuild:claimed" "$(cat "$GHS/labels")"
+assert_eq "…label create names the repository too" "1" \
+    "$(/usr/bin/grep -c '^label create .*--repo testowner/testrepo' "$GHS/log" || true)"
 
 print_test_section "gh: a claimed issue — the reply is valid JSON whatever the holder holds"
 _gh_reset; : > "$GHS/repo-label"; printf 'zbuild:claimed\n' > "$GHS/labels"
@@ -90,6 +101,7 @@ _gh_reset; printf 'zbuild:claimed\nbug\n' > "$GHS/labels"
 set +e; claim_coordinator_release 7005; rc=$?; set -e
 assert_eq "release → rc 0" "0" "$rc"
 assert_eq "release removes only zbuild:claimed" "bug" "$(cat "$GHS/labels")"
+assert_contains "…naming the repository" "$(cat "$GHS/log")" "--remove-label zbuild:claimed --repo testowner/testrepo"
 _gh_reset; printf 'zbuild:claimed\n' > "$GHS/labels"; : > "$GHS/fail-remove"
 set +e; claim_coordinator_release 7006 2>"$TEST_TEMP_DIR/err"; rc=$?; set -e
 assert_eq "a failed removal → non-zero rc" "1" "$(( rc != 0 ))"

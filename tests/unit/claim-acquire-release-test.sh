@@ -83,6 +83,8 @@ _stub "$TEST_TEMP_DIR/p-ok" '{"acquired": true}'
 _acq 9002
 assert_eq "acquired → rc 0" "0" "$_ACQ_RC"
 assert_eq "the claim hook was called once with the issue" "claim 9002" "$(cat "$CALLS")"
+assert_eq "the claim hook's events carry no stage (the issue is not one)" "0" \
+    "$(jq -c 'select((.type | startswith("plugin.claim.")) and has("stage"))' "$ZBUILD_EVENTS_JSONL" | wc -l | tr -d ' ')"
 assert_eq "pipeline.claim.acquired names the holder: run id and machine" \
     "run_id=run-cl-1 machine=box-1" "$(_event pipeline.claim.acquired | jq -r .holder)"
 _stub "$TEST_TEMP_DIR/p-ok" '{"acquired": true}'
@@ -118,8 +120,10 @@ _stub "$TEST_TEMP_DIR/p-rel" '{"acquired": true}'
 zbuild_claim_release
 assert_eq "no claim held → the release hook is not called" "" "$(cat "$CALLS")"
 _acq 9008; : > "$CALLS"
-zbuild_claim_release; zbuild_claim_release
+ZBUILD_CURRENT_STAGE=build zbuild_claim_release; zbuild_claim_release
 assert_eq "a held claim is released once, on its issue" "release 9008" "$(cat "$CALLS")"
+assert_eq "…its events carry no stage, not even the one the run was in" "0" \
+    "$(jq -c 'select((.type | startswith("plugin.release.")) and has("stage"))' "$ZBUILD_EVENTS_JSONL" | wc -l | tr -d ' ')"
 _stub "$TEST_TEMP_DIR/p-relfail" '{"acquired": true}' 0 1
 _acq 9009
 set +e; zbuild_claim_release 2>/dev/null; rc=$?; set -e
