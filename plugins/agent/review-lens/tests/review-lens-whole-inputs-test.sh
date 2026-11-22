@@ -57,7 +57,7 @@ _setup() {
     { printf '# Design\n\n'
       for (( i = 1; i <= $4; i++ )); do printf 'Decision %s: DECISION-%s keeps the claim with the engine.%s\n' "$i" "$i" "$pad"; done
       printf '\n```acceptance\n'
-      for (( i = 1; i <= $3; i++ )); do printf 'SPEC-%s[change]: SPECTEXT-%s the engine claims the issue before it starts work on it and releases the claim after%s\n' "$i" "$i" "$pad"; done
+      for (( i = 1; i <= $3; i++ )); do printf 'WHLIN-%s[change]: SPECTEXT-%s the engine claims the issue before it starts work on it and releases the claim after%s\n' "$i" "$i" "$pad"; done
       printf '```\n'; } > "$d/art/design.md"
     local steps="[]"
     if (( $5 > 0 )); then
@@ -84,7 +84,7 @@ assert_contains "[W4] the last not-needed step is there" "$P" "STEPWHY-60 "
 print_test_section "W5–W7: over the inline size, a file of the section, cleaned"
 export ZBUILD_STAGE_SCRATCH="$TEST_TEMP_DIR/scratch"; mkdir -p "$ZBUILD_STAGE_SCRATCH"
 D="$TEST_TEMP_DIR/w5"
-_setup "$D" "$(_filler 200000 'BIGWORD')"$'\e[31mRED-MARK\e[0m'" see .env.production BIG-END-MARKER" 20 20 300 "$(_filler 1500 'PAD')"
+_setup "$D" "$(_filler 40000 'BIGWORD')"$'\e[31mRED-MARK\e[0m'" see .env.production BIG-END-MARKER" 20 20 300 "$(_filler 1500 'PAD')"
 _run "$D"
 _ctx() { local f; f="$(/usr/bin/grep -oE "$ZBUILD_STAGE_SCRATCH/lens-correctness-context-$1\.md" <<< "$P" | head -n 1)"; printf '%s' "${f:-<not named>}"; }
 F_ISSUE="$(_ctx issue)" F_REQS="$(_ctx requirements)" F_DEC="$(_ctx decisions)" F_STEPS="$(_ctx not-needed)"
