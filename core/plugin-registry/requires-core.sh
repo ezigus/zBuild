@@ -139,7 +139,7 @@ _requires_core_code_v() {
     local -n _rccv="$1"
     local -a _rcc_a=()
     local _rcc_t
-    mapfile -t _rcc_a < "$2" 2>/dev/null || true
+    mapfile -t _rcc_a 2>/dev/null < "$2" || true
     # Whole-array expansions, not a loop: under xtrace a loop would trace each
     # line of the file, and the fork census would read its words as commands.
     printf -v _rcc_t '%s\n' "${_rcc_a[@]%%[[:space:]]#*}"

@@ -28,9 +28,9 @@ export ZBUILD_STATUS_NOW="2026-01-01T00:05:00Z"
 # the holder rides the event the engine emits when it has the claim.
 _body() {
     local ev="$TEST_TEMP_DIR/ev-$1.jsonl"; : > "$ev"
-    ZBUILD_EVENTS_JSONL="$ev" ZBUILD_RUN_ID="$1" ZBUILD_ISSUE=8001 eb_emit_event pipeline.start "run_id=$1" "issue=8001" 2>/dev/null
+    ZBUILD_EVENTS_JSONL="$ev" ZBUILD_RUN_ID="$1" ZBUILD_ISSUE=90001851 eb_emit_event pipeline.start "run_id=$1" "issue=90001851" 2>/dev/null
     if [[ -n "${2:-}" ]]; then
-        ZBUILD_EVENTS_JSONL="$ev" ZBUILD_RUN_ID="$1" ZBUILD_ISSUE=8001 eb_emit_event pipeline.claim.acquired "holder=$2" 2>/dev/null
+        ZBUILD_EVENTS_JSONL="$ev" ZBUILD_RUN_ID="$1" ZBUILD_ISSUE=90001851 eb_emit_event pipeline.claim.acquired "holder=$2" 2>/dev/null
     fi
     rsc_render_header "$(rsc_rows_json "$ev")" "$TEST_TEMP_DIR" || true
 }
@@ -68,16 +68,16 @@ jq -n --arg b "$bot_body" --arg r "$refused_body" --arg s "$spoof_body" '[
     {id:6, user:{login:"evil"}, author_association:"NONE", body:$s}]' > "$GHS/page-2.json"
 
 print_test_section "the reader"
-got="$(_ccgl_read_holder 8001 2>/dev/null || true)"
+got="$(_ccgl_read_holder 90001851 2>/dev/null || true)"
 assert_eq "the newest trusted comment that names a holder is read — on page 2, by the CI bot, while 'gh api user' fails" \
     "$bot_holder" "$got"
-assert_contains "…the comments were read with --paginate" "$(cat "$GHS/log")" "api --paginate repos/testowner/testrepo/issues/8001/comments"
+assert_contains "…the comments were read with --paginate" "$(cat "$GHS/log")" "api --paginate repos/testowner/testrepo/issues/90001851/comments"
 
 jq -n --arg s "$spoof_body" '[
     {id:1, user:{login:"evil"}, author_association:"NONE", body:$s},
     {id:2, user:{login:"someone"}, author_association:"CONTRIBUTOR", body:null}]' > "$GHS/page-1.json"
 rm -f "$GHS/page-2.json"
-got="$(_ccgl_read_holder 8001 2>/dev/null || true)"
+got="$(_ccgl_read_holder 90001851 2>/dev/null || true)"
 assert_eq "an outside commenter cannot name the holder" "" "$got"
 
 cleanup_test_env
