@@ -207,9 +207,11 @@ _words() { local _cw=""; manifest_call_words_v _cw "$REPO_ROOT/plugins/agent/$1/
 for _p in build design test-author; do
     assert_eq "[C6] $_p main: the building set" "$BUILDING" "$(_words "$_p" main)"
 done
+# #2584 (ADR-017 §12): the judging stages also look GitHub up, read-only.
 for _p in issue-acceptance review-lens; do
-    assert_eq "[C6] $_p main: the judging set" "$JUDGING" "$(_words "$_p" main)"
+    assert_eq "[C6] $_p main: the judging set and read-github" "$JUDGING read-github" "$(_words "$_p" main)"
 done
+assert_eq "[C6] the lens's check: the judging set and read-github" "$JUDGING read-github" "$(_words review-lens check)"
 assert_eq "[C6] design's coverage check: the judging set" "$JUDGING" "$(_words design coverage)"
 assert_eq "[C6] test-author's assertion check: the judging set" "$JUDGING" "$(_words test-author check)"
 assert_eq "[C6] intake main: none" "" "$(_words intake main)"

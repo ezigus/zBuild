@@ -73,6 +73,7 @@ _route_tools_said_v() {
     _rts=""
     [[ "$w" == *" read-files "* ]] && _rts_l+=("open and search files")
     [[ "$w" == *" read-git "* ]] && _rts_l+=("run git diff, git log, git show and git status")
+    [[ "$w" == *" read-github "* ]] && _rts_l+=("look GitHub up, read-only, with zbuild-gh-get <endpoint> [jq-filter] (a GET of GitHub's REST API, e.g. zbuild-gh-get 'repos/{owner}/{repo}/labels' '.[].name'; quote an endpoint with a query)")
     [[ "$w" == *" web-search "* ]] && _rts_l+=("search the web")
     [[ "$w" == *" subagents "* ]] && _rts_l+=("hand part of the work to a subagent")
     local n=${#_rts_l[@]} i
@@ -116,9 +117,7 @@ _route_resolve_knob() {
     local override_event="${4:-router.timeout.override_ignored}"
     local manifest_knob="${5:-}"
     local v=""
-    if [[ -n "${ZBUILD_CURRENT_STAGE:-}" ]] && declare -F "$accessor_fn" >/dev/null 2>&1; then
-        v="$($accessor_fn "$ZBUILD_CURRENT_STAGE" 2>/dev/null || true)"
-    fi
+    [[ -n "${ZBUILD_CURRENT_STAGE:-}" ]] && _route_template_knob_v v "$accessor_fn"
     if [[ -n "$v" ]]; then
         # If env var ALSO set and differs, emit override-ignored event for audit.
         # A manifest value losing to template or env is NOT this case: a default
@@ -145,6 +144,72 @@ _route_resolve_knob() {
         fi
     fi
     printf '%s\n' "$default_val"
+}
+
+# _route_template_knob_v <var> <accessor> — the template's value for the current
+# stage: its accessor (template.sh), or, in a shell that has not loaded it — a
+# map element's work unit, where the engine writes the dispatch's blocks — the
+# variable the accessor reads, which load_template exports (#2584).
+_route_template_knob_v() {
+    local -n _rtk="$1"; local fn="$2" pv
+    _rtk=""
+    if declare -F "$fn" >/dev/null 2>&1; then
+        _rtk="$("$fn" "$ZBUILD_CURRENT_STAGE" 2>/dev/null || true)"
+    else
+        pv="_TPL_STAGE_${fn#template_stage_}"; pv="${pv^^}_${ZBUILD_CURRENT_STAGE//-/_}"
+        [[ "$pv" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] && _rtk="${!pv:-}"
+    fi
+    return 0
+}
+
+# zb_call_limits_v <secs_var> <turns_var> [stage] — the time and turn limits of
+# the stage's model calls (#2584, ADR-018): the one record plugin_hook_call
+# resolves for the dispatch (ZBUILD_CALL_LIMITS="<stage> <secs> <turns>"), which
+# the call, the prompt's budget line and the time-up warning all read; outside
+# a dispatch of that stage, resolved here.
+zb_call_limits_v() {
+    local -n _zcs="$1" _zct="$2"; local st="${3:-${ZBUILD_CURRENT_STAGE:-}}" r="${ZBUILD_CALL_LIMITS:-}"
+    local _zre='^([^ ]+) ([0-9]+) ([0-9]+)$'
+    if [[ "$r" =~ $_zre && "${BASH_REMATCH[1]}" == "${st:--}" ]]; then
+        _zcs="${BASH_REMATCH[2]}" _zct="${BASH_REMATCH[3]}"; return 0
+    fi
+    _zcs="$(ZBUILD_CURRENT_STAGE="$st" _route_resolve_timeout)"
+    _zct="$(ZBUILD_CURRENT_STAGE="$st" _route_resolve_max_turns)"
+}
+
+# zb_call_limits_turns_override <turns> — a stage that sets its own calls' turn
+# limit sets it in the one record, before its prompt is composed (review of
+# #2584, ADR-018): the call, the prompt's budget line and the time-up warning
+# then all say it. 1..200 only (ADR-018 Amendment N: 0 comes from config); rc 2
+# otherwise. Outside a stage the record's stage is "-".
+zb_call_limits_turns_override() {
+    local t="${1:-}" s="" o=""
+    if ! [[ "$t" =~ ^[0-9]+$ ]] || (( t < 1 || t > 200 )); then
+        error "zb_call_limits_turns_override: a call's turn limit must be an integer in 1..200, got: $t"
+        return 2
+    fi
+    zb_call_limits_v s o
+    ZBUILD_CALL_LIMITS="${ZBUILD_CURRENT_STAGE:--} $s $t"
+    # The dispatch's rules blocks already state the limits: their budget line
+    # is said again, from the record (stage-prompt.sh writes them).
+    local d="${ZBUILD_STAGE_BLOCKS:-}" f txt was now
+    [[ -n "$d" ]] || return 0
+    zb_call_limits_said_v was "$s" "$o"; zb_call_limits_said_v now "$s" "$t"
+    for f in "$d/rules.md" "$d/rules-fresh.md"; do
+        [[ -s "$f" ]] || continue
+        txt=""; IFS= read -r -d '' txt < "$f" || true
+        [[ "$txt" == *"each model call has $was."* ]] || continue
+        printf '%s' "${txt//"each model call has $was."/"each model call has $now."}" > "$f" || return 2
+    done
+    return 0
+}
+
+# zb_call_limits_said_v <var> <secs> <turns> — the limits as every prompt's
+# budget line says them.
+zb_call_limits_said_v() {
+    local -n _zcls="$1"
+    _zcls="$2 seconds"
+    if [[ "$3" =~ ^[0-9]+$ && "$3" -gt 0 ]]; then _zcls+=" and $3 turns"; else _zcls+=", with no limit on turns"; fi
 }
 
 # Concrete: per-stage router.timeout_s > $ZBUILD_ROUTER_TIMEOUT >
@@ -180,10 +245,7 @@ _route_resolve_max_turns() {
 # by the ^[0-9]+$ validator) classify correctly.
 _route_classify_max_turns_source() {
     local _tpl_val=""
-    if [[ -n "${ZBUILD_CURRENT_STAGE:-}" ]] \
-        && command -v template_stage_router_max_turns >/dev/null 2>&1; then
-        _tpl_val="$(template_stage_router_max_turns "$ZBUILD_CURRENT_STAGE" 2>/dev/null || true)"
-    fi
+    [[ -n "${ZBUILD_CURRENT_STAGE:-}" ]] && _route_template_knob_v _tpl_val template_stage_router_max_turns
     local _mf_val; _mf_val="$(_route_manifest_knob max_turns)"
     if [[ "$_tpl_val" =~ ^[0-9]+$ ]] && [[ "$_tpl_val" -eq 0 ]]; then
         printf '%s' "template"

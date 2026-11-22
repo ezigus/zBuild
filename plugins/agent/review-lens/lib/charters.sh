@@ -14,6 +14,8 @@
 _ZBUILD_REVIEW_LENS_CHARTERS_LOADED=1
 
 _RL_LENSES_DIR="${BASH_SOURCE[0]%/*}/../lenses"
+# shellcheck source=../../../../scripts/lib/outside-assumptions.sh
+source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/outside-assumptions.sh"
 
 # _rl_lens_job_v <var> <lens> — the lens's own job text, read in this shell
 # (ADR-065 §5). rc 1 when the lens has none, or its name is not a plain name:
@@ -62,6 +64,18 @@ judges.
 Where the change reads data another part of the code writes, you open the
 code that writes it, then check the change uses the names and shapes it really
 produces, and that its tests make such data with that code, not by hand.
+For each finding, list every other place in the change with the same kind of
+problem (also_at), not only the one you quote: a fix made only where a problem
+was found leaves its other forms in place. Look for them — the same call, the
+same pattern, the same input reaching another path.
+
+OUTSIDE ASSUMPTIONS:
+${ZB_OUTSIDE_ASSUMPTIONS_RULE:-}
+An outside assumption the change does not handle is a finding. To check one
+about GitHub — that a label, a branch or a setting exists, what an API returns
+— look it up, read-only, with zbuild-gh-get <endpoint> [jq-filter] (a GET of
+GitHub's REST API, e.g. zbuild-gh-get 'repos/{owner}/{repo}/labels' '.[].name')
+rather than guess it.
 
 OUTPUT CONTRACT (obey absolutely):
 - Respond with EXACTLY ONE JSON object. First character '{', last character '}'.
@@ -79,7 +93,8 @@ OUTPUT CONTRACT (obey absolutely):
         "trigger": "<what makes it happen on a real run — where this lens's problems come from>",
         "accepted_if": "<what must be true for this finding to be resolved, in the issue's words>",
         "introduced": <true if this change introduced or worsened it, or did not do what the issue or design asked of it; false if the code before the change already did this and nothing asked this change to change it>,
-        "fix": "<one of: code, test, design, issue>"
+        "fix": "<one of: code, test, design, issue>",
+        "also_at": ["<file> | <the line that shows it there>", "<each other place in the change with the same kind of problem>"]
       }
     ]
   }
@@ -107,6 +122,11 @@ FIX — say what would fix each finding:
 
 UNCLEAR — what the issue means, when its words could mean either of two things:
 ${_RL_UNCLEAR_RULES:-}
+
+A problem you suspect but cannot confirm is not left out: put it in the "unclear" list
+as an object, with what would confirm it, and judge the rest of the change. It
+reaches the stage that can answer it as a question, and sends nothing back:
+  {"file": "<path>", "quote": "<the text it is about>", "suspicion": "<what you suspect can go wrong>", "confirm_by": "<what would confirm it, or rule it out>", "fix": "<code, test or design: who can answer it>"}
 
 ## What you judge against
 THE CHANGE below names the commit this branch started from and the files it

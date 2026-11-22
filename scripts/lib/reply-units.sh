@@ -21,7 +21,7 @@ _ZBUILD_REPLY_UNITS_LOADED=1
 # that happens to start with the word (#2567). A question in the one form, and
 # a check's answer to one — `UNCLEAR <id> | …`, `UNCLEAR <id>: open` — starts a
 # unit too (#2571).
-_ZB_RU_START='^[[:space:]>*_`]*([A-Z][A-Z0-9_-]*:|UNCLEAR[[:space:]]|[A-Z][A-Z0-9_]*-[0-9]+[[:space:]]+(Title|Given|When|Then|And|Cleanup|sections|cleanup)([[:space:]]+[0-9]+)?:|Steps:|Decisions?:[[:space:]]*(ok|not-asked|contradicts|new-owner)|[Ss][Tt][Ee][Pp][[:space:]]+[0-9]+[[:space:]]*:|[Aa][Nn][Ss][Ww][Ee][Rr][[:space:]]|LOOP_COMPLETE|#|```|[-*+][[:space:]]|[0-9]+[.)][[:space:]])'
+_ZB_RU_START='^[[:space:]>*_`]*([A-Z][A-Z0-9_-]*:|UNCLEAR[[:space:]]|[A-Z][A-Z0-9_]*-[0-9]+[[:space:]]+(Title|Given|When|Then|And|Cleanup|sections|cleanup)([[:space:]]+[0-9]+)?:|Steps:|Decisions?:[[:space:]]*(ok|not-asked|contradicts|new-owner|unhandled)|[Ss][Tt][Ee][Pp][[:space:]]+[0-9]+[[:space:]]*:|[Aa][Nn][Ss][Ww][Ee][Rr][[:space:]]|LOOP_COMPLETE|#|```|[-*+][[:space:]]|[0-9]+[.)][[:space:]])'
 _ZB_RU_ITEM='^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]+(.*)$'
 _ZB_RU_KEY_ONLY='^[[:space:]>*_`]*([A-Z][A-Z0-9_-]*):[[:space:]*_`]*$'
 

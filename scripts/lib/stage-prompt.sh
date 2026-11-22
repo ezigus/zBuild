@@ -42,7 +42,7 @@ declare -F stage_cutoff_path_v >/dev/null 2>&1 || source "$_ZBUILD_SP_ROOT/scrip
 # shellcheck source=./vision.sh
 declare -F load_vision_doc >/dev/null 2>&1 || source "$_ZBUILD_SP_ROOT/scripts/lib/vision.sh"
 # shellcheck source=./stage-limits.sh
-declare -F _route_resolve_timeout >/dev/null 2>&1 || source "$_ZBUILD_SP_ROOT/scripts/lib/stage-limits.sh"
+declare -F zb_call_limits_v >/dev/null 2>&1 || source "$_ZBUILD_SP_ROOT/scripts/lib/stage-limits.sh"
 
 _ZB_SP_REPO='## From the repo'
 _ZB_SP_OWN='## What you own'
@@ -281,14 +281,9 @@ _stage_block_rules_pair_v() {
     else
         tv="_TPL_STAGE_TIMEOUT_S_${stage//-/_}"; stage_secs="${!tv:-}"
     fi
-    secs="$(ZBUILD_CURRENT_STAGE="$stage" _route_resolve_timeout 2>/dev/null)"
-    turns="$(ZBUILD_CURRENT_STAGE="$stage" _route_resolve_max_turns 2>/dev/null)"
-    local per_call="${secs:-?} seconds"
-    if [[ "$turns" =~ ^[0-9]+$ && "$turns" -gt 0 ]]; then
-        per_call+=" and ${turns} turns"
-    else
-        per_call+=", with no limit on turns"
-    fi
+    # #2584 (ADR-018): the dispatch's one record, which the call itself runs under.
+    zb_call_limits_v secs turns "$stage" 2>/dev/null
+    local per_call; zb_call_limits_said_v per_call "${secs:-?}" "$turns"
     _budget="- Your budget: each model call has $per_call. Finish well before the
   limit; at the limit, write your notes and give your answer."
     [[ "$stage_secs" =~ ^[0-9]+$ ]] && _budget+=" The whole stage has $stage_secs seconds."

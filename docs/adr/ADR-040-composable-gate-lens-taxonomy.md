@@ -1,6 +1,6 @@
 # ADR-040 — Composable gate / lens taxonomy (the convergence-path invariant)
 
-**Status:** Accepted (2026-06-27); amended 2026-11-16 (#2556: the shape floor is gone; a run-shaping change always runs the shape tests); amended 2026-11-15 (#2548, §3: each lens's job is its own text, ADR-038)
+**Status:** Accepted (2026-06-27); amended 2026-11-22 (#2584, §3: the lens job texts ask about partial reads, data trusted without knowing its writer, calls with no timeout, what an interrupt leaves behind, tests that reach real services and Enforced-by entries; "fails loudly" means an event or a status line); amended 2026-11-16 (#2556: the shape floor is gone; a run-shaping change always runs the shape tests); amended 2026-11-15 (#2548, §3: each lens's job is its own text, ADR-038)
 **Related** — dispositions below are **PLANNED** (declared here, executed in later issues of EPIC #1129 alongside the code that lands the decomposition); **this PR edits no existing ADR**:
 - evolve-planned: ADR-037 (the objective-gate *monolith* decomposes into many first-class `kind: tool` gate stages + a gate-aggregator; ADR-037's two-layer invariant is preserved and made machine-enforced)
 - supersede-planned: ADR-038 (its single-stage packaging of the lens fan-out is replaced by composable `kind: agent` lens stages + a review-aggregator; the lens *content* and evidence-fed contract are kept)
@@ -707,3 +707,15 @@ On #1764 run 43772987273 the shape floor listed 7 files as needing an edit that 
 - **A golden no test read is gone:** `tests/golden/full-pipeline/event-sequence.golden`.
 
 Enforced by: - Amendment 2026-11-16 (#2556: the shape floor is gone; the shape tests always run) → `tests/unit/shape-tests-list-test.sh` ST1 (a run-shaping change puts every shape test in the targeted set), ST2 (another change adds none), ST3 (every listed file exists), ST4 (the shape floor's check, library, outputs and events are gone), ST5 (the golden no test read is gone)
+
+## Amendment 2026-11-22 (#2584) — §3: what the lens job texts ask
+
+On #1764 run 44910536811 sre's job text excused "a step that already fails loudly, with a message saying why", and so a skip that said why only on stderr went unreported. No job asked about paginated reads, calls with no timeout, who writes outside data, tests that reach real services, or whether an Enforced-by entry names the right test.
+
+- **red-team** (`plugins/agent/review-lens/lenses/red-team.md`) looks for a read that gets only part of the data — one page of a paginated list, a size limit, a stream cut short — and acts as if it had it all, and for data trusted without checking who wrote it.
+- **sre** (`lenses/sre.md`) looks for a call to something outside the program with no timeout, and for anything taken — a claim, a lock, a label, a file — that a crash or an interrupt leaves behind.
+- **correctness** (`lenses/correctness.md`) looks for a test that reaches a real service instead of a stand-in, and an Enforced by entry that names a test which does not check what it says.
+- **"Fails loudly" means an event or a status line**, not only a message on stderr. A deliberate fail-open must be visible the same way. A step that fails loudly in that sense is not a finding; one that only prints a message is.
+- Every lens's prompt also carries the one rule on outside assumptions (ADR-038, amended 2026-11-22).
+
+Enforced by: `plugins/agent/review-lens/tests/review-lens-asks-test.sh` S6 (each job text asks what it must; sre no longer excuses a message alone).

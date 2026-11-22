@@ -37,6 +37,9 @@ source "$_IA_ROOT/scripts/lib/llm-agent.sh" 2>/dev/null || true
 source "$_IA_ROOT/scripts/lib/judge.sh"
 # shellcheck source=../../../scripts/lib/stage-handoff.sh
 source "$_IA_ROOT/scripts/lib/stage-handoff.sh"
+# #2584: the rule on outside assumptions, as design, build and the lenses get it.
+# shellcheck source=../../../scripts/lib/outside-assumptions.sh
+source "$_IA_ROOT/scripts/lib/outside-assumptions.sh"
 # shellcheck source=./lib/parse.sh
 source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/lib/parse.sh"
 # #2574: a verdict kept per item.
@@ -109,6 +112,12 @@ Start each UNMET: line with what would fix it:
 - [fix-design] — the REQUIREMENTS miss it or get it wrong, or the issue itself is
   wrong: the design must change.
 Leave the mark off when you cannot tell which would fix it.
+
+${ZB_OUTSIDE_ASSUMPTIONS_RULE:-}
+A requirement whose change rests on an outside assumption it does not handle is
+unmet: say which assumption in its WHY. To see whether one about GitHub holds —
+that a label, a branch or a setting exists — check it, read-only, with
+zbuild-gh-get <endpoint> [jq-filter] rather than guess it.
 
 ${ZB_UNCLEAR_RULES}
 When none are listed under ISSUE REQUIREMENTS, the <id> of an UNCLEAR line is

@@ -96,6 +96,8 @@ _zbuild_tool_hook_cmd_v() {
     printf -v _tuh 'bash %q' "${_ROUTER_DIR:-${BASH_SOURCE[0]%/*}}/tool-hook.sh"
     for f in ${_ROUTE_HOOK_FLAGS[@]+"${_ROUTE_HOOK_FLAGS[@]}"}; do printf -v _tuh '%s %q' "$_tuh" "$f"; done
     [[ -n "${_ROUTE_DONE_WORD:-}" ]] && printf -v _tuh '%s --done-word %q' "$_tuh" "$_ROUTE_DONE_WORD"
+    # #2584 (ADR-018): the limits the call runs under, for the time-up warning to state.
+    [[ "$secs" =~ ^[0-9]+$ ]] && printf -v _tuh '%s --time-limit %q --turn-limit %q' "$_tuh" "$secs" "${_ROUTE_CALL_TURNS:-0}"
     printf -v _tuh '%s %q %q' "$_tuh" "$deadline" "$notes"
 }
 

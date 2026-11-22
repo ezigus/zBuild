@@ -96,7 +96,7 @@ _rl_check_parse() {
     return 0
 }
 
-# _rl_check_v <var> <normalized> <lens> <out> <change> <change_fp> <repo> —
+# _rl_check_v <var> <normalized> <lens> <change> <repo> —
 # <normalized> with each finding the check knocked down moved to knocked_down
 # ({…finding, why, by_quote}), into <var>. No findings: no call. A reply that
 # cannot be used, asked again once, leaves every finding standing, and says why
@@ -105,7 +105,7 @@ _rl_check_parse() {
 # own call. The call runs inside the lens's signal guard.
 _RL_CHECK_RC=0 _RL_CHECK_NOTE=""
 _rl_check_v() {
-    local -n _rlc="$1"; local norm="$2" lens="$3" out="$4" change="$5" cfp="$6" repo="$7"
+    local -n _rlc="$1"; local norm="$2" lens="$3" change="$4" repo="$5"
     _rlc="$norm"; _RL_CHECK_RC=0; _RL_CHECK_NOTE=""
     local count=0 list ownq="" l
     # One jq: each finding as the check is shown it, one line a part.
@@ -116,42 +116,32 @@ _rl_check_v() {
         [[ "$l" == "quote: "* ]] && ownq+="${l#quote: }"$'\n'
     done <<< "$list"
     (( count > 0 )) || return 0
-    # ADR-072 §4: kept while the findings and the change are unchanged.
-    local kf="${out%.json}-check-judged.json" eng fp kept="" reply="" ask prompt _try _rc=0 why=""
-    judge_engine_v eng
-    judge_fp_v fp "$eng"$'\n'"$list"$'\n'"$cfp"
-    judge_kept_get_v kept "$kf" check "$fp"
-    if [[ -n "$kept" ]]; then
-        _rl_check_parse "$kept" "$count" "$repo" "$ownq"
-        [[ -z "$_RL_CHECK_PROBLEM" ]] && reply="$kept"
+    # #2584 (ADR-072 §4): it keeps no answer — called every round, as the lens is.
+    local reply="" ask prompt _try _rc=0 why=""
+    if ! prompt="$(stage_prompt_compose_parts --fresh "$(_rl_check_prompt "$list" "$change")")"; then
+        _RL_CHECK_NOTE="the check could not be run: its prompt could not be composed"
+        emit_event "review_lens.check_unusable" "lens=$lens" "reason=compose_failed"
+        return 0
     fi
-    if [[ -z "$reply" ]]; then
-        if ! prompt="$(stage_prompt_compose_parts --fresh "$(_rl_check_prompt "$list" "$change")")"; then
-            _RL_CHECK_NOTE="the check could not be run: its prompt could not be composed"
-            emit_event "review_lens.check_unusable" "lens=$lens" "reason=compose_failed"
-            return 0
+    ask="$prompt"
+    stage_signal_begin _review_lens_interrupt_handler
+    for _try in 1 2; do
+        local _r=""; _rc=0
+        # ADR-051 §5: the call the manifest names `check`, as its persona.
+        _r="$(ZBUILD_ROUTE_CALL=check route_to_model "${_RL_CHECK_TIER:-T2}" "$ask")" || _rc=$?
+        [[ "$_rc" -eq 0 && -n "$_r" && "${_rl_interrupted:-0}" != 1 ]] || break
+        _rl_check_parse "$_r" "$count" "$repo" "$ownq"
+        if [[ -z "$_RL_CHECK_PROBLEM" ]]; then
+            reply="$_r"
+            break
         fi
-        ask="$prompt"
-        stage_signal_begin _review_lens_interrupt_handler
-        for _try in 1 2; do
-            local _r=""; _rc=0
-            # ADR-051 §5: the call the manifest names `check`, as its persona.
-            _r="$(ZBUILD_ROUTE_CALL=check route_to_model "${_RL_CHECK_TIER:-T2}" "$ask")" || _rc=$?
-            [[ "$_rc" -eq 0 && -n "$_r" && "${_rl_interrupted:-0}" != 1 ]] || break
-            _rl_check_parse "$_r" "$count" "$repo" "$ownq"
-            if [[ -z "$_RL_CHECK_PROBLEM" ]]; then
-                reply="$_r"
-                judge_kept_put_one "$kf" check "$fp" "$_r"
-                break
-            fi
-            why="$_RL_CHECK_PROBLEM"
-            ask="$(stage_prompt_reask "$prompt" "$_RL_CHECK_PROBLEM" "$_r")"
-        done
-        stage_signal_end
-        if [[ "$_rc" -eq 130 || "$_rc" -eq 10 || "${_rl_interrupted:-0}" == 1 ]]; then
-            _RL_CHECK_RC="$_rc"; [[ "${_rl_interrupted:-0}" == 1 ]] && _RL_CHECK_RC=130
-            return 0
-        fi
+        why="$_RL_CHECK_PROBLEM"
+        ask="$(stage_prompt_reask "$prompt" "$_RL_CHECK_PROBLEM" "$_r")"
+    done
+    stage_signal_end
+    if [[ "$_rc" -eq 130 || "$_rc" -eq 10 || "${_rl_interrupted:-0}" == 1 ]]; then
+        _RL_CHECK_RC="$_rc"; [[ "${_rl_interrupted:-0}" == 1 ]] && _RL_CHECK_RC=130
+        return 0
     fi
     if [[ -z "$reply" ]]; then
         [[ "$_rc" -ne 0 ]] && why="the call ended rc $_rc"

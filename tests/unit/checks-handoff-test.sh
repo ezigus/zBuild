@@ -2,10 +2,10 @@
 # tests/unit/checks-handoff-test.sh — test-author's check waits on a SPEC it
 # handed to design (#2574 R1 review; ADR-072 §5, amended 2026-11-20).
 #
-# Build's step check (plugins/agent/build/tests/build-step-handoff-test.sh),
-# issue-acceptance (issue-acceptance-per-item-test.sh PI7) and the lenses
-# (lens-per-item-test.sh LP9) wait on a part handed on; so does test-author's
-# check. Design's check cannot: design has no output that carries a finding to
+# Build's step check (plugins/agent/build/tests/build-step-handoff-test.sh) and
+# issue-acceptance (issue-acceptance-per-item-test.sh PI7) wait on a part handed
+# on; so does test-author's check. A lens waits on nothing: it reviews the whole
+# change every round (#2584, lens-fresh-test.sh LF5). Design's check cannot: design has no output that carries a finding to
 # another stage (ADR-072 §5, amended 2026-11-20).
 #
 # TH1 [change] test-author answers its check's finding on SPEC-1 not mine. In the

@@ -549,6 +549,14 @@ _plugin_hook_call_once() {
         local _ir_state="${ZBUILD_STATE_DIR:-}"
         if [[ -n "$_ir_state" && -n "${ZBUILD_CURRENT_STAGE:-}" ]] && declare -F _inputs_resolve_stage_v >/dev/null 2>&1; then
             local -x ZBUILD_STAGE_INPUTS="" ZBUILD_STAGE_BLOCKS=""
+            # #2584 (ADR-018): the limits of this dispatch's model calls, resolved
+            # once — the call, the prompt's budget line and the time-up warning read
+            # this one record.
+            local -x ZBUILD_CALL_LIMITS=""
+            if declare -F zb_call_limits_v >/dev/null 2>&1; then
+                local _cl_s="" _cl_t=""; zb_call_limits_v _cl_s _cl_t "$ZBUILD_CURRENT_STAGE" 2>/dev/null
+                [[ "$_cl_s" =~ ^[0-9]+$ && "$_cl_t" =~ ^[0-9]+$ ]] && ZBUILD_CALL_LIMITS="$ZBUILD_CURRENT_STAGE $_cl_s $_cl_t"
+            fi
             # Both written in this shell, and both use one producer index
             # (ADR-065 §5, round 9: each was its own $( ) before).
             _inputs_resolve_stage_v ZBUILD_STAGE_INPUTS "$ZBUILD_CURRENT_STAGE" "$_ir_proot" "$_ir_state" 2>/dev/null || true

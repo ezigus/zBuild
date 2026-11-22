@@ -18,11 +18,7 @@ _design_draft_unfinished() {
     [[ "${_r%%$'\t'*}" == pass || "$_r" == *"$_DESIGN_CUT_MARK"* ]]
 }
 
-# Inner implementation — unit-testable with explicit paths.
-# Args:
-#   $1 = scope_manifest path
-#   $2 = output_design_md path
-#   $3 = artifact_dir
+# _design_stage_run_inner <scope_manifest> <output_design_md> [artifact_dir] — unit-testable with explicit paths.
 _design_stage_run_inner() {
     local scope_manifest="$1"
     local output_design_md="$2"
@@ -240,6 +236,10 @@ and libraries. Build on it, not beside it. Name in the design what you found and
 why you used it or not.
 
 ${ZB_UNCLEAR_RULES}
+
+${ZB_OUTSIDE_ASSUMPTIONS_RULE}
+Name each outside assumption in the design, with how it is handled: which step
+creates it, or checks it and fails clearly, or why it is safe to assume.
 
 Keep the prose focused and under 200 lines (the acceptance block may be as
 long as completeness requires).

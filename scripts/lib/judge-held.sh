@@ -221,7 +221,7 @@ judge_last_findings_block_v() {
 source "${BASH_SOURCE[0]%/*}/judge-handoff.sh"
 
 # ─── A kept pass judged again is refused only on a line added since (§4) ─────
-# Review on #2574: issue-acceptance and the lenses judge an item again whenever
+# Review on #2574: design's check and issue-acceptance judge an item again whenever
 # the code it depends on moved, so a fresh judgement could flip a pass with
 # nothing relevant changed — the flip #2574 exists to stop. A check is shown
 # each pass it is judging again, and may refuse it only by quoting a line the

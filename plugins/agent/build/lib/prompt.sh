@@ -20,6 +20,8 @@ _ZBUILD_BUILD_PROMPT_LOADED=1
 # #2571 (ADR-069 §12): what is unclear to build is the design's.
 # shellcheck source=../../../../scripts/lib/unclear.sh
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/unclear.sh"
+# shellcheck source=../../../../scripts/lib/outside-assumptions.sh
+source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/outside-assumptions.sh"
 
 # _build_render_task_header <round>
 # Emits the stable banner that prefixes every build prompt: the loop's round.
@@ -55,6 +57,11 @@ ${_framing}
 
 ### When something is unclear
 ${ZB_UNCLEAR_NOT_YOURS}
+
+### What the change assumes about the world outside it
+${ZB_OUTSIDE_ASSUMPTIONS_RULE}
+Handle each outside assumption the change makes as the design says; one the
+design did not name, handle in the code and say so in your answer.
 
 ### How your work is kept
 - You make code changes via Edit/Write/Bash. What you change stays in the

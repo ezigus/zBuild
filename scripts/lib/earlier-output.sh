@@ -146,9 +146,12 @@ earlier_scope_manifest() { earlier_output_with_text '^\+ .*/$' "$@"; }
 # The issue text, as written: the result that carries it (data.issue_text). An
 # empty one is no issue text.
 earlier_issue_text() {
-    local f; f="$(earlier_output_with_json '(.data.issue_text | type) == "string" and (.data.issue_text | length) > 0' "$@")" || return 1
+    local f; f="$(earlier_issue_file "$@")" || return 1
     jq -r '.data.issue_text' "$f" 2>/dev/null
 }
+# The file that holds the issue text (.data.issue_text): a lens is pointed at it
+# when the issue is too long to show whole (#2584).
+earlier_issue_file() { earlier_output_with_json '(.data.issue_text | type) == "string" and (.data.issue_text | length) > 0' "$@"; }
 # A test run's per-file timing: lines of "file <ms> <path>".
 earlier_test_timing() { earlier_output_with_text '^file [0-9]+ ' "$@"; }
 # A test run's result: JSON with the run's exit code.

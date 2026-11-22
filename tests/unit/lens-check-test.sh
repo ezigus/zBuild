@@ -16,8 +16,8 @@
 # K5 [change] a finding knocked down with a quote not in the code stands
 # K6 [change] the check call runs as quality-assurance: a map element's persona
 #             is its main call's only
-# K7 [change] the check's answer is kept while the findings and the change are
-#             unchanged
+# K7 [change] (#2584) the check keeps no answer: the same findings on the same
+#             change are checked again
 # K8 [change] the lens is asked for each problem it can say what makes happen,
 #             with the code that shows it
 # K9 [change] a knock-down that quotes the finding's own line shows nothing:
@@ -210,14 +210,14 @@ assert_eq "[K6] the lens's own call runs as its element's persona" "lens main re
 assert_eq "[K6] the check call runs as quality-assurance" "check check quality-assurance" "$(grep '^check ' "$CALLS" | head -1)"
 
 # ── K7 ───────────────────────────────────────────────────────────────────────
-print_test_section "K7: a kept check answer"
+print_test_section "K7: the check keeps no answer (#2584)"
 LENS_REPLY="{\"score\":4,\"findings\":[$(_finding medium "a template turns the guard on")]}"; CHECK_REPLY='1: stands'
 _lens
 : > "$CALLS"
 ( export ZBUILD_MAP_ELEMENT=red-team ZBUILD_REVIEW_LENS_ID=red-team ZBUILD_PLUGIN_DIR="$PLUGIN_DIR"
   rm -f "$ART/lens-red-team-judged.json"
   cd "$G" && _review_lens_run_inner red-team "" "$ART/diff.patch" "$ART/lens-red-team.json" "$ART" ) >/dev/null 2>&1
-assert_eq "[K7] the same findings on the same change: the kept check answer is used" "0" "$(_n check)"
+assert_eq "[K7] the same findings on the same change: checked again" "1" "$(_n check)"
 
 # ── K8 ───────────────────────────────────────────────────────────────────────
 print_test_section "K8: the lens's wording"

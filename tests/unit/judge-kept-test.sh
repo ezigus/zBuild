@@ -24,8 +24,8 @@
 # K6 build keeps its answers in its result
 # K7 issue-acceptance: kept while unchanged; build's answer to one of its
 #    findings is judged again, with the answer shown
-# K8 a review lens: kept while unchanged; build's answer to one of its
-#    findings is judged again
+# K8 a review lens keeps nothing (#2584): called again while unchanged; build's
+#    answer to one of its findings is shown to the next call
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -260,7 +260,7 @@ print_test_section "K8: a review lens"
 ) > "$TEST_TEMP_DIR/k8.out" 2>/dev/null
 _l() { grep "^$1|" "$TEST_TEMP_DIR/k8.out" | head -1 | cut -d'|' -f2-; }
 assert_eq "[K8] first time: judged" "1|fail" "$(_l K8a)"
-assert_eq "[K8] unchanged: no call, the same outcome" "0|fail" "$(_l K8b)"
+assert_eq "[K8] unchanged: called again (#2584: a lens keeps no verdict), the same outcome" "1|fail" "$(_l K8b)"
 assert_eq "[K8] build disputes its finding: judged again, the answer shown" "1|pass|shown" "$(_l K8c)"
 
 cleanup_test_env

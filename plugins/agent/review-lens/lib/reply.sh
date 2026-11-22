@@ -82,3 +82,31 @@ _rl_quote_problem_v() {
     [[ ${#_rqp_bad[@]} -gt 0 ]] || return 0
     local IFS=';'; _rqp="${_rqp_bad[*]}"; _rqp="${_rqp//;/; }"
 }
+
+# _rl_also_at_hold_v <var> <normalized> <base> <repo> [patch] — <normalized>
+# with each finding's other places (also_at, "<file> | <line>") held to the
+# change as its quote is (#2584, ADR-038): one whose line is not in its file
+# now, in the file as it was, or in the round's patch is left out, a line in
+# _RL_ALSO_NOTES for each. One jq to read them, one to drop, only when any is.
+_RL_ALSO_NOTES=""
+_rl_also_at_hold_v() {
+    local -n _rah="$1"; local _rah_n _rah_p _rah_f _rah_q _rah_w _rah_old _rah_d=""
+    _rah="$2"; _RL_ALSO_NOTES=""
+    [[ "$2" == *'"also_at":["'* ]] || return 0
+    while IFS=$'\037' read -r -d '' _rah_n _rah_p; do
+        _rah_f="${_rah_p%% | *}" _rah_q="${_rah_p#* | }"
+        if [[ "$_rah_p" == *" | "* && -n "${_rah_q//[[:space:]]/}" && -n "${_rah_f//[[:space:]]/}" ]]; then
+            judge_quote_check_v _rah_w "$_rah_p" "" "$4" && continue
+            if [[ -n "$3" ]]; then
+                _rah_old="$(git -C "$4" show "$3:$_rah_f" 2>/dev/null)" && _judge_holds "$_rah_old" "$_rah_q" && continue
+            fi
+            [[ -n "${5:-}" ]] && _judge_holds "$5" "$_rah_q" && continue
+        fi
+        _rah_d+="${_rah_d:+,}[$_rah_n]"
+        _RL_ALSO_NOTES+="a place the same kind of problem is also at was left out, its line not found as quoted: ${_rah_p:0:200}"$'\n'
+    done < <(jq -j '.findings | to_entries[] | .key as $i | (.value.also_at // []) | to_entries[]
+        | "\($i),\(.key)\u001f\(.value | gsub("\u001f"; " "))\u0000"' <<< "$2" 2>/dev/null)
+    [[ -n "$_rah_d" ]] || return 0
+    _rah="$(jq -c --argjson d "[$_rah_d]" 'reduce ($d | sort | reverse)[] as $p (.; del(.findings[$p[0]].also_at[$p[1]]))' <<< "$2" 2>/dev/null)" || _rah="$2"
+    [[ -n "$_rah" ]] || _rah="$2"
+}

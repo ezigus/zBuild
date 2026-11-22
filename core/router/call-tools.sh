@@ -11,7 +11,9 @@
 #
 # The words also decide the guards in the call's PreToolUse hook
 # (core/router/tool-hook.sh): read-git without run-commands may run only git's
-# reading commands; a call given the copy of the code from before the change
+# reading commands; read-github without run-commands only zbuild-gh-get
+# (core/router/gh-get.sh), and its call's environment holds no GitHub token
+# (_route_call_env); a call given the copy of the code from before the change
 # (ZBUILD_ROUTE_BASE_CODE — test-author's) reads existing code there. The hook
 # checks every web search for secrets, needing no word from here.
 #
@@ -27,6 +29,7 @@ declare -F zbuild_engine_tmpdir_v >/dev/null 2>&1 || source "$_CALL_TOOLS_DIR/..
 declare -F manifest_call_words_v >/dev/null 2>&1 || source "$_CALL_TOOLS_DIR/../plugin-registry/manifest-calls.sh"
 
 _ROUTE_TOOL_ARGS=() _ROUTE_HOOK_FLAGS=() _ROUTE_CALL_WORDS="" _ROUTE_CALL_NAME="" _ROUTE_TOOLS_KEY=""
+_ROUTE_GH_BIN="" _ROUTE_GH_SECRET_DIR=""
 
 # _route_call_tools_prepare — for the call about to be made: _ROUTE_TOOL_ARGS
 # (the provider's arguments), _ROUTE_CALL_WORDS and _ROUTE_HOOK_FLAGS (the
@@ -35,9 +38,10 @@ _ROUTE_TOOL_ARGS=() _ROUTE_HOOK_FLAGS=() _ROUTE_CALL_WORDS="" _ROUTE_CALL_NAME="
 _route_call_tools_prepare() {
     local call="${ZBUILD_ROUTE_CALL:-main}" dir="${ZBUILD_PLUGIN_DIR:-}" p="${_ROUTE_PROVIDER:-anthropic}"
     local base="${ZBUILD_ROUTE_BASE_CODE:-}" repo="${ZBUILD_REPO_ROOT:-$PWD}"
-    local key="$dir|$call|$p|$base|$repo|${_TPL_SOURCE_FILE:-}"
+    local key="$dir|$call|$p|$base|$repo|${_TPL_SOURCE_FILE:-}|${ZBUILD_STAGE_SCRATCH:-}"
     [[ "$key" == "$_ROUTE_TOOLS_KEY" ]] && return 0
     _ROUTE_TOOLS_KEY="" _ROUTE_TOOL_ARGS=() _ROUTE_HOOK_FLAGS=() _ROUTE_CALL_WORDS="" _ROUTE_CALL_NAME="$call"
+    _ROUTE_GH_BIN="" _ROUTE_GH_SECRET_DIR=""
     local words="" why=""
     if [[ -n "$dir" ]] && ! manifest_call_words_v words "$dir/manifest.yaml" "$call"; then
         _route_call_refused "$call" undeclared \
@@ -77,6 +81,7 @@ _route_call_tools_prepare() {
 _route_call_hook_flags() {
     local w=" $1 " g globs
     [[ "$w" == *" read-git "* && "$w" != *" run-commands "* ]] && _ROUTE_HOOK_FLAGS+=(--git-only)
+    [[ "$w" == *" read-github "* && "$w" != *" run-commands "* ]] && _route_call_gh_read
     if [[ -n "$3" && "$w" == *" read-files "* ]]; then
         _ROUTE_HOOK_FLAGS+=(--repo "$2" --code-copy "$3")
         # shellcheck source=../../scripts/lib/test-paths.sh
@@ -86,6 +91,37 @@ _route_call_hook_flags() {
         read -ra _gl <<< "$globs"
         for g in ${_gl[@]+"${_gl[@]}"}; do _ROUTE_HOOK_FLAGS+=(--test-glob "$g"); done
     fi
+    return 0
+}
+
+# _route_call_gh_read — read-github's guard (#2584, ADR-017 §12): the shell
+# runs only zbuild-gh-get, found in _ROUTE_GH_BIN, which the call's PATH leads
+# with. The model's environment holds no GitHub token (_route_call_env): one
+# there is written into a folder of the stage's scratch only its owner opens,
+# which the wrapper reads (ZB_GH_TOKEN_FILE) and the hook keeps every other tool
+# out of (--secret-dir). No token there: gh's own login serves the wrapper.
+_route_call_gh_read() {
+    local tok="${GH_TOKEN:-${GITHUB_TOKEN:-}}" d
+    _ROUTE_HOOK_FLAGS+=(--gh-read)
+    _ROUTE_GH_BIN="$_CALL_TOOLS_DIR/gh-bin"
+    [[ -n "$tok" ]] || return 0
+    d="${ZBUILD_STAGE_SCRATCH:-}"
+    [[ -n "$d" ]] || zbuild_engine_tmpdir_v d
+    d="${d%/}/.zb-gh"
+    [[ -d "$d" ]] || mkdir -m 700 "$d" 2>/dev/null || return 0
+    ( umask 077; printf '%s\n' "$tok" > "$d/token" ) 2>/dev/null || return 0
+    _ROUTE_GH_SECRET_DIR="$d"
+    _ROUTE_HOOK_FLAGS+=(--secret-dir "$d")
+}
+
+# _route_call_env — in the shell that starts the model, after the fresh-shell
+# scrub: for a read-github call, zbuild-gh-get first on PATH, its token's file
+# named, and no GitHub token in the environment (#2584).
+_route_call_env() {
+    [[ -n "${_ROUTE_GH_BIN:-}" ]] || return 0
+    PATH="$_ROUTE_GH_BIN:$PATH"
+    unset GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN
+    if [[ -n "${_ROUTE_GH_SECRET_DIR:-}" ]]; then export ZB_GH_TOKEN_FILE="$_ROUTE_GH_SECRET_DIR/token"; else unset ZB_GH_TOKEN_FILE; fi
     return 0
 }
 

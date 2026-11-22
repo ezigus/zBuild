@@ -50,18 +50,8 @@ provides:
     - review_lens.failed
     - review_lens.redaction_failed
     - review_lens.unparseable
-    # #2464, #2466 (ADR-072 §4): a kept answer saved, used instead of a call,
-    # or found stale and judged again — one event per item.
-    - judge.kept.saved
-    - judge.kept.used
-    - judge.kept.stale
-    # #2574 (ADR-072 §5): a part handed to another stage waits for it.
-    - judge.handoff.waiting
-    - judge.handoff.back
-    - judge.handoff.capped
-    # #2574 review: a pass judged again, refused on no line added since, stands.
-    - judge.held
-    - judge.held.no_baseline
+    # #2584 (ADR-072 §4 §5): a lens keeps no verdict, so it emits no
+    # judge.kept.*, judge.handoff.* or judge.held event.
     # #2552 (ADR-038): the check of a lens's findings — what it knocked down,
     # or that its answer could not be used (every finding then stands).
     - review_lens.checked
@@ -86,9 +76,9 @@ config:
 # tools in zbuild's words; the provider turns them into its own.
 # It judges: it reads the change, and changes nothing.
 calls:
-  main: [read-files, read-git, web-search, subagents]
+  main: [read-files, read-git, web-search, subagents, read-github]
   # #2552: a second call tries to knock each of the lens's findings down.
-  check: [read-files, read-git, web-search, subagents]
+  check: [read-files, read-git, web-search, subagents, read-github]
 # ADR-051 §2: the persona each call runs as. The lens's own call runs as the
 # persona its element names in the template; the check is not run as it.
 personas:

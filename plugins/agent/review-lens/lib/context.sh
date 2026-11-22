@@ -7,9 +7,12 @@
 
 [[ -n "${_ZBUILD_REVIEW_LENS_CONTEXT_LOADED:-}" ]] && return 0
 _ZBUILD_REVIEW_LENS_CONTEXT_LOADED=1
+# zbuild_engine_tmpdir_v: where an oversized section is written with no scratch.
+# shellcheck source=../../../../scripts/lib/helpers.sh
+declare -F zbuild_engine_tmpdir_v >/dev/null 2>&1 || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/helpers.sh"
 
 # _rl_context — what the change was for: the issue, its SPECs, the design's
-# decisions and planned scope, each bounded and sanitised like the evidence.
+# decisions, each whole and sanitised like the evidence (_rl_context_section_v).
 # Every piece is optional; an absent one is simply left out.
 # _rl_requirements_readable <design.md> — the acceptance block as a reviewer
 # reads it (#2269): each requirement with what its status means (#2304,
@@ -46,34 +49,59 @@ _rl_requirements_readable() {
     return 0
 }
 
-_rl_context() {
-    local f out="" _txt
-    # #2364: the issue text and the acceptance contract, found by what they are.
-    _txt="$(earlier_issue_text "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
-    if [[ -n "$_txt" ]]; then
-        _txt="$(printf '%s' "${_txt:0:6000}" | _zbuild_sanitize_for_llm)"
-        out+=$'## THE ISSUE (what was asked for)\n'"$_txt"$'\n\n'
+# The most characters a section of what the change was for is shown inline
+# (#2584, ADR-038): a longer one is written whole to a file of its own, for the
+# lens to read. No section is ever cut.
+_RL_CONTEXT_INLINE_MAX=24000
+
+# _rl_context_section_v <var> <heading> <text> <slug> — the section, its text
+# whole and sanitised; over _RL_CONTEXT_INLINE_MAX, the path of a file in the
+# stage's scratch (lens-<id>-context-<slug>.md) that holds it whole, sanitised
+# and redacted as the prompt is (review of #2584: the file reaches the model
+# too). Empty when <text> is blank.
+_rl_context_section_v() {
+    local -n _rcs="$1"; local _rcs_t="$3" _rcs_d _rcs_f _rcs_raw
+    _rcs=""
+    [[ -n "${_rcs_t//[[:space:]]/}" ]] || return 0
+    _rcs_t="$(printf '%s' "$_rcs_t" | _zbuild_sanitize_for_llm)"
+    if (( ${#_rcs_t} > _RL_CONTEXT_INLINE_MAX )); then
+        _rcs_d="${ZBUILD_STAGE_SCRATCH:-}"; [[ -n "$_rcs_d" ]] || zbuild_engine_tmpdir_v _rcs_d
+        _rcs_f="$_rcs_d/lens-${ZBUILD_REVIEW_LENS_ID:-${lens:-lens}}-context-$4.md" _rcs_raw="$_rcs_d/.lens-context-$4.raw"
+        if printf '%s\n' "$_rcs_t" > "$_rcs_raw" 2>/dev/null \
+            && apply_scope_redaction "$_rcs_raw" "$_rcs_f" "" "" 0 >/dev/null 2>&1; then
+            rm -f "$_rcs_raw" 2>/dev/null
+            _rcs="## $2"$'\n'"It is too long to show here (${#_rcs_t} characters). Read it whole, as you need it, in the file:"$'\n'"$_rcs_f"$'\n\n'
+            return 0
+        fi
+        rm -f "$_rcs_raw" 2>/dev/null
     fi
-    f="$(earlier_acceptance_contract "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}" 2>/dev/null || true)"
+    _rcs="## $2"$'\n'"$_rcs_t"$'\n\n'
+}
+
+_rl_context() {
+    local f out="" _txt _sec _dir="${artifact_dir:-${artifacts_dir:-${art:-}}}" _if
+    # #2364: the issue text and the acceptance contract, found by what they are.
+    _if="$(earlier_issue_file "$_dir" "${state_dir:-}" 2>/dev/null || true)"
+    _txt=""; [[ -n "$_if" ]] && _txt="$(jq -r '.data.issue_text' "$_if" 2>/dev/null || true)"
+    _rl_context_section_v _sec "THE ISSUE (what was asked for)" "$_txt" issue; out+="$_sec"
+    f="$(earlier_acceptance_contract "$_dir" "${state_dir:-}" 2>/dev/null || true)"
     if [[ -n "$f" && -s "$f" ]] && declare -F acceptance_list_spec_ids >/dev/null 2>&1; then
         # #2269: the requirements as sentences, not the raw block's keys and tags.
         _txt="$(_rl_requirements_readable "$f")"
-        _txt="$(printf '%s' "${_txt:0:6000}" | _zbuild_sanitize_for_llm)"
-        [[ -n "$_txt" ]] && out+=$'## THE REQUIREMENTS (what the change had to meet)\n'"$_txt"$'\n\n'
+        _rl_context_section_v _sec "THE REQUIREMENTS (what the change had to meet)" "$_txt" requirements; out+="$_sec"
     fi
     # #1654: what the design DECIDED — so "this is odd" and "this was chosen"
-    # can be told apart. Same extractor build honours (design_decisions_prose).
-    if [[ -n "$f" && -s "$f" ]] && declare -F design_decisions_prose >/dev/null 2>&1; then
-        _txt="$(design_decisions_prose "$f" 80)"
-        _txt="$(printf '%s' "${_txt:0:6000}" | _zbuild_sanitize_for_llm)"
-        [[ -n "${_txt//[[:space:]]/}" ]] && out+=$'## THE DESIGN DECISIONS (what the design chose, and why)\n'"$_txt"$'\n\n'
+    # can be told apart. Same extractor build honours, every line of it (#2584).
+    if [[ -n "$f" && -s "$f" ]] && declare -F design_decisions_prose_v >/dev/null 2>&1; then
+        design_decisions_prose_v _txt "$f" 0
+        _rl_context_section_v _sec "THE DESIGN DECISIONS (what the design chose, and why)" "$_txt" decisions; out+="$_sec"
     fi
     # #2567 (ADR-038): the design steps build answered not needed, its check
     # accepting the reason — not undone work, unless a lens shows the reason
     # wrong. Read from build's own steps lines (.data.steps, summary.sh): one jq
     # over the earlier JSON outputs, and only when one names a not-needed step.
     local -a _rl_c=() _rl_j=(); local _rl_b
-    _eo_candidates_v _rl_c "${artifact_dir:-${artifacts_dir:-${art:-}}}" "${state_dir:-}"
+    _eo_candidates_v _rl_c "$_dir" "${state_dir:-}"
     for f in ${_rl_c[@]+"${_rl_c[@]}"}; do
         [[ "$f" == *.json && -s "$f" ]] || continue
         _rl_b=""; IFS= read -r -d '' _rl_b < "$f" || true
@@ -83,8 +111,7 @@ _rl_context() {
         _txt="$(jq -r '(.data.steps // empty) | arrays | .[] | strings
             | select(test("^step [0-9]+: not needed — ")) | select(endswith("(not judged)") | not)' \
             "${_rl_j[@]}" 2>/dev/null | awk '!seen[$0]++')"
-        _txt="$(printf '%s' "${_txt:0:4000}" | _zbuild_sanitize_for_llm)"
-        [[ -n "${_txt//[[:space:]]/}" ]] && out+=$'## THE DESIGN STEPS BUILD FOUND NOT NEEDED (its check accepted each reason)\n'"$_txt"$'\n\n'
+        _rl_context_section_v _sec "THE DESIGN STEPS BUILD FOUND NOT NEEDED (its check accepted each reason)" "$_txt" not-needed; out+="$_sec"
     fi
     # #2302's planned scope is gone: design names no files (#2508, ADR-069 §11).
     printf '%s' "$out"
