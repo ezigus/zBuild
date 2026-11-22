@@ -1,23 +1,19 @@
 #!/usr/bin/env bash
-# plugins/claim-coordinator/github-labels/plugin.sh — ADR-005 default plugin (#308)
-# Uses zbuild:claimed as the single shared cross-machine claim label (#1764).
+# plugins/claim-coordinator/github-labels/plugin.sh — the default claim
+# coordinator (ADR-005): one shared issue label, zbuild:claimed, means "a run is
+# working on this issue". Who holds it is in that run's run-status comment.
 # Sourced library: inherits caller's pipefail; do not add set -euo pipefail.
 
 [[ -n "${_ZBUILD_CLAIM_GH_LABELS_LOADED:-}" ]] && return 0
 _ZBUILD_CLAIM_GH_LABELS_LOADED=1
 
-# ─── Backend selection ────────────────────────────────────────────────────────
-# Prod uses `gh issue` (ZBUILD_CLAIM_BACKEND=gh, the default).
-# Tests use a local filesystem store (ZBUILD_CLAIM_BACKEND=local-fs) at
-# ZBUILD_CLAIM_STORE/<issue>/labels.txt — one label per line, file-locked via
-# flock to model gh's atomic label edits within a single machine.
-_ccgl_backend() { echo "${ZBUILD_CLAIM_BACKEND:-gh}"; }
+_CCGL_LABEL="zbuild:claimed"
+_CCGL_DIR="${BASH_SOURCE[0]%/*}"
 
-# Bounded flock wait (seconds) — never block forever on a stale lock. Matches
-# the bounded-wait pattern used elsewhere in the repo (#320 review L60/L83).
+# Backends: `gh` (the default) talks to GitHub; `local-fs` keeps the labels in
+# ZBUILD_CLAIM_STORE/<issue>/labels.txt, flock-serialised, for tests.
 _ccgl_flock_timeout_sec() { echo "${ZBUILD_CLAIM_FLOCK_TIMEOUT_SEC:-5}"; }
 
-# Local-fs helpers (test backend) ─────────────────────────────────────────────
 _ccgl_lf_labels_file() {
     local issue="$1"
     local store="${ZBUILD_CLAIM_STORE:?ZBUILD_CLAIM_STORE must be set for local-fs backend}"
@@ -25,55 +21,59 @@ _ccgl_lf_labels_file() {
     echo "$store/$issue/labels.txt"
 }
 
-# Read labels for an issue (one per line).
-# Exit 0 with output on success (empty output = no labels OR file absent).
-# Exit 1 on backend ERROR (caller must propagate — #320 review L46).
+# Every gh call runs under the run-status comment's watchdog (rsc_gh,
+# ZBUILD_STATUS_COMMENT_GH_TIMEOUT): a hung gh in the exit path could otherwise
+# only be KILLed, and would leave the label behind.
+_ccgl_gh_lib() {
+    declare -F rsc_gh >/dev/null 2>&1 && return 0
+    # shellcheck source=../../../scripts/lib/run-status-comment.sh
+    source "${_ZBUILD_ROOT:-$_CCGL_DIR/../../..}/scripts/lib/run-status-comment.sh"
+}
+_CCGL_OUT=""
+_ccgl_gh() {
+    _ccgl_gh_lib || return 1
+    local out rc=0
+    out="$(mktemp "${TMPDIR:-/tmp}/ccgl-gh.XXXXXX")" || return 1
+    rsc_gh "${ZBUILD_STATE_DIR:-${TMPDIR:-/tmp}}" "$out" "$@" || rc=$?
+    _CCGL_OUT="$(cat "$out" 2>/dev/null)"
+    rm -f "$out"
+    return "$rc"
+}
+
+# Labels on an issue, one a line, into _CCGL_OUT. rc 1 on a backend error.
 _ccgl_read_labels() {
     local issue="$1"
-    case "$(_ccgl_backend)" in
-        gh)
-            # gh failure is a backend error (auth/rate-limit/network).
-            # Distinguish "issue has no labels" (rc=0, empty output) from
-            # "gh failed" (rc!=0) — only the latter is an error.
-            local out
-            if ! out="$(gh issue view "$issue" --json labels --jq '.labels[].name' 2>/dev/null)"; then
-                return 1
-            fi
-            printf '%s' "$out"
-            return 0
-            ;;
+    case "${ZBUILD_CLAIM_BACKEND:-gh}" in
+        gh) _ccgl_gh issue view "$issue" --json labels --jq '.labels[].name' ;;
         local-fs)
             local f; f="$(_ccgl_lf_labels_file "$issue")"
-            if [[ -f "$f" ]]; then
-                cat "$f"
-            fi
-            return 0
-            ;;
+            _CCGL_OUT=""
+            [[ -f "$f" ]] && _CCGL_OUT="$(cat "$f")"
+            return 0 ;;
         *) return 1 ;;
     esac
 }
 
-# Atomically add a label to an issue.
+# Add the label. rc 0 added, 2 already there (local-fs: checked inside the lock),
+# 1 backend error. A repository that does not define the label yet gets it once.
 _ccgl_add_label() {
     local issue="$1" label="$2"
-    case "$(_ccgl_backend)" in
+    case "${ZBUILD_CLAIM_BACKEND:-gh}" in
         gh)
-            gh issue edit "$issue" --add-label "$label" >/dev/null 2>&1
+            _ccgl_gh issue edit "$issue" --add-label "$label" && return 0
+            [[ "$_RSC_GH_ERR" == *"not found"* ]] || return 1
+            _ccgl_gh label create "$label" --force --color "5319e7" \
+                --description "a zbuild run is working on this issue" || return 1
+            _ccgl_gh issue edit "$issue" --add-label "$label"
             ;;
         local-fs)
             local f; f="$(_ccgl_lf_labels_file "$issue")"
             local timeout; timeout="$(_ccgl_flock_timeout_sec)"
-            # Exit 0 when label is freshly added; exit 2 when already present
-            # (lets callers detect a lost race inside the same lock — no TOCTOU).
             (
                 exec 9>"${f}.lock"
-                # Bounded wait — flock -w returns non-zero on timeout so we
-                # surface the failure instead of hanging the pipeline.
                 flock -w "$timeout" 9 || exit 1
                 touch "$f"
-                if grep -Fxq "$label" "$f"; then
-                    exit 2
-                fi
+                grep -Fxq "$label" "$f" && exit 2
                 echo "$label" >> "$f"
                 exit 0
             )
@@ -82,13 +82,10 @@ _ccgl_add_label() {
     esac
 }
 
-# Atomically remove a label from an issue.
 _ccgl_remove_label() {
     local issue="$1" label="$2"
-    case "$(_ccgl_backend)" in
-        gh)
-            gh issue edit "$issue" --remove-label "$label" >/dev/null 2>&1
-            ;;
+    case "${ZBUILD_CLAIM_BACKEND:-gh}" in
+        gh) _ccgl_gh issue edit "$issue" --remove-label "$label" ;;
         local-fs)
             local f; f="$(_ccgl_lf_labels_file "$issue")"
             [[ ! -f "$f" ]] && return 0
@@ -104,111 +101,70 @@ _ccgl_remove_label() {
     esac
 }
 
-# _ccgl_read_holder <issue> — extract the holder string from the run-status comment.
-# The holder is embedded by rsc_render_header as <!-- zbuild-holder: <string> -->.
+# _ccgl_read_holder <issue> — the holder line of the holder's run-status comment.
 _ccgl_read_holder() {
     local issue="$1"
     case "${ZBUILD_CLAIM_BACKEND:-gh}" in
         local-fs)
-            local store="${ZBUILD_CLAIM_STORE:-}"
-            if [[ -n "$store" ]]; then
-                local rsc="$store/$issue/run-status-comment.txt"
-                if [[ -f "$rsc" ]]; then
-                    local line
-                    while IFS= read -r line; do
-                        if [[ "$line" =~ ^'<!-- zbuild-holder: '(.+)' -->'$ ]]; then
-                            printf '%s' "${BASH_REMATCH[1]}"
-                            return 0
-                        fi
-                    done < "$rsc"
-                fi
-            fi
+            local rsc="${ZBUILD_CLAIM_STORE:-}/$issue/run-status-comment.txt" line
+            [[ -f "$rsc" ]] || return 0
+            while IFS= read -r line; do
+                [[ "$line" == '<!-- zbuild-holder: '*' -->' ]] || continue
+                line="${line#'<!-- zbuild-holder: '}"; printf '%s' "${line% -->}"; return 0
+            done < "$rsc"
             ;;
         gh)
-            # Get authenticated actor; fall back to GITHUB_ACTOR env var.
-            # Must filter by actor: a spoofed comment from another user must not
-            # displace the holder string (DSCLA-23 security requirement).
-            local actor=""
-            actor="$(gh api user --jq .login 2>/dev/null || true)"
-            [[ -z "$actor" ]] && actor="${GITHUB_ACTOR:-}"
-
-            # Resolve repo slug from GITHUB_REPOSITORY or zbuild_repo_slug helper.
+            _ccgl_gh_lib || return 0
             local repo="${GITHUB_REPOSITORY:-}"
-            if [[ -z "$repo" ]] && declare -F zbuild_repo_slug >/dev/null 2>&1; then
-                repo="$(zbuild_repo_slug 2>/dev/null || true)"
-            fi
-
-            local body=""
-            if [[ -n "$repo" && -n "$actor" ]]; then
-                # Fetch comments with author info; keep only the authenticated actor's.
-                local all_comments=""
-                all_comments="$(gh api "repos/$repo/issues/$issue/comments" 2>/dev/null || true)"
-                if [[ -n "$all_comments" ]]; then
-                    body="$(jq -r --arg actor "$actor" \
-                        '[.[] | select(.user.login == $actor) | select(.body | contains("<!-- zbuild-run-status")) | .body] | last // empty' \
-                        <<< "$all_comments" 2>/dev/null || true)"
-                fi
-            fi
-            local line
-            while IFS= read -r line; do
-                if [[ "$line" =~ ^'<!-- zbuild-holder: '(.+)' -->'$ ]]; then
-                    printf '%s' "${BASH_REMATCH[1]}"
-                    return 0
-                fi
-            done <<< "$body"
+            [[ -n "$repo" ]] || repo="$(zbuild_repo_slug 2>/dev/null || true)"
+            [[ -n "$repo" ]] || return 0
+            rsc_holder_find "${ZBUILD_STATE_DIR:-${TMPDIR:-/tmp}}" "$repo" "$issue"
             ;;
-        *) ;;
     esac
 }
 
+_ccgl_refused() {
+    local issue="$1" holder
+    holder="$(_ccgl_read_holder "$issue" || true)"
+    jq -nc --arg h "$holder" '{acquired: false, holder: $h}'
+    printf 'claim-coordinator: issue #%s carries the %s label: another run is working on it. If that run is gone, remove the %s label from the issue.\n' \
+        "$issue" "$_CCGL_LABEL" "$_CCGL_LABEL" >&2 || true
+}
+
 # ─── Hook: claim <issue_id> ───────────────────────────────────────────────────
-# stdout: {"acquired": true} on success
-#         {"acquired": false, "holder": "<holder>"} when zbuild:claimed is already present
-# Exit codes:
-#   0 — claim attempted (read JSON for acquired=true|false)
-#   1 — backend error
-#   2 — usage error (missing issue id)
+# stdout: {"acquired": true} | {"acquired": false, "holder": "<holder>"}
+#         | {"acquired": false, "skipped": "<why>"} (no claim was attempted)
+# rc: 0 answered, 1 backend error, 2 usage error.
 claim_coordinator_claim() {
     local issue="$1"
     [[ -z "$issue" ]] && { printf 'claim_coordinator_claim: missing issue id\n' >&2 || true; return 2; }
-
-    # Read current labels; propagate backend failure.
-    local existing=""
-    if ! existing="$(_ccgl_read_labels "$issue")"; then
-        printf '{"acquired": false, "reason": "backend_read_error"}\n'
-        return 1
-    fi
-
-    # If zbuild:claimed is already present, another run holds it.
-    if grep -Fxq "zbuild:claimed" <<< "$existing" 2>/dev/null; then
-        local holder=""
-        holder="$(_ccgl_read_holder "$issue" || true)"
-        # Escape quotes for valid JSON.
-        local escaped_holder
-        escaped_holder="$(printf '%s' "$holder" | sed 's/\\/\\\\/g; s/"/\\"/g' || true)"
-        printf '{"acquired": false, "holder": "%s"}\n' "$escaped_holder"
+    # The label is on GitHub (local-fs stands in for it): a run told to stay off
+    # GitHub makes no claim there.
+    if [[ "${NO_GITHUB:-}" == "true" ]]; then
+        printf '{"acquired": false, "skipped": "NO_GITHUB=true"}\n'
         return 0
     fi
 
-    # Add the shared claim label zbuild:claimed (no hostname component — RQLAB-2).
-    # For local-fs: _ccgl_add_label exits 2 when the label was already present
-    # (atomic check inside the lock — catches races in the window above).
+    if ! _ccgl_read_labels "$issue"; then
+        printf '{"acquired": false, "reason": "backend_read_error"}\n'
+        return 1
+    fi
+    local line
+    while IFS= read -r line; do
+        [[ "$line" == "$_CCGL_LABEL" ]] && { _ccgl_refused "$issue"; return 0; }
+    done <<< "$_CCGL_OUT"
+
+    # No hostname in the label: a laptop run and a CI run claim the same one.
     local add_rc=0
-    _ccgl_add_label "$issue" "zbuild:claimed" || add_rc=$?
+    _ccgl_add_label "$issue" "$_CCGL_LABEL" || add_rc=$?
     if [[ "$add_rc" -eq 2 ]]; then
-        # Lost the race: another claimant added zbuild:claimed in the window.
-        local holder=""
-        holder="$(_ccgl_read_holder "$issue" || true)"
-        local escaped_holder
-        escaped_holder="$(printf '%s' "$holder" | sed 's/\\/\\\\/g; s/"/\\"/g' || true)"
-        printf '{"acquired": false, "holder": "%s"}\n' "$escaped_holder"
+        _ccgl_refused "$issue"
         return 0
     fi
     if [[ "$add_rc" -ne 0 ]]; then
         printf '{"acquired": false, "reason": "backend_error"}\n'
         return 1
     fi
-
     printf '{"acquired": true}\n'
     return 0
 }
@@ -217,45 +173,40 @@ claim_coordinator_claim() {
 claim_coordinator_release() {
     local issue="$1"
     [[ -z "$issue" ]] && { printf 'claim_coordinator_release: missing issue id\n' >&2 || true; return 2; }
-    _ccgl_remove_label "$issue" "zbuild:claimed"
+    _ccgl_remove_label "$issue" "$_CCGL_LABEL" && return 0
+    printf 'claim-coordinator: could not remove %s from issue #%s — remove the %s label by hand, or the next run of the issue is refused.\n' \
+        "$_CCGL_LABEL" "$issue" "$_CCGL_LABEL" >&2 || true
+    return 1
 }
 
-# ─── Hook: heartbeat <lease_id> ───────────────────────────────────────────────
-# Labels don't expire — exit 0 always. Provided so the contract is satisfied.
+# ─── Hook: heartbeat <issue_id> ───────────────────────────────────────────────
+# Labels do not expire (a stale claim is #2533's).
 claim_coordinator_heartbeat() {
     return 0
 }
 
 # ─── Hook: list_claims ────────────────────────────────────────────────────────
-# stdout: JSON array of {issue, holder, acquired_at}.
-# Exit 0 on success (with [] for empty); exit 1 on backend error (#320 L192).
+# stdout: JSON array of {issue, holder, acquired_at}. rc 1 on a backend error.
 claim_coordinator_list_claims() {
-    case "$(_ccgl_backend)" in
+    case "${ZBUILD_CLAIM_BACKEND:-gh}" in
         gh)
-            # List all issues with the zbuild:claimed label.
-            local issues_json
-            if ! issues_json="$(gh issue list --label "zbuild:claimed" --json number 2>/dev/null)"; then
+            _ccgl_gh issue list --label "$_CCGL_LABEL" --json number || {
                 printf 'list_claims: gh issue list failed\n' >&2 || true
                 return 1
-            fi
-            local results='[]'
-            results="$(printf '%s' "$issues_json" \
-                | jq 'map({issue: .number, holder: "unknown", acquired_at: null})' \
-                2>/dev/null || true)"
-            printf '%s\n' "${results:-[]}"
+            }
+            jq -c 'map({issue: .number, holder: "unknown", acquired_at: null})' <<< "$_CCGL_OUT" 2>/dev/null \
+                || printf '[]\n'
             ;;
         local-fs)
             local store="${ZBUILD_CLAIM_STORE:?}"
-            local results='[]'
-            local issue_dir issue holder
+            local results='[]' issue_dir issue holder
             for issue_dir in "$store"/*/; do
-                [[ -d "$issue_dir" ]] || continue
-                issue="$(basename "$issue_dir")"
                 [[ -f "$issue_dir/labels.txt" ]] || continue
-                grep -Fxq "zbuild:claimed" "$issue_dir/labels.txt" 2>/dev/null || continue
+                grep -Fxq "$_CCGL_LABEL" "$issue_dir/labels.txt" 2>/dev/null || continue
+                issue="${issue_dir%/}"; issue="${issue##*/}"
                 holder="$(_ccgl_read_holder "$issue" || true)"
-                results="$(printf '%s' "$results" | jq --arg i "$issue" --arg h "$holder" \
-                    '. + [{issue: ($i|tonumber), holder: $h, acquired_at: null}]')"
+                results="$(jq -c --arg i "$issue" --arg h "$holder" \
+                    '. + [{issue: ($i|tonumber), holder: $h, acquired_at: null}]' <<< "$results")"
             done
             printf '%s\n' "$results"
             ;;

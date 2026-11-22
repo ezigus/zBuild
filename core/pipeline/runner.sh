@@ -474,6 +474,16 @@ _runner_status_comment_spawn() {
     return 0
 }
 
+# ─── _runner_early_exit_trap ─────────────────────────────────────────────────
+# ADR-005 §1: the exit trap from the claim until main() sets its own — it frees
+# what the run holds by then (the claim, the issue lock, the run-cap slot).
+_runner_early_exit_trap() {
+    trap '' INT TERM
+    zbuild_claim_release
+    zbuild_issue_lock_release || true
+    zbuild_run_cap_release || true
+}
+
 # ─── _runner_status_comment_reap ─────────────────────────────────────────────
 # Idempotent (clears the pid first) and rc-neutral (`return 0`, every line
 # tolerant): it runs inside the EXIT trap under `set -e`, and the process exit
@@ -2455,14 +2465,6 @@ main() {
         # Operator pinned an events location → respect + export as-is.
         export ZBUILD_EVENTS_DIR ZBUILD_EVENTS_JSONL
     fi
-    # #1764 / ADR-005 §2: pre-build and export _ZBUILD_CLAIM_HOLDER before spawning
-    # the sidecar so the sidecar inherits it. The sidecar is a separate exec bash
-    # process; it cannot see variables set after the fork. zbuild_claim_acquire
-    # (called after the sidecar spawns) calls zbuild_claim_build_holder again, but
-    # only the parent process sees that update.
-    if declare -F zbuild_claim_build_holder >/dev/null 2>&1; then
-        zbuild_claim_build_holder
-    fi
     # #2131: the run-status comment sidecar — after the events path is fixed,
     # before the issue lock (so it never inherits the lock fd), from the target
     # repo (the runner has not entered the worktree yet). Never on a dry run.
@@ -2542,23 +2544,26 @@ main() {
             return 1
         fi
     fi
-    # Cross-machine soft claim via zbuild:claimed GitHub label (ADR-005 / #1764).
-    # Runs after the intra-machine flock so the intra-machine guard still wins.
-    if declare -F zbuild_claim_acquire >/dev/null 2>&1; then
-        if ! zbuild_claim_acquire "${_runner_issue:-}"; then
-            eb_emit_event "pipeline.refused.claimed" \
-                "issue=${_runner_issue:-}" "holder=${_ZBUILD_CLAIM_HOLDER:-unknown}" \
-                2>/dev/null || true
-            # Use printf '%s\n' (not error(), which uses echo -e) so backslash
-            # sequences in an attacker-controlled holder are never interpreted.
-            error "issue ${_runner_issue:-} is already claimed"
-            printf '%s\n' "${_ZBUILD_CLAIM_HOLDER:-unknown}" >&2
-            # The exit trap is not set yet; release resources explicitly.
-            zbuild_issue_lock_release || true
-            zbuild_run_cap_release || true
-            return 1
-        fi
+    # ADR-005 §1: the cross-machine claim, after the one-machine lock (which
+    # refuses first) and before the tree, the branch and the first stage. The
+    # run's own exit trap is set much later, so from here until then a small one
+    # releases what the run holds; a signal meanwhile is held until the claim is
+    # recorded, then ends the run through it.
+    _RUNNER_EARLY_SIGNAL=""
+    trap '_runner_early_exit_trap' EXIT
+    trap '_RUNNER_EARLY_SIGNAL=1' INT TERM
+    if ! zbuild_claim_acquire "${_runner_issue:-}" "$state_dir"; then
+        eb_emit_event "pipeline.refused.claimed" \
+            "issue=${_runner_issue:-}" "holder=${_ZBUILD_CLAIM_THEIR_HOLDER:-unknown}" \
+            2>/dev/null || true
+        # printf '%s', not error(): error() echoes with -e, and the holder is
+        # text another run wrote.
+        printf 'zbuild: issue #%s is already claimed by another run: %s\n' \
+            "${_runner_issue:-}" "${_ZBUILD_CLAIM_THEIR_HOLDER:-unknown}" >&2
+        return 1
     fi
+    trap 'exit 1' INT TERM
+    [[ -z "$_RUNNER_EARLY_SIGNAL" ]] || exit 1
 
     # ADR-052 (#1640): LAST thing before any stage runs. Everything above is
     # engine bookkeeping that belongs in the main checkout (state, events,
@@ -2572,11 +2577,6 @@ main() {
         _wt_key="$(zbuild_run_key "$_runner_issue" "${goal:-}" 2>/dev/null || true)"
     fi
     if ! _runner_enter_worktree "$state_dir" "$_runner_run_id" "$_wt_key"; then
-        # EXIT trap not installed yet; release all acquired resources explicitly.
-        if declare -F zbuild_claim_release >/dev/null 2>&1; then
-            zbuild_claim_release "${_runner_issue:-}" || true
-        fi
-        zbuild_issue_lock_release || true
         zbuild_run_cap_release || true
         return 1
     fi
@@ -2591,11 +2591,6 @@ main() {
             error "could not set up the run's branch (see above)"
             _set_pipeline_status "$state_file" "failed" 2>/dev/null || true
         fi
-        # EXIT trap not installed yet; release all acquired resources explicitly.
-        if declare -F zbuild_claim_release >/dev/null 2>&1; then
-            zbuild_claim_release "${_runner_issue:-}" || true
-        fi
-        zbuild_issue_lock_release || true
         zbuild_run_cap_release || true
         return 1
     fi
@@ -2788,12 +2783,11 @@ main() {
         # child inherits, so one lingering child would keep the issue locked
         # after this run is gone. Released after the always-run stages, which
         # still belong to this run.
+        # ADR-005 §1: the cross-machine claim goes first — while this machine's
+        # lock is still held, no run here can start on the issue and find it.
+        zbuild_claim_release
         if declare -F zbuild_issue_lock_release >/dev/null 2>&1; then
             zbuild_issue_lock_release || true
-        fi
-        # Cross-machine claim release (ADR-005 / #1764): advisory, never fails the run.
-        if declare -F zbuild_claim_release >/dev/null 2>&1; then
-            zbuild_claim_release "${_runner_issue:-}" || true
         fi
         if declare -F zbuild_run_cap_release >/dev/null 2>&1; then
             zbuild_run_cap_release || true

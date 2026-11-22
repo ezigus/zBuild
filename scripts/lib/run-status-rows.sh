@@ -40,6 +40,9 @@ rsc_rows_json() {
                         engine_sha: ($d.engine_sha // .header.engine_sha // ""),
                         engine_branch: ($d.engine_branch // .header.engine_branch // ""),
                         started: (.header.started // $e.ts)}
+          elif $t == "pipeline.claim.acquired" then
+            # ADR-005 §2: who holds the claim on the issue, once the run has it.
+            .header.holder = ($d.holder // "")
           elif ($t == "plugin.run.start" or $t == "parallel.group.start") and $seq != "" then
             (if $t == "parallel.group.start" then .groups[$seq] = true else . end)
             | cur(.; $seq) as $ck

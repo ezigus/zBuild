@@ -187,6 +187,31 @@ rsc_finalize_issue() {
     return 0
 }
 
+# ─── rsc_holder_find <state_dir> <slug> <issue> — who holds the claim (ADR-005 §2) ─
+# The holder line of the newest run-status comment that has one, read only from
+# comments a run could have posted: the CI bot's, or a repository owner's,
+# member's or collaborator's — an outside commenter cannot name the holder.
+# (Who the reading account is cannot be asked with a CI token, so it is not.)
+# Prints nothing when none is found. Always returns 0.
+rsc_holder_find() {
+    local state_dir="$1" slug="$2" issue="$3" out body="" line
+    out="$(mktemp "${TMPDIR:-$state_dir}/rsc-holder.XXXXXX")" || return 0
+    if rsc_gh "$state_dir" "$out" api --paginate "repos/${slug}/issues/${issue}/comments" 2>/dev/null; then
+        body="$(jq -rs --arg m "$_RSC_MARKER_PREFIX" --arg h "$_RSC_HOLDER_PREFIX" '
+            [.[][]? | (.author_association // "") as $a
+             | select(.user.login == "github-actions[bot]" or $a == "OWNER" or $a == "MEMBER" or $a == "COLLABORATOR")
+             | (.body // "") | select(startswith($m) and contains($h))] | last // empty' "$out" 2>/dev/null || true)"
+    fi
+    rm -f "$out"
+    while IFS= read -r line; do
+        [[ "$line" == "$_RSC_HOLDER_PREFIX"*" -->" ]] || continue
+        line="${line#"$_RSC_HOLDER_PREFIX"}"
+        printf '%s' "${line% -->}"
+        return 0
+    done <<< "$body"
+    return 0
+}
+
 # ─── rsc_upsert <state_dir> <slug> <issue> <run_id> <body_file> [part] ──────
 # id known → PATCH; else marker search → PATCH; else POST. A PATCH 404 clears
 # the id and allows one re-create per process, so a vandalised comment cannot
