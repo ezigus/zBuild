@@ -411,6 +411,16 @@ sed -i.bak 's#"pr merge")  exit 0 ;;#"pr merge")  exit 1 ;;#' "$TEST_TEMP_DIR/bi
 assert_eq "[R1b] gh pr merge failing with no output → unavailable" "unavailable" \
     "$(jq -r '.outcome // empty' "$_r1e_dir/artifacts/merge-result.json" 2>/dev/null || true)"
 
+# merge_run itself, on a short-lived refusal: the call site reads the rule.
+_r1r_dir="$TEST_TEMP_DIR/r1-ratelimit"; _r1r_sf="$(_make_state "$_r1r_dir" "pass")"
+_mk_mocks "$TEST_TEMP_DIR/binr1r" "zbuild/issue-1849-test"
+sed -i.bak 's#"pr merge")  exit 0 ;;#"pr merge")  echo "API rate limit exceeded for installation ID 1" >\&2; exit 1 ;;#' "$TEST_TEMP_DIR/binr1r/gh"
+( PATH="$TEST_TEMP_DIR/binr1r:$PATH" ZBUILD_RUN_LOOPS_PASSED=yes merge_run "pr" "$_r1r_sf" ) >/dev/null 2>&1
+assert_eq "[R1b] merge_run on a rate limit → unavailable" "unavailable" \
+    "$(jq -r '.outcome // empty' "$_r1r_dir/artifacts/merge-result.json" 2>/dev/null || true)"
+assert_contains "[R1b] ...its reason is gh's own words" \
+    "$(jq -r '.reason // empty' "$_r1r_dir/artifacts/merge-result.json" 2>/dev/null || true)" "API rate limit exceeded"
+
 # ─── Teardown ─────────────────────────────────────────────────────────────────
 cleanup_test_env
 print_test_results

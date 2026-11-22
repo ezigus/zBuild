@@ -345,7 +345,7 @@ _build_steps_parse() {
 _build_steps_judge() {
     local repo="$1" ad="$2" tier="$3"; shift 3
     local kf="$ad/build-steps-judged.json" eng n item fp list="" prompt ask _r _got="" _rc=0 _try why="" l
-    local -A fps=() kept=() deps=() items=() pay=() earlier=()
+    local -A fps=() kept=() deps=() items=() pay=() earlier=() rejudged=()
     local -a ask_n=()
     judge_engine_v eng
     local _bsj_why
@@ -387,6 +387,7 @@ _build_steps_judge() {
         if [[ -n "${reused[$n]:-}" && "${_JUDGE_KEPT_TEXT[step-$n]-}" != "${stxt[step-$n]}" ]]; then
             pay[$n]=stale; continue
         fi
+        [[ -n "${reused[$n]:-}" ]] && rejudged[$n]=1
         ask_n+=("$n"); list+="${items[$n]}"$'\n'
         if [[ "${earlier[step-$n]:-}" == "does not"* ]]; then
             _build_steps_said_v l "$n"; _bsj_h="${back[$n]:-${fans[$n]:-}}"
@@ -458,7 +459,8 @@ _build_steps_judge() {
     for n in "$@"; do
         _build_steps_said_v l "$n"; yours="your answer: ${l#step $n: }"
         if [[ "${pay[$n]:-}" == does ]]; then
-            _BUILD_STEP_LINES+=("$l${reused[$n]:+ (accepted on an earlier try; unchanged)}")
+            if [[ -n "${rejudged[$n]:-}" ]]; then _BUILD_STEP_LINES+=("$l (accepted on an earlier try; judged again: the code moved)")
+            else _BUILD_STEP_LINES+=("$l${reused[$n]:+ (accepted on an earlier try)}"); fi
         elif [[ "${pay[$n]:-}" == stale ]]; then
             _build_steps_stale_v l "$n" "the step or a SPEC it serves changed"; _BUILD_STEP_FINDINGS+=("$l")
         elif [[ "${pay[$n]:-}" == unjudged ]]; then

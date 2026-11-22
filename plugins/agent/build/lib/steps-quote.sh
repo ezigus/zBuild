@@ -63,17 +63,20 @@ _build_steps_quote_find() {
         [[ -n "$t" && $'\x1e'"$lines" == *$'\x1e'"$t"$'\x1e'* ]] && { qtxt[$n]="$t"; return 0; }
     done
     IFS=$'\x1e' read -r -d '' -a arr <<< "$lines" || true
+    # Each form, as written and with its escapes read, before any is refused.
+    local many=""
     for t in "${qtxt[$n]}" "${qune[$n]:-}"; do
         _build_steps_elide_v t "$t"
         [[ -n "$t" ]] || continue
         hits=0; cand=""
         for a in ${arr[@]+"${arr[@]}"}; do [[ "$a" == *"$t"* ]] && { hits=$((hits + 1)); cand="$a"; }; done
         if (( hits == 1 )); then qtxt[$n]="$cand"; return 0; fi
-        if (( hits > 1 )); then
-            _BSQ_WHY="is part of more than one line this change added in $f: $t — quote one whole line you added that does the step"
-            return 1
-        fi
+        (( hits > 1 )) && [[ -z "$many" ]] && many="$t"
     done
+    if [[ -n "$many" ]]; then
+        _BSQ_WHY="is part of more than one line this change added in $f: $many — quote one whole line you added that does the step"
+        return 1
+    fi
     # In no added line: say whether it is a line, or part of one, that was there.
     _build_steps_elide_v t "${qtxt[$n]}"
     hits=0; cand=""

@@ -25,6 +25,8 @@
 # SQ5 [R5] a quote in no line of the file is refused, saying so
 # SQ6 [R5] a done with no `<file> | <line>` is refused, naming the form
 # SQ7 [review] a leading elision mark (... or …) is set aside like a trailing one
+# SQ8 [review] a quote is tried as written and with its escapes read before it
+#          is refused as part of more than one line
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -244,6 +246,17 @@ _run sq7 "$DONE1"$'\n''step 2: done — README.md | ...Uses a single shared GitH
 assert_contains "[SQ7] ...the part is found, and judged whole" "$(_jp)" "the line: README.md | $README_LINE"
 _run sq7b "$DONE1"$'\n''step 2: done — README.md | …Uses a single shared GitHub issue label'
 assert_eq "[SQ7] ...with … too" "pass" "$(_outcome)"
+
+# ── SQ8 ──────────────────────────────────────────────────────────────────────
+# Review on PR #2583: the quote as written is part of several added lines, but
+# with its escapes read it is part of exactly one — it is taken.
+print_test_section "SQ8: a quote whose escaped form is in several lines but read form in one is taken"
+PLAIN_LINE='The coordinator uses `zbuild:held` on every machine.'
+printf '%s\n' '# zbuild' "$OLD_LINE" "$README_LINE" 'one uses \`zbuild:held\` on Monday' 'two uses \`zbuild:held\` on Tuesday' "$PLAIN_LINE" > "$R/README.md"
+JUDGE_REPLY=$'1: does\n2: does'
+_run sq8 "$DONE1"$'\n''step 2: done — README.md | uses \`zbuild:held\` on'
+_lacks "[SQ8] the quote is not refused as in more than one line" "$(_findings)" "more than one line"
+assert_contains "[SQ8] ...the one line its read form is in is judged" "$(_jp)" "the line: README.md | $PLAIN_LINE"
 
 cleanup_test_env
 print_test_results
