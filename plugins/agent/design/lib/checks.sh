@@ -16,6 +16,9 @@ source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)/../../../../script
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/item-ids.sh"
 # shellcheck source=../../../../scripts/lib/unclear.sh
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/unclear.sh"
+# #2584: the rule on outside assumptions, named in design's prompt (lib/run.sh).
+# shellcheck source=../../../../scripts/lib/outside-assumptions.sh
+source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/outside-assumptions.sh"
 # shellcheck source=../../../../scripts/lib/judge-quotes.sh
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/judge-quotes.sh"
 # shellcheck source=../../../../scripts/lib/design-steps.sh

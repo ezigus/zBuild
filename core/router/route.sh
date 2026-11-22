@@ -200,7 +200,8 @@ route_to_model() {
 
     # ADR-017 (#455): precedence-aware timeout resolution.
     # per-stage template router.timeout_s > ZBUILD_ROUTER_TIMEOUT env > 300s default.
-    local secs; secs="$(_route_resolve_timeout)"
+    # #2584 (ADR-018): the dispatch's one record of both limits (zb_call_limits_v).
+    local secs _ROUTE_CALL_TURNS=""; zb_call_limits_v secs _ROUTE_CALL_TURNS
     if [[ ! "$secs" =~ ^[0-9]+$ ]] || [[ "$secs" -eq 0 ]]; then
         error "ZBUILD_ROUTER_TIMEOUT must be a positive integer (>=1), got: $secs"; return 2
     fi
@@ -636,7 +637,8 @@ _route_call_claude() {
     # ADR-018 (#466): adopt shipwright's flag set so Pattern 1 (one-shot with tools)
     # works. Tools are available to claude --print unless disallowed; we forbid
     # only EnterPlanMode/ExitPlanMode and skip the permission prompt (headless).
-    local max_turns; max_turns="$(_route_resolve_max_turns)"
+    local max_turns="${_ROUTE_CALL_TURNS:-}"
+    [[ -n "$max_turns" ]] || max_turns="$(_route_resolve_max_turns)"
     # ADR-018 Amendment N (#762): max_turns=0 is a sentinel meaning "omit
     # the --max-turns flag from claude argv; defer to claude CLI default".
     # Negatives, non-numeric, and >200 remain invalid.
@@ -1297,7 +1299,7 @@ _route_to_model_loop_run() {
         return 2
     fi
 
-    local mt; mt="$(_route_resolve_max_turns)"
+    local mt secs; zb_call_limits_v secs mt
     # ADR-018 Amendment N (#762): max_turns=0 is a sentinel (omit flag).
     if ! [[ "$mt" =~ ^[0-9]+$ ]] || [[ "$mt" -gt 200 ]]; then
         error "route_to_model_loop: max_turns must be integer in 0..200, got: $mt"
@@ -1316,8 +1318,7 @@ _route_to_model_loop_run() {
         fi
         mt="$max_turns_per_call"
     fi
-
-    local secs; secs="$(_route_resolve_timeout)"
+    local _ROUTE_CALL_TURNS="$mt"
 
     _ROUTE_LOOP_ITERATIONS=0
     _ROUTE_LOOP_TERMINATED_REASON=""

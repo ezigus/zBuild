@@ -73,14 +73,11 @@ redaction.applied
 model.route
 model.outcome
 stage.io.captured
-judge.kept.saved
-judge.kept.saved
 redaction.applied
 redaction.applied
 model.route
 model.outcome
 stage.io.captured
-judge.kept.saved
 review_lens.checked
 plugin.result
 plugin.run.complete

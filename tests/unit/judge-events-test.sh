@@ -12,9 +12,10 @@
 # V3 test-author's check, per SPEC: judge.kept.saved for each SPEC judged,
 #    judge.kept.used for each one reused and not asked, judge.kept.stale with
 #    why=file / why=disputed for one that has to be judged again
-# V4 design's check, issue-acceptance and a lens: saved, then used, then stale
+# V4 design's check and issue-acceptance: saved, then used, then stale
 #    why=fingerprint once what they judge changes — design's per SPEC, and its
-#    requirement coverage as one more item (#2470)
+#    requirement coverage as one more item (#2470); a lens keeps nothing and
+#    emits none of them (#2584)
 # V5 judge.kept is gone; every new event is declared by the plugins that emit it
 set -uo pipefail
 
@@ -178,14 +179,18 @@ _reset
     printf '%s\n' 'diff --git a/scripts/cfg.sh b/scripts/cfg.sh' '+x=2' > "$ART/diff.patch"
     _l
 ) >/dev/null 2>&1
-# #2574 (ADR-072 §4): a lens keeps a report per file of the change; what is
-# not about one is the item `change`, whose fingerprint is the whole change.
-assert_eq "[V4] a lens: saved, used, stale" "2|1|1" \
-    "$(_ev judge.kept.saved '.check == "lens-red-team" and .item == "change"')|$(_ev judge.kept.used '.check == "lens-red-team" and .item == "change"')|$(_ev judge.kept.stale '.check == "lens-red-team" and .item == "change" and .why == "fingerprint"')"
+# #2584 (ADR-072 §4): a lens keeps no verdict, so it saves, uses and finds
+# stale nothing.
+assert_eq "[V4] a lens: nothing saved, used or stale" "0|0|0" \
+    "$(_ev judge.kept.saved '.check == "lens-red-team"')|$(_ev judge.kept.used '.check == "lens-red-team"')|$(_ev judge.kept.stale '.check == "lens-red-team"')"
 
 print_test_section "V5: declared, and judge.kept gone"
 _decl() { grep -c -- "- $2\$" "$REPO_ROOT/plugins/$1/manifest.yaml" || true; }
-for _p in agent/design agent/test-author agent/issue-acceptance agent/review-lens; do
+# #2584: a lens keeps nothing, and declares none of them.
+for _e in judge.kept.saved judge.kept.used judge.kept.stale judge.held; do
+    assert_eq "[V5] agent/review-lens does not declare $_e" "0" "$(_decl agent/review-lens "$_e")"
+done
+for _p in agent/design agent/test-author agent/issue-acceptance; do
     for _e in judge.kept.saved judge.kept.used judge.kept.stale; do
         assert_eq "[V5] $_p declares $_e" "1" "$(_decl "$_p" "$_e")"
     done

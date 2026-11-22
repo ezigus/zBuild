@@ -1,4 +1,4 @@
-What this lens looks for: ways around a safeguard the change adds or touches — a race between two runs or two steps, a malformed value that makes a check pass when it should fail, an assumption about outside input that such input can break, and a way to turn a safety stop off.
+What this lens looks for: ways around a safeguard the change adds or touches — a race between two runs or two steps, a malformed value that makes a check pass when it should fail, an assumption about outside input that such input can break, a read that gets only part of the data — one page of a paginated list, a size limit, a stream cut short — and acts as if it had it all, data trusted without checking who wrote it (a comment, a label, a file any other run or person can write), and a way to turn a safety stop off.
 
 Not a finding:
 - a case that needs the code's own variables, functions or files changed first: whoever can change those is already inside;

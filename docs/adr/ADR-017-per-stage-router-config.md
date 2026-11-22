@@ -1,6 +1,6 @@
 # ADR-017: Per-Stage Router Configuration
 
-**Status:** Accepted (2026-05-29); amended 2026-11-03 (#2464, §11: `tools: read`); amended 2026-11-09 (#2507, §12: every model call is listed by name, with its tools in zbuild's words — `tools:` is removed)
+**Status:** Accepted (2026-05-29); amended 2026-11-03 (#2464, §11: `tools: read`); amended 2026-11-09 (#2507, §12: every model call is listed by name, with its tools in zbuild's words — `tools:` is removed); amended 2026-11-22 (#2584, §12: `read-github`, a read-only lookup of GitHub for the judging stages)
 **Date:** 2026-05-29
 **Amended:** 2026-10-31 (#2439, ADR-054 §6a) — `router.retries`, `router.retry_on_exhaustion` and `router.max_iterations` are removed: a stage makes one model call per try, and the template's per-stage `retry:` is the only retry (amendment at the end).
 **Amended:** 2026-08-09 (#1820, ADR-054) — noting that #1816 inserts the manifest layer into ADR-017's resolution chain; per-stage router config is now resolved through the manifest-declared data path before falling through to the template/global config tiers documented here.
@@ -482,8 +482,24 @@ On #1805 run 42556446368 tools were chosen in two places: a stage's main call fr
    - **The provider module is loaded for the tools** when the model lookup has not loaded it.
 7. **The rules a stage is given say what its calls can do** (`_route_stage_tools_v`, `scripts/lib/stage-limits.sh`): a stage whose own call has no tools is told so; a judging call is told it can open and search files, read git, search the web and hand part of its work to a subagent, and nothing else.
 
+## Amendment 2026-11-22 (#2584) — §12: `read-github`, a read-only lookup of GitHub
+
+On #1764 the engine claimed issues with a `zbuild:claimed` label that did not exist in the repository. The lenses read files and git only, so none could see it.
+
+1. **A new word, `read-github`** (`core/plugin-registry/manifest-calls.sh`): GitHub's reading commands through `gh`, and nothing that writes. Like `read-git`, it is the shell, guarded.
+2. **The provider:** Anthropic gives it as `Bash`, allowed `gh api`, `gh issue view`/`list`, `gh pr view`/`list`/`diff`/`checks`, `gh label list`, `gh repo view`, `gh release view`/`list` and `gh run view`/`list` (`provider_anthropic_tool_args`). With `read-git` it is one shell, allowed both.
+3. **The guard** (`core/router/tool-hook.sh --gh-read`, given to a call with `read-github` and no `run-commands`): exactly what it allows is
+   - `gh api <endpoint>` with method GET only — no `-X`/`--method` other than GET, no `-f`/`-F`/`--field`/`--raw-field`/`--input` (which make it write), no `-H`/`--header`, not `graphql`; `--paginate`, `--jq` and the like are allowed;
+   - `gh issue view|list`, `gh pr view|list|diff|checks`, `gh label list`, `gh repo view`, `gh release view|list`, `gh run view|list`, each optionally after `-R`/`--repo <owner/name>`;
+   - never `--web`/`-w`; nothing chained or redirected (the read-git rule: `;`, `&`, `|`, `$(`, backticks, `<`, `>`, a newline — a `--jq` filter holding `|` is refused with them); and nothing holding text that looks like a secret, checked as a web search is (ADR-004).
+   Anything else — any write command (`gh issue edit`, `gh label create`, `gh pr merge`, `gh issue comment`), `gh auth`, `gh secret` — is refused, saying what may run. With `--git-only` too, git's reading commands also run.
+4. **Who gets it:** the judging stages — issue-acceptance's call and both of the lens's calls (`main`, `check`). Design's coverage check, test-author's check and the building calls do not (the building calls run commands already).
+5. **The rules say so:** a judge with it is told it can "look GitHub up with gh's reading commands (gh api GET, gh issue view, gh label list)" (`_route_tools_said_v`).
+6. What a command returns is not redacted, as no tool's output is; the prompt is redacted as before (ADR-043).
+
 ## Enforced by
 
+- §12 amendment 2026-11-22 (#2584: `read-github`) → `tests/unit/read-github-tool-test.sh` RG1 (the word), RG2 (the provider), RG3 (the guard is given), RG4 (what runs), RG5 (every write, `--web`, chaining and a secret refused), RG6 (with and without read-git), RG7 (who gets it), RG8 (the rules say so); `tests/unit/call-tools-test.sh` C6 (amended: issue-acceptance and the lens have it)
 - §12 amendment 2026-11-09 (#2507: every call listed by name, with its tools in zbuild's words) → `tests/unit/call-tools-test.sh` C1 (the calls read; none means none; unknown words and `config.router.tools` refused), C2 (the provider translates; `--strict-mcp-config`), C3, C4 (a call gets its tools; an unlisted call is refused; outside a stage, none), C5 (an unsupported word refuses the run at start), C6 (who gets what), C7 (each check names its call); `tests/unit/call-hook-test.sh` G1–G6 (the guards), G8 (a refusal is valid JSON; the web guard fails closed); `tests/unit/call-tools-test.sh` C8 (the provider module is loaded for the tools); `tests/unit/judge-tools-test.sh` T5 (the rules say what a judge can do); `tests/unit/intake-no-tools-test.sh` T1, T2, T4
 
 - §11 amendment 2026-11-03 (#2464: `tools: read`; replaced by §12, #2507) → `tests/unit/call-tools-test.sh` C6, C7

@@ -70,15 +70,17 @@ provider_anthropic_persona_args() {
 # lists the built-in tools the call has (none at all when given no word);
 # --strict-mcp-config loads no MCP server from the machine or the repository.
 # read-git without run-commands is the shell, allowed only git's reading
-# commands; the call's hook refuses any other (core/router/tool-hook.sh).
+# commands; read-github (#2584) the shell, allowed only gh's reading commands;
+# the call's hook refuses any other (core/router/tool-hook.sh).
 provider_anthropic_tool_args() {
-    local w tools="" git=0 run=0
+    local w tools="" git=0 run=0 gh=0
     for w in "$@"; do
         case "$w" in
             read-files)   tools+=",Read,Grep,Glob" ;;
             edit-files)   tools+=",Edit,Write" ;;
             run-commands) run=1 ;;
             read-git)     git=1 ;;
+            read-github)  gh=1 ;;
             web-search)   tools+=",WebSearch,WebFetch" ;;
             subagents)    tools+=",Task" ;;
             todo-list)    tools+=",TodoWrite" ;;
@@ -87,12 +89,15 @@ provider_anthropic_tool_args() {
         esac
     done
     # Bash where Edit,Write would put it, so the order reads as the words do.
-    if (( run || git )); then
+    if (( run || git || gh )); then
         if [[ "$tools" == *",Write"* ]]; then tools="${tools/,Write/,Write,Bash}"
         elif [[ "$tools" == *",Glob"* ]]; then tools="${tools/,Glob/,Glob,Bash}"
         else tools=",Bash$tools"; fi
     fi
     printf '%s\n' --tools "${tools#,}"
-    (( git && !run )) && printf '%s\n' --allowedTools 'Bash(git diff *),Bash(git log *),Bash(git show *),Bash(git status *)'
+    local allow=""
+    (( git && !run )) && allow+=',Bash(git diff *),Bash(git log *),Bash(git show *),Bash(git status *)'
+    (( gh && !run )) && allow+=',Bash(gh api *),Bash(gh issue view *),Bash(gh issue list *),Bash(gh pr view *),Bash(gh pr list *),Bash(gh pr diff *),Bash(gh pr checks *),Bash(gh label list *),Bash(gh repo view *),Bash(gh release view *),Bash(gh release list *),Bash(gh run view *),Bash(gh run list *)'
+    [[ -n "$allow" ]] && printf '%s\n' --allowedTools "${allow#,}"
     printf '%s\n' --strict-mcp-config
 }

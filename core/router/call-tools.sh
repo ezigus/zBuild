@@ -77,6 +77,7 @@ _route_call_tools_prepare() {
 _route_call_hook_flags() {
     local w=" $1 " g globs
     [[ "$w" == *" read-git "* && "$w" != *" run-commands "* ]] && _ROUTE_HOOK_FLAGS+=(--git-only)
+    [[ "$w" == *" read-github "* && "$w" != *" run-commands "* ]] && _ROUTE_HOOK_FLAGS+=(--gh-read)
     if [[ -n "$3" && "$w" == *" read-files "* ]]; then
         _ROUTE_HOOK_FLAGS+=(--repo "$2" --code-copy "$3")
         # shellcheck source=../../scripts/lib/test-paths.sh

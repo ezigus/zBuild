@@ -58,9 +58,9 @@ source "$_RL_ROOT/scripts/lib/acceptance-block.sh"
 source "$_RL_ROOT/core/plugin-registry/registry.sh"
 # shellcheck source=lib/charters.sh
 source "$_RL_DIR/lib/charters.sh"
-# #2574: a verdict kept per file of the change.
-# shellcheck source=lib/items.sh
-source "$_RL_DIR/lib/items.sh"
+# The code its findings' ids take.
+# shellcheck source=lib/codes.sh
+source "$_RL_DIR/lib/codes.sh"
 # shellcheck source=lib/check.sh
 source "$_RL_DIR/lib/check.sh"
 # shellcheck source=lib/unclear.sh
@@ -131,13 +131,8 @@ _review_lens_run_inner() {
     judge_last_findings_block_v _rl_last "$artifact_dir" "lens-${lens}-code" "${out%.json}-code-result.json" \
         "lens-${lens}-test" "${out%.json}-test-result.json" \
         "lens-${lens}-design" "${out%.json}-design-result.json"
-    # #2464, #2569, #2574 (ADR-072 §4 §5): every answer to one of its findings,
-    # with the finding it answers, read before its routed results are cleared.
-    local _rl_fc="" _rl_ans="" _rl_w; local -A _rl_af=()
+    local _rl_fc="" _rl_w
     _rl_lens_code_ok_v _rl_fc "$lens" "$out" || return 0
-    judge_answers_to_v _rl_ans "$artifact_dir" "lens-${lens}-code" "lens-${lens}-test" "lens-${lens}-design" ${_rl_fc:+"$_rl_fc"}
-    local -a _rl_lf=(); for _rl_w in code test design; do _rl_lf+=("lens-${lens}-$_rl_w=${out%.json}-$_rl_w-result.json"); done
-    [[ -n "$_rl_ans" ]] && judge_answered_findings_v _rl_af "$_rl_ans" "${_rl_lf[@]}"
     # A round's routed findings are this round's only (#2433); rm only when one is there.
     local -a _rl_old=(); for _rl_w in code test design; do [[ -e "${out%.json}-$_rl_w-result.json" ]] && _rl_old+=("${out%.json}-$_rl_w-result.json"); done
     [[ ${#_rl_old[@]} -gt 0 ]] && { rm -f "${_rl_old[@]}" 2>/dev/null || true; }
@@ -164,19 +159,8 @@ _review_lens_run_inner() {
     fi
     local prompt _rl_uqb=""; prompt="$(_rl_build_lens_prompt "$lens" "$_rl_change" "$(_rl_context)")"
     _rl_unclear_block_v _rl_uqb; prompt+="$_rl_uqb"
-    # #2464: what the lens judges, before the engine's blocks (whose Previous
-    # work names this run's paths) — its kept answer's fingerprint.
-    # The patch's path differs from run to run; what it holds is in _rl_cfp.
-    local _rl_judged="${prompt//"$evidence"/<the patch>}"$'\n'"$_rl_cfp"
-    # #2574: each file of the change keeps its report; only the files whose
-    # report no longer holds are asked (lib/items.sh).
-    local _rl_eng _rl_fpb="${prompt//"$_rl_change"/<the change>}" _rl_only=""
-    _rl_fpb="${_rl_fpb//"$evidence"/<the patch>}"
-    _rl_changed_files_v _RL_IT_FILES "$_rl_cfp" "$_rl_patch"
-    judge_engine_v _rl_eng
-    # No starting commit: the change is the patch, in every item's fingerprint.
-    _rl_items_prepare "${out%.json}-judged.json" "$_rl_eng" "$_rl_fpb"$'\n'"${_rl_base:-$_rl_cfp}" "$_rl_ans" _rl_af
-    [[ -n "$_RL_IT_WANT" ]] && { _rl_items_only_v _rl_only; prompt+="$_rl_only$_RL_IT_HELD"; }
+    # #2584 (ADR-072 §4 §5): a lens keeps no verdict and holds no pass — every
+    # round reviews the whole change, and every finding it gives is taken.
 
     # ADR-067 §8: the lens's three parts and the engine's blocks — its budget
     # among the engine's rules — in the one prompt order.
@@ -212,23 +196,9 @@ _review_lens_run_inner() {
     local _rl_ask="$prompt" _rl_problem="" _rl_try json="" _rl_salvage=""
     local _rl_replies="${out%.json}-reply.txt"
     : > "$_rl_replies" 2>/dev/null || true
-    local _rl_repo="${ZBUILD_REPO_ROOT:-$PWD}" _rl_kf="${out%.json}-judged.json" _rl_kept="" _rl_called=0
-    if [[ -z "$_RL_IT_WANT" ]]; then
-        # Every item's report holds: no call. One whose quote no longer reads
-        # has every item asked again.
-        _rl_items_assemble_v _rl_kept
-        [[ -n "$_rl_kept" ]] && _rl_quote_problem_v _rl_problem "$_rl_kept" "$_rl_base" "$_rl_repo" "$_rl_patch"
-        if [[ -n "$_rl_kept" && -z "$_rl_problem" ]]; then json="$_rl_kept"; raw_response="$_rl_kept"
-        else _RL_IT_WANT=" ${_RL_IT_FILES[*]:-} change"; _RL_IT_KEPT="{}"; fi
-        _rl_problem=""
-    fi
+    local _rl_repo="${ZBUILD_REPO_ROOT:-$PWD}"
     [[ -n "$_rl_last" ]] && { prompt+="$_rl_last"; _rl_ask="$prompt"; }
-    # The files the call opens, listed by the router (no mktemp: ADR-065 §5).
-    local _rl_opened="${ZBUILD_STAGE_SCRATCH:-$artifact_dir}/lens-${lens}-opened.txt"
-    : > "$_rl_opened" 2>/dev/null || _rl_opened=""
-    local -x ZBUILD_ROUTER_OPENED_FILE="$_rl_opened"
     for _rl_try in 1 2; do
-        [[ -n "$json" ]] && break
         raw_response=""; router_rc=0; _rl_problem=""
         raw_response="$(route_to_model "$tier" "$_rl_ask")" || router_rc=$?
         printf -- '--- reply %s ---\n%s\n' "$_rl_try" "$raw_response" >> "$_rl_replies" 2>/dev/null || true
@@ -249,21 +219,13 @@ _review_lens_run_inner() {
             _rl_salvage="$(jq -c --argjson d "[$(IFS=,; printf '%s' "${_RL_NO_ACC[*]}")]" \
                 '.findings |= [to_entries[] | select(.key as $k | $d | index($k) | not) | .value]' <<< "$json" 2>/dev/null)" || _rl_salvage=""
         fi
-        if [[ -z "$_rl_problem" ]]; then
-            # #2574: kept per item once the report is read (below); an item
-            # depends on the files outside the change the call read — each file
-            # of the change is an item of its own.
-            local -a _rl_deps=(); judge_opened_v _rl_deps "$_rl_opened"
-            _rl_called=1
-            break
-        fi
+        [[ -z "$_rl_problem" ]] && break
         json=""
         _rl_ask="$(stage_prompt_reask "$prompt" "$_rl_problem" "$raw_response")"
     done
     if [[ -z "$json" && -n "$_rl_salvage" && $router_rc -eq 0 && "${_rl_interrupted:-0}" != "1" ]]; then
-        json="$_rl_salvage"; raw_response="$_rl_salvage"; _rl_problem=""; _rl_called=2
+        json="$_rl_salvage"; raw_response="$_rl_salvage"; _rl_problem=""
     fi
-    (( _rl_called )) && _rl_items_hold_passes "$_rl_kf" "$_rl_repo" json
     if [[ "$_prev_json_env" == "__UNSET__" ]]; then
         unset ZBUILD_ROUTER_JSON_OUTPUT
     else
@@ -337,14 +299,15 @@ _review_lens_run_inner() {
     # v2 result fields (result_contract, verdict, disposition, reason) are embedded
     # in the primary output so the engine can read them from the declared primary
     # output without a separate sidecar (design decision #1840 — no sidecar).
-    # #2574: with a call, the report is the kept files' findings and the
-    # reply's (_RL_ITEMS_JQ), and each item asked comes back to be kept.
-    local normalized _rl_items_out _rl_files_json="[]" _rl_asked_json="[]"
-    _rl_json_list_v _rl_files_json ${_RL_IT_FILES[@]+"${_RL_IT_FILES[@]}"}
-    read -ra _rl_lf <<< "$_RL_IT_WANT"; _rl_json_list_v _rl_asked_json ${_rl_lf[@]+"${_rl_lf[@]}"}
-    _rl_items_out="$(printf '%s' "$json" | jq -r --arg n "$lens" --argjson kept "$_RL_IT_KEPT" --argjson files "$_rl_files_json" \
-        --argjson asked "$_rl_asked_json" --argjson called "$_rl_called" "$_RL_ITEMS_JQ"'
-        | ($report | {
+    # #2584 (ADR-038): a finding's other places (also_at), and each suspicion
+    # (an object in "unclear") that says what would confirm it — then how many
+    # suspicions said nothing would, on a line of its own.
+    local normalized _rl_sus_drop=0
+    normalized="$(printf '%s' "$json" | jq -c --arg n "$lens" 'def word: if (tostring | ascii_downcase) as $f
+            | ["code","test","design"] | index($f) then (tostring | ascii_downcase) elif . == "issue" then "design" else "code" end;
+        def said: (. // "" | tostring | gsub("^\\s+|\\s+$"; "")) | length > 0;
+        [(.unclear // []) | if type == "array" then .[] else empty end | objects] as $sus
+        | {
           schema_version: 1,
           name: $n,
           score: ((.score // 0) | if type=="number" then floor else 0 end),
@@ -368,14 +331,17 @@ _review_lens_run_inner() {
               # #2433: what would fix it; a word off the list is a code fix.
               fix: (if (.fix|tostring|ascii_downcase) as $f
                     | ["code","test","design","issue"] | index($f)
-                    then (.fix|tostring|ascii_downcase) else "code" end)
+                    then (.fix|tostring|ascii_downcase) else "code" end),
+              also_at: [(.also_at // []) | if type == "array" then .[] else . end | strings | select(said)]
             } else {
               file: "unknown", category: "general", severity: "low",
-              line: null, message: (.|tostring), quote: "", trigger: "", accepted_if: "", introduced: true, fix: "code"
-            } end ]
-        } | tojson), $z.p[]' 2>/dev/null || true)"
-    normalized="${_rl_items_out%%$'\n'*}"
-    (( _rl_called == 1 )) && _rl_items_keep "$_rl_kf" "$_rl_items_out" "$_rl_repo" ${_rl_deps[@]+"${_rl_deps[@]}"}
+              line: null, message: (.|tostring), quote: "", trigger: "", accepted_if: "", introduced: true, fix: "code", also_at: []
+            } end ],
+          suspected: [$sus[] | select((.suspicion | said) and (.confirm_by | said))
+            | {file: (.file // "unknown" | tostring), quote: (.quote // "" | tostring), suspicion: (.suspicion | tostring),
+               confirm_by: (.confirm_by | tostring), fix: (.fix | word)}]
+        }, ([$sus[] | select(((.suspicion | said) and (.confirm_by | said)) | not)] | length)' 2>/dev/null || true)"
+    [[ "$normalized" == *$'\n'* ]] && { _rl_sus_drop="${normalized##*$'\n'}"; normalized="${normalized%%$'\n'*}"; }
     if [[ -z "$normalized" ]]; then
         emit_event "review_lens.unparseable" "lens=$lens"
         _review_lens_write_result "$out" unusable "normalization_failed"
@@ -388,7 +354,7 @@ _review_lens_run_inner() {
 
     # #2552 (ADR-038): a second call tries to knock each finding down; one it
     # does is kept under knocked_down and reaches no stage.
-    _rl_check_v normalized "$normalized" "$lens" "$out" "$_rl_change" "$_rl_cfp" "$_rl_repo"
+    _rl_check_v normalized "$normalized" "$lens" "$_rl_change" "$_rl_repo"
     # A check cut short ends the lens as its own call would (lens review on #2552).
     if [[ "$_RL_CHECK_RC" -eq 130 ]]; then
         [[ "${_rl_interrupted:-0}" == "1" ]] || _review_lens_write_result "$out" interrupted "signal_interrupt"
@@ -402,6 +368,7 @@ _review_lens_run_inner() {
     # #2571 (ADR-038): the questions the lens goes on with, those it retired,
     # and its notes, in its result.
     _rl_unclear_settle "$json"
+    [[ "$_rl_sus_drop" =~ ^[1-9][0-9]*$ ]] && _RL_UQ_NOTES+="a suspicion was left out: it says nothing would confirm it ($_rl_sus_drop in all)"$'\n'
     _rl_unclear_data_v normalized "$normalized"
 
     # Primary output (manifest provides.outputs, primary:true) is
@@ -433,7 +400,10 @@ _review_lens_run_inner() {
         --arg reg "$_rl_reg" --arg code "$_rl_code" "$_ZB_FINDING_IDS_JQ"'
         def at_fail_on: .severity as $s | ($on | contains(" \($s) "));
         # #2506 (ADR-072 §3): shown with its quote, never a line — lines move.
-        def line: "\($n) lens, \(.severity): \(.message) (\(.file)\(if (.quote | tostring) != "" then ": \"\(.quote | tostring | gsub("[\r\n]+"; " "))\"" else "" end); happens when: \(.trigger // "" | tostring | gsub("[\r\n]+"; " ")); fix: \(.fix); ACCEPTED IF: \(.accepted_if // "" | tostring | gsub("[\r\n]+"; " ")))";
+        def line: "\($n) lens, \(.severity): \(.message) (\(.file)\(if (.quote | tostring) != "" then ": \"\(.quote | tostring | gsub("[\r\n]+"; " "))\"" else "" end); happens when: \(.trigger // "" | tostring | gsub("[\r\n]+"; " ")); fix: \(.fix); ACCEPTED IF: \(.accepted_if // "" | tostring | gsub("[\r\n]+"; " ")))"
+            + (if ((.also_at // []) | length) > 0 then "; the same kind of problem also at: " + ([.also_at[] | gsub("[\r\n]+"; " ")] | join("; ")) else "" end);
+        # #2584: a suspicion reaches its stage as a question, blocking nothing.
+        def asked: {text: "The \($n) lens suspects, and could not confirm: \(.suspicion | gsub("[\r\n]+"; " ")) (\(.file)\(if .quote != "" then ": \"\(.quote | gsub("[\r\n]+"; " "))\"" else "" end)); what would confirm it: \(.confirm_by | gsub("[\r\n]+"; " ")). A question: say whether it holds, and why.", blocking: false, area: .file};
         # #2574 (R3): its area — the file it is about — is the item it is kept under.
         def routed: {text: line, blocking: at_fail_on, area: (.file // "unknown" | tostring)};
         # One routed result (#2433): fail with a numbered finding per item when
@@ -454,7 +424,7 @@ _review_lens_run_inner() {
           # no translation. One saying the issue is wrong goes with design.
           # #2571: so does a question it raised now, blocking nothing.
           ([["code", "test", "design"][] as $w
-            | ([$sent[] | select(.fix == $w) | routed] + (if $w == "design" then [$issue[] | routed]
+            | ([$sent[] | select(.fix == $w) | routed] + [(.suspected // [])[] | select(.fix == $w) | asked] + (if $w == "design" then [$issue[] | routed]
                   + [$q[] | {text: "The issue is unclear here, and the \($n) lens judged by the assumption: \(.)", blocking: false}] else [] end))[]
             | . + {w: $w}] as $rall
            | (if $code != "" and ($rall | length) > 0 then ($rall | zb_fids($reg; $code)) else {out: $rall, r: null} end) as $z
@@ -487,7 +457,6 @@ _review_lens_run_inner() {
         [[ -n "$_rl_kd" ]] && _rl_body+="${_rl_body:+$'\n'}$_rl_kd"
     fi
     [[ -n "$_RL_CHECK_NOTE" ]] && _rl_body+="${_rl_body:+$'\n'}- $_RL_CHECK_NOTE"
-    [[ -n "$_RL_IT_NOTES" ]] && _rl_body+="${_rl_body:+$'\n'}${_RL_IT_NOTES%$'\n'}"
     stage_summary_write "$artifact_dir/lens-${lens}-summary.md" "review-lens-${lens}" "$_rl_outcome" \
         "$_rl_head" "${_rl_body:+$_rl_body$'\n'}- score: $score"
     emit_event "plugin.result" "plugin=review-lens" \

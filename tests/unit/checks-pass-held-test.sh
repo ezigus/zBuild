@@ -2,8 +2,8 @@
 # tests/unit/checks-pass-held-test.sh — design's check: a kept pass judged
 # again because a file it read moved is refused only on a line added since
 # (#2574 review; ADR-072 §4, amended 2026-11-20). Issue-acceptance
-# (issue-acceptance-per-item-test.sh PI8) and the lenses (lens-per-item-test.sh
-# LP11) are held the same way.
+# (issue-acceptance-per-item-test.sh PI8) is held the same way; a lens holds no
+# pass (#2584, lens-fresh-test.sh LF4).
 #
 # P1 [change] the steps passed; a file the check read moves; the check refuses
 #             them quoting a line of that file that did not change: the pass

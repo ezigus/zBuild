@@ -13,8 +13,8 @@
 #             changes, and kept when nothing changed
 # L3 [change] a lens's prompt names the starting commit and each changed file,
 #             and holds no diff
-# L4 [change] a lens's kept report is judged again when a changed file's
-#             content changes
+# L4 [change] (#2584) a lens keeps no report: called again whether or not a
+#             changed file's content changed
 # L5 [change] a lens's quote of a line the change removed is still found
 # L6 [change] with no starting commit known, the judge is pointed at the patch
 #             file, and the patch is not pasted in
@@ -119,7 +119,7 @@ assert_contains "[L3] ...the added test" "$_p" "tests/a-test.sh"
 assert_contains "[L3] ...and how to see a change" "$_p" "git diff $BASE HEAD"
 _no_diff "[L3] ...and holds no diff" "$_p"
 : > "$CALLS"; _lens
-assert_eq "[L4] nothing changed: the kept report is used" "0" "$(grep -c . "$CALLS")"
+assert_eq "[L4] nothing changed: called again (#2584: a lens keeps no report)" "1" "$(grep -c . "$CALLS")"
 # #2574: the old line is back for the verdict kept now, so L5's removal of it
 # is a change since that verdict (a kept pass is refused only on one).
 ( cd "$G" && printf 'keep\nOLD_LINE_REMOVED\nNEW_LINE_THIRD\n' > core/a.sh && git commit -qam third ) >/dev/null 2>&1

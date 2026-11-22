@@ -1065,3 +1065,13 @@ template, the environment or its plugin sets one. Precedence is unchanged: templ
 ## Amendment 2026-11-09 (#2508) — build declares no scope
 
 Build no longer declares a scope from `plan.files[]` or design's scope block, and the pipeline's post-validation of its diff checks one thing: no file in the repository's test folders changed (ADR-030 §8).
+
+## Amendment 2026-11-22 (#2584) — one set of limits per call
+
+On #1764 run 44910536811 a lens's prompt said "600 seconds and 20 turns" — its manifest's — while the call ran with 900 seconds and no turn limit, the template's `review_lenses` block (`router.max_turns.flag_omitted … resolved=0`). The engine writes a dispatch's blocks, the budget line among them, in the dispatching shell; for a map element that is a work unit that has not loaded the template's accessors, so the template's value was skipped there. The router resolved the limits again at call time, after the stage had loaded them. Design (1,200 seconds, told 600 and 45 turns), test-author (900, told 300) and issue-acceptance (600, told 300) were told the wrong limits the same way.
+
+- **The limits are resolved once per dispatch.** `plugin_hook_call` resolves the time and turn limits of the stage's model calls (`zb_call_limits_v`, `scripts/lib/stage-limits.sh`) and records them for the dispatch (`ZBUILD_CALL_LIMITS="<stage> <seconds> <turns>"`). That one record feeds the call — its time limit and its `--max-turns` (omitted for no limit), in the one-shot and the loop path alike — the prompt's budget line (`_stage_block_rules_pair_v`), and the time-up warning the call's hook gives at its deadline ("It was given <seconds> seconds and <turns> turns." / ", with no limit on turns."). A call outside a dispatch of its stage resolves them itself, the same way.
+- **The template's value is read where its accessors are not loaded:** the resolver reads the variable `load_template` exports (`_TPL_STAGE_ROUTER_TIMEOUT_<stage>`, `_TPL_STAGE_ROUTER_MAX_TURNS_<stage>`) when `template_stage_router_*` is not defined (`_route_template_knob_v`).
+- **The configured values do not change.** Precedence is as before: the escalation override > template > `ZBUILD_ROUTER_*` > the plugin's `config.router` > 300 seconds and no turn limit.
+
+Enforced by `tests/integration/call-limits-agree-test.sh` CL1–CL3 (for every model-calling stage of `config/templates/simple.yaml`, each lens included, dispatched as a map element is: the configured limits, the CLI's, the prompt's budget line and the time-up warning agree), CL4 (the configured values are unchanged).
