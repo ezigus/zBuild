@@ -2,6 +2,7 @@ memory.backend.init
 pipeline.init
 plugin.claim.start
 plugin.claim.complete
+pipeline.claim.skipped
 pipeline.branch.ready
 pipeline.start
 stage.start
@@ -115,5 +116,3 @@ plugin.run.start
 persist.start
 persist.complete
 plugin.run.complete
-plugin.release.start
-plugin.release.complete

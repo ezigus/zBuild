@@ -78,9 +78,11 @@ zbuild_claim_acquire() {
         eb_emit_event "pipeline.claim.acquired" "issue=$issue" "holder=$holder" 2>/dev/null || true
         return 0
     fi
-    if [[ "$reply" =~ \"skipped\"[[:space:]]*: ]]; then
-        local why; why="$(jq -r '.skipped // empty' <<< "$reply" 2>/dev/null || true)"
-        _zbuild_claim_skipped "$issue" "${why//[[:cntrl:]]/}"
+    if [[ "$reply" =~ \"skipped\"[[:space:]]*:[[:space:]]*\"([^\"\\]*)\" ]]; then
+        _zbuild_claim_skipped "$issue" "${BASH_REMATCH[1]//[[:cntrl:]]/}"
+        return 0
+    elif [[ "$reply" =~ \"skipped\"[[:space:]]*: ]]; then
+        _zbuild_claim_skipped "$issue" "the claim coordinator made no claim"
         return 0
     fi
     if [[ "$reply" =~ \"acquired\"[[:space:]]*:[[:space:]]*false ]]; then

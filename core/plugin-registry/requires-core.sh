@@ -128,18 +128,28 @@ requires_core_providers() {
     printf '%s\n' "${provs[@]}"
 }
 
-# ─── _requires_core_code <file> — the file with comments removed ────────────
-# Two substitutions, not a character walk: drop a whole-line comment, then drop
-# a trailing one introduced by whitespace. Anchoring on whitespace is what keeps
-# `$#` and `${#arr[@]}` — where `#` follows `$` or `{` — out of it. Known limit,
-# shared with the #2063 guard: a `#` inside a quoted string truncates the line
-# early, which can only ever HIDE a call, never invent one.
-_requires_core_code() {
-    sed -e 's/^[[:space:]]*#.*$//' -e 's/[[:space:]]#.*$//' "$1" 2>/dev/null
+# ─── _requires_core_code_v <var> <file> — the file with comments removed ────
+# Two cuts a line, not a character walk: drop a trailing comment introduced by
+# whitespace, then a line that is a comment (an indented one leaves blanks).
+# Anchoring on whitespace is what keeps `$#` and `${#arr[@]}` — where `#`
+# follows `$` or `{` — out of it. Known limit, shared with the #2063 guard: a `#` inside a quoted string truncates the line
+# early, which can only ever HIDE a call, never invent one. Read by the shell,
+# not a sed in a `$( )` a plugin: it runs for every manifest at load (ADR-065 §5).
+_requires_core_code_v() {
+    local -n _rccv="$1"
+    local -a _rcc_a=()
+    local _rcc_t
+    mapfile -t _rcc_a < "$2" 2>/dev/null || true
+    # Whole-array expansions, not a loop: under xtrace a loop would trace each
+    # line of the file, and the fork census would read its words as commands.
+    printf -v _rcc_t '%s\n' "${_rcc_a[@]%%[[:space:]]#*}"
+    mapfile -t _rcc_a <<< "$_rcc_t"
+    printf -v _rccv '%s\n' "${_rcc_a[@]/#\#*/}"
+    _rccv="${_rccv%$'\n'}"
 }
 
 # _requires_core_sources <code> <provider> — rc 0 when <code> (a plugin.sh as
-# _requires_core_code prints it) has a real source line naming <provider>. The
+# _requires_core_code_v reads it) has a real source line naming <provider>. The
 # caller strips the file once for every entry and provider it asks about
 # (ADR-065). Comment-stripped first, so a bare `# shellcheck
 # source=` directive never counts as the real thing (the exact false accept the
@@ -225,7 +235,7 @@ requires_core_unresolved_v() {
         # `redaction` binds only on a path that actually reaches a model.
         if [[ "$class" == "conditional" ]]; then
             [[ -f "$plugin_sh" ]] || continue
-            [[ -n "$code_read" ]] || { code="$(_requires_core_code "$plugin_sh")"; code_read=1; }
+            [[ -n "$code_read" ]] || { _requires_core_code_v code "$plugin_sh"; code_read=1; }
             _requires_core_reaches_model "$code" || continue
         fi
 
@@ -236,7 +246,7 @@ requires_core_unresolved_v() {
             [[ -n "$prov" ]] || continue
             prov_list="${prov_list:+$prov_list or }$prov"
             [[ -f "$plugin_sh" ]] || continue
-            [[ -n "$code_read" ]] || { code="$(_requires_core_code "$plugin_sh")"; code_read=1; }
+            [[ -n "$code_read" ]] || { _requires_core_code_v code "$plugin_sh"; code_read=1; }
             _requires_core_sources "$code" "$prov" && satisfied=1
         done
 

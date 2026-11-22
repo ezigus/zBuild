@@ -178,7 +178,13 @@ BUDGET_MARGIN_STARTUP=1
 # as it was, and a held pass; the write boundary's snapshot hashes every file
 # in one call. Measured on macOS, two runs: 2387 processes and 1845 execs in
 # all, 464 processes and 298 execs a dispatch.
-FORK_BUDGET=$(( 1845 + BUDGET_MARGIN_TOTAL ))
+# #1764: the engine claims the issue through the claim coordinator before the
+# first stage (a hook dispatch, a discovery and three events — under the
+# fixture's NO_GITHUB the claim is skipped, so nothing is released), and
+# requires-core strips a plugin.sh by the shell, not a sed a plugin. Measured on
+# macOS: 2381 processes and 1841 execs in all, 421 processes and 226 execs at
+# start-up, 463 and 297 a dispatch.
+FORK_BUDGET=$(( 1841 + BUDGET_MARGIN_TOTAL ))
 # PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
 # the programs above plus each `$( )` subshell, a copy of the whole engine shell
 # that FORK_BUDGET cannot see. Ratchets down only, like FORK_BUDGET. History:
@@ -241,7 +247,8 @@ FORK_BUDGET=$(( 1845 + BUDGET_MARGIN_TOTAL ))
 # #2573: see FORK_BUDGET — 2394 processes, plus the margin.
 # #2575: see FORK_BUDGET — 2391.
 # #2574: see FORK_BUDGET — 2387 processes, plus the margin.
-PROCESS_BUDGET=$(( 2387 + BUDGET_MARGIN_TOTAL ))
+# #1764: see FORK_BUDGET — 2381 processes, plus the margin.
+PROCESS_BUDGET=$(( 2381 + BUDGET_MARGIN_TOTAL ))
 # The run's cost in two parts (ADR-065 §6, #2472). Each budget ratchets down
 # like the totals; each floor is the goal, an estimate, measured again when
 # reached. History: 505 / 298 a dispatch, 12 / 7 a plugin at start-up (#2472 —
@@ -307,8 +314,9 @@ DISPATCH_EXECS_FLOOR=50
 STARTUP_PROCS_PER_PLUGIN_BUDGET=11
 STARTUP_PROCS_PER_PLUGIN_FLOOR=1
 STARTUP_EXECS_PER_PLUGIN_BUDGET=6
-STARTUP_PROCS_BUDGET=$(( 428 + BUDGET_MARGIN_STARTUP ))
-STARTUP_EXECS_BUDGET=$(( 232 + BUDGET_MARGIN_STARTUP ))
+# #1764: see FORK_BUDGET — 421 and 226 at start-up.
+STARTUP_PROCS_BUDGET=$(( 421 + BUDGET_MARGIN_STARTUP ))
+STARTUP_EXECS_BUDGET=$(( 226 + BUDGET_MARGIN_STARTUP ))
 STARTUP_EXECS_PER_PLUGIN_FLOOR=1
 
 # ─── the harness and the counter (tests/lib/fork-census.sh) ────────────────
