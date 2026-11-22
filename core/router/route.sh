@@ -165,6 +165,8 @@ _route_try_suffix() {
 route_to_model() {
     _ROUTE_LAST_BUDGET_EXHAUSTED=0   # #2187: set by the call path on a turn-budget hit
     declare -F _router_clear_budget_marker >/dev/null 2>&1 && _router_clear_budget_marker
+    # #2582: the failed-call mark describes the last call too.
+    declare -F _router_clear_call_failed_marker >/dev/null 2>&1 && _router_clear_call_failed_marker
     if [[ $# -lt 2 ]]; then
         error "route_to_model requires <tier> <prompt>"
         return 2
@@ -230,6 +232,9 @@ route_to_model() {
     local _call_rc=0
     _route_call_claude "$tier" "$prompt" "$secs" || _call_rc=$?
     if [[ "$_call_rc" -ne 0 ]]; then
+        # #2582 (ADR-054 §6): the model call failed, however it failed (no
+        # binary, a failed run, an empty or unreadable reply) — one mark, here.
+        _router_arm_call_failed_marker
         # On error, close the begin so it doesn't orphan into the EXIT trap.
         if [[ -n "$_stage_io_seq" ]]; then
             stage_io_end \
@@ -1218,7 +1223,19 @@ _route_stream_progress() {
     ' "$stream" 2>/dev/null || printf '0 '
 }
 
+# route_to_model_loop <tier> <prompt_file> <cwd> ... — the loop below, and
+# #2582 (ADR-054 §6): a loop that decided to call the model and then failed
+# marks the failed call, however it failed — one mark, here.
 route_to_model_loop() {
+    _ROUTE_LOOP_CALLING=0
+    declare -F _router_clear_call_failed_marker >/dev/null 2>&1 && _router_clear_call_failed_marker
+    local _rtml_rc=0
+    _route_to_model_loop_run "$@" || _rtml_rc=$?
+    (( _rtml_rc != 0 && _ROUTE_LOOP_CALLING )) && _router_arm_call_failed_marker
+    return "$_rtml_rc"
+}
+
+_route_to_model_loop_run() {
     # Reset before ANY return: an early exit must not leave the previous loop's
     # reason (a stale done_sentinel reads as success to the caller) — #2225.
     _ROUTE_LOOP_TERMINATED_REASON=""
@@ -1271,6 +1288,7 @@ route_to_model_loop() {
 
     _route_lookup_model "$tier" "$model_override" || return $?
     _route_call_tools_prepare || return $?
+    _ROUTE_LOOP_CALLING=1   # #2582: from here a failure is a failed model call
 
     if ! command -v claude >/dev/null 2>&1; then
         error "route_to_model_loop: claude binary not found in PATH"

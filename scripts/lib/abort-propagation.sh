@@ -11,6 +11,7 @@
 #   }
 #
 # Words: sigint | sigterm | cycle_abort | llm_unavailable | llm_rate_limited |
+# stage_stopped:<stage>:<reason> (#2582) |
 # scope_too_large | timed_out. The first recorded abort wins.
 #
 # Two channels hold the word: `_ZB_ABORT_REASON` in this process, and the

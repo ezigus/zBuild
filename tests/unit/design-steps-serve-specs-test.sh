@@ -22,6 +22,8 @@
 #              counts once — under the caller's IFS too
 # SV7 [change] (review) a step's words holding a record separator are written
 #              to design-steps.json as one step
+# SV8 [change] (#2582 R6) design's prompt says a step names where and how,
+#              points to its SPECs with serves:, and does not restate them
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -96,6 +98,12 @@ export ZBUILD_REPO_ROOT="$D" ZBUILD_EVENTS_JSONL="$ST/events.jsonl" ZBUILD_EVENT
 : > "$ZBUILD_EVENTS_JSONL"
 _design_stage_run_inner "$ST/scope-manifest.md" "$AD/design.md" "$AD" >/dev/null 2>&1
 assert_contains "[SV5] design's prompt asks for each step's SPECs" "$(cat "$TEST_TEMP_DIR/design-prompt.txt" 2>/dev/null)" "| serves: "
+# SV8 (#2582 R6, ADR-068 §6): #1764 run 44910536811's step 7 rewrote DSADR-7's
+# four entries in its own words and lost one; build followed the step.
+_dp="$(cat "$TEST_TEMP_DIR/design-prompt.txt" 2>/dev/null)"
+assert_contains "[SV8] a step says where and how" "$_dp" "A step says where and how"
+assert_contains "[SV8] ...points to its SPECs with serves:" "$_dp" "points to the SPECs it serves with serves:"
+assert_contains "[SV8] ...and does not restate what they require" "$_dp" "does not restate what they require"
 
 # ── SV6 ──────────────────────────────────────────────────────────────────────
 _l='- filter | areas: core/a.sh | serves: DSCLA-23[code], DSCLA-1 (the filter), DSCLA-1'

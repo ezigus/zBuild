@@ -110,6 +110,17 @@ _merge_pr_fallback() {
     return 0
 }
 
+# _merge_gh_unreached <gh stderr> — rc 0 when gh got no lasting answer from
+# GitHub: it could not reach it, GitHub failed or asked to try again later (a
+# rate limit, secondary included), or gh said nothing. Resumable, not the setup's.
+_merge_gh_unreached() {
+    local e="${1,,}"
+    [[ -z "${e//[[:space:]]/}" || "$e" == *"error connecting to"* || "$e" == *"timed out"* || "$e" == *timeout* \
+        || "$e" == *"could not resolve host"* || "$e" == *"connection reset"* \
+        || "$e" == *"rate limit"* || "$e" == *"try again"* || "$e" == *"something went wrong"* \
+        || "$e" =~ http\ 5[0-9][0-9] ]]
+}
+
 # ─── _merge_run_inner ─────────────────────────────────────────────────────────
 # Gate verdict == pass → checkout branch, push, create non-draft PR, squash-merge.
 _merge_run_inner() {
@@ -216,10 +227,18 @@ _merge_run_inner() {
     local pr_number
     pr_number="$(printf '%s' "$pr_url" | grep -Eo '[0-9]+$' || echo "0")"
 
-    if ! gh pr merge --squash --auto 2>/dev/null; then
-        error "merge_run: gh pr merge failed"
-        # disposition-ok: GitHub (gh pr merge) is not responding
-        stage_result_write "$merge_result_out" unavailable "gh pr merge failed" \
+    local merge_err
+    if ! merge_err="$(gh pr merge --squash --auto 2>&1 >/dev/null)"; then
+        # #2582 (ADR-054 §6): GitHub answered and refused (auto-merge off, a
+        # branch rule, no permission) — the setup's to fix, in gh's own words.
+        # Only gh failing to reach GitHub leaves the merge unknown: unavailable.
+        local merge_outcome=misconfigured
+        _merge_gh_unreached "$merge_err" && merge_outcome=unavailable
+        merge_err="${merge_err//[$'\n\r\t']/ }"; (( ${#merge_err} > 300 )) && merge_err="${merge_err:0:300}…"
+        error "merge_run: gh pr merge failed: ${merge_err:-no error output}"
+        # disposition-ok: GitHub refused the merge, or could not be reached
+        stage_result_write "$merge_result_out" "$merge_outcome" \
+            "gh pr merge: ${merge_err:-no error output}" \
             "$(jq -nc --arg pr_url "$pr_url" '{pr_url:$pr_url}')"
         return 1
     fi

@@ -24,6 +24,9 @@ source "${BASH_SOURCE[0]%/*}/steps-handoff.sh"
 # Design's steps with the SPECs each serves (#2579).
 # shellcheck source=steps-specs.sh
 source "${BASH_SOURCE[0]%/*}/steps-specs.sh"
+# How an answer's quote is read, and an accepted answer stands (#2582).
+# shellcheck source=steps-quote.sh
+source "${BASH_SOURCE[0]%/*}/steps-quote.sh"
 declare -F zbuild_resolve_merge_base_v >/dev/null 2>&1 \
     || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/merge-base.sh" 2>/dev/null || true
 
@@ -37,12 +40,13 @@ _build_steps_instructions_v() {
     _bsi="### Answering each design step
 Before the sentinel, answer every one of the design's steps, by its number, each on its own line:
 
-    step N: done — QUOTE: <file> | <a line this change added>
+    step N: done — <file> | <a line this change added>
     step N: not needed — <why>
 
-- \`done\`: you did what the step says. Quote the line this change added that does it, in a file in that step's areas, copied as it is with no quote marks. It is checked: a line this branch did not add, a file outside the step's areas, or a line that does not do what the step says sends you round again for that step.
+- \`done\`: you did what the step says. Give the file and the line this change added that does it, in a file in that step's areas, copied as it is with no quote marks; part of the line will do when that part is in no other line you added. It is checked: a line this branch did not add, a file outside the step's areas, or a line that does not do what the step says sends you round again for that step.
 - \`not needed\`: the code already does what the step says, or the step is wrong; say why, in terms the code shows — name the file and what in it already does the step. It is checked too: a reason the code does not bear out, or one that only says the tests pass or the work was done before, sends you round again for that step.
-- A step with no answer is not done, and you are sent round again for it.
+- A step accepted on an earlier try stands: you need not answer it again. Answer it again only when you change what it answered. When the code its line is in changes, it is judged again on that answer (a not needed: the code in its areas); when its line is gone, or the step or a SPEC it serves changes, you are asked to answer it again.
+- Any other step with no answer is not done, and you are sent round again for it.
 - A step does part of what the SPECs it serves say: an answer must not break any of them.$_bsi_c"
 }
 
@@ -105,19 +109,23 @@ _build_steps_check() {
     _JUDGE_HANDOFF_JUDGED=()
     local count=${#_BUILD_STEP_DESC[@]}
     (( count > 0 )) || return 0
-    local joined l low n rest q _jqs_path _jqs_txt
-    local -A kind=() said=() qpath=() qtxt=() qune=()
+    local joined l low n rest q raw _jqs_path _jqs_txt
+    local -A kind=() said=() qpath=() qtxt=() qune=() reused=()
     local re='^step[[:space:]]+([0-9]+)[[:space:]]*:[[:space:]]*(done|not[[:space:]]+needed)(.*)$'
     zb_reply_join_v joined "$reply"
+    # shellcheck disable=SC2034  # qune is read by _build_steps_quote_find
     while IFS= read -r l; do
         [[ "${l,,}" == *step* ]] || continue
-        judge_reply_line_v l "$l"; low="${l,,}"
+        raw="$l"; judge_reply_line_v l "$l"; low="${l,,}"
         [[ "$low" =~ $re ]] || continue
         # 10#: `step 08` is step 8, not a bad octal number.
         n="${BASH_REMATCH[1]}"; (( ${#n} <= 6 )) || continue; n=$(( 10#$n ))
         (( n >= 1 && n <= count )) || continue
         kind[$n]="${BASH_REMATCH[2]%%[[:space:]]*}"; rest="${l:${#l}-${#BASH_REMATCH[3]}}"
-        q=""; [[ "$rest" == *"| QUOTE:"* ]] && { q="${rest#*| QUOTE:}"; rest="${rest%%| QUOTE:*}"; }
+        q=""
+        if [[ "$rest" == *"| QUOTE:"* ]]; then q="${rest#*| QUOTE:}"; rest="${rest%%| QUOTE:*}"
+        # #2582 (ADR-072 §3): `done — <file> | <line>` needs no label.
+        elif [[ "${kind[$n]}" == "done" ]]; then _build_steps_quote_of_v q "$raw"; fi
         _build_steps_strip_v rest "$rest"; said[$n]="$rest"; _build_steps_strip_v q "$q"
         qpath[$n]=""; qtxt[$n]=""; qune[$n]=""
         if [[ "${kind[$n]}" == "done" ]] && _judge_quote_split "$q"; then
@@ -152,6 +160,10 @@ _build_steps_check() {
         fi
     done
 
+    # #2582 (ADR-068 §6): a step this reply does not answer keeps the answer
+    # the check accepted before, while that verdict stands.
+    _build_steps_kept_answers "$kf" "$count"
+
     # The mechanical check: an answer for each step; a done's quote is a line
     # this branch added, in a file in the step's areas. One git diff for all.
     local -a paths=() ok=() nn=()
@@ -165,14 +177,16 @@ _build_steps_check() {
             _BUILD_STEP_LINES+=("step $n: $w"); continue
         fi
         case "${kind[$n]:-}" in
-            "") _BUILD_STEP_FINDINGS+=("step $n has no answer: do it and answer \`step $n: done — QUOTE: <file> | <a line this change added>\`, or answer \`step $n: not needed — <why>\` (the step: $d)") ;;
+            "") _build_steps_noanswer_v l "$n"; _BUILD_STEP_FINDINGS+=("$l") ;;
             not)
                 # #2567 (ADR-068 §6): a reason is a claim, and goes to the judge.
                 if [[ -z "${said[$n]}" ]]; then _BUILD_STEP_FINDINGS+=("step $n is answered not needed with no reason: say why it is not needed (the step: $d)")
                 else nn+=("$n"); fi ;;
             done)
                 if [[ -z "${qpath[$n]}" ]]; then
-                    _BUILD_STEP_FINDINGS+=("step $n is answered done with no quote: give \`QUOTE: <file> | <a line this change added>\` (the step: $d)")
+                    _BUILD_STEP_FINDINGS+=("step $n is answered done with no \`<file> | <line>\`: answer \`step $n: done — <file> | <a line this change added>\` (the step: $d)")
+                elif [[ -n "${reused[$n]:-}" ]] && ! _build_steps_in_area "${qpath[$n]}" "$a"; then
+                    _build_steps_stale_v l "$n" "${qpath[$n]} is no longer in the step's areas"; _BUILD_STEP_FINDINGS+=("$l")
                 elif ! _build_steps_in_area "${qpath[$n]}" "$a"; then
                     _BUILD_STEP_FINDINGS+=("step $n's quote is in ${qpath[$n]}, outside the step's areas ($a): quote the line this change added there that does the step (the step: $d)")
                 else
@@ -220,16 +234,19 @@ _build_steps_check() {
     if [[ ${#ok[@]} -gt 0 ]]; then
         for n in "${ok[@]}"; do
             if [[ -n "$base" ]]; then
-                # One whole added line, not a piece of one (a `}` is in many).
-                [[ -n "${qtxt[$n]}" && $'\x1e'"${added[${qpath[$n]}]:-}" == *$'\x1e'"${qtxt[$n]}"$'\x1e'* ]] \
-                    && { judged+=("$n"); continue; }
-                [[ -n "${qune[$n]}" && $'\x1e'"${added[${qpath[$n]}]:-}" == *$'\x1e'"${qune[$n]}"$'\x1e'* ]] \
-                    && { qtxt[$n]="${qune[$n]}"; judged+=("$n"); continue; }
+                # #2582 (ADR-072 §3): a whole added line, or part of exactly
+                # one (a `}` is in many); the whole line is what is judged.
+                _build_steps_quote_find "$n" "$repo" && { judged+=("$n"); continue; }
             else
                 # No base to say what this branch added: the line is in the file.
+                _BSQ_WHY="is not a line in ${qpath[$n]}: ${qtxt[$n]} — quote the line you added that does the step, or answer not needed and why"
                 judge_quote_check_v l "${qpath[$n]} | ${qtxt[$n]}" "" "$repo" && { judged+=("$n"); continue; }
             fi
-            _BUILD_STEP_FINDINGS+=("step $n's quote is not a line this change added in ${qpath[$n]}: ${qtxt[$n]} — quote the line you added that does the step, or answer not needed and why (the step: ${_BUILD_STEP_DESC[n-1]})")
+            # An accepted answer whose line is gone no longer stands.
+            if [[ -n "${reused[$n]:-}" ]]; then
+                _build_steps_stale_v l "$n" "the quoted line is no longer in ${qpath[$n]}"; _BUILD_STEP_FINDINGS+=("$l"); continue
+            fi
+            _BUILD_STEP_FINDINGS+=("step $n's quote $_BSQ_WHY (the step: ${_BUILD_STEP_DESC[n-1]})")
         done
     fi
     judged+=(${nn[@]+"${nn[@]}"})
@@ -328,7 +345,7 @@ _build_steps_parse() {
 _build_steps_judge() {
     local repo="$1" ad="$2" tier="$3"; shift 3
     local kf="$ad/build-steps-judged.json" eng n item fp list="" prompt ask _r _got="" _rc=0 _try why="" l
-    local -A fps=() kept=() deps=() items=() pay=() earlier=()
+    local -A fps=() kept=() deps=() items=() pay=() earlier=() rejudged=()
     local -a ask_n=()
     judge_engine_v eng
     local _bsj_why
@@ -364,6 +381,13 @@ _build_steps_judge() {
             _build_steps_parse "$n: ${kept[step-$n]}" "$n"
             [[ -z "$_BSJ_PROBLEM" ]] && { pay[$n]="${_BSJ_ANS[$n]}"; continue; }
         fi
+        # #2582: an answer kept from an earlier try whose kept verdict is stale
+        # is judged again when the step and its SPECs are as they were (only
+        # the code moved); otherwise it no longer stands.
+        if [[ -n "${reused[$n]:-}" && "${_JUDGE_KEPT_TEXT[step-$n]-}" != "${stxt[step-$n]}" ]]; then
+            pay[$n]=stale; continue
+        fi
+        [[ -n "${reused[$n]:-}" ]] && rejudged[$n]=1
         ask_n+=("$n"); list+="${items[$n]}"$'\n'
         if [[ "${earlier[step-$n]:-}" == "does not"* ]]; then
             _build_steps_said_v l "$n"; _bsj_h="${back[$n]:-${fans[$n]:-}}"
@@ -418,22 +442,27 @@ _build_steps_judge() {
             fi
             # keep, kfp and kdeps are read by judge_kept_put_all through their names.
             # shellcheck disable=SC2034
-            local -A keep=() kfp=() kdeps=()
+            local -A keep=() kfp=() kdeps=() kans=()
             # shellcheck disable=SC2034
             for n in "${ask_n[@]}"; do
                 [[ -n "${_BSJ_ANS[$n]+x}" ]] || { pay[$n]="unread"; continue; }
                 pay[$n]="${_BSJ_ANS[$n]}"
                 keep[step-$n]="${_BSJ_ANS[$n]/$'\x1f'/ | WHY: }"; keep[step-$n]="${keep[step-$n]/$'\x1f'/ | ACCEPTED IF: }"
                 judge_kept_fp_v "kfp[step-$n]" "${fps[step-$n]}" "${dfp[step-$n]:-}"; kdeps[step-$n]="${deps[step-$n]}"
+                # #2582: an accepted answer is kept with its verdict, to stand.
+                [[ "${pay[$n]}" == does ]] && _build_steps_answer_record_v "kans[step-$n]" "$n"
             done
-            [[ ${#keep[@]} -gt 0 ]] && judge_kept_put_all "$kf" keep kfp kdeps "" stxt
+            [[ ${#keep[@]} -gt 0 ]] && judge_kept_put_all "$kf" keep kfp kdeps "" stxt kans
         fi
     fi
     local refused=0 yours _bsj_w _bsj_a
     for n in "$@"; do
         _build_steps_said_v l "$n"; yours="your answer: ${l#step $n: }"
         if [[ "${pay[$n]:-}" == does ]]; then
-            _BUILD_STEP_LINES+=("$l")
+            if [[ -n "${rejudged[$n]:-}" ]]; then _BUILD_STEP_LINES+=("$l (accepted on an earlier try; judged again: the code moved)")
+            else _BUILD_STEP_LINES+=("$l${reused[$n]:+ (accepted on an earlier try)}"); fi
+        elif [[ "${pay[$n]:-}" == stale ]]; then
+            _build_steps_stale_v l "$n" "the step or a SPEC it serves changed"; _BUILD_STEP_FINDINGS+=("$l")
         elif [[ "${pay[$n]:-}" == unjudged ]]; then
             _BUILD_STEP_LINES+=("$l (not judged)")
         elif [[ "${pay[$n]:-unread}" == unread ]]; then
