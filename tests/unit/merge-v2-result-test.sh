@@ -392,6 +392,25 @@ assert_contains "[R1] its reason is gh's own error" \
 assert_eq "[R1] the PR link is kept in its result" "https://github.com/mock/repo/pull/1849" \
     "$(jq -r '.data.pr_url // empty' "$_r1m_res" 2>/dev/null || true)"
 
+# ─── Review round 1 (#2582): short-lived GitHub refusals stay resumable ───────
+print_test_section "R1b: a rate limit, a 'try again', an outage page or no error output stays unavailable"
+for _r1b in "API rate limit exceeded for installation ID 1" \
+            "You have exceeded a secondary rate limit. Please wait a few minutes before you try again." \
+            "GraphQL: Something went wrong while executing your query. Please try again" \
+            "something went wrong" ""; do
+    if _merge_gh_unreached "$_r1b"; then assert_pass "[R1b] unavailable: '${_r1b:-<no output>}'"
+    else assert_fail "[R1b] unavailable: '${_r1b:-<no output>}'" "read as a refusal"; fi
+done
+if _merge_gh_unreached "GraphQL: Auto merge is not allowed for this repository (enablePullRequestAutoMerge)"; then
+    assert_fail "[R1b] a real refusal is still a refusal" "read as unavailable"
+else assert_pass "[R1b] a real refusal is still a refusal"; fi
+_r1e_dir="$TEST_TEMP_DIR/r1-empty"; _r1e_sf="$(_make_state "$_r1e_dir" "pass")"
+_mk_mocks "$TEST_TEMP_DIR/binr1e" "zbuild/issue-1849-test"
+sed -i.bak 's#"pr merge")  exit 0 ;;#"pr merge")  exit 1 ;;#' "$TEST_TEMP_DIR/binr1e/gh"
+( PATH="$TEST_TEMP_DIR/binr1e:$PATH" ZBUILD_RUN_LOOPS_PASSED=yes merge_run "pr" "$_r1e_sf" ) >/dev/null 2>&1
+assert_eq "[R1b] gh pr merge failing with no output → unavailable" "unavailable" \
+    "$(jq -r '.outcome // empty' "$_r1e_dir/artifacts/merge-result.json" 2>/dev/null || true)"
+
 # ─── Teardown ─────────────────────────────────────────────────────────────────
 cleanup_test_env
 print_test_results

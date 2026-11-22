@@ -45,7 +45,7 @@ Before the sentinel, answer every one of the design's steps, by its number, each
 
 - \`done\`: you did what the step says. Give the file and the line this change added that does it, in a file in that step's areas, copied as it is with no quote marks; part of the line will do when that part is in no other line you added. It is checked: a line this branch did not add, a file outside the step's areas, or a line that does not do what the step says sends you round again for that step.
 - \`not needed\`: the code already does what the step says, or the step is wrong; say why, in terms the code shows — name the file and what in it already does the step. It is checked too: a reason the code does not bear out, or one that only says the tests pass or the work was done before, sends you round again for that step.
-- A step accepted on an earlier try stands: you need not answer it again. Answer it again only when you change what it answered. It is checked again when the step, a SPEC it serves or the code its answer points to changes.
+- A step accepted on an earlier try stands: you need not answer it again. Answer it again only when you change what it answered. When the code its line is in changes, it is judged again on that answer (a not needed: the code in its areas); when its line is gone, or the step or a SPEC it serves changes, you are asked to answer it again.
 - Any other step with no answer is not done, and you are sent round again for it.
 - A step does part of what the SPECs it serves say: an answer must not break any of them.$_bsi_c"
 }
@@ -186,7 +186,7 @@ _build_steps_check() {
                 if [[ -z "${qpath[$n]}" ]]; then
                     _BUILD_STEP_FINDINGS+=("step $n is answered done with no \`<file> | <line>\`: answer \`step $n: done — <file> | <a line this change added>\` (the step: $d)")
                 elif [[ -n "${reused[$n]:-}" ]] && ! _build_steps_in_area "${qpath[$n]}" "$a"; then
-                    _build_steps_noanswer_v l "$n"; _BUILD_STEP_FINDINGS+=("$l")
+                    _build_steps_stale_v l "$n" "${qpath[$n]} is no longer in the step's areas"; _BUILD_STEP_FINDINGS+=("$l")
                 elif ! _build_steps_in_area "${qpath[$n]}" "$a"; then
                     _BUILD_STEP_FINDINGS+=("step $n's quote is in ${qpath[$n]}, outside the step's areas ($a): quote the line this change added there that does the step (the step: $d)")
                 else
@@ -243,7 +243,9 @@ _build_steps_check() {
                 judge_quote_check_v l "${qpath[$n]} | ${qtxt[$n]}" "" "$repo" && { judged+=("$n"); continue; }
             fi
             # An accepted answer whose line is gone no longer stands.
-            if [[ -n "${reused[$n]:-}" ]]; then _build_steps_noanswer_v l "$n"; _BUILD_STEP_FINDINGS+=("$l"); continue; fi
+            if [[ -n "${reused[$n]:-}" ]]; then
+                _build_steps_stale_v l "$n" "the quoted line is no longer in ${qpath[$n]}"; _BUILD_STEP_FINDINGS+=("$l"); continue
+            fi
             _BUILD_STEP_FINDINGS+=("step $n's quote $_BSQ_WHY (the step: ${_BUILD_STEP_DESC[n-1]})")
         done
     fi
@@ -379,8 +381,12 @@ _build_steps_judge() {
             _build_steps_parse "$n: ${kept[step-$n]}" "$n"
             [[ -z "$_BSJ_PROBLEM" ]] && { pay[$n]="${_BSJ_ANS[$n]}"; continue; }
         fi
-        # #2582: an answer kept from an earlier try is never judged anew.
-        [[ -n "${reused[$n]:-}" ]] && { pay[$n]=noanswer; continue; }
+        # #2582: an answer kept from an earlier try whose kept verdict is stale
+        # is judged again when the step and its SPECs are as they were (only
+        # the code moved); otherwise it no longer stands.
+        if [[ -n "${reused[$n]:-}" && "${_JUDGE_KEPT_TEXT[step-$n]-}" != "${stxt[step-$n]}" ]]; then
+            pay[$n]=stale; continue
+        fi
         ask_n+=("$n"); list+="${items[$n]}"$'\n'
         if [[ "${earlier[step-$n]:-}" == "does not"* ]]; then
             _build_steps_said_v l "$n"; _bsj_h="${back[$n]:-${fans[$n]:-}}"
@@ -453,8 +459,8 @@ _build_steps_judge() {
         _build_steps_said_v l "$n"; yours="your answer: ${l#step $n: }"
         if [[ "${pay[$n]:-}" == does ]]; then
             _BUILD_STEP_LINES+=("$l${reused[$n]:+ (accepted on an earlier try; unchanged)}")
-        elif [[ "${pay[$n]:-}" == noanswer ]]; then
-            _build_steps_noanswer_v l "$n"; _BUILD_STEP_FINDINGS+=("$l")
+        elif [[ "${pay[$n]:-}" == stale ]]; then
+            _build_steps_stale_v l "$n" "the step or a SPEC it serves changed"; _BUILD_STEP_FINDINGS+=("$l")
         elif [[ "${pay[$n]:-}" == unjudged ]]; then
             _BUILD_STEP_LINES+=("$l (not judged)")
         elif [[ "${pay[$n]:-unread}" == unread ]]; then

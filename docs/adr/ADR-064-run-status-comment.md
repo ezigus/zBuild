@@ -315,7 +315,7 @@ On #1764 run 44910536811 the run's comment said "stopped: the model could not be
 
 ## Enforced by
 
-- §4 amendment 2026-11-21 (#2582: the stop line names the stage and its reason) → `tests/unit/run-open-items-test.sh` R2 (the words, and the completion comment); `tests/integration/cycle-gate-unavailable-aborts-run-test.sh` R2 (the end-of-run words of a real run)
+- §4 amendment 2026-11-21 (#2582: the stop line names the stage and its reason) → `tests/unit/run-open-items-test.sh` R2 (the words, and the completion comment); `tests/integration/stage-stop-names-cause-test.sh` S1, S2 (the stop line and end-of-run words of a real run, and the state's reason the comment reads)
 
 - §4 amendment 2026-11-21 (#2579: an open finding is named by its id) → `tests/unit/result-outcome-test.sh` O10
 - §4 amendment 2026-11-09 (#2508: the questions design could not settle are shown) → `tests/unit/unclear-questions-shown-test.sh` Q1 (the reader), Q2 (the comment, while running), Q5 (no question, no section)

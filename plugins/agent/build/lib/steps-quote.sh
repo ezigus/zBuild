@@ -34,6 +34,21 @@ _build_steps_noanswer_v() {
     _bsna="step $2 has no answer: do it and answer \`step $2: done — <file> | <a line this change added>\`, or answer \`step $2: not needed — <why>\` (the step: ${_BUILD_STEP_DESC[$2-1]})"
 }
 
+# _build_steps_stale_v <var> <n> <why> — the finding for a step whose answer,
+# accepted on an earlier try, no longer stands, and why (review on #2582).
+_build_steps_stale_v() {
+    local -n _bsst="$1"
+    _bsst="step $2's earlier answer no longer stands: $3 — answer it again (the step: ${_BUILD_STEP_DESC[$2-1]})"
+}
+
+# _build_steps_elide_v <var> <text> — <text> without an elision mark (... or
+# …) at either end, nor the spaces beside it: such a mark is not in the line.
+_build_steps_elide_v() {
+    local -n _bse="$1"; _bse="$2"
+    _bse="${_bse%…}"; _bse="${_bse%...}"; _bse="${_bse%"${_bse##*[![:space:]]}"}"
+    _bse="${_bse#…}"; _bse="${_bse#...}"; _bse="${_bse#"${_bse%%[![:space:]]*}"}"
+}
+
 # _build_steps_quote_find <n> <repo> — rc 0 when step <n>'s quote is a line
 # this branch added in its file, or part of exactly one (then qtxt[n] becomes
 # that whole line, which is what is judged). Otherwise rc 1 and _BSQ_WHY says
@@ -49,8 +64,7 @@ _build_steps_quote_find() {
     done
     IFS=$'\x1e' read -r -d '' -a arr <<< "$lines" || true
     for t in "${qtxt[$n]}" "${qune[$n]:-}"; do
-        # An elision mark at the end is not part of the line.
-        t="${t%…}"; t="${t%...}"; t="${t%"${t##*[![:space:]]}"}"
+        _build_steps_elide_v t "$t"
         [[ -n "$t" ]] || continue
         hits=0; cand=""
         for a in ${arr[@]+"${arr[@]}"}; do [[ "$a" == *"$t"* ]] && { hits=$((hits + 1)); cand="$a"; }; done
@@ -61,7 +75,7 @@ _build_steps_quote_find() {
         fi
     done
     # In no added line: say whether it is a line, or part of one, that was there.
-    t="${qtxt[$n]}"; t="${t%…}"; t="${t%...}"; t="${t%"${t##*[![:space:]]}"}"
+    _build_steps_elide_v t "${qtxt[$n]}"
     hits=0; cand=""
     if [[ -n "$t" && -f "$repo/$f" ]]; then
         while IFS= read -r l || [[ -n "$l" ]]; do
@@ -83,9 +97,10 @@ _build_steps_quote_find() {
 # _build_steps_kept_answers <kept_file> <count> — a step this reply does not
 # answer, and that is not waiting on another stage, takes the answer the check
 # accepted for it on an earlier try (kept with its verdict); reused[n] marks it.
-# It stands only while its kept verdict does — the step, the SPECs it serves
-# and the code its quote points to unchanged (_build_steps_judge); otherwise
-# it is "no answer". One read of the kept file, only when a step is unanswered.
+# It stands while its kept verdict does; when only the code it points to
+# changed it is judged again on that answer; when its line is gone, or the step
+# or a SPEC it serves changed, it no longer stands, and the finding says why
+# (_build_steps_judge). One read of the kept file, only when a step is unanswered.
 # shellcheck disable=SC2034  # its caller's arrays, read by _build_steps_check
 _build_steps_kept_answers() {
     local kf="$1" count="$2" n x k

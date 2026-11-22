@@ -195,10 +195,30 @@ _runner_leaf_contract_halt() {
 # ─── _runner_stage_stop_word_v <var> <stage> <reason> (#2582) ────────────────
 # The word a run ends on when a stage stopped it (ADR-054 §6): the stage and its
 # own reason, `stage_stopped:<stage>:<reason>` — one line, capped, as the abort
-# sentinel and the events hold it. run_end_words says it in words.
+# sentinel and the events hold it. run_end_words says it in words. The reason
+# leaves the machine (the events, the state, the comments), so it is cleaned
+# first: credentials masked (secret-patterns.sh), private paths taken out (the
+# scope redactor); one that cannot be cleaned is not shown.
 _runner_stage_stop_word_v() {
-    local -n _rssw="$1"; local _rssw_r="${3:-}"
-    _rssw_r="${_rssw_r//[$'\n\r\t']/ }"; (( ${#_rssw_r} > 300 )) && _rssw_r="${_rssw_r:0:300}…"
+    local -n _rssw="$1"; local _rssw_r="${3:-}" _rssw_in _rssw_out _rssw_c=""
+    _rssw_r="${_rssw_r//[$'\n\r\t']/ }"
+    if [[ -n "$_rssw_r" ]]; then
+        declare -F zbuild_mask_secrets_v >/dev/null 2>&1 \
+            || source "$_ZBUILD_ROOT/scripts/lib/secret-patterns.sh" 2>/dev/null || true
+        declare -F apply_scope_redaction >/dev/null 2>&1 \
+            || source "$_ZBUILD_ROOT/core/redaction/scope-redaction.sh" 2>/dev/null || true
+        if declare -F zbuild_mask_secrets_v >/dev/null 2>&1 && declare -F apply_scope_redaction >/dev/null 2>&1 \
+           && _rssw_in="$(mktemp "${TMPDIR:-/tmp}/zb-stop-in.XXXXXX")"; then
+            _rssw_out="$_rssw_in.out"
+            zbuild_mask_secrets_v _rssw_r "$_rssw_r"
+            printf '%s\n' "$_rssw_r" > "$_rssw_in"
+            apply_scope_redaction "$_rssw_in" "$_rssw_out" "" "" 0 >/dev/null 2>&1 \
+                && IFS= read -r _rssw_c < "$_rssw_out"
+            rm -f "$_rssw_in" "$_rssw_out"
+        fi
+        _rssw_r="${_rssw_c:-its reason could not be cleaned, so it is not shown}"
+    fi
+    (( ${#_rssw_r} > 300 )) && _rssw_r="${_rssw_r:0:300}…"
     _rssw="stage_stopped:${2:-a stage}:${_rssw_r:-it gave no reason}"
 }
 
@@ -3968,10 +3988,11 @@ main() {
                             || { _r=$?; warn "eb_emit_event stage.fail failed (rc=$_r, continuing — disk/perm/lock?)"; true; }
                         # #2582 (ADR-054 §6): a stage whose outcome halts the
                         # run (misconfigured, broken) is named, with its reason.
+                        # Only in the stage's own words: an engine code (router_…)
+                        # keeps the words it had (ADR-068 §8).
                         local _ust_stop=""
-                        if [[ -n "${_CYCLE_DISPATCH_DISPOSITION:-}" ]] \
-                           && disposition_is_valid "$_CYCLE_DISPATCH_DISPOSITION" 2>/dev/null \
-                           && disposition_halts "$_CYCLE_DISPATCH_DISPOSITION" 2>/dev/null; then
+                        if [[ "${_CYCLE_DISPATCH_DISPOSITION:-}" == misconfigured || "${_CYCLE_DISPATCH_DISPOSITION:-}" == broken ]] \
+                           && [[ "${_CYCLE_DISPATCH_REASON:-}" != router_* ]]; then
                             _runner_stage_stop_word_v _ust_stop "$_ust" "${_CYCLE_DISPATCH_REASON:-}"
                             _RUNNER_END_REASON="$_ust_stop"
                             _zbuild_runner_write_llm_abort "$state_file" "$_ust_stop" "" || true

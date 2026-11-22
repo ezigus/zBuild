@@ -11,7 +11,10 @@
 # pipeline.aborted reason=llm_unavailable, and the runner exits 9.
 # This is why `unavailable` is not one of disposition_unfinished's words: it is
 # not retried, so a cycle never reaches convergence on it.
-# Real runner (core/pipeline/runner.sh --template simple) over stub plugins.
+# Real runner (core/pipeline/runner.sh --template simple) over stub plugins
+# (tests/lib/simple-run-stubs.sh). #2582: the stage's reason is a router reason
+# and no router mark is set — the router_* rule alone makes it llm_unavailable.
+# The other ways a run stops: tests/integration/stage-stop-names-cause-test.sh.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -45,237 +48,9 @@ export ZBUILD_CYCLES_ENABLED=1
 export ZBUILD_CONTRACT_VALIDATOR=warn
 mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 
-# ─── Plugin stub helpers ──────────────────────────────────────────────────────
-# #2366: the stubs write their result with the engine's writer.
-export STAGE_RESULT_LIB="$REPO_ROOT/scripts/lib/stage-result.sh"
-export ROUTER_RC_LIB="$REPO_ROOT/scripts/lib/router-rc-classify.sh"
-
-_make_plugin() {
-    local id="$1" role="${2:-}" rc="${3:-0}"
-    # #1850/#2366: a stage stub (result_contract 3, JSON primary, a result that
-    # says pass on rc 0 and broken otherwise) — mock_plugin_factory's.
-    mock_plugin_factory "$id" agent "$rc" "" "$role" >/dev/null
-}
-
-_make_design_plugin() {
-    local dir="$PLUGINS_ROOT/agent/design"
-    mkdir -p "$dir"
-    cat > "$dir/manifest.yaml" <<'EOF'
-id: design
-name: Test design
-kind: agent
-version: 0.0.1
-hooks:
-  run: design_run
-requires:
-  core:
-    - redaction
-provides:
-  role: designer
-  result_contract: 3
-outputs:
-  - id: design_out
-    path: ${artifact_dir}/design.md
-    type: text/markdown
-    required: true
-  - id: design_result
-    path: ${artifact_dir}/design-verdict.json
-    type: json
-    required: true
-    primary: true
-EOF
-    cat > "$dir/plugin.sh" <<'PLUG'
-design_run() {
-    local state_dir; state_dir="$(dirname "$2")"
-    mkdir -p "$state_dir/artifacts"
-    printf '# Design\n```scope\nf.txt\n```\n' > "$state_dir/artifacts/design.md"
-    source "$STAGE_RESULT_LIB"
-    stage_result_write "$state_dir/artifacts/design-verdict.json" pass "stub design"
-    return 0
-}
-PLUG
-}
-
-_make_plan_plugin() {
-    local dir="$PLUGINS_ROOT/agent/plan"
-    mkdir -p "$dir"
-    cat > "$dir/manifest.yaml" <<'EOF'
-id: plan
-name: Test plan
-kind: agent
-version: 0.0.1
-hooks:
-  run: plan_run
-requires:
-  core:
-    - redaction
-provides:
-  role: planner
-  result_contract: 3
-outputs:
-  - id: plan_out
-    path: ${artifact_dir}/plan.json
-    type: json
-    required: true
-    primary: true
-EOF
-    cat > "$dir/plugin.sh" <<'PLUG'
-plan_run() {
-    local state_dir; state_dir="$(dirname "$2")"
-    mkdir -p "$state_dir/artifacts"
-    printf '{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["f.txt"],"estimated_lines":1}],"estimated_total_lines":1,"notes":""}' \
-        > "$state_dir/artifacts/plan.json"
-    source "$STAGE_RESULT_LIB"
-    stage_result_add "$state_dir/artifacts/plan.json" pass "stub plan"
-    return 0
-}
-PLUG
-}
-
-# acceptance-gate stub: writes the gate_result with a configurable failure entry
-# (via ZBUILD_TEST_GATE_FAILURE) and returns rc=1 (the real gate does this for
-# EVERY fail class). An empty failure → verdict=pass, rc=0.
-_make_acceptance_gate_plugin() {
-    local dir="$PLUGINS_ROOT/agent/acceptance-gate"
-    mkdir -p "$dir"
-    cat > "$dir/manifest.yaml" <<'EOF'
-id: acceptance-gate
-name: Test acceptance-gate
-kind: agent
-version: 0.0.1
-hooks:
-  run: acceptance_gate_run
-requires:
-  core:
-    - redaction
-provides:
-  role: acceptance_gate
-  result_contract: 3
-outputs:
-  - id: gate_result
-    path: ${artifact_dir}/acceptance-gate-result.json
-    type: json
-    required: true
-    primary: true
-EOF
-    cat > "$dir/plugin.sh" <<'PLUG'
-acceptance_gate_run() {
-    local state_dir; state_dir="$(dirname "$2")"
-    mkdir -p "$state_dir/artifacts"
-    local f="${ZBUILD_TEST_GATE_FAILURE:-}"
-    source "$STAGE_RESULT_LIB"
-    if [[ -z "$f" ]]; then
-        printf '{"severity":"none","failures":[]}' > "$state_dir/artifacts/acceptance-gate-result.json"
-        stage_result_add "$state_dir/artifacts/acceptance-gate-result.json" pass "no failures"
-        return 0
-    fi
-    # Mirror the real gate's class→severity mapping (ADR-021 / ADR-036): the
-    # engine reads ONLY this generic severity field (#2161), not the failure class.
-    local disp
-    case "$f" in
-        untagged_spec:*)                        disp="recoverable" ;;
-        negctl_error:* | reachability_error:*)  disp="advisory" ;;
-        *)                                      disp="terminal" ;;
-    esac
-    printf '{"severity":"%s","failures":["%s"]}' "$disp" "$f" \
-        > "$state_dir/artifacts/acceptance-gate-result.json"
-    stage_result_add "$state_dir/artifacts/acceptance-gate-result.json" fail "$f"
-    return 1
-}
-PLUG
-}
-
-# design-gate stub: always passes so design_verify_cycle converges on iter 1
-# (this test's subject is the build_test_cycle acceptance-gate, not design).
-_make_design_gate_plugin() {
-    local dir="$PLUGINS_ROOT/agent/design-gate"
-    mkdir -p "$dir"
-    cat > "$dir/manifest.yaml" <<'EOF'
-id: design-gate
-name: Test design-gate
-kind: agent
-version: 0.0.1
-hooks:
-  run: design_gate_run
-requires:
-  core:
-    - redaction
-provides:
-  role: design_gate
-  result_contract: 3
-outputs:
-  - id: design_gate_out
-    path: ${artifact_dir}/design-gate.json
-    type: json
-    required: true
-    primary: true
-EOF
-    cat > "$dir/plugin.sh" <<'PLUG'
-design_gate_run() {
-    local state_dir; state_dir="$(dirname "$2")"
-    mkdir -p "$state_dir/artifacts"
-    printf '{"schema_version":1,"summary":"ok"}' > "$state_dir/artifacts/design-gate.json"
-    source "$STAGE_RESULT_LIB"
-    stage_result_add "$state_dir/artifacts/design-gate.json" pass "stub"
-    return 0
-}
-PLUG
-}
-
-# gate-aggregator stub: rolls the acceptance-gate result into the cycle's
-# convergence verdict. A TERMINAL acceptance disposition is hard-halted by the
-# orchestrator BEFORE the aggregator (rc=8), so this only governs the
-# non-terminal cases: for pass / recoverable / advisory it emits verdict=pass so
-# build_test_cycle converges (and status=success WITHOUT the retired review
-# rescue). This mirrors the real gate-aggregator, which never blocks on an
-# advisory/recoverable member.
-_make_gate_aggregator_plugin() {
-    local dir="$PLUGINS_ROOT/agent/gate-aggregator"
-    mkdir -p "$dir"
-    cat > "$dir/manifest.yaml" <<'EOF'
-id: gate-aggregator
-name: Test gate-aggregator
-kind: agent
-version: 0.0.1
-hooks:
-  run: gate_aggregator_run
-requires:
-  core:
-    - redaction
-provides:
-  role: gate_aggregator
-  result_contract: 3
-outputs:
-  - id: gate_aggregator_out
-    path: ${artifact_dir}/gate-aggregator.json
-    type: json
-    required: true
-    primary: true
-EOF
-    cat > "$dir/plugin.sh" <<'PLUG'
-gate_aggregator_run() {
-    local state_dir; state_dir="$(dirname "$2")"
-    printf 'gate-aggregator ran\n' >> "${ZBUILD_TEST_DISPATCH_LOG:?}"
-    mkdir -p "$state_dir/artifacts"
-    printf '{"schema_version":1,"summary":"ok","gates":[]}' > "$state_dir/artifacts/gate-aggregator.json"
-    source "$STAGE_RESULT_LIB"
-    stage_result_add "$state_dir/artifacts/gate-aggregator.json" pass "stub"
-    return 0
-}
-PLUG
-}
-
-# ─── Build common plugin stubs (rc=0 unless overridden below) ─────────────────
-# #979: standard.yaml retired → drive the shipped default simple.yaml. The
-# acceptance-gate is a member of simple.yaml's build_test_cycle; its
-# disposition→terminal/recoverable/advisory mechanic (the subject) is unchanged.
-# For a non-terminal disposition the gate-aggregator passes → the cycle converges
-# normally → status=success WITHOUT relying on the retired review-stage rescue
-# path (see the T2/T3 #979 notes below). A terminal disposition hard-halts (rc=8).
-# #1074: hydrate is the FIRST stage in simple.yaml. This test enumerates the
-# roster, and the runner's resolvability preflight refuses to start when any
-# leaf has no plugin — so without this stub the pipeline aborts before intake
-# and every assertion below fails for a reason unrelated to what it tests.
+# shellcheck source=../lib/simple-run-stubs.sh
+source "$REPO_ROOT/tests/lib/simple-run-stubs.sh"
+simple_stubs_roster
 
 # issue-acceptance: the model call failed (disposition unavailable), yet the
 # result carries a passing verdict and the stage returns 0.
@@ -307,58 +82,15 @@ issue_acceptance_run() {
     local state_dir; state_dir="$(dirname "$2")"
     mkdir -p "$state_dir/artifacts"
     source "$STAGE_RESULT_LIB"
-    # #2582: its model call failed — the router marks that, by its own writer.
-    source "$ROUTER_RC_LIB"; _router_arm_call_failed_marker
+    # #2582 review: no router mark here — the router reason alone
+    # (router_rc_nonzero) says a model call failed.
     stage_result_write "$state_dir/artifacts/issue-acceptance-result.json" unavailable "router_rc_nonzero"
     printf 'issue-acceptance ran\n' >> "${ZBUILD_TEST_DISPATCH_LOG:?}"
     return 0
 }
 PLUG
 }
-
-_make_plugin "hydrate"         "hydrate"
-_make_plugin "intake"          "intake"
-_make_plan_plugin
-_make_design_plugin
-_make_design_gate_plugin       # passes so design_verify_cycle converges quickly
-# #2187: build_test_cycle's newer members. Unresolved, each was a silent
-# `broken` the cycle absorbed; `broken`/`misconfigured` now halt the run.
-_make_plugin "spec-coverage"       "spec_coverage"
-_make_plugin "test-author"         "test_author"
-_make_plugin "assertion-integrity" "assertion_integrity"
 _make_unavailable_issue_acceptance_plugin
-_make_plugin "build"           "builder"
-_make_plugin "test"            "tester"
-_make_plugin "shape-floor"     "shape_floor"
-_make_acceptance_gate_plugin
-_make_plugin "secret-scan"     "secret_scan"
-_make_gate_aggregator_plugin   # verdict mirrors acceptance disposition
-# review_lenses is now a map group (#1295): one plugin for role review_lens
-# handles all elements (security, performance, red-team, correctness, scope).
-_make_plugin "review-lens"      "review_lens"
-_make_plugin "review-aggregator" "review_aggregator"
-_make_plugin "pr"              "pr"
-
-# ─── Operator override token ──────────────────────────────────────────────────
-export HOME="$TEST_TEMP_DIR/home"
-mkdir -p "$HOME/.zbuild"
-printf '%s' "bootstrap" > "$HOME/.zbuild/scope-override-token"
-export ZBUILD_SCOPE_OVERRIDE=1
-
-# ─── Helper: run the pipeline, capture events ─────────────────────────────────
-_run_pipeline() {
-    : > "$EVENTS_JSONL"
-    set +e
-    ( cd "$_ZB_REPO" && bash "$REPO_ROOT/core/pipeline/runner.sh" \
-        --goal "$_ZB_GOAL" \
-        --template simple \
-        --no-resume \
-        >"$TEST_TEMP_DIR/runner.stdout" \
-        2>"$TEST_TEMP_DIR/runner.stderr" )
-    _RUNNER_RC=$?
-    set -e
-}
-
 # ─────────────────────────────────────────────────────────────────────────────
 # The run ends on the unavailable gate: aborted, resumable, not converged.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -385,76 +117,6 @@ assert_eq "[ADR-063 §4] the runner exits 1 — not 0, not the old llm-abort rc 
 
 assert_contains "[ADR-063 §4] the stop line says the model could not be reached (a model call failed)" \
     "$(cat "$TEST_TEMP_DIR/runner.stderr")" "the model could not be reached"
-
-# ─────────────────────────────────────────────────────────────────────────────
-# R2 (#2582, ADR-054 §6): a stage that stops the run is named, with its own
-# reason. #1764 run 44910536811: the merge code inside `pr` ended `unavailable`
-# with no model call, and the run said "the model could not be reached".
-# ─────────────────────────────────────────────────────────────────────────────
-# _make_stopping_pr_plugin <outcome> <reason> — the pr stage, ending <outcome>
-# with <reason>, having called no model.
-_make_stopping_pr_plugin() {
-    local dir="$PLUGINS_ROOT/agent/pr"
-    rm -rf "$dir"; mkdir -p "$dir"
-    cat > "$dir/manifest.yaml" <<'EOF'
-id: pr
-name: Test pr (stops the run)
-kind: agent
-version: 0.0.1
-hooks:
-  run: pr_run
-requires:
-  core:
-    - redaction
-provides:
-  role: pr
-  result_contract: 3
-outputs:
-  - id: pr_result
-    path: ${artifact_dir}/pr-result.json
-    type: json
-    required: true
-    primary: true
-EOF
-    cat > "$dir/plugin.sh" <<PLUG
-pr_run() {
-    local state_dir; state_dir="\$(dirname "\$2")"
-    mkdir -p "\$state_dir/artifacts"
-    source "\$STAGE_RESULT_LIB"
-    stage_result_write "\$state_dir/artifacts/pr-result.json" $1 "$2"
-    return 1
-}
-PLUG
-}
-_make_plugin "issue-acceptance" "issue_acceptance"   # passes: the loops pass, pr runs
-
-print_test_section "[R2] a stage with no model call that ends unavailable: the stop names it and its reason"
-_make_stopping_pr_plugin unavailable "gh pr create: error connecting to api.github.com"
-_run_pipeline
-_r2_err="$(cat "$TEST_TEMP_DIR/runner.stderr")"
-assert_eq "[R2] pipeline.aborted names the stage and its reason" \
-    "stage_stopped:pr:gh pr create: error connecting to api.github.com" \
-    "$(jq -r 'select(.type=="pipeline.aborted") | .data.reason' "$EVENTS_JSONL" 2>/dev/null | head -1)"
-assert_eq "[R2] the run is aborted, resumable (unavailable)" "aborted" \
-    "$(jq -r '.status // empty' "$STATE_DIR/pipeline-state.json" 2>/dev/null || true)"
-assert_contains "[R2] the stop line names pr and its reason" "$_r2_err" \
-    "pr stopped the run — gh pr create: error connecting to api.github.com"
-if [[ "$_r2_err" == *"the model could not be reached"* ]]; then
-    assert_fail "[R2] no model was called, so the stop does not blame it" "it did"
-else
-    assert_pass "[R2] no model was called, so the stop does not blame it"
-fi
-
-print_test_section "[R2] a stage that ends misconfigured: the stop names it and its reason"
-_make_stopping_pr_plugin misconfigured "PR opened https://github.com/o/r/pull/7; merge refused: gh pr merge: Auto merge is not allowed"
-_run_pipeline
-_r2m_err="$(cat "$TEST_TEMP_DIR/runner.stderr")"
-assert_eq "[R2] pipeline.end names the stage and its reason" \
-    "stage_stopped:pr:PR opened https://github.com/o/r/pull/7; merge refused: gh pr merge: Auto merge is not allowed" \
-    "$(jq -r 'select(.type=="pipeline.end") | .data.reason // empty' "$EVENTS_JSONL" 2>/dev/null | tail -1)"
-assert_contains "[R2] the end-of-run words name pr and its reason" "$_r2m_err" \
-    "The run stopped: pr stopped the run — PR opened https://github.com/o/r/pull/7; merge refused"
-assert_eq "[R2] the runner exits 1" "1" "${_RUNNER_RC:-}"
 
 cleanup_test_env
 print_test_results

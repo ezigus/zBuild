@@ -11,9 +11,10 @@
 #
 # SA1 [R4] a step accepted on an earlier try and not answered now keeps its
 #          answer and verdict: no "no answer", the judge is not asked again
-# SA2 [R4] ...not when the code its quote points to changed: "no answer"
-# SA3 [R4] ...not when the step's words changed: "no answer"
-# SA4 [R4] ...not when a SPEC it serves changed: "no answer"
+# SA2 [R4, review] the quoted file changed elsewhere: the kept answer is judged
+#          again, in the same call; SA2b its line is gone: answer it again
+# SA3 [R4] the step's words changed: answer it again, saying why
+# SA4 [R4] a SPEC it serves changed: answer it again, saying why
 # SA5 [R4] a step refused on an earlier try and not answered now: "no answer"
 # SA6 [R4] build's prompt says accepted steps stand unless it changes them
 # SQ1 [R5] `step N: done — <file> | <line>`, with no QUOTE:, is a quote
@@ -23,6 +24,7 @@
 # SQ4 [R5] part of a line that was there before is refused, with the whole line
 # SQ5 [R5] a quote in no line of the file is refused, saying so
 # SQ6 [R5] a done with no `<file> | <line>` is refused, naming the form
+# SQ7 [review] a leading elision mark (... or …) is set aside like a trailing one
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -132,13 +134,26 @@ assert_contains "[SA1] the summary shows step 1's answer, kept" \
     "$(cat "$AD/build-summary.md" 2>/dev/null)" 'step 1: done — lib/claim.sh | gh issue edit "$1" --add-label zbuild:claimed'
 
 # ── SA2 ──────────────────────────────────────────────────────────────────────
-print_test_section "SA2: the quoted code changed — the kept answer does not stand"
+# Review round 1: a change elsewhere in the quoted file has the kept answer
+# judged again, in the same call; only a quoted line that is gone voids it.
+print_test_section "SA2: the quoted file changed elsewhere — the kept answer is judged again"
 _try1 sa2
 printf '%s\n' 'claim_take() {' "$CLAIM_LINE" '    echo "claimed by zbuild:claimed"' '    return 0' '}' > "$R/lib/claim.sh"
-JUDGE_REPLY='2: does'
+JUDGE_REPLY=$'1: does\n2: does'
 _run sa2 "$DONE2" reuse
-assert_contains "[SA2] step 1 is 'no answer'" "$(_findings)" "step 1 has no answer"
-git -C "$R" checkout -q -- lib/claim.sh
+_lacks "[SA2] step 1 is not 'no answer'" "$(_findings)" "step 1"
+assert_eq "[SA2] one judge call" "1" "$(_ncalls)"
+assert_contains "[SA2] ...asked about step 1 on its kept answer" "$(_jp)" 'the line: lib/claim.sh | gh issue edit "$1" --add-label zbuild:claimed'
+assert_eq "[SA2] build passes" "pass" "$(_outcome)"
+print_test_section "SA2b: the quoted line is gone — the earlier answer no longer stands"
+_try1 sa2b
+printf '%s\n' 'claim_take() {' '    gh issue edit "$1" --add-label zbuild:taken' '    echo "claimed by zbuild:claimed"' '}' > "$R/lib/claim.sh"
+JUDGE_REPLY='2: does'
+_run sa2b "$DONE2" reuse
+assert_contains "[SA2b] step 1 is to be answered again, saying why" "$(_findings)" \
+    "step 1's earlier answer no longer stands: the quoted line is no longer in lib/claim.sh — answer it again"
+# Build commits what it finds; the file is put back as the branch first had it.
+printf '%s\n' 'claim_take() {' "$CLAIM_LINE" '    echo "claimed by zbuild:claimed"' '}' > "$R/lib/claim.sh"
 
 # ── SA3 ──────────────────────────────────────────────────────────────────────
 print_test_section "SA3: the step's words changed — the kept answer does not stand"
@@ -146,7 +161,8 @@ _try1 sa3
 _design "$STEP1 and nothing else" "$STEP2" "$SPEC1"
 JUDGE_REPLY='2: does'
 _run sa3 "$DONE2" reuse
-assert_contains "[SA3] step 1 is 'no answer'" "$(_findings)" "step 1 has no answer"
+assert_contains "[SA3] step 1 is to be answered again, saying why" "$(_findings)" \
+    "step 1's earlier answer no longer stands: the step or a SPEC it serves changed — answer it again"
 _design "$STEP1" "$STEP2" "$SPEC1"
 
 # ── SA4 ──────────────────────────────────────────────────────────────────────
@@ -155,7 +171,8 @@ _try1 sa4
 _design "$STEP1" "$STEP2" "$SPEC1, and only that label"
 JUDGE_REPLY='2: does'
 _run sa4 "$DONE2" reuse
-assert_contains "[SA4] step 1 is 'no answer'" "$(_findings)" "step 1 has no answer"
+assert_contains "[SA4] step 1 is to be answered again, saying why" "$(_findings)" \
+    "step 1's earlier answer no longer stands: the step or a SPEC it serves changed — answer it again"
 _design "$STEP1" "$STEP2" "$SPEC1"
 
 # ── SA5 ──────────────────────────────────────────────────────────────────────
@@ -172,6 +189,10 @@ _sa6_p=""; _build_steps_load "$(cat "$STEPS")"
 _build_steps_instructions_v _sa6_p
 assert_contains "[SA6] the prompt says a step accepted earlier stands unless build changes it" \
     "$_sa6_p" "A step accepted on an earlier try stands"
+assert_contains "[SA6] ...is judged again when the code its line is in changes" \
+    "$_sa6_p" "When the code its line is in changes, it is judged again on that answer"
+assert_contains "[SA6] ...and is asked again when its line is gone or the step or a SPEC changes" \
+    "$_sa6_p" "when its line is gone, or the step or a SPEC it serves changes, you are asked to answer it again"
 
 # ── SQ1 ──────────────────────────────────────────────────────────────────────
 print_test_section "SQ1: done — <file> | <line>, with no QUOTE:, is a quote"
@@ -215,6 +236,14 @@ JUDGE_REPLY='1: does'
 _run sq6 "$DONE1"$'\n''step 2: done — I described the label in the README'
 assert_contains "[SQ6] the finding names the form an answer takes" \
     "$(_findings)" "step 2 is answered done with no \`<file> | <line>\`"
+
+# ── SQ7 ──────────────────────────────────────────────────────────────────────
+print_test_section "SQ7: a leading elision mark is not part of the line"
+JUDGE_REPLY=$'1: does\n2: does'
+_run sq7 "$DONE1"$'\n''step 2: done — README.md | ...Uses a single shared GitHub issue label (`zbuild:claimed`)'
+assert_contains "[SQ7] ...the part is found, and judged whole" "$(_jp)" "the line: README.md | $README_LINE"
+_run sq7b "$DONE1"$'\n''step 2: done — README.md | …Uses a single shared GitHub issue label'
+assert_eq "[SQ7] ...with … too" "pass" "$(_outcome)"
 
 cleanup_test_env
 print_test_results

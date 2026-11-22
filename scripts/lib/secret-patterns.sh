@@ -36,6 +36,21 @@ _ZB_SECRET_PEM_RE="-----""BEGIN [A-Z0-9 ]*PRIVATE"" KEY-----"
 # BEFORE the delimiter is for JSON keys: `"api_key": "v..."`.
 _ZB_SECRET_CRED_RE=$'(api[_-]?key|secret|token|password|passwd)[\'"]?[[:space:]]*[:=][[:space:]]*[\'"]?[^$\'"[:space:](),][^[:space:]\'"(),]{7,}'
 
+# ─── zbuild_mask_secrets_v <var> <text> (#2582) ──────────────────────────────
+# <text> with each match of the patterns above replaced by <secret>, by the
+# shell: for words that leave the machine (a run's stop reason). The patterns
+# are the scan's, matched case-insensitively as the credential one is.
+zbuild_mask_secrets_v() {
+    local -n _zms="$1"; local _zms_t="$2" _zms_re _zms_nc=0
+    shopt -q nocasematch && _zms_nc=1
+    shopt -s nocasematch
+    for _zms_re in "$_ZB_SECRET_AWS_RE" "$_ZB_SECRET_PEM_RE" "$_ZB_SECRET_CRED_RE"; do
+        while [[ "$_zms_t" =~ $_zms_re ]]; do _zms_t="${_zms_t/"${BASH_REMATCH[0]}"/<secret>}"; done
+    done
+    (( _zms_nc )) || shopt -u nocasematch
+    _zms="$_zms_t"
+}
+
 # ─── zbuild_scan_secret_content <content> ────────────────────────────────────
 # Echo a finding KIND and return 0 when the content looks like it carries a
 # credential; return 1 (silent) when it does not.

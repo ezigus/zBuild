@@ -110,11 +110,14 @@ _merge_pr_fallback() {
     return 0
 }
 
-# _merge_gh_unreached <gh stderr> — rc 0 when gh never got an answer from GitHub.
+# _merge_gh_unreached <gh stderr> — rc 0 when gh got no lasting answer from
+# GitHub: it could not reach it, GitHub failed or asked to try again later (a
+# rate limit, secondary included), or gh said nothing. Resumable, not the setup's.
 _merge_gh_unreached() {
     local e="${1,,}"
-    [[ "$e" == *"error connecting to"* || "$e" == *"timed out"* || "$e" == *timeout* \
+    [[ -z "${e//[[:space:]]/}" || "$e" == *"error connecting to"* || "$e" == *"timed out"* || "$e" == *timeout* \
         || "$e" == *"could not resolve host"* || "$e" == *"connection reset"* \
+        || "$e" == *"rate limit"* || "$e" == *"try again"* || "$e" == *"something went wrong"* \
         || "$e" =~ http\ 5[0-9][0-9] ]]
 }
 

@@ -232,6 +232,9 @@ route_to_model() {
     local _call_rc=0
     _route_call_claude "$tier" "$prompt" "$secs" || _call_rc=$?
     if [[ "$_call_rc" -ne 0 ]]; then
+        # #2582 (ADR-054 §6): the model call failed, however it failed (no
+        # binary, a failed run, an empty or unreadable reply) — one mark, here.
+        _router_arm_call_failed_marker
         # On error, close the begin so it doesn't orphan into the EXIT trap.
         if [[ -n "$_stage_io_seq" ]]; then
             stage_io_end \
@@ -833,9 +836,6 @@ _route_call_claude() {
                 "api_error_status=${_sync_api_status:-absent}" \
                 "message=$_sync_rl_msg" 2>/dev/null || true
         fi
-        # #2582 (ADR-054 §6): the stage's model call failed — the engine may
-        # say the model could not be reached.
-        _router_arm_call_failed_marker
         eb_emit_event "router.error" "tier=$tier" "model_id=$_ROUTE_MODEL_ID" "rc=$rc" \
             "reason=$([[ "$_sync_rate_limited" == "1" ]] && printf 'router_rate_limited' || printf 'claude_cli_failed')"
         eb_emit_event "router.error.diagnostic" \
@@ -1223,11 +1223,22 @@ _route_stream_progress() {
     ' "$stream" 2>/dev/null || printf '0 '
 }
 
+# route_to_model_loop <tier> <prompt_file> <cwd> ... — the loop below, and
+# #2582 (ADR-054 §6): a loop that decided to call the model and then failed
+# marks the failed call, however it failed — one mark, here.
 route_to_model_loop() {
+    _ROUTE_LOOP_CALLING=0
+    declare -F _router_clear_call_failed_marker >/dev/null 2>&1 && _router_clear_call_failed_marker
+    local _rtml_rc=0
+    _route_to_model_loop_run "$@" || _rtml_rc=$?
+    (( _rtml_rc != 0 && _ROUTE_LOOP_CALLING )) && _router_arm_call_failed_marker
+    return "$_rtml_rc"
+}
+
+_route_to_model_loop_run() {
     # Reset before ANY return: an early exit must not leave the previous loop's
     # reason (a stale done_sentinel reads as success to the caller) — #2225.
     _ROUTE_LOOP_TERMINATED_REASON=""
-    declare -F _router_clear_call_failed_marker >/dev/null 2>&1 && _router_clear_call_failed_marker
     if [[ $# -lt 3 ]]; then
         error "route_to_model_loop requires <tier> <prompt_file> <cwd>"
         return 2
@@ -1277,6 +1288,7 @@ route_to_model_loop() {
 
     _route_lookup_model "$tier" "$model_override" || return $?
     _route_call_tools_prepare || return $?
+    _ROUTE_LOOP_CALLING=1   # #2582: from here a failure is a failed model call
 
     if ! command -v claude >/dev/null 2>&1; then
         error "route_to_model_loop: claude binary not found in PATH"
@@ -1685,8 +1697,6 @@ route_to_model_loop() {
         # Read the envelope ONCE. Two `$(cat ...)` substitutions would fork
         # twice per failing iteration for the same bytes (review finding).
         local _loop_rate_limited=0 _loop_rl_msg="" _loop_envelope=""
-        # #2582 (ADR-054 §6): the stage's model call failed.
-        _router_arm_call_failed_marker
         if [[ -n "$_diag_json_path" ]]; then
             _loop_envelope="$(cat "$_diag_json_path" 2>/dev/null || true)"
         fi
