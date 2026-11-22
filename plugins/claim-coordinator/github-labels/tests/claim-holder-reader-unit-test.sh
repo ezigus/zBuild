@@ -77,7 +77,7 @@ jq -n --arg b "$bot_body" --arg s "$spoof_body" '[
 
 print_test_section "the reader"
 got="$(_ccgl_read_holder 90001851 2>/dev/null || true)"
-assert_eq "the newest trusted run-status comment names the holder — on page 2, by the CI bot" "$bot_holder" "$got"
+assert_eq "the newest trusted comment naming a holder is read — on page 2, by the CI bot" "$bot_holder" "$got"
 assert_contains "…the comments were read with --paginate" "$(cat "$GHS/log")" "api --paginate repos/testowner/testrepo/issues/90001851/comments"
 
 finished_body="$(_body run-done "run_id=run-done machine=box-2" ended)"
@@ -87,12 +87,14 @@ jq -n --arg f "$finished_body" --arg l "$live_body" '[
     {id:2, user:{login:"maintainer"}, author_association:"OWNER", body:$l}]' > "$GHS/page-1.json"
 rm -f "$GHS/page-2.json"
 got="$(_ccgl_read_holder 90001851 2>/dev/null || true)"
-assert_eq "the newest run-status comment names no holder → none, never an older one" "" "$got"
-jq -n --arg f "$(_body run-done2 "run_id=run-done2 machine=box-2")" --arg l "$finished_body" '[
-    {id:1, user:{login:"maintainer"}, author_association:"OWNER", body:$f},
-    {id:2, user:{login:"maintainer"}, author_association:"OWNER", body:$l}]' > "$GHS/page-1.json"
+assert_eq "a finished run's comment names no holder → none" "" "$got"
+jq -n --arg a "$(_body run-a2 "run_id=run-a2 machine=box-a")" --arg l "$live_body" --arg f "$finished_body" '[
+    {id:1, user:{login:"maintainer"}, author_association:"OWNER", body:$a},
+    {id:2, user:{login:"github-actions[bot]"}, author_association:"NONE", body:$l},
+    {id:3, user:{login:"maintainer"}, author_association:"OWNER", body:$f}]' > "$GHS/page-1.json"
 got="$(_ccgl_read_holder 90001851 2>/dev/null || true)"
-assert_eq "the newest run-status comment is a finished run's → no holder" "" "$got"
+assert_eq "newer comments naming no holder (a refused run, a finished one) do not hide the live holder" \
+    "run_id=run-a2 machine=box-a" "$got"
 
 jq -n --arg s "$spoof_body" '[
     {id:1, user:{login:"evil"}, author_association:"NONE", body:$s},

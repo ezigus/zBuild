@@ -692,9 +692,11 @@ _plugin_hook_call_once() {
         [[ -z "$_ZB_LC_STAGE_PID" ]] && { rc=$_ZB_LC_STAGE_RC; break; }
         kill -0 "$_lc_pid" 2>/dev/null && continue
         # Gone: a trap that cut the wait short (rc > 128) and outlived the stage
-        # left its status unread; this wait reads it (127: it was the stage's own).
+        # may have left its status unread. A second wait returns the status bash
+        # kept (or 127 if it kept none). Not redirected: a trap that fires inside
+        # a redirected call writes its banner into the redirect.
         if (( rc > 128 )); then
-            local _lc_rc2=0; wait "$_lc_pid" 2>/dev/null || _lc_rc2=$?
+            local _lc_rc2=0; wait "$_lc_pid" || _lc_rc2=$?
             (( _lc_rc2 != 127 )) && rc=$_lc_rc2
         fi
         break

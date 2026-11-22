@@ -48,10 +48,12 @@ knows the hooks, never what a claim is made of.
   `<!-- zbuild-holder: <holder> -->` while the run is running. A run that has no claim, or has finished,
   names no holder. The holder is the CI run's
   URL in CI, and `run_id=<id> machine=<host>` elsewhere.
-- A refused run reads the holder from the newest run-status comment, and only from comments the CI bot or a
-  repository owner, member or collaborator posted: an outside commenter cannot name the holder. When that
-  comment names none (a finished run, or a holder that posts no comment: `ZBUILD_STATUS_COMMENT=0`), the
-  holder is unknown — never an older comment's.
+- A refused run reads the holder from the newest run-status comment that names one, and only from comments
+  the CI bot or a repository owner, member or collaborator posted: an outside commenter cannot name the
+  holder. A finished run's comment names none, so the holder named is a run still going, or one that died
+  without finishing (which left the label too). A newer comment naming none — a refused or skipped run's —
+  does not hide it. When no comment names one (e.g. the holder posts none: `ZBUILD_STATUS_COMMENT=0`), the
+  holder is unknown.
 - The coordinator's hook events (`plugin.claim.*`, `plugin.release.*`) carry no stage.
 
 ### §3 — Graceful degradation
@@ -171,10 +173,10 @@ Section L wishlist item. Routes all claim operations through an optional dashboa
   `tests/integration/claim-holder-status-comment-test.sh` [H1] (the posted comment names it), [H2] (a run
   with no claim names none); `tests/unit/claim-acquire-release-test.sh` (`pipeline.claim.acquired` holder:
   run id and machine, or the CI run's URL)
-- §2 the holder read only from the newest trusted comment →
+- §2 the holder read from the newest trusted comment that names one →
   `plugins/claim-coordinator/github-labels/tests/claim-holder-reader-unit-test.sh` (the reader: paginated,
-  the CI bot's comment, a newest comment naming none or a finished run's → none, an outside commenter cannot
-  name it; the writer: a finished run names none)
+  the CI bot's comment, newer comments naming none do not hide the live holder, a finished run's comment →
+  none, an outside commenter cannot name it; the writer: a finished run names none)
 - §2 hook events carry no stage → `tests/unit/claim-acquire-release-test.sh` (plugin.claim.*, plugin.release.*)
 - §3 graceful degradation → `tests/unit/claim-acquire-release-test.sh` (no coordinator, a failing or
   skipping coordinator → `pipeline.claim.skipped`; an unreadable answer is a refusal; a failed release →

@@ -190,17 +190,19 @@ rsc_finalize_issue() {
 # ─── rsc_holder_find <state_dir> <slug> <issue> — who holds the claim (ADR-005 §2) ─
 # The holder line of the newest run-status comment, read only from comments a
 # run could have posted: the CI bot's, or a repository owner's, member's or
-# collaborator's — an outside commenter cannot name the holder. The newest
-# comment naming none (a finished run, a run with no claim) names nobody: an
-# older comment's holder may be long gone. Prints nothing then. Returns 0.
+# collaborator's — an outside commenter cannot name the holder. Newest first
+# among those that name one: a finished run's comment names none (the writer
+# drops the line), so the one named is a run still going, or one that died
+# without finishing — which left the label too. Prints nothing when none
+# names one. Returns 0.
 rsc_holder_find() {
     local state_dir="$1" slug="$2" issue="$3" out body="" holder=""
     out="$(mktemp "${TMPDIR:-$state_dir}/rsc-holder.XXXXXX")" || return 0
     if rsc_gh "$state_dir" "$out" api --paginate "repos/${slug}/issues/${issue}/comments" 2>/dev/null; then
-        body="$(jq -rs --arg m "$_RSC_MARKER_PREFIX" '
+        body="$(jq -rs --arg m "$_RSC_MARKER_PREFIX" --arg h "$_RSC_HOLDER_PREFIX" '
             [.[][]? | (.author_association // "") as $a
              | select(.user.login == "github-actions[bot]" or $a == "OWNER" or $a == "MEMBER" or $a == "COLLABORATOR")
-             | (.body // "") | select(startswith($m))] | last // empty' "$out" 2>/dev/null || true)"
+             | (.body // "") | select(startswith($m) and contains($h))] | last // empty' "$out" 2>/dev/null || true)"
     fi
     rm -f "$out"
     rsc_holder_line_v holder "$body"

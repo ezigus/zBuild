@@ -23,7 +23,7 @@ The default cross-machine claim. The engine calls this plugin's `claim` hook bef
 - **Every `gh` call is bounded** by the run-status comment's watchdog (`rsc_gh`, `ZBUILD_STATUS_COMMENT_GH_TIMEOUT`): a hung `gh` cannot hold up a run's exit.
 - **`NO_GITHUB=true`** makes no claim: the reply is `skipped`, and the engine records `pipeline.claim.skipped`.
 - **Clearing a claim by hand.** Removing the `zbuild:claimed` label clears it. Until #2533, that is the only way to clear the claim of a run that crashed before its exit path — or of a cancelled GitHub Actions job: the cancel sends INT, then TERM, then KILL a few seconds later, and the KILL can land while the exit path is still running the always-run stages and persist, which come before the release.
-- **The holder named on a refusal** is the newest run-status comment's: a finished run names none, and neither does a run that posts no comment (`ZBUILD_STATUS_COMMENT=0`), so the refusal then says the holder is unknown rather than naming an older run.
+- **The holder named on a refusal** is from the newest trusted run-status comment that names one. A finished run's comment names none, so the holder is a run still going, or one that died without finishing; a newer comment that names none (a refused run's) does not hide it. With no such comment (the holder posts none: `ZBUILD_STATUS_COMMENT=0`), the refusal says the holder is unknown.
 
 ## Known limit: two runs claiming at the same moment
 
