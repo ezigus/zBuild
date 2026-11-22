@@ -161,7 +161,8 @@ Section L wishlist item. Routes all claim operations through an optional dashboa
   with the holder, the holder printed as written)
 - §1 released on every way out → `tests/integration/claim-release-on-exit-test.sh` [C1] pass, [C2] stage
   failure, [C3] TERM mid-stage, [C4] the release hook on exit, [C6] a failure before the stages, [C7] a TERM
-  while the claim is taken; `tests/integration/teardown-repeat-signal-test.sh` [T6] (a second TERM during
+  while the claim is taken; `tests/unit/plugin-hook-call-signal-rc-test.sh` (a signal held during the claim
+  leaves the hook's own answer); `tests/integration/teardown-repeat-signal-test.sh` [T6] (a second TERM during
   teardown)
 - §2 one shared label, no machine name → `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh`
   (local-fs and gh: the issue carries exactly `zbuild:claimed`)
