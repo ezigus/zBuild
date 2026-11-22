@@ -13,6 +13,11 @@
 # OA3 [change] build's prompt carries it, and asks build to handle each one
 # OA4 [change] the lens's prompt carries it (review-lens-asks-test.sh S7 checks
 #              the lens's own sentences)
+# OA5 [change] (review) design's check judges it: its prompt carries the rule as
+#              a judged item of the decisions, and `Decision: unhandled | …` is a
+#              finding for design
+# OA6 [change] (review) issue-acceptance's prompt carries the rule, beside the
+#              read-only lookup that checks one
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -67,6 +72,46 @@ source "$REPO_ROOT/core/plugin-registry/registry.sh"
 # shellcheck source=../../plugins/agent/review-lens/plugin.sh
 source "$REPO_ROOT/plugins/agent/review-lens/plugin.sh"
 assert_contains "[OA4] the lens's prompt carries the rule" "$(_flat "$(_rl_build_lens_prompt sre "THE-CHANGE" "")")" "$RULE"
+
+print_test_section "OA5: design's check judges it"
+(
+    # shellcheck source=../../plugins/agent/design/plugin.sh
+    source "$REPO_ROOT/plugins/agent/design/plugin.sh"
+    _P_FILE="$TEST_TEMP_DIR/check-prompt.txt"
+    route_to_model() { printf '%s' "$2" >> "$_P_FILE"; printf '%s' "$_REPLY"; return 0; }
+    XR="$TEST_TEMP_DIR/repo"; mkdir -p "$XR" "$TEST_TEMP_DIR/base"; export _DESIGN_BASE_DIR="$TEST_TEMP_DIR/base"
+    D="$TEST_TEMP_DIR/design.md"
+    printf '%s\n' '# Design' '' '## Decision' 'The run claims the issue by adding the zbuild:claimed label with gh issue edit.' '' \
+        '```acceptance' 'CLA-1[code]: the run claims the issue covers: RQCL-1' '  When: a run starts' '  Then: the issue carries the claimed label' \
+        'WIRING: core/pipeline/runner.sh' '```' > "$D"
+    _REPLY=$'RQCL-1: covered\nCLA-1: ok\nDecision: unhandled | WHY: the zbuild:claimed label is assumed to exist in the repository | ACCEPTED IF: the design names the label and how a missing one is handled | QUOTE: adding the zbuild:claimed label with gh issue edit'
+    : > "$_P_FILE"
+    ZBUILD_REPO_ROOT="$XR" _design_coverage "$D" "- RQCL-1: the run claims the issue" T2 "" "" "" >/dev/null 2>&1
+    printf '%s' "$_DESIGN_COV_OUTCOME" > "$TEST_TEMP_DIR/oa5-outcome"
+    _design_coverage_findings > "$TEST_TEMP_DIR/oa5-findings" 2>/dev/null
+)
+C="$(_flat "$(cat "$TEST_TEMP_DIR/check-prompt.txt" 2>/dev/null)")"
+assert_contains "[OA5] the check's prompt carries the rule" "$C" "$RULE"
+assert_contains "[OA5] ...as a judged item: one missing is a finding" "$C" \
+    "The decisions must name each outside assumption the design makes and how it is handled; one not named, or named without how it is handled, is a finding"
+assert_contains "[OA5] ...in the Decision line's form" "$C" \
+    "Decision: unhandled | WHY: <the outside thing the design assumes, and what it leaves unsaid> | ACCEPTED IF: <what the decisions must say about it> | QUOTE: <the decisions' words that rely on it>"
+assert_eq "[OA5] the answer is used" "" "$(cat "$TEST_TEMP_DIR/oa5-outcome" 2>/dev/null)"
+assert_contains "[OA5] ...a finding for design" "$(cat "$TEST_TEMP_DIR/oa5-findings" 2>/dev/null)" \
+    "Decision: the design does not handle an outside assumption: the zbuild:claimed label is assumed to exist in the repository — adding the zbuild:claimed label with gh issue edit [FIX IN DESIGN:"
+
+print_test_section "OA6: issue-acceptance"
+(
+    # shellcheck source=../../plugins/agent/issue-acceptance/plugin.sh
+    source "$REPO_ROOT/plugins/agent/issue-acceptance/plugin.sh"
+    _ia_prompt "THE-ISSUE" "" "THE-CHANGE" "pass" "- R1: x" > "$TEST_TEMP_DIR/ia-prompt.txt" 2>/dev/null
+)
+I="$(_flat "$(cat "$TEST_TEMP_DIR/ia-prompt.txt" 2>/dev/null)")"
+assert_contains "fixture: issue-acceptance's prompt was written" "$I" "You are checking whether a finished CHANGE"
+assert_contains "[OA6] issue-acceptance's prompt carries the rule" "$I" "$RULE"
+assert_contains "[OA6] ...one not handled leaves its requirement unmet" "$I" \
+    "A requirement whose change rests on an outside assumption it does not handle is unmet"
+assert_contains "[OA6] ...beside the read-only lookup" "$I" "check it, read-only, with zbuild-gh-get <endpoint> [jq-filter]"
 
 cleanup_test_env
 print_test_results

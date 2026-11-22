@@ -25,7 +25,8 @@ _ZBUILD_MANIFEST_CALLS_LOADED=1
 
 # The words a call's tools are named in. mcp is a word no call is given yet:
 # how a manifest names the servers a call may use is a later decision.
-# read-github (#2584): gh's reading commands only, so a judge can look GitHub up.
+# read-github (#2584): zbuild-gh-get, a GET of GitHub's REST API, so a judge can
+# look GitHub up (core/router/gh-get.sh).
 _ZB_TOOL_WORDS="read-files edit-files run-commands read-git read-github web-search subagents todo-list mcp"
 
 # manifest_calls_v <var> <manifest> — each call the manifest lists, one

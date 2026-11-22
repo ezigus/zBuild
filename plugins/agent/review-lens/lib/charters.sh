@@ -73,8 +73,9 @@ OUTSIDE ASSUMPTIONS:
 ${ZB_OUTSIDE_ASSUMPTIONS_RULE:-}
 An outside assumption the change does not handle is a finding. To check one
 about GitHub — that a label, a branch or a setting exists, what an API returns
-— look it up, read-only, with gh (gh api, gh issue view, gh label list) rather
-than guess it.
+— look it up, read-only, with zbuild-gh-get <endpoint> [jq-filter] (a GET of
+GitHub's REST API, e.g. zbuild-gh-get 'repos/{owner}/{repo}/labels' '.[].name')
+rather than guess it.
 
 OUTPUT CONTRACT (obey absolutely):
 - Respond with EXACTLY ONE JSON object. First character '{', last character '}'.

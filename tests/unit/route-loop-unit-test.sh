@@ -347,12 +347,24 @@ route_to_model_loop "T2" "$PROMPT_FILE" "$REPOMTPC" --max-turns-per-call -1 >/de
 set -e
 assert_exit_code "--max-turns-per-call -1 → rc=2 (negatives)" "2" "$mtpc_neg_rc"
 
-# Valid per-call override should succeed.
+# #2584 (ADR-018): one record of the call's limits. A per-call turn limit is
+# set in it before the prompt is composed (zb_call_limits_turns_override); the
+# loop asked for another one than the record's is refused, so the call never
+# runs under a limit its prompt does not state.
 install_mock_claude "$COUNTERMTPC" 1 ""
 set +e
-route_to_model_loop "T2" "$PROMPT_FILE" "$REPOMTPC" --max-turns-per-call 50 >/dev/null 2>&1; mtpc_ok_rc=$?
+route_to_model_loop "T2" "$PROMPT_FILE" "$REPOMTPC" --max-turns-per-call 50 >/dev/null 2>&1; mtpc_dis_rc=$?
 set -e
-assert_exit_code "--max-turns-per-call 50 → rc=0 (within 1..200)" "0" "$mtpc_ok_rc"
+assert_exit_code "--max-turns-per-call 50, the record saying otherwise → rc=2" "2" "$mtpc_dis_rc"
+for _bad in 0 201 abc -1; do
+    set +e; ( zb_call_limits_turns_override "$_bad" ) >/dev/null 2>&1; _orc=$?; set -e
+    assert_exit_code "zb_call_limits_turns_override $_bad → rc=2 (1..200 only)" "2" "$_orc"
+done
+install_mock_claude "$COUNTERMTPC" 1 ""
+set +e
+( zb_call_limits_turns_override 50 && route_to_model_loop "T2" "$PROMPT_FILE" "$REPOMTPC" --max-turns-per-call 50 ) >/dev/null 2>&1; mtpc_ok_rc=$?
+set -e
+assert_exit_code "the record set to 50, then --max-turns-per-call 50 → rc=0" "0" "$mtpc_ok_rc"
 
 cleanup_test_env
 print_test_results

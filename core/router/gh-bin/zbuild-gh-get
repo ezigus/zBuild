@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# zbuild-gh-get — the name a judging call runs (read-github, ADR-017 §12; #2584):
+# core/router/gh-get.sh, which builds gh's argv itself.
+exec bash "${BASH_SOURCE[0]%/*}/../gh-get.sh" "$@"

@@ -13,11 +13,13 @@
 # W3 [change] the design's decisions past 80 lines: the last decision is there
 # W4 [change] the design steps build found not needed, past 4,000 characters:
 #             the last one is there
-# W5 [change] an issue over the inline size: the prompt names the file that
-#             holds it whole, and holds no piece of it; that file holds the
-#             whole issue
-# W6 [change] requirements and decisions over the inline size: the prompt names
-#             the design file that holds them, and holds no piece of them
+# W5 [change] an issue over the inline size: the prompt names a file in the
+#             stage's scratch that holds it whole, and holds no piece of it
+# W6 [change] requirements, decisions and the not-needed steps over the inline
+#             size: each a file of its own, one path each, the prompt holding no
+#             piece of them
+# W7 [change] (review) such a file is sanitised and redacted as an inline
+#             section is: a private path is <private>, no terminal escape
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -79,16 +81,27 @@ assert_contains "[W2] the last requirement is there" "$P" "SPECTEXT-45 "
 assert_contains "[W3] the last decision is there" "$P" "DECISION-85 "
 assert_contains "[W4] the last not-needed step is there" "$P" "STEPWHY-60 "
 
-print_test_section "W5–W6: over the inline size, the path"
+print_test_section "W5–W7: over the inline size, a file of the section, cleaned"
+export ZBUILD_STAGE_SCRATCH="$TEST_TEMP_DIR/scratch"; mkdir -p "$ZBUILD_STAGE_SCRATCH"
 D="$TEST_TEMP_DIR/w5"
-_setup "$D" "$(_filler 200000 'BIGWORD')BIG-END-MARKER" 20 20 0 "$(_filler 1500 'PAD')"
+_setup "$D" "$(_filler 200000 'BIGWORD')"$'\e[31mRED-MARK\e[0m'" see .env.production BIG-END-MARKER" 20 20 300 "$(_filler 1500 'PAD')"
 _run "$D"
-assert_contains "[W5] the prompt names the file that holds the issue" "$P" "$D/art/intake-result.json"
+_ctx() { local f; f="$(/usr/bin/grep -oE "$ZBUILD_STAGE_SCRATCH/lens-correctness-context-$1\.md" <<< "$P" | head -n 1)"; printf '%s' "${f:-<not named>}"; }
+F_ISSUE="$(_ctx issue)" F_REQS="$(_ctx requirements)" F_DEC="$(_ctx decisions)" F_STEPS="$(_ctx not-needed)"
+assert_eq "[W5] the prompt names a file of the issue, in the stage's scratch" "yes" "$([[ -f "$F_ISSUE" ]] && echo yes || echo "no: $F_ISSUE")"
 _lacks "[W5] ...and holds no piece of it" "$P" "BIGWORD sentence 0 "
-assert_contains "[W5] that file holds the whole issue" "$(jq -r '.data.issue_text' "$D/art/intake-result.json")" "BIG-END-MARKER"
-assert_contains "[W6] the prompt names the design file for the requirements" "$P" "$D/art/design.md"
-_lacks "[W6] ...and holds no piece of the requirements" "$P" "SPECTEXT-1 "
-_lacks "[W6] ...nor of the decisions" "$P" "DECISION-1 "
+assert_contains "[W5] that file holds the whole issue" "$(cat "$F_ISSUE" 2>/dev/null)" "BIG-END-MARKER"
+assert_eq "[W6] the requirements: a file of their own" "yes" "$([[ -f "$F_REQS" ]] && echo yes || echo "no: $F_REQS")"
+assert_contains "[W6] ...holding the last one" "$(cat "$F_REQS" 2>/dev/null)" "SPECTEXT-20 "
+_lacks "[W6] ...and the prompt no piece of them" "$P" "SPECTEXT-1 "
+assert_eq "[W6] the decisions: a file of their own" "yes" "$([[ -f "$F_DEC" ]] && echo yes || echo "no: $F_DEC")"
+_lacks "[W6] ...and the prompt no piece of them" "$P" "DECISION-1 "
+assert_eq "[W6] the not-needed steps: one file, one path" "yes" "$([[ -f "$F_STEPS" ]] && echo yes || echo "no: $F_STEPS")"
+assert_contains "[W6] ...holding the last one" "$(cat "$F_STEPS" 2>/dev/null)" "STEPWHY-300 "
+_I="$(cat "$F_ISSUE" 2>/dev/null)"
+assert_contains "[W7] the file is redacted: a private path is <private>" "$_I" "see <private> BIG-END-MARKER"
+_lacks "[W7] ...and sanitised: no terminal escape" "$_I" $'\e['
+assert_contains "[W7] ...its text kept" "$_I" "RED-MARK"
 
 cleanup_test_env
 print_test_results

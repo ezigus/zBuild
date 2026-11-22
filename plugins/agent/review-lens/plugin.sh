@@ -352,6 +352,8 @@ _review_lens_run_inner() {
         return 0
     fi
 
+    # #2584: each finding's other places, held to the change as its quote is.
+    _rl_also_at_hold_v normalized "$normalized" "$_rl_base" "$_rl_repo" "$_rl_patch"
     # #2552 (ADR-038): a second call tries to knock each finding down; one it
     # does is kept under knocked_down and reaches no stage.
     _rl_check_v normalized "$normalized" "$lens" "$_rl_change" "$_rl_repo"
@@ -369,6 +371,7 @@ _review_lens_run_inner() {
     # and its notes, in its result.
     _rl_unclear_settle "$json"
     [[ "$_rl_sus_drop" =~ ^[1-9][0-9]*$ ]] && _RL_UQ_NOTES+="a suspicion was left out: it says nothing would confirm it ($_rl_sus_drop in all)"$'\n'
+    _RL_UQ_NOTES+="$_RL_ALSO_NOTES"
     _rl_unclear_data_v normalized "$normalized"
 
     # Primary output (manifest provides.outputs, primary:true) is
@@ -415,6 +418,7 @@ _review_lens_run_inner() {
                   + (if .value.id then {id: .value.id} else {} end) + (if .value.area then {area: .value.area} else {} end)]}} else {} end);
         [.findings[] | select(.fix == "issue" and at_fail_on)] as $issue
         | [.findings[] | select(.fix != "issue" and .introduced)] as $sent
+        | (.suspected // []) as $susp
         # The score and how many findings: read here, by no jq of their own (ADR-065 §5).
         | "score\t\(.score // 0)", "count\t\(.findings | length)",
           "outcome\t" + (if ($issue | length) > 0 then "misconfigured" elif ([$sent[] | select(at_fail_on)] | length) > 0 then "fail" else "pass" end),
@@ -429,7 +433,10 @@ _review_lens_run_inner() {
             | . + {w: $w}] as $rall
            | (if $code != "" and ($rall | length) > 0 then ($rall | zb_fids($reg; $code)) else {out: $rall, r: null} end) as $z
            | (["code", "test", "design"][] as $w
-              | "\($w)\t" + ([$z.out[] | select(.w == $w) | del(.w)] | result("the \($n) lens'"'"'s findings the \($w) must fix") | tojson)),
+              | "\($w)\t" + ([$z.out[] | select(.w == $w) | del(.w)] | result("the \($n) lens'"'"'s findings the \($w) must fix")
+                  # #2584 (ADR-038): its open suspicions, for the reports a person reads.
+                  | [$susp[] | select(.fix == $w) | {file, quote, suspicion, confirm_by}] as $sw
+                  | (if ($sw | length) > 0 then .data = ((.data // {}) + {suspected: $sw}) else . end) | tojson)),
              (if $z.r then "reg\t" + ($z.r | tojson) else empty end))' 2>/dev/null)" || _rl_route=""
     while IFS=$'\t' read -r _rl_k _rl_v; do
         case "$_rl_k" in
@@ -455,6 +462,11 @@ _review_lens_run_inner() {
     if [[ "$normalized" == *'"knocked_down":[{'* ]]; then
         local _rl_kd; _rl_kd="$(jq -r '.knocked_down[] | "- knocked down by the check: \(.message) — \(.why)"' <<< "$normalized" 2>/dev/null || true)"
         [[ -n "$_rl_kd" ]] && _rl_body+="${_rl_body:+$'\n'}$_rl_kd"
+    fi
+    # #2584 (ADR-038): a suspicion left open — a person sees it here too.
+    if [[ "$normalized" == *'"suspected":[{'* ]]; then
+        local _rl_su; _rl_su="$(jq -r '.suspected[] | "- suspected, not confirmed: \(.suspicion | gsub("[\r\n]+"; " ")) (\(.file)\(if .quote != "" then ": \"\(.quote | gsub("[\r\n]+"; " "))\"" else "" end)) — what would confirm it: \(.confirm_by | gsub("[\r\n]+"; " "))"' <<< "$normalized" 2>/dev/null || true)"
+        [[ -n "$_rl_su" ]] && _rl_body+="${_rl_body:+$'\n'}$_rl_su"
     fi
     [[ -n "$_RL_CHECK_NOTE" ]] && _rl_body+="${_rl_body:+$'\n'}- $_RL_CHECK_NOTE"
     stage_summary_write "$artifact_dir/lens-${lens}-summary.md" "review-lens-${lens}" "$_rl_outcome" \

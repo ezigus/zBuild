@@ -136,7 +136,7 @@ zb_unclear_result_ok() {
     [[ "${1:-}" == *-result.json || "${1:-}" == *-verdict.json ]] || return 1
     [[ -n "${2:-}" && -e "$2" && ! "$1" -nt "$2" ]] && return 1
     _zb_unclear_read_v _zro_t "$1" || return 1
-    [[ "$_zro_t" == *'"unclear"'* || "$_zro_t" == *'"unclear_dropped"'* ]]
+    [[ "$_zro_t" == *'"unclear"'* || "$_zro_t" == *'"unclear_dropped"'* || "$_zro_t" == *'"suspected"'* ]]
 }
 
 # zb_unclear_results_in_v <array_var> <dir> [run_start_marker] — each stage
@@ -200,8 +200,8 @@ _zb_unclear_retired_v() {
 
 # zb_unclear_markdown_v <var> <design_md> [result_json...] — the questions
 # section of every report: design's, from its design file, then each result's
-# (data.unclear) and what its check retired (data.unclear_dropped), under the
-# stage's name. Empty when there is none.
+# (data.unclear), what its check retired (data.unclear_dropped) and the
+# suspicions a lens left open (data.suspected, #2584), under the stage's name. Empty when there is none.
 zb_unclear_markdown_v() {
     local -n _zum_out="$1"; local -a _zum=(); local _zum_s _zum_f _zum_st
     _zum_out=""
@@ -216,8 +216,53 @@ zb_unclear_markdown_v() {
         zb_unclear_dropped_lines_v _zum "$_zum_f"
         _zb_unclear_retired_v _zum_s "$_zum_st" _zum
         [[ -n "$_zum_s" ]] && _zum_out+="${_zum_out:+$'\n\n'}$_zum_s"
+        zb_unclear_suspected_lines_v _zum "$_zum_f"
+        _zb_unclear_suspected_v _zum_s "$_zum_st" _zum
+        [[ -n "$_zum_s" ]] && _zum_out+="${_zum_out:+$'\n\n'}$_zum_s"
     done
     return 0
+}
+
+# zb_unclear_suspected_lines_v <array_var> <result_json> — each suspicion a
+# lens left open in the result's data.suspected (#2584, ADR-038), "<file> TAB
+# <suspicion> TAB <confirm_by> TAB <quote>", with no fork and bounded as
+# zb_unclear_dropped_lines_v is.
+zb_unclear_suspected_lines_v() {
+    local -n _zsl="$1"; local _zsl_t="" _zsl_n=0 _zsl_v _zsl_re='"suspected"[[:space:]]*:[[:space:]]*\['
+    local _zsl_kv='^[[:space:],]*"([A-Za-z_]+)"[[:space:]]*:[[:space:]]*("(([^"\\]|\\.)*)"|null|true|false|-?[0-9][0-9.eE+-]*)'
+    local -A _zsl_o=()
+    _zsl=()
+    _zb_unclear_read_v _zsl_t "${2:-}" || return 0
+    [[ "$_zsl_t" =~ $_zsl_re ]] || return 0
+    _zsl_t="${_zsl_t#*"${BASH_REMATCH[0]}"}"
+    _zsl_t="${_zsl_t:0:$(( _ZB_UNCLEAR_READ_MAX * (_ZB_UNCLEAR_LINE_MAX * 6 + 200) ))}"
+    while (( _zsl_n < _ZB_UNCLEAR_READ_MAX )) && [[ "$_zsl_t" =~ ^[[:space:],]*\{ ]]; do
+        _zsl_t="${_zsl_t:${#BASH_REMATCH[0]}}"; _zsl_o=(); _zsl_n=$(( _zsl_n + 1 ))
+        while [[ "$_zsl_t" =~ $_zsl_kv ]]; do
+            _zsl_t="${_zsl_t:${#BASH_REMATCH[0]}}"
+            [[ "${BASH_REMATCH[2]}" == \"* ]] || continue
+            _zb_unclear_unesc_v _zsl_v "${BASH_REMATCH[3]}"; _zsl_o["${BASH_REMATCH[1]}"]="${_zsl_v//$'\t'/ }"
+        done
+        [[ "$_zsl_t" =~ ^[[:space:]]*\} ]] || break
+        _zsl_t="${_zsl_t:${#BASH_REMATCH[0]}}"
+        [[ -n "${_zsl_o[suspicion]:-}" ]] || continue
+        _zsl+=("${_zsl_o[file]:-}"$'\t'"${_zsl_o[suspicion]}"$'\t'"${_zsl_o[confirm_by]:-}"$'\t'"${_zsl_o[quote]:-}")
+    done
+    return 0
+}
+
+# _zb_unclear_suspected_v <var> <stage> <array_name> — the suspicions one
+# stage left open, for a person to check, or empty.
+_zb_unclear_suspected_v() {
+    local -n _zsv="$1" _zsv_a="$3"; local _zsv_l _zsv_x="" _zsv_f _zsv_s _zsv_c
+    _zsv=""
+    for _zsv_l in ${_zsv_a[@]+"${_zsv_a[@]}"}; do
+        local -a _zsv_p=(); _zb_unclear_split_v _zsv_p "$_zsv_l"
+        _zb_unclear_esc_v _zsv_f "${_zsv_p[0]:-}"; _zb_unclear_esc_v _zsv_s "${_zsv_p[1]:-}"; _zb_unclear_esc_v _zsv_c "${_zsv_p[2]:-}"
+        _zsv_x+=$'\n'"- ${_zsv_f:+$_zsv_f: }${_zsv_s} — what would confirm it: ${_zsv_c:-not said}"
+    done
+    [[ -n "$_zsv_x" ]] || return 0
+    _zsv="**Suspicions $2 could not confirm** (open: a person should check each):"$'\n'"$_zsv_x"
 }
 
 # zb_unclear_markdown <design_md> [result_json...] — the same, printed.

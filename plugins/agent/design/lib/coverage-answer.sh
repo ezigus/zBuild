@@ -130,12 +130,14 @@ _dcov_parse() {
 _dcov_whole_part() {
     local _wp_k="$1" _wp_l="$2" _wp_txt="$3" _wp_word="$4" why quote acc w qp
     _dcov_why_quote "$5"
+    # #2584: unhandled — an outside assumption the decisions leave unsaid.
+    [[ "$_wp_word" == unhandled && "$_wp_k" == decision ]] && _wp_word=unhandled-decision
     case "$_wp_word" in
         ok) return 0 ;;
-        not-asked|contradicts|new-owner)
+        not-asked|contradicts|new-owner|unhandled-decision)
             # #2569 (ADR-072 §3): a refusal says what would be accepted.
             [[ -z "$quote" || -n "$acc" ]] || { bad+=("$_wp_l: $_wp_word $_DCOV_NO_ACC"); return 0; } ;;&
-        not-asked|contradicts)
+        not-asked|contradicts|unhandled-decision)
             [[ -n "$quote" ]] || { bad+=("$_wp_l has no QUOTE"); return 0; }
             # #2567 (review): the quote names one part — it lies in one step
             # line, or one line of the decisions, and is at least three words.
@@ -151,8 +153,10 @@ _dcov_whole_part() {
             # The existing owner is in the code from before the change only.
             judge_quote_check_v w "$quote" "" "${base:-$repo}" "${base:-$repo}" || { bad+=("$_wp_l's quote $w in the code from before this change"); return 0; }
             judge_quote_path_v qp "$quote" "$repo" "$base"; [[ -n "$qp" ]] && _DCOV_QUOTED["$_wp_k"]+="$qp"$'\n' ;;
-        *) bad+=("$_wp_l is ok, not-asked, contradicts or new-owner, not $_wp_word"); return 0 ;;
+        *) local _wp_or="contradicts"; [[ "$_wp_k" == decision ]] && _wp_or+=", unhandled"
+           bad+=("$_wp_l is ok, not-asked, $_wp_or or new-owner, not $_wp_word"); return 0 ;;
     esac
+    _wp_word="${_wp_word%-decision}"
     if [[ "$_wp_k" == steps ]]; then
         # The old new-owner finding's form is kept (#2555).
         if [[ "$_wp_word" == new-owner ]]; then _DESIGN_NEW_OWNER+=("${why:-something already owns this job}"$'\t'"$quote"$'\t'"$acc")
@@ -381,6 +385,7 @@ _dcov_findings_build() {
         case "$_pw" in
             not-asked) _DESIGN_COV_FINDINGS+=("Decision: the design's decisions commit to something no requirement needs: $_pwy — $_pq [FIX IN DESIGN: ACCEPTED IF: $_pa]") ;;
             new-owner) _DESIGN_COV_FINDINGS+=("Decision: the design's decisions build a new owner where one exists: $_pwy — $_pq [FIX IN DESIGN: ACCEPTED IF: $_pa]") ;;
+            unhandled) _DESIGN_COV_FINDINGS+=("Decision: the design does not handle an outside assumption: $_pwy — $_pq [FIX IN DESIGN: ACCEPTED IF: $_pa]") ;;
             *)         _DESIGN_COV_FINDINGS+=("Decision: the design's decisions go against the issue: $_pwy — $_pq [FIX IN DESIGN: ACCEPTED IF: $_pa]") ;;
         esac
     done

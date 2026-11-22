@@ -73,7 +73,7 @@ _route_tools_said_v() {
     _rts=""
     [[ "$w" == *" read-files "* ]] && _rts_l+=("open and search files")
     [[ "$w" == *" read-git "* ]] && _rts_l+=("run git diff, git log, git show and git status")
-    [[ "$w" == *" read-github "* ]] && _rts_l+=("look GitHub up with gh's reading commands (gh api GET, gh issue view, gh label list)")
+    [[ "$w" == *" read-github "* ]] && _rts_l+=("look GitHub up, read-only, with zbuild-gh-get <endpoint> [jq-filter] (a GET of GitHub's REST API, e.g. zbuild-gh-get 'repos/{owner}/{repo}/labels' '.[].name'; quote an endpoint with a query)")
     [[ "$w" == *" web-search "* ]] && _rts_l+=("search the web")
     [[ "$w" == *" subagents "* ]] && _rts_l+=("hand part of the work to a subagent")
     local n=${#_rts_l[@]} i
@@ -169,11 +169,46 @@ _route_template_knob_v() {
 # a dispatch of that stage, resolved here.
 zb_call_limits_v() {
     local -n _zcs="$1" _zct="$2"; local st="${3:-${ZBUILD_CURRENT_STAGE:-}}" r="${ZBUILD_CALL_LIMITS:-}"
-    if [[ -n "$st" && "$r" =~ ^([^\ ]+)\ ([0-9]+)\ ([0-9]+)$ && "${BASH_REMATCH[1]}" == "$st" ]]; then
+    if [[ "$r" =~ ^([^\ ]+)\ ([0-9]+)\ ([0-9]+)$ && "${BASH_REMATCH[1]}" == "${st:--}" ]]; then
         _zcs="${BASH_REMATCH[2]}" _zct="${BASH_REMATCH[3]}"; return 0
     fi
     _zcs="$(ZBUILD_CURRENT_STAGE="$st" _route_resolve_timeout)"
     _zct="$(ZBUILD_CURRENT_STAGE="$st" _route_resolve_max_turns)"
+}
+
+# zb_call_limits_turns_override <turns> — a stage that sets its own calls' turn
+# limit sets it in the one record, before its prompt is composed (review of
+# #2584, ADR-018): the call, the prompt's budget line and the time-up warning
+# then all say it. 1..200 only (ADR-018 Amendment N: 0 comes from config); rc 2
+# otherwise. Outside a stage the record's stage is "-".
+zb_call_limits_turns_override() {
+    local t="${1:-}" s="" o=""
+    if ! [[ "$t" =~ ^[0-9]+$ ]] || (( t < 1 || t > 200 )); then
+        error "zb_call_limits_turns_override: a call's turn limit must be an integer in 1..200, got: $t"
+        return 2
+    fi
+    zb_call_limits_v s o
+    ZBUILD_CALL_LIMITS="${ZBUILD_CURRENT_STAGE:--} $s $t"
+    # The dispatch's rules blocks already state the limits: their budget line
+    # is said again, from the record (stage-prompt.sh writes them).
+    local d="${ZBUILD_STAGE_BLOCKS:-}" f txt was now
+    [[ -n "$d" ]] || return 0
+    zb_call_limits_said_v was "$s" "$o"; zb_call_limits_said_v now "$s" "$t"
+    for f in "$d/rules.md" "$d/rules-fresh.md"; do
+        [[ -s "$f" ]] || continue
+        txt=""; IFS= read -r -d '' txt < "$f" || true
+        [[ "$txt" == *"each model call has $was."* ]] || continue
+        printf '%s' "${txt//"each model call has $was."/"each model call has $now."}" > "$f" || return 2
+    done
+    return 0
+}
+
+# zb_call_limits_said_v <var> <secs> <turns> — the limits as every prompt's
+# budget line says them.
+zb_call_limits_said_v() {
+    local -n _zcls="$1"
+    _zcls="$2 seconds"
+    if [[ "$3" =~ ^[0-9]+$ && "$3" -gt 0 ]]; then _zcls+=" and $3 turns"; else _zcls+=", with no limit on turns"; fi
 }
 
 # Concrete: per-stage router.timeout_s > $ZBUILD_ROUTER_TIMEOUT >

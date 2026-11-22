@@ -22,6 +22,10 @@
 #   CL3 ...and the time-up warning the call's hook gives at its deadline
 # CL4 [guard] the configured values are the ones this template has always set
 #     (the change moves no limit)
+# CL5 [change] (review) a stage that sets its call's turn limit itself sets it
+#     in the one record (zb_call_limits_turns_override) before its prompt is
+#     composed: the loop's CLI, the budget line and the warning all say it; a
+#     loop asked for another limit than the record's is refused
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -138,6 +142,47 @@ done < <(yq -o=json "$TPL" | jq -r 'to_entries[] | select(.value | type == "obje
     | [.key, .value.roles[0], (.value.router.timeout_s // "" | tostring), (.value.router.max_turns // "" | tostring),
        ([.value.elements[]?.id] | join(" "))] | @tsv')
 assert_eq "[CL1] fixture: every model-calling stage and lens was dispatched (5 stages, 6 lenses)" "11" "$_n"
+
+print_test_section "CL5: a stage's own turn limit is the record's"
+# shellcheck disable=SC2016  # the probe's code, expanded when it runs
+_loop_probe() {  # <real plugin dir> <loop flags> → the probe's dir
+    local real="$1" id="${1##*/}" d
+    d="$TEST_TEMP_DIR/loop-plugins/agent/$id"; mkdir -p "$d"
+    sed 's/^  run: .*/  run: limits_loop_run/' "$real/manifest.yaml" > "$d/manifest.yaml"
+    cat > "$d/plugin.sh" <<PLUGIN
+source "$REPO_ROOT/scripts/lib/helpers.sh"
+source "$REPO_ROOT/core/router/route.sh"
+limits_loop_run() {
+    local tier p f="\$ZBUILD_STAGE_SCRATCH/prompt.txt"; tier="\$(resolve_tier $id "$d")" || tier=T2
+    zb_call_limits_turns_override 7 || return 1
+    p="\$(stage_prompt_compose_parts --fresh \$'## What you own\nprobe\n\n## What you judge against\nnothing\n\n## What you must not do\n- nothing')" || return 1
+    mkdir -p "\$ZBUILD_STAGE_SCRATCH"; printf '%s' "\$p" > "\$f"
+    route_to_model_loop "\$tier" "\$f" "\$ZBUILD_REPO_ROOT" $2 >/dev/null 2>&1
+    printf '%s' "\$?" > "\$LIMITS_OUT.rc"
+    return 0
+}
+PLUGIN
+    printf '%s' "$d"
+}
+_loop_run() {  # <flags> → LIMITS_OUT and the run's dir in ST
+    local probe; probe="$(_loop_probe "$(_role_dir builder)" "$1")"
+    ST="$TEST_TEMP_DIR/loop-run-$2"; mkdir -p "$ST/artifacts" "$ST/events"; printf '{}' > "$ST/pipeline-state.json"
+    export LIMITS_OUT="$TEST_TEMP_DIR/loop-out-$2"; rm -f "$LIMITS_OUT".*
+    ( export ZBUILD_STATE_DIR="$ST" ZBUILD_EVENTS_DIR="$ST/events" ZBUILD_EVENTS_JSONL="$ST/events/events.jsonl" \
+          ZBUILD_INPUTS_FLOW=build ZBUILD_STAGE_SCRATCH="$ST/scratch"
+      bash "$DRIVER" "$REPO_ROOT" "$probe" build "$ST/pipeline-state.json" )
+}
+_loop_run "--max-turns-per-call 7" a
+argv="$(cat "$LIMITS_OUT.argv" 2>/dev/null)"
+assert_eq "[CL5] the loop's CLI gets the stage's 7 turns" "7" "$(awk 'p { print; exit } $0 == "--max-turns" { p = 1 }' <<< "$argv")"
+assert_eq "[CL5] ...the prompt's budget line says them" "each model call has 900 seconds and 7 turns." \
+    "$(tr -s '[:space:]' ' ' < "$LIMITS_OUT.prompt" 2>/dev/null | grep -o 'each model call has [^.]*\.' | head -n 1)"
+hook="$(cat "$LIMITS_OUT.hook" 2>/dev/null)"; eval "set -- $hook"; args=("$@"); n=${#args[@]}
+warn=""; if (( n >= 4 )); then args[n-2]=1; warn="$(printf '{"tool_name":"Bash","tool_input":{"command":"ls"}}' | "${args[@]}" | jq -r '.hookSpecificOutput.permissionDecisionReason // ""')"; fi
+assert_contains "[CL5] ...and so does the time-up warning" "$warn" "It was given 900 seconds and 7 turns."
+_loop_run "--max-turns-per-call 9" b
+assert_eq "[CL5] a loop asked for 9 turns when the record says 7 is refused" "2|<no call>" \
+    "$(cat "$LIMITS_OUT.rc" 2>/dev/null)|$([[ -s "$LIMITS_OUT.argv" ]] && echo called || echo '<no call>')"
 
 print_test_results
 exit $((FAIL > 0))

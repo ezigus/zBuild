@@ -7,6 +7,8 @@
 
 [[ -n "${_ZBUILD_DESIGN_COVERAGE_PROMPT_LOADED:-}" ]] && return 0
 _ZBUILD_DESIGN_COVERAGE_PROMPT_LOADED=1
+# shellcheck source=../../../../scripts/lib/outside-assumptions.sh
+source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/outside-assumptions.sh"
 
 # The call's three parts, composed with the engine's blocks in the one prompt
 # order (ADR-067 §8). #2470: requirement coverage is asked only when a SPEC
@@ -124,7 +126,11 @@ Decision: ok
 Decision: not-asked | WHY: <no requirement needs this> | ACCEPTED IF: <what must be true for the decisions to be accepted> | QUOTE: <the decisions' words>
 Decision: contradicts | WHY: <which requirement, limit or term, and how> | ACCEPTED IF: <what must be true for the decisions to be accepted> | QUOTE: <the decisions' words>
 Decision: new-owner | WHY: <what it builds, and what already owns that job> | ACCEPTED IF: <what must be true for the decisions to be accepted> | QUOTE: <file> | <one line of the existing owner>
+Decision: unhandled | WHY: <the outside thing the design assumes, and what it leaves unsaid> | ACCEPTED IF: <what the decisions must say about it> | QUOTE: <the decisions' words that rely on it>
 EOF2
+    # #2584 (ADR-038): the rule on outside assumptions is a judged item.
+    [[ -n "$decision" ]] && printf '\n%s\nThe decisions must name each outside assumption the design makes and how it is handled; one not named, or named without how it is handled, is a finding: Decision: unhandled.\n' \
+        "${ZB_OUTSIDE_ASSUMPTIONS_RULE:-}"
     cat <<'EOF2'
 
 Copy each QUOTE as it is from what it names, with no quote marks around it. It

@@ -12,6 +12,8 @@
 #             change with the same kind of problem (also_at)
 # S2 [change] those places reach the stage that fixes it: they are in the
 #             routed finding's text
+# S9 [change] (review) each place is held to the change as the finding's quote
+#             is: one whose line is not there is left out, with a note
 # S3 [change] the prompt says a problem it suspects but cannot confirm goes in
 #             unclear, with what would confirm it (confirm_by)
 # S4 [change] such a suspicion reaches the stage its fix word names as a
@@ -19,6 +21,9 @@
 #             in the result (suspected)
 # S5 [change] a suspicion that says nothing would confirm it is not sent on; a
 #             note says why
+# S8 [change] in a round that otherwise passes, an open suspicion is in the
+#             lens's summary and in the run's open questions (the reports and
+#             the PR body read them), so a person sees it (review of #2584)
 # S6 [change] the job texts ask for partial or paginated reads and data trusted
 #             without checking who wrote it (red-team); external calls with no
 #             timeout and what a crash or interrupt leaves behind (sre); tests
@@ -81,6 +86,17 @@ assert_eq "[S2] setup: the finding fails the lens" "fail" "$OUT"
 assert_contains "[S2] the routed finding names the other place" "$(_texts code)" \
     'the same kind of problem also at: b.sh | gh label add "$M"'
 
+REPLY='{"score":4,"findings":[{"file":"a.sh","quote":"gh label add \"$L\"","trigger":"the label does not exist","accepted_if":"a missing label is created or reported","severity":"medium","category":"logic","message":"the label is assumed to exist","introduced":true,"fix":"code","also_at":["b.sh | gh label add \"$M\"","c.sh | gh label add \"$N\"","b.sh | gh label remove \"$M\"","somewhere else too"]}]}'
+_lens
+_t="$(_texts code)"
+assert_contains "[S9] a place whose line is in the change is kept" "$_t" 'also at: b.sh | gh label add "$M"'
+_lacks "[S9] a place in a file the change does not have is left out" "$_t" "c.sh"
+_lacks "[S9] a place whose line is not in its file is left out" "$_t" "gh label remove"
+_lacks "[S9] a place with no line is left out" "$_t" "somewhere else too"
+assert_contains "[S9] ...a note says each was left out" "$(jq -r '.data.notes // [] | join(" ")' "$ART/lens-red-team.json" 2>/dev/null)" \
+    "a place the same kind of problem is also at was left out, its line not found as quoted: c.sh | gh label add"
+assert_eq "[S9] ...one note for each" "3" "$(jq -r '[.data.notes // [] | .[] | select(startswith("a place the same kind of problem"))] | length' "$ART/lens-red-team.json" 2>/dev/null)"
+
 print_test_section "S3–S5: a suspicion is a question"
 assert_contains "[S3] the prompt says a suspicion goes in unclear" "$P" \
     "A problem you suspect but cannot confirm is not left out: put it in the \"unclear\" list"
@@ -94,6 +110,16 @@ assert_contains "[S4] ...saying what would confirm it" "$(_texts code)" \
     "what would confirm it: how bash runs a TERM trap set after a builtin has started"
 assert_contains "[S4] ...and asking it as a question" "$(_texts code)" "A question: say whether it holds"
 assert_eq "[S4] it is kept in the result" "a.sh" "$(jq -r '.suspected[0].file // ""' "$ART/lens-red-team.json" 2>/dev/null)"
+_sum="$(_flat "$(cat "$ART/lens-red-team-summary.md" 2>/dev/null)")"
+assert_contains "[S8] a round that passes: the suspicion is in the lens's summary" "$_sum" \
+    "suspected, not confirmed: a SIGTERM between the claim and its trap leaves the label behind (a.sh"
+assert_contains "[S8] ...with what would confirm it" "$_sum" "what would confirm it: how bash runs a TERM trap set after a builtin has started"
+# shellcheck source=../../../../scripts/lib/run-open-items.sh
+source "$REPO_ROOT/scripts/lib/run-open-items.sh"
+_oq="$(_flat "$(open_items_questions "$TEST_TEMP_DIR")")"
+assert_contains "[S8] ...and in the run's open questions, for a person" "$_oq" \
+    "a SIGTERM between the claim and its trap leaves the label behind"
+assert_contains "[S8] ...saying what would confirm it" "$_oq" "what would confirm it: how bash runs a TERM trap set after a builtin has started"
 REPLY='{"score":9,"findings":[],"unclear":[{"file":"a.sh","quote":"gh label add \"$L\"","suspicion":"the label may be missing","fix":"code"}]}'
 _lens
 assert_eq "[S5] a suspicion with nothing to confirm it is not sent on" "" "$(_texts code)"
@@ -117,7 +143,7 @@ print_test_section "S7: outside assumptions"
 source "$REPO_ROOT/scripts/lib/outside-assumptions.sh"
 assert_contains "[S7] the lens is told the rule" "$P" "$(_flat "${ZB_OUTSIDE_ASSUMPTIONS_RULE:-<no rule>}")"
 assert_contains "[S7] ...and that one not handled is a finding" "$P" "An outside assumption the change does not handle is a finding"
-assert_contains "[S7] ...checked with the read-only lookup, not guessed" "$P" "look it up, read-only, with gh"
+assert_contains "[S7] ...checked with the read-only lookup, not guessed" "$P" "look it up, read-only, with zbuild-gh-get <endpoint> [jq-filter]"
 
 cleanup_test_env
 print_test_results

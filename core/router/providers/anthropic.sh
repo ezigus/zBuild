@@ -70,8 +70,9 @@ provider_anthropic_persona_args() {
 # lists the built-in tools the call has (none at all when given no word);
 # --strict-mcp-config loads no MCP server from the machine or the repository.
 # read-git without run-commands is the shell, allowed only git's reading
-# commands; read-github (#2584) the shell, allowed only gh's reading commands;
-# the call's hook refuses any other (core/router/tool-hook.sh).
+# commands; read-github (#2584) the shell, allowed only zbuild-gh-get (a GET of
+# GitHub's REST API, core/router/gh-get.sh); the call's hook refuses any other
+# (core/router/tool-hook.sh).
 provider_anthropic_tool_args() {
     local w tools="" git=0 run=0 gh=0
     for w in "$@"; do
@@ -97,7 +98,7 @@ provider_anthropic_tool_args() {
     printf '%s\n' --tools "${tools#,}"
     local allow=""
     (( git && !run )) && allow+=',Bash(git diff *),Bash(git log *),Bash(git show *),Bash(git status *)'
-    (( gh && !run )) && allow+=',Bash(gh api *),Bash(gh issue view *),Bash(gh issue list *),Bash(gh pr view *),Bash(gh pr list *),Bash(gh pr diff *),Bash(gh pr checks *),Bash(gh label list *),Bash(gh repo view *),Bash(gh release view *),Bash(gh release list *),Bash(gh run view *),Bash(gh run list *)'
+    (( gh && !run )) && allow+=',Bash(zbuild-gh-get *)'
     [[ -n "$allow" ]] && printf '%s\n' --allowedTools "${allow#,}"
     printf '%s\n' --strict-mcp-config
 }

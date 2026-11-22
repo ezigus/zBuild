@@ -738,12 +738,12 @@ _route_call_claude() {
     declare -F stage_cutoff_clear >/dev/null 2>&1 && stage_cutoff_clear
     if [[ ${#_tout_cmd[@]} -gt 0 ]]; then
         response="$(
-            _zbuild_make_fresh_shell
+            _zbuild_make_fresh_shell; _route_call_env
             "${_tout_cmd[@]}" claude "${_claude_args[@]}" <"$_prompt_in" 2>"$stderr_file"
         )" || rc=$?
     else
         response="$(
-            _zbuild_make_fresh_shell
+            _zbuild_make_fresh_shell; _route_call_env
             claude "${_claude_args[@]}" <"$_prompt_in" 2>"$stderr_file"
         )" || rc=$?
     fi
@@ -1316,7 +1316,11 @@ _route_to_model_loop_run() {
             error "route_to_model_loop: --max-turns-per-call must be integer in 1..200, got: $max_turns_per_call"
             return 2
         fi
-        mt="$max_turns_per_call"
+        # #2584 (ADR-018): the record is the one limit — its prompt states it.
+        if [[ "$max_turns_per_call" != "$mt" ]]; then
+            error "route_to_model_loop: --max-turns-per-call $max_turns_per_call is not the call's turn limit ($mt); set it with zb_call_limits_turns_override before the prompt is composed"
+            return 2
+        fi
     fi
     local _ROUTE_CALL_TURNS="$mt"
 
@@ -1527,14 +1531,14 @@ _route_to_model_loop_run() {
     if [[ ${#_tout_cmd[@]} -gt 0 ]]; then
         (
             cd "$cwd" || exit 99
-            _zbuild_make_fresh_shell
+            _zbuild_make_fresh_shell; _route_call_env
             # stdin AFTER the fresh shell: it points stdin at /dev/null (#2108).
             exec "${_tout_cmd[@]}" claude "${_claude_args[@]}" <"$_prompt_in"
         ) >"$_stream_file" 2>"$stderr_file" &
     else
         (
             cd "$cwd" || exit 99
-            _zbuild_make_fresh_shell
+            _zbuild_make_fresh_shell; _route_call_env
             exec claude "${_claude_args[@]}" <"$_prompt_in"
         ) >"$_stream_file" 2>"$stderr_file" &
     fi

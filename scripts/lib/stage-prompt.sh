@@ -283,12 +283,7 @@ _stage_block_rules_pair_v() {
     fi
     # #2584 (ADR-018): the dispatch's one record, which the call itself runs under.
     zb_call_limits_v secs turns "$stage" 2>/dev/null
-    local per_call="${secs:-?} seconds"
-    if [[ "$turns" =~ ^[0-9]+$ && "$turns" -gt 0 ]]; then
-        per_call+=" and ${turns} turns"
-    else
-        per_call+=", with no limit on turns"
-    fi
+    local per_call; zb_call_limits_said_v per_call "${secs:-?}" "$turns"
     _budget="- Your budget: each model call has $per_call. Finish well before the
   limit; at the limit, write your notes and give your answer."
     [[ "$stage_secs" =~ ^[0-9]+$ ]] && _budget+=" The whole stage has $stage_secs seconds."
