@@ -270,12 +270,11 @@ cannot.** `flock`, the pattern `core/state/` already uses throughout, keyed on
 `repos/<repo>/issues/<N>/`. #1764 proposes exactly this primitive for the same race one level
 down.
 
-**The `flock` admission lock handles intra-machine serialisation only.** A filesystem flock is
-invisible outside the machine that holds it. Cross-machine exclusion is the claim coordinator's
-job (ADR-005 §1): `core/claim/claim.sh` acquires `zbuild:claimed` on the GitHub issue after the
-admission flock succeeds, so a run on another machine that checks the label before starting
-sees the claim and refuses. The flock stays for intra-machine serialisation; the label adds the
-cross-machine layer on top of it.
+**The `flock` admission lock serialises runs on one machine only.** A filesystem flock is invisible
+outside the machine that holds it. Exclusion across machines is the claim coordinator's job (ADR-005 §1):
+after this lock admits a run, the engine asks the coordinator to claim the issue, and a run on another
+machine that finds the claim refuses to start. The lock is asked first, so a second run of an issue on the
+same machine is refused here and never reaches the coordinator.
 
 Liveness is decided before admission, not lazily: a lock whose holder is gone is reaped first.
 `zbuild_run_is_live` (ADR-006's staleness gate) supplies the predicate, which is the half of
@@ -451,9 +450,9 @@ committed, stash ablates nothing and reports a false pass.
 
 ## Enforced by
 
-- §4 (cross-machine exclusion is the claim coordinator's job; the admission lock handles intra-machine serialisation) →
-  `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh` [DSCLA-3]
-  (a run is refused when another machine holds `zbuild:claimed` on the issue)
+- §4 (the admission lock first, then the claim coordinator for other machines) →
+  `tests/integration/claim-refusal-test.sh` [F2] (a second run on this machine is refused by the lock and
+  never calls the coordinator), [F1] (a run is refused when another run holds the claim)
 - §2/§4 amendment 2026-11-14 (#2541: a tree git no longer lists is reclaimed, under the lock and age guards) → `tests/unit/cleanup-forgotten-trees-test.sh` G1–G5
 
 - `tests/unit/worktree-sparse-legacy-test.sh` — §2 per-worktree sparse-checkout: acquire and
