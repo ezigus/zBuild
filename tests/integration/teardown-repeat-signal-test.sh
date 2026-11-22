@@ -25,6 +25,8 @@
 #    still ends through its handler (rc 1)
 # T4 ...release finishes (T4a) and persist runs (T4b)
 # T5 ...and the stage is not run again
+# T6 the cross-machine claim is still released when a second TERM lands while
+#    teardown runs (ADR-005 §1, #1764)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -134,6 +136,41 @@ assert_file_exists "[T4a] release finishes under repeated TERM" "$REL_OUT"
 assert_file_exists "[T4b] persist runs under repeated TERM" "$PERSISTED"
 assert_eq "[T5] the stage is not run again" "1" "$(grep -c x "$STARTS")"
 [[ "$_storm_rc" == 1 && -e "$PERSISTED" ]] || tail -15 "$TEST_TEMP_DIR/storm.out" >&2
+
+# ── T6: the claim survives a second TERM during teardown ───────────────────
+rm -f "$STARTED" "$REL_IN" "$REL_OUT" "$PERSISTED"
+SECOND="$TEST_TEMP_DIR/second-term-sent"
+mkdir -p "$PLUGINS_ROOT/claim-coordinator"
+cp -R "$REPO_ROOT/plugins/claim-coordinator/github-labels" "$PLUGINS_ROOT/claim-coordinator/"
+rm -rf "$PLUGINS_ROOT/claim-coordinator/github-labels/tests"
+export ZBUILD_CLAIM_BACKEND=local-fs ZBUILD_CLAIM_STORE="$TEST_TEMP_DIR/claim-store" ZBUILD_NO_ISSUE_LOCK=1
+unset NO_GITHUB
+CLAIM_ISSUE=90001821; LABELS="$ZBUILD_CLAIM_STORE/$CLAIM_ISSUE/labels.txt"
+cat > "$PLUGINS_ROOT/agent/outcome/plugin.sh" <<PLUG
+outcome_run() { cp "$LABELS" "$TEST_TEMP_DIR/labels-seen" 2>/dev/null; : > "$STARTED"; sleep 60; return 0; }
+PLUG
+# Release holds until the second TERM has been sent, so it lands inside teardown.
+cat > "$PLUGINS_ROOT/tool/teardown/plugin.sh" <<PLUG
+teardown_run() {
+    : > "$REL_IN"
+    for _ in \$(seq 1 600); do [[ -e "$SECOND" ]] && break; sleep 0.05; done
+    : > "$REL_OUT"; return 0
+}
+PLUG
+( cd "$REPO" && exec bash "$RUNNER" --template teardown-two --issue "$CLAIM_ISSUE" --no-resume ) \
+    > "$TEST_TEMP_DIR/claim.out" 2>&1 &
+RUNNER_PID=$!
+for _ in $(seq 1 300); do [[ -e "$STARTED" ]] && break; sleep 0.1; done
+kill -TERM "$RUNNER_PID" 2>/dev/null || true
+for _ in $(seq 1 300); do [[ -e "$REL_IN" ]] && break; sleep 0.1; done
+kill -TERM "$RUNNER_PID" 2>/dev/null || true
+: > "$SECOND"
+for _ in $(seq 1 600); do kill -0 "$RUNNER_PID" 2>/dev/null || break; sleep 0.1; done
+kill -KILL "$RUNNER_PID" 2>/dev/null || true
+wait "$RUNNER_PID" 2>/dev/null || true
+assert_eq "[T6] setup: the run held the claim when its stage ran" "zbuild:claimed" "$(cat "$TEST_TEMP_DIR/labels-seen" 2>/dev/null)"
+assert_file_exists "[T6] setup: release ran" "$REL_OUT"
+assert_eq "[T6] the claim is released despite the second TERM" "" "$(cat "$LABELS" 2>/dev/null)"
 
 print_test_results
 exit $((FAIL > 0))

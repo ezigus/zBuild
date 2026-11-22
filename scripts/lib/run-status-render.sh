@@ -12,6 +12,22 @@ _RSC_RENDER_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 _RSC_ROOT="${_RSC_ROOT:-$(cd "$_RSC_RENDER_DIR/../.." && pwd)}"
 : "${ZBUILD_STATUS_COMMENT_MAX_BYTES:=60000}"   # GitHub rejects > 65,536; keep headroom
 _RSC_MARKER_PREFIX='<!-- zbuild-run-status run_id='
+# ADR-005 §2: the line naming who holds the claim on the issue (rsc_holder_find reads it).
+_RSC_HOLDER_PREFIX='<!-- zbuild-holder: '
+# rsc_holder_line_v <var> <text> — the holder named on a holder line of <text>
+# (a run-status comment), or "" — the one reader of the line.
+rsc_holder_line_v() {
+    local -n _rhl="$1"
+    local _rhl_l
+    _rhl=""
+    while IFS= read -r _rhl_l; do
+        [[ "$_rhl_l" == "$_RSC_HOLDER_PREFIX"*" -->" ]] || continue
+        _rhl_l="${_rhl_l#"$_RSC_HOLDER_PREFIX"}"
+        _rhl="${_rhl_l% -->}"
+        return 0
+    done <<< "$2"
+    return 0
+}
 # shellcheck source=./run-open-items.sh
 source "$_RSC_ROOT/scripts/lib/run-open-items.sh"   # run_end_words, open_items_* (#2330)
 # shellcheck source=./run-status-pages.sh
@@ -262,16 +278,16 @@ rsc_render_row() {
 # ─── rsc_render_header <model_json> <state_dir> [status_override] ───────────
 rsc_render_header() {
     local model="$1" state_dir="$2" override="${3:-}"
-    local run_id issue sha branch started status reason detail pr current updated end_reason
+    local run_id issue sha branch started status reason detail pr current updated end_reason holder
     # One jq for the whole header (ADR-065 §4); see rsc_render_row for the join.
     local _f
     _f="$(jq -r '. as $m | [.header.run_id, .header.issue, .header.engine_sha, .header.engine_branch,
                   .header.started, .terminal.status, .terminal.reason, .terminal.detail,
-                  .terminal.end_reason, .pr.url,
+                  .terminal.end_reason, .pr.url, .header.holder,
                   ([$m.order[]? | $m.rows[. | tostring] | select(. != null and .kind != "reused" and .verdict == null)]
                    | last | if . == null then "" else "\(.seq) \(.stage)" end)]
                  | map(. // "" | tostring) | join("\u001f")' <<< "$model")"
-    IFS=$'\x1f' read -r -d '' run_id issue sha branch started status reason detail end_reason pr current <<< "$_f" || true
+    IFS=$'\x1f' read -r -d '' run_id issue sha branch started status reason detail end_reason pr holder current <<< "$_f" || true
     current="${current%$'\n'}"
     sha="${sha:0:7}"
     started="${started%%.*}"; [[ -n "$started" ]] && started="${started%Z}Z"
@@ -305,6 +321,11 @@ rsc_render_header() {
     fi
 
     printf '%s%s -->\n' "$_RSC_MARKER_PREFIX" "$run_id"
+    # ADR-005 §2: the claim's holder, on its own line, for the next run to read —
+    # only while the run is going: a finished run holds nothing.
+    holder="${holder//[[:cntrl:]]/}"
+    [[ "$status" == running ]] || holder=""
+    [[ -n "$holder" ]] && printf '%s%s -->\n' "$_RSC_HOLDER_PREFIX" "${holder//-->/}"
     printf '### zbuild run `%s` · issue #%s · **%s**\n' "$run_id" "$issue" "$status"
     local meta="engine \`${sha}\`"
     [[ -n "$branch" ]] && meta+=" (\`${branch}\`)"

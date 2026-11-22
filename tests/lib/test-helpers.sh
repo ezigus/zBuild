@@ -394,6 +394,9 @@ setup_test_env() {
     mkdir -p "$ZBUILD_EVENTS_DIR"
     export NO_GITHUB=true
     export GIT_TERMINAL_PROMPT=0
+    # ADR-005: a run's issue claim never reaches GitHub from a test — NO_GITHUB
+    # skips it, and a test that unsets NO_GITHUB still claims on a local store.
+    export ZBUILD_CLAIM_BACKEND=local-fs ZBUILD_CLAIM_STORE="$TEST_TEMP_DIR/claim-store"
 
     # ADR-067 §8: a stage that calls a model composes its prompt with the
     # engine's three blocks, which plugin_hook_call writes at dispatch. A test

@@ -29,6 +29,8 @@ source "$_ZBUILD_ROOT/core/state/atomic.sh"
 source "$_ZBUILD_ROOT/core/state/resume.sh"
 # shellcheck source=../state/issue-lock.sh
 source "$_ZBUILD_ROOT/core/state/issue-lock.sh"
+# shellcheck source=../claim/claim.sh
+source "$_ZBUILD_ROOT/core/claim/claim.sh"
 # shellcheck source=../state/run-cap.sh
 source "$_ZBUILD_ROOT/core/state/run-cap.sh"
 # shellcheck source=../state/layout.sh
@@ -470,6 +472,16 @@ _runner_status_comment_spawn() {
         </dev/null >>"$state_dir/status-comment.log" 2>&1 &
     _RUNNER_STATUS_COMMENT_PID=$!
     return 0
+}
+
+# ─── _runner_early_exit_trap ─────────────────────────────────────────────────
+# ADR-005 §1: the exit trap from the claim until main() sets its own — it frees
+# what the run holds by then (the claim, the issue lock, the run-cap slot).
+_runner_early_exit_trap() {
+    trap '' INT TERM
+    zbuild_claim_release
+    zbuild_issue_lock_release || true
+    zbuild_run_cap_release || true
 }
 
 # ─── _runner_status_comment_reap ─────────────────────────────────────────────
@@ -2532,6 +2544,26 @@ main() {
             return 1
         fi
     fi
+    # ADR-005 §1: the cross-machine claim, after the one-machine lock (which
+    # refuses first) and before the tree, the branch and the first stage. The
+    # run's own exit trap is set much later, so from here until then a small one
+    # releases what the run holds; a signal meanwhile is held until the claim is
+    # recorded, then ends the run through it.
+    _RUNNER_EARLY_SIGNAL=""
+    trap '_runner_early_exit_trap' EXIT
+    trap '_RUNNER_EARLY_SIGNAL=1' INT TERM
+    if ! zbuild_claim_acquire "${_runner_issue:-}" "$state_dir"; then
+        eb_emit_event "pipeline.refused.claimed" \
+            "issue=${_runner_issue:-}" "holder=${_ZBUILD_CLAIM_THEIR_HOLDER:-unknown}" \
+            2>/dev/null || true
+        # printf '%s', not error(): error() echoes with -e, and the holder is
+        # text another run wrote.
+        printf 'zbuild: issue #%s is already claimed by another run: %s\n' \
+            "${_runner_issue:-}" "${_ZBUILD_CLAIM_THEIR_HOLDER:-unknown}" >&2
+        return 1
+    fi
+    trap 'exit 1' INT TERM
+    [[ -z "$_RUNNER_EARLY_SIGNAL" ]] || exit 1
 
     # ADR-052 (#1640): LAST thing before any stage runs. Everything above is
     # engine bookkeeping that belongs in the main checkout (state, events,
@@ -2751,6 +2783,9 @@ main() {
         # child inherits, so one lingering child would keep the issue locked
         # after this run is gone. Released after the always-run stages, which
         # still belong to this run.
+        # ADR-005 §1: the cross-machine claim goes first — while this machine's
+        # lock is still held, no run here can start on the issue and find it.
+        zbuild_claim_release
         if declare -F zbuild_issue_lock_release >/dev/null 2>&1; then
             zbuild_issue_lock_release || true
         fi

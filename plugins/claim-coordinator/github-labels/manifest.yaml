@@ -3,17 +3,14 @@ name: GitHub Labels Claim Coordinator (default)
 kind: claim-coordinator
 version: 0.1.0
 description: |
-  Default claim-coordinator plugin (ADR-005). Uses GitHub issue labels
-  (`claimed:<machine>`) as the cross-machine claim mechanism, ported from
-  legacy-DoNotUse/scripts/lib/daemon-state.sh:602-720.
+  Default claim-coordinator plugin (ADR-005). One shared GitHub issue label,
+  `zbuild:claimed`, means "a run is working on this issue"; the label is created
+  in the repository the first time it is needed. Who holds the claim is in that
+  run's run-status comment (ADR-064), not in the label. Two runs adding the
+  label at the same moment can both succeed — known, and #2534's to settle.
 
-  Has a documented TOCTOU window between add-label and re-verify. Mitigated
-  by random backoff (300–1100 ms) and a re-read step that drops the claim
-  if multiple `claimed:*` labels are observed.
-
-  For test/CI use, set ZBUILD_CLAIM_BACKEND=local-fs and
-  ZBUILD_CLAIM_STORE=<dir> to use a flock-serialised filesystem store
-  instead of `gh`.
+  NO_GITHUB=true makes no claim. For tests, ZBUILD_CLAIM_BACKEND=local-fs and
+  ZBUILD_CLAIM_STORE=<dir> keep the labels in a flock-serialised local store.
 
 hooks:
   claim: claim_coordinator_claim
@@ -37,7 +34,3 @@ provides:
     - claim.release
     - claim.renew
 
-config:
-  backoff_min_ms: 300
-  backoff_max_ms: 1100
-  machine_id: ""    # empty = use $(hostname)

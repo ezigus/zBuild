@@ -279,7 +279,7 @@ The upstream innovation we preserve verbatim: **GitHub labels are the entire con
 - `pipeline/in-progress` — claim-coordinator owns this issue.
 - `pipeline/complete` — pipeline succeeded.
 - `pipeline/failed` — pipeline gave up (after retries).
-- `claimed:<machine>` — which host is running it.
+- `zbuild:claimed` — a run, on any machine, is working on this issue; who it is is in that run's run-status comment (ADR-005 §2).
 - `priority:high` / `priority:low` — affects triage scoring.
 - Other labels emit events but don't change control flow.
 

@@ -373,6 +373,9 @@ _plugin_hook_call_once() {
     # would split the key across the boundary. scan_plugin_outputs has no such
     # cross-boundary reader and wants the literal argument.
     local -x ZBUILD_CURRENT_STAGE="${1:-${ZBUILD_CURRENT_STAGE:-}}"
+    # A hook other than run/cleanup (the claim coordinator's claim, release) is
+    # no stage's: its first argument is an issue, and the run's stage is not its.
+    [[ "$hook_name" == run || "$hook_name" == cleanup ]] || ZBUILD_CURRENT_STAGE=""
     # #1706 (ADR-054 §3.1): the unit's own name — the stage, or <stage>.<element>
     # for a map member — for this dispatch only. The element is consumed here, so
     # a stage dispatched from inside the member is named by its own stage.
@@ -687,7 +690,16 @@ _plugin_hook_call_once() {
     while :; do
         rc=0; wait "$_lc_pid" || rc=$?
         [[ -z "$_ZB_LC_STAGE_PID" ]] && { rc=$_ZB_LC_STAGE_RC; break; }
-        kill -0 "$_lc_pid" 2>/dev/null || break
+        kill -0 "$_lc_pid" 2>/dev/null && continue
+        # Gone: a trap that cut the wait short (rc > 128) and outlived the stage
+        # may have left its status unread. A second wait returns the status bash
+        # kept (or 127 if it kept none). Not redirected: a trap that fires inside
+        # a redirected call writes its banner into the redirect.
+        if (( rc > 128 )); then
+            local _lc_rc2=0; wait "$_lc_pid" || _lc_rc2=$?
+            (( _lc_rc2 != 127 )) && rc=$_lc_rc2
+        fi
+        break
     done
     _ZB_LC_STAGE_PID="$_lc_prev"
     _ZB_LC_WATCHDOG_PID="$_lc_wd_prev"

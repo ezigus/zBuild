@@ -1,6 +1,6 @@
 # claim-coordinator-github-labels
 
-The claim-coordinator-github-labels plugin implements the default cross-machine claim mechanism using GitHub issue labels so concurrent pipeline runs on different machines don't conflict.
+The claim-coordinator-github-labels plugin implements the default cross-machine claim: one shared GitHub issue label, `zbuild:claimed`, that a run adds before its first stage and removes on exit, so a run on another machine refuses to start on the same issue.
 
 **GitHub Labels Claim Coordinator (default)**
 
@@ -16,17 +16,14 @@ name: GitHub Labels Claim Coordinator (default)
 kind: claim-coordinator
 version: 0.1.0
 description: |
-  Default claim-coordinator plugin (ADR-005). Uses GitHub issue labels
-  (`claimed:<machine>`) as the cross-machine claim mechanism, ported from
-  legacy-DoNotUse/scripts/lib/daemon-state.sh:602-720.
+  Default claim-coordinator plugin (ADR-005). One shared GitHub issue label,
+  `zbuild:claimed`, means "a run is working on this issue"; the label is created
+  in the repository the first time it is needed. Who holds the claim is in that
+  run's run-status comment (ADR-064), not in the label. Two runs adding the
+  label at the same moment can both succeed — known, and #2534's to settle.
 
-  Has a documented TOCTOU window between add-label and re-verify. Mitigated
-  by random backoff (300–1100 ms) and a re-read step that drops the claim
-  if multiple `claimed:*` labels are observed.
-
-  For test/CI use, set ZBUILD_CLAIM_BACKEND=local-fs and
-  ZBUILD_CLAIM_STORE=<dir> to use a flock-serialised filesystem store
-  instead of `gh`.
+  NO_GITHUB=true makes no claim. For tests, ZBUILD_CLAIM_BACKEND=local-fs and
+  ZBUILD_CLAIM_STORE=<dir> keep the labels in a flock-serialised local store.
 
 hooks:
   claim: claim_coordinator_claim
@@ -42,12 +39,13 @@ requires:
 provides:
   role: claim-coordinator
   alias: github-labels
-  schema_version: 1
-
-config:
-  backoff_min_ms: 300
-  backoff_max_ms: 1100
-  machine_id: ""    # empty = use $(hostname)
+  # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
+  # the engine's known set at load. Adding one here needs no engine-config edit.
+  events:
+    - claim.acquire
+    - claim.expire
+    - claim.release
+    - claim.renew
 ```
 
 _See [[Pipeline-and-Stages]] for how this plugin is dispatched, and [[Writing-Plugins]] for the contract._
