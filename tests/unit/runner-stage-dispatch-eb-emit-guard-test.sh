@@ -98,6 +98,9 @@ _drive_with_failing_eb() {
         # would report this stub's missing result; stub it with the verdict.
         runner_read_stage_reason() { echo ""; }
         zb_test_readers_through_stubs verdict reason   # the dispatch reads in its shell (round 9)
+        # The plugin_hook_call stub answers every hook, the claim with nothing —
+        # which the engine reads as a refusal (ADR-005 §3). The claim is not this test's.
+        zbuild_claim_acquire() { return 0; }
         plugin_hook_call() {
             local state="$4"
             local artdir; artdir="$(dirname "$state")/artifacts"
