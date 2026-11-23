@@ -32,6 +32,10 @@
 # A12 [code] an `expect=` variable, or `$assert_ok`, is not a check line
 # A13 [code] a test file whose name holds `=` is read like any other
 # Second review on #2575:
+# AG1 [code] the check is told a setup guard — a line that fails only when a
+#            tagged test's setup did not happen — is part of that test
+# AG2 [code] the check shows and reads steps by their own numbers (2.1), not
+#            by position
 # A14 [code] only asked answers are kept: an unasked line is judged again on
 #            the next try
 # A15 [code] an asked answer naming a SPEC not in the contract, or a step past
@@ -189,6 +193,11 @@ assert_eq "[A9] a line changed for what a step changes is no finding" "pass" "$O
 assert_contains "[A10] a helper's line a tagged assertion calls traces to its SPEC" \
     "$(tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/unasked-prompt" 2>/dev/null)" \
     "A line in a helper that a tagged assertion calls traces to that assertion's SPEC."
+# AG1 (#2590): a setup guard is part of the test it guards (#1764 run
+# 44910536811 flagged two as unasked, and they were deleted).
+assert_contains "[AG1] the check is told a setup guard belongs to the test it guards" \
+    "$(tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/unasked-prompt" 2>/dev/null)" \
+    "A line that only checks that a tagged test's own setup happened"
 STEPS_BLOCK=""
 
 print_test_section "A11: an old assertion that only lost its stale tag"
@@ -224,6 +233,18 @@ assert_eq "[A15] a SPEC not in the contract is no answer: unusable" "unusable" "
 STEPS_BLOCK=$'```steps\n- one step | areas: scripts/lib/claim.sh\n```\n'
 VERDICT="asked | STEP: 5"; _run
 assert_eq "[A15] a step past the last is no answer: unusable" "unusable" "$OUTCOME"
+STEPS_BLOCK=""
+
+print_test_section "AG2: steps by their own numbers"
+# #2590: a step's parts are shown and answered by their own numbers (2.1), not
+# by position, as build's check names them.
+STEPS_BLOCK=$'```steps\n1. read the claim | areas: scripts/lib/claim.sh\n- 2.1 rename it | areas: scripts/lib/claim.sh\n- 2.2 note it | areas: README.md\n3. release it | areas: scripts/lib/claim.sh\n```\n'
+VERDICT="asked | STEP: 2.1"; _run
+assert_contains "[AG2] part 2.1 is shown by its number" "$(cat "$TEST_TEMP_DIR/unasked-prompt" 2>/dev/null)" "2.1. rename it"
+assert_contains "[AG2] ...and step 3 as 3, not 4" "$(cat "$TEST_TEMP_DIR/unasked-prompt" 2>/dev/null)" "3. release it"
+assert_eq "[AG2] an answer naming part 2.1 is usable" "pass" "$OUTCOME"
+VERDICT="asked | STEP: 4"; _run
+assert_eq "[AG2] step 4 does not exist (four entries, three steps): unusable" "unusable" "$OUTCOME"
 STEPS_BLOCK=""
 
 cleanup_test_env

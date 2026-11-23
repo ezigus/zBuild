@@ -278,10 +278,13 @@ zb_findings_reg_put() {
 # the record as text and gives {out: <findings with .id>, r: <the record>}. A
 # text that comes twice in one list takes a new id the second time.
 # shellcheck disable=SC2016  # jq text, not shell
+# #2590 (ADR-068 §5): a finding's id is made from its text up to " ¶ ": the
+# engine's own notes go after it (e.g. issue-acceptance's "answered before"), so
+# a note never makes the same finding look new.
 _ZB_FINDING_IDS_JQ='def zb_fids($reg; $code):
   (($reg | try fromjson catch {}) | if type == "object" then . else {} end) as $r0
   | reduce .[] as $f ({r: {highest: ($r0.highest // 0), ids: ($r0.ids // {})}, out: [], used: {}};
-      (($f | if type == "object" then .text else . end) | tostring) as $t
+      (($f | if type == "object" then .text else . end) | tostring | split(" ¶ ")[0]) as $t
       | (.r.ids[$t] // null) as $have
       | if $have != null and (.used[$have] | not) then .out += [$f + {id: $have}] | .used[$have] = true
         else (.r.highest + 1) as $n | "\($code)-\($n)" as $id

@@ -76,3 +76,16 @@ _build_steps_changed_v() {
     [[ -n "$_bsc" ]] && _bsc=$'\n'"These steps changed since you last answered them. Do the part that is new: \"done before\" does not cover it."$'\n'"$_bsc"
     return 0
 }
+
+# _build_steps_list_v <var> — design's steps as build's prompt shows them: one
+# line per step, `step <its number>: <words>`, then its areas (#2590). The
+# number is the one build answers by and the check judges by.
+_build_steps_list_v() {
+    local -n _bsl_out="$1"; local n a
+    _bsl_out=""
+    for (( n = 1; n <= ${#_BUILD_STEP_DESC[@]}; n++ )); do
+        _bsl_out+="step ${_BSL[$n]:-$n}: ${_BUILD_STEP_DESC[n-1]}"$'\n'
+        a="${_BUILD_STEP_AREAS[n-1]:-}"
+        [[ -n "$a" ]] && _bsl_out+="   areas: $a"$'\n'
+    done
+}

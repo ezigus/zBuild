@@ -13,6 +13,10 @@
 # SP2 [change] design's check flags a step or a part that names more than one
 #              file, naming it; a part with one file passes
 # SP3 [change] design's prompt asks for numbered parts, one file each
+# SP6 [change] build's own prompt lists the steps by their real numbers (1.1,
+#             1.2, 2), as its check names them (#2590: #2532 run 45102665787's
+#             build prompt numbered them by position, 1-5, and build answered
+#             by those numbers)
 # SP4 [change] build answers `step 1.2: done — <file> | <line>`: read as part
 #              1.2's answer; the judge is shown `step 1.2` and its `1.2: does`
 #              is read
@@ -129,6 +133,13 @@ _run missing "step 1.2: done — README.md | $README_LINE"$'\n'"step 2: done —
 _f="$(_findings)"
 assert_contains "[SP5] a part with no answer is a finding naming it" "$_f" "step 1.1 has no answer"
 _lacks "[SP5] ...not part 1.2, which was answered" "$_f" "step 1.2 has no answer"
+
+print_test_section "SP6: build's prompt shows each step's real number"
+_bp="$(sed -n "/### THE DESIGN'S STEPS/,/^### /p" "$AD/build-prompt.txt" 2>/dev/null)"
+assert_contains "[SP6] part 1.1 is shown as step 1.1" "$_bp" "step 1.1:"
+assert_contains "[SP6] part 1.2 is shown as step 1.2" "$_bp" "step 1.2:"
+assert_contains "[SP6] step 2 is shown as step 2" "$_bp" "step 2:"
+if /usr/bin/grep -qE '^3\. ' <<< "$_bp"; then assert_fail "[SP6] ...never numbered by position (no '3.')" "$_bp"; else assert_pass "[SP6] ...never numbered by position (no '3.')"; fi
 
 cleanup_test_env
 print_test_results
