@@ -16,6 +16,16 @@
 
 [[ -n "${_TEST_HELPERS_LOADED:-}" ]] && return 0
 _TEST_HELPERS_LOADED=1
+# #2588 (ADR-012): no test sees a real credential. On a CI runner the job's
+# token and the model provider's keys are in the environment; a test that
+# printed one (#2532 run 45102665787) had it revoked by push protection.
+# Cleared when the harness is sourced (every test sources it, even one that
+# never calls setup_test_env) and again by setup_test_env.
+_zb_test_clear_credentials() {
+    unset GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN \
+        CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY
+}
+_zb_test_clear_credentials
 
 # ─── Re-entrancy guard (#971): refuse a test invoked inside another test run ──
 # Every *-test.sh sources this file first, so this is the universal chokepoint.
@@ -369,6 +379,7 @@ setup_test_env() {
     # The master trap (_test_harness_cleanup) reads _TRACKED_TEST_TEMP_DIRS
     # and rm -rf's each, in addition to AUTO_TEST_TEMP_DIR.
     _TRACKED_TEST_TEMP_DIRS+=("$TEST_TEMP_DIR")
+    _zb_test_clear_credentials
     mkdir -p "$TEST_TEMP_DIR/home/.zbuild"
     mkdir -p "$TEST_TEMP_DIR/bin"
     mkdir -p "$TEST_TEMP_DIR/project"
