@@ -66,13 +66,17 @@ open_items_json() {
     jq -n -c "$_OPEN_ITEMS_JQ_PASSED"'
         [ inputs as $r | (input_filename | split("/") | last | sub("\\.json$"; "") | sub("-(result|results|summary|verdict)$"; "")) as $c
           | $r | select(type == "object" and ((.outcome) | type) == "string")
-          | select(passed | not)
+          # #2591 (ADR-054 §6a): a test already failing before this change is
+          # open whether or not its result passed.
+          | ((.data.already_failing // [])[] | {ref: "\($c): \(.)", opener: $c,
+                text: "\(.) already fails before this change. What would settle it: it passes on the default branch"}),
+            (select(passed | not)
           | if ((.data.findings // []) | length) > 0 then
                 (.data.findings[] | {ref: (if (.id // "" | tostring) != "" then .id else "\($c) finding \(.n)" end), opener: $c, text: (.text // "")})
             else
                 {ref: $c, opener: $c, text: ("the " + $c + " check did not pass: "
                                               + ((.reason // "") | if . == "" then "it gave no reason" else . end))}
-            end ]
+            end) ]
         # A finding routed to two of a stage'"'"'s files (test-results.json and
         # test-code-result.json) is one item, named by the stage itself.
         | reduce .[] as $i ([]; (map(.ref) | index($i.ref)) as $k

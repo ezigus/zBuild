@@ -187,7 +187,15 @@ A test that is killed, times out or replaces the EXIT trap leaves its temp folde
 
 The test harness clears every real credential the engine is given when `tests/lib/test-helpers.sh` is sourced, and `setup_test_env` clears them again. That covers `GH_TOKEN`, `GITHUB_TOKEN` and their enterprise forms, `CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_API_KEY`, so a test that never calls `setup_test_env` is covered too. A test that needs a token sets a fake one by plain assignment, never as a prefix on a function call: a prefix sets it only for that call, so an `unset` inside the function brings back whatever the caller had. On a CI runner that is the job's real token. #2532 run 45102665787 printed it from `read-github-tool-test.sh` RG9, and GitHub revoked it.
 
+## Amendment 2026-11-23 (#2591) — a reader samples a file's size once; a test's own writes are whole
+
+A test that watches a file for a partial state reads its size with one `stat`, never by reading the file through. Ubuntu 26.04's uutils `wc -c` reads through, so it can count a write that is cutting the file at that moment. The test's own writes to that file are made in one step (temp file, then rename), so they never cut down a file another write put there.
+
+`tests/unit/scripts-lib-atomic-replace-test.sh` SPEC-3 failed on GitHub's Ubuntu 26.04 runners now and then, main included. Its trigger write truncated the restored file in place while the reader read it through. Re-created locally with a reader that reads through: torn 3 of 3 with the old trigger, clean 3 of 3 with a whole write.
+
 ## Enforced by
+
+- Amendment 2026-11-23 (#2591: one stat per sample, whole writes) → `tests/unit/scripts-lib-atomic-replace-test.sh` SPEC-3 (its negative control: a bare `cp` restore fails it 3/3)
 
 - 2026-11-23 amendment (#2588: no test sees a real credential) → `tests/unit/test-env-no-credentials-test.sh` C0 (cleared when the harness is sourced), C1 (and by setup_test_env); `tests/unit/read-github-tool-test.sh` RG9 (a caller's real-looking GITHUB_TOKEN never reaches the call's environment; the old prefix form fails it)
 

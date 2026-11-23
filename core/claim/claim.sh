@@ -70,7 +70,10 @@ zbuild_claim_acquire() {
     # A JSON string cannot hold an unescaped quote, so a holder's text never
     # matches these. A reply that says acquired is believed whatever the hook's
     # status (#2586): an interrupt can cut the wait short after the label went
-    # on, and a claim this run made must be released by it.
+    # on, and a claim this run made must be released by it. A trapped signal
+    # that lands while bash waits on the hook makes `wait` return 128+signal at
+    # once; on a busy runner that is often (#2591: 27 of 60 under load, Ubuntu
+    # 26.04, every claim made and released).
     if [[ "$rc" -ne 0 && ! "$reply" =~ \"acquired\"[[:space:]]*:[[:space:]]*true ]]; then
         _zbuild_claim_skipped "$issue" "the claim coordinator failed (rc=$rc)"
         return 0

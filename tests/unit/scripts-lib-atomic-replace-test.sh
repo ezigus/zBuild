@@ -111,7 +111,10 @@ TORN="$TEST_TEMP_DIR/torn-f"; DONE="$TEST_TEMP_DIR/done-f"; rm -f "$TORN" "$DONE
 (
     while [[ ! -f "$DONE" ]]; do
         if [[ -f "$TARGET" ]]; then
-            b="$(wc -c < "$TARGET" 2>/dev/null | tr -d ' ' || echo 0)"
+            # #2591: one stat per sample. Ubuntu 26.04's uutils `wc -c` reads the
+            # file through rather than asking its size, so it could count a
+            # trigger write cutting the file mid-read.
+            b="$(stat -c %s "$TARGET" 2>/dev/null || stat -f %z "$TARGET" 2>/dev/null || echo 0)"
             # a size strictly between the marker and the full file is a partial copy
             [[ "$b" -gt "$CORRUPT_LEN" && "$b" -lt "$EXP_BYTES" ]] && { touch "$TORN"; break; }
         fi
@@ -123,7 +126,10 @@ fpids=()
 for _w in $(seq 1 12); do
     ( source "$REPO_ROOT/scripts/lib/helpers.sh"
       for _ in $(seq 1 40); do
-          printf '%s' "$CORRUPT" > "$TARGET"   # invalid JSON → triggers .bak recovery (empty is "valid" to jq)
+          # invalid JSON → triggers .bak recovery (empty is "valid" to jq). Written
+          # in one step (temp + rename, #2591): `>` would cut the restored file
+          # down in place, which a reader reading it through sees as torn.
+          printf '%s' "$CORRUPT" > "$TARGET.m$_w"; mv -f "$TARGET.m$_w" "$TARGET"
           validate_json "$TARGET" >/dev/null 2>&1 || true
       done ) &
     fpids+=($!)

@@ -190,6 +190,8 @@ BUDGET_MARGIN_STARTUP=1
 # and 1833 execs in all, 437 processes and 289 execs a dispatch; start-up as before.
 # #2590: build's prompt lists the steps from those already loaded, not through
 # the plan renderer. Measured on macOS: 2286 processes and 1816 execs in all.
+# #2591: a passing test run no longer reads its failing files. Measured on
+# macOS: 2280 processes in all.
 FORK_BUDGET=$(( 1816 + BUDGET_MARGIN_TOTAL ))
 # PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
 # the programs above plus each `$( )` subshell, a copy of the whole engine shell
@@ -255,7 +257,7 @@ FORK_BUDGET=$(( 1816 + BUDGET_MARGIN_TOTAL ))
 # #2574: see FORK_BUDGET — 2387 processes, plus the margin.
 # #1764: see FORK_BUDGET — 2381 processes, plus the margin.
 # #2584: see FORK_BUDGET — 2325 processes, plus the margin.
-PROCESS_BUDGET=$(( 2286 + BUDGET_MARGIN_TOTAL ))
+PROCESS_BUDGET=$(( 2280 + BUDGET_MARGIN_TOTAL ))
 # The run's cost in two parts (ADR-065 §6, #2472). Each budget ratchets down
 # like the totals; each floor is the goal, an estimate, measured again when
 # reached. History: 505 / 298 a dispatch, 12 / 7 a plugin at start-up (#2472 —
