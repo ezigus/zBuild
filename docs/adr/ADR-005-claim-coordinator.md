@@ -150,7 +150,13 @@ Section L wishlist item. Routes all claim operations through an optional dashboa
 | `plugins/claim-coordinator/ttl-leases/` (no TOCTOU) | Deferred → Phase 1 | KEEPERS.md §L item 10 |
 | `plugins/claim-coordinator/dashboard/` variant | Deferred → Phase 1 | KEEPERS.md §L item 11 |
 
+## Amendment 2026-11-23 (#2586) — §3: a reply that says acquired is believed
+
+A claim hook whose reply says `"acquired": true` holds the claim, whatever the hook's exit status. An interrupt can cut the engine's wait for the hook short after the label went on, so the status reads non-zero while the reply is right; before this, the run counted the claim as skipped and never released it (C7 in `tests/integration/claim-release-on-exit-test.sh`, failing in CI and in #2532 run 45017980554). A non-zero status with any other reply is still a skipped claim.
+
 ## Enforced by
+
+- §3 amendment 2026-11-23 (#2586: an acquired reply is believed) → `tests/unit/claim-acquire-release-test.sh` ("an acquired reply with a bad status → the claim is held … and released at the end")
 
 - §1 claim after the admission lock, before the first stage →
   `tests/integration/claim-release-on-exit-test.sh` [C1] (the label is on the issue when the first stage

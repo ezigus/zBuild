@@ -46,6 +46,17 @@
 #              — held; round 3 it quotes break_it — refused
 # PI10 [change] (H2) a line removed since the MET: the judge quotes it as it
 #              was, and the refusal is taken
+# PI14 [change] (#2586, ADR-072 §5) a kept MET judged again because the code
+#              moved, and the check answers a finding naming it ("done —
+#              changed RQFLAG-1 from MET to UNMET"): the item is not held, and
+#              its UNMET stands although its QUOTE is a line that was there;
+#              RQCNFG-1, which no finding names, is still held
+# PI15 [change] (#2586 R3) a stage answers its finding "wrong" quoting no line:
+#              the requirement is not judged again — its UNMET stands, the
+#              round fails — and the finding, sent on again, carries that
+#              answer and says a plain wrong does not close it
+# PI16 [guard] a wrong that quotes the line showing it met has the
+#              requirement judged again, held to the answer
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -104,6 +115,7 @@ route_to_model() {
     [[ -n "${OPENS:-}" && -n "${ZBUILD_ROUTER_OPENED_FILE:-}" ]] && printf '%s\n' "$OPENS" >> "$ZBUILD_ROUTER_OPENED_FILE"
     [[ "$2" == *$'\n- RQCNFG-1: '* ]] && r+="$CNFG"$'\n'
     [[ "$2" == *"Then answer the reverse question"* ]] && r+=$'UNASKED: none\n'
+    [[ -n "${EXTRA:-}" ]] && r+="$EXTRA"$'\n'
     printf '%s' "$r"
 }
 resolve_tier() { printf 'T2'; }
@@ -319,6 +331,63 @@ _pf="$(_flat "$_P.1")"
 assert_contains "[PI13] ...shown as it was" "$_pf" "was: - RQFLAG-1: Add a flag."
 assert_contains "[PI13] ...and as it is now" "$_pf" "now: - RQFLAG-1: Add a flag, and print its value."
 assert_contains "[PI13] ...told \"done before\" cannot cover the new part" "$_pf" '"done before" cannot cover it'
+
+print_test_section "PI14: an open finding about an item unlocks its kept pass (#2586)"
+rm -f "$A/issue-acceptance-judged.json" "$A"/issue-acceptance-judged-hand* "$A/build-summary.json" "$A"/build-tests*.json
+_reqs_now "Add a flag."
+FLAG="MET: RQFLAG-1"; CNFG="MET: RQCNFG-1"; OPENS="$XR/p.sh"; EXTRA=""
+printf 'flag=1\nflag_read=1\n' > "$XR/p.sh"
+printf '%s\n' 'diff --git a/p.sh b/p.sh' '+flag=1' '+flag_parsed=20' > "$IN/diff.patch"
+_ia
+assert_eq "[PI14] setup: both met" "pass" "$OUT"
+OPENS=""
+printf 'flag=1\nflag_read=1\nflag_more=1\n' > "$XR/p.sh"
+printf '%s\n' 'diff --git a/p.sh b/p.sh' '+flag=1' '+flag_parsed=21' > "$IN/diff.patch"
+FLAG='UNMET: [fix-code] RQFLAG-1 | WHY: the two-line form is missed | ACCEPTED IF: the flag is read on either form | QUOTE: p.sh | flag_read=1'
+CNFG='UNMET: [fix-code] RQCNFG-1 | WHY: no refusal | ACCEPTED IF: a missing config is refused | QUOTE: p.sh | flag_read=1'
+EXTRA='ANSWER BUFND-35: done — changed RQFLAG-1 from MET to UNMET; the two-line form is a real gap'
+: > "$ZBUILD_EVENTS_JSONL"
+_ia
+assert_eq "[PI14] both asked again: the code moved" "1 1" "$(_asked RQFLAG-1) $(_asked RQCNFG-1)"
+assert_eq "[PI14] RQFLAG-1, named by its answer, is not held: the run fails" "fail" "$OUT"
+assert_contains "[PI14] ...RQFLAG-1 is unmet" "$(jq -r '.data.unmet | join("|")' "$A/issue-acceptance-result.json" 2>/dev/null)" "RQFLAG-1"
+_lacks_w "[PI14] ...RQCNFG-1, named by no finding, is held as before" "$(jq -r '.data.unmet | join("|")' "$A/issue-acceptance-result.json" 2>/dev/null)" "RQCNFG-1"
+assert_eq "[PI14] ...judge.held for RQCNFG-1 only" "RQCNFG-1" "$(jq -r 'select(.type == "judge.held") | .data.item' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sort -u | tr '\n' ' ' | sed 's/ $//')"
+EXTRA=""
+
+print_test_section "PI15-PI16: a plain wrong does not close a finding the judge still holds (#2586)"
+rm -f "$A/issue-acceptance-judged.json" "$A"/issue-acceptance-judged-hand* "$A/build-summary.json" "$A"/build-tests*.json "$A/test-author-result.json"
+FLAG="MET: RQFLAG-1"; CNFG="$REFUSE"; OPENS=""
+_ia
+assert_eq "[PI15] setup: RQCNFG-1 refused" "fail" "$OUT"
+FID="$(jq -r '.data.findings[] | select(.text | contains("RQCNFG-1")) | .id' "$A/issue-acceptance-result.json" | head -n 1)"
+CNFG="MET: RQCNFG-1"
+stage_result_write "$A/test-author-result.json" pass "authored" \
+    "$(jq -nc --arg a "$FID: wrong — the missing-file case is a theoretical concern" '{answers: [$a]}')" >/dev/null
+_ia
+assert_eq "[PI15] a wrong quoting no line: RQCNFG-1 is not judged again (no call)" "0" "$CALLS"
+assert_eq "[PI15] ...its UNMET stands: the round fails" "fail" "$OUT"
+_ft="$(jq -r '.data.findings[] | select(.text | contains("RQCNFG-1")) | .text' "$A/issue-acceptance-result.json" | head -n 1)"
+assert_contains "[PI15] ...the finding carries the owner's answer" "$_ft" "the missing-file case is a theoretical concern"
+assert_contains "[PI15] ...and says a plain wrong does not close it" "$_ft" "a wrong that quotes no line does not close it"
+stage_result_write "$A/test-author-result.json" pass "authored" \
+    "$(jq -nc --arg a "$FID: wrong — the file is refused: p.sh | flag=1" '{answers: [$a]}')" >/dev/null
+_ia
+assert_eq "[PI16] a wrong quoting a line: RQCNFG-1 is judged again" "1" "$(_asked RQCNFG-1)"
+assert_eq "[PI16] ...and the judge's MET stands" "pass" "$OUT"
+# PI17 (review of #2586): a quote formatted as models write it is a quote —
+# backticks around each part, a file with no extension.
+for _pq in '`p.sh` | `flag=1`' '**p.sh** | flag=1' 'Makefile | flag=1' 'p.sh:12 | flag=1'; do
+    rm -f "$A/issue-acceptance-judged.json" "$A"/issue-acceptance-judged-hand*
+    CNFG="$REFUSE"; rm -f "$A/test-author-result.json"; _ia
+    FID="$(jq -r '.data.findings[] | select(.text | contains("RQCNFG-1")) | .id' "$A/issue-acceptance-result.json" | head -n 1)"
+    CNFG="MET: RQCNFG-1"
+    stage_result_write "$A/test-author-result.json" pass "authored" \
+        "$(jq -nc --arg a "$FID: wrong — the file is refused: $_pq" '{answers: [$a]}')" >/dev/null
+    _ia
+    assert_eq "[PI17] a wrong quoting a line as $_pq: RQCNFG-1 is judged again" "1" "$(_asked RQCNFG-1)"
+done
+rm -f "$A/test-author-result.json"
 
 cleanup_test_env
 print_test_results

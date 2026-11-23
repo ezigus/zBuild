@@ -18,17 +18,24 @@ _ZBUILD_DESIGN_STEPS_LOADED=1
 # zb_design_step_lines_v <array> <design_md> — each step of the ```steps block,
 # in order, its list marker taken off: "<what to do> | areas: <areas>". A step
 # whose words or areas carry on to the next line is one entry (#2460).
+# _ZB_STEP_LABELS gets each entry's number (#2586, ADR-073): a part's own,
+# `1.2` — marked `- 1.2 …` or `1.2 …` — else the next whole number.
+_ZB_STEP_LABELS=()
 zb_design_step_lines_v() {
-    local -n _dsl="$1"; local _dsl_l _dsl_in=0 _dsl_c
-    _dsl=()
+    local -n _dsl="$1"; local _dsl_l _dsl_in=0 _dsl_c _dsl_n=0
+    _dsl=(); _ZB_STEP_LABELS=()
     [[ -f "${2:-}" ]] || return 0
+    local _dsl_pre='^[[:space:]]*([-*][[:space:]]+)?([0-9]+)\.([0-9]+)[.:)]?[[:space:]]+(.*[^[:space:]])'
     while IFS= read -r _dsl_l || [[ -n "$_dsl_l" ]]; do
         _dsl_l="${_dsl_l%$'\r'}"
         if [[ "$_dsl_l" =~ ^'```steps'[[:space:]]*$ ]]; then _dsl_in=1; continue; fi
         (( _dsl_in == 1 )) || continue
         [[ "$_dsl_l" =~ ^'```'[[:space:]]*$ ]] && break
-        if [[ "$_dsl_l" =~ ^[[:space:]]*[-*0-9.]+[[:space:]]+(.*[^[:space:]]) ]]; then
-            _dsl+=("${BASH_REMATCH[1]}")
+        if [[ "$_dsl_l" =~ $_dsl_pre ]]; then
+            _dsl_n=$(( 10#${BASH_REMATCH[2]} ))
+            _dsl+=("${BASH_REMATCH[4]}"); _ZB_STEP_LABELS+=("$_dsl_n.$(( 10#${BASH_REMATCH[3]} ))")
+        elif [[ "$_dsl_l" =~ ^[[:space:]]*[-*0-9.]+[[:space:]]+(.*[^[:space:]]) ]]; then
+            _dsl+=("${BASH_REMATCH[1]}"); _dsl_n=$(( _dsl_n + 1 )); _ZB_STEP_LABELS+=("$_dsl_n")
         elif [[ -n "${_dsl_l// }" && ${#_dsl[@]} -gt 0 ]]; then
             _dsl_c="${_dsl_l#"${_dsl_l%%[![:space:]]*}"}"
             _dsl[-1]+=" ${_dsl_c%"${_dsl_c##*[![:space:]]}"}"
@@ -66,16 +73,16 @@ zb_design_step_split() {
 # steps writes none (and removes an earlier one, so a stale list is never read
 # as this design's).
 zb_design_write_steps() {
-    local design="$1" out="$2" title l rows="" specs="" blk="" id txt all=""
+    local design="$1" out="$2" title l rows="" specs="" blk="" id txt all="" i
     local -a lines=()
     local -A seen=()
     zb_design_step_lines_v lines "$design"
     if [[ ${#lines[@]} -eq 0 ]]; then rm -f "$out" 2>/dev/null; return 0; fi
     title="$(grep -m1 -E '^# ' "$design" 2>/dev/null || true)"; title="${title#\# }"
-    for l in "${lines[@]}"; do
-        zb_design_step_split "$l"
+    for i in "${!lines[@]}"; do
+        zb_design_step_split "${lines[i]}"
         l="${_ZB_STEP_DESC//[$'\x1e\x1f']/ }"$'\x1f'"${_ZB_STEP_AREAS//[$'\x1e\x1f']/ }"
-        rows+="$l"$'\x1f'"$_ZB_STEP_SERVES"$'\x1e'
+        rows+="$l"$'\x1f'"$_ZB_STEP_SERVES"$'\x1f'"${_ZB_STEP_LABELS[i]:-$(( i + 1 ))}"$'\x1e'
         all+="${_ZB_STEP_SERVES:+ $_ZB_STEP_SERVES}"
     done
     if [[ -n "$all" ]]; then
@@ -95,8 +102,9 @@ zb_design_write_steps() {
         [$rows | split("\u001e")[] | select(length > 0) | split("\u001f")
           | {description: (.[0] | trim),
              areas: ((.[1] // "") | split(",") | map(trim) | map(select(length > 0))),
-             serves: ((.[2] // "") | split(" ") | map(select(length > 0)))}] as $s
-        | {title: $t, steps: [$s | to_entries[] | {id: "step-\(.key + 1)"} + .value],
+             serves: ((.[2] // "") | split(" ") | map(select(length > 0))),
+             n: (.[3] // "")}] as $s
+        | {title: $t, steps: [$s | to_entries[] | {id: "step-\(if .value.n == "" then .key + 1 else .value.n end)"} + (.value | del(.n))],
            specs: ([$specs | split("\u001e")[] | select(length > 0) | split("\u001f") | {(.[0]): .[1]}] | add // {})}' \
         | atomic_write "$out" || rm -f "$out" 2>/dev/null
     return 0

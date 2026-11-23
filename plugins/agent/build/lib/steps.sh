@@ -111,17 +111,17 @@ _build_steps_check() {
     (( count > 0 )) || return 0
     local joined l low n rest q raw _jqs_path _jqs_txt
     local -A kind=() said=() qpath=() qtxt=() qune=() reused=()
-    local re='^step[[:space:]]+([0-9]+)[[:space:]]*:[[:space:]]*(done|not[[:space:]]+needed)(.*)$'
+    local re='^step[[:space:]]+([0-9]+(\.[0-9]+)?)[[:space:]]*:[[:space:]]*(done|not[[:space:]]+needed)(.*)$'
     zb_reply_join_v joined "$reply"
     # shellcheck disable=SC2034  # qune is read by _build_steps_quote_find
     while IFS= read -r l; do
         [[ "${l,,}" == *step* ]] || continue
         raw="$l"; judge_reply_line_v l "$l"; low="${l,,}"
         [[ "$low" =~ $re ]] || continue
-        # 10#: `step 08` is step 8, not a bad octal number.
-        n="${BASH_REMATCH[1]}"; (( ${#n} <= 6 )) || continue; n=$(( 10#$n ))
-        (( n >= 1 && n <= count )) || continue
-        kind[$n]="${BASH_REMATCH[2]%%[[:space:]]*}"; rest="${l:${#l}-${#BASH_REMATCH[3]}}"
+        # #2586: a step's number, or a part's (1.2), names its entry.
+        local -a _bsm=("${BASH_REMATCH[@]}")
+        _build_steps_index_v n "${_bsm[1]}" || continue
+        kind[$n]="${_bsm[3]%%[[:space:]]*}"; rest="${l:${#l}-${#_bsm[4]}}"
         q=""
         if [[ "$rest" == *"| QUOTE:"* ]]; then q="${rest#*| QUOTE:}"; rest="${rest%%| QUOTE:*}"
         # #2582 (ADR-072 §3): `done — <file> | <line>` needs no label.
@@ -146,12 +146,12 @@ _build_steps_check() {
     local -A fans=() newho=() back=() wait=()
     _build_steps_handed "$reply" "$ad"
     for (( n = 1; n <= count; n++ )); do
-        judge_handoff_state_v hs "$kf" "step-$n"
+        judge_handoff_state_v hs "$kf" "step-${_BSL[$n]:-$n}"
         [[ "$hs" == back ]] && back[$n]="$_JUDGE_HANDOFF_ANSWER"
         if [[ "$hs" != back && -n "${newho[$n]:-}" ]]; then
             IFS=$'\x1f' read -r w a _ <<< "${newho[$n]}"
-            judge_handoff_put "$kf" "step-$n" "$w" "$a" "${newho[$n]##*$'\x1f'}" || true
-            judge_handoff_state_v hs "$kf" "step-$n"
+            judge_handoff_put "$kf" "step-${_BSL[$n]:-$n}" "$w" "$a" "${newho[$n]##*$'\x1f'}" || true
+            judge_handoff_state_v hs "$kf" "step-${_BSL[$n]:-$n}"
         fi
         if [[ "$hs" == waiting ]]; then
             wait[$n]="$_JUDGE_HANDOFF_TO"$'\x1f'"$_JUDGE_HANDOFF_FINDING"
@@ -173,22 +173,22 @@ _build_steps_check() {
         d="${_BUILD_STEP_DESC[n-1]}"; a="${_BUILD_STEP_AREAS[n-1]}"
         if [[ -n "${wait[$n]:-}" ]]; then
             judge_handoff_waiting_v w "${wait[$n]%%$'\x1f'*}"; f="${wait[$n]#*$'\x1f'}"
-            _BUILD_STEP_WAITING+=("step $n: $w — the finding it answers: ${f//$'\x1e'/ } (the step: $d)")
-            _BUILD_STEP_LINES+=("step $n: $w"); continue
+            _BUILD_STEP_WAITING+=("step ${_BSL[$n]:-$n}: $w — the finding it answers: ${f//$'\x1e'/ } (the step: $d)")
+            _BUILD_STEP_LINES+=("step ${_BSL[$n]:-$n}: $w"); continue
         fi
         case "${kind[$n]:-}" in
             "") _build_steps_noanswer_v l "$n"; _BUILD_STEP_FINDINGS+=("$l") ;;
             not)
                 # #2567 (ADR-068 §6): a reason is a claim, and goes to the judge.
-                if [[ -z "${said[$n]}" ]]; then _BUILD_STEP_FINDINGS+=("step $n is answered not needed with no reason: say why it is not needed (the step: $d)")
+                if [[ -z "${said[$n]}" ]]; then _BUILD_STEP_FINDINGS+=("step ${_BSL[$n]:-$n} is answered not needed with no reason: say why it is not needed (the step: $d)")
                 else nn+=("$n"); fi ;;
             done)
                 if [[ -z "${qpath[$n]}" ]]; then
-                    _BUILD_STEP_FINDINGS+=("step $n is answered done with no \`<file> | <line>\`: answer \`step $n: done — <file> | <a line this change added>\` (the step: $d)")
+                    _BUILD_STEP_FINDINGS+=("step ${_BSL[$n]:-$n} is answered done with no \`<file> | <line>\`: answer \`step ${_BSL[$n]:-$n}: done — <file> | <a line this change added>\` (the step: $d)")
                 elif [[ -n "${reused[$n]:-}" ]] && ! _build_steps_in_area "${qpath[$n]}" "$a"; then
                     _build_steps_stale_v l "$n" "${qpath[$n]} is no longer in the step's areas"; _BUILD_STEP_FINDINGS+=("$l")
                 elif ! _build_steps_in_area "${qpath[$n]}" "$a"; then
-                    _BUILD_STEP_FINDINGS+=("step $n's quote is in ${qpath[$n]}, outside the step's areas ($a): quote the line this change added there that does the step (the step: $d)")
+                    _BUILD_STEP_FINDINGS+=("step ${_BSL[$n]:-$n}'s quote is in ${qpath[$n]}, outside the step's areas ($a): quote the line this change added there that does the step (the step: $d)")
                 else
                     paths+=("${qpath[$n]}"); ok+=("$n")
                 fi ;;
@@ -246,14 +246,14 @@ _build_steps_check() {
             if [[ -n "${reused[$n]:-}" ]]; then
                 _build_steps_stale_v l "$n" "the quoted line is no longer in ${qpath[$n]}"; _BUILD_STEP_FINDINGS+=("$l"); continue
             fi
-            _BUILD_STEP_FINDINGS+=("step $n's quote $_BSQ_WHY (the step: ${_BUILD_STEP_DESC[n-1]})")
+            _BUILD_STEP_FINDINGS+=("step ${_BSL[$n]:-$n}'s quote $_BSQ_WHY (the step: ${_BUILD_STEP_DESC[n-1]})")
         done
     fi
     judged+=(${nn[@]+"${nn[@]}"})
     [[ ${#judged[@]} -gt 0 ]] && _build_steps_judge "$repo" "$ad" "$tier" "${judged[@]}"
     # A step that was back has been judged: its hand-off is over. The reply
     # judged with it hands nothing on; the next try's may.
-    for n in "${!back[@]}"; do judge_handoff_clear "$kf" "step-$n"; done
+    for n in "${!back[@]}"; do judge_handoff_clear "$kf" "step-${_BSL[$n]:-$n}"; done
     return 0
 }
 
@@ -261,8 +261,8 @@ _build_steps_check() {
 # shows it; read from _build_steps_check's kind/said/qpath/qtxt.
 _build_steps_said_v() {
     local -n _bsd="$1"
-    if [[ "${kind[$2]}" == "done" ]]; then _bsd="step $2: done — ${qpath[$2]} | ${qtxt[$2]}"
-    else _bsd="step $2: not needed — ${said[$2]}"; fi
+    if [[ "${kind[$2]}" == "done" ]]; then _bsd="step ${_BSL[$2]:-$2}: done — ${qpath[$2]} | ${qtxt[$2]}"
+    else _bsd="step ${_BSL[$2]:-$2}: not needed — ${said[$2]}"; fi
 }
 
 # _build_steps_judge_prompt <list> [held] — the judging call's own three
@@ -319,17 +319,18 @@ _build_steps_parse() {
     done <<< "$raw"
     for l in ${units[@]+"${units[@]}"}; do
         judge_reply_line_v l "$l"
-        [[ "${l,,}" =~ ^([0-9]+):[[:space:]]*(does[[:space:]]+not|does)([^a-z]|$) ]] || continue
-        n="${BASH_REMATCH[1]}"
-        [[ -n "${want[$n]:-}" ]] || { bad+=("line $n names no step you were asked about"); continue; }
-        if [[ "${BASH_REMATCH[2]}" == does ]]; then _BSJ_ANS[$n]=does; continue; fi
+        [[ "${l,,}" =~ ^([0-9]+(\.[0-9]+)?):[[:space:]]*(does[[:space:]]+not|does)([^a-z]|$) ]] || continue
+        local -a _bsm=("${BASH_REMATCH[@]}")
+        _build_steps_index_v n "${_bsm[1]}" || n=""
+        [[ -n "$n" && -n "${want[$n]:-}" ]] || { bad+=("line ${_bsm[1]} names no step you were asked about"); continue; }
+        if [[ "${_bsm[3]}" == does ]]; then _BSJ_ANS[$n]=does; continue; fi
         judge_reply_field_v why "$l" WHY; _build_steps_strip_v why "$why"
         # #2569 (ADR-072 §3): a refusal says what would be accepted — the step.
         judge_reply_field_v acc "$l" "ACCEPTED IF"
         [[ -n "$acc" ]] || acc="${_BUILD_STEP_DESC[n-1]:-the step}"
         _BSJ_ANS[$n]="does not"$'\x1f'"${why:-it does not do what the step says}"$'\x1f'"$acc"
     done
-    for n in "$@"; do [[ -n "${_BSJ_ANS[$n]+x}" ]] || bad+=("step $n has no line"); done
+    for n in "$@"; do [[ -n "${_BSJ_ANS[$n]+x}" ]] || bad+=("step ${_BSL[$n]:-$n} has no line"); done
     if [[ ${#bad[@]} -gt 0 ]]; then local IFS=';'; _BSJ_PROBLEM="${bad[*]}"; _BSJ_PROBLEM="${_BSJ_PROBLEM//;/; }"; fi
     return 0
 }
@@ -353,45 +354,45 @@ _build_steps_judge() {
     # with its own; all of them tell a moved step from a changed one).
     local -A stxt=(); _build_steps_texts_v stxt
     for n in "$@"; do
-        item="### step $n"$'\n'"step: ${stxt[step-$n]}"$'\n'"areas: ${_BUILD_STEP_AREAS[n-1]:-(any)}"$'\n'
+        item="### step ${_BSL[$n]:-$n}"$'\n'"step: ${stxt[step-${_BSL[$n]:-$n}]}"$'\n'"areas: ${_BUILD_STEP_AREAS[n-1]:-(any)}"$'\n'
         if [[ "${kind[$n]}" == "done" ]]; then
             item+="answered done; the line: ${qpath[$n]} | ${qtxt[$n]}"$'\n'
-            judge_fp_v fp "$eng"$'\n'"$item"; deps[step-$n]="$repo/${qpath[$n]}"
+            judge_fp_v fp "$eng"$'\n'"$item"; deps[step-${_BSL[$n]:-$n}]="$repo/${qpath[$n]}"
         else
             # Kept while the step, the reason, the base and the branch's
             # changes in the step's areas are unchanged (_build_steps_check's
             # base and area_sig). The reason is model text: capped.
             _bsj_why="${said[$n]}"; (( ${#_bsj_why} > 1000 )) && _bsj_why="${_bsj_why:0:1000}…"
             item+="answered not needed; the reason: $_bsj_why"$'\n'
-            judge_fp_v fp "$eng"$'\n'"$item"$'\n'"${base:-}"$'\n'"${area_sig[$n]:-}"; deps[step-$n]=""
+            judge_fp_v fp "$eng"$'\n'"$item"$'\n'"${base:-}"$'\n'"${area_sig[$n]:-}"; deps[step-${_BSL[$n]:-$n}]=""
         fi
-        items[$n]="$item"; fps[step-$n]="$fp"
+        items[$n]="$item"; fps[step-${_BSL[$n]:-$n}]="$fp"
     done
     # #2569 (ADR-072 §5): a step it refused last time is asked with that
     # finding beside build's answer now. #2574: build's answer to a step's
     # finding (fans) has a kept refusal judged again, held to it; a step back
     # from the stage it was handed to (back) is judged again whatever was kept.
     local -A dfp=()
-    for n in "$@"; do [[ -n "${fans[$n]:-}" ]] && judge_fp_v "dfp[step-$n]" "${fans[$n]}"; done
+    for n in "$@"; do [[ -n "${fans[$n]:-}" ]] && judge_fp_v "dfp[step-${_BSL[$n]:-$n}]" "${fans[$n]}"; done
     judge_kept_get_all_v kept "$kf" fps dfp earlier "does"
     local held="" _bsj_e _bsj_h
     for n in "$@"; do
-        if [[ -n "${back[$n]+x}" && -n "${kept[step-$n]+x}" ]]; then earlier[step-$n]="${kept[step-$n]}"; unset "kept[step-$n]"; fi
-        if [[ -n "${kept[step-$n]+x}" ]]; then
-            _build_steps_parse "$n: ${kept[step-$n]}" "$n"
+        if [[ -n "${back[$n]+x}" && -n "${kept[step-${_BSL[$n]:-$n}]+x}" ]]; then earlier[step-${_BSL[$n]:-$n}]="${kept[step-${_BSL[$n]:-$n}]}"; unset "kept[step-${_BSL[$n]:-$n}]"; fi
+        if [[ -n "${kept[step-${_BSL[$n]:-$n}]+x}" ]]; then
+            _build_steps_parse "${_BSL[$n]:-$n}: ${kept[step-${_BSL[$n]:-$n}]}" "$n"
             [[ -z "$_BSJ_PROBLEM" ]] && { pay[$n]="${_BSJ_ANS[$n]}"; continue; }
         fi
         # #2582: an answer kept from an earlier try whose kept verdict is stale
         # is judged again when the step and its SPECs are as they were (only
         # the code moved); otherwise it no longer stands.
-        if [[ -n "${reused[$n]:-}" && "${_JUDGE_KEPT_TEXT[step-$n]-}" != "${stxt[step-$n]}" ]]; then
+        if [[ -n "${reused[$n]:-}" && "${_JUDGE_KEPT_TEXT[step-${_BSL[$n]:-$n}]-}" != "${stxt[step-${_BSL[$n]:-$n}]}" ]]; then
             pay[$n]=stale; continue
         fi
         [[ -n "${reused[$n]:-}" ]] && rejudged[$n]=1
         ask_n+=("$n"); list+="${items[$n]}"$'\n'
-        if [[ "${earlier[step-$n]:-}" == "does not"* ]]; then
+        if [[ "${earlier[step-${_BSL[$n]:-$n}]:-}" == "does not"* ]]; then
             _build_steps_said_v l "$n"; _bsj_h="${back[$n]:-${fans[$n]:-}}"
-            judge_held_entry_v _bsj_e "step $n" "$n: ${earlier[step-$n]}"$'\x1f'"${_bsj_h:+$_bsj_h — and to the step now: }${l#step $n: }"; held+="$_bsj_e"
+            judge_held_entry_v _bsj_e "step ${_BSL[$n]:-$n}" "${_BSL[$n]:-$n}: ${earlier[step-${_BSL[$n]:-$n}]}"$'\x1f'"${_bsj_h:+$_bsj_h — and to the step now: }${l#step ${_BSL[$n]:-$n}: }"; held+="$_bsj_e"
         fi
     done
     if [[ ${#ask_n[@]} -gt 0 ]]; then
@@ -399,8 +400,8 @@ _build_steps_judge() {
         # #2579 (ADR-072 §4): a step that changed since it was last answered.
         local _bsj_c="" _bsj_x
         for n in "${ask_n[@]}"; do
-            judge_item_was_v _bsj_x "step-$n" "${stxt[step-$n]}" stxt; [[ -n "$_bsj_x" ]] || continue
-            judge_changed_entry_v _bsj_e "step $n" "$_bsj_x" "${stxt[step-$n]}"; _bsj_c+="$_bsj_e"
+            judge_item_was_v _bsj_x "step-${_BSL[$n]:-$n}" "${stxt[step-${_BSL[$n]:-$n}]}" stxt; [[ -n "$_bsj_x" ]] || continue
+            judge_changed_entry_v _bsj_e "step ${_BSL[$n]:-$n}" "$_bsj_x" "${stxt[step-${_BSL[$n]:-$n}]}"; _bsj_c+="$_bsj_e"
         done
         judge_changed_block_v _bsj_c "$_bsj_c"; held+="$_bsj_c"
         if ! prompt="$(stage_prompt_compose_parts --fresh "$(_build_steps_judge_prompt "$list" "$held")")"; then
@@ -447,17 +448,17 @@ _build_steps_judge() {
             for n in "${ask_n[@]}"; do
                 [[ -n "${_BSJ_ANS[$n]+x}" ]] || { pay[$n]="unread"; continue; }
                 pay[$n]="${_BSJ_ANS[$n]}"
-                keep[step-$n]="${_BSJ_ANS[$n]/$'\x1f'/ | WHY: }"; keep[step-$n]="${keep[step-$n]/$'\x1f'/ | ACCEPTED IF: }"
-                judge_kept_fp_v "kfp[step-$n]" "${fps[step-$n]}" "${dfp[step-$n]:-}"; kdeps[step-$n]="${deps[step-$n]}"
+                keep[step-${_BSL[$n]:-$n}]="${_BSJ_ANS[$n]/$'\x1f'/ | WHY: }"; keep[step-${_BSL[$n]:-$n}]="${keep[step-${_BSL[$n]:-$n}]/$'\x1f'/ | ACCEPTED IF: }"
+                judge_kept_fp_v "kfp[step-${_BSL[$n]:-$n}]" "${fps[step-${_BSL[$n]:-$n}]}" "${dfp[step-${_BSL[$n]:-$n}]:-}"; kdeps[step-${_BSL[$n]:-$n}]="${deps[step-${_BSL[$n]:-$n}]}"
                 # #2582: an accepted answer is kept with its verdict, to stand.
-                [[ "${pay[$n]}" == does ]] && _build_steps_answer_record_v "kans[step-$n]" "$n"
+                [[ "${pay[$n]}" == does ]] && _build_steps_answer_record_v "kans[step-${_BSL[$n]:-$n}]" "$n"
             done
             [[ ${#keep[@]} -gt 0 ]] && judge_kept_put_all "$kf" keep kfp kdeps "" stxt kans
         fi
     fi
     local refused=0 yours _bsj_w _bsj_a
     for n in "$@"; do
-        _build_steps_said_v l "$n"; yours="your answer: ${l#step $n: }"
+        _build_steps_said_v l "$n"; yours="your answer: ${l#step ${_BSL[$n]:-$n}: }"
         if [[ "${pay[$n]:-}" == does ]]; then
             if [[ -n "${rejudged[$n]:-}" ]]; then _BUILD_STEP_LINES+=("$l (accepted on an earlier try; judged again: the code moved)")
             else _BUILD_STEP_LINES+=("$l${reused[$n]:+ (accepted on an earlier try)}"); fi
@@ -467,14 +468,14 @@ _build_steps_judge() {
             _BUILD_STEP_LINES+=("$l (not judged)")
         elif [[ "${pay[$n]:-unread}" == unread ]]; then
             refused=$((refused + 1))
-            _BUILD_STEP_FINDINGS+=("the check of step $n could not be read; it is judged again (the step: ${_BUILD_STEP_DESC[n-1]}; $yours)")
+            _BUILD_STEP_FINDINGS+=("the check of step ${_BSL[$n]:-$n} could not be read; it is judged again (the step: ${_BUILD_STEP_DESC[n-1]}; $yours)")
         else
             # #2569 (ADR-072 §3): the check's WHY and ACCEPTED IF; no advice.
             refused=$((refused + 1)); _bsj_w="${pay[$n]#*$'\x1f'}"; _bsj_a="${_bsj_w#*$'\x1f'}"; _bsj_w="${_bsj_w%%$'\x1f'*}"
             if [[ "${kind[$n]}" == "done" ]]; then
-                _BUILD_STEP_FINDINGS+=("step $n: the line you quoted does not do what the step says: $_bsj_w — ACCEPTED IF: $_bsj_a (the step: ${_BUILD_STEP_DESC[n-1]}; $yours)")
+                _BUILD_STEP_FINDINGS+=("step ${_BSL[$n]:-$n}: the line you quoted does not do what the step says: $_bsj_w — ACCEPTED IF: $_bsj_a (the step: ${_BUILD_STEP_DESC[n-1]}; $yours)")
             else
-                _BUILD_STEP_FINDINGS+=("step $n: your reason it is not needed does not hold: $_bsj_w — ACCEPTED IF: $_bsj_a (the step: ${_BUILD_STEP_DESC[n-1]}; $yours)")
+                _BUILD_STEP_FINDINGS+=("step ${_BSL[$n]:-$n}: your reason it is not needed does not hold: $_bsj_w — ACCEPTED IF: $_bsj_a (the step: ${_BUILD_STEP_DESC[n-1]}; $yours)")
             fi
         fi
     done

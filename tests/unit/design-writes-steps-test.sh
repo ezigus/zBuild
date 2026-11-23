@@ -37,7 +37,7 @@ route_to_model() {
     if [[ -n "$_t" ]]; then
         cp "$2" "$TEST_TEMP_DIR/design-prompt.txt" 2>/dev/null || printf '%s' "$2" > "$TEST_TEMP_DIR/design-prompt.txt"
         mkdir -p "$(dirname "$_t")"
-        printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\nfoo.sh\nbar.sh\n%s\n\n%ssteps\n- add the flag to foo.sh | areas: foo.sh | serves: DSWORK-1\n- refuse a missing config | areas: foo.sh, bar.sh | serves: DSWORK-1\n%s\n\n%sacceptance\nDSWORK-1[no-code]: works\nWIRING: none\nTESTFILES:\n%s\n' \
+        printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\nfoo.sh\nbar.sh\n%s\n\n%ssteps\n- add the flag to foo.sh | areas: foo.sh | serves: DSWORK-1\n- refuse a missing config | areas: bar.sh | serves: DSWORK-1\n%s\n\n%sacceptance\nDSWORK-1[no-code]: works\nWIRING: none\nTESTFILES:\n%s\n' \
             "$_bt" "$_bt" "$_bt" "$_bt" "$_bt" "$_bt" > "$_t"
     fi
     return 0
@@ -67,7 +67,7 @@ fi
 _steps="$AD/design-steps.json"
 assert_eq "[S2] the steps are written, in order" "add the flag to foo.sh|refuse a missing config" \
     "$(jq -r '[.steps[].description] | join("|")' "$_steps" 2>/dev/null || echo MISSING)"
-assert_eq "[S2] ...each with its files" "foo.sh,bar.sh" "$(jq -r '.steps[1].areas | join(",")' "$_steps" 2>/dev/null || echo MISSING)"
+assert_eq "[S2] ...each with its files" "bar.sh" "$(jq -r '.steps[1].areas | join(",")' "$_steps" 2>/dev/null || echo MISSING)"
 assert_eq "[S2] ...numbered step-1, step-2" "step-1 step-2" "$(jq -r '[.steps[].id] | join(" ")' "$_steps" 2>/dev/null || echo MISSING)"
 assert_eq "[S2] readers find them as the work plan" "$_steps" "$(earlier_work_plan "$AD" "$ST" 2>/dev/null)"
 

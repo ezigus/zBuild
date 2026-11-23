@@ -248,10 +248,10 @@ attempt_archive_outputs() {
     # an old attempt wants. _registry_output_path_rows drops those by design (it
     # serves the fail-closed presence scan), so this reads the block itself —
     # one awk per dispatch, no shared index state to be warm or cold.
-    local _facts _paths="" _notwork="" _fk _fv
+    local _facts _paths="" _notwork="" _fk _fv _repo_stage=0
     _attempt_manifest_facts_v _facts "$manifest"
     while IFS=$'\t' read -r _fk _fv; do
-        case "$_fk" in P) _paths+="$_fv"$'\n' ;; S|X) _notwork+="$_fv"$'\n' ;; esac
+        case "$_fk" in P) _paths+="$_fv"$'\n' ;; S|X) _notwork+="$_fv"$'\n' ;; R) _repo_stage=1 ;; esac
     done <<< "$_facts"
     [[ -n "$_paths" ]] || { rmdir "$_dest" 2>/dev/null || true; return 0; }
 
@@ -285,12 +285,13 @@ attempt_archive_outputs() {
     local -a _outputs=()
     local _unchanged="" _name _was _now _state _progress="" _after _bn _bs
     if [[ -n "$before" ]]; then
-        # #2252 / #2439 / #2443 (ADR-054 §6a): progress is a change to the
-        # code (__repository__), to the stage's notes (__notes__), to the saved
-        # steps of a cut-off call (__cutoff__, #2454), or to any declared
-        # output except its summary and its result file — those describe the
-        # try, so they change on every one — or (below, #2460) new findings
-        # about its own work. One rule, every stage.
+        # ADR-054 §6a (#2586): a stage that writes the repository made
+        # progress only when its tracked files changed (__repository__).
+        # Any other stage: a declared output other than its summary and its
+        # result, a cut-off call's saved steps (#2454: it resumes from them),
+        # or (below, #2460) new findings about its own work. The notes are
+        # run state: never.
+        _notwork+="__notes__"$'\n'
         _progress=false
         attempt_outputs_fingerprint_v _after "$plugin_dir" "$state_file" "$before"
         while IFS=$'\t' read -r _name _now; do
@@ -302,8 +303,9 @@ attempt_archive_outputs() {
             if [[ "$_now" == "absent" ]]; then _state="absent"
             elif [[ "$_now" == "$_was" ]]; then _state="unchanged"; _unchanged+="${_unchanged:+,}$_name"
             else _state="changed"; fi
-            if [[ "$_state" == "changed" && $'\n'"$_notwork" != *$'\n'"$_name"$'\n'* ]]; then
-                _progress=true
+            if [[ "$_state" == "changed" ]]; then
+                if (( _repo_stage )); then [[ "$_name" == "__repository__" ]] && _progress=true
+                elif [[ $'\n'"$_notwork" != *$'\n'"$_name"$'\n'* ]]; then _progress=true; fi
             fi
             _outputs+=("$_name" "$_state")
         done <<< "$_after"
@@ -313,7 +315,7 @@ attempt_archive_outputs() {
     # red, a check found something new — left its next try something to act
     # on. The same findings again, or none, is no progress. One jq per result,
     # and only on a try that otherwise made none.
-    if [[ "$_progress" == false ]]; then
+    if [[ "$_progress" == false ]] && (( ! _repo_stage )); then
         local _xk _xb _xnow _xprev _xpf="" _xnf=""
         while IFS=$'\t' read -r _xk _xb; do
             [[ "$_xk" == X && -n "$_xb" && -s "$_dest/$_xb" ]] || continue

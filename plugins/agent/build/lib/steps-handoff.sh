@@ -28,8 +28,8 @@ _build_steps_handed() {
         [[ "$k" == "build finding "* || ( -n "${_BUILD_FCODE:-}" && "$k" == "$_BUILD_FCODE-"* ) ]] || continue
         zb_answer_kind_v kd "$x"; [[ -n "$kd" && -n "${af[$k]+x}" ]] || continue
         t="${af[$k]%%$'\x1f'*}"
-        [[ "$t" =~ ^(the check of )?step\ ([0-9]{1,6})([^0-9]|$) ]] || continue
-        n=$(( 10#${BASH_REMATCH[2]} ))
+        [[ "$t" =~ ^(the check of )?step\ ([0-9]{1,6}(\.[0-9]{1,6})?)([^0-9]|$) ]] || continue
+        _build_steps_index_v n "${BASH_REMATCH[2]}" || continue
         fans[$n]+="${fans[$n]:+; }${x#*: }"
         [[ "$kd" == "not mine" ]] || continue
         judge_handoff_receivers_v rcv "$_BUILD_STEPS_MANIFEST" "$2" "$k"

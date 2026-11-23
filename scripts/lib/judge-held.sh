@@ -242,6 +242,7 @@ judge_pass_entries_v() {
     _jpe=""; _JUDGE_QUOTE_KEPT=()
     for _jpe_i in "$@"; do
         [[ -n "${_jpe_e[$_jpe_i]+x}" && -n "${_jpe_w[$_jpe_i]:-}" && "$_jpe_whys" == *" ${_jpe_w[$_jpe_i]} "* ]] || continue
+        [[ -n "${_JUDGE_UNHOLD[$_jpe_i]+x}" ]] && continue
         judge_refused "${_jpe_e[$_jpe_i]}" ${_jpe_wa[@]+"${_jpe_wa[@]}"} && continue
         _jpe_p="${_jpe_e[$_jpe_i]//$'\n'/ }"; (( ${#_jpe_p} > _JUDGE_HELD_MAX_TEXT )) && _jpe_p="${_jpe_p:0:_JUDGE_HELD_MAX_TEXT}… (cut)"
         _jpe+="- $_jpe_i — you passed it: $_jpe_p"$'\n'
@@ -373,6 +374,25 @@ judge_pass_flip_ok() {
     return 1
 }
 
+# ADR-072 §5 (#2586): the items an open finding is about — the check answered
+# it naming the item, or a finding shown to it names the item's id. Such an
+# item is not held: its new verdict stands. Each check clears it before it judges.
+declare -gA _JUDGE_UNHOLD=()
+
+# judge_unhold_named <text> <item>... — every <item> whose id <text> names, as
+# a whole id (RQTST-3 is not RQTST-30), goes in _JUDGE_UNHOLD. Only ids, the
+# code-and-number form, are names; no process.
+judge_unhold_named() {
+    local t="$1" it re; shift
+    [[ -n "$t" ]] || return 0
+    for it in "$@"; do
+        [[ "$it" =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]] || continue
+        re="(^|[^A-Za-z0-9-])${it}([^0-9]|$)"
+        [[ "$t" =~ $re ]] && _JUDGE_UNHOLD["$it"]=1
+    done
+    return 0
+}
+
 # judge_pass_hold_lines <kept_file> <item> <repo> <earlier> <new_var> <words> —
 # for a check whose verdict lines carry `| QUOTE:` fields (design's check,
 # issue-acceptance): when <item>'s kept verdict <earlier> passed and its new
@@ -383,6 +403,7 @@ judge_pass_hold_lines() {
     local kf="$1" it="$2" repo="$3" earlier="$4" words="$6" l q
     local -n _jphl="$5"
     local -a wa=() qs=(); IFS=$' \t\n' read -ra wa <<< "$words"
+    [[ -n "${_JUDGE_UNHOLD[$it]+x}" ]] && return 1
     judge_refused "$earlier" ${wa[@]+"${wa[@]}"} && return 1
     judge_refused "$_jphl" ${wa[@]+"${wa[@]}"} || return 1
     while IFS= read -r l; do judge_reply_field_v q "$l" QUOTE; [[ -n "$q" ]] && qs+=("$q"); done <<< "$_jphl"

@@ -125,15 +125,15 @@ The design document MUST include:
 2. A \`\`\`steps block: the ordered work items that change the code, one per
    line, each with the areas of the code it is about and the SPECs it serves:
 \`\`\`steps
-- <what to do, in one sentence> | areas: path/to/file1, path/to/file2 | serves: <SPEC ids>
+- <what to do, in one sentence> | areas: path/to/file | serves: <SPEC ids>
 \`\`\`
-   The build follows them in order. A step does part of what its SPECs say: name each one it serves,
-   by its id from the acceptance block (serves: ${_DCK_ID_PREFIX}LOOP-1, ${_DCK_ID_PREFIX}LOOP-2) — the
-   step's check is shown them, and a step's answer must not break any of them.
+   The build follows them in order. A step does part of what its SPECs say: name each one it serves, by its id from the
+   acceptance block (serves: ${_DCK_ID_PREFIX}LOOP-1, ${_DCK_ID_PREFIX}LOOP-2) — the step's check is shown them, and a step's answer must not break any of them.
    A step says where and how; it points to the SPECs it serves with serves: and does not restate what they require — a step that rewords one can lose part of it.
-   A step is code work only: it names no file or folder in the test folders.
-   What you own of the tests is your SPECs: they say what the tests must
-   prove. The test author writes the tests — which cases, in which files and how.
+   A step is code work only: it names no file or folder in the test folders. No step's work is writing or changing a test.
+   A step over more than one file is split into numbered parts, 1.1, 1.2, each naming one file: \`- 1.1 <what> | areas: <file> | serves: <ids>\`.
+   When the issue asks for a test, the requirement is the behaviour that test proves: write that behaviour as the SPEC,
+   [done] when the code already does it. Your SPECs say what the tests must prove; the test author writes them.
 
 3. A \`\`\`acceptance block listing what this change must deliver. Each line is
    one requirement: an id, a status, and ONE behaviour someone could observe and test.

@@ -91,7 +91,7 @@ route_to_model() {
     local _bt='```' _t; _t="$(zb_test_prompt_write_path "$2")"
     if [[ -n "$_t" ]]; then
         mkdir -p "$(dirname "$_t")"
-        printf '# Design\n\n## Decision\nMinimal.\n\n%ssteps\n- guard the read in a.sh | areas: core/a.sh | serves: DSWORK-1\n- export the flag and check it | areas: core/b.sh, core/c.sh | serves: DSWORK-1\n%s\n\n%sacceptance\nDSWORK-1[no-code]: works\nWIRING: none\n%s\n' \
+        printf '# Design\n\n## Decision\nMinimal.\n\n%ssteps\n- guard the read in a.sh | areas: core/a.sh | serves: DSWORK-1\n- export the flag and check it | areas: core/b.sh | serves: DSWORK-1\n%s\n\n%sacceptance\nDSWORK-1[no-code]: works\nWIRING: none\n%s\n' \
             "$_bt" "$_bt" "$_bt" "$_bt" > "$_t"
     fi
     return 0
@@ -106,7 +106,7 @@ export ZBUILD_REPO_ROOT="$D" ZBUILD_EVENTS_JSONL="$ST/events.jsonl" ZBUILD_EVENT
 _design_stage_run_inner "$ST/scope-manifest.md" "$AD/design.md" "$AD" >/dev/null 2>&1
 STEPS="$AD/design-steps.json"
 assert_eq "[S3] design-steps.json holds each step's words and areas, in order" \
-    '[{"id":"step-1","description":"guard the read in a.sh","areas":["core/a.sh"],"serves":["DSWORK-1"]},{"id":"step-2","description":"export the flag and check it","areas":["core/b.sh","core/c.sh"],"serves":["DSWORK-1"]}]' \
+    '[{"id":"step-1","description":"guard the read in a.sh","areas":["core/a.sh"],"serves":["DSWORK-1"]},{"id":"step-2","description":"export the flag and check it","areas":["core/b.sh"],"serves":["DSWORK-1"]}]' \
     "$(jq -c '.steps' "$STEPS" 2>/dev/null || echo MISSING)"
 
 # ── S4 / T5: build's prompt ──────────────────────────────────────────────────

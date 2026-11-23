@@ -115,6 +115,16 @@ _acq 9007
 assert_eq "skipped reply → rc 0" "0" "$_ACQ_RC"
 assert_contains "…pipeline.claim.skipped carries the coordinator's reason" "$(_event pipeline.claim.skipped)" "NO_GITHUB=true"
 
+print_test_section "the hook said it acquired, then ended badly: the claim is held (#2586 R6)"
+# C7's failure: the hook's reply says acquired, but its status reads non-zero
+# (an interrupt cut the wait short). The label is on the issue: the run must
+# hold the claim, so that its exit releases it.
+_stub "$TEST_TEMP_DIR/p-acq-rc" '{"acquired": true}' 143
+_acq 9010
+assert_eq "an acquired reply with a bad status → the claim is held" "9010" "$_ZBUILD_CLAIM_ACQUIRED"
+: > "$CALLS"; zbuild_claim_release
+assert_eq "…and released at the end" "release 9010" "$(cat "$CALLS")"
+
 print_test_section "release"
 _stub "$TEST_TEMP_DIR/p-rel" '{"acquired": true}'
 zbuild_claim_release

@@ -132,12 +132,14 @@ _dcov_whole_part() {
     _dcov_why_quote "$5"
     # #2584: unhandled — an outside assumption the decisions leave unsaid.
     [[ "$_wp_word" == unhandled && "$_wp_k" == decision ]] && _wp_word=unhandled-decision
+    # #2586 (ADR-073): test — a step whose work is writing or changing a test.
+    [[ "$_wp_word" == test && "$_wp_k" == steps ]] && _wp_word=test-step
     case "$_wp_word" in
         ok) return 0 ;;
-        not-asked|contradicts|new-owner|unhandled-decision)
+        not-asked|contradicts|new-owner|unhandled-decision|test-step)
             # #2569 (ADR-072 §3): a refusal says what would be accepted.
             [[ -z "$quote" || -n "$acc" ]] || { bad+=("$_wp_l: $_wp_word $_DCOV_NO_ACC"); return 0; } ;;&
-        not-asked|contradicts|unhandled-decision)
+        not-asked|contradicts|unhandled-decision|test-step)
             [[ -n "$quote" ]] || { bad+=("$_wp_l has no QUOTE"); return 0; }
             # #2567 (review): the quote names one part — it lies in one step
             # line, or one line of the decisions, and is at least three words.
@@ -153,10 +155,10 @@ _dcov_whole_part() {
             # The existing owner is in the code from before the change only.
             judge_quote_check_v w "$quote" "" "${base:-$repo}" "${base:-$repo}" || { bad+=("$_wp_l's quote $w in the code from before this change"); return 0; }
             judge_quote_path_v qp "$quote" "$repo" "$base"; [[ -n "$qp" ]] && _DCOV_QUOTED["$_wp_k"]+="$qp"$'\n' ;;
-        *) local _wp_or="contradicts"; [[ "$_wp_k" == decision ]] && _wp_or+=", unhandled"
+        *) local _wp_or="contradicts"; [[ "$_wp_k" == decision ]] && _wp_or+=", unhandled"; [[ "$_wp_k" == steps ]] && _wp_or+=", test"
            bad+=("$_wp_l is ok, not-asked, $_wp_or or new-owner, not $_wp_word"); return 0 ;;
     esac
-    _wp_word="${_wp_word%-decision}"
+    _wp_word="${_wp_word%-decision}"; _wp_word="${_wp_word%-step}"
     if [[ "$_wp_k" == steps ]]; then
         # The old new-owner finding's form is kept (#2555).
         if [[ "$_wp_word" == new-owner ]]; then _DESIGN_NEW_OWNER+=("${why:-something already owns this job}"$'\t'"$quote"$'\t'"$acc")
@@ -377,6 +379,7 @@ _dcov_findings_build() {
         IFS=$'\t' read -r _pw _pwy _pq _pa <<< "$x"
         case "$_pw" in
             not-asked) _DESIGN_COV_FINDINGS+=("Steps: a step no requirement needs: $_pwy — $_pq [FIX IN DESIGN: ACCEPTED IF: $_pa]") ;;
+            test)      _DESIGN_COV_FINDINGS+=("Steps: a step whose work is writing or changing a test — the tests are test-author's: $_pwy — $_pq [FIX IN DESIGN: ACCEPTED IF: $_pa]") ;;
             *)         _DESIGN_COV_FINDINGS+=("Steps: a step goes against the issue: $_pwy — $_pq [FIX IN DESIGN: ACCEPTED IF: $_pa]") ;;
         esac
     done

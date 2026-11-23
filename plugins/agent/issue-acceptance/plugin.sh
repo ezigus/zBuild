@@ -419,9 +419,16 @@ _ia_call() {
 # _ia_finish <dir> — the judged answer as the stage's result: fail when any
 # requirement is unmet or unsure (#2304, ADR-069 §7: one the judge is not sure
 # of is never a pass, and is reported as open), pass otherwise.
+declare -gA _IA_BARE_WRONG=()
 _ia_finish() {
-    local _v=pass _u_json _s_json _x_json
+    local _v=pass _u_json _s_json _x_json _fi _fit
     _ia_unclear_settle
+    # #2586: an unmet requirement answered with a plain wrong says so.
+    for _fi in "${!_IA_UNMET[@]}"; do
+        _ia_item_of_finding_v _fit "The issue requires this and the change does not meet it: ${_IA_UNMET[_fi]}"
+        [[ -n "$_fit" && -n "${_IA_BARE_WRONG[$_fit]+x}" ]] || continue
+        _IA_UNMET[_fi]+=" — answered before: ${_IA_BARE_WRONG[$_fit]//$'\n'/ } — a wrong that quotes no line does not close it: change what it names, or answer wrong quoting the line (<file> | <line>) that shows it met"
+    done
     _u_json="$(_ia_json_list "${_IA_UNMET[@]+"${_IA_UNMET[@]}"}")"
     _s_json="$(_ia_json_list "${_IA_UNSURE[@]+"${_IA_UNSURE[@]}"}")"
     _x_json="$(_ia_json_list "${_IA_UNASKED[@]+"${_IA_UNASKED[@]}"}")"

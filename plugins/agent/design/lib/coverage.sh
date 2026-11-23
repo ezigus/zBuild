@@ -227,6 +227,13 @@ _design_coverage() {
     # does not judge the item from scratch (#1764's flip).
     local -A disp=() held=() fps=() kept=() kwhy=() _earl=() dfp=()
     _dcov_answered_v disp "$answers" "${_kd:+${_kd%/}/design-verdict.json}" held
+    # #2586 (ADR-072 §5): a SPEC that design's answers, or a finding design was
+    # shown (zb_answers_finish, the same shell), names has an open finding:
+    # its kept pass is judged fresh, not held.
+    _JUDGE_UNHOLD=()
+    local _dun="$answers"$'\n' _duk
+    for _duk in "${!_ZB_ANS_FINDING[@]}"; do _dun+="${_ZB_ANS_FINDING[$_duk]}"$'\n'; done
+    judge_unhold_named "$_dun" ${ids[@]+"${ids[@]}"}
     # Each answered item's answers, by fingerprint: a verdict is kept with the
     # answers it heard, so the same answer again is not judged again.
     local k _fpv

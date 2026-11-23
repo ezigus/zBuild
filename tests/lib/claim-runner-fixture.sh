@@ -14,6 +14,8 @@
 #   claim_fixture_start <case> <args...> the same in the background → $CLAIM_PID
 #   claim_fixture_wait_for <file>       wait (bounded) for a marker a process writes
 #   claim_fixture_wait_gone <pid>       wait (bounded) for a process to end, then reap it
+#   claim_fixture_show <case>           print a case's run output, its claim and plugin
+#                                       events and the hook calls, for a failure to explain itself
 
 claim_fixture_setup() {
     RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
@@ -93,6 +95,15 @@ _claim_fixture_prep() {
     local d="$TEST_TEMP_DIR/case-$1"
     rm -rf "$d"; mkdir -p "$d/state" "$d/events"
     export ZBUILD_STATE_DIR="$d/state" ZBUILD_EVENTS_DIR="$d/events" ZBUILD_EVENTS_JSONL="$d/events/events.jsonl"
+}
+claim_fixture_show() {
+    printf '    --- %s: the run (rc %s) ---\n' "$1" "${CLAIM_RC:-?}"
+    sed 's/^/    | /' "$TEST_TEMP_DIR/$1.out" 2>/dev/null || true
+    printf '    --- %s: claim and plugin events ---\n' "$1"
+    jq -c 'select(.type | test("claim|plugin\\.(claim|release)|pipeline\\.(refused|end)")) | {type, data}' \
+        "$(claim_fixture_events "$1")" 2>/dev/null | sed 's/^/    | /' || true
+    printf '    --- %s: hook calls ---\n' "$1"
+    sed 's/^/    | /' "$CLAIM_CALLS" 2>/dev/null || true
 }
 claim_fixture_events() { printf '%s' "$TEST_TEMP_DIR/case-$1/events/events.jsonl"; }
 
