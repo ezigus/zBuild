@@ -94,6 +94,21 @@ rsc_gh() {
         local detail="${_RSC_GH_ERR:0:200}"
         [[ $rc -eq 124 ]] && detail="timeout after ${ZBUILD_STATUS_COMMENT_GH_TIMEOUT}s ${detail}"
         rsc_log "$state_dir" "gh $1 $2 rc=$rc ${detail}"
+        # #2589 (ADR-005): GitHub no longer accepts this run's login — every
+        # later call fails too. A marker the run stops on (rsc_tail_loop).
+        # Two in a row, so one short-lived 401 never ends a long run; a call
+        # that works in between starts the count again.
+        case "$_RSC_GH_ERR" in
+            *"Bad credentials"*|*"HTTP 401"*)
+                [[ -d "$state_dir/runtime" ]] || mkdir -p "$state_dir/runtime" 2>/dev/null || true
+                if [[ -f "$state_dir/runtime/github-login-401-seen" ]]; then
+                    printf '%s\n' "${_RSC_GH_ERR:0:200}" > "$state_dir/runtime/github-login-rejected" 2>/dev/null || true
+                else
+                    : > "$state_dir/runtime/github-login-401-seen" 2>/dev/null || true
+                fi ;;
+        esac
+    else
+        rm -f "$state_dir/runtime/github-login-401-seen" 2>/dev/null || true
     fi
     rm -f "$err"
     return $rc
@@ -210,6 +225,39 @@ rsc_holder_find() {
     return 0
 }
 
+# ─── rsc_claim_cleanup <state_dir> <slug> <issue> <holder> (#2589) ──────────
+# CI's clean-up: remove zbuild:claimed when the issue's newest run-status
+# comment names <holder> (this run) — the run's own release can fail (a revoked
+# token, a crash, a cancel). Another run's claim is never touched. Read before
+# the comment is finalized: a finished run's header names no holder.
+rsc_claim_cleanup() {
+    local state_dir="$1" slug="$2" issue="$3" me="$4" held out
+    [[ -n "$me" && -n "$issue" ]] || return 0
+    held="$(rsc_holder_find "$state_dir" "$slug" "$issue")"
+    [[ "$held" == "$me" ]] || return 0
+    out="$(mktemp "${TMPDIR:-$state_dir}/rsc-claim.XXXXXX")" || return 0
+    rsc_gh "$state_dir" "$out" api --method DELETE "repos/${slug}/issues/${issue}/labels/zbuild:claimed" >/dev/null 2>&1 || true
+    rm -f "$out"
+    return 0
+}
+
+# rsc_claim_left <events.jsonl> — "yes" when the run took the claim and never
+# released it (acquired, and no completed release hook): a release that failed
+# or a run killed before it. "no" when it released or claimed nothing,
+# "unknown" when there is no record (#2589). Two fixed-string greps.
+rsc_claim_left() {
+    local ev="$1"
+    # No record is "unknown", never "released": the clean-up then checks the
+    # holder instead (review of #2589).
+    [[ -s "$ev" ]] || { printf 'unknown'; return 0; }
+    if grep -qF '"type":"pipeline.claim.acquired"' "$ev" 2>/dev/null \
+        && ! grep -qF '"type":"plugin.release.complete"' "$ev" 2>/dev/null; then
+        printf 'yes'
+    else
+        printf 'no'
+    fi
+}
+
 # ─── rsc_upsert <state_dir> <slug> <issue> <run_id> <body_file> [part] ──────
 # id known → PATCH; else marker search → PATCH; else POST. A PATCH 404 clears
 # the id and allows one re-create per process, so a vandalised comment cannot
@@ -299,7 +347,7 @@ _rsc_has_type() {   # _rsc_has_type <events> <regex-of-types>
 # them. TERM/INT → final render; parent death → final render marked as such.
 rsc_tail_loop() {
     local events="$1" state_dir="$2" parent="$3" slug="$4" issue="$5" run_id="$6"
-    local last_size=-1 size dirty=0 seen_start=0 terminal_seen=0 last_flush=0 now flushed_once=0
+    local last_size=-1 size dirty=0 seen_start=0 terminal_seen=0 last_flush=0 now flushed_once=0 _rsc_login_stopped=0
     trap '_rsc_on_stop' TERM INT
     trap '' HUP
     while :; do
@@ -334,6 +382,14 @@ rsc_tail_loop() {
            [[ $flushed_once -eq 0 || $terminal_now -eq 1 || $(( now - last_flush )) -ge "${ZBUILD_STATUS_COMMENT_MIN_INTERVAL%.*}" ]]; then
             rsc_flush "$events" "$state_dir" "$slug" "$issue" "$run_id"
             dirty=0; flushed_once=1; last_flush="$now"
+        fi
+        # #2589 (ADR-005): GitHub rejected the run's login — nothing it does
+        # can reach GitHub again. Stop it once; its exit trap releases what it
+        # holds and names the reason.
+        if [[ -f "$state_dir/runtime/github-login-rejected" && -n "$parent" && "${_rsc_login_stopped:-0}" -eq 0 ]]; then
+            _rsc_login_stopped=1
+            rsc_log "$state_dir" "GitHub rejected the run's login; stopping the run"
+            kill -TERM "$parent" 2>/dev/null || true
         fi
         # Interruptible sleep: a TERM lands on `wait`, not inside `sleep`.
         sleep "$ZBUILD_STATUS_COMMENT_POLL" & wait $! 2>/dev/null

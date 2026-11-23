@@ -148,8 +148,8 @@ _ccgl_refused() {
     local issue="$1" holder
     holder="$(_ccgl_read_holder "$issue" || true)"
     jq -nc --arg h "$holder" '{acquired: false, holder: $h}'
-    printf 'claim-coordinator: issue #%s carries the %s label: another run is working on it. If that run is gone, remove the %s label from the issue.\n' \
-        "$issue" "$_CCGL_LABEL" "$_CCGL_LABEL" >&2 || true
+    printf 'claim-coordinator: issue #%s carries the %s label: another run is working on it. If that run is gone, remove the label: gh issue edit %s --remove-label %s\n' \
+        "$issue" "$_CCGL_LABEL" "$issue" "$_CCGL_LABEL" >&2 || true
 }
 
 # ─── Hook: claim <issue_id> ───────────────────────────────────────────────────

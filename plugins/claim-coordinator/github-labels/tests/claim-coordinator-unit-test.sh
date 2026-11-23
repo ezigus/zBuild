@@ -87,7 +87,7 @@ assert_eq "…and the holder comes through as written" "$(printf 'run "x" \\ tab
     "$(jq -r .holder <<< "$reply" 2>/dev/null || echo unparsed)"
 assert_eq "no label is added to a claimed issue" "0" "$(/usr/bin/grep -c -- '--add-label' "$GHS/log" || true)"
 assert_contains "the refusal says how to clear a claim whose run is gone" \
-    "$(claim_coordinator_claim 7003 2>&1 >/dev/null)" "remove the zbuild:claimed label"
+    "$(claim_coordinator_claim 7003 2>&1 >/dev/null)" "gh issue edit 7003 --remove-label zbuild:claimed"
 
 print_test_section "gh: NO_GITHUB=true — no claim, no gh call"
 _gh_reset; : > "$GHS/repo-label"

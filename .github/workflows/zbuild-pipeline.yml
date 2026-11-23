@@ -48,6 +48,9 @@ on:
       abort_detail:
         description: "pipeline-state.json .rate_limit.message when the run aborted on a rate limit; empty otherwise"
         value: ${{ jobs.pipeline.outputs.abort_detail }}
+      claim_left:
+        description: "yes when the run took zbuild:claimed and never released it (#2589); no otherwise"
+        value: ${{ jobs.pipeline.outputs.claim_left }}
       # #2330 (ADR-068 §8): what is still open when the run ends, in plain
       # words, and why it ended — so the completion comment names each item.
       open_items:
@@ -72,6 +75,7 @@ jobs:
       abort_detail: ${{ steps.abort.outputs.detail }}
       open_items: ${{ steps.abort.outputs.open_items }}
       end_words: ${{ steps.abort.outputs.end_words }}
+      claim_left: ${{ steps.abort.outputs.claim_left }}
 
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -385,6 +389,14 @@ jobs:
           fi
           delim="ZBUILD_OPEN_ITEMS_$RANDOM$RANDOM"
           { printf 'open_items<<%s\n%s\n%s\n' "$delim" "$items" "$delim"; printf 'end_words=%s\n' "${words//$'\n'/ }"; } >> "$GITHUB_OUTPUT"
+          # #2589 (ADR-005): did this run take the claim and never release it?
+          # The clean-up job removes the label when it did.
+          left="no"
+          source "${ZBUILD_HOME:-$HOME/.local/share/zbuild}/scripts/lib/run-status-comment.sh" 2>/dev/null || true
+          if declare -F rsc_claim_left >/dev/null 2>&1 && [[ -n "${ZBUILD_STATE_DIR:-}" ]]; then
+            left="$(rsc_claim_left "$ZBUILD_STATE_DIR/events.jsonl")"
+          fi
+          printf 'claim_left=%s\n' "$left" >> "$GITHUB_OUTPUT"
 
       - name: Surface persist result
         # #1921/#1966: persist-result.json records WHY a snapshot was skipped,

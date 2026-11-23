@@ -2423,6 +2423,9 @@ main() {
     # so a reader never mistakes an earlier run's leftover for this run's work.
     mkdir -p "$state_dir/runtime" 2>/dev/null || true
     : > "$state_dir/runtime/run-start" 2>/dev/null || true
+    # #2589: a rejected-login marker belongs to the run that saw it; a resume
+    # (its token since fixed) starts without it.
+    rm -f "$state_dir/runtime/github-login-rejected" "$state_dir/runtime/github-login-401-seen" 2>/dev/null || true
     export ZBUILD_RUN_START_MARKER="$state_dir/runtime/run-start"
     # ADR-058 C10: one run-scoped temp root, resolved here because this is the
     # first point where state_dir is absolutized (ADR-052, just above) and the
@@ -2884,6 +2887,9 @@ main() {
         trap '' INT TERM
         local _sig="${1:-INT}" _word="sigint"
         [[ "$_sig" == "TERM" ]] && _word="sigterm"
+        # #2589 (ADR-005): the stop was because GitHub rejected this run's login
+        # (rsc_gh's marker; the status sidecar sends the TERM).
+        [[ -f "${ZBUILD_STATE_DIR:-/nonexistent}/runtime/github-login-rejected" ]] && _word="github_login_rejected"
         _zbuild_arm_abort_sentinel "$_word"
         _RUNNER_SIGINT_RECEIVED=1
         # Wave 15-H (#688): flag-gated process-group signal forwarding. When
@@ -3240,7 +3246,7 @@ main() {
         _ea_word="${_ea_word:-sigint}"
         _RUNNER_END_REASON="$_ea_word"
         case "$_ea_word" in
-            llm_unavailable|llm_rate_limited|scope_too_large|stage_stopped:*)
+            llm_unavailable|llm_rate_limited|scope_too_large|stage_stopped:*|github_login_rejected)
                 _set_pipeline_status "$_ea_state" "aborted"
                 [[ "$_ea_word" == scope_too_large ]] \
                     || _zbuild_runner_write_llm_abort "$_ea_state" "$_ea_word" "$_ea_detail"

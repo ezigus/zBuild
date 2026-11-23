@@ -35,7 +35,9 @@ _zbuild_claim_holder_v() {
     if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
         _zch_out="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-unknown}/actions/runs/${GITHUB_RUN_ID:-unknown}"
     else
-        _zch_out="run_id=${ZBUILD_RUN_ID:-} machine=${ZBUILD_CLAIM_MACHINE_ID:-${HOSTNAME:-unknown}}"
+        # #2589: the runner's pid, so a later run on this machine can tell a
+        # live holder from one that crashed (kill -0), with no slot needed.
+        _zch_out="run_id=${ZBUILD_RUN_ID:-} machine=${ZBUILD_CLAIM_MACHINE_ID:-${HOSTNAME:-unknown}} pid=$$"
     fi
 }
 
@@ -89,8 +91,41 @@ zbuild_claim_acquire() {
     if [[ "$reply" =~ \"acquired\"[[:space:]]*:[[:space:]]*false ]]; then
         _ZBUILD_CLAIM_THEIR_HOLDER="$(jq -r '.holder // empty' <<< "$reply" 2>/dev/null || true)"
         _ZBUILD_CLAIM_THEIR_HOLDER="${_ZBUILD_CLAIM_THEIR_HOLDER//[[:cntrl:]]/}"
+        # #2589 (ADR-005): a claim this machine's own run left behind (it
+        # crashed, or was killed, before releasing) is cleared, once, and the
+        # claim taken again. Another machine's, or CI's, is never touched.
+        local _zca_own=""; _zbuild_claim_own_v _zca_own "$_ZBUILD_CLAIM_THEIR_HOLDER"
+        # A resumed run finds its own claim (same run id, this machine): it is
+        # this run's again (review of #2589).
+        if [[ "$_zca_own" == mine ]]; then
+            _ZBUILD_CLAIM_ACQUIRED="$issue"
+            eb_emit_event "pipeline.claim.acquired" "issue=$issue" "holder=$_ZBUILD_CLAIM_THEIR_HOLDER" 2>/dev/null || true
+            return 0
+        fi
+        if [[ -z "${_ZBUILD_CLAIM_RETRIED:-}" && "$_zca_own" == stale ]]; then
+            eb_emit_event "pipeline.claim.stale_cleared" "issue=$issue" "holder=$_ZBUILD_CLAIM_THEIR_HOLDER" 2>/dev/null || true
+            printf 'zbuild_claim_acquire: clearing a claim this machine left (%s) on issue %s\n' "$_ZBUILD_CLAIM_THEIR_HOLDER" "$issue" >&2
+            plugin_hook_call "$_ZBUILD_COORDINATOR_DIR" release "$issue" >/dev/null 2>&1 || true
+            local _zca_rc=0
+            _ZBUILD_CLAIM_RETRIED=1 zbuild_claim_acquire "$issue" "$state_dir" || _zca_rc=$?
+            return "$_zca_rc"
+        fi
     fi
     return 1
+}
+
+# _zbuild_claim_own_v <var> <holder> — what a local holder on this machine is to
+# this run: "mine" (this run's id: a resume), "stale" (another run here whose
+# pid is gone), or "" (anything else: another machine, CI, a live run, or a
+# holder written before pids were — never cleared).
+_zbuild_claim_own_v() {
+    local -n _zco="$1"; local h="$2" me="${ZBUILD_CLAIM_MACHINE_ID:-${HOSTNAME:-unknown}}"
+    _zco=""
+    [[ "$h" =~ ^run_id=([^[:space:]]+)[[:space:]]+machine=([^[:space:]]+)[[:space:]]+pid=([0-9]+)$ ]] || return 0
+    [[ "${BASH_REMATCH[2]}" == "$me" ]] || return 0
+    if [[ "${BASH_REMATCH[1]}" == "${ZBUILD_RUN_ID:-}" ]]; then _zco=mine; return 0; fi
+    kill -0 "${BASH_REMATCH[3]}" 2>/dev/null || _zco=stale
+    return 0
 }
 
 # zbuild_claim_release — release the claim this run holds; a no-op otherwise,

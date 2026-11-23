@@ -82,6 +82,7 @@ jobs:
       PIPELINE_RESULT: ${{ needs.pipeline.result }}
       ABORT_REASON: ${{ needs.pipeline.outputs.abort_reason }}
       ABORT_DETAIL: ${{ needs.pipeline.outputs.abort_detail }}
+      CLAIM_LEFT: ${{ needs.pipeline.outputs.claim_left }}
     steps:
       # #2145: the run-status comment's tail loop dies with the pipeline job at
       # the 360-minute ceiling and leaves the header saying "running". This
@@ -91,6 +92,25 @@ jobs:
           sparse-checkout: |
             scripts/lib
           sparse-checkout-cone-mode: false
+
+      - name: Remove this run's claim label if it was left
+        # #2589 (ADR-005): mandatory clean-up. The run's own release can fail (a
+        # revoked token, a crash, a cancel). Removed when the run's events say it
+        # took the claim and never released it; when the run left no record, when
+        # the issue's run-status comment still names this run as the holder (read
+        # before the comment is finalized: a finished header names no holder).
+        # A run that reported its release is trusted. Another run's claim is
+        # never touched.
+        run: |
+          source scripts/lib/run-status-comment.sh
+          if [[ "${CLAIM_LEFT:-}" == "yes" ]]; then
+            gh api --method DELETE "/repos/${{ github.repository }}/issues/${ISSUE_NUMBER}/labels/zbuild:claimed" \
+              || echo "zbuild:claimed already removed or not present — continuing."
+          elif [[ -z "${CLAIM_LEFT:-}" || "${CLAIM_LEFT:-}" == "unknown" ]]; then
+            # The run left no record (it died before writing one): fall back to
+            # the holder its status comment still names.
+            rsc_claim_cleanup "$RUNNER_TEMP" "${{ github.repository }}" "${ISSUE_NUMBER}" "${RUN_URL}" || true
+          fi
 
       - name: Finalize the run-status comment
         # Advisory: a comment that cannot be finalized never fails the job.
