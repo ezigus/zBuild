@@ -89,6 +89,13 @@ assert_contains "[M6] ...what it refused" "$_r" "Push cannot contain secrets"
 assert_contains "[M6] ...what kind of secret" "$_r" "GitHub Personal Access Token"
 assert_contains "[M6] ...which file" "$_r" "path: artifacts/test-failures-summary.md:11"
 if [[ "$_r" == *"——————"* ]]; then assert_fail "[M6] ...without the banner's rules" "kept"; else assert_pass "[M6] ...without the banner's rules"; fi
+# The engine's own token in git's stderr is masked in the reason too.
+export GITHUB_TOKEN="$(_t ghs)"
+printf 'remote: invalid credentials for %s\n' "$GITHUB_TOKEN" > "$_e"
+_r=""; _artifact_persist_push_reason_v _r "$_e"
+if [[ "$_r" == *"$GITHUB_TOKEN"* ]]; then assert_fail "[M6] ...the engine's own token is masked in it" "the token is there"; else assert_pass "[M6] ...the engine's own token is masked in it"; fi
+assert_contains "[M6] ...shown as <secret>" "$_r" "invalid credentials for <secret>"
+unset GITHUB_TOKEN
 
 cleanup_test_env
 print_test_results

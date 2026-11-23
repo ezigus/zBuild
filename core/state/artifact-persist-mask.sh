@@ -60,7 +60,9 @@ _artifact_persist_mask_secrets() {
     for v in "${vals[@]}"; do
         while IFS= read -r -d '' f; do
             [[ -f "$f" ]] || continue
-            IFS= read -r -d '' body < "$f" || true
+            # A file gone (or unreadable) since the grep is skipped, never
+            # rewritten empty.
+            body=""; IFS= read -r -d '' body < "$f" 2>/dev/null || [[ -n "$body" ]] || continue
             # Written whole, then moved over: never a half-written file.
             printf '%s' "${body//"$v"/<secret>}" > "$f.zbmask.$$" && mv -f "$f.zbmask.$$" "$f" || rm -f "$f.zbmask.$$"
         done < <(grep -rIlF --null -e "$v" -- "$dir" 2>/dev/null)
