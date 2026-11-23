@@ -21,6 +21,10 @@ _ZBUILD_SECRET_PATTERNS_LOADED=1
 # The patterns, defined once for the per-content scan and the whole-dir
 # prefilter. AWS access-key id: AKIA followed by exactly 16 base32-ish chars.
 _ZB_SECRET_AWS_RE='AKIA[0-9A-Z]{16}'
+# #2588: GitHub's own tokens — a CI job's GITHUB_TOKEN is ghs_ (#2532 run
+# 45102665787 printed one into a test summary). Case matters: the prefixes are
+# lower case, the body is 36+ characters.
+_ZB_SECRET_GH_RE='(gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})'
 # PEM private-key header (-----BEGIN ... PRIVATE KEY-----), fragments joined
 # to keep the literal out of this source file.
 _ZB_SECRET_PEM_RE="-----""BEGIN [A-Z0-9 ]*PRIVATE"" KEY-----"
@@ -44,7 +48,7 @@ zbuild_mask_secrets_v() {
     local -n _zms="$1"; local _zms_t="$2" _zms_re _zms_nc=0
     shopt -q nocasematch && _zms_nc=1
     shopt -s nocasematch
-    for _zms_re in "$_ZB_SECRET_AWS_RE" "$_ZB_SECRET_PEM_RE" "$_ZB_SECRET_CRED_RE"; do
+    for _zms_re in "$_ZB_SECRET_GH_RE" "$_ZB_SECRET_AWS_RE" "$_ZB_SECRET_PEM_RE" "$_ZB_SECRET_CRED_RE"; do
         while [[ "$_zms_t" =~ $_zms_re ]]; do _zms_t="${_zms_t/"${BASH_REMATCH[0]}"/<secret>}"; done
     done
     (( _zms_nc )) || shopt -u nocasematch
@@ -56,6 +60,11 @@ zbuild_mask_secrets_v() {
 # credential; return 1 (silent) when it does not.
 zbuild_scan_secret_content() {
     local content="$1"
+
+    if grep -qE -- "$_ZB_SECRET_GH_RE" <<< "$content"; then
+        printf 'github_token'
+        return 0
+    fi
 
     if grep -qE -- "$_ZB_SECRET_AWS_RE" <<< "$content"; then
         printf 'aws_access_key_id'
@@ -80,7 +89,7 @@ zbuild_scan_secret_content() {
 # over the whole dir (the credential pattern is the case-insensitive one), so a
 # clean dir costs nothing per file. Binary files are skipped (-I).
 zbuild_secret_candidate_files() {
-    grep -rIl --null -E -e "$_ZB_SECRET_AWS_RE" -e "$_ZB_SECRET_PEM_RE" -- "$1" 2>/dev/null
+    grep -rIl --null -E -e "$_ZB_SECRET_GH_RE" -e "$_ZB_SECRET_AWS_RE" -e "$_ZB_SECRET_PEM_RE" -- "$1" 2>/dev/null
     grep -rIl --null -iE -e "$_ZB_SECRET_CRED_RE" -- "$1" 2>/dev/null
     return 0
 }

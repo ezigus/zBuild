@@ -438,7 +438,15 @@ no model ever reads that line.
   (`data.design_sha`, removed by #2324): nothing read it once the reuse rule
   was gone.
 
+## Amendment 2026-11-23 (#2588) — the engine's own tokens never leave in a saved file, and a refused push says why
+
+- **The engine's own secrets never leave the machine in a saved file.** These are the job's GitHub tokens (`GH_TOKEN`, `GITHUB_TOKEN` and the enterprise forms), `CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_API_KEY`. Their values are replaced by `<secret>` in every file before a file is staged into a state-branch snapshot, and before the workflow uploads the state dir (`_artifact_persist_mask_secrets`, `core/state/artifact-persist-mask.sh`). The commit that is pushed therefore never holds one, and a file is rewritten whole, never half-written. The run's state is then saved instead of the push being refused, or the token being revoked by GitHub's push protection as in #2532 run 45102665787.
+- **Any other credential is still refused, as before.** It is not masked: hiding a foreign credential would hide a real leak. Text the engine posts (status and completion comments, PR bodies) is built from these masked artifacts and from events; it is not scanned separately here. The shared scan also knows GitHub's tokens now (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`).
+- **A refused push's reason keeps GitHub's words.** Banner rules and `remote:` prefixes are set aside, the job's token is masked, and the reason is capped at 1500 characters. Before, a 300-character cut kept only the banner.
+
 ## Enforced by
+
+- 2026-11-23 amendment (#2588: own tokens masked before a push or upload; GitHub tokens scanned; a refused push says why) → `tests/unit/persist-secret-mask-test.sh` M1–M7 (M7: the snapshot commit holds `<secret>`)
 
 - §1 (the engine snapshots a directory, never a stage: files with names no stage has round-trip; the persistence code names no plugin) → `tests/unit/prior-work-reuse-contract-test.sh` C1
 - §2 (state branch, never in work-branch history; snapshots never touch the working tree) → `tests/unit/artifact-persist-test.sh`

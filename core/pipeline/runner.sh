@@ -291,7 +291,9 @@ _runner_push_work_branch() {
         return 0
     fi
     _ARTIFACT_PERSIST_LAST_STATUS="failed"
-    _ARTIFACT_PERSIST_LAST_REASON="git push work branch $_branch failed: $(tr '\n' ' ' <<< "$_err" | cut -c1-300)"
+    # #2588: GitHub's words kept, the engine's tokens masked (as the state push).
+    local _wb_why=""; _artifact_persist_push_reason_v _wb_why <(printf '%s\n' "$_err")
+    _ARTIFACT_PERSIST_LAST_REASON="git push work branch $_branch failed: ${_wb_why:-<no stderr>}"
     _runner_note_push_failure "${2:-unknown}"
     return 0
 }

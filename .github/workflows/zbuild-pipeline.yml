@@ -548,6 +548,20 @@ jobs:
             echo "::notice::plaintext copy in claude-transcripts/ (private repository, no ZBUILD_TRANSCRIPT_KEY)"
           fi
 
+      - name: Mask the job's token in the state dir
+        # #2588 (ADR-050): nothing uploaded carries the job's token. A test that
+        # printed it (#2532 run 45102665787) would otherwise ship it in the
+        # artifact below. The same masking runs before every state-branch push.
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          source "${ZBUILD_HOME:-$HOME/.local/share/zbuild}/core/state/artifact-persist.sh" 2>/dev/null \
+            && _artifact_persist_mask_secrets "${ZBUILD_STATE_DIR}" \
+            || echo "::warning::could not mask the job's token in the state dir"
+
       - name: Upload pipeline artifacts
         # CI-5: upload on FAILURE too — a failed run is exactly when the router's
         # diagnostic stderr (route.sh:459, *.raw-claude-stderr.txt) is needed.

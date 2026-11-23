@@ -27,6 +27,8 @@ fi
 
 [[ -n "${_ZBUILD_ARTIFACT_PERSIST_LOADED:-}" ]] && return 0
 _ZBUILD_ARTIFACT_PERSIST_LOADED=1
+# shellcheck source=artifact-persist-mask.sh
+source "${BASH_SOURCE[0]%/*}/artifact-persist-mask.sh"
 
 # #1931: zbuild_run_key, for a --goal run's own state branch. Guarded — this
 # file is sourced from contexts that may not have scripts/lib on hand.
@@ -75,6 +77,9 @@ _artifact_persist_reset_status() {
 _artifact_persist_find_secret() {
     local art_dir="$1" f rel kind
     [[ -d "$art_dir" ]] || return 1
+    # #2588: the engine's own tokens are masked first, so the job's token a test
+    # printed is saved as <secret>; any other credential is still flagged.
+    _artifact_persist_mask_secrets "$art_dir"
     if ! declare -F zbuild_scan_secret_content >/dev/null 2>&1 \
         || ! declare -F zbuild_secret_candidate_files >/dev/null 2>&1; then
         # shellcheck source=../../scripts/lib/secret-patterns.sh
@@ -307,6 +312,9 @@ _artifact_persist_snapshot() {
     # unreadable must cost us that one file, not the whole snapshot.
     local added=0 skipped=0 f rel blob first_skip="" n
     local -a _abs=() _rel=()
+    # #2588: the engine's own tokens are masked before a file is staged, so the
+    # commit that is pushed never holds one (review of #2588).
+    _artifact_persist_mask_secrets "$state_dir"
     while IFS= read -r -d '' f; do
         _abs+=("$f"); _rel+=("artifacts/${f#"$art_dir"/}")
     done < <(find "$art_dir" -type f -print0 2>/dev/null)
@@ -553,7 +561,7 @@ _artifact_persist_push() {
         [[ -n "$_p_err" ]] && rm -f "$_p_err"
         return 0
     fi
-    local err=""; [[ -n "$_p_err" ]] && err="$(tr '\n' ' ' 2>/dev/null < "$_p_err" | cut -c1-300)"
+    local err=""; [[ -n "$_p_err" ]] && _artifact_persist_push_reason_v err "$_p_err"
     [[ -n "$_p_err" ]] && rm -f "$_p_err"
     _ARTIFACT_PERSIST_LAST_STATUS="failed"
     _ARTIFACT_PERSIST_LAST_REASON="git push $branch failed: ${err:-<no stderr>}"

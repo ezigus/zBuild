@@ -183,7 +183,13 @@ References: Martin Fowler, "Eradicating Non-Determinism in Tests" (martinfowler.
 
 A test that is killed, times out or replaces the EXIT trap leaves its temp folder; 172 had piled up on one machine. **`npm test` (`tests/run-all.sh`) ends by removing the test temp folders older than an hour** — the patterns `zbuild cleanup --tmpdirs` reads (`ZBUILD_TMPDIR_PATTERNS`), so the two never drift — says how many, and exits with the suite's own code. A newer folder may belong to a test still running elsewhere, and is kept.
 
+## Amendment 2026-11-23 (#2588) — no test sees a real credential
+
+The test harness clears every real credential the engine is given when `tests/lib/test-helpers.sh` is sourced, and `setup_test_env` clears them again. That covers `GH_TOKEN`, `GITHUB_TOKEN` and their enterprise forms, `CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_API_KEY`, so a test that never calls `setup_test_env` is covered too. A test that needs a token sets a fake one by plain assignment, never as a prefix on a function call: a prefix sets it only for that call, so an `unset` inside the function brings back whatever the caller had. On a CI runner that is the job's real token. #2532 run 45102665787 printed it from `read-github-tool-test.sh` RG9, and GitHub revoked it.
+
 ## Enforced by
+
+- 2026-11-23 amendment (#2588: no test sees a real credential) → `tests/unit/test-env-no-credentials-test.sh` C0 (cleared when the harness is sourced), C1 (and by setup_test_env); `tests/unit/read-github-tool-test.sh` RG9 (a caller's real-looking GITHUB_TOKEN never reaches the call's environment; the old prefix form fails it)
 
 - Amendment 2026-11-14 (#2541: the suite sweeps the temp folders its tests left) → `tests/unit/run-all-sweep-test.sh` S1–S4
 

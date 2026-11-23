@@ -167,8 +167,13 @@ print_test_section "RG9: no token in the model's environment"
 assert_eq "[RG9] the token is in the secret folder" "$GH_TOKEN" "$(cat "$SECRET_DIR/token" 2>/dev/null)"
 _mode="$(stat -c %a "$SECRET_DIR" 2>/dev/null || stat -f %Lp "$SECRET_DIR" 2>/dev/null)"
 assert_eq "[RG9] ...a folder its owner only can open" "700" "$_mode"
-_env="$( GITHUB_TOKEN=gt _route_call_env; printf 'GH=%s GITHUB=%s PATH0=%s' "${GH_TOKEN-unset}" "${GITHUB_TOKEN-unset}" "${PATH%%:*}" )"
+# A plain assignment: as a prefix on a function call, the unset inside it
+# would bring back any token the caller had (#2588). The caller has one here,
+# as a CI runner does, so the prefix form would fail.
+export GITHUB_TOKEN="ghs_RunnerToken0123456789abcdefABCDEF01"
+_env="$( export GITHUB_TOKEN=gt; _route_call_env; printf 'GH=%s GITHUB=%s PATH0=%s' "${GH_TOKEN-unset}" "${GITHUB_TOKEN-unset}" "${PATH%%:*}" )"
 assert_eq "[RG9] the call's environment has no token, the shim's folder first" "GH=unset GITHUB=unset PATH0=$_ROUTE_GH_BIN" "$_env"
+unset GITHUB_TOKEN
 _rd() { jq -cn --arg t "$1" --arg p "$2" '{tool_name:$t, tool_input:{file_path:$p, path:$p}}' | bash "$HOOK" --gh-read --secret-dir "$SECRET_DIR" 0 ''; }
 assert_eq "[RG9] reading the token file is refused" "deny" "$(_dec "$(_rd Read "$SECRET_DIR/token")")"
 assert_eq "[RG9] ...so is searching a folder that holds it" "deny" "$(_dec "$(_rd Grep "${SECRET_DIR%/*}")")"
