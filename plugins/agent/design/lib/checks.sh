@@ -220,6 +220,7 @@ _dck_plain() {
         STEP_IS_TEST*)       printf 'a step names %s, in the test folders — the tests are test-author'"'"'s to write: which cases, in which files, and how. Name only the code a step changes, and drop a step that is only about tests; the SPECs say what the tests must prove' "$id" ;;
         STEP_NO_SPEC*)       local _sd="${rest#* (}"; _sd="${_sd%)}"
             printf 'step %s names no SPEC it serves (%s) — end its line with " | serves: " and the ids of the SPECs it does part of, each a SPEC of the acceptance block: its checks are shown them' "$id" "$_sd" ;;
+        STEP_MANY_FILES*)    printf 'a step names more than one file (%s) — split it into numbered parts, 1.1, 1.2 …, each naming one file' "$rest" ;;
         STEP_UNKNOWN_SPEC*)  printf 'a step serves %s, which is no SPEC of the acceptance block — name only the ids of SPECs the block has' "$id" ;;
         WIRING_IS_TEST*)     printf 'the WIRING file %s is in a test folder — a test is not what runs the change; name the file whose code calls the new code, or write WIRING: none' "$id" ;;
         *) printf '%s' "$v" ;;
@@ -427,6 +428,13 @@ _design_checks() {
     [[ -f "$design_md" ]] && zb_design_step_areas_v _sa "$design_md"
     for _s in ${_sa[@]+"${_sa[@]}"}; do
         zb_is_test_path "$_s" "$repo_root" && violations+=("STEP_IS_TEST $_s (a work step names a file in the test folders)")
+    done
+    # #2586 (ADR-073): a step, or a part of one, names one file; one over more
+    # is split into numbered parts, so build answers each with one quote.
+    [[ -f "$design_md" ]] && zb_design_step_lines_v _sa "$design_md"
+    for _s in ${_sa[@]+"${_sa[@]}"}; do
+        zb_design_step_split "$_s"
+        [[ "$_ZB_STEP_AREAS" == *,* ]] && violations+=("STEP_MANY_FILES $_ZB_STEP_DESC (areas:$_ZB_STEP_AREAS)")
     done
     # #2575: a step line with no list marker is read as the step above carrying on.
     [[ -f "$design_md" ]] && zb_design_steps_unmarked_v _sa "$design_md"

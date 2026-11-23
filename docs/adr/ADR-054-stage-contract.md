@@ -1,6 +1,6 @@
 # ADR-054: Stage Contract
 
-**Status:** Accepted (2026-08-09); amended 2026-11-20 (#2573: one shared, forgiving reader of test output); amended 2026-11-18 (#2563: the run watchdog signals only the runner's own tree)
+**Status:** Accepted (2026-08-09); amended 2026-11-22 (#2586: §6a progress is a change to the repository's tracked files); amended 2026-11-20 (#2573: one shared, forgiving reader of test output); amended 2026-11-18 (#2563: the run watchdog signals only the runner's own tree)
 **Date:** 2026-08-09
 **Issue:** #1820
 **Amended:** 2026-11-08 (#2493) — §7: a signal that arrives while a signal handler runs is ignored, never handled inside it (Amendment at the end).
@@ -680,7 +680,17 @@ On #1764 run 44910536811 the merge code, run inside the `pr` stage, ran `gh pr m
 - **§6: "the model could not be reached" (`llm_unavailable`, or `llm_rate_limited`) only when a model call failed:** the router marked the stage's last model call as failed (`_router_arm_call_failed_marker`, `scripts/lib/router-rc-classify.sh`: armed in one place on each call path — when `route_to_model`'s call returns non-zero, and when `route_to_model_loop` returns non-zero after it decided to call the model — so no binary, a failed run, an empty or unreadable reply all count; cleared when a call starts and before every dispatch), it saw a rate limit (the throttle marker), or the stage's reason is a router reason (`router_…`).
 - **§6: a stage that delegates reports what the delegate did.** When the merge code returns non-zero, `pr` reads the merge code's result: when it holds a PR link, `pr` keeps the link (`data.pr_url`, `pr-url.txt`) and says "PR opened <url>; merge refused: <reason>" (or "merge did not finish" for an outcome other than `misconfigured`), with the merge code's outcome; only with no link does it say no PR was delivered (`_pr_delivery_merge_failed`, `plugins/agent/pr-delivery/plugin.sh`). Merging with auto-merge off is not in scope: the repository's human merge gate stays.
 
+## Amendment 2026-11-22 (#2586) — §6a: progress is a change to the repository's tracked files
+
+On #2532 run 45017980554 build made nine tries. Six changed no code (`"__repository__":"unchanged"`), yet each counted as progress (`"progress":true`), because build rewrote its notes. The hand-on of a stuck stage's findings (#2565) never fired.
+
+- **A stage that writes the repository made progress only when its tracked files changed** — code, tests, docs and config (`__repository__`). Its notes, a cut-off call's saved steps, its result, its summary, its other declared outputs (diff.patch is a report of the change) and new findings in its result are not progress. A notes-only try is not run again, and `stage_handoff_unchanged` hands its findings on.
+- **Any other stage:** a change to a declared output other than its summary and its result, or new findings about its own work (#2460), as before. A cut-off call's saved steps still count, so it resumes from them (#2454). Its notes are run state, and no longer count: the #2443 amendment's "the notes are progress" no longer applies.
+- A first try that ends `unusable` is still run again once (#2487), and a try whose repository writes the engine put back still did change something.
+
 ## Enforced by
+
+- §6a amendment 2026-11-22 (#2586: progress is a change to the tracked files) → `tests/unit/attempt-progress-test.sh` P6 (notes alone: no progress), P8 (a non-repository stage's cut-off steps: progress), P9 (the same steps again: none), P13 (#2532's build: notes, cut-off steps, a report and new findings, the repository unchanged — no progress; a change to its files is); `tests/unit/stage-retry-test.sh` R10 (amended: a code-writing stage's other output alone is no progress)
 
 - §6 amendment 2026-11-21 (#2582: a stop says why; a delegate's work is reported) → `tests/unit/merge-v2-result-test.sh` R1 (a refused merge is misconfigured, with gh's error and the PR link), SPEC-30 (gh that cannot reach GitHub stays unavailable); `tests/integration/merge-policy-auto-test.sh` R3 (both merge policies: pr keeps the link and says the PR was opened and the merge refused); `tests/unit/merge-v2-result-test.sh` R1b (a rate limit, secondary included, "try again", "something went wrong" and no output stay unavailable; a refusal stays a refusal); `tests/integration/stage-stop-names-cause-test.sh` S1 (a stage with no model call that ends unavailable: the stop names it and its reason, never the model), S2 (one that ends misconfigured: pipeline.end and the state's reason), S3 (an empty model reply, the reason in the stage's own words: the model is named), S4 (a credential and a private path are cleaned from the stop), S5 (broken on an engine code, or interrupted: no stage_stopped word, no engine code); `tests/integration/cycle-gate-unavailable-aborts-run-test.sh` ADR-063 §4 (a router reason with no mark still says the model could not be reached); `tests/integration/router-loop-rate-limit-test.sh` R2 (a failed call is marked on both paths; a good call and a new dispatch clear it); `tests/unit/run-open-items-test.sh` R2 (the words)
 

@@ -21,9 +21,9 @@
 #             the lenses run) is run again too
 # R9 [guard]  a stage dispatched from inside a stage is not retried on its own:
 #             the outer stage's retry covers it
-# R10 [change] for a stage that writes code, a change to a declared output
-#             other than its summary and its result file is progress, as a
-#             change to the code is (#2443: the result changes every try)
+# R10 [change] for a stage that writes code, only a change to the code is
+#             progress: its result, its summary and its other declared
+#             outputs are reports of the try (#2443; #2586)
 # R11 [change] the engine tells each try its number (ZBUILD_STAGE_TRY), so a
 #             try's records are its own (#2443)
 # R12 [change] a try whose output could not be used is run again once, even when
@@ -228,7 +228,7 @@ _coder_try 'printf "{\"n\":1}" > "$S/artifacts/coder-result.json"'
 _coder_try 'printf "{\"n\":2}" > "$S/artifacts/coder-result.json"'
 assert_eq "[R10] a code-writing stage whose result alone changed made no progress" "false" "${_ATTEMPT_LAST_PROGRESS:-unset}"
 _coder_try 'printf "a1" > "$S/artifacts/coder-answers.json"'
-assert_eq "[R10] ...one whose other output changed did" "true" "${_ATTEMPT_LAST_PROGRESS:-unset}"
+assert_eq "[R10] ...one whose other output alone changed did not (#2586)" "false" "${_ATTEMPT_LAST_PROGRESS:-unset}"
 _coder_try 'printf "s2" > "$S/artifacts/coder-summary.md"'
 assert_eq "[R10] ...one whose summary alone changed did not" "false" "${_ATTEMPT_LAST_PROGRESS:-unset}"
 _coder_try 'printf x > "$REPO/f.txt"'

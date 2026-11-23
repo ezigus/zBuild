@@ -43,17 +43,28 @@ open_items_json() {
     # #2378: only results this run wrote. Hydrate restores an earlier run's
     # results with their saved times, so one older than this run's start is not
     # this run's — its stage did not run this time.
-    local start="$sd/runtime/run-start"
-    for f in "$sd"/artifacts/*-result.json; do
+    local start="$sd/runtime/run-start" _oij_b _oij_s
+    local -a _oij_sib=()
+    for f in "$sd"/artifacts/*.json; do
         [[ -s "$f" ]] || continue
         [[ -e "$start" && "$start" -nt "$f" ]] && continue
+        # #2586 (ADR-068 §8): every stage's result, whatever its name — build's
+        # is build-summary.json, the test stage's test-results.json. One that
+        # hands its findings on in <name>-*-result.json files is read through
+        # those. Read by the shell: the status comment renders on every tick.
+        if [[ "$f" != *-result.json ]]; then
+            _oij_s=""; IFS= read -r -d '' _oij_s < "$f" || true
+            [[ "$_oij_s" == *'"result_contract"'* ]] || continue
+            _oij_b="${f%.json}"; _oij_sib=("$_oij_b"-*-result.json)
+            [[ -e "${_oij_sib[0]}" ]] && continue
+        fi
         files+=("$f")
     done
     [[ ${#files[@]} -gt 0 ]] || { printf '[]'; return 0; }
     # A result is a check's when it carries a verdict; it is open when that
     # verdict is not a pass. input_filename names the check: <check>-result.json.
     jq -n -c "$_OPEN_ITEMS_JQ_PASSED"'
-        [ inputs as $r | (input_filename | split("/") | last | sub("-result\\.json$"; "")) as $c
+        [ inputs as $r | (input_filename | split("/") | last | sub("\\.json$"; "") | sub("-(result|results|summary|verdict)$"; "")) as $c
           | $r | select(type == "object" and ((.outcome) | type) == "string")
           | select(passed | not)
           | if ((.data.findings // []) | length) > 0 then
@@ -61,7 +72,13 @@ open_items_json() {
             else
                 {ref: $c, opener: $c, text: ("the " + $c + " check did not pass: "
                                               + ((.reason // "") | if . == "" then "it gave no reason" else . end))}
-            end ]' "${files[@]}" 2>/dev/null || printf '[]'
+            end ]
+        # A finding routed to two of a stage'"'"'s files (test-results.json and
+        # test-code-result.json) is one item, named by the stage itself.
+        | reduce .[] as $i ([]; (map(.ref) | index($i.ref)) as $k
+            | if $k == null then . + [$i]
+              elif ($i.opener | length) < (.[$k].opener | length) then .[$k] = $i
+              else . end)' "${files[@]}" 2>/dev/null || printf '[]'
 }
 
 # open_items_count <state_dir>

@@ -21,13 +21,17 @@
 # P4 [change] any other stage: a change to only its narrative summary is no
 #             progress
 # P5 [change] ...a change to only its result file (primary) is no progress
-# P6 [change] a change to the stage's notes is progress
+# P6 [change] a change to the stage's notes alone is no progress (#2586: they
+#             are run state; #2532 run 45017980554's build rewrote its notes
+#             on 6 tries that changed no code, and each counted)
 # P7 [guard]  a change to any other declared output is progress
-# P8 [change] a try whose call was cut off and whose steps were saved made
-#             progress (#2454: on #1805 run 41452299475 the steps were saved
-#             for a next try the progress rule then refused)
-# P9 [guard]  ...the same steps again, or none (the call finished and the list
-#             was removed), are no progress
+# P8 [guard]  a stage that does not write the repository, whose call was cut
+#             off and whose steps were saved, made progress: it is tried again
+#             from those steps (#2454; review of #2586 kept it)
+# P9 [guard]  ...the same steps again, or none, are no progress either
+# P13 [change] a repository-writing stage: only its tracked files count — its
+#             notes, its diff.patch-like reports and new findings in its
+#             result, with the repository unchanged, are no progress (#2586)
 # P10 [change] a try whose result holds findings about its own work that differ
 #             from its last try's made progress (#2460: build said done, changed
 #             nothing, and its test still failed — the next try is told so)
@@ -101,7 +105,7 @@ assert_eq "[P5] only its result file changed → no progress" "no" "$(_progress 
 print_test_section "P6-P7: notes and other outputs"
 mkdir -p "$ART/notes"
 _attempt "$Q" designer 'printf "found X" > "$ART/notes/designer.md"'
-assert_eq "[P6] its notes changed → progress" "yes" "$(_progress designer)"
+assert_eq "[P6] its notes changed, nothing else → no progress" "no" "$(_progress designer)"
 _attempt "$Q" designer 'printf "d4" > "$ART/designer-result.json"'
 assert_eq "[P6] ...its notes unchanged, only its result → no progress" "no" "$(_progress designer)"
 _attempt "$Q" designer 'printf "w1" > "$ART/designer-work.md"'
@@ -110,7 +114,7 @@ assert_eq "[P7] another declared output changed → progress" "yes" "$(_progress
 print_test_section "P8-P9: a cut-off call's saved steps"
 _cut="$ART/notes/designer.cut-off.md"
 _attempt "$Q" designer 'printf -- "- Read: a.sh\n" > "$_cut"'
-assert_eq "[P8] its call was cut off and its steps saved → progress" "yes" "$(_progress designer)"
+assert_eq "[P8] its call was cut off and its steps saved → progress: it resumes from them" "yes" "$(_progress designer)"
 _attempt "$Q" designer 'printf -- "- Read: a.sh\n" > "$_cut"'
 assert_eq "[P9] the same steps again → no progress" "no" "$(_progress designer)"
 _attempt "$Q" designer 'rm -f "$_cut"'
@@ -126,6 +130,21 @@ _attempt "$Q" designer '_fr "tests/b-test.sh still fails"'
 assert_eq "[P11] the same findings as its last try → no progress" "no" "$(_progress designer)"
 _attempt "$Q" designer 'printf "{\"outcome\":\"unusable\"}" > "$ART/designer-result.json"'
 assert_eq "[P11] no findings → no progress" "no" "$(_progress designer)"
+
+print_test_section "P13: a repository-writing stage counts only the repository (#2586)"
+B="$TEST_TEMP_DIR/plugins/build"; mkdir -p "$B"
+{
+    printf 'id: build\nkind: agent\ncapabilities:\n  writes_repository: true\noutputs:\n'
+    printf '  - id: diff\n    path: "${artifact_dir}/diff.patch"\n'
+    printf '  - id: result\n    path: "${artifact_dir}/build-summary.json"\n    primary: true\n'
+    printf '  - id: summary\n    path: "${artifact_dir}/build-summary.md"\n    summary: true\n'
+} > "$B/manifest.yaml"
+_bt() { printf '{"outcome":"unusable","data":{"findings":[{"n":1,"text":"%s"}]}}' "$1" > "$ART/build-summary.json"; }
+_attempt "$B" build 'printf "d1" > "$ART/diff.patch"; _bt "step 2 not done"; printf "n1" > "$ART/notes/build.md"'
+_attempt "$B" build 'printf "d2" > "$ART/diff.patch"; _bt "step 3 not done"; printf "n2" > "$ART/notes/build.md"; printf -- "- Read: x\n" > "$ART/notes/build.cut-off.md"'
+assert_eq "[P13] its notes, cut-off steps, a report and new findings changed, the repository did not → no progress" "no" "$(_progress build)"
+_attempt "$B" build 'printf z > "$REPO/h.txt"'
+assert_eq "[P13] ...a change to its files → progress" "yes" "$(_progress build)"
 
 print_test_section "P12: a stage with two result files (review on #2461)"
 R2P="$TEST_TEMP_DIR/plugins/twin"; mkdir -p "$R2P"

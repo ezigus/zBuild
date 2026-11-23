@@ -1,6 +1,7 @@
 # ADR-064 — One live run-status comment per run
 
 **Status:** Proposed (2026-09-18)
+**Amended:** 2026-11-22 (#2586) — the header of a run that ended says why and names each blocker; the open items are read from every stage's result (§4; see the amendment below).
 **Amended:** 2026-11-06 (#2480) — a row shows what a stage said as text, names the round of every loop it is in, and says each finding once (§4; see the amendment below).
 **Amended:** 2026-10-14 (#2378) — the open items list only results this run wrote. Hydrate restores an earlier run's results with their saved times; one older than this run's start belongs to a stage that did not run this time, and is left out.
 **Amended:** 2026-10-31 (#2439) — each try of a stage the engine runs again has its own row (see the amendment below).
@@ -313,7 +314,16 @@ On #1764 run 44910536811 the run's comment said "stopped: the model could not be
 
 - **§4: when a stage stopped the run, the status comment, the completion comment and the end-of-run words say so: "stopped: <stage> stopped the run — <the stage's reason>"** (`run_end_words`, `scripts/lib/run-open-items.sh`, from the engine's `stage_stopped:<stage>:<reason>`). "The model could not be reached" is said only when a model call failed.
 
+## Amendment 2026-11-22 (#2586) — §4: the end of every run says why it stopped, naming the blocker; the open items include every stage's failed checks
+
+On #2532 run 45017980554 (`out_of_tries:build_test_cycle`) the status comment's header showed no stop line, the completion comment said only "build_test_cycle found no way forward in its tries", and the open items missed build's unfinished step and the failing test: they were read only from `*-result.json` files.
+
+- **§4: the header of a run that ended always says why** — the end's own reason (`pipeline.end`) when nothing aborted the run, in words (`run_end_words`) — **and names each blocker by its id and the check that opened it:** "… — blocked by BUFND-35 (build), TEFND-1 (test)". A running run's header names none.
+- **§4 (ADR-068 §8): the open items are read from every stage's result,** whatever its name: any result (one with a `result_contract`) whose outcome did not pass — build's `build-summary.json`, the test stage's `test-results.json` — and a stage that hands its findings on in `<name>-*-result.json` files is read through those only. The check is named by its file, its `-result`, `-results`, `-summary` or `-verdict` ending taken off.
+
 ## Enforced by
+
+- §4 amendment 2026-11-22 (#2586: why it stopped, the blocker, every stage's failed checks) → `tests/unit/run-stop-names-blocker-test.sh` B1, B2 (build's and the test stage's results are open items, by id), B3 (a lens's own result adds nothing beside its routed ones), B4 (a passing one is none), B5 (the header says why and names each blocker), B6 (a running run's names none)
 
 - §4 amendment 2026-11-21 (#2582: the stop line names the stage and its reason) → `tests/unit/run-open-items-test.sh` R2 (the words, and the completion comment); `tests/integration/stage-stop-names-cause-test.sh` S1, S2 (the stop line and end-of-run words of a real run, and the state's reason the comment reads)
 

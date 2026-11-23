@@ -34,6 +34,7 @@ issue. Its status follows from three facts:
 - Is it a change to a document only? Then it is [doc].
 - If not, does the code from before this change already behave as the SPEC says — by any route, a fallback included? If not, it is [code].
 - If it does, is work still needed that changes no behaviour — a test, a config, a refactor? Then it is [no-code]; if none, it is [done].
+When a SPEC is a test the issue asks for, judge the behaviour that test proves: when the code already behaves so, no test of it existing yet does not make it [code].
 Find every SPEC whose status is not the one these facts give. Then judge each
 of its parts.
 
@@ -116,6 +117,7 @@ Steps: ok
 Steps: not-asked | WHY: <no requirement needs this step> | ACCEPTED IF: <what must be true for the steps to be accepted> | QUOTE: <the step's words>
 Steps: contradicts | WHY: <which requirement, limit or term, and how> | ACCEPTED IF: <what must be true for the steps to be accepted> | QUOTE: <the step's words>
 Steps: new-owner | WHY: <what the steps build, and what already owns that job> | ACCEPTED IF: <what must be true for the steps to be accepted> | QUOTE: <file> | <one line of the existing owner>
+Steps: test | WHY: <the step whose work is writing or changing a test> | ACCEPTED IF: <what must be true for the steps to be accepted> | QUOTE: <the step's words>
 EOF2
     [[ -n "$decision" ]] && cat <<'EOF2'
 

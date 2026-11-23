@@ -213,7 +213,7 @@ print_test_section "K7: issue-acceptance"
         source "$REPO_ROOT/plugins/agent/build/plugin.sh" >/dev/null 2>&1
         output_summary_json="$A/build-summary.json"; terminated_reason=done_sentinel files_changed_count=1 files_changed_json='["p.sh"]' iterations=1 repo_root="$XR"
         scope_violations=(); scope_violations_created=()  # build sets them before it writes
-        _ROUTE_LOOP_LAST_RESPONSE=$'ANSWER issue-acceptance finding 1: wrong — main() reads dry_run\nLOOP_COMPLETE'
+        _ROUTE_LOOP_LAST_RESPONSE=$'ANSWER issue-acceptance finding 1: wrong — p.sh | dry_run=1 — main() reads dry_run\nLOOP_COMPLETE'
         _build_write_build_summary >/dev/null 2>&1
     )
     _R=$'MET: the flag'

@@ -335,18 +335,31 @@ rsc_render_header() {
     [[ -n "${GITHUB_SERVER_URL:-}" && -n "${GITHUB_REPOSITORY:-}" && -n "${GITHUB_RUN_ID:-}" ]] \
         && meta+=" · [run log](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
     [[ -n "$pr" ]] && meta+=" · PR ${pr}"
-    # #2330: the reason in words; the events keep the engine's code.
+    # #2330 (ADR-068 §8): once the run has ended without passing, each open
+    # item, with what would settle it.
+    local items="" _ended=0
+    case "$status" in running|complete|success|complete_unconverged) ;; *) _ended=1 ;; esac
+    (( _ended )) && items="$(open_items_markdown "$state_dir")"
+    # #2330: the reason in words; the events keep the engine's code. #2586
+    # (ADR-064 §4): a run that ended always says why — the end's reason when
+    # nothing aborted it — and names each blocker by its id.
+    (( _ended )) && [[ -z "$reason" ]] && reason="$end_reason"
     if [[ -n "$reason" ]]; then
         meta+=" · $(run_end_words "$reason" 0)"
         [[ -n "$detail" ]] && meta+=" — ${detail}"
     fi
+    if [[ -n "$items" ]]; then
+        local _bl="" _bre='^[0-9]+\. \*\*([^*]+)\*\*( \(opened by ([^)]+)\))?' _bx
+        while IFS= read -r _bx; do
+            [[ "$_bx" =~ $_bre ]] || continue
+            _bl+="${_bl:+, }${BASH_REMATCH[1]}${BASH_REMATCH[3]:+ (${BASH_REMATCH[3]})}"
+        done <<< "$items"
+        [[ -n "$_bl" ]] && meta+=" — blocked by ${_bl}"
+    fi
     printf '%s\n' "$meta"
-    # #2330 (ADR-068 §8): once the run has ended without passing, each open
-    # item, with what would settle it.
     case "$status" in
         running|complete|success|complete_unconverged) ;;
         *)
-            local items; items="$(open_items_markdown "$state_dir")"
             if [[ -n "$items" ]]; then
                 local words; words="$(run_end_words "${end_reason:-$reason}" "$(grep -c '^[0-9][0-9]*\. ' <<< "$items" || true)")"
                 printf '\n**%s:**\n\n%s\n' "${words^}" "$items"

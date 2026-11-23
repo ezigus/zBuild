@@ -31,14 +31,14 @@ _build_steps_quote_of_v() {
 # _build_steps_noanswer_v <var> <n> — the finding for a step with no answer.
 _build_steps_noanswer_v() {
     local -n _bsna="$1"
-    _bsna="step $2 has no answer: do it and answer \`step $2: done — <file> | <a line this change added>\`, or answer \`step $2: not needed — <why>\` (the step: ${_BUILD_STEP_DESC[$2-1]})"
+    _bsna="step ${_BSL[$2]:-$2} has no answer: do it and answer \`step ${_BSL[$2]:-$2}: done — <file> | <a line this change added>\`, or answer \`step ${_BSL[$2]:-$2}: not needed — <why>\` (the step: ${_BUILD_STEP_DESC[$2-1]})"
 }
 
 # _build_steps_stale_v <var> <n> <why> — the finding for a step whose answer,
 # accepted on an earlier try, no longer stands, and why (review on #2582).
 _build_steps_stale_v() {
     local -n _bsst="$1"
-    _bsst="step $2's earlier answer no longer stands: $3 — answer it again (the step: ${_BUILD_STEP_DESC[$2-1]})"
+    _bsst="step ${_BSL[$2]:-$2}'s earlier answer no longer stands: $3 — answer it again (the step: ${_BUILD_STEP_DESC[$2-1]})"
 }
 
 # _build_steps_elide_v <var> <text> — <text> without an elision mark (... or
@@ -113,7 +113,7 @@ _build_steps_kept_answers() {
     judge_kept_get_all_v _bka_out "$kf" _bka_none
     for (( n = 1; n <= count; n++ )); do
         [[ -z "${kind[$n]:-}" && -z "${wait[$n]:-}" ]] || continue
-        x="${_JUDGE_KEPT_ANSWER[step-$n]:-}"
+        x="${_JUDGE_KEPT_ANSWER[step-${_BSL[$n]:-$n}]:-}"
         [[ "$x" == *$'\n'* ]] || continue
         k="${x%%$'\n'*}"; x="${x#*$'\n'}"
         case "$k" in

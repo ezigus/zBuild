@@ -62,6 +62,21 @@ _ia_item_of_finding_v() {
     _iif="${t%%:*}"
 }
 
+# _ia_quotes_a_line <answer> — rc 0 when the answer quotes a line somewhere:
+# a word, its formatting marks (`, *) and a :<line> suffix set aside, then
+# ` | ` and text (review of #2586: models wrap each part in backticks, and a
+# Makefile has no extension).
+_ia_quotes_a_line() {
+    local t="$1" w re='(^|[[:space:]])([^[:space:]|]+)[[:space:]]+\|[[:space:]]+[^[:space:]]'
+    while [[ "$t" =~ $re ]]; do
+        w="${BASH_REMATCH[2]}"
+        _judge_bare_path_v w; w="${w%%:[0-9]*}"
+        [[ -n "$w" && "$w" != *[\`*]* ]] && return 0
+        t="${t#*"${BASH_REMATCH[0]}"}"
+    done
+    return 1
+}
+
 # _ia_judge — the judging part of issue_acceptance_run, in its scope (issue,
 # acc, change, _change_fp, test_verdict, tier, art, _reqs, _lims, _terms,
 # _root_q, diff_f): every item's kept verdict that still holds, one call for
@@ -72,6 +87,28 @@ _ia_judge() {
     judge_engine_v eng
     judge_answers_to_v _ans "$art" issue-acceptance issue-acceptance-design issue-acceptance-test issue-acceptance-code ${_IA_FCODE:+"$_IA_FCODE"}
     local -a _ia_lf=(); for l in "" -design -test -code; do _ia_lf+=("issue-acceptance$l=${art%/}/issue-acceptance$l-result.json"); done
+    # #2586 (ADR-068 §6): a wrong that quotes no line (<file> | <line>) showing
+    # the requirement met does not dispute its finding: the kept refusal stands,
+    # and the finding, sent on again, carries that answer (_ia_finish).
+    _IA_BARE_WRONG=()
+    local _ia_keep="" _ia_bare="" _ia_kind _ia_a
+    while IFS= read -r a; do
+        [[ -n "$a" ]] || continue
+        zb_answer_kind_v _ia_kind "$a"
+        if [[ "$_ia_kind" == wrong ]] && ! _ia_quotes_a_line "$a"; then _ia_bare+="$a"$'\n'; else _ia_keep+="$a"$'\n'; fi
+    done <<< "$_ans"
+    _ans="${_ia_keep%$'\n'}"
+    if [[ -n "$_ia_bare" ]]; then
+        local -A _ia_bwf=()
+        judge_answered_findings_v _ia_bwf "${_ia_bare%$'\n'}" "${_ia_lf[@]}"
+        for k in "${!_ia_bwf[@]}"; do
+            _ia_item_of_finding_v ti "${_ia_bwf[$k]%%$'\x1f'*}"
+            # R3 covers a finding about a requirement; any other bare wrong is
+            # judged as before (review of #2586).
+            if [[ -n "$ti" ]]; then _IA_BARE_WRONG["$ti"]="${_ia_bwf[$k]#*$'\x1f'}"
+            else _ia_a="${_ia_bwf[$k]#*$'\x1f'}"; _ans+="${_ans:+$'\n'}$k: ${_ia_a# }"; fi
+        done
+    fi
     # The items, and what each verdict is kept under.
     local -a rids=() lids=() items=()
     local -A rline=() lline=() fps=()
@@ -182,6 +219,7 @@ _ia_judge() {
     done
     judge_changed_block_v _chg "$_chg"; _held+="$_chg"
     # Review on #2574: each pass judged again because the code moved, shown so.
+    _JUDGE_UNHOLD=()
     local _pas=""; judge_pass_entries_v _pas earlier kwhy "$_IA_PASS_WORDS" "fingerprint file" $want
     judge_pass_block_v _pas "$_pas"; _held+="$_pas"
     local _uqb=""; zb_unclear_judge_block_v _uqb "$_IA_UQ_CARRIED"
@@ -198,7 +236,12 @@ _ia_judge() {
         judge_reply_field_v q "$l" QUOTE; [[ -n "$q" ]] || continue
         judge_quote_path_v qp "$q" "$_root_q"; [[ -n "$qp" ]] && deps["$it"]+="$_root_q/$qp"$'\n'
     done <<< "$_IA_RAW"
-    # A kept pass judged again is refused only on a line added since; else it stands.
+    # A kept pass judged again is refused only on a line added since; else it
+    # stands — unless an answer it gave, or a finding it was shown (read from
+    # its prompt by zb_answers_finish), names it (#2586, ADR-072 §5).
+    local _ans_now=""; for l in ${_IA_ANSWERS[@]+"${_IA_ANSWERS[@]}"}; do _ans_now+="$l"$'\n'; done
+    for l in "${!_ZB_ANS_FINDING[@]}"; do _ans_now+="${_ZB_ANS_FINDING[$l]}"$'\n'; done
+    judge_unhold_named "$_ans_now" $want
     for it in $want; do
         [[ -n "${earlier[$it]+x}" && -n "${pay[$it]:-}" ]] || continue
         case "${kwhy[$it]:-}" in fingerprint|file) ;; *) continue ;; esac

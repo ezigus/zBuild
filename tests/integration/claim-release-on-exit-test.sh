@@ -105,7 +105,10 @@ STARTED="$TEST_TEMP_DIR/c7-started"; claim_fixture_stage ": > \"$STARTED\""
 claim_fixture_run c7 --issue 90001807
 assert_eq "[C7] the run ends non-zero" "1" "$(( CLAIM_RC != 0 ))"
 assert_file_not_exists "[C7] no stage ran" "$STARTED"
-assert_eq "[C7] the claim is released" "$(printf 'claim 90001807\nrelease 90001807')" "$(cat "$CLAIM_CALLS")"
+_c7_want="$(printf 'claim 90001807\nrelease 90001807')"
+assert_eq "[C7] the claim is released" "$_c7_want" "$(cat "$CLAIM_CALLS")"
+# #2586: a failure here has been seen only in CI; it shows the run it saw.
+[[ "$(cat "$CLAIM_CALLS")" == "$_c7_want" ]] || claim_fixture_show c7
 
 print_test_results
 exit $((FAIL > 0))

@@ -12,6 +12,10 @@
 #             the refusal is taken
 # P2 [guard]  the steps' own words change: they are judged afresh, and a
 #             refusal is taken
+# P4 [change] (#2586, ADR-072 §5) a SPEC's kept pass judged again because a
+#             file moved, refused quoting a line that did not change, while
+#             design's answer to a finding names that SPEC: it is not held —
+#             the refusal is taken; with no such answer it is held (guard)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -35,7 +39,7 @@ export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; : > "$ZBUILD_EVENT
   route_to_model() {
       printf 'x\n' >> "$_CALLS"; printf '%s' "$2" > "$_P_FILE"
       [[ -n "${ZBUILD_ROUTER_OPENED_FILE:-}" ]] && printf '%s\n' "$XR/core/claim/lib.sh" >> "$ZBUILD_ROUTER_OPENED_FILE"
-      printf '%s' $'RQCL-1: covered\nCLA-1: ok\n'"$STEPS_LINE"$'\nDecision: ok'
+      printf '%s' $'RQCL-1: covered\n'"${CLA_LINE:-CLA-1: ok}"$'\n'"$STEPS_LINE"$'\nDecision: ok'
       return 0; }
   XR="$TEST_TEMP_DIR/repo"; mkdir -p "$XR/core/claim"
   ( cd "$XR" && git init -q && printf 'claim_take() { :; }\n' > core/claim/lib.sh && git add -A \
@@ -61,7 +65,7 @@ MD
   }
   _design ""
   REQS='- RQCL-1: the run adds the claimed label before the first stage'
-  _run() { : > "$_CALLS"; _design_coverage "$D" "$REQS" T2 ""
+  _run() { : > "$_CALLS"; _design_coverage "$D" "$REQS" T2 "${ANS:-}"
            printf '%s: findings=%s calls=%s\n' "$1" "$(_design_coverage_findings | grep -c . || true)" "$(grep -c x "$_CALLS" || true)"; }
   _run pass1
   printf '# a helper\n' >> "$XR/core/claim/lib.sh"
@@ -74,6 +78,15 @@ MD
   _run taken
   _design " through plugin_hook_call"
   _run fresh
+  STEPS_LINE="Steps: ok"; _run p4base
+  printf '# p4 one\n' >> "$XR/core/claim/lib.sh"
+  CLA_LINE="CLA-1 Title: status | DOC: no | BEFORE: yes | WORK: no | WHY: claim_take already claims | ACCEPTED IF: CLA-1 is [no-code] | QUOTE: core/claim/lib.sh | claim_take() { :; }"
+  _run p4held
+  CLA_LINE=""; _run p4base2
+  printf '# p4 two\n' >> "$XR/core/claim/lib.sh"
+  CLA_LINE="CLA-1 Title: status | DOC: no | BEFORE: yes | WORK: no | WHY: claim_take already claims | ACCEPTED IF: CLA-1 is [no-code] | QUOTE: core/claim/lib.sh | claim_take() { :; }"
+  ANS="DSFND-7: done — changed CLA-1 from [code] to [no-code]"
+  _run p4open
 ) > "$TEST_TEMP_DIR/p.log" 2>&1
 _l="$(cat "$TEST_TEMP_DIR/p.log")"
 print_test_section "P1: a pass judged again because a file moved"
@@ -85,6 +98,10 @@ print_test_section "P3: a line added since"
 assert_contains "[P3] a refusal quoting a line added since is taken" "$_l" "taken: findings=1 calls=1"
 print_test_section "P2: the steps' own words change"
 assert_contains "[P2] judged afresh: the refusal is taken" "$_l" "fresh: findings=1 calls=1"
+
+print_test_section "P4: an open finding about a SPEC unlocks its kept pass (#2586)"
+assert_contains "[P4] guard: no finding names CLA-1 — its pass is held" "$_l" "p4held: findings=0 calls=1"
+assert_contains "[P4] design's answer names CLA-1 — the refusal is taken" "$_l" "p4open: findings=1 calls=1"
 
 cleanup_test_env
 print_test_results

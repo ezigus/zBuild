@@ -65,13 +65,14 @@ zbuild_claim_acquire() {
     [[ -d "${reply_file%/*}" ]] || mkdir -p "${reply_file%/*}" 2>/dev/null || true
     plugin_hook_call "$_ZBUILD_COORDINATOR_DIR" claim "$issue" > "$reply_file" || rc=$?
     IFS= read -r -d '' reply < "$reply_file" || true
-    if [[ "$rc" -ne 0 ]]; then
+    # A JSON string cannot hold an unescaped quote, so a holder's text never
+    # matches these. A reply that says acquired is believed whatever the hook's
+    # status (#2586): an interrupt can cut the wait short after the label went
+    # on, and a claim this run made must be released by it.
+    if [[ "$rc" -ne 0 && ! "$reply" =~ \"acquired\"[[:space:]]*:[[:space:]]*true ]]; then
         _zbuild_claim_skipped "$issue" "the claim coordinator failed (rc=$rc)"
         return 0
     fi
-
-    # A JSON string cannot hold an unescaped quote, so a holder's text never
-    # matches these.
     if [[ "$reply" =~ \"acquired\"[[:space:]]*:[[:space:]]*true ]]; then
         _ZBUILD_CLAIM_ACQUIRED="$issue"
         local holder; _zbuild_claim_holder_v holder
