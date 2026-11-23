@@ -28,8 +28,9 @@ _fr_emit_lint() {
     local status="$1" ec="$2" summary="$3" detail="${4:-}"
     local ec_json="null"
     [[ "$ec" =~ ^-?[0-9]+$ ]] && ec_json="$ec"
-    jq -n --arg s "$status" --argjson ec "$ec_json" --arg sum "$summary" --arg det "$detail" \
-        '{status: $s, exit_code: $ec, summary: $sum} + (if $det == "" then {} else {detail: $det} end)' 2>/dev/null
+    # #2592: the detail (lint's whole output) on stdin, never one argument.
+    jq -Rs --arg s "$status" --argjson ec "$ec_json" --arg sum "$summary" \
+        '.[:-1] as $det | {status: $s, exit_code: $ec, summary: $sum} + (if $det == "" then {} else {detail: $det} end)' 2>/dev/null <<< "$detail"
 }
 
 # ─── _fr_emit_coverage ────────────────────────────────────────────────────────

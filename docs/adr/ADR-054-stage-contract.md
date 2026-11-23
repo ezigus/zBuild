@@ -688,7 +688,25 @@ On #2532 run 45017980554 build made nine tries. Six changed no code (`"__reposit
 - **Any other stage:** a change to a declared output other than its summary and its result, or new findings about its own work (#2460), as before. A cut-off call's saved steps still count, so it resumes from them (#2454). Its notes are run state, and no longer count: the #2443 amendment's "the notes are progress" no longer applies.
 - A first try that ends `unusable` is still run again once (#2487), and a try whose repository writes the engine put back still did change something.
 
+## Amendment 2026-11-23 (#2592) — text that can be large reaches a program through a file or stdin
+
+- **Text that can be large is never passed as one command-line argument.** That covers an issue, a model's reply, a stage's result data, and a tool's whole output (lint). Linux caps one argument at 128 KiB, and macOS caps all of a call's arguments together at about 1 MiB (#1764 run 43220496101 died on an issue over 1 MiB). Such text reaches the program on stdin (`jq … <<< "$text"`, `jq -Rs`, `--slurpfile d /dev/stdin`) or through a file (`--rawfile`, `--body-file`).
+- **This adds no processes.** A here-string is written by the shell itself.
+- **Where it is done:**
+  - `stage_result_write` (every stage's result data);
+  - intake's result data (`_intake_result_data_v`, the whole issue);
+  - the test results' lint block (`_fr_emit_lint`), for consistency: lint's detail is capped at 4 KB before it gets there;
+  - the stage-io comment rendering (`_stage_io_to_gh_comment`, whose input is the whole prompt);
+  - the monitor's result;
+  - issue comments posted by `core/output/destinations.sh` and `core/output/stage-io.sh` (`gh … --body-file -`).
+- **What stays an argument, because it is bounded:**
+  - small fixed values: ids, numbers, names;
+  - bodies GitHub itself caps at 65,536 characters (pull-request bodies);
+  - a persona's prompt, which is a short file.
+
 ## Enforced by
+
+- 2026-11-23 amendment (#2592: large text through stdin or a file) → `tests/unit/large-text-not-argv-test.sh` L1 (the result writer, 1.2 MiB), L2 (intake's data), L3 (a comment's body on stdin), L4 (lint detail), L5 (the monitor's checks), L6 (a stage-io comment for a 1.2 MiB prompt); L1 also refuses data that is two JSON values
 
 - §6a amendment 2026-11-22 (#2586: progress is a change to the tracked files) → `tests/unit/attempt-progress-test.sh` P6 (notes alone: no progress), P8 (a non-repository stage's cut-off steps: progress), P9 (the same steps again: none), P13 (#2532's build: notes, cut-off steps, a report and new findings, the repository unchanged — no progress; a change to its files is); `tests/unit/stage-retry-test.sh` R10 (amended: a code-writing stage's other output alone is no progress)
 

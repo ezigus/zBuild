@@ -32,10 +32,14 @@ _stage_result_json() {
     fi
     [[ -n "$reason" ]] || { printf 'stage_result: a result needs a reason\n' >&2; return 1; }
     [[ -n "$data" ]] || data='{}'
-    jq -nc --argjson c "$_ZBUILD_CONTRACT_V3" --arg o "$outcome" --arg r "$reason" --argjson d "$data" \
-        'if ($d | type) != "object" then error("data must be an object") else . end
+    # #2592 (ADR-054): the data reaches jq on stdin, never as one argument — a
+    # stage's data can hold a whole issue, past Linux's 128 KiB per argument.
+    # Slurped, so the data must be exactly one JSON object, as --argjson made it.
+    jq -sc --argjson c "$_ZBUILD_CONTRACT_V3" --arg o "$outcome" --arg r "$reason" \
+        'if length != 1 or (.[0] | type) != "object" then error("data must be one object") else .[0] end
+         | . as $d
          | {result_contract: $c, outcome: $o, reason: $r}
-         + (if $d == {} then {} else {data: $d} end)' 2>/dev/null
+         + (if $d == {} then {} else {data: $d} end)' 2>/dev/null <<< "$data"
 }
 
 # stage_result_write <path> <outcome> <reason> [data-json]

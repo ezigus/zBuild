@@ -54,7 +54,8 @@ _dest_gh_comment() {
     local toggle="${ZBUILD_OUTPUT_GH_COMMENT:-1}"
     [[ "$toggle" == "0" ]] && return 0
 
-    gh issue comment "$ZBUILD_ISSUE" --body "$content"
+    # #2592: the body on stdin, never one argument (it can be past 128 KiB).
+    gh issue comment "$ZBUILD_ISSUE" --body-file - <<< "$content"
 }
 
 # ─── gh-check-run destination ─────────────────────────────────────────────────

@@ -63,12 +63,14 @@ _monitor_write_result() {
     local out="$1" outcome="$2" reason="$3" summary="$4" checks="${5:-[]}" judgement="${6:-}"
     [[ -n "$reason" ]] || reason="$outcome"
     local _data
-    _data="$(jq -cn --arg s "$summary" --argjson c "$checks" --arg j "$judgement" \
-        '{summary:$s, checks:$c} + (if $j == "" then {} else {judgement:$j} end)')" || return 1
+    # #2592: the checks (they can be large) reach jq on stdin, never as one
+    # argument; the data is joined to the result the same way.
+    _data="$(jq -c --arg s "$summary" --arg j "$judgement" \
+        '{summary:$s, checks:.} + (if $j == "" then {} else {judgement:$j} end)' <<< "$checks")" || return 1
     # A here-string, not a pipe: the SIGPIPE rule (review #2221).
     atomic_write "$out" <<< '{"schema_version":1}' \
         && stage_result_add "$out" "$outcome" "$reason" \
-        && atomic_write "$out" <<< "$(jq -c --argjson d "$_data" '. + {data:$d}' "$out")"
+        && atomic_write "$out" <<< "$(jq -c --slurpfile d /dev/stdin '. + {data:$d[0]}' "$out" <<< "$_data")"
 }
 
 # ─── _monitor_interrupt_handler ────────────────────────────────────────────────
