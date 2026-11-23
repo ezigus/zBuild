@@ -122,6 +122,22 @@ _intake_compose_goal() {
     fi
 }
 
+# _intake_result_data_v <var> <issue_text> <platform_count> <changed_json>
+# <notes> <unclear_json> <dropped_json> — intake's result data. The issue text
+# reaches jq on stdin, never as one argument (#2592, ADR-054): an issue can be
+# past Linux's 128 KiB per argument or macOS's ~1 MiB for all of them.
+_intake_result_data_v() {
+    local -n _ird="$1"
+    _ird="$(jq -Rsc --argjson n "$3" --argjson c "${4:-null}" --arg notes "$5" --argjson u "${6:-[]}" --argjson ud "${7:-[]}" \
+        '.[:-1] as $t
+         | {goal_len: ($t | length), platform_count: $n, issue_text: $t}
+         + (if ($u | length) > 0 then {unclear: $u} else {} end)
+         + (if ($ud | length) > 0 then {unclear_dropped: $ud} else {} end)
+         + (if $c != null then {requirements_changed: $c} else {} end)
+         + ($notes | split("\n") | map(select(length > 0)) | if length > 0 then {notes: .} else {} end)' <<< "$2")"
+    [[ -n "$_ird" ]]
+}
+
 # ─── run ─────────────────────────────────────────────────────────────────────
 # Args: $1 = stage_id, $2 = state_file
 # Reads: ZBUILD_GOAL (env), ZBUILD_ISSUE (env, optional)
@@ -365,15 +381,11 @@ _intake_run_inner() {
     done <<< "$_notes"
     # #2364: the result carries the issue text, so a later stage finds it by
     # what it is (data.issue_text), never by intake's file name.
+    local _ir_data=""
+    _intake_result_data_v _ir_data "$sanitized" "${#platforms[@]}" "${_chg:-null}" "$_notes" "$_uq_json" "$_INTAKE_UQ_DROPPED" || return 1
     _intake_write_result "$_art" "pass" \
         "took in the goal for issue #$issue: ${_title_line:0:60}" \
-        "$(jq -nc --arg t "$sanitized" --argjson n "${#platforms[@]}" --argjson c "${_chg:-null}" --arg notes "$_notes" --argjson u "$_uq_json" \
-            --argjson ud "$_INTAKE_UQ_DROPPED" \
-            '{goal_len: ($t | length), platform_count: $n, issue_text: $t}
-             + (if ($u | length) > 0 then {unclear: $u} else {} end)
-             + (if ($ud | length) > 0 then {unclear_dropped: $ud} else {} end)
-             + (if $c != null then {requirements_changed: $c} else {} end)
-             + ($notes | split("\n") | map(select(length > 0)) | if length > 0 then {notes: .} else {} end)')" || return 1
+        "$_ir_data" || return 1
     _intake_pass_summary_write "${_intake_art:+$_intake_art/intake-summary.md}" "$issue" \
         "${_req_written:+$_art/requirements.json}" "$_chg_md" "${_title_line:0:60}"
     emit_event "plugin.result" "plugin=intake" \

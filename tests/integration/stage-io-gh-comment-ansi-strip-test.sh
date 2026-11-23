@@ -50,6 +50,11 @@ for arg in "\$@"; do
         printf '%s' "\$arg" > "$GH_BODY_CAPTURE"
         break
     fi
+    # #2592: the body comes on stdin (--body-file -).
+    if [[ "\$prev" == "--body-file" && "\$arg" == "-" ]]; then
+        cat > "$GH_BODY_CAPTURE"
+        break
+    fi
     prev="\$arg"
 done
 exit 0

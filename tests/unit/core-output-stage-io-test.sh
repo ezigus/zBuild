@@ -517,6 +517,12 @@ while [[ \$# -gt 0 ]]; do
         shift 2
         continue
     fi
+    # #2592: the body comes on stdin (--body-file -).
+    if [[ "\$1" == "--body-file" && "\$2" == "-" ]]; then
+        cat > "$ghdir/body.txt"
+        shift 2
+        continue
+    fi
     shift
 done
 exit 0
@@ -561,6 +567,7 @@ while [[ \$# -gt 0 ]]; do
         printf '%s' "\$2" > "$ghdir/body.txt"
         shift 2; continue
     fi
+    if [[ "\$1" == "--body-file" && "\$2" == "-" ]]; then cat > "$ghdir/body.txt"; shift 2; continue; fi
     shift
 done
 exit 0
@@ -593,6 +600,7 @@ cat > "$ghdir/gh" <<EOF
 shift; shift; shift
 while [[ \$# -gt 0 ]]; do
     if [[ "\$1" == "--body" ]]; then printf '%s' "\$2" > "$ghdir/body.txt"; shift 2; continue; fi
+    if [[ "\$1" == "--body-file" && "\$2" == "-" ]]; then cat > "$ghdir/body.txt"; shift 2; continue; fi
     shift
 done
 exit 0
@@ -613,6 +621,7 @@ cat > "$ghdir/gh" <<EOF
 shift; shift; shift
 while [[ \$# -gt 0 ]]; do
     if [[ "\$1" == "--body" ]]; then printf '%s' "\$2" > "$ghdir/body.txt"; shift 2; continue; fi
+    if [[ "\$1" == "--body-file" && "\$2" == "-" ]]; then cat > "$ghdir/body.txt"; shift 2; continue; fi
     shift
 done
 exit 0
@@ -639,6 +648,7 @@ cat > "$ghdir/gh" <<EOF
 shift; shift; shift
 while [[ \$# -gt 0 ]]; do
     if [[ "\$1" == "--body" ]]; then printf '%s' "\$2" > "$ghdir/body.txt"; shift 2; continue; fi
+    if [[ "\$1" == "--body-file" && "\$2" == "-" ]]; then cat > "$ghdir/body.txt"; shift 2; continue; fi
     shift
 done
 exit 0

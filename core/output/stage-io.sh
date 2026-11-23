@@ -1401,8 +1401,14 @@ _stage_io_to_gh_comment() {
     # Build inner rendered text — reuse stdout renderer shape, but using
     # the already-redacted input/output. Construct a synthetic record that
     # carries the redacted strings.
-    local rendered_record
-    rendered_record="$(printf '%s' "$record" | jq -c --arg i "$r_input" --arg o "$r_output" '.input = $i | .output = $o')"
+    # #2592 (ADR-054): the input carries the whole prompt, so the strings reach
+    # jq through files, never as arguments — as stage_io_end does (#1801).
+    local rendered_record _rr_in _rr_out _rr_d
+    zbuild_engine_tmpdir_v _rr_d 2>/dev/null || _rr_d="${TMPDIR:-/tmp}"
+    _rr_in="$(mktemp "$_rr_d/zbuild-ghc-in.XXXXXX")" && _rr_out="$(mktemp "$_rr_d/zbuild-ghc-out.XXXXXX")" || return 0
+    printf '%s' "$r_input" > "$_rr_in"; printf '%s' "$r_output" > "$_rr_out"
+    rendered_record="$(jq -c --rawfile i "$_rr_in" --rawfile o "$_rr_out" '.input = $i | .output = $o' <<< "$record")"
+    rm -f "$_rr_in" "$_rr_out"
     local rendered_body
     rendered_body="$(_stage_io_to_stdout "$rendered_record" 2>/dev/null)"
 
@@ -1456,7 +1462,8 @@ _stage_io_to_gh_comment() {
             "$summary_status" "$stage" "$kind" "$dur" "$trimmed_rendered" "$trunc_marker")"
     fi
 
-    if ! gh issue comment "$ZBUILD_ISSUE" --body "$body" >/dev/null 2>&1; then
+    # #2592: the body on stdin, never one argument.
+    if ! gh issue comment "$ZBUILD_ISSUE" --body-file - <<< "$body" >/dev/null 2>&1; then
         eb_emit_event "stage.io.error" "stage=$stage" "reason=gh_comment_post_failed" 2>/dev/null || true
         return 0
     fi
