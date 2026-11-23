@@ -5,7 +5,8 @@
 # ZBUILD_PLATFORM is the target platform a work unit builds for. It must never
 # be equated with a host OS name (macos, linux, unknown). This guard scans for
 # lines where ZBUILD_PLATFORM appears on the same line as a host OS name in a
-# non-comment context, catching both assignments and comparisons.
+# non-comment context, catching both assignments and comparisons. Full-line
+# comments and trailing inline comments are excluded before the host-OS check.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -34,6 +35,10 @@ _zbp_scan_file() {
         grep -nE '\bZBUILD_PLATFORM\b' "$fixture" 2>/dev/null || true
     } | {
         grep -vE '^[0-9]+:[[:space:]]*#' || true
+    } | {
+        # Strip inline comments before host-OS name check; prevents false
+        # positives when only the trailing comment mentions macos/linux/unknown.
+        sed 's/[[:space:]]*#.*$//' || true
     } | {
         grep -E '\b(macos|linux|unknown)\b' || true
     }
@@ -130,6 +135,18 @@ else
         "scan incorrectly flagged comment: $_zbp_hit"
 fi
 
+# When: code line has ZBUILD_PLATFORM where the host OS name appears only in a trailing
+# inline comment (the code itself carries a target platform, not a host OS name)
+printf 'export ZBUILD_PLATFORM="${platform}"  # was linux in compat.sh\n' > "$_zbp_fixture"
+_zbp_hit="$(_zbp_scan_file "$_zbp_fixture")"
+# Then: guard does NOT flag this — host OS name is only in the inline comment
+if [[ -z "$_zbp_hit" ]]; then
+    assert_pass "[DSPLAT-2] detector ignores host OS name that appears only in a trailing inline comment"
+else
+    assert_fail "[DSPLAT-2] detector ignores host OS name that appears only in a trailing inline comment" \
+        "scan incorrectly flagged inline comment: $_zbp_hit"
+fi
+
 # ─── [DSPLAT-2] recursive scan finds injected violation ───────────────────────
 # Prove the multi-file grep scan DOES reach its assert_fail branch when a
 # violating file exists. Uses temp scan dirs so no real source file is touched.
@@ -149,6 +166,8 @@ _zbp_inject_hits="$(
             --include='*.sh' 2>/dev/null || true
     } | {
         grep -vE '^[^:]*:[0-9]+:[[:space:]]*#' || true
+    } | {
+        sed 's/[[:space:]]*#.*$//' || true
     } | {
         grep -E '\b(macos|linux|unknown)\b' || true
     }
@@ -179,6 +198,8 @@ _zbp_clean_hits="$(
     } | {
         grep -vE '^[^:]*:[0-9]+:[[:space:]]*#' || true
     } | {
+        sed 's/[[:space:]]*#.*$//' || true
+    } | {
         grep -E '\b(macos|linux|unknown)\b' || true
     }
 )"
@@ -194,6 +215,16 @@ fi
 # ─── [DSPLAT-2] real codebase scan ────────────────────────────────────────────
 print_test_section "[DSPLAT-2] scan core/, plugins/, scripts/ for host-OS ZBUILD_PLATFORM use"
 
+# Given: all three scan directories must exist so the scan is non-vacuous
+# A missing directory causes grep to silently produce no output, making the
+# guard declare clean on a scan that never ran. [DSPLAT-2]
+for _zbp_req_dir in "$REPO_ROOT/core" "$REPO_ROOT/plugins" "$REPO_ROOT/scripts"; do
+    if [[ ! -d "$_zbp_req_dir" ]]; then
+        assert_fail "[DSPLAT-2] scan directory must exist before declaring clean: $_zbp_req_dir" \
+            "REPO_ROOT='$REPO_ROOT'; guard cannot determine clean state without all three dirs"
+    fi
+done
+
 # When: scan all .sh files under core/, plugins/, and scripts/
 _zbp_offenders="$(
     {
@@ -202,6 +233,8 @@ _zbp_offenders="$(
             --include='*.sh' 2>/dev/null || true
     } | {
         grep -vE '^[^:]*:[0-9]+:[[:space:]]*#' || true
+    } | {
+        sed 's/[[:space:]]*#.*$//' || true
     } | {
         grep -E '\b(macos|linux|unknown)\b' || true
     } | sort -u
