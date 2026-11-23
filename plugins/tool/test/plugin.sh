@@ -71,6 +71,8 @@ source "$_ZBUILD_TEST_STAGE_DIR/lib/targets.sh"
 source "$_ZBUILD_TEST_STAGE_DIR/lib/run.sh"
 # shellcheck source=lib/suite.sh
 source "$_ZBUILD_TEST_STAGE_DIR/lib/suite.sh"
+# shellcheck source=lib/already-failing.sh
+source "$_ZBUILD_TEST_STAGE_DIR/lib/already-failing.sh"
 # shellcheck source=lib/report.sh
 source "$_ZBUILD_TEST_STAGE_DIR/lib/report.sh"
 # shellcheck source=lib/result.sh

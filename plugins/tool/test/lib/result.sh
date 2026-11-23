@@ -151,6 +151,9 @@ _test_write_result() {
     # data.failures, and the union of points_at → top-level `about` (#2180).
     local findings_json="${18:-[]}"
     [[ -n "$findings_json" ]] || findings_json="[]"
+    # #2591: the failing files that already fail before this change.
+    local already_json="${19:-[]}"
+    [[ -n "$already_json" ]] || already_json="[]"
 
     local dir
     dir="$(dirname "$path")"
@@ -217,6 +220,7 @@ _test_write_result() {
         --arg targeted "$targeted_json" \
         --arg findings "$findings_json" \
         --argjson numbered "$_numbered" \
+        --arg already "$already_json" \
         '($findings | try fromjson catch []) as $fnd
         | {
             test_output: $test_output,
@@ -241,6 +245,7 @@ _test_write_result() {
                 + (if $mutation != "" then (try {mutation: ($mutation | fromjson)} catch {}) else {} end)
                 + (if $targeted != "" then (try {targeted: ($targeted | fromjson)} catch {}) else {} end)
                 + (if ($fnd | length) > 0 then {failures: $fnd} else {} end)
+                + (($already | try fromjson catch []) as $af | if ($af | length) > 0 then {already_failing: $af} else {} end)
                 # #2271 (ADR-068): each failing test file is a numbered finding.
                 + {findings: $numbered}
             )

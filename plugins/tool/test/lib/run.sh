@@ -65,7 +65,8 @@ _test_run_inner() {
     # #1829: RETURN trap kills any lingering eval subshell PGID; does NOT
     # rm -rf the staging dir — that is test_cleanup(purge)'s responsibility.
     # shellcheck disable=SC2064
-    trap "_test_kill_staging_pg '$_pid_file' '$_pgid_file'" RETURN
+    # #2591: and the starting-code copy an already-failing check makes.
+    trap "_test_kill_staging_pg '$_pid_file' '$_pgid_file'; rm -rf '$tmp-base'" RETURN
     local verdict="error"
     local exit_code=2
     local diff_applied=false
@@ -181,7 +182,18 @@ _test_run_inner() {
     if [[ "$run_mode" == "targeted" ]]; then
         local _tv _tp _tf _ts _trec
         IFS='|' read -r _tv _tp _tf _ts _trec <<< "$(_test_parse_summary "$raw_output" "$test_rc")"
-        if [[ "$_trec" == "1" && "$_tv" == "pass" && "$_tp" =~ ^[0-9]+$ && "$_tp" -gt 0 ]]; then
+        # #2591: a subset whose every failure already fails on the starting code
+        # is confirmed by the full suite too — never passed on the subset alone.
+        local _tconfirm="$_tv"
+        if [[ "$_trec" == "1" && "$_tv" == "fail" ]]; then
+            local _tff _tf1 _tleft=""; local -a _tpre=(); local -A _tpre_set=()
+            _tff="$(_test_extract_failing_files "$raw_output" "$tmp")"
+            _test_already_failing_v _tpre "$tmp" "$repo_root" "$_pid_file" "$_pgid_file" "$_tff"
+            for _tf1 in ${_tpre[@]+"${_tpre[@]}"}; do _tpre_set[$_tf1]=1; done
+            while IFS= read -r _tf1; do [[ -n "$_tf1" && -z "${_tpre_set[$_tf1]:-}" ]] && _tleft+="$_tf1"; done <<< "$_tff"
+            [[ -n "$_tff" && -z "$_tleft" ]] && _tconfirm=excused
+        fi
+        if [[ "$_trec" == "1" && ( "$_tconfirm" == "excused" || ( "$_tv" == "pass" && "$_tp" =~ ^[0-9]+$ && "$_tp" -gt 0 ) ) ]]; then
             _targeted_json="$(jq -cn --arg c "$actual_test_cmd" --arg v "$_tv" \
                 --argjson p "$_tp" --argjson f "$(_test_sanitize_numeric "$_tf")" \
                 '{test_cmd:$c, verdict:$v, passed:$p, failed:$f}' 2>/dev/null || true)"
@@ -242,6 +254,32 @@ _test_run_inner() {
         reason="summary_unavailable"
     fi
 
+    # ── #2591 (ADR-054 §6a): a failure that is not this change's ────────────
+    # A failing file the branch did not change, that fails on the starting
+    # code too, does not send the round back: it is listed as already failing,
+    # and the stage passes when nothing else failed.
+    local -a _already=()
+    local _rel_paths="" _already_json="[]"
+    [[ "$verdict" != "pass" ]] && _rel_paths="$(_test_extract_failing_files "$raw_output" "$tmp")"
+    if [[ "$verdict" == "fail" && "$recognized" == "1" && -n "$_rel_paths" ]]; then
+        _test_already_failing_v _already "$tmp" "$repo_root" "$_pid_file" "$_pgid_file" "$_rel_paths"
+    fi
+    if (( ${#_already[@]} > 0 )); then
+        _already_json="$(printf '%s\n' "${_already[@]}" | jq -Rnc '[inputs | select(. != "")]')"
+        local -A _af_set=(); local _af _left=""
+        for _af in "${_already[@]}"; do _af_set[$_af]=1; done
+        while IFS= read -r _af; do
+            [[ -n "$_af" && -z "${_af_set[$_af]:-}" ]] && _left+="$_af"$'\n'
+        done <<< "$_rel_paths"
+        _rel_paths="$_left"
+        # The failed count is what still fails (#2591 review): the cycle reads it.
+        [[ "$failed" =~ ^[0-9]+$ ]] && failed=$(( failed > ${#_already[@]} ? failed - ${#_already[@]} : 0 ))
+        if [[ -z "$_left" ]]; then
+            verdict="pass"; reason="already_failing"
+            _test_summary="${_test_summary:+$_test_summary — }all failing files already fail before this change"
+        fi
+    fi
+
     _test_emit_io_end "$_test_seq" "$_test_t0_us" "$verdict" "$exit_code" \
         "$passed" "$failed" "$_test_summary"
 
@@ -261,6 +299,10 @@ _test_run_inner() {
     # resolves to an owner (#2180). Computed on a non-pass only.
     local _findings_json="[]"
     [[ "$verdict" != "pass" ]] && _findings_json="$(_test_failure_findings "$raw_output" "$tmp")"
+    # #2591: an already-failing file is no finding: it is listed on its own.
+    if [[ "$_already_json" != "[]" && "$_findings_json" != "[]" ]]; then
+        _findings_json="$(jq -c --argjson a "$_already_json" '[.[] | select((.file // "") as $f | $a | index($f) | not)]' <<< "$_findings_json" 2>/dev/null || printf '%s' "$_findings_json")"
+    fi
     _test_emit_failures_summary "$_tfs_path" "$verdict" "$_failed_for_summary" \
         "$exit_code" "$raw_output" "$passed" "$(_test_findings_markdown "$_findings_json")"
 
@@ -297,9 +339,8 @@ _test_run_inner() {
     # writes them relative to $tmp whichever way the suite spelled the path —
     # the logical staging path, its macOS /private/var form, or a targeted
     # run's bare relative path.
+    # #2591: read once above, an already-failing file left out.
     {
-        local _rel_paths
-        _rel_paths="$(_test_extract_failing_files "$raw_output" "$tmp")"
         if [[ -n "$_rel_paths" ]]; then
             printf '%s\n' "$_rel_paths" \
                 | jq -Rn '[inputs | select(. != "")]' 2>/dev/null \
@@ -348,7 +389,7 @@ _test_run_inner() {
         "$verdict" "$_disposition" "$exit_code" "$passed" "$failed" \
         "$test_output" "$diff_applied" "$actual_test_cmd" "$reason" "$run_mode" \
         "$_timing_json" "$_tree_sha" "$_fr_lint" "$_fr_cov" "$_fr_mut" "$_targeted_json" \
-        "$_findings_json"
+        "$_findings_json" "$_already_json"
 
     # #628: $tmp cleanup handled by RETURN trap installed at top of function.
     emit_event "plugin.result" "plugin=test" "verdict=${verdict}" "exit_code=${exit_code}" \

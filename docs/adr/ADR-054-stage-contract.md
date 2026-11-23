@@ -704,7 +704,38 @@ On #2532 run 45017980554 build made nine tries. Six changed no code (`"__reposit
   - bodies GitHub itself caps at 65,536 characters (pull-request bodies);
   - a persona's prompt, which is a short file.
 
+## Amendment 2026-11-23 (#2591) — §6a: a test already failing before the change does not send the round back
+
+When the suite fails, the test stage checks each failing test file the branch did not change, on the starting code (the merge base). It runs the file alone, with the targeted command, in two places:
+- the tested copy;
+- a copy of it set to the base the same way, so the files git ignores are there too.
+
+The file is **already failing** when three things hold:
+- its base run gives counts the parser knows and fails;
+- it fails again with the change;
+- every check failing with the change (`✗` line) also failed on the base. A new failing check in the same file is never excused.
+
+Such a file:
+- is listed in `data.already_failing`, not as a finding;
+- is left out of the red set and of the `failed` count, which the cycle reads;
+- lets the stage pass when nothing else failed (`reason: already_failing`).
+
+A narrowed run whose only failures are excused is still confirmed by the full suite (#2144), never passed on the subset. The open items name an excused file whether its result passed or not: "<file> already fails before this change", settled when it passes on the default branch.
+
+A file the branch changed is never excused, so a test this branch wrote or edited cannot hide behind an old failure. This runs only when a file failed, so a passing run costs nothing more. The base copy is removed when the stage ends, however it ends.
+
+In #2532, runs 45017980554 (C7) and 45102665787 (RG9) each had a test outside the change fail every round, and the cycle ran out of rounds.
+
+**§7, written down: why C7's claim hook status read non-zero.** C7 sends a TERM from inside the claim hook. When that trapped signal lands while the runner waits on the hook, bash's `wait` returns 128+15 at once, whether or not the hook has finished.
+- Looped 60 times on an Ubuntu 26.04 runner, idle: the hook's status was 0 every time.
+- Under full CPU load: it was 143 in 27 of 60.
+- In all 120 runs the claim was made and released.
+
+So this is a race over whether the hook has exited before the signal is handled. It is not an Ubuntu fault, and it is more likely on a busy machine. #2586 already believes a reply that says acquired, whatever the status, so nothing more is changed.
+
 ## Enforced by
+
+- Amendment 2026-11-23 (#2591: §6a a test already failing before the change does not send the round back) → `tests/unit/test-already-failing-test.sh` AF1–AF7
 
 - 2026-11-23 amendment (#2592: large text through stdin or a file) → `tests/unit/large-text-not-argv-test.sh` L1 (the result writer, 1.2 MiB), L2 (intake's data), L3 (a comment's body on stdin), L4 (lint detail), L5 (the monitor's checks), L6 (a stage-io comment for a 1.2 MiB prompt); L1 also refuses data that is two JSON values
 
