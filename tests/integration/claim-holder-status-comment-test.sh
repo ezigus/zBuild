@@ -3,7 +3,7 @@
 # — and only for a run that has the claim (ADR-005 §2, issue #1764 R1).
 #
 # H1 a run that claimed the issue: the comment it posts carries
-#    <!-- zbuild-holder: run_id=<id> machine=<machine> -->
+#    <!-- zbuild-holder: run_id=<id> machine=<machine> pid=<pid> -->
 # H2 a run that made no claim (its coordinator failed; the run went on): no
 #    holder line in any body it posts
 set -uo pipefail
@@ -52,7 +52,9 @@ rm -f "$BODIES"/*; claim_fixture_stub_coordinator '{"acquired": true}'
 ZBUILD_RUN_ID="holder-run-1" claim_fixture_run h1 --issue 90001831
 n="$(find "$BODIES" -name '*.txt' | wc -l | tr -d ' ')"
 assert_eq "[H1] setup: the sidecar sent at least one body" "1" "$(( n > 0 ))"
-if /usr/bin/grep -qxF '<!-- zbuild-holder: run_id=holder-run-1 machine=box-h -->' "$BODIES"/*.txt 2>/dev/null; then
+# #2589: the holder also carries the runner's pid, so a later run on this
+# machine can tell a live holder from a crashed one.
+if /usr/bin/grep -qxE '<!-- zbuild-holder: run_id=holder-run-1 machine=box-h pid=[0-9]+ -->' "$BODIES"/*.txt 2>/dev/null; then
     assert_pass "[H1] the comment names the holder: run id and machine"
 else
     assert_fail "[H1] the comment names the holder: run id and machine" \

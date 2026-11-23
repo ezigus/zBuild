@@ -154,7 +154,22 @@ Section L wishlist item. Routes all claim operations through an optional dashboa
 
 A claim hook whose reply says `"acquired": true` holds the claim, whatever the hook's exit status. An interrupt can cut the engine's wait for the hook short after the label went on, so the status reads non-zero while the reply is right; before this, the run counted the claim as skipped and never released it (C7 in `tests/integration/claim-release-on-exit-test.sh`, failing in CI and in #2532 run 45017980554). A non-zero status with any other reply is still a skipped claim.
 
+## Amendment 2026-11-23 (#2589) — §1 §3: the claim label is always cleared; a rejected login stops the run
+
+- **The claim label is cleared in three layers.**
+  1. **The run releases it on every way out,** as before.
+  2. **CI's clean-up job removes it when the run did not.** It runs whatever the pipeline's result, with its own token, and removes `zbuild:claimed` when the run's events say it took the claim and never released it (`rsc_claim_left`: acquired, and no completed release hook), or when the issue's newest run-status comment still names this run as the holder (`rsc_claim_cleanup`). It runs before the comment is finalized, and it never touches another run's claim. #2532 run 45102665787 left the label because its own release failed after GitHub revoked its token.
+  3. **The next run on the same machine clears that machine's own stale claim.** A local holder is `run_id=<id> machine=<machine> pid=<runner pid>`.
+     - If the refusing holder is another run on this machine whose pid is gone (`kill -0`), the label is removed and the claim taken again, once, and it says so (`pipeline.claim.stale_cleared`).
+     - If the holder is this very run (a resume after a crash keeps its run id), the claim is this run's again.
+     - A claim held by another machine, by CI, by a live process, or written before holders carried a pid is never touched; that stays with #2533.
+     - A refused run's message gives the command that clears a label by hand.
+  - **When CI's clean-up uses which signal:** the run's own record (`claim_left`) decides. The holder in the status comment is used only when the run left no record, so a run that reported its release is trusted.
+- **A run whose GitHub login is rejected stops at once and says so.** Two GitHub calls in a row refused with "Bad credentials" or HTTP 401 leave a marker (`rsc_gh`). Two, so a single short-lived 401 does not end a long run, and a call that works in between starts the count again. The marker is cleared when a run starts, so a resume, its token since fixed, is not stopped by it. The status sidecar then stops the run once. The run ends with the word `github_login_rejected`, with the plain words "GitHub no longer accepts this run's login", releasing what it holds on its way out. Before, the run went on for two more rounds with its status comment frozen. This works where the status sidecar runs (the run-status comment is on). A run with it off is not stopped by the engine's other GitHub calls, and its clean-up still covers the label.
+
 ## Enforced by
+
+- §1 §3 amendment 2026-11-23 (#2589: the label always cleared; a rejected login stops the run) → `tests/unit/claim-cleanup-test.sh` CL1–CL8; `tests/unit/claim-acquire-release-test.sh` S1–S4; `tests/integration/claim-release-on-exit-test.sh` C8, C9; `tests/integration/claim-holder-status-comment-test.sh` H1 (the holder carries the pid); `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh` (the refusal gives the command)
 
 - §3 amendment 2026-11-23 (#2586: an acquired reply is believed) → `tests/unit/claim-acquire-release-test.sh` ("an acquired reply with a bad status → the claim is held … and released at the end")
 

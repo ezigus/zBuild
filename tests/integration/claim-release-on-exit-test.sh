@@ -8,6 +8,10 @@
 # C4 the coordinator's claim hook runs before the first stage, its release hook on exit
 # C5 a run with no issue calls no coordinator hook
 # C6 a run that fails before its stages (its recorded tree is gone) releases the claim
+# C9 [change] a marker left by an earlier run (a resume) is cleared at start: a
+#    later TERM is a TERM, not a rejected login (review of #2589)
+# C8 [change] GitHub rejects the run's login (#2589): the run stops, names that
+#    as its reason, and still releases the claim
 # C7 a TERM that lands while the claim is being taken: the claim is released,
 #    no stage runs
 set -uo pipefail
@@ -109,6 +113,29 @@ _c7_want="$(printf 'claim 90001807\nrelease 90001807')"
 assert_eq "[C7] the claim is released" "$_c7_want" "$(cat "$CLAIM_CALLS")"
 # #2586: a failure here has been seen only in CI; it shows the run it saw.
 [[ "$(cat "$CLAIM_CALLS")" == "$_c7_want" ]] || claim_fixture_show c7
+
+print_test_section "C8 GitHub rejects the run's login"
+# The sidecar marks a rejected login and stops the run (rsc_gh, rsc_tail_loop);
+# here the stage plays that part: the marker, then the signal.
+claim_fixture_stub_coordinator '{"acquired": true}'
+claim_fixture_stage 'mkdir -p "$ZBUILD_STATE_DIR/runtime"; printf "HTTP 401: Bad credentials\n" > "$ZBUILD_STATE_DIR/runtime/github-login-rejected"; kill -TERM $$'
+claim_fixture_run c8 --issue 90001808
+assert_eq "[C8] the run ends non-zero" "1" "$(( CLAIM_RC != 0 ))"
+assert_contains "[C8] it names the rejected login as its reason" \
+    "$(jq -c 'select(.type == "pipeline.aborted") | .data' "$(claim_fixture_events c8)" 2>/dev/null)" "github_login_rejected"
+assert_eq "[C8] the claim is still released" "$(printf 'claim 90001808\nrelease 90001808')" "$(cat "$CLAIM_CALLS")"
+[[ "$(cat "$CLAIM_CALLS")" == "$(printf 'claim 90001808\nrelease 90001808')" ]] || claim_fixture_show c8
+
+print_test_section "C9 an old rejected-login marker does not outlive its run"
+claim_fixture_stub_coordinator '{"acquired": true}'
+claim_fixture_stage 'kill -TERM $$'
+_claim_fixture_prep c9
+mkdir -p "$ZBUILD_STATE_DIR/runtime"; printf 'HTTP 401: Bad credentials\n' > "$ZBUILD_STATE_DIR/runtime/github-login-rejected"
+CLAIM_RC=0
+( cd "$CLAIM_REPO" && exec bash "$RUNNER" --no-resume --template claim-test --issue 90001809 ) > "$TEST_TEMP_DIR/c9.out" 2>&1 || CLAIM_RC=$?
+_c9="$(jq -c 'select(.type == "pipeline.aborted") | .data.reason' "$(claim_fixture_events c9)" 2>/dev/null)"
+assert_contains "[C9] a TERM after a resume is a TERM" "$_c9" "sigterm"
+if [[ "$_c9" == *github_login_rejected* ]]; then assert_fail "[C9] ...not a rejected login" "$_c9"; else assert_pass "[C9] ...not a rejected login"; fi
 
 print_test_results
 exit $((FAIL > 0))

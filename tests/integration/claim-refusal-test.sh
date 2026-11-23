@@ -51,7 +51,7 @@ else
     assert_fail "[F1] the holder is printed as written (its \\n not interpreted)" "$(cat "$TEST_TEMP_DIR/f1.out")"
 fi
 assert_contains "[F1] the message says how to clear a claim whose run is gone" \
-    "$(cat "$TEST_TEMP_DIR/f1.out")" "remove the zbuild:claimed label"
+    "$(cat "$TEST_TEMP_DIR/f1.out")" "--remove-label zbuild:claimed"
 assert_eq "[F1] the other run's claim is left in place" "zbuild:claimed" "$(cat "$ZBUILD_CLAIM_STORE/$ISSUE/labels.txt")"
 
 print_test_section "F2 the admission lock refuses before the claim"

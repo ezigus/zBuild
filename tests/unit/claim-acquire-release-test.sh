@@ -86,7 +86,7 @@ assert_eq "the claim hook was called once with the issue" "claim 9002" "$(cat "$
 assert_eq "the claim hook's events carry no stage (the issue is not one)" "0" \
     "$(jq -c 'select((.type | startswith("plugin.claim.")) and has("stage"))' "$ZBUILD_EVENTS_JSONL" | wc -l | tr -d ' ')"
 assert_eq "pipeline.claim.acquired names the holder: run id and machine" \
-    "run_id=run-cl-1 machine=box-1" "$(_event pipeline.claim.acquired | jq -r .holder)"
+    "run_id=run-cl-1 machine=box-1 pid=$$" "$(_event pipeline.claim.acquired | jq -r .holder)"
 _stub "$TEST_TEMP_DIR/p-ok" '{"acquired": true}'
 GITHUB_ACTIONS=true GITHUB_SERVER_URL=https://github.com GITHUB_REPOSITORY=o/r GITHUB_RUN_ID=77 _acq 9003
 assert_eq "in CI the holder is the CI run's URL" "https://github.com/o/r/actions/runs/77" \
@@ -124,6 +124,35 @@ _acq 9010
 assert_eq "an acquired reply with a bad status → the claim is held" "9010" "$_ZBUILD_CLAIM_ACQUIRED"
 : > "$CALLS"; zbuild_claim_release
 assert_eq "…and released at the end" "release 9010" "$(cat "$CALLS")"
+
+print_test_section "a stale claim this machine left is cleared at start (#2589)"
+# The coordinator refuses for run old-run on this machine (box-1), then claims.
+_stale_stub() {  # <root> <holder>
+    local dir="$1/claim-coordinator/stub"
+    _stub "$1" "$(jq -nc --arg h "$2" '{acquired:false, holder:$h}')"
+    cat >> "$dir/plugin.sh" <<STUB
+stub_claim() { printf 'claim %s\n' "\$1" >> "$CALLS"; cat "$dir/reply"; printf '{"acquired": true}' > "$dir/reply"; return 0; }
+STUB
+}
+_stale_stub "$TEST_TEMP_DIR/p-stale" "run_id=old-run machine=box-1 pid=999999"
+_acq 9011
+assert_eq "[S1] this machine's dead run held it: cleared, then claimed" "0" "$_ACQ_RC"
+assert_eq "[S1] ...claim, release, claim" "$(printf 'claim 9011\nrelease 9011\nclaim 9011')" "$(cat "$CALLS")"
+assert_contains "[S1] ...and says so" "$(_event pipeline.claim.stale_cleared)" '"holder":"run_id=old-run machine=box-1 pid=999999"'
+_stale_stub "$TEST_TEMP_DIR/p-other" "run_id=old-run machine=box-2 pid=999999"
+_acq 9012
+assert_eq "[S2] another machine's claim is left: refused" "1" "$_ACQ_RC"
+assert_eq "[S2] ...one claim, no release" "claim 9012" "$(cat "$CALLS")"
+_stale_stub "$TEST_TEMP_DIR/p-alive" "run_id=live-run machine=box-1 pid=$$"
+_acq 9013
+assert_eq "[S3] this machine's run still alive (its pid answers): refused" "1" "$_ACQ_RC"
+assert_eq "[S3] ...one claim, no release" "claim 9013" "$(cat "$CALLS")"
+# S4 (review of #2589): a resumed run finds its own claim: it holds it again.
+_stale_stub "$TEST_TEMP_DIR/p-mine" "run_id=run-cl-1 machine=box-1 pid=1"
+_acq 9014
+assert_eq "[S4] this run's own claim (a resume): held, not refused" "0" "$_ACQ_RC"
+assert_eq "[S4] ...held as this run's" "9014" "$_ZBUILD_CLAIM_ACQUIRED"
+assert_eq "[S4] ...one claim, no release" "claim 9014" "$(cat "$CALLS")"
 
 print_test_section "release"
 _stub "$TEST_TEMP_DIR/p-rel" '{"acquired": true}'

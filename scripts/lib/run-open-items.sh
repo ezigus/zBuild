@@ -157,6 +157,8 @@ run_end_words() {
             printf 'stopped: the run was told to stop (TERM signal)%s' "$with" ;;
         sigint)
             printf 'stopped: the run was interrupted (INT signal, Ctrl-C)%s' "$with" ;;
+        github_login_rejected)
+            printf 'stopped: GitHub no longer accepts this run'"'"'s login (its token was rejected)%s' "$with" ;;
         aborted)
             printf 'stopped: the run was interrupted%s' "$with" ;;
         llm_rate_limited)
