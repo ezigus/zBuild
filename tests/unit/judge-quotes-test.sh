@@ -97,7 +97,7 @@ print_test_section "Q2: design's coverage check"
     _N="$TEST_TEMP_DIR/q2-n"; _P="$TEST_TEMP_DIR/q2-p"
     route_to_model() { zb_test_lens_check_answer "$2" && return 0;
         local n; n=$(( $(cat "$_N") + 1 )); printf '%s' "$n" > "$_N"; printf '%s' "$2" > "$_P.$n"
-        if [[ $n -eq 1 ]]; then printf '%s' "$_R1"; else printf '%s' "${_R2:-$_R1}"; fi
+        if [[ $n -eq 1 ]]; then zb_test_lens_lines "$_R1"; else zb_test_lens_lines "${_R2:-$_R1}"; fi
     }
     D="$TEST_TEMP_DIR/q2.md"
     cat > "$D" <<'MD'
@@ -178,7 +178,7 @@ print_test_section "Q3: test-author's assertion check"
     route_to_model() { zb_test_lens_check_answer "$2" && return 0;
         cat >/dev/null
         local n; n=$(( $(cat "$_N") + 1 )); printf '%s' "$n" > "$_N"; printf '%s' "$2" > "$_P.$n"
-        if [[ $n -eq 1 ]]; then printf '%s' "$_R1"; else printf '%s' "${_R2:-$_R1}"; fi
+        if [[ $n -eq 1 ]]; then zb_test_lens_lines "$_R1"; else zb_test_lens_lines "${_R2:-$_R1}"; fi
     }
     R="$TEST_TEMP_DIR/q3-repo"; mkdir -p "$R/tests"; git -C "$R" init -q; D="$TEST_TEMP_DIR/q3.md"
     printf '# Design\n```acceptance\nDSLOOP-1[code]: fresh runs and nested re-entries start at round 1\nWIRING: none\n```\n' > "$D"
@@ -280,7 +280,8 @@ assert_contains "[Q4] an unmet requirement with a real quote fails, as a finding
 assert_contains "[Q4] ...that names it and says why" "$(_l Q4b)" "RQCNFG-1"
 assert_contains "[Q4] a requirement with no line is asked again" "$(_l Q4c)" "pass|2|"
 assert_contains "[Q4] ...naming it" "$(_l Q4c)" "no line for RQCNFG-1"
-assert_contains "[Q4] a quote the file does not hold, twice: unusable" "$(_l Q4d)" "unusable|2|"
+# #2598: the requirement costs only itself — it is unmet, could not be checked.
+assert_contains "[Q4] a quote the file does not hold, twice: unmet, the others kept" "$(_l Q4d)" "fail|"
 assert_contains "[Q4] ...asked again saying which quote" "$(_l Q4d)" "RQCNFG-1's quote is not in scripts/cfg.sh"
 assert_eq "[Q4] 'none' and 'omitted' are never findings" "pass" "$(_l Q4e)"
 
@@ -297,7 +298,7 @@ print_test_section "Q5: a review lens quotes each finding"
     _N="$TEST_TEMP_DIR/q5-n"; _P="$TEST_TEMP_DIR/q5-p"
     route_to_model() { zb_test_lens_check_answer "$2" && return 0;
         local n; n=$(( $(cat "$_N") + 1 )); printf '%s' "$n" > "$_N"; printf '%s' "$2" > "$_P.$n"
-        if [[ $n -eq 1 ]]; then printf '%s' "$_R1"; else printf '%s' "${_R2:-$_R1}"; fi
+        if [[ $n -eq 1 ]]; then zb_test_lens_lines "$_R1"; else zb_test_lens_lines "${_R2:-$_R1}"; fi
     }
     _lens() {
         printf 0 > "$_N"; rm -f "$ART/lens-red-team.json" "$ART/lens-red-team-judged.json"
@@ -308,7 +309,7 @@ print_test_section "Q5: a review lens quotes each finding"
     _f() { printf '{"score":5,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","file":"scripts/cfg.sh","severity":"high","message":"exit code changed","introduced":true,"quote":%s}]}' "$1"; }
     _R1="$(_f '"[[ -r \"$1\" ]] || return 3"')"; _R2=""
     echo "Q5a|$(_lens)|$(cat "$_N")|$(jq -r '.findings[0].quote // ""' "$ART/lens-red-team.json")"
-    echo "Q5p|$([[ "$(cat "$_P.1")" == *'"quote": "<the exact text'* ]] && echo asked)"
+    echo "Q5p|$([[ "$(cat "$_P.1")" == *'quote: <file> | <the exact line'* ]] && echo asked)"
     _R1="$(_f '"[[ -f \"$1\" ]] || return 2"')"; _R2=""
     echo "Q5b|$(_lens)"
     _R1='{"score":5,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","file":"scripts/cfg.sh","severity":"high","message":"m","introduced":true}]}'; _R2="$(_f '"[[ -r \"$1\" ]] || return 3"')"
@@ -323,7 +324,8 @@ assert_eq "[Q5] the lens is asked for a quote" "asked" "$(_l Q5p)"
 assert_eq "[Q5] a quote of a line the change removed counts too" "fail" "$(_l Q5b)"
 assert_contains "[Q5] a finding with no quote is asked again, and the answer counts" "$(_l Q5c)" "fail|2|"
 assert_contains "[Q5] ...told which finding" "$(_l Q5c)" "finding 1 has no quote"
-assert_contains "[Q5] a quote its file does not hold, twice: unusable" "$(_l Q5d)" "unusable|2|"
+# #2598: the finding costs only itself — the lens fails on it, marked unchecked.
+assert_contains "[Q5] a quote its file does not hold, twice: the lens fails on it" "$(_l Q5d)" "fail|"
 assert_contains "[Q5] ...asked again saying which finding" "$(_l Q5d)" "finding 1's quote is not in scripts/cfg.sh"
 
 print_test_section "Q6: formatting aside (#2472)"

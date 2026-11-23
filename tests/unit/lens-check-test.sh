@@ -79,8 +79,8 @@ route_to_model() {
     printf '%s %s %s\n' "$kind" "${ZBUILD_ROUTE_CALL:-main}" "$(basename "$(resolve_persona review_lenses 2>/dev/null)")" >> "$CALLS"
     printf '%s' "$2" > "$TEST_TEMP_DIR/prompt-$kind"
     if [[ "$kind" == check ]]; then printf '%s\n' "$CHECK_REPLY"; return "$CHECK_RC"
-    elif [[ -n "$LENS_REPLY2" && "$(grep -c '^lens ' "$CALLS")" -gt 1 ]]; then printf '%s\n' "$LENS_REPLY2"
-    else printf '%s\n' "$LENS_REPLY"; fi
+    elif [[ -n "$LENS_REPLY2" && "$(grep -c '^lens ' "$CALLS")" -gt 1 ]]; then zb_test_lens_lines "$LENS_REPLY2"
+    else zb_test_lens_lines "$LENS_REPLY"; fi
 }
 _finding() {  # <severity> <trigger> — a finding about the added guard_off line
     jq -nc --arg s "$1" --arg t "$2" '{file: "core/x.sh", category: "logic", severity: $s,
@@ -103,7 +103,8 @@ LENS_REPLY="{\"score\":4,\"findings\":[$(_finding medium "")]}"; LENS_REPLY2="$L
 _lens
 assert_eq "[K1] a finding with no trigger is asked again" "2" "$(_n lens)"
 assert_contains "[K1] ...saying it names no trigger" "$(cat "$TEST_TEMP_DIR/prompt-lens")" "finding 1 has no trigger"
-assert_eq "[K1] ...and still none: the lens is unusable" "unusable" "$(_out .outcome)"
+# #2598: still none, the finding costs only itself: the lens fails on it.
+assert_eq "[K1] ...and still none: the lens fails on it" "fail" "$(_out .outcome)"
 
 # ── K2 / K3 ──────────────────────────────────────────────────────────────────
 print_test_section "K2/K3: the trigger travels; the check is asked"

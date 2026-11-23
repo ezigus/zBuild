@@ -1583,6 +1583,37 @@ zb_test_lens_jobs() {
     _RL_LENSES_DIR="$_d"
 }
 
+# zb_test_lens_lines <answer> — a lens answer written as the JSON object the
+# lens used to give, as the lines it gives now (#2598): SCORE, each FINDING and
+# SUSPICION with its fields, each UNCLEAR line. An answer that is not a JSON
+# object is printed as it is, so a test of a bad answer stays one.
+zb_test_lens_lines() {
+    local _j="${1:-}"
+    jq -e 'type == "object"' <<< "$_j" >/dev/null 2>&1 || { printf '%s' "$_j"; return 0; }
+    jq -r 'def q: (if (.file // "") != "" then "\(.file) | " else "" end) + ((.quote // "") | tostring);
+        "SCORE: \(.score // 10)",
+        ((.findings // [])[] | if type == "object" then
+            "FINDING",
+            (if .severity then "severity: \(.severity)" else empty end),
+            (if .category then "category: \(.category)" else empty end),
+            (if .fix then "fix: \(.fix)" else empty end),
+            (if .introduced != null then "introduced: \(if .introduced then "yes" else "no" end)" else empty end),
+            (if (.quote // "") != "" or (.file // "") != "" then "quote: \(q)" else empty end),
+            (if .message then "message: \(.message)" else empty end),
+            (if .trigger then "trigger: \(.trigger)" else empty end),
+            (if .accepted_if then "accepted if: \(.accepted_if)" else empty end),
+            ((.also_at // [])[] | "also at: \(.)")
+          else "FINDING", "message: \(.)" end),
+        ((.unclear // [])[] | if type == "object" then
+            "SUSPICION",
+            (if (.quote // "") != "" or (.file // "") != "" then "quote: \(q)" else empty end),
+            (if .suspicion then "suspicion: \(.suspicion)" else empty end),
+            (if .confirm_by then "confirm by: \(.confirm_by)" else empty end),
+            (if .fix then "fix: \(.fix)" else empty end)
+          else tostring end),
+        ((.unclear_answers // [])[] | tostring)' <<< "$_j"
+}
+
 # zb_test_lens_check_answer <prompt> — when <prompt> is a lens's check call
 # (#2552), print "<n>: stands" for each finding it lists, so every finding
 # stands, and return 0; return 1 for any other prompt. A lens stub calls it

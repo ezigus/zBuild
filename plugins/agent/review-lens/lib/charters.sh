@@ -65,7 +65,7 @@ Where the change reads data another part of the code writes, you open the
 code that writes it, then check the change uses the names and shapes it really
 produces, and that its tests make such data with that code, not by hand.
 For each finding, list every other place in the change with the same kind of
-problem (also_at), not only the one you quote: a fix made only where a problem
+problem (also at), not only the one you quote: a fix made only where a problem
 was found leaves its other forms in place. Look for them — the same call, the
 same pattern, the same input reaching another path.
 
@@ -77,36 +77,28 @@ about GitHub — that a label, a branch or a setting exists, what an API returns
 GitHub's REST API, e.g. zbuild-gh-get 'repos/{owner}/{repo}/labels' '.[].name')
 rather than guess it.
 
-OUTPUT CONTRACT (obey absolutely):
-- Respond with EXACTLY ONE JSON object. First character '{', last character '}'.
-- Your response MUST begin with \`{\` — no leading prose, no trailing prose, no markdown fences.
-- Schema:
-  {
-    "score": <integer 0-10, 10 = no concerns for this lens>,
-    "findings": [
-      {
-        "file": "<path>",
-        "category": "<short category, e.g. logic, injection, coverage>",
-        "severity": "<one of: low, medium, high, critical>",
-        "message": "<one-sentence description>",
-        "quote": "<the exact text that shows it, copied from the file as it is now, or a line the change removed>",
-        "trigger": "<what makes it happen on a real run — where this lens's problems come from>",
-        "accepted_if": "<what must be true for this finding to be resolved, in the issue's words>",
-        "introduced": <true if this change introduced or worsened it, or did not do what the issue or design asked of it; false if the code before the change already did this and nothing asked this change to change it>,
-        "fix": "<one of: code, test, design, issue>",
-        "also_at": ["<file> | <the line that shows it there>", "<each other place in the change with the same kind of problem>"]
-      }
-    ]
-  }
-- Every finding says what makes it happen on a real run (its trigger), and quotes the text that shows it. The quote is checked against
-  its file and the change: a finding whose quote is not there makes the report
-  unusable.
-- Every finding says what would be accepted (accepted_if). ACCEPTED IF says what must be true for the part to be accepted, in the issue's words — never how to build it: no file, function, command or change to make. Not this:
+OUTPUT CONTRACT (obey absolutely) — plain lines, as every other check answers:
+- The first line is your score: SCORE: <0-10, 10 = no concerns for this lens>
+- Then each finding: the word FINDING alone on its line, then its fields, one per line:
+  FINDING
+  severity: <one of: low, medium, high, critical>
+  category: <short category, e.g. logic, injection, coverage>
+  fix: <one of: code, test, design, issue>
+  introduced: <yes if this change introduced or worsened it, or did not do what the issue or design asked of it; no if the code before the change already did this and nothing asked this change to change it>
+  quote: <file> | <the exact line that shows it, copied from the file as it is now, or a line the change removed>
+  message: <one-sentence description>
+  trigger: <what makes it happen on a real run — where this lens's problems come from>
+  accepted if: <what must be true for this finding to be resolved, in the issue's words>
+  also at: <file> | <the line that shows it there>   (one line for each other place in the change with the same kind of problem)
+- Copy a quote exactly as the file has it, on one line: a backslash, a quote mark or \n in the file is written as it is there. Nothing in your answer is escaped.
+- Every finding says what makes it happen on a real run (its trigger), and quotes the line that shows it. The quote is checked against
+  its file and the change: a finding whose quote is not there is asked about again.
+- Every finding says what would be accepted (accepted if). ACCEPTED IF says what must be true for the part to be accepted, in the issue's words — never how to build it: no file, function, command or change to make. Not this:
   ACCEPTED IF: runner.sh calls plugin_hook_call on the claim-coordinator folder
   but this:
   ACCEPTED IF: the engine itself calls the claim coordinator's claim and release hooks through the plugin registry
-  A finding with no accepted_if makes the report unusable.
-- If you find nothing for this lens, return {"score": 10, "findings": []}.
+- If you find nothing for this lens, answer only: SCORE: 10
+- No JSON, no code fences, no prose before or after.
 
 SEVERITY — grade each finding on this one scale:
 - \`critical\`: the change makes the program unsafe or wrong for everyone: data loss, a security hole, or the run breaking on a normal path.
@@ -123,10 +115,14 @@ FIX — say what would fix each finding:
 UNCLEAR — what the issue means, when its words could mean either of two things:
 ${_RL_UNCLEAR_RULES:-}
 
-A problem you suspect but cannot confirm is not left out: put it in the "unclear" list
-as an object, with what would confirm it, and judge the rest of the change. It
+A problem you suspect but cannot confirm is not left out: write it as a
+SUSPICION, with what would confirm it, and judge the rest of the change. It
 reaches the stage that can answer it as a question, and sends nothing back:
-  {"file": "<path>", "quote": "<the text it is about>", "suspicion": "<what you suspect can go wrong>", "confirm_by": "<what would confirm it, or rule it out>", "fix": "<code, test or design: who can answer it>"}
+  SUSPICION
+  quote: <file> | <the line it is about>
+  suspicion: <what you suspect can go wrong>
+  confirm by: <what would confirm it, or rule it out>
+  fix: <code, test or design: who can answer it>
 
 ## What you judge against
 THE CHANGE below names the commit this branch started from and the files it
@@ -145,6 +141,6 @@ ${evidence}
 - Describe what you find; do NOT recommend a merge action, and do NOT name
   which stage should fix it: say what would fix it.
 
-Emit the JSON object now.
+Write your answer now, starting with the SCORE line.
 PROMPT
 }

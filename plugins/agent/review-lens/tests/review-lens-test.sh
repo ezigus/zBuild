@@ -50,11 +50,11 @@ route_to_model() { zb_test_lens_check_answer "$2" && return 0;
     printf 'call\n' >> "$_RL_CALLS"
     printf '%s' "$2" > "$_RL_PROMPT"
     if [[ "$2" == *'"security" lens'* ]]; then
-        printf '%s' '{"score":3,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/y.sh","category":"injection","severity":"CRITICAL","line":10,"message":"shell injection risk"}]}'
+        zb_test_lens_lines '{"score":3,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/y.sh","category":"injection","severity":"CRITICAL","line":10,"message":"shell injection risk"}]}'
     elif [[ "$2" == *'"performance" lens'* ]]; then
-        printf '%s' '{"score":8,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/z.sh","category":"perf","severity":"low","line":3,"message":"repeated read"}]}'
+        zb_test_lens_lines '{"score":8,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/z.sh","category":"perf","severity":"low","line":3,"message":"repeated read"}]}'
     else
-        printf '%s' '{"score":10,"findings":[]}'
+        zb_test_lens_lines '{"score":10,"findings":[]}'
     fi
     return 0
 }
@@ -160,7 +160,7 @@ fi
 # shellcheck disable=SC2329  # re-defined mock invoked indirectly by the plugin
 route_to_model() { zb_test_lens_check_answer "$2" && return 0;
     printf 'call\n' >> "$_RL_CALLS"; printf '%s' "$2" > "$_RL_PROMPT"
-    printf '%s' '{"score":10,"findings":[]}'; return 0
+    zb_test_lens_lines '{"score":10,"findings":[]}'; return 0
 }
 
 # ─── SPEC-7: lens id resolution + hook contract (ZBUILD_REVIEW_LENS_ID) ──────

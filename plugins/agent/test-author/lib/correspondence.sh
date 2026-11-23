@@ -216,7 +216,7 @@ _sc_judge() {
     done <<< "$_scj_reply"
     (( _scj_seen )) || _scj_bad=("it has no line for $_scj_sid" ${_scj_bad[@]+"${_scj_bad[@]}"})
     if [[ ${#_scj_bad[@]} -gt 0 ]]; then
-        local IFS=';'; _SC_PROBLEM="${_scj_bad[*]}"; _SC_PROBLEM="${_SC_PROBLEM//;/; }"
+        judge_problems_join_v _SC_PROBLEM _scj_bad
         return 0
     fi
     _SC_LINES="${_SC_LINES%$'\n'}"

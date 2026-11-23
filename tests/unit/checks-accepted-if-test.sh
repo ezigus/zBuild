@@ -261,7 +261,7 @@ print_test_section "A8: a lens finding carries accepted_if"
   export ZBUILD_REPO_ROOT="$G" ZBUILD_CURRENT_STAGE=review_lenses _TPL_STAGE_FAIL_ON_review_lenses="medium high critical"
   ART="$TEST_TEMP_DIR/lens-art"; mkdir -p "$ART"
   printf 'diff --git a/core/x.sh b/core/x.sh\n+guard_off() { :; }\n' > "$ART/diff.patch"
-  route_to_model() { zb_test_lens_check_answer "$2" && return 0; printf '%s' "$2" >> "$TEST_TEMP_DIR/lens-prompt"; printf '%s\n' "$LENS_REPLY"; }
+  route_to_model() { zb_test_lens_check_answer "$2" && return 0; printf '%s' "$2" >> "$TEST_TEMP_DIR/lens-prompt"; zb_test_lens_lines "$LENS_REPLY"; }
   _f() { jq -nc --arg a "$1" --arg m "${2:-guard_off turns the safety check off}" '{file: "core/x.sh", category: "logic", severity: "medium", message: $m,
         quote: "guard_off() { :; }", trigger: "a template turns the guard on", introduced: true, fix: "code"} + (if $a == "" then {} else {accepted_if: $a} end)'; }
   _lens() { : > "$TEST_TEMP_DIR/lens-prompt"; rm -f "$ART"/lens-red-team*.json "$ART"/*judged*.json
@@ -277,11 +277,13 @@ assert_contains "[A8] a finding with no accepted_if is asked again" "$(_l A8a)" 
 _lacks "[A8] ...then costs only itself: the report is used" "$(_l A8a)" "A8a|unusable|"
 _l3() { _l "$1" | awk -F'|' '{ print $3 }'; }
 assert_contains "[A8] ...its other finding reaches the stage" "$(_l3 A8a)" "GOOD-FINDING"
-_lacks "[A8] ...and the one with no accepted_if does not" "$(_l3 A8a)" "NO-ACCEPTED-IF-FINDING"
+# #2598: still none after the re-ask, it reaches the stage marked unchecked
+# and blocks: it costs only itself, and the lens never passes on it.
+assert_contains "[A8] ...and the one with no accepted_if reaches it marked unchecked" "$(_l A8a)" "this finding could not be checked"
 assert_contains "[A8] the routed finding shows the lens's ACCEPTED IF" "$(_l A8b)" "ACCEPTED IF: nothing a template sets can turn the safety check off"
 assert_contains "[A8] the lens is told what ACCEPTED IF says" "$(_l A8b)" "never how to build it: no file, function, command or change to make."
 assert_contains "[A8] ...with #1764's example" "$(_l A8b)" "$NOT_THIS"
-assert_contains "[A8] ...and the field is in its schema" "$(_l A8b)" '"accepted_if": "<'
+assert_contains "[A8] ...and the field is in its schema" "$(_l A8b)" 'accepted if: <'
 
 # ── A9: open items ───────────────────────────────────────────────────────────
 print_test_section "A9: a run's open items read ACCEPTED IF as what would settle it"

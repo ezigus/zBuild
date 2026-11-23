@@ -60,7 +60,7 @@ route_to_model() { zb_test_lens_check_answer "$2" && return 0
     printf '%s' "$2" > "$_RQ/prompt-$n.txt"
     r="$(sed -n "${n}p" "$_RQ/replies")"
     [[ "$r" == RC=* ]] && return "${r#RC=}"
-    printf '%s' "$r"
+    zb_test_lens_lines "$r"
 }
 _calls() { cat "$_RQ/n"; }
 _flat() { tr -s '[:space:]' ' ' < "$1" 2>/dev/null; }
@@ -87,7 +87,7 @@ _p="$(_flat "$_RQ/prompt-1.txt")"
 assert_contains "[LU1] the lens is told the one form" "$_p" \
     "UNCLEAR <id> | \"<the issue's unclear words, quoted>\" | <the readings> | ASSUMED: <the reading chosen and acted on>"
 assert_contains "[LU1] ...that a question goes in the report's unclear list, and is no finding" "$_p" \
-    "In this report each such line is a string in the \"unclear\" list, not a finding"
+    "In this report each such question is a line of its own, not a finding"
 assert_contains "[LU1] ...and that an issue that is wrong is still fix: issue" "$_p" \
     "An issue whose words could mean either of two things is not wrong: it is a question, never fix: issue."
 assert_eq "[LU2] the lens passes" "pass" "$(_res .outcome)"
@@ -128,7 +128,7 @@ _p="$(_flat "$_RQ/prompt-1.txt")"
 assert_contains "[LU5] the next call is shown the carried question" "$_p" "$QL"
 assert_contains "[LU5] ...and the answer forms" "$_p" \
     "UNCLEAR <id>: answered | WHY: <how the issue answers it> | QUOTE: <the issue's words that answer it>"
-assert_contains "[LU5] ...to give in its report's unclear_answers list" "$_p" "\"unclear_answers\""
+assert_contains "[LU5] ...to give in its report's unclear_answers list" "$_p" "Answer each of these on a line of its own in your report"
 assert_eq "[LU5] open: the question is kept" "$QL" "$(_res '(.data.unclear // [])[]')"
 assert_eq "[LU5] ...and is no new finding for design" "" "$(_dtexts)"
 rm -f "${out%.json}-judged.json"

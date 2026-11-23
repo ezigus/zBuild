@@ -65,7 +65,7 @@ ART="$TEST_TEMP_DIR/artifacts"; mkdir -p "$ART"
 printf 'diff --git a/a.sh b/a.sh\n+gh label add "$L"\ndiff --git a/b.sh b/b.sh\n+gh label add "$M"\n' > "$ART/diff.patch"
 
 REPLY=""
-route_to_model() { zb_test_lens_check_answer "$2" && return 0; printf '%s' "$2" > "$TEST_TEMP_DIR/prompt"; printf '%s' "$REPLY"; }
+route_to_model() { zb_test_lens_check_answer "$2" && return 0; printf '%s' "$2" > "$TEST_TEMP_DIR/prompt"; zb_test_lens_lines "$REPLY"; }
 _lens() {
     rm -f "$ART"/lens-red-team*.json
     ZBUILD_CURRENT_STAGE=review_lenses ZBUILD_REVIEW_LENS_ID=red-team _TPL_STAGE_FAIL_ON_review_lenses="medium high critical" \
@@ -79,7 +79,7 @@ P="$(_flat "$(_rl_build_lens_prompt red-team "THE-CHANGE" "")")"
 print_test_section "S1–S2: every place with the same kind of problem"
 assert_contains "[S1] the prompt asks for every other place with the same kind of problem" "$P" \
     "every other place in the change with the same kind of problem"
-assert_contains "[S1] ...in the also_at list" "$P" '"also_at": ["<file> | <the line that shows it there>"'
+assert_contains "[S1] ...in the also_at list" "$P" 'also at: <file> | <the line that shows it there>'
 REPLY='{"score":4,"findings":[{"file":"a.sh","quote":"gh label add \"$L\"","trigger":"the label does not exist","accepted_if":"a missing label is created or reported","severity":"medium","category":"logic","message":"the label is assumed to exist","introduced":true,"fix":"code","also_at":["b.sh | gh label add \"$M\""]}]}'
 _lens
 assert_eq "[S2] setup: the finding fails the lens" "fail" "$OUT"
@@ -99,8 +99,8 @@ assert_eq "[S9] ...one note for each" "3" "$(jq -r '[.data.notes // [] | .[] | s
 
 print_test_section "S3–S5: a suspicion is a question"
 assert_contains "[S3] the prompt says a suspicion goes in unclear" "$P" \
-    "A problem you suspect but cannot confirm is not left out: put it in the \"unclear\" list"
-assert_contains "[S3] ...with what would confirm it" "$P" '"confirm_by": "<what would confirm it'
+    "A problem you suspect but cannot confirm is not left out: write it as a"
+assert_contains "[S3] ...with what would confirm it" "$P" 'confirm by: <what would confirm it'
 REPLY='{"score":9,"findings":[],"unclear":[{"file":"a.sh","quote":"gh label add \"$L\"","suspicion":"a SIGTERM between the claim and its trap leaves the label behind","confirm_by":"how bash runs a TERM trap set after a builtin has started","fix":"code"}]}'
 _lens
 assert_eq "[S4] a suspicion does not send the change back" "pass" "$OUT"

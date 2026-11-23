@@ -263,6 +263,7 @@ _ia_judge() {
     judge_kept_put_all "$kf" put putfp deps carry itxt
     judge_handoff_done "$kf"
     _ia_parse "$kraw$nraw" "$_reqs" "$issue" "$_root_q" "$_lims"
+    _ia_unchecked_to_unmet
     _ia_finish "$art"
     return 0
 }

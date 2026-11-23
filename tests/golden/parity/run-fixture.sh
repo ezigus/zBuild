@@ -61,7 +61,8 @@ elif grep -q 'A report for the ' <<< "$prompt"; then
     # production. #2552: one low finding the code already had, so the check of
     # a lens's findings runs — and is counted by the process budget — while
     # nothing is sent to another stage.
-    jq -n --arg r '{"score":9,"findings":[{"file":"fixtures/parity-fixture.txt","category":"logic","severity":"low","message":"the fixture file holds one fixed line","quote":"parity-fixture","accepted_if":"the change no longer does this","trigger":"the build writes the fixture file","introduced":false,"fix":"code"}]}' \
+    # #2598: a lens answers in plain lines.
+    jq -n --arg r $'SCORE: 9\nFINDING\nseverity: low\ncategory: logic\nfix: code\nintroduced: no\nquote: fixtures/parity-fixture.txt | parity-fixture\nmessage: the fixture file holds one fixed line\ntrigger: the build writes the fixture file\naccepted if: the change no longer does this' \
        '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
 elif grep -q "whether a DESIGN covers what an ISSUE asked for" <<< "$prompt"; then
     # design's coverage check (#2445: design is in the fixture now that plan is

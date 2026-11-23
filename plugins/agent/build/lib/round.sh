@@ -7,8 +7,12 @@
 # path, so without this the result described only the LAST pass: #2032 run
 # 37289606005 committed one file on pass 1 and reported "changed 0 file(s)"
 # after pass 2 changed nothing. The round is carried in build's own primary
-# output (`.round`), keyed by run, cycle and iteration, and starts from the HEAD
-# the round's first pass started on.
+# output (`.round`), keyed by run, cycle, iteration and the dispatch's place
+# (its seq label, which holds every enclosing loop's round: #2598, #2532 run
+# 45231040380 — the outer loop's round 2 is again "iteration 1" of the inner
+# cycle, and its build took itself for round 1's second pass). The round's
+# change is the commits build itself made in it (`.commits`), never another
+# stage's: build's commits are marked `Zbuild-Stage: build` (commit.sh).
 # Sourced by plugin.sh after shared libs (event-bus.sh, etc.) are loaded.
 
 [[ -n "${_ZBUILD_BUILD_ROUND_LOADED:-}" ]] && return 0
@@ -17,6 +21,7 @@ _ZBUILD_BUILD_ROUND_LOADED=1
 _BUILD_ROUND_BASE=""
 _BUILD_ROUND_PASSES=1
 _BUILD_ROUND_PRIOR_ITERS=0
+
 
 # _build_round_open <summary_json> <repo_root>
 # Called before this pass writes anything. Continues the round recorded in the
@@ -35,7 +40,8 @@ _build_round_open() {
     local base passes iters
     IFS=$'\t' read -r base passes iters < <(jq -r --arg r "${ZBUILD_RUN_ID}" \
             --arg c "${ZBUILD_CYCLE_ID:-}" --arg i "${ZBUILD_CYCLE_ITER:-0}" \
-            '.round // empty | select(.run_id == $r and .cycle_id == $c and .iter == $i)
+            --arg s "${ZBUILD_STAGE_IO_SEQ_LABEL:-}" \
+            '.round // empty | select(.run_id == $r and .cycle_id == $c and .iter == $i and (.seq // "") == $s)
              | [(.base // ""), (.passes // 0), (.iterations // 0)] | @tsv' \
             "$summary_json" 2>/dev/null || true) || true   # no match: read hits EOF (rc 1) under set -e
     [[ "$passes" =~ ^[0-9]+$ && "$iters" =~ ^[0-9]+$ ]] || return 0
@@ -53,10 +59,16 @@ _build_round_widen() {
     local repo_root="$1"
     # A first pass is the whole round: the caller's figures already cover it.
     [[ -n "$_BUILD_ROUND_BASE" && "$_BUILD_ROUND_PASSES" -gt 1 ]] || return 0
-    # One git call gives the paths and the line counts; empty means the round's
-    # earlier passes committed nothing (or this is its first pass).
-    local numstat a r p add=0 rem=0 paths=""
-    numstat="$(git -C "$repo_root" diff --numstat --no-renames "$_BUILD_ROUND_BASE" HEAD 2>/dev/null || true)"
+    # One git call gives the paths and the line counts of the commits the
+    # round's earlier passes made — build's own, marked `Zbuild-Stage: build`,
+    # never another stage's (#2598). Each commit opens with a line `@<stage>`.
+    local log a r p add=0 rem=0 paths="" mine=0 numstat=""
+    log="$(git -C "$repo_root" log --no-renames --numstat \
+        --format='@%(trailers:key=Zbuild-Stage,valueonly,separator=%x2C)' "$_BUILD_ROUND_BASE..HEAD" 2>/dev/null || true)"
+    while IFS= read -r a; do
+        if [[ "$a" == @* ]]; then [[ "$a" == "@build" ]] && mine=1 || mine=0; continue; fi
+        (( mine )) && [[ -n "$a" ]] && numstat+="$a"$'\n'
+    done <<< "$log"
     [[ -n "$numstat" ]] || return 0
     while IFS=$'\t' read -r a r p; do
         [[ -n "$p" ]] || continue
@@ -90,11 +102,12 @@ _build_round_total_iterations() {
 # gives `null`, and the round simply starts over next pass.
 _build_round_json() {
     local total r="${ZBUILD_RUN_ID:-}" c="${ZBUILD_CYCLE_ID:-}" i="${ZBUILD_CYCLE_ITER:-0}"
+    local sq="${ZBUILD_STAGE_IO_SEQ_LABEL:-}"
     total="$(( _BUILD_ROUND_PRIOR_ITERS + ${1:-0} ))"
     local re='^[A-Za-z0-9._:-]*$'
-    if [[ "$r" =~ $re && "$c" =~ $re && "$i" =~ $re && "$_BUILD_ROUND_BASE" =~ $re ]]; then
-        printf '{"run_id":"%s","cycle_id":"%s","iter":"%s","base":"%s","passes":%d,"iterations":%d}' \
-            "$r" "$c" "$i" "$_BUILD_ROUND_BASE" "$_BUILD_ROUND_PASSES" "$total"
+    if [[ "$r" =~ $re && "$c" =~ $re && "$i" =~ $re && "$sq" =~ $re && "$_BUILD_ROUND_BASE" =~ $re ]]; then
+        printf '{"run_id":"%s","cycle_id":"%s","iter":"%s","seq":"%s","base":"%s","passes":%d,"iterations":%d}' \
+            "$r" "$c" "$i" "$sq" "$_BUILD_ROUND_BASE" "$_BUILD_ROUND_PASSES" "$total"
     else
         printf 'null'
     fi

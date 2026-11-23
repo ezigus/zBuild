@@ -60,7 +60,7 @@ _counting_judge() {
         : stdin is not read
         local n; n=$(( $(cat "$_N") + 1 )); printf "%s" "$n" > "$_N"; printf "%s" "$2" > "$_P.$n"
         [[ -n "${ZBUILD_ROUTER_OPENED_FILE:-}" ]] && printf "%s\n" "$XR/scripts/cfg.sh" >> "$ZBUILD_ROUTER_OPENED_FILE"
-        printf "%s" "${'"$1"'}"
+        zb_test_lens_lines "${'"$1"'}"
     }'
 }
 _calls() { cat "$_N"; }
@@ -122,7 +122,7 @@ print_test_section "K9: what the fingerprint depends on (review on #2465)"
     route_to_model() { zb_test_lens_check_answer "$2" && return 0;
         local n; n=$(( $(cat "$_N") + 1 )); printf "%s" "$n" > "$_N"
         [[ -n "${ZBUILD_ROUTER_OPENED_FILE:-}" ]] && printf "%s\n" "$XR/scripts" >> "$ZBUILD_ROUTER_OPENED_FILE"
-        printf "%s" "$_R"
+        zb_test_lens_lines "$_R"
     }
     D="$TEST_TEMP_DIR/k9.md"
     printf '# Design\n```acceptance\nWORK-1[code]: a --dry-run flag is accepted covers: RQST-1\nWIRING: none\n```\n' > "$D"

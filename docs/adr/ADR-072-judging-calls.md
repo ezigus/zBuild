@@ -361,7 +361,24 @@ On #2532 run 45017980554 red-team, build's step check and issue-acceptance all f
 - **§5 (issue-acceptance): a plain "wrong" does not close a finding the judge still holds.** An answer `wrong` to one of issue-acceptance's findings that quotes no line (`<file> | <line>`) showing the requirement met does not dispute it: the kept refusal stands, the round fails, and the finding — sent on again to the stages its mark names, test-author among them for `[fix-code]` and an unmarked line — carries the answer and says "a wrong that quotes no line does not close it: change what it names, or answer wrong quoting the line (<file> | <line>) that shows it met". A wrong that quotes a line has the requirement judged again, held to the answer, as before.
 - **§3: a step's part is answered by its number** (ADR-073, amended the same day): `step 1.2: done — <file> | <line>`, and the step check's `1.2: does`. Each part is its own entry, so a step is done when all its parts are; its kept verdict and its hand-off are keyed by the part's number.
 
+## Amendment 2026-11-23 (#2598) — §3: quotes are plain lines everywhere; a near miss is shown; one unchecked item costs only itself; a problem list is not rewritten
+
+On #2532 run 45231040380 the red-team lens quoted `printf '    Darwin)  ZBUILD_PLATFORM=macos ;;\n' > "$_zbp_inject"` inside its JSON answer as `…;;\n'`. JSON reads `\n` as a line break, so the quote was not in the file. Asked again with only "is not in <file>, on one line: …", shown as `; ;` by the problem list, it made the same mistake. All 8 of its findings were dropped, and the run stopped with rounds left.
+
+- **A lens answers in plain lines, like every other judge** (ADR-038, amended): a quote is `<file> | <one line>`, written as the file has it, and nothing in the answer is escaped. A lens quotes one line; #2545's quotes across lines are gone with the JSON that carried them.
+- **A quote not found is answered with the file's closest line beside it** (`_judge_closest_line_v`): "… — the closest line in it is: <line>". One awk, run only for a quote not found.
+- **One item that cannot be checked costs only itself**, in lenses and issue-acceptance, whose items are findings for other stages:
+  - it is asked about again on its own ("Answer again only for finding N");
+  - still not checkable, the other items are kept and it is kept too, marked unchecked with why;
+  - the check fails on it, never passes, and the item is an open item that says why;
+  - an ordinary failure sends the round back, so the run stops only when rounds run out.
+  - A problem no item owns (an answer not in the asked form, a line naming no listed requirement, a limit with no line) still makes the answer unusable.
+  - design's, test-author's and build's own checks already keep every good item and ask next try only for what is missing (§4, #2472); they are unchanged.
+- **A problem list reaches the model as written:** problems are joined with `; ` by one helper (`judge_problems_join_v`), never by putting a space after every `;`, which changed a quote's `;;`.
+
 ## Enforced by
+
+- 2026-11-23 amendment (#2598: plain-line quotes; the closest line; an unchecked item costs only itself; problem lists as written) → `tests/unit/lens-reply-lines-test.sh` L1–L7; `tests/unit/quote-closest-line-test.sh` Q1–Q4; `plugins/agent/review-lens/tests/review-lens-unchecked-test.sh` U1–U4; `tests/unit/issue-acceptance-unchecked-test.sh` IU1–IU3; `tests/unit/problem-list-join-test.sh` J1–J3
 
 - §5 §3 amendment 2026-11-22 (#2586: an open finding unlocks a kept pass; a plain wrong; parts) → `tests/unit/issue-acceptance-per-item-test.sh` PI14 (issue-acceptance's answer names RQFLAG-1: its UNMET stands; RQCNFG-1, named by none, is still held), PI15 (a plain wrong: not judged again, the round fails, the finding carries the answer and the rule), PI16 (a wrong quoting a line is judged again); `tests/unit/checks-pass-held-test.sh` P4 (design's check: design's answer names the SPEC, the refusal is taken; with none it is held); `plugins/agent/build/tests/build-step-parts-test.sh` SP4, SP5 (parts answered and judged by their numbers; a part with no answer is named)
 

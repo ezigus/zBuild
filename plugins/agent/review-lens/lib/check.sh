@@ -92,7 +92,7 @@ _rl_check_parse() {
         _RL_KNOCKED[$n]="${why:-it cannot happen}"$'\x1f'"$quote"
     done <<< "$raw"
     for (( n = 1; n <= count; n++ )); do [[ -n "${seen[$n]+x}" ]] || bad+=("finding $n has no line"); done
-    if [[ ${#bad[@]} -gt 0 ]]; then local IFS=';'; _RL_CHECK_PROBLEM="${bad[*]}"; _RL_CHECK_PROBLEM="${_RL_CHECK_PROBLEM//;/; }"; fi
+    if [[ ${#bad[@]} -gt 0 ]]; then judge_problems_join_v _RL_CHECK_PROBLEM bad; fi
     return 0
 }
 

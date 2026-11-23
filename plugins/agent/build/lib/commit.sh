@@ -131,13 +131,16 @@ _build_commit_iteration() {
         return 0
     fi
 
+    # #2598: each commit says it is build's (`Zbuild-Stage: build`), so a round
+    # counts only build's own commits (round.sh); test-author commits as the
+    # same author.
     local commit_msg
     commit_msg="$(_build_parse_commit_summary "$response_text" "$plan_title" "$iter_summaries" "$iter_count")"
 
     if ! git -C "$repo_root" commit \
         --author "zbuild-pipeline <pipeline@local>" \
         --no-verify --quiet \
-        -m "$commit_msg" 2>/dev/null; then
+        -m "$commit_msg" -m "Zbuild-Stage: build" 2>/dev/null; then
         warn "_build_commit_iteration: git commit failed in $repo_root"
         emit_event "build.commit.skipped" "plugin=build" \
             "reason=commit_failed" "iter=$iter"

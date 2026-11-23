@@ -132,5 +132,14 @@ rsc_rows_json() {
           elif $t == "plugin.result" and ((if ($e.plugin // "") != "" then $e.plugin else ($d.plugin // "") end) == "pr-open") and ($d.pr_url // "") != "" then
             .pr = {url: $d.pr_url, number: ($d.pr_number // "")}
           else . end
-      )' "$events" 2>/dev/null || printf '{"header":{},"rows":{},"order":[],"terminal":{},"pr":{}}'
+      )
+      # #2598 (ADR-064): a group'"'"'s row follows its members, so its summary is
+      # shown after the work it summarises; every other row keeps its place.
+      | .rows as $r
+      | .order |= (. as $o
+          | [to_entries[] | .key as $i | ($r[.value | tostring].seq // "") as $s
+              | ([$o | to_entries[] | select($s != "" and ($r[.value | tostring].member // false)
+                    and (($r[.value | tostring].seq // "") | startswith($s + "."))) | .key] | max) as $mx
+              | {k: .value, p: (if $mx != null and $mx > $i then $mx + 0.5 else $i end)}]
+          | sort_by(.p) | map(.k))' "$events" 2>/dev/null || printf '{"header":{},"rows":{},"order":[],"terminal":{},"pr":{}}'
 }

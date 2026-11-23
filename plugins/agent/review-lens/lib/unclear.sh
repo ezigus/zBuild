@@ -28,8 +28,8 @@ source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/unclear.sh"
 # prompt takes it with no subshell (ADR-065).
 # shellcheck disable=SC2034  # read by the lens's prompt (charters.sh)
 _RL_UNCLEAR_RULES="${ZB_UNCLEAR_RULES}
-In this report each such line is a string in the \"unclear\" list, not a finding:
-  \"unclear\": [\"UNCLEAR <id> | \\\"<the issue's words>\\\" | <the readings> | ASSUMED: <the reading>\"]
+In this report each such question is a line of its own, not a finding:
+  UNCLEAR <id> | \"<the issue's words>\" | <the readings> | ASSUMED: <the reading>
 <id> is the id of the requirement it is about, as THE REQUIREMENTS list it.
 An issue whose words could mean either of two things is not wrong: it is a question, never fix: issue.
 Judge the change by the reading you assumed. An issue that is wrong — it
@@ -59,7 +59,7 @@ _rl_unclear_block_v() {
     _rub=""
     zb_unclear_judge_block_v _rub_b "${_RL_UQ_CARRIED:-}"
     [[ -n "$_rub_b" ]] || return 0
-    _rub=$'\n\n'"$_rub_b"$'\n'"Give each of these lines as a string in your report's \"unclear_answers\" list: \"unclear_answers\": [\"UNCLEAR <id>: open\"]"$'\n'
+    _rub=$'\n\n'"$_rub_b"$'\n'"Answer each of these on a line of its own in your report, for example: UNCLEAR <id>: open"$'\n'
 }
 
 # _rl_unclear_plain_v <var> <line> — a question as the lens wrote it, with the
@@ -94,7 +94,7 @@ _rl_unclear_problem_v() {
         [[ -n "$_rup_p" ]] && _rup_bad+=("in unclear_answers: $_rup_p")
     fi
     [[ ${#_rup_bad[@]} -gt 0 ]] || return 0
-    local IFS=';'; _rup="${_rup_bad[*]}"; _rup="${_rup//;/; }"
+    judge_problems_join_v _rup _rup_bad
 }
 
 # _rl_unclear_settle <json> — from the lens's final report: _RL_UQ_JSON for its

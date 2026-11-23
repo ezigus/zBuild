@@ -4,12 +4,13 @@
 # lens's reply held five findings and broke on one unescaped quote; nothing
 # asked it again, and its findings were lost.
 #
-#   L1 [change]: a reply that is not valid JSON is asked again once; the second
-#                prompt names jq's complaint and carries the first reply; the
-#                lens's result is built from the second reply
+#   L1 [change]: a reply not in the asked form (#2598: plain lines, a SCORE line
+#                first) is asked again once; the second prompt names the form
+#                and carries the first reply; the lens's result is built from
+#                the second reply
 #   L2 [change]: a reply still unusable after the second ask makes the lens
 #                unusable, and its result and summary say what was wrong
-#   L3 [change]: valid JSON without a findings list is asked again, naming that
+#   L3 [change]: a reply of prose, with no SCORE line, is asked again, naming it
 #   L4 [guard] : a failed model call (time limit, turns, provider) is not asked
 #                again — a lens that does not finish stops the run (ADR-040)
 #   L5 [change]: every reply the lens got is kept, in the order it came
@@ -51,7 +52,7 @@ route_to_model() { zb_test_lens_check_answer "$2" && return 0;
     printf '%s' "$2" > "$_RQ_DIR/prompt-$n.txt"
     local r; r="$(sed -n "${n}p" "$_RQ_DIR/replies")"
     [[ "$r" == RC=* ]] && return "${r#RC=}"
-    printf '%s' "$r"
+    zb_test_lens_lines "$r"
 }
 
 artifact_dir="$TEST_TEMP_DIR/artifacts"
@@ -70,8 +71,8 @@ out="$artifact_dir/lens-l1.json"
 _review_lens_run_inner "l1" "$scope_manifest" "$evidence" "$out" "$artifact_dir" >/dev/null 2>&1
 assert_eq "L1: the lens was asked twice" "2" "$(_rl_calls)"
 _p2="$(cat "$_RQ_DIR/prompt-2.txt" 2>/dev/null)"
-assert_contains "L1: the second ask says the reply is not valid JSON" "$_p2" "is not valid JSON"
-assert_contains "L1: the second ask carries jq's own complaint" "$_p2" "$(_llm_envelope_parse_error "$BAD")"
+assert_contains "L1: the second ask says the reply is not in the asked form" "$_p2" "is not in the asked form"
+assert_contains "L1: the second ask names the form" "$_p2" "SCORE: <0-10>"
 assert_contains "L1: the second ask carries the first reply" "$_p2" "$BAD"
 assert_eq "L1: the result is built from the second reply" "pass" "$(jq -r '.outcome // empty' "$out" 2>/dev/null)"
 assert_eq "L1: the second reply's finding is kept" "1" "$(jq -r '.findings | length' "$out" 2>/dev/null)"
@@ -82,16 +83,16 @@ out="$artifact_dir/lens-l2.json"
 _review_lens_run_inner "l2" "$scope_manifest" "$evidence" "$out" "$artifact_dir" >/dev/null 2>&1
 assert_eq "L2: the lens was asked twice, no more" "2" "$(_rl_calls)"
 assert_eq "L2: still unusable, the lens is unusable" "unusable" "$(jq -r '.outcome // empty' "$out" 2>/dev/null)"
-assert_contains "L2: its result says what was wrong" "$(jq -r '.reason // empty' "$out" 2>/dev/null)" "is not valid JSON"
-assert_contains "L2: its summary says what was wrong" "$(cat "$artifact_dir/lens-l2-summary.md" 2>/dev/null)" "is not valid JSON"
+assert_contains "L2: its result says what was wrong" "$(jq -r '.reason // empty' "$out" 2>/dev/null)" "is not in the asked form"
+assert_contains "L2: its summary says what was wrong" "$(cat "$artifact_dir/lens-l2-summary.md" 2>/dev/null)" "is not in the asked form"
 
 # ─── L3 ──────────────────────────────────────────────────────────────────────
-_rl_reset '{"score":6,"notes":"looks fine"}' "$GOOD"
+_rl_reset 'The change looks fine to me.' "$GOOD"
 out="$artifact_dir/lens-l3.json"
 _review_lens_run_inner "l3" "$scope_manifest" "$evidence" "$out" "$artifact_dir" >/dev/null 2>&1
-assert_eq "L3: valid JSON in the wrong shape is asked again" "2" "$(_rl_calls)"
-assert_contains "L3: the second ask names the missing findings list" "$(cat "$_RQ_DIR/prompt-2.txt" 2>/dev/null)" "no findings list"
-# Before this, a reply with no findings list read as a clean review: no findings.
+assert_eq "L3: a reply of prose is asked again" "2" "$(_rl_calls)"
+assert_contains "L3: the second ask names the SCORE line" "$(cat "$_RQ_DIR/prompt-2.txt" 2>/dev/null)" "a line SCORE: <0-10>"
+# A reply with no SCORE line never reads as a clean review.
 assert_eq "L3: the result is built from the second reply" "1" "$(jq -r '.findings | length' "$out" 2>/dev/null)"
 
 # ─── L4 ──────────────────────────────────────────────────────────────────────
@@ -106,7 +107,7 @@ _r="$artifact_dir/lens-l1-reply.txt"
 assert_file_exists "L5: the lens's replies are kept" "$_r"
 _rt="$(cat "$_r" 2>/dev/null)"
 assert_contains "L5: the first reply is kept" "$_rt" "$BAD"
-assert_contains "L5: the second reply is kept" "$_rt" "$GOOD"
+assert_contains "L5: the second reply is kept" "$_rt" "$(zb_test_lens_lines "$GOOD")"
 _a="${_rt%%"$BAD"*}"; _b="${_rt%%"$GOOD"*}"
 if [[ ${#_a} -lt ${#_b} ]]; then
     assert_pass "L5: in the order they came"

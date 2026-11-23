@@ -321,7 +321,13 @@ On #2532 run 45017980554 (`out_of_tries:build_test_cycle`) the status comment's 
 - **§4: the header of a run that ended always says why** — the end's own reason (`pipeline.end`) when nothing aborted the run, in words (`run_end_words`) — **and names each blocker by its id and the check that opened it:** "… — blocked by BUFND-35 (build), TEFND-1 (test)". A running run's header names none.
 - **§4 (ADR-068 §8): the open items are read from every stage's result,** whatever its name: any result (one with a `result_contract`) whose outcome did not pass — build's `build-summary.json`, the test stage's `test-results.json` — and a stage that hands its findings on in `<name>-*-result.json` files is read through those only. The check is named by its file, its `-result`, `-results`, `-summary` or `-verdict` ending taken off.
 
+## Amendment 2026-11-23 (#2598) — a group's summary row follows its members
+
+Rows are kept in the order they started, and the comment shows the newest first. A group's row, such as review_lenses, starts a moment before its members, so it sorted as the oldest: read in time order, "all 6 lenses finished" came before the lenses. A group's row now follows its last member, so its summary is shown above the work it summarises. Every other row keeps its place, and the members' own order is unchanged.
+
 ## Enforced by
+
+- 2026-11-23 amendment (#2598: a group's summary row follows its members) → `tests/unit/status-group-row-order-test.sh` G1, G2
 
 - §4 amendment 2026-11-22 (#2586: why it stopped, the blocker, every stage's failed checks) → `tests/unit/run-stop-names-blocker-test.sh` B1, B2 (build's and the test stage's results are open items, by id), B3 (a lens's own result adds nothing beside its routed ones), B4 (a passing one is none), B5 (the header says why and names each blocker), B6 (a running run's names none)
 
