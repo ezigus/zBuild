@@ -195,10 +195,14 @@ _build_stage_run_inner() {
     #      stage's declared summary (ADR-055 §9); nothing is read here.
     local prompt_input_file="$artifact_dir/build-prompt.txt"
 
-    # ADR-018 (#470): render plan.json as markdown for LLM consumption when
-    # the renderer registry is available. Falls back to raw JSON otherwise.
+    # #2590 (ADR-073): the steps as build's check knows them — each by its own
+    # number (1, 2.1, 2.2 …), from the steps already loaded. The old renderer
+    # numbered by position, so a step's parts read as 2, 3, 4 (#2532 run
+    # 45102665787). A plan with no steps falls back to the renderer (ADR-018).
     local plan_payload="$plan_json"
-    if declare -F render_artifact >/dev/null 2>&1; then
+    if (( ${#_BUILD_STEP_DESC[@]} > 0 )); then
+        _build_steps_list_v plan_payload
+    elif declare -F render_artifact >/dev/null 2>&1; then
         plan_payload="$(render_artifact plan "$plan_json" 2>/dev/null || echo "$plan_json")"
     fi
 

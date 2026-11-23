@@ -278,7 +278,13 @@ On #2532 run 45017980554 test-author, which owns the guard test, answered build'
 - **§6: when a stage answers one of issue-acceptance's findings "wrong" and issue-acceptance still finds the requirement unmet, the round does not pass.** A wrong to another stage's finding (build's, a lens's) is not covered here; with §5 (#2586) issue-acceptance's own verdict on the requirement now stands, which is what ends the round. A plain wrong to an issue-acceptance finding — one that quotes no line showing the requirement met — does not dispute it: the refusal stands and the finding goes on again, carrying the answer, to the stages its mark names (a `[fix-code]` or unmarked one reaches test-author, which owns a test file). The owner fixes it, or answers wrong quoting the line that shows it met, which has the requirement judged again (ADR-072 §5, amended the same day). An issue-acceptance item that a finding names is not held to its kept pass (same amendment).
 - **§8: the open items include every stage's failed checks** (ADR-064 §4, amended the same day): build's unfinished steps and the failing tests among them.
 
+## Amendment 2026-11-23 (#2590) — §5: an engine note never changes a finding's id
+
+A finding's id is made from its text up to ` ¶ `. The engine's own notes on a finding go after it: issue-acceptance's "answered before: … a wrong that quotes no line does not close it" (#2586) is one. A note therefore never makes the same finding look new to the stage that owns it. The note travels in the text after a separator rather than in a field of its own: every reader already shows `.text`, and ` ¶ ` does not occur in written findings. A finding a model wrote with ` ¶ ` in it would take its id from the words before it.
+
 ## Enforced by
+
+- §5 amendment 2026-11-23 (#2590: an engine note never changes a finding's id) → `tests/unit/issue-acceptance-per-item-test.sh` PI18
 
 - §6 §8 amendment 2026-11-22 (#2586: a plain wrong; every stage's failed checks) → `tests/unit/issue-acceptance-per-item-test.sh` PI15, PI16, PI17 (a quote as models format it); `tests/unit/run-stop-names-blocker-test.sh` B1, B2, B7 (a finding in two of a stage's files is one item)
 

@@ -370,6 +370,10 @@ assert_eq "[PI15] ...its UNMET stands: the round fails" "fail" "$OUT"
 _ft="$(jq -r '.data.findings[] | select(.text | contains("RQCNFG-1")) | .text' "$A/issue-acceptance-result.json" | head -n 1)"
 assert_contains "[PI15] ...the finding carries the owner's answer" "$_ft" "the missing-file case is a theoretical concern"
 assert_contains "[PI15] ...and says a plain wrong does not close it" "$_ft" "a wrong that quotes no line does not close it"
+# PI18 (#2590): the note does not change the finding's id — the owner sees the
+# same finding, answered, not a new one.
+_FID2="$(jq -r '.data.findings[] | select(.text | contains("RQCNFG-1")) | .id' "$A/issue-acceptance-result.json" | head -n 1)"
+assert_eq "[PI18] the finding keeps its id when the note is added" "$FID" "$_FID2"
 stage_result_write "$A/test-author-result.json" pass "authored" \
     "$(jq -nc --arg a "$FID: wrong — the file is refused: p.sh | flag=1" '{answers: [$a]}')" >/dev/null
 _ia

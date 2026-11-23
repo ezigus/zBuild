@@ -427,7 +427,7 @@ _ia_finish() {
     for _fi in "${!_IA_UNMET[@]}"; do
         _ia_item_of_finding_v _fit "The issue requires this and the change does not meet it: ${_IA_UNMET[_fi]}"
         [[ -n "$_fit" && -n "${_IA_BARE_WRONG[$_fit]+x}" ]] || continue
-        _IA_UNMET[_fi]+=" — answered before: ${_IA_BARE_WRONG[$_fit]//$'\n'/ } — a wrong that quotes no line does not close it: change what it names, or answer wrong quoting the line (<file> | <line>) that shows it met"
+        _IA_UNMET[_fi]+=" ¶ answered before: ${_IA_BARE_WRONG[$_fit]//$'\n'/ } — a wrong that quotes no line does not close it: change what it names, or answer wrong quoting the line (<file> | <line>) that shows it met"
     done
     _u_json="$(_ia_json_list "${_IA_UNMET[@]+"${_IA_UNMET[@]}"}")"
     _s_json="$(_ia_json_list "${_IA_UNSURE[@]+"${_IA_UNSURE[@]}"}")"

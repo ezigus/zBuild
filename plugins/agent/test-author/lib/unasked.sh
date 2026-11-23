@@ -117,10 +117,14 @@ _ta_unasked_context_v() {
         _acceptance_spec_line "$blk" "$sid" && _tuc+="- $sid: $_ACC_SPEC_TEXT"$'\n'
     done < <(acceptance_list_spec_ids "$design" 2>/dev/null || true)
     zb_design_step_lines_v steps "$design"
-    _TA_UQ_STEPS=${#steps[@]}
     _tuc+=$'\n'"THE DESIGN'S STEPS:"$'\n'
     [[ ${#steps[@]} -gt 0 ]] || _tuc+="(none)"$'\n'
-    for s in ${steps[@]+"${steps[@]}"}; do i=$((i + 1)); _tuc+="$i. $s"$'\n'; done
+    # #2590: each step by its own number (2.1), as build's check names it; the
+    # numbers are what an answer's STEP must be one of.
+    _TA_UQ_LABELS=" "
+    for s in ${steps[@]+"${steps[@]}"}; do
+        i=$((i + 1)); _tuc+="${_ZB_STEP_LABELS[i-1]:-$i}. $s"$'\n'; _TA_UQ_LABELS+="${_ZB_STEP_LABELS[i-1]:-$i} "
+    done
 }
 
 # _ta_unasked_prompt <context> <lines_array> — the check's question.
@@ -130,7 +134,7 @@ _ta_unasked_prompt() {
 You are checking test lines this branch added that carry no requirement's tag.
 
 ## What you own
-A test or an assertion must trace to what the design asks for: a SPEC, or a design step's change. A test for a change nothing asks for pins that change. For EACH line listed under THE LINES, decide whether it is an assertion — a check that can fail — and if so what asks for what it tests. A line changed for what a design step changes is asked for by that step. A line in a helper that a tagged assertion calls traces to that assertion's SPEC. Open the test file to see what the line checks. Answer one list item for each, starting with its file and line number exactly as listed:
+A test or an assertion must trace to what the design asks for: a SPEC, or a design step's change. A test for a change nothing asks for pins that change. For EACH line listed under THE LINES, decide whether it is an assertion — a check that can fail — and if so what asks for what it tests. A line changed for what a design step changes is asked for by that step. A line in a helper that a tagged assertion calls traces to that assertion's SPEC. A line that only checks that a tagged test's own setup happened — it fails when that test's scenario did not take place, such as "the stage started before the signal" — is part of that test: it is asked for by that test's SPEC. Open the test file to see what the line checks. Answer one list item for each, starting with its file and line number exactly as listed:
 
 - <file> line <n>: asked | SPEC: <the identifier of the SPEC it tests>
 - <file> line <n>: asked | STEP: <the number of the step whose change it tests>
@@ -244,8 +248,8 @@ _ta_unasked_answer_v() {
         case "$l" in
             "not an assertion"*) _tua=ok ;;
             asked*)
-                if [[ "$l" =~ \|[[:space:]]*STEP:[[:space:]]*([0-9]+) ]]; then
-                    w="${BASH_REMATCH[1]}"; (( 10#$w >= 1 && 10#$w <= ${_TA_UQ_STEPS:-0} )) && _tua=ok
+                if [[ "$l" =~ \|[[:space:]]*STEP:[[:space:]]*([0-9]+(\.[0-9]+)?) ]]; then
+                    [[ "${_TA_UQ_LABELS:- }" == *" ${BASH_REMATCH[1]} "* ]] && _tua=ok
                 elif [[ "$l" =~ \|[[:space:]]*SPEC:[[:space:]]*([^][[:space:]|]+) ]]; then
                     [[ "$_TA_UQ_IDS" == *" ${BASH_REMATCH[1]} "* ]] && _tua=ok
                 fi ;;

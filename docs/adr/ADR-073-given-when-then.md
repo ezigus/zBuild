@@ -161,7 +161,13 @@ On #2532 run 45017980554 the issue asked for a guard test. Design's check refuse
 - **§5: design's check flags a step whose job is writing a test,** as well as one whose areas are in the test folders (ADR-071 §1): `Steps: test | WHY: … | ACCEPTED IF: … | QUOTE: <the step's words>`, the quote held as a not-asked one is. It is a finding for design: "Steps: a step whose work is writing or changing a test — the tests are test-author's: <WHY> — <QUOTE> [FIX IN DESIGN: ACCEPTED IF: …]".
 - **§5: a step, or a part of one, names one file.** A step over more than one file is split into numbered parts, `- 1.1 <what> | areas: <file> | serves: <ids>`, `- 1.2 …`. design-steps.json keeps each part's number (`step-1.1`); a step without parts keeps its place's number. Design's check refuses a step or a part whose areas list more than one file (`STEP_MANY_FILES`). Build answers each part with one quote (ADR-072 §3, amended the same day).
 
+## Amendment 2026-11-23 (#2590) — build sees each step by its own number
+
+Build's prompt lists the design's steps from the steps its step check uses, each as `step <its number>: <words>` with its areas: `step 1`, `step 2.1`, `step 2.2`. The plan renderer numbered steps by position, so in #2532 run 45102665787 build read parts 2.1–2.3 as steps 2, 3 and 4 and answered by those numbers, and the check found the parts unanswered. A plan with no steps still goes through the renderer (ADR-018). Test-author's check for tests nothing asks for shows the steps the same way, and an answer's `STEP:` must be one of those numbers (`2.1` included). Before, it listed them by position and read only whole numbers.
+
 ## Enforced by
+
+- 2026-11-23 amendment (#2590: build's prompt lists steps by their own numbers) → `plugins/agent/build/tests/build-step-parts-test.sh` SP6; `tests/unit/plugin-build-prompt-render-test.sh` IB2 (amended); `tests/unit/change-traces-to-ask-test.sh` AG2
 
 - §5 amendment 2026-11-22 (#2586: behaviour, not tests; numbered parts) → `tests/unit/design-behaviour-not-tests-test.sh` BT1 (design's prompt), BT2 (the check's status rule), BT3, BT4 (`Steps: test` and its finding), BT5 (a quote in no step is asked again); `plugins/agent/build/tests/build-step-parts-test.sh` SP1 (design-steps.json keeps the parts' numbers), SP2 (a step over two files is refused; a part with one is not), SP3 (design's prompt)
 

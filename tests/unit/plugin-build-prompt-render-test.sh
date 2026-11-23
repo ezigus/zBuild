@@ -83,8 +83,10 @@ assert_eq "IB1 build inner rc=0 with empty diff" "0" "$rc"
 
 # ─── IB2: captured prompt contains markdown heading, not raw JSON ────────────
 captured="$(cat "$_MOCK_ROUTE_CAPTURE" 2>/dev/null || echo '')"
-assert_contains "IB2 prompt has markdown plan heading" "$captured" "# Test plan"
-assert_contains "IB2 prompt has rendered Goal field" "$captured" "**Goal:** Verify markdown rendering"
+# #2590 (ADR-073): the steps by their own numbers, with their areas — as the
+# step check names them — replacing the plan's markdown rendering (#470).
+assert_contains "IB2 prompt lists the step by its number" "$captured" "step 1: step one"
+assert_contains "IB2 ...with its areas" "$captured" "areas: a.sh"
 
 # ─── IB3: raw JSON shape is NOT in the prompt ────────────────────────────────
 if grep -qF '"title": "Test plan"' <<< "$captured"; then
