@@ -26,23 +26,36 @@ print_test_header "ZBUILD_PLATFORM host-OS guard — core/, plugins/, scripts/ (
 # Then: the guard test exits non-zero
 print_test_section "[DSPLAT-2] detector fixture tests"
 
+# _zbp_scan <path>... — the offending lines under the paths, as
+# "<file>:<n>:<line>": ZBUILD_PLATFORM and a host OS name on one line, or a
+# variable copied from ZBUILD_PLATFORM compared with one on a later line (the
+# two-line indirection a lens found on #2532 run 45231040380). Comments are set
+# aside first: a whole comment line, and a trailing one. Every scan here uses
+# this one function, so the single-file and multi-file checks cannot drift.
+_zbp_scan() {
+    local -a _zbp_files=()
+    mapfile -t _zbp_files < <(grep -rlE '\bZBUILD_PLATFORM\b' "$@" --include='*.sh' 2>/dev/null || true)
+    (( ${#_zbp_files[@]} > 0 )) || return 0
+    awk '
+        FNR == 1 { split("", copy) }
+        { line = $0; sub(/^[[:space:]]*#.*$/, "", line); sub(/[[:space:]]+#.*$/, "", line) }
+        line == "" { next }
+        { hostos = (line ~ /(^|[^A-Za-z0-9_])(macos|linux|unknown)([^A-Za-z0-9_]|$)/) }
+        line ~ /(^|[^A-Za-z0-9_])ZBUILD_PLATFORM([^A-Za-z0-9_]|$)/ {
+            if (hostos) { print FILENAME ":" FNR ":" line; next }
+            if (match(line, /[A-Za-z_][A-Za-z0-9_]*=["\047]?\$\{?ZBUILD_PLATFORM/)) {
+                v = substr(line, RSTART, RLENGTH); sub(/=.*/, "", v); copy[v] = 1
+            }
+            next
+        }
+        hostos { for (v in copy) if (line ~ ("\\$\\{?" v "([^A-Za-z0-9_]|$)")) { print FILENAME ":" FNR ":" line; next } }
+    ' "${_zbp_files[@]}"
+}
+
 # Helper: run the guard scan on a single temporary fixture file.
 # Prints the offending lines found (empty string = clean).
 # Single-file grep -n outputs "linenum:content"; filter comments with ^[0-9]+:.
-_zbp_scan_file() {
-    local fixture="$1"
-    {
-        grep -nE '\bZBUILD_PLATFORM\b' "$fixture" 2>/dev/null || true
-    } | {
-        grep -vE '^[0-9]+:[[:space:]]*#' || true
-    } | {
-        # Strip inline comments before host-OS name check; prevents false
-        # positives when only the trailing comment mentions macos/linux/unknown.
-        sed 's/[[:space:]]*#.*$//' || true
-    } | {
-        grep -E '\b(macos|linux|unknown)\b' || true
-    }
-}
+_zbp_scan_file() { _zbp_scan "$1"; }
 
 # Given: a fixture file with ZBUILD_PLATFORM assigned to a host OS name
 _zbp_fixture="$TEST_TEMP_DIR/fixture.sh"
@@ -159,19 +172,7 @@ _zbp_inject="$_zbp_scan_dir/scripts/lib/fake-compat.sh"
 printf '    Darwin)  ZBUILD_PLATFORM=macos ;;\n' > "$_zbp_inject"
 
 # When: the recursive grep scan is run against those directories
-_zbp_inject_hits="$(
-    {
-        grep -rnE '\bZBUILD_PLATFORM\b' \
-            "$_zbp_scan_dir/core" "$_zbp_scan_dir/plugins" "$_zbp_scan_dir/scripts" \
-            --include='*.sh' 2>/dev/null || true
-    } | {
-        grep -vE '^[^:]*:[0-9]+:[[:space:]]*#' || true
-    } | {
-        sed 's/[[:space:]]*#.*$//' || true
-    } | {
-        grep -E '\b(macos|linux|unknown)\b' || true
-    }
-)"
+_zbp_inject_hits="$(_zbp_scan "$_zbp_scan_dir/core" "$_zbp_scan_dir/plugins" "$_zbp_scan_dir/scripts")"
 if [[ -n "$_zbp_inject_hits" ]]; then
     _zbp_inject_count="$(printf '%s\n' "$_zbp_inject_hits" | grep -cE '.' || true)"
 else
@@ -186,23 +187,34 @@ else
         "recursive scan returned 0 matches for a known-bad file; scan logic is broken"
 fi
 
+# Given: a two-line indirection — the value copied into a variable on one
+# line, that variable compared with a host OS name on another (lens finding,
+# #2532 run 45231040380: a one-line scan let it through)
+printf '_p="$ZBUILD_PLATFORM"\nif [[ "$_p" == linux ]]; then :; fi\n' > "$_zbp_scan_dir/scripts/lib/fake-indirect.sh"
+_zbp_ind_hits="$(_zbp_scan "$_zbp_scan_dir/core" "$_zbp_scan_dir/plugins" "$_zbp_scan_dir/scripts")"
+if [[ "$_zbp_ind_hits" == *fake-indirect.sh* ]]; then
+    assert_pass "[DSPLAT-2] the scan catches a two-line indirection"
+else
+    assert_fail "[DSPLAT-2] the scan catches a two-line indirection" "no hit: ${_zbp_ind_hits:-<none>}"
+fi
+rm -f "$_zbp_scan_dir/scripts/lib/fake-indirect.sh"
+
+# Given: a comment-only line and a trailing comment that name a host OS, in
+# the multi-file scan too (lens finding: its comment filter was another regex)
+printf '# ZBUILD_PLATFORM is never macos\nZBUILD_PLATFORM=ios  # not linux\n' > "$_zbp_scan_dir/scripts/lib/fake-comments.sh"
+_zbp_cm_hits="$(_zbp_scan "$_zbp_scan_dir/core" "$_zbp_scan_dir/plugins" "$_zbp_scan_dir/scripts")"
+if [[ "$_zbp_cm_hits" == *fake-comments.sh* ]]; then
+    assert_fail "[DSPLAT-2] the multi-file scan sets comments aside" "hit: $_zbp_cm_hits"
+else
+    assert_pass "[DSPLAT-2] the multi-file scan sets comments aside"
+fi
+rm -f "$_zbp_scan_dir/scripts/lib/fake-comments.sh"
+
 # Given: the violating file is removed (clean state)
 rm -f "$_zbp_inject"
 
 # When: the same recursive scan is run again
-_zbp_clean_hits="$(
-    {
-        grep -rnE '\bZBUILD_PLATFORM\b' \
-            "$_zbp_scan_dir/core" "$_zbp_scan_dir/plugins" "$_zbp_scan_dir/scripts" \
-            --include='*.sh' 2>/dev/null || true
-    } | {
-        grep -vE '^[^:]*:[0-9]+:[[:space:]]*#' || true
-    } | {
-        sed 's/[[:space:]]*#.*$//' || true
-    } | {
-        grep -E '\b(macos|linux|unknown)\b' || true
-    }
-)"
+_zbp_clean_hits="$(_zbp_scan "$_zbp_scan_dir/core" "$_zbp_scan_dir/plugins" "$_zbp_scan_dir/scripts")"
 
 # Then: scan returns clean after the violating file is removed
 if [[ -z "$_zbp_clean_hits" ]]; then
@@ -226,19 +238,7 @@ for _zbp_req_dir in "$REPO_ROOT/core" "$REPO_ROOT/plugins" "$REPO_ROOT/scripts";
 done
 
 # When: scan all .sh files under core/, plugins/, and scripts/
-_zbp_offenders="$(
-    {
-        grep -rnE '\bZBUILD_PLATFORM\b' \
-            "$REPO_ROOT/core" "$REPO_ROOT/plugins" "$REPO_ROOT/scripts" \
-            --include='*.sh' 2>/dev/null || true
-    } | {
-        grep -vE '^[^:]*:[0-9]+:[[:space:]]*#' || true
-    } | {
-        sed 's/[[:space:]]*#.*$//' || true
-    } | {
-        grep -E '\b(macos|linux|unknown)\b' || true
-    } | sort -u
-)"
+_zbp_offenders="$(_zbp_scan "$REPO_ROOT/core" "$REPO_ROOT/plugins" "$REPO_ROOT/scripts" | sort -u)"
 
 # Count offenders without piping into grep -q
 if [[ -z "$_zbp_offenders" ]]; then

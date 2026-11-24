@@ -257,13 +257,19 @@ Four statements govern its use:
 - `tests/integration/strategy-platform-env-test.sh` — §C1: asserts the work
   unit baked by `_strategy_make_work_unit` exports `ZBUILD_PLATFORM=ios` and
   `ZBUILD_PLATFORM=node` (target platform values, never host OS names); §C2:
-  asserts that every per-platform invocation receives `ZBUILD_PLATFORM=<platform>`;
+  asserts that every per-platform invocation receives `ZBUILD_PLATFORM=<platform>`,
+  and `tests/unit/map-strategy-test.sh` SPEC-5 that a work unit of any other
+  dimension keeps `ZBUILD_PLATFORM=generic`;
   §C3 (DSPLAT-1): asserts that `ZBUILD_PLATFORM=ios` survives sourcing
   `scripts/lib/helpers.sh` in a fresh subprocess.
 - `tests/unit/zbuild-platform-host-guard-test.sh` — §C4: scans all `.sh`
   files under `core/`, `plugins/`, and `scripts/` and fails if any non-comment
   line reads `ZBUILD_PLATFORM` alongside a host OS name (`macos`, `linux`,
-  `unknown`).
+  `unknown`), or if a variable copied from `ZBUILD_PLATFORM` is compared with
+  one on a later line (a two-line indirection). One scan function serves every
+  check, so the single-file and multi-file checks read comments the same way.
+  A value passed through a function argument or another file is not followed:
+  the scan reads each file on its own.
 
 ## References
 

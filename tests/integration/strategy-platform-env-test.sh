@@ -62,9 +62,9 @@ WU="$(_strategy_make_work_unit "$PLUGIN_DIR" "intake" "$STATE_FILE" "ios")"
 assert_file_exists "work unit created" "$WU"
 
 if grep -q "^export ZBUILD_PLATFORM='ios'$" "$WU"; then
-    assert_pass "work unit exports ZBUILD_PLATFORM='ios' (ADR-009 §6)"
+    assert_pass "work unit exports ZBUILD_PLATFORM='ios' (ADR-009 §C1)"
 else
-    assert_fail "work unit exports ZBUILD_PLATFORM='ios' (ADR-009 §6)" "missing from $WU"
+    assert_fail "work unit exports ZBUILD_PLATFORM='ios' (ADR-009 §C1)" "missing from $WU"
 fi
 
 if grep -q "^export ZBUILD_TARGET_PLATFORM='ios'$" "$WU"; then
