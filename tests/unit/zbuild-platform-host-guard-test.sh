@@ -44,7 +44,7 @@ _zbp_scan() {
     done
     (( ${#_zbp_files[@]} > 0 )) || return 0
     awk '
-        function cmp(t) { return t ~ /(==|!=|=~)[[:space:]]*["\047]?(macos|linux|darwin|unknown)([^a-z0-9_]|$)/ \
+        function cmp(t) { return t ~ /(==|!=|=~)[[:space:]]*["\047]?\^?\(?(macos|linux|darwin|unknown)([^a-z0-9_]|$)/ \
                               || t ~ /(^|[^a-z0-9_])(macos|linux|darwin|unknown)["\047]?[[:space:]]*(==|!=)/ }
         function label(t) { return t ~ /(^|[[:space:](|])(macos|linux|darwin|unknown)[[:space:]]*[|)]/ }
         function names(t,  v) { if (t ~ /(^|[^a-z0-9_])zbuild_platform([^a-z0-9_]|$)/) return 1
@@ -235,6 +235,7 @@ _zbp_case "a case on ZBUILD_PLATFORM with a host-OS label is caught" fake-case.s
 _zbp_case "...and a case on a copy of it" fake-case2.sh '_p="$ZBUILD_PLATFORM"\ncase "$_p" in\n    linux) : ;;\nesac\n' hit
 _zbp_case "a host name in any case, darwin included, is caught" fake-darwin.sh '[[ "$ZBUILD_PLATFORM" == Darwin ]] && :\n' hit
 _zbp_case "a bash file with no .sh name is scanned" fake-cli '#!/usr/bin/env bash\n[[ "$ZBUILD_PLATFORM" == macos ]] && :\n' hit
+_zbp_case "an anchored =~ on ZBUILD_PLATFORM is caught (review on PR #2602)" fake-anchor.sh '[[ $ZBUILD_PLATFORM =~ ^macos ]] && :\n' hit
 _zbp_case "the word unknown in a message is not a comparison" fake-log.sh 'log "platform=$ZBUILD_PLATFORM status=unknown"\n' clean
 
 # Given: the violating file is removed (clean state)
