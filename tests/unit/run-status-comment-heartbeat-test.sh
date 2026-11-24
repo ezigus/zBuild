@@ -123,14 +123,14 @@ first_visible() {
     done <<< "$1"
 }
 # Helper: start the sidecar as a child of THIS shell
-start_sidecar() {   # <state_dir> → sets sidecar_pid
+start_sidecar() {   # <state_dir> [<run_id>] → sets sidecar_pid
     bash "$LIB" \
         --events "$1/events.jsonl" \
         --state-dir "$1" \
         --parent-pid "$$" \
         --slug testuser/testrepo \
         --issue 90000099 \
-        --run-id r-hb \
+        --run-id "${2:-r-hb}" \
         >> "$1/status-comment.log" 2>&1 &
     sidecar_pid=$!
 }
@@ -189,18 +189,25 @@ fi
 # Kill sidecar before assertions to avoid racing writes
 kill "$sidecar_pid" 2>/dev/null; wait_gone "$sidecar_pid"; wait "$sidecar_pid" 2>/dev/null || true
 
-# ─── DSHBT-1: first visible line is `still running — ` ─────────────────────
+# ─── DSHBT-1: first visible line is `still running — ` (stage present) ──────
 # Given: run is in progress (pipeline.start seen, no terminal event, stage running)
 # When: heartbeat timer fires in rsc_tail_loop
-# Then: first visible line (after HTML comments) starts with `still running — `
-# And:  it includes `— now: build` (the current stage)
+# Then: first visible line (after HTML comments) is `still running — <ISO8601> — now: <stage>`
+# And:  a PATCH is sent even when no stage events changed since the last flush
 fv="$(first_visible "$heartbeat_body")"
 assert_contains_regex "[DSHBT-1] heartbeat body's first visible line starts with 'still running — '" \
     "$fv" "^still running — "
-assert_contains "[DSHBT-1] heartbeat line includes ISO8601 timestamp (contains T...Z)" \
-    "$fv" "T"
+assert_contains_regex "[DSHBT-1] heartbeat line has ISO8601 timestamp (YYYY-MM-DDTHH:MM:SSZ format)" \
+    "$fv" "[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
 assert_contains "[DSHBT-1] heartbeat line names the current stage (now: build)" \
     "$fv" "now: build"
+# And: a PATCH is sent even when no stage events changed since the last flush
+if [[ "$heartbeat_patch_count" -ge 1 ]]; then
+    assert_pass "[DSHBT-1] heartbeat triggers PATCH even when no stage events changed since last flush"
+else
+    assert_fail "[DSHBT-1] heartbeat triggers PATCH even when no stage events changed since last flush" \
+        "no PATCH after heartbeat interval (got patches=$heartbeat_patch_count)"
+fi
 
 # ─── DSHBT-2: PATCH, not a new POST ─────────────────────────────────────────
 # Given: heartbeat timer fires (ZBUILD_CLAIM_HEARTBEAT_S elapsed, dirty==0, seen_start==1)
@@ -229,6 +236,57 @@ while IFS= read -r line; do
 done <<< "$heartbeat_body"
 assert_eq "[DSHBT-14] body contains exactly one 'still running — ' line" \
     "1" "$hb_line_count"
+
+# ═══════════════════════════════════════════════════════════════════════════
+# DSHBT-1 (no-stage case): heartbeat writes `still running — <ISO8601>` without
+# `— now: <stage>` when no stage event has fired
+# ═══════════════════════════════════════════════════════════════════════════
+print_test_section "DSHBT-1 (no-stage): heartbeat line has no '— now:' when no stage is current"
+
+# Given: run is in progress (pipeline.start seen, no terminal event, NO plugin.run.start)
+SD2="$TEST_TEMP_DIR/sd2"; mkdir -p "$SD2"; : > "$SD2/events.jsonl"
+: > "$GH_LOG"; rm -f "$GH_BODIES"/body-*.txt 2>/dev/null || true
+
+ev "$SD2/events.jsonl" 12:00:00 pipeline.start "" "" \
+    run_id=r-hb2 issue=90000099 engine_sha=abc1234 engine_branch=main
+ev "$SD2/events.jsonl" 12:00:01 pipeline.claim.acquired "" "" \
+    holder="run_id=r-hb2 machine=testbox2 pid=1"
+# Note: no plugin.run.start event → current stage is empty
+
+# When: the sidecar runs and the heartbeat timer fires (ZBUILD_CLAIM_HEARTBEAT_S=1)
+start_sidecar "$SD2" "r-hb2"
+if wait_for_event "$GH_LOG" 'issues/90000099/comments' 60 0.1; then
+    assert_pass "[setup-ns] initial POST received for no-stage sidecar"
+else
+    assert_fail "[setup-ns] initial POST received for no-stage sidecar" "no POST within 6s"
+    kill "$sidecar_pid" 2>/dev/null; wait "$sidecar_pid" 2>/dev/null
+    cleanup_test_env; print_test_results; exit $((FAIL > 0))
+fi
+# No stage event means no event-triggered PATCH; clear log and wait only for heartbeat
+sleep 0.3
+: > "$GH_LOG"; rm -f "$GH_BODIES"/body-*.txt 2>/dev/null || true
+
+ns_heartbeat_body=""
+if wait_for_event "$GH_LOG" 'PATCH' 50 0.1; then
+    sleep 0.2
+    ns_heartbeat_body="$(last_body)"
+fi
+
+kill "$sidecar_pid" 2>/dev/null; wait_gone "$sidecar_pid"; wait "$sidecar_pid" 2>/dev/null || true
+
+# Then: first visible line starts with `still running — <ISO8601>` (no `— now:` suffix)
+ns_fv="$(first_visible "$ns_heartbeat_body")"
+assert_contains_regex "[DSHBT-1] no-stage: first visible line starts with 'still running — '" \
+    "$ns_fv" "^still running — "
+assert_contains_regex "[DSHBT-1] no-stage: first visible line has ISO8601 timestamp" \
+    "$ns_fv" "[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+# Assert the line does NOT contain `— now: <stage>` when no stage is current
+if grep -qF "now:" <<< "$ns_fv"; then
+    assert_fail "[DSHBT-1] no-stage: heartbeat line must NOT include '— now:' when no stage is current" \
+        "found 'now:' in no-stage heartbeat line: $ns_fv"
+else
+    assert_pass "[DSHBT-1] no-stage: heartbeat line does not include '— now:' when no stage is current"
+fi
 
 # Cleanup
 unset ZBUILD_CLAIM_HEARTBEAT_S ZBUILD_STATUS_COMMENT_POLL ZBUILD_STATUS_COMMENT_MIN_INTERVAL

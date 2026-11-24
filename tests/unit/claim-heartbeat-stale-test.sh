@@ -71,8 +71,14 @@ EOF
 # _ci_holder <url> — a cross-machine CI holder (non-local format, never cleared by kill-0)
 _ci_holder() { printf 'https://github.com/o/r/actions/runs/%s' "${1:-42}"; }
 
-# _acq — call zbuild_claim_acquire and capture rc
-_acq() { _ACQ_RC=0; zbuild_claim_acquire "$1" "$STATE" 2>"$TEST_TEMP_DIR/acq.err" || _ACQ_RC=$?; }
+# _acq — call zbuild_claim_acquire, capture rc and combined output (stdout+stderr)
+# Runs zbuild_claim_acquire in the current shell (not a subshell) so globals like
+# _ZBUILD_CLAIM_ACQUIRED are properly set, while still capturing all output.
+_acq() {
+    _ACQ_RC=0
+    zbuild_claim_acquire "$1" "$STATE" >"$TEST_TEMP_DIR/acq-out.txt" 2>&1 || _ACQ_RC=$?
+    _ACQ_OUTPUT="$(cat "$TEST_TEMP_DIR/acq-out.txt" 2>/dev/null)"
+}
 
 # _epoch_to_iso <epoch> — portable ISO8601 conversion
 _epoch_to_iso() {
@@ -90,6 +96,7 @@ _mock_reset() {
     _MOCK_TAKEOVER_CALLED=0
     _MOCK_HB_TS=""
     _MOCK_LABEL_TS=""
+    _MOCK_TAKEOVER_ARGS=""
 }
 
 # Install mock functions; claim.sh's lazy source is blocked by the loaded guard
@@ -97,7 +104,8 @@ _mock_reset() {
 _mock_reset
 rsc_heartbeat_find()     { _MOCK_HB_CALLED=1;      printf '%s' "$_MOCK_HB_TS";    return 0; }
 rsc_label_added_at()     { _MOCK_LABEL_CALLED=1;    printf '%s' "$_MOCK_LABEL_TS"; return 0; }
-rsc_takeover_note_post() { _MOCK_TAKEOVER_CALLED=1; return 0; }
+# Capture all args so tests can verify rsc_takeover_note_post is called with the right holder
+rsc_takeover_note_post() { _MOCK_TAKEOVER_CALLED=1; _MOCK_TAKEOVER_ARGS="$*"; return 0; }
 
 # ═══════════════════════════════════════════════════════════════════════════
 # DSHBT-7: ZBUILD_CLAIM_HEARTBEAT_S defaults to 600 when unset
@@ -194,9 +202,9 @@ assert_eq "[DSHBT-3] fresh heartbeat (<ZBUILD_CLAIM_STALE_S) → refused (rc=1)"
 # And: the heartbeat was consulted (rsc_heartbeat_find called)
 assert_eq "[DSHBT-3] rsc_heartbeat_find was consulted for the cross-machine claim" \
     "1" "$_MOCK_HB_CALLED"
-# And: the refusal names the holder
-assert_eq "[DSHBT-3] holder is named in _ZBUILD_CLAIM_THEIR_HOLDER" \
-    "$(_ci_holder 100)" "$_ZBUILD_CLAIM_THEIR_HOLDER"
+# And: the refusal output names the holder (SPEC requires printed message, not just internal var)
+assert_contains "[DSHBT-3] refusal output names the holder" \
+    "$_ACQ_OUTPUT" "$(_ci_holder 100)"
 
 # ═══════════════════════════════════════════════════════════════════════════
 # DSHBT-4: stale heartbeat → take over, post note, acquire
@@ -218,8 +226,10 @@ _mock_reset
 _MOCK_HB_TS="$(_ts_ago $(( ZBUILD_CLAIM_STALE_S + 100 )))"
 # When: zbuild_claim_acquire is called
 _acq 9103
-# Then: a new comment is posted (takeover note)
+# Then: a new comment is posted (takeover note), and it names the stale holder
 assert_eq "[DSHBT-4] stale heartbeat → takeover note posted" "1" "$_MOCK_TAKEOVER_CALLED"
+assert_contains "[DSHBT-4] takeover note is called with the stale holder" \
+    "$_MOCK_TAKEOVER_ARGS" "$(_ci_holder 101)"
 # And: the claim is acquired (rc=0)
 assert_eq "[DSHBT-4] stale heartbeat → claim acquired (rc=0)" "0" "$_ACQ_RC"
 # And: the claim is recorded as this run's
