@@ -35,7 +35,7 @@ _build_test_wrong() {
     re='^[^:]+:.*the[[:space:]]+test[[:space:]]+(is[[:space:]]+wrong|must[[:space:]]+change)[[:space:]]*:[[:space:]]*(.+)$'
     shopt -q nocasematch && had=1
     shopt -s nocasematch
-    local w t tf why _btw_ta=""
+    local w t tf why _btw_ta=""; local -a _btw_w=()
     zb_finding_code_v _btw_ta "${BASH_SOURCE[0]%/*}/../../test-author/manifest.yaml"
     for a in ${_btw[@]+"${_btw[@]}"}; do
         if [[ "$a" =~ $re ]]; then
@@ -55,7 +55,7 @@ _build_test_wrong() {
         why="${why:9}"; why="${why#"${why%%[![:space:]—-]*}"}"
         zb_not_mine_target_v t "$why"
         [[ "$t" == test ]] || continue
-        tf=""; local -a _btw_w=()
+        tf=""; _btw_w=()
         read -ra _btw_w <<< "$why"   # no glob: a word like tests/* stays a word
         for w in ${_btw_w[@]+"${_btw_w[@]}"}; do
             w="${w//[\`\'\"(),;]/}"; w="${w%.}"; w="${w%:}"; w="${w#./}"
@@ -70,8 +70,9 @@ _build_test_wrong() {
 # the tests' "not mine" answers to test-author (_build_write_test_findings), and
 # to design (build-design-result.json, topic design-findings) each "not mine"
 # that says design must fix it, and each to a finding test-author handed to
-# build — never handed back. Each keeps its id and the finding's text. None
-# leaves no file; no process when there are none.
+# build — never handed back. Each keeps its id and the finding's text. Written
+# fresh each try, as build-tests-result.json is: a try with none leaves no
+# file, so no earlier try's hand-offs linger.
 declare -gA _ZB_ANS_FINDING 2>/dev/null || true
 _build_write_handoffs() {
     local art="${1%/}" reply="${2-${_ROUTE_LOOP_LAST_RESPONSE:-}}" a why t ta="" lines=""
@@ -89,7 +90,8 @@ _build_write_handoffs() {
             lines+="${a%%:*}: build answered not mine: $why${_ZB_ANS_FINDING[${a%%:*}]:+ — the finding: ${_ZB_ANS_FINDING[${a%%:*}]//$'\n'/ }}"$'\n'
         fi
     done
-    if [[ -n "$lines" ]]; then
+    [[ -e "$art/build-design-result.json" ]] && rm -f "$art/build-design-result.json"
+    if [[ -n "$lines" ]] && declare -F stage_findings_add >/dev/null 2>&1; then
         stage_findings_add "$art/build-design-result.json" \
             "$(printf '%s' "$lines" | jq -Rnc '[inputs | select(length > 0) | {text: .}]')" "$_BUILD_FCODE" || true
     fi

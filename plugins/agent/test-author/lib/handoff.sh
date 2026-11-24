@@ -20,7 +20,9 @@ source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/stage-handoff.sh" 2>/dev/nu
 # (test-author-code-result.json, topic code-findings); none leaves no file.
 # One that says design must, or answers a finding build handed to test-author
 # (build's id code) — never handed back — goes to design
-# (test-author-design-result.json). Each keeps its id and the finding's text.
+# (test-author-design-result.json), added to what test-author wrote there this
+# run (#2569: a SPEC no test can prove), never in its place. Each keeps its id
+# and the finding's text.
 _ta_write_code_findings() {
     local art="${1%/}" a why t bcode="" lines="" back="" ft=""
     local -a ans=()

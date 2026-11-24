@@ -31,6 +31,7 @@
 # N13 [change] a backslash or a [class] in the test folders list is read as
 #             bash reads it, and a list that cannot be read routes nothing
 # N14 [change] a fix: design finding about a test file goes to test-author too
+# N15 [change] build's design hand-off is written fresh each try: none, no file
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -121,6 +122,8 @@ assert_eq "[N10] any case" "code" "$(_l N10 n8.out)"
     _build_write_handoffs "$A" $'ANSWER TAFND-4: not mine — tests/unit/guard-test.sh holds it; test-author must fix it\nANSWER RLRT-2: not mine — design must change SPEC-2\nANSWER BUFND-1: not mine — the test must change: tests/unit/guard-test.sh: it pins the old\n'
     echo "N9|$(cat "$A/build-tests-result.json" 2>/dev/null | tr -d '\n')"
     echo "N9d|$(cat "$A/build-design-result.json" 2>/dev/null | tr -d '\n')"
+    _build_write_handoffs "$A" $'ANSWER RLRT-3: done — changed it\n'
+    echo "N15|$([[ -e "$A/build-design-result.json" ]] && echo stale || echo gone)"
     echo "N7b|$(declare -f _build_compose_instructions | tr -s '[:space:]' ' ')"
 ) > "$TEST_TEMP_DIR/n9.out" 2>/dev/null
 _n9="$(_l N9 n9.out)"
@@ -129,6 +132,7 @@ assert_contains "[N9] ...it goes to design" "$(_l N9d n9.out)" "TAFND-4"
 assert_contains "[N8] build's design must goes to design" "$(_l N9d n9.out)" "RLRT-2"
 assert_contains "[N11] ...keeping its id and its text" "$(_l N9d n9.out)" "SPEC-2 cannot be met"
 assert_contains "[N12] build's own step finding still goes the old way (to test-author's findings)" "$_n9" "BUFND-1"
+assert_eq "[N15] a later try with no design hand-off leaves no file (review on PR #2601)" "gone" "$(_l N15 n9.out)"
 assert_contains "[N7] build is told the design form" "$(_l N7b n9.out)" "not mine — design must"
 (
     source "$REPO_ROOT/plugins/agent/test-author/plugin.sh" >/dev/null 2>&1
