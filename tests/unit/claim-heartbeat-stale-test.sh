@@ -81,7 +81,7 @@ _epoch_to_iso() {
         || printf '2020-01-01T00:00:00Z'
 }
 # _ts_ago <seconds> — ISO8601 timestamp N seconds in the past
-_ts_ago() { _epoch_to_iso $(( $(date +%s) - $1 )); }
+_ts_ago() { _epoch_to_iso $(( $(date +%s) - $1 )); }  # determinism-ok: constructs test-data timestamp relative to now, not measuring elapsed time
 
 # _mock_reset — reset mock state between sections
 _mock_reset() {
