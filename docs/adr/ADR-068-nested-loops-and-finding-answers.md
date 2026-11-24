@@ -282,7 +282,23 @@ On #2532 run 45017980554 test-author, which owns the guard test, answered build'
 
 A finding's id is made from its text up to ` ¶ `. The engine's own notes on a finding go after it: issue-acceptance's "answered before: … a wrong that quotes no line does not close it" (#2586) is one. A note therefore never makes the same finding look new to the stage that owns it. The note travels in the text after a separator rather than in a field of its own: every reader already shows `.text`, and ` ¶ ` does not occur in written findings. A finding a model wrote with ` ¶ ` in it would take its id from the words before it.
 
+## Amendment 2026-11-23 (#2599) — §6: a "not mine" reaches the stage it names, every try
+
+A "not mine" answer is handed on every try, whether the answering stage passed or failed and whether it changed anything. One reader decides where it goes (`zb_not_mine_target_v`), ignoring case:
+1. a stage it names ("design must …", "the code must change", "test-author must") wins;
+2. otherwise a file it names: one in the test folders is test's, any other path is code's;
+3. otherwise a stage named in passing.
+
+Build's go to test-author (`build-tests-result.json`) or design (`build-design-result.json`, new). Test-author's go to build (`test-author-code-result.json`, new, topic code-findings) or design. Each keeps the finding's id and its text, beside the answer.
+
+- **Nothing is handed back.** A finding one of them handed to the other (its id carries the giver's code) and answered "not mine" goes to design, which can settle whose it is.
+- **A stage's own check's findings are unchanged:** the old path still handles them.
+
+Until now, `stage-handoff.sh` handed on a "not mine" only from a try that failed and changed nothing, and sent one about another stage's finding back to its judge. A lens reviews fresh (#2584), so that judge never saw the answer. On #2532 run 45231040380, four findings went back to the same owner round after round.
+
 ## Enforced by
+
+- §6 amendment 2026-11-23 (#2599: a "not mine" reaches the stage it names, every try) → `tests/unit/not-mine-handoff-test.sh` N3–N13
 
 - §5 amendment 2026-11-23 (#2590: an engine note never changes a finding's id) → `tests/unit/issue-acceptance-per-item-test.sh` PI18
 

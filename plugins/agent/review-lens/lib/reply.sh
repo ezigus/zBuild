@@ -28,16 +28,14 @@ _rl_reply_problem() {
 # in neither its file as it is now nor as it was at the commit the branch
 # started from (<base>: a line the change removed), nor — with no starting
 # commit known — the change's patch. Empty when every quote is there. Sets
-# _RL_QUOTE_FILES: the files the findings name, which a kept report depends on;
-# _RL_NO_ACC: the index (from 0) of each finding with no accepted_if, and
-# _RL_OTHER_BAD: how many other problems there are; _RL_BAD_AT: each finding's
-# problems, by its index (#2598: a finding that cannot be checked costs only
+# _RL_QUOTE_FILES: the files the findings name, which a kept report depends on,
+# and _RL_BAD_AT: each finding's problems, by its index (#2598: a finding that cannot be checked costs only
 # itself).
 declare -gA _RL_BAD_AT=()
 _rl_quote_problem_v() {
     local -n _rqp="$1"; local _rqp_n=0 _rqp_f _rqp_q _rqp_w _rqp_old
     local -a _rqp_bad=()
-    _rqp=""; _RL_QUOTE_FILES=(); _RL_NO_ACC=(); _RL_OTHER_BAD=0; _RL_BAD_AT=()
+    _rqp=""; _RL_QUOTE_FILES=(); _RL_BAD_AT=()
     # No findings, nothing to check; a finding of any form is read (a plain
     # string has no quote or trigger — lens review on #2552).
     [[ "$2" =~ \"findings\"[[:space:]]*:[[:space:]]*\[[[:space:]]*\] || "$2" != *'"findings"'* ]] && return 0
@@ -48,13 +46,13 @@ _rl_quote_problem_v() {
         # Filler is no trigger (lens review on #2552).
         local _rqp_tl="${_rqp_t,,}"; _rqp_tl="${_rqp_tl//[[:space:].]/}"
         [[ -n "$_rqp_tl" && ! "$_rqp_tl" =~ ^(unknown|n/a|na|none|tbd|-+|null|\[\]|\{\})$ ]] \
-            || { _rqp_bad+=("finding $_rqp_n has no trigger: say what makes it happen on a real run"); _RL_OTHER_BAD=$(( _RL_OTHER_BAD + 1 )); _RL_BAD_AT[$(( _rqp_n - 1 ))]+="${_RL_BAD_AT[$(( _rqp_n - 1 ))]:+; }${_rqp_bad[-1]}"; }
+            || { _rqp_bad+=("finding $_rqp_n has no trigger: say what makes it happen on a real run"); _RL_BAD_AT[$(( _rqp_n - 1 ))]+="${_RL_BAD_AT[$(( _rqp_n - 1 ))]:+; }${_rqp_bad[-1]}"; }
         # #2569 (ADR-038, ADR-072 §3): every finding says what would be accepted.
         _rqp_tl="${_rqp_a,,}"; _rqp_tl="${_rqp_tl//[[:space:].]/}"
         [[ -n "$_rqp_tl" && ! "$_rqp_tl" =~ ^(unknown|n/a|na|none|tbd|-+|null|\[\]|\{\})$ ]] \
-            || { _rqp_bad+=("finding $_rqp_n has no accepted_if: say what must be true for it to be accepted, in the issue's words"); _RL_NO_ACC+=($(( _rqp_n - 1 ))); _RL_BAD_AT[$(( _rqp_n - 1 ))]+="${_RL_BAD_AT[$(( _rqp_n - 1 ))]:+; }${_rqp_bad[-1]}"; }
+            || { _rqp_bad+=("finding $_rqp_n has no accepted_if: say what must be true for it to be accepted, in the issue's words"); _RL_BAD_AT[$(( _rqp_n - 1 ))]+="${_RL_BAD_AT[$(( _rqp_n - 1 ))]:+; }${_rqp_bad[-1]}"; }
         [[ -n "$_rqp_f" && "$_rqp_f" != unknown ]] && _RL_QUOTE_FILES+=("$4/$_rqp_f")
-        if [[ -z "${_rqp_q//[[:space:]]/}" ]]; then _rqp_bad+=("finding $_rqp_n has no quote"); _RL_OTHER_BAD=$(( _RL_OTHER_BAD + 1 )); _RL_BAD_AT[$(( _rqp_n - 1 ))]+="${_RL_BAD_AT[$(( _rqp_n - 1 ))]:+; }${_rqp_bad[-1]}"; continue; fi
+        if [[ -z "${_rqp_q//[[:space:]]/}" ]]; then _rqp_bad+=("finding $_rqp_n has no quote"); _RL_BAD_AT[$(( _rqp_n - 1 ))]+="${_RL_BAD_AT[$(( _rqp_n - 1 ))]:+; }${_rqp_bad[-1]}"; continue; fi
         judge_quote_check_v _rqp_w "$_rqp_f | $_rqp_q" "" "$4" && continue
         # #2507 (ADR-072 §7): a removed line is in the file as it was — one git
         # call, only for a quote not found as the file is now.
@@ -62,7 +60,7 @@ _rl_quote_problem_v() {
             _rqp_old="$(git -C "$4" show "$3:$_rqp_f" 2>/dev/null)" && _judge_holds "$_rqp_old" "$_rqp_q" && continue
         fi
         [[ -n "${5:-}" ]] && _judge_holds "$5" "$_rqp_q" && continue
-        _rqp_bad+=("finding $_rqp_n's quote $_rqp_w"); _RL_OTHER_BAD=$(( _RL_OTHER_BAD + 1 ))
+        _rqp_bad+=("finding $_rqp_n's quote $_rqp_w")
         _RL_BAD_AT[$(( _rqp_n - 1 ))]+="${_RL_BAD_AT[$(( _rqp_n - 1 ))]:+; }${_rqp_bad[-1]}"
     # One record per finding, as tool-hook.sh reads a tool's fields: its file
     # and quote split by a unit separator and ended by a NUL, so a quote keeps

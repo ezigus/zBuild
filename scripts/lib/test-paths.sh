@@ -40,6 +40,52 @@ zb_is_test_path() {
     return 1
 }
 
+# zb_test_path_regexes_json_v <var> [repo_root] — the test folders' globs as a
+# JSON array of anchored regexes (#2599), for a jq that routes findings: `*`
+# and `?` as bash's `==` reads them (`*` crosses `/`). Built in bash, no process.
+zb_test_path_regexes_json_v() {
+    local -n _tpr="$1"; local _globs _g _r _c _i _sep="" _in=0
+    local -a _gl=()
+    zb_test_path_globs_v _globs "${2:-}"
+    read -ra _gl <<< "$_globs"
+    _tpr="["
+    for _g in ${_gl[@]+"${_gl[@]}"}; do
+        _r="^"; _in=0
+        for (( _i = 0; _i < ${#_g}; _i++ )); do
+            _c="${_g:_i:1}"
+            if (( _in )); then
+                # Inside [ … ]: bash's class, as a regex class ([!…] is [^…]).
+                case "$_c" in
+                    ']') _r+="]"; _in=0 ;;
+                    '\') _i=$(( _i + 1 )); _c="${_g:_i:1}"; [[ "$_c" == [[:alnum:]_/-] ]] && _r+="$_c" || _r+='\\\\'"$_c" ;;
+                    '"') _r+='\"' ;;
+                    *) _r+="$_c" ;;
+                esac
+                continue
+            fi
+            case "$_c" in
+                '*') _r+=".*" ;;
+                '?') _r+="." ;;
+                '[') _in=1; _r+="["; [[ "${_g:_i+1:1}" == '!' ]] && { _r+="^"; _i=$(( _i + 1 )); } ;;
+                # A backslash makes the next character itself, as in bash.
+                '\') _i=$(( _i + 1 )); _c="${_g:_i:1}"
+                     if [[ "$_c" == '"' ]]; then _r+='\"'
+                     elif [[ "$_c" == [[:alnum:]_/-] ]]; then _r+="$_c"   # \x in a regex is no x
+                     else _r+='\\\\'"$_c"; fi ;;
+                '"') _r+='\"' ;;
+                [.+\(\)\]\{\}^\$\|]) _r+='\\\\'"$_c" ;;
+                *) _r+="$_c" ;;
+            esac
+        done
+        _tpr+="$_sep\"$_r\$\""; _sep=","
+    done
+    _tpr+="]"
+    # A list that cannot be read as JSON routes nothing, rather than stopping
+    # the stage that reads it (review on #2599): one jq, only then.
+    [[ "$_tpr" == *'\'* || "$_tpr" == *'['?*'['* ]] && ! jq -e . >/dev/null 2>&1 <<< "$_tpr" && _tpr="[]"
+    return 0
+}
+
 # _zb_test_globs_match <path> <glob...> — rc 0 when the path matches a glob.
 _zb_test_globs_match() {
     local _p="$1" _g; shift

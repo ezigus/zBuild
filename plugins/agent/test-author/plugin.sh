@@ -62,6 +62,8 @@ source "$_TA_ROOT/scripts/lib/unclear.sh"
 # #2571: split from this file to keep it under 500 lines.
 # shellcheck source=./lib/result.sh
 source "${BASH_SOURCE[0]%/*}/lib/result.sh"
+# shellcheck source=./lib/handoff.sh
+source "${BASH_SOURCE[0]%/*}/lib/handoff.sh"
 
 _ta_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
 
@@ -324,6 +326,7 @@ Findings from other stages about your tests are yours (under Previous work): a t
 ANSWER <its id>: done — <what you changed>
 ANSWER <its id>: wrong — <why the test is right>
 ANSWER <its id>: not mine — <why no test of yours can fix it>
+ANSWER <its id>: not mine — the code must change: <file>: <why>   (it is the code's to fix: build is given it)
 
 ${ZB_UNCLEAR_NOT_YOURS}
 
@@ -380,6 +383,7 @@ EOF
     unset ZBUILD_ROUTE_BASE_CODE
     rm -f "$prompt_file"
     _ta_collect_answers "${_ROUTE_LOOP_LAST_RESPONSE:-}" "$prompt"
+    _ta_write_code_findings "$art" "${_ROUTE_LOOP_LAST_RESPONSE:-}"
     local _end="${_ROUTE_LOOP_TERMINATED_REASON:-}"
 
     if [[ "$_end" != "done_sentinel" ]]; then
