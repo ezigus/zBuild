@@ -208,7 +208,25 @@ Intake paraphrased an unclear requirement silently: nobody could see which readi
 - **§1: intake's questions live in its result,** `data.unclear` (`zb_unclear_result_json_v`), and so reach the run report, the run-status comment and the PR description. A try that ends before its check judged them (a failed call) keeps the questions it carried, so the next try still has them, and so does a pass that writes no requirement list (the issue could not be read and a placeholder goal is allowed, a goal given instead of an issue, a list that could not be written): its check never judged them. An unchanged issue asks no model and keeps them as they are.
 - **§1: intake's check judges every question intake carried** from its last result, in the same missing-requirements call, shown through the shared block (`zb_unclear_judge_block_v`) and read by the shared reader (`zb_unclear_answers_v`): `answered` (the issue's words quoted, checked against the issue) or `not needed` drops it, and intake's result records it as every stage records a question it retires — `data.unclear_dropped`, its id, how it was retired, its WHY, its QUOTE and the question (`zb_unclear_dropped_json_v`), so the reports show it as retired; `open` keeps it. A question with no usable answer is asked again with the check's re-ask, naming it; still none, it is kept, never lost. Only intake's own check retires intake's question; a new question with the id of a carried one is not added twice.
 
+## Amendment 2026-11-24 (#2603) — §1: intake sorts a "do not"; a limit's id starts with LM; a wrong id is answered with a corrected one
+
+On #2533 run 45387034249 intake stopped. The prompt called a limit "not a requirement" yet gave it the requirement prefix, and the model wrote limit ids `LIMSCOPE-1`, `LIMIT-OUT1`, `CONC-1` and `SCOP-1`. Each message missed the point: one said "has no id", one "every requirement id starts with RQ", and one went on about old numbering and REMOVED lines.
+
+- **§1: intake sorts a "do not":**
+  - something the change must keep doing, which a test can show, is a requirement ("the old rules stay" → `RQRULE-1 The old rules keep working`);
+  - a note that another issue covers something is left out;
+  - something the change must not build, which no test can show was not built, is a limit, keeping its "Do not".
+- **§1: a limit's id starts with `LM`, not `RQ`** (`LMSCOP-1`). The check takes `RQ…` ids on requirement lines and `LM…` ids on limit lines, each against the last list's ids of its kind. Readers tell a limit by `limit: true`, so nothing else changes. The kind is this answer's own: a limit from an earlier list under an old RQ id may come back as an LM limit, or as the requirement it now is. One not kept under its old id is recorded as removed, so its id stays taken. `LM` is intake's `limit_id_prefix:`, and `zb_id_prefixes_check` counts it as taken, so no stage can declare it. A rerun shows the last list's LM limits with their ids, and the LM numbers.
+- **§1: a wrong id is answered with what is wrong and a corrected id** (`zb_id_plain`, shared with design):
+  - "CONC-1 does not start with LM — write it as LMCONC-1";
+  - "RQCLAIM-1's code CLAIM has 5 letters; it needs 3 or 4 — for example RQCLM-1";
+  - "LIMIT-OUT1 is not in the id form: … — for example LMOUT-1".
+
+  A corrected id takes its code's next free number. A number with a leading 0 is named as the fault. A token that looks like an id (all capitals, or with a digit, such as `LIMIT-OUT1`) is read as an id in the wrong form, so it is never "has no id"; a hyphenated first word ("Read-only …") is not.
+
 ## Enforced by
+
+- §1 amendment 2026-11-24 (#2603: a do-not sorted; LM limit ids; a wrong id answered with a corrected one) → `tests/unit/limit-ids-test.sh` LI1–LI13; `tests/unit/limits-test.sh` LM1–LM12 (limits under LM)
 
 - §1 amendment 2026-11-20 (#2571: intake's questions) → `tests/unit/intake-unclear-test.sh` IU1 (the writing call is told the form and the rule), IU2 (a good question in data.unclear), IU3 (no ASSUMED, or a quote not in the issue, asked again, saying so), IU4 (still bad: left out, noted, the run goes on), IU5 (the check is shown each carried question and the answer forms), IU6 (answered: dropped, recorded in data.unclear_dropped with its WHY, QUOTE and question, not again in the notes), IU7 (open kept; not needed dropped and recorded), IU8 (no answer: asked again, naming it; still none: kept), IU9 (an answer's quote not in the issue: asked again), IU10 (an unchanged issue keeps them with no call), IU11 (a failed try keeps them), IU12 (a pass that writes no list keeps them)
 

@@ -3,6 +3,8 @@ name: Intake Stage
 kind: agent
 # #2482 (ADR-001): the ids this stage writes start with it.
 id_prefix: RQ
+# #2603 (ADR-070 §1): a limit's ids start with this; no stage may take it.
+limit_id_prefix: LM
 version: 0.1.0
 description: |
   First stage of every pipeline run. Captures the goal, strips synthesized
