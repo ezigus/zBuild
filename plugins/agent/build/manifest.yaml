@@ -125,6 +125,15 @@ outputs:
     required: false
   # ADR-055 §9: this stage's statement of what it DID. required:true —
   # written on every terminal verdict, so absence means something went wrong.
+  # #2599 (ADR-068 §6): a finding build answers "not mine" that design must
+  # settle, or that test-author handed to build, goes to design — never back.
+  - id: build_design
+    topic: design-findings
+    description: "findings build answered not mine that design must settle, with its answer and the finding"
+    path: "${artifact_dir}/build-design-result.json"
+    type: routed-findings.json@1
+    format: json
+    required: false
   - id: build_stage_summary
     topic: change
     description: "build's summary of the change, in words"

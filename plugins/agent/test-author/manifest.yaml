@@ -108,6 +108,15 @@ outputs:
     format: json
     required: false
     handoff: true
+  # #2599 (ADR-068 §6, ADR-071 §1): a finding test-author answers "not mine"
+  # that is the code's to fix is handed to build, every try.
+  - id: test_author_code
+    topic: code-findings
+    description: "findings test-author answered not mine that are the code's to fix, with its answer"
+    path: "${artifact_dir}/test-author-code-result.json"
+    type: routed-findings.json@1
+    format: json
+    required: false
   # ADR-055 §9: this stage's statement of what it DID.
   - id: test_author_summary
     topic: tests

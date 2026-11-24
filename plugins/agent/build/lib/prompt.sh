@@ -112,6 +112,7 @@ output, value or rule — the test must change, and the stage that writes the
 tests changes it. Answer its finding, on its own line before the sentinel:
 
     ANSWER <its id>: not mine — the test must change: <test file>: <why>
+    ANSWER <its id>: not mine — design must <what design must settle>: <why>
 
 Say what the test pins and what the change makes it.
 

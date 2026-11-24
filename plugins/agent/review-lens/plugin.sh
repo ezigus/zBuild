@@ -35,6 +35,10 @@ source "$_RL_ROOT/core/router/route.sh"
 # ADR-028: shared LLM-agent framework (schema-gated reply parser, envelope parse).
 # shellcheck source=../../../scripts/lib/llm-agent.sh
 source "$_RL_ROOT/scripts/lib/llm-agent.sh"
+# shellcheck source=../../../scripts/lib/test-paths.sh
+source "$_RL_ROOT/scripts/lib/test-paths.sh"
+# shellcheck source=./lib/unchecked.sh
+source "${BASH_SOURCE[0]%/*}/lib/unchecked.sh"
 # #896/#952: shared merge-base change-bundle resolver — the lens judges the same
 # full-branch diff as `review`, not the (often empty) incremental build diff.patch.
 # shellcheck source=../../../scripts/lib/merge-base.sh
@@ -205,38 +209,10 @@ _review_lens_run_inner() {
         # A signal that landed during the call ends the lens here (review on #2434).
         [[ $router_rc -eq 0 && -n "$raw_response" && "${_rl_interrupted:-0}" != "1" ]] || break
         _rl_reply_problem "$raw_response" json _rl_problem
-        # #2598: the re-ask was about some findings only — its answer takes
-        # their places in the first answer; one that resends the whole answer
-        # (as many findings) is taken whole.
-        if [[ $_rl_try -eq 2 && -n "$_rl_first" ]]; then
-            # The re-ask asks for FINDING blocks, so an answer of only those (no
-            # SCORE line) is read as findings (review on #2598).
-            [[ -n "$json" ]] || { _rl_reply_lines_v json "SCORE: 0"$'\n'"$raw_response"; [[ "$json" == *'"findings":[{'* && "$json" != *'"stray":true'* ]] || json=""; }
-            [[ -n "$json" ]] || json="$_rl_first"
-            _rl_problem=""
-            [[ "$(jq '(.findings | length) < ($f.findings | length)' --argjson f "$_rl_first" <<< "$json" 2>/dev/null)" == true ]] \
-                && json="$(jq -c --argjson f "$_rl_first" --argjson b "[$_rl_bad_idx]" '. as $n | $f
-                    | .findings |= (reduce range(0; $b | length) as $j (.; if $n.findings[$j] then .[$b[$j]] = $n.findings[$j] else . end))' <<< "$json" 2>/dev/null || printf '%s' "$_rl_first")"
-        fi
+        _rl_reask_merge
         # ADR-072 §3: every finding quotes the text that shows it.
         [[ -z "$_rl_problem" ]] && _rl_quote_problem_v _rl_problem "$json" "$_rl_base" "$_rl_repo" "$_rl_patch"
-        # #2598 (ADR-072 §3): a finding that cannot be checked costs only itself.
-        # Asked about again on its own; still not usable, the others are kept,
-        # it is marked unchecked with why, and the lens fails on it.
-        if [[ -n "$_rl_problem" && -n "$json" && ${#_RL_BAD_AT[@]} -gt 0 ]]; then
-            if [[ $_rl_try -eq 1 ]]; then
-                _rl_first="$json"; _rl_bad_idx=""; local _rl_bi _rl_bn=""
-                for _rl_bi in $(printf '%s\n' "${!_RL_BAD_AT[@]}" | sort -n); do  # sigpipe-ok: sort reads all
-                    _rl_bad_idx+="${_rl_bad_idx:+,}$_rl_bi"; _rl_bn+="${_rl_bn:+, }$(( _rl_bi + 1 ))"
-                done
-                _rl_problem+=". Answer again only for finding ${_rl_bn}: write each as a FINDING block with all its fields, corrected, in that order; the other findings are kept as they are"
-            else
-                json="$(for _rl_bi in "${!_RL_BAD_AT[@]}"; do printf '%s\t%s\n' "$_rl_bi" "${_RL_BAD_AT[$_rl_bi]//$'\t'/ }"; done \
-                    | jq -Rn --argjson r "$json" '[inputs | split("\t") | {(.[0]): .[1]}] | add as $w
-                        | $r | .findings |= [to_entries[] | .value + (if $w[.key | tostring] then {unchecked: $w[.key | tostring]} else {} end)]' 2>/dev/null)"
-                [[ -n "$json" ]] && _rl_problem=""
-            fi
-        fi
+        _rl_unchecked_settle
         # #2571: each question in the one form, each carried one answered —
         # asked again once, then costing only that question: the report is kept.
         if [[ -z "$_rl_problem" && $_rl_try -eq 1 ]]; then
@@ -379,17 +355,7 @@ _review_lens_run_inner() {
     _rl_also_at_hold_v normalized "$normalized" "$_rl_base" "$_rl_repo" "$_rl_patch"
     # #2552 (ADR-038): a second call tries to knock each finding down; one it
     # does is kept under knocked_down and reaches no stage.
-    # #2598 (review): an unchecked finding is not shown to the knock-down
-    # check — what could not be checked cannot be knocked down — and is put
-    # back after it.
-    local _rl_unck="[]"
-    if [[ "$normalized" == *'"unchecked":'* ]]; then
-        normalized="$(jq -c '.findings |= [to_entries[] | .value + {_at: .key}]' <<< "$normalized" 2>/dev/null || printf '%s' "$normalized")"
-        _rl_unck="$(jq -c '[.findings[] | select((.unchecked // "") != "")]' <<< "$normalized" 2>/dev/null || printf '[]')"
-        normalized="$(jq -c '.findings |= [.[] | select((.unchecked // "") == "")]' <<< "$normalized" 2>/dev/null || printf '%s' "$normalized")"
-    fi
-    _rl_check_v normalized "$normalized" "$lens" "$_rl_change" "$_rl_repo"
-    [[ "$_rl_unck" != "[]" ]] && normalized="$(jq -c --argjson u "$_rl_unck" '.findings = ([.findings[], $u[]] | sort_by(._at // 0) | map(del(._at)))' <<< "$normalized" 2>/dev/null || printf '%s' "$normalized")"
+    _rl_check_but_unchecked
     # A check cut short ends the lens as its own call would (lens review on #2552).
     if [[ "$_RL_CHECK_RC" -eq 130 ]]; then
         [[ "${_rl_interrupted:-0}" == "1" ]] || _review_lens_write_result "$out" interrupted "signal_interrupt"
@@ -432,7 +398,12 @@ _review_lens_run_inner() {
     # #2574 (ADR-068 §5): each routed finding's id, from the lens's own code.
     local _rl_code="" _rl_reg="{}"; _rl_finding_code_v _rl_code "$lens"
     zb_findings_reg_v _rl_reg "$artifact_dir" "$_rl_code" || _rl_code=""
-    _rl_route="$(printf '%s' "$normalized" | jq -r --arg on " $_rl_fail_on " --arg n "$lens" --argjson c "${_ZBUILD_CONTRACT_V3:-3}" --argjson q "${_RL_UQ_NEWQ:-[]}" \
+    # #2599 (ADR-071 §1): a finding about a file in the test folders is the
+    # tests' to fix, whatever fix word the lens gave it — only test-author may
+    # change those files (#2532 run 45231040380: three went to build, which
+    # answered "not mine", round after round).
+    local _rl_tre="[]"; zb_test_path_regexes_json_v _rl_tre "${ZBUILD_REPO_ROOT:-$PWD}"
+    _rl_route="$(printf '%s' "$normalized" | jq -r --arg on " $_rl_fail_on " --arg n "$lens" --argjson c "${_ZBUILD_CONTRACT_V3:-3}" --argjson q "${_RL_UQ_NEWQ:-[]}" --argjson tre "$_rl_tre" \
         --arg reg "$_rl_reg" --arg code "$_rl_code" "$_ZB_FINDING_IDS_JQ"'
         # #2598: a finding that could not be checked always blocks: a lens never
         # passes on what it could not check.
@@ -451,9 +422,10 @@ _review_lens_run_inner() {
                reason: (if ($l | length) > 0 then $what else "\($what): none" end)}
               + (if ($l | length) > 0 then {data: {findings: [$l | to_entries[] | {n: (.key + 1), text: .value.text, blocking: .value.blocking}
                   + (if .value.id then {id: .value.id} else {} end) + (if .value.area then {area: .value.area} else {} end)]}} else {} end);
+        .findings |= map(if (.fix | IN("code", "design")) and ((.file // "" | ltrimstr("./")) as $f | any($tre[]; . as $r | $f | test($r))) then .fix = "test" else . end)
         # An unchecked finding is an ordinary failure whatever its fix word:
         # never "the issue is wrong" (review on #2598).
-        [.findings[] | select(.fix == "issue" and (.unchecked // "") == "" and at_fail_on)] as $issue
+        | [.findings[] | select(.fix == "issue" and (.unchecked // "") == "" and at_fail_on)] as $issue
         | [.findings[] | select((.fix != "issue" and .introduced) or (.unchecked // "") != "")] as $sent
         | (.suspected // []) as $susp
         # The score and how many findings: read here, by no jq of their own (ADR-065 §5).

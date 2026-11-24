@@ -232,10 +232,10 @@ assert_eq "[T7] design: the design is ask, its checks are design-findings" \
 # #2569: test-author's check finds what a test must change: test-findings, which
 # build, which may not edit a test, does not take. What a try that changed
 # nothing hands on (#2565) is design-findings, for design.
-assert_eq "[T7] test-author: its checker is test-findings, its handoff design-findings, its list of tests is tests" \
-    "test_author_result=test-findings test_author_handoff=design-findings test_author_summary=tests " \
+assert_eq "[T7] test-author: its checker is test-findings, its handoff design-findings, what the code must fix code-findings (#2599), its list of tests is tests" \
+    "test_author_result=test-findings test_author_handoff=design-findings test_author_code=code-findings test_author_summary=tests " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/test-author/manifest.yaml")"
-assert_eq "[T7] build: change; its answers that a test is wrong are test-findings (#2441, #2569)" "diff_patch=change build_summary=change build_tests=test-findings build_stage_summary=change " \
+assert_eq "[T7] build: change; its answers that a test is wrong are test-findings (#2441, #2569), what design must settle design-findings (#2599)" "diff_patch=change build_summary=change build_tests=test-findings build_design=design-findings build_stage_summary=change " \
     "$(_topics_of "$REPO_ROOT/plugins/agent/build/manifest.yaml")"
 # #2556 (ADR-071 §1): each result names no topic; one output per topic holds its findings.
 # #2569: the suite's and the check's logs are how the tests ran: tests.

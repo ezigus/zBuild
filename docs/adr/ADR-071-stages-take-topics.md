@@ -283,7 +283,13 @@ On #1764 run 44530053809 the topic names mixed two ideas. `requirement-findings`
 
 - **§2: a finding of any output a stage takes is shown by its id** (ADR-068 §5, amended 2026-11-20), the same in the stage's own list and in its topic's output: `TEFND-1 (opened by test)` in place of `acceptance-gate finding 1 (opened by test)`. The output-file labels of the 2026-10-30 amendment (#2428) remain only for a finding written before ids.
 
+## Amendment 2026-11-23 (#2599) — §1: a test file's finding is the tests' to fix
+
+A lens finding about a file in the test folders (`.zbuild/test-paths.txt`, else `config/test-paths.txt`) goes to test-author, even when the lens marked it fix: code or design (fix: issue is left alone). Only test-author may change those files. The globs become regexes in bash, with no process (`zb_test_path_regexes_json_v`), and the lens's routing jq reads them.
+
 ## Enforced by
+
+- §1 amendment 2026-11-23 (#2599: a test file's finding is the tests' to fix) → `tests/unit/not-mine-handoff-test.sh` N1, N2, N13 (globs read as bash reads them), N14
 
 - §2 amendment 2026-11-20 (#2574: a finding shown by its id) → `tests/integration/test-checks-own-run-test.sh` R6; `tests/unit/finding-ids-test.sh` I2, I3
 

@@ -10,6 +10,10 @@
 _ZBUILD_BUILD_ANSWERS_LOADED=1
 # shellcheck source=../../../../scripts/lib/stage-answers.sh
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/stage-answers.sh"
+# shellcheck source=../../../../scripts/lib/test-paths.sh
+source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/test-paths.sh"
+# shellcheck source=../../../../scripts/lib/stage-handoff.sh
+source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/stage-handoff.sh" 2>/dev/null || true
 # shellcheck source=../../../../scripts/lib/item-ids.sh
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/item-ids.sh"
 # #2574 (ADR-068 §5): the code build's findings' ids take (BUFND).
@@ -20,7 +24,8 @@ _BUILD_FCODE=""; zb_finding_code_v _BUILD_FCODE "${BASH_SOURCE[0]%/*}/../manifes
 # `ANSWER <its id>: wrong — the test is wrong: <file>: <why>`, and (#2508) from
 # `ANSWER <its id>: not mine — the test must change: <file>: <why>` — a test
 # that pins what this change alters is the test author's to change, never
-# build's. #2527: the answers are the ones zb_answers_collect_v reads, so a
+# build's. #2599: and from a `not mine` in any words that names a test file or
+# test-author. #2527: the answers are the ones zb_answers_collect_v reads, so a
 # finding named as listed, "(opened by …)" and all, or in the form before ids
 # (#2574), is read. Read by the shell: it runs on every try (ADR-065).
 _build_test_wrong() {
@@ -30,11 +35,65 @@ _build_test_wrong() {
     re='^[^:]+:.*the[[:space:]]+test[[:space:]]+(is[[:space:]]+wrong|must[[:space:]]+change)[[:space:]]*:[[:space:]]*(.+)$'
     shopt -q nocasematch && had=1
     shopt -s nocasematch
+    local w t tf why _btw_ta=""
+    zb_finding_code_v _btw_ta "${BASH_SOURCE[0]%/*}/../../test-author/manifest.yaml"
     for a in ${_btw[@]+"${_btw[@]}"}; do
-        [[ "$a" =~ $re ]] || continue
-        printf '%s: %s\n' "${a%%:*}" "${BASH_REMATCH[2]%"${BASH_REMATCH[2]##*[![:space:]]}"}"
+        if [[ "$a" =~ $re ]]; then
+            printf '%s: %s\n' "${a%%:*}" "${BASH_REMATCH[2]%"${BASH_REMATCH[2]##*[![:space:]]}"}"
+            continue
+        fi
+        # #2599 (ADR-068 §6): a "not mine" in any words that says the tests
+        # can fix it (zb_not_mine_target_v) is the tests' to fix. #2532 run
+        # 45231040380: "not mine — … lives in tests/unit/…; the test-author
+        # stage must fix it" was in no form read, and reached no one. One
+        # test-author handed to build is never handed back (it goes to design:
+        # _build_write_handoffs), and build's own check's are the old path's.
+        why="${a#*:}"; why="${why#"${why%%[![:space:]]*}"}"
+        [[ "$why" =~ ^not[[:space:]]+mine ]] || continue
+        [[ -n "$_btw_ta" && "${a%%:*}" == "$_btw_ta"-* ]] && continue
+        [[ -n "$_BUILD_FCODE" && "${a%%:*}" == "$_BUILD_FCODE"-* ]] && continue
+        why="${why:9}"; why="${why#"${why%%[![:space:]—-]*}"}"
+        zb_not_mine_target_v t "$why"
+        [[ "$t" == test ]] || continue
+        tf=""; local -a _btw_w=()
+        read -ra _btw_w <<< "$why"   # no glob: a word like tests/* stays a word
+        for w in ${_btw_w[@]+"${_btw_w[@]}"}; do
+            w="${w//[\`\'\"(),;]/}"; w="${w%.}"; w="${w%:}"; w="${w#./}"
+            [[ "$w" == */* ]] && zb_is_test_path "$w" && { tf="$w"; break; }
+        done
+        printf '%s: %s%s%s\n' "${a%%:*}" "${tf:+$tf: }" "$why" "${_ZB_ANS_FINDING[${a%%:*}]:+ — the finding: ${_ZB_ANS_FINDING[${a%%:*}]//$'\n'/ }}"
     done
     (( had )) || shopt -u nocasematch
+}
+
+# _build_write_handoffs <artifact_dir> [reply] — every try (#2599, ADR-068 §6):
+# the tests' "not mine" answers to test-author (_build_write_test_findings), and
+# to design (build-design-result.json, topic design-findings) each "not mine"
+# that says design must fix it, and each to a finding test-author handed to
+# build — never handed back. Each keeps its id and the finding's text. None
+# leaves no file; no process when there are none.
+declare -gA _ZB_ANS_FINDING 2>/dev/null || true
+_build_write_handoffs() {
+    local art="${1%/}" reply="${2-${_ROUTE_LOOP_LAST_RESPONSE:-}}" a why t ta="" lines=""
+    local -a ans=()
+    _ROUTE_LOOP_LAST_RESPONSE="$reply" _build_write_test_findings "$art"
+    zb_finding_code_v ta "${BASH_SOURCE[0]%/*}/../../test-author/manifest.yaml"
+    zb_answers_collect_v ans "$reply"
+    for a in ${ans[@]+"${ans[@]}"}; do
+        why="${a#*:}"; why="${why#"${why%%[![:space:]]*}"}"
+        [[ "$why" =~ ^[Nn]ot[[:space:]]+mine ]] || continue
+        [[ -n "$_BUILD_FCODE" && "${a%%:*}" == "$_BUILD_FCODE"-* ]] && continue
+        why="${why:9}"; why="${why#"${why%%[![:space:]—-]*}"}"
+        zb_not_mine_target_v t "$why"
+        if [[ "$t" == design || ( -n "$ta" && "${a%%:*}" == "$ta"-* ) ]]; then
+            lines+="${a%%:*}: build answered not mine: $why${_ZB_ANS_FINDING[${a%%:*}]:+ — the finding: ${_ZB_ANS_FINDING[${a%%:*}]//$'\n'/ }}"$'\n'
+        fi
+    done
+    if [[ -n "$lines" ]]; then
+        stage_findings_add "$art/build-design-result.json" \
+            "$(printf '%s' "$lines" | jq -Rnc '[inputs | select(length > 0) | {text: .}]')" "$_BUILD_FCODE" || true
+    fi
+    return 0
 }
 
 # _build_write_test_findings <artifact_dir> — build-tests-result.json (ADR-068

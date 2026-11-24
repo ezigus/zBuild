@@ -137,3 +137,39 @@ zb_answers_summary_v() {
     [[ -z "$_zas" && "${_ZB_ANS_SHOWN:-0}" -eq 0 ]] && _zas="- no finding was open for it"
     return 0
 }
+
+# zb_not_mine_target_v <var> <answer text> — which stage a "not mine" answer
+# says can fix the finding (#2599, ADR-068 §6): code, test or design; empty when
+# it says none. A stage it names ("design must …", "the code must change") wins
+# over any file it names; else a file: one in the test folders is test's, any
+# other path with a dot is code's; else a stage named in passing. In any case.
+# Needs test-paths.sh. No process.
+zb_not_mine_target_v() {
+    local -n _znm="$1"; local _t="${2:-}" _w _x _had=0
+    local -a _ws=()
+    _znm=""
+    shopt -q nocasematch && _had=1
+    shopt -s nocasematch
+    local _re='(^|[^a-z])(the[[:space:]]+)?(code|build|tests?|test[-[:space:]]?author|design)([[:space:]]+stage)?[[:space:]]+must([^a-z]|$)'
+    if [[ "$_t" =~ $_re ]]; then
+        case "${BASH_REMATCH[3]}" in
+            code|build) _znm=code ;; design) _znm=design ;; *) _znm="test" ;;
+        esac
+    fi
+    if [[ -z "$_znm" ]]; then
+        read -ra _ws <<< "$_t"   # no glob: a word like tests/* stays a word
+        for _w in ${_ws[@]+"${_ws[@]}"}; do
+            _x="${_w//[\`\'\"(),;]/}"; _x="${_x%.}"; _x="${_x%:}"; _x="${_x#./}"
+            [[ "$_x" == */* ]] || continue
+            if declare -F zb_is_test_path >/dev/null 2>&1 && zb_is_test_path "$_x"; then _znm="test"; break; fi
+            [[ "$_x" == *.* ]] && { _znm=code; break; }
+        done
+    fi
+    if [[ -z "$_znm" ]]; then
+        if [[ "$_t" =~ test[-[:space:]]?author ]]; then _znm="test"
+        elif [[ "$_t" =~ (^|[^a-z])(the[[:space:]]+code|code[[:space:]]+stage|build[[:space:]]+stage)([^a-z]|$) ]]; then _znm=code
+        elif [[ "$_t" =~ (^|[^a-z])design([^a-z]|$) ]]; then _znm=design; fi
+    fi
+    (( _had )) || shopt -u nocasematch
+    return 0
+}
