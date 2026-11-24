@@ -334,7 +334,7 @@ zb_unclear_answers_v() {
         [[ -n "${_zas_seen[$_zas_id]+x}" ]] || _zas_bad+=("no line for UNCLEAR $_zas_id")
     done
     if [[ ${#_zas_bad[@]} -gt 0 ]]; then
-        local IFS=';'; _zas_p="${_zas_bad[*]}"; _zas_p="${_zas_p//;/; }"
+        judge_problems_join_v _zas_p _zas_bad
     fi
     return 0
 }

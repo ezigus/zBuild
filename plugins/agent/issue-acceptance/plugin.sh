@@ -394,6 +394,9 @@ _ia_call() {
         _ask="$(stage_prompt_reask "$_framed" "$_IA_PROBLEM${_IA_PROBLEM:+${_IA_UQ_PROBLEM:+; }}$_IA_UQ_PROBLEM" "$_raw")"
     done
     [[ $rc -eq 0 && -n "$_IA_PROBLEM" && -n "$_first" ]] && { _raw="$_first"; _ia_parse "$_raw" "$_reqs" "$issue" "$_root_q" "$_lims" "$_want"; }
+    # #2598: a requirement still not checkable costs only itself.
+    _IA_UNCHECKED_WHY=()
+    [[ $rc -eq 0 ]] && _ia_unchecked_to_unmet
     judge_opened_v _IA_DEPS "$_opened"; rm -f "$_opened" 2>/dev/null
     if [[ $rc -ne 0 ]]; then
         local _v="" _reason="" _disp="broken"

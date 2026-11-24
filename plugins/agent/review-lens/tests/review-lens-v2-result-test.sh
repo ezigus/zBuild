@@ -41,11 +41,11 @@ route_to_model() { zb_test_lens_check_answer "$2" && return 0;
     printf 'call\n' >> "$_RL_CALLS"
     printf '%s' "$2" > "$_RL_PROMPT"
     if [[ "$2" == *'"security" review lens'* ]]; then
-        printf '%s' '{"score":3,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/y.sh","category":"injection","severity":"CRITICAL","line":10,"message":"shell injection risk"}]}'
+        zb_test_lens_lines '{"score":3,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/y.sh","category":"injection","severity":"CRITICAL","line":10,"message":"shell injection risk"}]}'
     elif [[ "$2" == *'"performance" review lens'* ]]; then
-        printf '%s' '{"score":8,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/z.sh","category":"perf","severity":"low","line":3,"message":"repeated read"}]}'
+        zb_test_lens_lines '{"score":8,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/z.sh","category":"perf","severity":"low","line":3,"message":"repeated read"}]}'
     else
-        printf '%s' '{"score":10,"findings":[]}'
+        zb_test_lens_lines '{"score":10,"findings":[]}'
     fi
     return 0
 }
@@ -70,7 +70,7 @@ EOF
 route_to_model() { zb_test_lens_check_answer "$2" && return 0;
     printf 'call\n' >> "$_RL_CALLS"
     printf '%s' "$2" > "$_RL_PROMPT"
-    printf '%s' '{"score":7,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/a.sh","category":"correctness","severity":"high","line":5,"message":"bug found"}]}'
+    zb_test_lens_lines '{"score":7,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/a.sh","category":"correctness","severity":"high","line":5,"message":"bug found"}]}'
     return 0
 }
 
@@ -187,14 +187,11 @@ assert_eq "[SPEC-3] result_contract == 3 on unparseable reply" \
 assert_eq "[SPEC-3] outcome == unusable on unparseable reply (#2187)" \
     "unusable" "$(jq -r '.outcome // empty' "$out_1840_s3")"
 
-# ─── SPEC-4 [change]: schema-gate recovery from postamble-bearing response ────
-# The response has a valid lens object FIRST followed by a postamble containing
-# a second JSON object that fails the schema gate (no .findings array).
-# LAST-wins selects the broken postamble object; schema-gate recovery must find
-# the valid first object — producing a valid lens result, NOT review_lens.unparseable.
-_1840_postamble_resp='{"score":4,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","quote":"exec user input","file":"b.sh","severity":"low","line":2,"message":"nit"}]}
-Some postamble reasoning text here.
-{"not_a_lens_object":true,"no_findings_key":"wrong"}'
+# ─── SPEC-4 [change]: an answer followed by prose is still read ─────────────
+# #2598: a lens answers in lines; prose after them (a sign-off, a note) is not
+# part of any field — a blank line ends the field above it — so the answer is
+# read as it is, not lost (#1840 was the same, for the JSON it used to give).
+_1840_postamble_resp="$(zb_test_lens_lines '{"score":4,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","quote":"exec user input","file":"b.sh","severity":"low","line":2,"message":"nit"}]}')"$'\n\nSome postamble reasoning text here.\nAnd a second line of it.'
 # shellcheck disable=SC2329
 route_to_model() { zb_test_lens_check_answer "$2" && return 0;
     printf 'call\n' >> "$_RL_CALLS"
@@ -218,14 +215,8 @@ fi
 # The recovered result must be valid (findings array present)
 assert_eq "[SPEC-4] recovered lens result has valid findings array (1 finding)" \
     "1" "$(jq '.findings | length' "$out_1840_s4" 2>/dev/null || echo 0)"
-# Confirm _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok is present in
-# the lens's reply reader (lib/reply.sh since #2571)
-if grep -q '_llm_envelope_parse.*--schema-gate.*_review_lens_envelope_schema_ok' \
-    "$PLUGIN_DIR/lib/reply.sh" 2>/dev/null; then
-    assert_pass "[SPEC-4] the lens's reply reader uses _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok"
-else
-    assert_fail "[SPEC-4] the lens's reply reader must use _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok" "absent"
-fi
+assert_eq "[SPEC-4] ...the prose is in no field" "the change no longer does this" \
+    "$(jq -r '.findings[0].accepted_if // empty' "$out_1840_s4" 2>/dev/null)"
 
 # ─── SPEC-5 [change]: ADR-063 budget guidance in prompt when max_turns > 0 ────
 # Shadow _route_resolve_max_turns so the budget block fires regardless of manifest.
@@ -238,7 +229,7 @@ _route_resolve_max_turns() { printf '12'; }
 route_to_model() { zb_test_lens_check_answer "$2" && return 0;
     printf '%s' "$2" > "$_RL_PROMPT"
     printf 'call\n' >> "$_RL_CALLS"
-    printf '%s' '{"score":5,"findings":[]}'
+    zb_test_lens_lines '{"score":5,"findings":[]}'
     return 0
 }
 out_1840_s5="$artifact_dir/lens-1840spec5.json"
@@ -356,7 +347,7 @@ fi
 route_to_model() { zb_test_lens_check_answer "$2" && return 0;
     printf 'call\n' >> "$_RL_CALLS"
     printf '%s' "$2" > "$_RL_PROMPT"
-    printf '%s' '{"score":6,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/b.sh","category":"correctness","severity":"medium","line":3,"message":"null deref"}]}'
+    zb_test_lens_lines '{"score":6,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/b.sh","category":"correctness","severity":"medium","line":3,"message":"null deref"}]}'
     return 0
 }
 out_1840_s9="$artifact_dir/lens-1840spec9.json"
@@ -427,7 +418,7 @@ fi
 # shellcheck disable=SC2329
 route_to_model() { zb_test_lens_check_answer "$2" && return 0;
     printf 'call\n' >> "$_RL_CALLS"
-    printf '%s' '{"score":3,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/c.sh","category":"injection","severity":"high","line":9,"message":"unquoted eval","introduced":true}]}'
+    zb_test_lens_lines '{"score":3,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/c.sh","category":"injection","severity":"high","line":9,"message":"unquoted eval","introduced":true}]}'
     return 0
 }
 out_2366_f="$artifact_dir/lens-2366fail.json"
@@ -441,7 +432,7 @@ assert_eq "[#2366] ...its findings stay where the aggregator reads them" \
 # shellcheck disable=SC2329
 route_to_model() { zb_test_lens_check_answer "$2" && return 0;
     printf 'call\n' >> "$_RL_CALLS"
-    printf '%s' '{"score":4,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/c.sh","category":"injection","severity":"critical","line":9,"message":"old eval","introduced":false}]}'
+    zb_test_lens_lines '{"score":4,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","quote":"exec user input","file":"core/c.sh","category":"injection","severity":"critical","line":9,"message":"old eval","introduced":false}]}'
     return 0
 }
 out_2366_p="$artifact_dir/lens-2366pre.json"

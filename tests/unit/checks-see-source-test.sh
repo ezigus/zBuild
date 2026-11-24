@@ -128,7 +128,7 @@ rm -f "$P" "$P.check"
     route_to_model() {
         if zb_test_lens_check_answer "$2" >/dev/null; then printf '%s' "$2" > "$P.check"; zb_test_lens_check_answer "$2"; return 0; fi
         printf '%s' "$2" > "$P"
-        printf '{"score":5,"findings":[{"accepted_if":"only the actor is read","trigger":"another commenter","quote":"body=\\"$(list_any)\\"","file":"h.sh","severity":"high","message":"the fallback reads any commenter","introduced":true,"fix":"code"}]}'
+        zb_test_lens_lines "$(printf '{"score":5,"findings":[{"accepted_if":"only the actor is read","trigger":"another commenter","quote":"body=\\"$(list_any)\\"","file":"h.sh","severity":"high","message":"the fallback reads any commenter","introduced":true,"fix":"code"}]}')"
     }
     artifact_dir="$ART" ZBUILD_CURRENT_STAGE=review_lenses ZBUILD_REVIEW_LENS_ID=red-team _TPL_STAGE_FAIL_ON_review_lenses="high critical" \
         _review_lens_run_inner red-team "$TEST_TEMP_DIR/cs4/scope.md" "$ART/diff.patch" "$ART/lens-red-team.json" "$ART" >/dev/null 2>&1

@@ -12,6 +12,12 @@
 #      plugin.result event.
 #   R2 a NEW round that changes nothing → 0 files over 1 pass (the previous
 #      round's work and pass count do not carry over).
+#   R4 (#2598) the OUTER loop's next round, at the same cycle iteration, is a
+#      new round: test-author commits before build, build changes nothing →
+#      "changed no file" over 1 pass (#2532 run 45231040380 credited build
+#      with test-author's commit, "over 2 pass(es)")
+#   R5 (#2598) only build's own commits count: a commit another stage makes
+#      between two passes of one round is not build's change
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -143,6 +149,36 @@ assert_contains "R2: …over 1 pass" "$(cat "$SUMMARY_MD" 2>/dev/null)" "- over 
 assert_eq "R2: files_changed empty" \
     "0" "$(jq -r '(.files_changed // []) | length' "$SUMMARY_JSON" 2>/dev/null || true)"
 assert_eq "R2: passes = 1" "1" "$(jq -r '.passes // empty' "$SUMMARY_JSON" 2>/dev/null || true)"
+
+# ─── R4: the outer loop's next round is a new round ──────────────────────────
+export ZBUILD_CYCLE_ITER=1 ZBUILD_STAGE_IO_SEQ_LABEL="3.1.1.1.3"
+: > "$ZBUILD_EVENTS_JSONL"
+MOCK_WRITE=1; MOCK_TERMINATED_REASON="done_sentinel"; MOCK_ITERS=1
+printf 'r4 %s\n' "$RANDOM" >> "$REPO/in_scope.txt"; git -C "$REPO" add -A; git -C "$REPO" -c commit.gpgsign=false commit -q -m reset-r4
+_run_pass || true
+export ZBUILD_STAGE_IO_SEQ_LABEL="3.2.1.1.3"
+echo "test-author's test" > "$REPO/other_test.txt"; git -C "$REPO" add other_test.txt
+git -C "$REPO" -c commit.gpgsign=false commit -q -m "test-author: acceptance assertions"
+MOCK_WRITE=0
+_run_pass || true
+assert_eq "R4: the next outer round's build changed no file" "- changed no file" "$(sed -n 3p "$SUMMARY_MD" 2>/dev/null)"
+assert_contains "R4: …over 1 pass" "$(cat "$SUMMARY_MD" 2>/dev/null)" "- over 1 pass(es)"
+assert_eq "R4: plugin.result files_changed_count = 0" "0" "$(_last_result_field files_changed_count)"
+
+# ─── R5: only build's own commits are its round's change ────────────────────
+export ZBUILD_STAGE_IO_SEQ_LABEL="3.3.1.1.3"
+: > "$ZBUILD_EVENTS_JSONL"
+MOCK_WRITE=1; MOCK_TERMINATED_REASON="router_timeout"; MOCK_ITERS=1
+printf 'r5 %s\n' "$RANDOM" > "$REPO/in_scope.txt"; git -C "$REPO" add -A; git -C "$REPO" -c commit.gpgsign=false commit -q -m reset-r5
+_run_pass || true
+echo "someone else" > "$REPO/elsewhere.txt"; git -C "$REPO" add elsewhere.txt
+git -C "$REPO" -c commit.gpgsign=false commit -q -m "another stage"
+MOCK_WRITE=0; MOCK_TERMINATED_REASON="done_sentinel"
+_run_pass || true
+_r5="$(jq -r '(.files_changed // []) | join(",")' "$SUMMARY_JSON" 2>/dev/null)"
+assert_contains "R5: setup: two passes in one round" "$(cat "$SUMMARY_MD" 2>/dev/null)" "- over 2 pass(es)"
+assert_eq "R5: the round's change is build's own file only" "in_scope.txt" "$_r5"
+unset ZBUILD_STAGE_IO_SEQ_LABEL
 
 cd "$REPO_ROOT"
 # R3: a round on record from ANOTHER iteration, opened under set -euo pipefail

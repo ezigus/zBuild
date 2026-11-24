@@ -69,7 +69,7 @@ _N="$TEST_TEMP_DIR/n"; _P="$TEST_TEMP_DIR/p"; _CK="$TEST_TEMP_DIR/ck"
 route_to_model() {
     if zb_test_lens_check_answer "$2"; then printf 'x\n' >> "$_CK"; return 0; fi
     local n; n=$(( $(cat "$_N" 2>/dev/null || echo 0) + 1 )); printf '%s' "$n" > "$_N"; printf '%s' "$2" > "$_P.$n"
-    printf '{"score":5,"findings":%s}' "$FINDINGS"
+    zb_test_lens_lines "{\"score\":5,\"findings\":$FINDINGS}"
 }
 _lens() {
     rm -f "$_N" "$_P".* "$_CK"

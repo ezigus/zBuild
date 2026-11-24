@@ -72,7 +72,7 @@ assert_contains "[L1] ...and a stage whose every call judges" "$_judge" "$_RULE"
 print_test_section "L2: a lens is not asked for a line"
 _lp="$(_rl_build_lens_prompt correctness "diff --git a/a.sh b/a.sh" "")"
 assert_not_contains "[L2] the review lens's report has no line field" "$_lp" '"line"'
-assert_contains "[L2] ...and still asks for a quote" "$_lp" '"quote"'
+assert_contains "[L2] ...and still asks for a quote" "$_lp" 'quote: <file> |'
 _sp="$(_rl_build_lens_prompt security "diff --git a/a.sh b/a.sh" "")"
 assert_not_contains "[L2] the security lens is not asked for file:line" "$_sp" "file:line"
 
@@ -88,7 +88,7 @@ printf 'diff --git a/a.sh b/a.sh\n+x=1\n' > "$ART/diff.patch"
 printf 'scope: all\n' > "$TEST_TEMP_DIR/scope-manifest.md"
 # A model that still sends a line: the line is not passed on.
 route_to_model() { zb_test_lens_check_answer "$2" && return 0;
-    printf '%s' '{"score":3,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","quote":"x=1","file":"a.sh","category":"x","severity":"high","line":4242,"message":"LINE-FINDING the read is unchecked","introduced":true,"fix":"code"}]}'
+    zb_test_lens_lines '{"score":3,"findings":[{"accepted_if":"the change no longer does this","trigger":"a caller passes this on a normal run","quote":"x=1","file":"a.sh","category":"x","severity":"high","line":4242,"message":"LINE-FINDING the read is unchecked","introduced":true,"fix":"code"}]}'
 }
 _TPL_STAGE_FAIL_ON_review_lenses="medium high critical" ZBUILD_CURRENT_STAGE=review_lenses ZBUILD_REVIEW_LENS_ID=correctness \
     _review_lens_run_inner correctness "$TEST_TEMP_DIR/scope-manifest.md" "$ART/diff.patch" "$ART/lens-correctness.json" "$ART" >/dev/null 2>&1 || true

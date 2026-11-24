@@ -62,7 +62,7 @@ printf 'diff --git a/a.sh b/a.sh\n+x=1\n' > "$ART/diff.patch"
 printf 'scope: all\n' > "$TEST_TEMP_DIR/scope-manifest.md"
 _lens() {   # <lens> <code finding words> <design finding words>
     _FINDINGS="[{\"accepted_if\":\"the change no longer does this\",\"trigger\":\"a caller passes this on a normal run\",\"quote\":\"x=1\",\"file\":\"a.sh\",\"category\":\"x\",\"severity\":\"high\",\"line\":1,\"message\":\"$2\",\"introduced\":true,\"fix\":\"code\"},{\"accepted_if\":\"the change no longer does this\",\"trigger\":\"a caller passes this on a normal run\",\"quote\":\"x=1\",\"file\":\"a.sh\",\"category\":\"x\",\"severity\":\"medium\",\"line\":1,\"message\":\"$3\",\"introduced\":true,\"fix\":\"design\"}]"
-    route_to_model() { zb_test_lens_check_answer "$2" && return 0; printf '%s' "{\"score\":3,\"findings\":$_FINDINGS}"; return 0; }
+    route_to_model() { zb_test_lens_check_answer "$2" && return 0; zb_test_lens_lines "{\"score\":3,\"findings\":$_FINDINGS}"; return 0; }
     _TPL_STAGE_FAIL_ON_review_lenses="medium high critical" ZBUILD_CURRENT_STAGE=review_lenses ZBUILD_REVIEW_LENS_ID="$1" \
         _review_lens_run_inner "$1" "$TEST_TEMP_DIR/scope-manifest.md" "$ART/diff.patch" "$ART/lens-$1.json" "$ART" >/dev/null 2>&1 || true
 }

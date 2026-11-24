@@ -45,10 +45,12 @@ _ia_fields() {
 # #2574 (ADR-072 §4): [want], the items asked (space separated: requirement
 # and limit ids, `issue`, `unasked`): only their lines are read and required —
 # a line about an item not asked is set aside; with no [want], every item is.
+declare -gA _IA_BAD_AT=()
+_IA_BAD_N=0; _IA_SEEN_N=0
 _ia_parse() {
     local raw="$1" reqs="$2" issue="$3" repo="$4" lims="${5:-}" wm=0 want=" ${6:-} "
     [[ $# -ge 6 ]] && wm=1
-    _IA_UNMET=(); _IA_UNSURE=(); _IA_UNASKED=(); _IA_PROBLEM=""; _IA_QUOTED=()
+    _IA_UNMET=(); _IA_UNSURE=(); _IA_UNASKED=(); _IA_PROBLEM=""; _IA_QUOTED=(); _IA_BAD_AT=()
     _IA_UNCLEAR=(); _IA_UQ_DROP=(); _IA_UQ_KEPT=(); _IA_UQ_BAD=(); _IA_UQ_PROBLEM=""
     local _uq_ans=""; local -a _uq_bad=()
     local -A rtext=() seen=() ltext=() lseen=()
@@ -115,24 +117,30 @@ _ia_parse() {
         seen["$name"]=1
         [[ "$kind" == MET ]] && continue
         _ia_fields "$rest"
-        if [[ -z "$quote" ]]; then bad+=("$name has no QUOTE"); continue; fi
+        if [[ -z "$quote" ]]; then bad+=("$name has no QUOTE"); _IA_BAD_AT["$name"]="${bad[-1]}"; continue; fi
         [[ -n "$acc" ]] || acc="${rtext[$name]:-$name}"
         own="${rtext[$name]:-}"$'\n'"$issue"
-        judge_quote_check_v w "$quote" "$own" "$repo" || { bad+=("$name's quote $w"); continue; }
+        judge_quote_check_v w "$quote" "$own" "$repo" || { bad+=("$name's quote $w"); _IA_BAD_AT["$name"]="${bad[-1]}"; continue; }
         judge_quote_path_v qp "$quote" "$repo"; [[ -n "$qp" ]] && _IA_QUOTED+=("$qp")
         if [[ "$kind" == UNMET ]]; then _IA_UNMET+=("${fix:+$fix }$name: ${why:-it is not met} — $quote — ACCEPTED IF: $acc")
         else _IA_UNSURE+=("${fix:+$fix }$name: ${why:-it cannot be told} — $quote — ACCEPTED IF: $acc"); fi
     done <<< "$raw"
-    local -a missing=()
+    local -a missing=(); local _ia_mreq=0
     for name in ${order[@]+"${order[@]}"}; do
         (( wm )) && [[ "$want" != *" $name "* ]] && continue
-        [[ -n "${seen[$name]+x}" ]] || missing+=("$name")
+        [[ -n "${seen[$name]+x}" ]] || { missing+=("$name"); _IA_BAD_AT["$name"]="it has no line"; _ia_mreq=$(( _ia_mreq + 1 )); }
     done
     for name in "${!ltext[@]}"; do
         (( wm )) && [[ "$want" != *" $name "* ]] && continue
         [[ -n "${lseen[$name]+x}" ]] || missing+=("$name")
     done
     [[ ${#missing[@]} -gt 0 ]] && bad=("it has no line for ${missing[*]}" ${bad[@]+"${bad[@]}"})
+    # #2598: every problem is some requirement's own when the only ones besides
+    # the per-requirement ones are its missing lines (a limit's is not).
+    _IA_BAD_N=${#bad[@]}; _IA_SEEN_N=${#seen[@]}
+    if (( ${#missing[@]} > 0 )); then
+        if (( _ia_mreq == ${#missing[@]} )); then _IA_BAD_N=$(( _IA_BAD_N - 1 + _ia_mreq )); else _IA_BAD_N=-1; fi
+    fi
     if [[ -n "${_IA_UQ_CARRIED:-}" ]]; then
         local _uq_p=""
         zb_unclear_answers_v _IA_UQ_KEPT _IA_UQ_DROP _uq_p "$_uq_ans" "$_IA_UQ_CARRIED" "$issue"
@@ -143,7 +151,7 @@ _ia_parse() {
     [[ ${#order[@]} -eq 0 && ${#seen[@]} -eq 0 && ${#bad[@]} -eq 0 && ( $wm -eq 0 || "$want" == *" issue "* ) ]] \
         && bad=("it has no MET:, UNMET: or UNSURE: line")
     if [[ ${#bad[@]} -gt 0 ]]; then
-        local IFS=';'; _IA_PROBLEM="${bad[*]}"; _IA_PROBLEM="${_IA_PROBLEM//;/; }"
+        judge_problems_join_v _IA_PROBLEM bad
     fi
     return 0
 }
@@ -224,4 +232,25 @@ _ia_unclear_settle() {
     zb_unclear_result_json_v _IA_UQ_JSON _ius_out _ius_n
     [[ -n "$_ius_n" ]] && _IA_UQ_NOTES+="$_ius_n"$'\n'
     return 0
+}
+
+# _ia_unchecked_to_unmet — after the re-ask (#2598, ADR-072 §3): when every
+# problem left is some requirement's own (a limit's BROKEN line is not:
+# it still makes the answer unusable), each such one is unmet,
+# saying it could not be checked and why, and the answer is used — the judged
+# ones are kept and the stage fails on the unchecked. A problem no item owns
+# leaves the answer unusable.
+# Called again after the answer is read with its kept items (items.sh), which
+# has no line for one set aside: why it was set aside is kept from the first
+# call (_IA_UNCHECKED_WHY).
+declare -gA _IA_UNCHECKED_WHY=()
+_ia_unchecked_to_unmet() {
+    # An answer that judged no requirement at all is no answer (review on #2598).
+    [[ -n "$_IA_PROBLEM" && ${#_IA_BAD_AT[@]} -gt 0 && "$_IA_BAD_N" -eq ${#_IA_BAD_AT[@]} && "${_IA_SEEN_N:-0}" -gt 0 ]] || return 0
+    local n w
+    for n in "${!_IA_BAD_AT[@]}"; do
+        w="${_IA_UNCHECKED_WHY[$n]:-${_IA_BAD_AT[$n]}}"; _IA_UNCHECKED_WHY["$n"]="$w"
+        _IA_UNMET+=("$n: this requirement could not be checked ($w) — ACCEPTED IF: its answer can be checked against the change")
+    done
+    _IA_PROBLEM=""
 }

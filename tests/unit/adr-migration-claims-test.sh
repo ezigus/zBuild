@@ -59,7 +59,9 @@ fi
 # every non-test .sh file in the plugin directory counts. Only code lines count:
 # a comment that names the old parser (review-lens explains why it left it) is
 # not a call.
-_MIGRATED_STAGES="monitor review-lens"
+# #2598: review-lens no longer reads JSON from its model — it answers in
+# plain lines (reply-lines.sh) — so it is no longer a JSON-parsing stage.
+_MIGRATED_STAGES="monitor"
 
 # Prints why <plugin dir> is not migrated; prints nothing when it is.
 _stage_unmigrated_reason() {
@@ -88,7 +90,7 @@ fi
 
 # Negative control: SPEC-2's check must see a bare call put back. Copy each of
 # the two newly migrated plugins, add one code-line call, and expect a reason.
-for _s in review-lens; do
+for _s in monitor; do
     _nc="$TEST_TEMP_DIR/negctl-$_s"
     cp -R "$REPO_ROOT/plugins/agent/$_s" "$_nc"
     # shellcheck disable=SC2016  # the $1 is written into the copied plugin, not expanded here
@@ -99,7 +101,7 @@ for _s in review-lens; do
 done
 # ...and a comment naming the old parser is not a call.
 _nc="$TEST_TEMP_DIR/negctl-comment"
-cp -R "$REPO_ROOT/plugins/agent/review-lens" "$_nc"
+cp -R "$REPO_ROOT/plugins/agent/monitor" "$_nc"
 printf '\n    # extract_first_json_object is the old parser\n' >> "$_nc/plugin.sh"
 assert_eq "SPEC-2 negative control: a comment naming extract_first_json_object is not a call" \
     "" "$(_stage_unmigrated_reason "$_nc")"
@@ -109,10 +111,12 @@ assert_eq "SPEC-2 negative control: a comment naming extract_first_json_object i
 # #1843). The code is migrated (SPEC-2), so the ADR must say so, name each
 # stage's schema gate, and keep no sentence saying the opposite.
 _mig_line="$(grep -E '^\*\*Migration\.\*\*' "$ADR" || true)"
-for _s in review-lens; do
+for _s in monitor; do
     assert_contains "SPEC-3: ADR-028's Migration paragraph lists $_s" "$_mig_line" "\`$_s\`"
 done
-for _g in _review_lens_envelope_schema_ok:review-lens; do
+# #2598: review-lens left JSON for plain lines; the ADR says so.
+assert_contains "SPEC-3: ADR-028 says review-lens answers in plain lines" "$(cat "$ADR")" "review-lens answers in plain lines"
+for _g in; do
     _fn="${_g%%:*}"
     grep -rqE "^${_fn}\(\)" "$REPO_ROOT/plugins/agent/${_g#*:}" \
         || assert_fail "SPEC-3 setup: $_fn is defined in ${_g#*:}" "not found — update this test"

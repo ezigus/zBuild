@@ -9,6 +9,14 @@ _ZBUILD_JUDGE_QUOTES_LOADED=1
 
 # ─── Quotes (§3) ─────────────────────────────────────────────────────────────
 
+# judge_problems_join_v <var> <array> — a check's problems as one line, "; "
+# between them, each exactly as written (#2598): a quote's `;` is the quote's.
+judge_problems_join_v() {
+    local -n _jpj_out="$1" _jpj_in="$2"; local _jpj_i
+    _jpj_out=""
+    for _jpj_i in ${_jpj_in[@]+"${_jpj_in[@]}"}; do _jpj_out+="${_jpj_out:+; }$_jpj_i"; done
+}
+
 # _judge_words_v <var> <text> — the text with every run of spacing one space; a
 # carriage return is spacing (#2579: a CRLF quote is the lines it quotes).
 _judge_words_v() {
@@ -75,6 +83,19 @@ _judge_quote_split() {
     [[ -n "$_jqs_path" && "$_jqs_path" != *[[:space:]]* ]]
 }
 
+# _judge_closest_line_v <var> <file> <text> — the line of <file> sharing most of
+# <text>'s words, as the file has it (#2598, ADR-072 §3): a re-ask shows it, so
+# a near miss can be seen. One awk, run only for a quote not found; the text
+# reaches it by the environment, so no escape in it is read.
+_judge_closest_line_v() {
+    local -n _jcl="$1"
+    _jcl="$(ZB_JCL_Q="$3" awk '
+        BEGIN { n = split(ENVIRON["ZB_JCL_Q"], w, /[[:space:]]+/); best = 0; bl = "" }
+        { s = 0; for (i = 1; i <= n; i++) if (w[i] != "" && index($0, w[i])) s++
+          if (s > best) { best = s; bl = $0 } }
+        END { sub(/^[[:space:]]+/, "", bl); sub(/[[:space:]]+$/, "", bl); print substr(bl, 1, 400) }' "$2" 2>/dev/null)" || _jcl=""
+}
+
 # judge_quote_check_v <why_var> <quote> <own_words> <repo> [base_dir] — rc 0
 # when <quote> is really there: `<file> | <one line>` within one line of that
 # file in the repository or in the code from before the change, or the item's
@@ -129,6 +150,12 @@ judge_quote_check_v() {
     fi
     if (( _judge__seen )); then
         _jqw="is not in $_judge__path, on one line: $_judge__txt"
+        local _judge__near=""
+        for _judge__f in "$_judge__repo/$_judge__path" ${_judge__base:+"$_judge__base/$_judge__path"}; do
+            [[ -f "$_judge__f" ]] || continue
+            _judge_closest_line_v _judge__near "$_judge__f" "$_judge__txt"; break
+        done
+        [[ -n "$_judge__near" ]] && _jqw+=" — the closest line in it is: $_judge__near"
     else
         _jqw="names $_judge__path, which is not a file of the repository"
     fi

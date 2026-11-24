@@ -45,7 +45,7 @@ zb_test_lens_jobs r2a r2b r2c r3 r3b r7
 
 _RLL_REPLY=""
 # shellcheck disable=SC2329  # invoked by the sourced plugin
-route_to_model() { zb_test_lens_check_answer "$2" && return 0; printf '%s' "$_RLL_REPLY"; }
+route_to_model() { zb_test_lens_check_answer "$2" && return 0; zb_test_lens_lines "$_RLL_REPLY"; }
 
 artifact_dir="$TEST_TEMP_DIR/artifacts"; mkdir -p "$artifact_dir"
 scope_manifest="$TEST_TEMP_DIR/scope-manifest.md"; printf '+ core/\n' > "$scope_manifest"
@@ -68,7 +68,7 @@ assert_contains "R1: critical is defined" "$_p" '`critical`: the change makes th
 assert_contains "R1: high is defined" "$_p" '`high`: the change is wrong on a path the issue cares about, or breaks something it should not touch.'
 assert_contains "R1: medium is defined" "$_p" '`medium`: the change works, but a realistic case gets it wrong, a test does not prove what it claims, or the design leaves a gap that will cause the next bug.'
 assert_contains "R1: low is defined" "$_p" '`low`: style, wording, a small inefficiency, or hardening against an unlikely case.'
-assert_contains "R1: each finding says what would fix it" "$_p" '"fix": "<one of: code, test, design, issue>"'
+assert_contains "R1: each finding says what would fix it" "$_p" 'fix: <one of: code, test, design, issue>'
 assert_contains "R1: issue means the issue itself is wrong" "$_p" '`issue`: the issue itself is wrong'
 assert_eq "R1: the prompt no longer calls the report advisory" "0" "$(grep -ci 'advisory' <<< "$_p" || true)"
 

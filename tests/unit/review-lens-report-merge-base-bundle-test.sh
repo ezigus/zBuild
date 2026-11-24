@@ -77,7 +77,7 @@ RL_PROMPT="$TEST_TEMP_DIR/route-prompt.txt"
 # shellcheck disable=SC2329  # invoked indirectly by the sourced plugin
 apply_scope_redaction() { cp "$1" "$2"; return 0; }
 # shellcheck disable=SC2329
-route_to_model() { printf 'call\n' >> "$RL_CALLS"; printf '%s' "$2" > "$RL_PROMPT"; printf '%s' '{"score":7,"findings":[]}'; return 0; }
+route_to_model() { printf 'call\n' >> "$RL_CALLS"; printf '%s' "$2" > "$RL_PROMPT"; zb_test_lens_lines '{"score":7,"findings":[]}'; return 0; }
 OUT="$ART/lens-security.json"
 set +e
 ( cd "$REPO" && ZBUILD_REPO_ROOT="$REPO" _review_lens_run_inner "security" "$SCOPE" "$ART/diff.patch" "$OUT" "$ART" )

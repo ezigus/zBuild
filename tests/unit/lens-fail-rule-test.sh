@@ -37,7 +37,7 @@ ART="$TEST_TEMP_DIR/artifacts"; mkdir -p "$ART"
 # #2464 (ADR-072 §3): each finding quotes the change.
 printf 'diff --git a/a.sh b/a.sh\n+x=1\n' > "$ART/diff.patch"; printf 'scope: all\n' > "$TEST_TEMP_DIR/scope-manifest.md"
 _lens() {  # <fail_on> <findings json> — prints the lens's outcome
-    route_to_model() { zb_test_lens_check_answer "$2" && return 0; printf '%s' "{\"score\":7,\"findings\":$_FINDINGS}"; return 0; }
+    route_to_model() { zb_test_lens_check_answer "$2" && return 0; zb_test_lens_lines "{\"score\":7,\"findings\":$_FINDINGS}"; return 0; }
     rm -f "$ART/lens-red-team.json"
     _FINDINGS="$2" _TPL_STAGE_FAIL_ON_review_lenses="$1" ZBUILD_CURRENT_STAGE=review_lenses \
         ZBUILD_REVIEW_LENS_ID=red-team \

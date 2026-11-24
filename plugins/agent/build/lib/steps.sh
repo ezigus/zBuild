@@ -331,7 +331,7 @@ _build_steps_parse() {
         _BSJ_ANS[$n]="does not"$'\x1f'"${why:-it does not do what the step says}"$'\x1f'"$acc"
     done
     for n in "$@"; do [[ -n "${_BSJ_ANS[$n]+x}" ]] || bad+=("step ${_BSL[$n]:-$n} has no line"); done
-    if [[ ${#bad[@]} -gt 0 ]]; then local IFS=';'; _BSJ_PROBLEM="${bad[*]}"; _BSJ_PROBLEM="${_BSJ_PROBLEM//;/; }"; fi
+    if [[ ${#bad[@]} -gt 0 ]]; then judge_problems_join_v _BSJ_PROBLEM bad; fi
     return 0
 }
 

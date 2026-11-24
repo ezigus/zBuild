@@ -148,7 +148,7 @@ source "$REPO_ROOT/plugins/agent/review-lens/plugin.sh"
 ART="$TEST_TEMP_DIR/artifacts"; mkdir -p "$ART"
 printf 'diff --git a/a.sh b/a.sh\n+x=1\n' > "$ART/diff.patch"; printf 'scope: all\n' > "$TEST_TEMP_DIR/scope-manifest.md"
 _lens() {  # <fail_on> <findings json>
-    route_to_model() { zb_test_lens_check_answer "$2" && return 0; printf '%s' "$2" > "$TEST_TEMP_DIR/lens-prompt"; printf '%s' "{\"score\":7,\"findings\":$_FINDINGS}"; return 0; }
+    route_to_model() { zb_test_lens_check_answer "$2" && return 0; printf '%s' "$2" > "$TEST_TEMP_DIR/lens-prompt"; zb_test_lens_lines "{\"score\":7,\"findings\":$_FINDINGS}"; return 0; }
     rm -f "$ART/lens-performance.json" "$ART/lens-performance-judged.json"
     _FINDINGS="$2" _TPL_STAGE_FAIL_ON_review_lenses="$1" ZBUILD_CURRENT_STAGE=review_lenses \
         ZBUILD_REVIEW_LENS_ID=performance \

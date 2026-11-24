@@ -118,7 +118,7 @@ _dcov_parse() {
         [[ -n "$_up" ]] && bad+=("$_up")
     fi
     if [[ ${#bad[@]} -gt 0 ]]; then
-        local IFS=';'; _DCOV_PROBLEM="${bad[*]}"; _DCOV_PROBLEM="${_DCOV_PROBLEM//;/; }"
+        judge_problems_join_v _DCOV_PROBLEM bad
     fi
     return 0
 }

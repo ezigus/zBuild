@@ -183,9 +183,8 @@ Add `--schema-gate <func>` to `_llm_envelope_parse`. When provided and the LAST-
 - `_test_assessment_envelope_schema_ok` — type==object, schema_version==1, verdict in {pass,fail,error,inconclusive}, summary string, required_changes array, agrees_with_build_complete boolean
 - `_security_lens_envelope_schema_ok` — type==object, findings array (no schema_version in LLM response for this stage)
 - `_plan_envelope_schema_ok` — retired 2026-10-13 (#2363): plan writes plan.json itself and parses no reply.
-- `_review_lens_envelope_schema_ok` — type==object, findings array (review-lens, #1840)
 
-**Migration.** `monitor` and `review-lens` (#1840) call `_llm_envelope_parse --schema-gate`. (`security-lens`, an unused Phase 0 proof of concept, was removed by #2548; the security lens runs in `review-lens`.) (`review-report` (#1843) and `impact` were retired 2026-10-12. `plan` parsed its reply this way until #2363, when it began writing plan.json itself.)
+**Migration.** `monitor` calls `_llm_envelope_parse --schema-gate`. Since #2598 review-lens answers in plain lines, as every other judge does (`plugins/agent/review-lens/lib/reply-lines.sh`), so it parses no JSON: its JSON quotes had to escape what they quoted, and a run was lost to one (#2532 run 45231040380). It used the shared parser from #1840 to #2598. (`security-lens`, an unused Phase 0 proof of concept, was removed by #2548; the security lens runs in `review-lens`.) (`review-report` (#1843) and `impact` were retired 2026-10-12. `plan` parsed its reply this way until #2363, when it began writing plan.json itself.)
 
 *Corrected 2026-10-06 (#2035).* Until this date the paragraph here said `review-lens` was not migrated. That stopped being true when #1840 moved it onto the shared parser; the ADR was not updated with it. `tests/unit/adr-migration-claims-test.sh` (SPEC-2, SPEC-3) checks the listed stages against this paragraph.
 

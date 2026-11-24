@@ -733,7 +733,15 @@ In #2532, runs 45017980554 (C7) and 45102665787 (RG9) each had a test outside th
 
 So this is a race over whether the hook has exited before the signal is handled. It is not an Ubuntu fault, and it is more likely on a busy machine. #2586 already believes a reply that says acquired, whatever the status, so nothing more is changed.
 
+## Amendment 2026-11-23 (#2598) — §5: build's round is its own place and its own commits
+
+Build's round is keyed by its dispatch's place as well as run, cycle and iteration. The place is its seq label, which holds every enclosing loop's round. Build counts only the commits it made itself, which are marked `Zbuild-Stage: build` (test-author commits as the same author).
+
+On #2532 run 45231040380, the outer loop's round 2 was again "iteration 1" of the inner cycle. Its build took itself for round 1's second pass (`over 2 pass(es)`) and reported test-author's commit (+34 / -1) as its own change, though it changed nothing.
+
 ## Enforced by
+
+- §5 amendment 2026-11-23 (#2598: build's round is its own place and its own commits) → `tests/unit/build-round-summary-test.sh` R4, R5
 
 - Amendment 2026-11-23 (#2591: §6a a test already failing before the change does not send the round back) → `tests/unit/test-already-failing-test.sh` AF1–AF7
 
