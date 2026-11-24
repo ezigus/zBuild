@@ -367,3 +367,9 @@ A lens's answer is lines, as every other check's is, read by `plugins/agent/revi
 A line with no key carries on the field above it, up to a blank line, and a list mark or bold around a key is set aside. An answer in another form, JSON included, is asked again and told the form. Lenses answered with one JSON object only for history (#767, #801). Its quotes had to escape what they quoted, and #2532 run 45231040380 was lost to one. A finding that still cannot be checked after its re-ask costs only itself (ADR-072 §3, amended).
 
 Enforced by: `tests/unit/lens-reply-lines-test.sh` L1–L7; `plugins/agent/review-lens/tests/review-lens-unchecked-test.sh` U1–U4.
+
+## Amendment (2026-11-24, #2603): a lens tries a new check against the forms of its problem
+
+When a change adds a check whose job is to catch something (a guard test, a scanner, a lint), every lens lists the other ways the thing it catches could be written and tries each against the check. Each form that gets through is a finding. #2532's guard passed its own examples and the lenses asked nothing more, but it missed a multi-line `case`, files with no `.sh` name, `Darwin` and an anchored `=~`.
+
+Enforced by: `tests/unit/lens-check-escapes-test.sh` CE1.

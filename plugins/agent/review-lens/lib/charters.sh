@@ -68,6 +68,9 @@ For each finding, list every other place in the change with the same kind of
 problem (also at), not only the one you quote: a fix made only where a problem
 was found leaves its other forms in place. Look for them — the same call, the
 same pattern, the same input reaching another path.
+When the change adds a check whose job is to catch something — a guard test, a
+scanner, a lint — list the other ways the thing it catches could be written,
+and try each against the check: each form that gets through is a finding.
 
 OUTSIDE ASSUMPTIONS:
 ${ZB_OUTSIDE_ASSUMPTIONS_RULE:-}

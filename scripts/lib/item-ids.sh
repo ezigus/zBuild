@@ -122,8 +122,8 @@ zb_ids_highest_line_v() {
 zb_ids_check_v() {
     local -n _zic="$1"
     local pa=" $2 " pr=" $3 " na="$4" nr=" $5 " text="$6" px="$7" carry="${8:-0}" tr=" ${9:-} "
-    local id code num seen=" " hi
-    local -A _hi=() _k=()
+    local id code num seen=" " hi sug scode
+    local -A _hi=() _k=() _sn=()
     _zic=()
     _zb_ids_highest_v _hi "$2 $3 ${10:-}" "$px"
     # How many new ids each code takes: k new ones are exactly the k numbers
@@ -135,8 +135,11 @@ zb_ids_check_v() {
     for id in $na; do
         if [[ "$id" =~ ^SPEC-[0-9]+$ ]]; then _zic+=("ID_OLD_FORM $id $px"); continue; fi
         if ! zb_id_new_form "$id" "$px"; then
+            # #2603: the corrected id takes its code's next free number.
+            _zb_id_suggest_v sug "$id" "$px"; scode="${sug%-*}"
+            _sn[$scode]=$(( ${_sn[$scode]:-${_hi[$scode]:-0}} + 1 )); sug="$scode-${_sn[$scode]}"
             # One that has the prefix is a bad id, not one without it (review on #2483).
-            if [[ "$id" =~ $_ZB_ID_ANY_RE && "$id" != "$px"* ]]; then _zic+=("ID_NO_PREFIX $id $px"); else _zic+=("ID_BAD $id $px"); fi
+            if [[ "$id" =~ $_ZB_ID_ANY_RE && "$id" != "$px"* ]]; then _zic+=("ID_NO_PREFIX $id $px $sug"); else _zic+=("ID_BAD $id $px $sug"); fi
             continue
         fi
         code="${BASH_REMATCH[1]}"; num="${BASH_REMATCH[2]}"
@@ -190,20 +193,77 @@ zb_id_prefixes_check() {
         else
             owner[$px]="$m"
         fi
+        # #2603: intake's limit prefix is taken too — read by the shell, as no
+        # program per manifest (ADR-065).
+        zb_id_prefix_v px "$m" limit_id_prefix
+        if [[ -n "$px" ]]; then
+            if [[ -n "${owner[$px]:-}" ]]; then
+                error "id prefix '$px' is declared by both ${owner[$px]} and $m — each is its own (ADR-001)"; rc=1
+            else owner[$px]="$m"; fi
+        fi
     done
     return "$rc"
+}
+
+# _zb_id_suggest_v <var> <id> <prefix> — a corrected id (#2603): <prefix>, the
+# id's code (or the letters after its dash, when no number is there) with any
+# known prefix taken off, and
+# fitted to 4 letters by dropping vowels after the first (CLAIM → CLM), a dash,
+# and its number (1 when it has none or it is 0). The prefixes it takes off are
+# <prefix> and the caller's _ZB_ID_OTHER_PX: nothing here names one.
+_zb_id_suggest_v() {
+    local -n _zis="$1"; local id="$2" px="$3" code num c out
+    code="${id%%-*}"; num="${id##*-}"
+    # A tail with letters is the code (LIMIT-OUT1 → OUT, 1).
+    if [[ "$id" == *-* && ! "$num" =~ ^[0-9]+$ && "$num" =~ ^([A-Za-z]+)([0-9]*)$ ]]; then
+        code="${BASH_REMATCH[1]}"; num="${BASH_REMATCH[2]:-1}"
+    fi
+    [[ "$num" =~ ^[0-9]+$ && "$id" == *-* ]] || num=1
+    num=$(( 10#$num )); (( num > 0 )) || num=1
+    code="${code//[^A-Za-z0-9]/}"; code="${code^^}"
+    local _o
+    for _o in "$px" ${_ZB_ID_OTHER_PX:-}; do
+        [[ "$code" == "$_o"??? ]] && { code="${code#"$_o"}"; break; }
+    done
+    if (( ${#code} > 4 )); then
+        out="${code:0:1}"
+        for (( c = 1; c < ${#code}; c++ )); do [[ "${code:c:1}" == [AEIOU] ]] || out+="${code:c:1}"; done
+        code="${out:0:4}"
+    fi
+    [[ "$code" =~ ^[A-Z] ]] || code="X$code"
+    while (( ${#code} < 3 )); do code+="X"; done
+    _zis="$px$code-$num"
+}
+
+# _zb_id_why_bad <id> <prefix> <noun> [suggestion] — what is wrong with an id that has the
+# prefix but not the form (#2603): its code's length, or the whole form, each
+# with a corrected id.
+_zb_id_why_bad() {
+    local id="$1" px="$2" noun="$3" code sug
+    _zb_id_suggest_v sug "$id" "$px"
+    code="${id%%-*}"; code="${code#"$px"}"
+    [[ -n "${4:-}" ]] && sug="$4"
+    if [[ "$id" =~ ^${px}[A-Z][A-Z0-9]{2,3}-0[0-9]*$ ]]; then
+        printf "%s's number starts at 1, with no leading 0 — for example %s" "$id" "$sug"
+    elif [[ "$id" == "$px"* && "$id" =~ ^${px}[A-Z][A-Z0-9]*-[0-9]+$ ]]; then
+        printf "%s's code %s has %d letters; it needs 3 or 4 — for example %s" "$id" "$code" "${#code}" "$sug"
+    else
+        printf "%s is not in the id form: a %s's id is %s, then 3 or 4 capital letters or digits starting with a letter, a dash and a number — for example %s" "$id" "$noun" "$px" "$sug"
+    fi
 }
 
 # zb_id_plain <violation> <noun> — the sentence a model reads for one broken
 # rule; <noun> is what the id names (requirement, SPEC). A form rule's
 # violation carries the stage's prefix, so the sentence shows a real id.
 zb_id_plain() {
-    local v="$1" noun="$2" rest id det
+    local v="$1" noun="$2" rest id det sug
     rest="${v#* }"; id="${rest%% *}"; det="${rest#"$id"}"; det="${det# }"
     case "$v" in
         ID_OLD_FORM*)  printf '%s uses the old numbering — give the %s an id that describes it: %s, then 3 or 4 capital letters or digits starting with a letter, a dash and a number (%sLOOP-1 for one about loop state); the old ids need no REMOVED line' "$id" "$noun" "$det" "$det" ;;
-        ID_NO_PREFIX*) printf '%s does not start with %s — every %s id starts with %s, then 3 or 4 capital letters or digits that describe it, a dash and a number (%sLOOP-1); an id from before it had %s is the old numbering and needs no REMOVED line' "$id" "$det" "$noun" "$det" "$det" "$det" ;;
-        ID_BAD*)       printf '%s is not an id — an id is %s, then 3 or 4 capital letters or digits starting with a letter, a dash and a number, such as %sLOOP-1' "$id" "$det" "$det" ;;
+        ID_NO_PREFIX*) sug="${det#* }"; det="${det%% *}"; [[ "$sug" == "$det" ]] && _zb_id_suggest_v sug "$id" "$det"
+                       printf '%s does not start with %s — write it as %s' "$id" "$det" "$sug" ;;
+        ID_BAD*)       sug="${det#* }"; det="${det%% *}"; [[ "$sug" == "$det" ]] && sug=""
+                       _zb_id_why_bad "$id" "$det" "$noun" "$sug" ;;
         ID_DUPLICATE*) printf '%s names two %ss — give each its own id' "$id" "$noun" ;;
         ID_REUSED*)    printf '%s was removed earlier and never comes back — give the %s a new id' "$id" "$noun" ;;
         ID_NOT_AFTER_LAST*) printf '%s is new, but its number is not the next after the highest that code has had, removed ones counted — use %s' "$id" "$det" ;;
@@ -218,11 +278,11 @@ zb_id_plain() {
 # zb_id_prefix_v <var> <manifest> — the stage's id_prefix (ADR-001, #2482),
 # read by the shell; empty when the manifest declares none.
 zb_id_prefix_v() {
-    local -n _zip="$1"; local _l
+    local -n _zip="$1"; local _l _zipk="${3:-id_prefix}"
     _zip=""
     [[ -f "${2:-}" ]] || return 0
     while IFS= read -r _l || [[ -n "$_l" ]]; do
-        [[ "$_l" =~ ^id_prefix:[[:space:]]*([A-Z]+) ]] && { _zip="${BASH_REMATCH[1]}"; return 0; }
+        [[ "$_l" =~ ^${_zipk}:[[:space:]]*([A-Z]+) ]] && { _zip="${BASH_REMATCH[1]}"; return 0; }
     done < "$2"
 }
 

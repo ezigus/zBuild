@@ -148,7 +148,7 @@ assert_eq "[M5] the list's ids in place of the issue's item names pass" "pass" "
 assert_eq "[M5] ...on the first answer" "2" "$CALLS"
 
 # ── M6 ───────────────────────────────────────────────────────────────────────
-CHECK_REPLY='LIMIT: RQNMC-1 Do not put a machine name in the label'
+CHECK_REPLY='LIMIT: LMNMC-1 Do not put a machine name in the label'
 _intake
 assert_eq "[M6] a limit's \"Do not\" line is not held to the issue's words" "pass" "$OUTCOME"
 assert_eq "[M6] ...on the first answer" "2" "$CALLS"

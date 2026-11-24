@@ -33,6 +33,13 @@ source "${BASH_SOURCE[0]%/*}/unclear.sh"
 # #2482 (ADR-001): intake's id prefix, from its manifest — every requirement
 # id starts with it, so no SPEC's id is ever the same.
 zb_id_prefix_v _IREQ_PX "${BASH_SOURCE[0]%/*}/../manifest.yaml"
+# #2603 (ADR-070 §1): a limit is not a requirement, so its id has a prefix of
+# its own: the manifest's limit_id_prefix, which zb_id_prefixes_check counts as
+# taken, so no stage's id_prefix can be the same.
+zb_id_prefix_v _IREQ_LX "${BASH_SOURCE[0]%/*}/../manifest.yaml" limit_id_prefix
+[[ -n "$_IREQ_LX" ]] || _IREQ_LX="LM"
+# The other kinds' prefixes, so a corrected id leaves them off (item-ids.sh).
+_ZB_ID_OTHER_PX="$_IREQ_PX $_IREQ_LX"
 
 # _ireq_issue_text <issue_json> — the issue as the calls are shown it.
 _ireq_issue_text() {
@@ -52,13 +59,16 @@ Answer with one line per requirement, in the order the issue gives them:
 
 REQUIREMENT: <id> <the requirement, in the issue's words>
 
-An item the issue says not to do or not to build is a limit, not a
-requirement: no test can show something was never built. Write it on its own
-line, keeping its "Do not" (or "Never"):
-
-LIMIT: <id> Do not <what the change must not do, in the issue's words>
-
-A limit takes an id the way a requirement does.
+When the issue says not to do something, decide which it is:
+- Something the change must keep doing, which a test can show: write it as a
+  requirement. "The old rules stay as they are" is
+  REQUIREMENT: ${_IREQ_PX}RULE-1 The old rules keep working
+- A note that another issue covers something ("two runs at once is #2534"):
+  it is not a requirement. Leave it out.
+- Something the change must not build, which no test can show was not built:
+  write it as a limit, on its own line, keeping its "Do not". A limit's id
+  starts with ${_IREQ_LX}, not ${_IREQ_PX}:
+  LIMIT: ${_IREQ_LX}SCOP-1 Do not <what the change must not build, in the issue's words>
 
 The id names the requirement: ${_IREQ_PX}, then a code of 3 or 4 capital letters
 or digits, starting with a letter, that says what the requirement is about, a
@@ -77,7 +87,8 @@ EOF
     # 44530053809 the call copied its 19 old requirements and missed a new one.
     # #2550 (ADR-069 §1): the numbers, counted by the function intake's id
     # check uses.
-    local _idl=""; zb_ids_highest_line_v _idl "${_IREQ_PREV_IDS:-}" "${_IREQ_PREV_REMOVED:-}" "$_IREQ_PX" requirement
+    local _idl="" _idll=""; zb_ids_highest_line_v _idl "${_IREQ_PREV_IDS:-}" "${_IREQ_PREV_REMOVED:-}" "$_IREQ_PX" requirement
+    zb_ids_highest_line_v _idll "${_IREQ_PREV_IDS:-}" "${_IREQ_PREV_REMOVED:-}" "$_IREQ_LX" limit; _idl+=" For limits: $_idll"
     [[ -n "${_IREQ_PREV_SHOWN:-}" ]] && cat <<EOF
 
 Your list from the last run is shown below the issue, each requirement with its
@@ -93,7 +104,8 @@ EOF
 }
 
 _ireq_check_own() {
-    local _idl=""; zb_ids_highest_line_v _idl "${_IREQ_CHECK_IDS:-}" "${_IREQ_CHECK_RM:-}" "$_IREQ_PX" requirement
+    local _idl="" _idll=""; zb_ids_highest_line_v _idl "${_IREQ_CHECK_IDS:-}" "${_IREQ_CHECK_RM:-}" "$_IREQ_PX" requirement
+    zb_ids_highest_line_v _idll "${_IREQ_CHECK_IDS:-}" "${_IREQ_CHECK_RM:-}" "$_IREQ_LX" limit; _idl+=" For limits: $_idll"
     cat <<EOF
 Your job: check a list of requirements against the issue it was taken from.
 Name every requirement the issue states that the list misses, in the issue's
@@ -108,10 +120,12 @@ MISSING: <id> <a requirement the list misses, in the issue's words>
 The issue's words are its own sentences, copied as written: the whole sentence
 or item, never a paraphrase and never a part of a sentence.
 
-or the one line "MISSING: none" when it misses nothing. An item the issue says
-not to do or not to build that the list misses is a limit, not a requirement:
-write it as LIMIT: <id> Do not <what the change must not do, in the issue's
-words>, keeping its "Do not" (or "Never"). The id is ${_IREQ_PX}, then
+or the one line "MISSING: none" when it misses nothing. Something the issue
+says the change must not build, which the list misses, is a limit: write it as
+LIMIT: ${_IREQ_LX}<code>-<n> Do not <what the change must not build, in the
+issue's words>, keeping its "Do not" (or "Never"); a limit's id starts with
+${_IREQ_LX}, not ${_IREQ_PX}. Something it says the change must keep doing is a
+requirement, and a note that another issue covers something is neither. The id is ${_IREQ_PX}, then
 a code of 3 or 4 capital letters or digits, starting with a letter, that says
 what the requirement is about, a dash, and a number: ${_IREQ_PX}LOOP-1. A requirement about the same
 thing as a listed one shares its code. $_idl Never use an id the list or
@@ -176,7 +190,7 @@ _ireq_prev_load() {
         case "$kind" in
             A)  _IREQ_PREV_IDS+="$id "; _IREQ_PREV_TEXT[$id]="$text"
                 local _pl=REQUIREMENT; [[ "$why" == L ]] && { _pl=LIMIT; _IREQ_PREV_LIMS+="$id "; }
-                if zb_id_new_form "$id" "$_IREQ_PX"; then _IREQ_PREV_SHOWN+="$_pl: $id $text"$'\n'
+                if zb_id_new_form "$id" "$_IREQ_PX" || { [[ "$why" == L ]] && zb_id_new_form "$id" "$_IREQ_LX"; }; then _IREQ_PREV_SHOWN+="$_pl: $id $text"$'\n'
                 else _IREQ_PREV_SHOWN+="$_pl: $text"$'\n'; fi ;;
             R)  _IREQ_PREV_REMOVED+="$id "; removed+="- $id — $text (removed: $why)"$'\n' ;;
             J)  _IREQ_PREV_REMOVED_JSON="$id" ;;
@@ -209,6 +223,11 @@ _ireq_issue_labels_v() {
 # goes to _IREQ_FORM (plain sentences).
 _ireq_parse() {
     local label="$1" line rest re_id='^([A-Za-z][A-Za-z0-9_]*-[0-9]+)[[:space:]]*(—|–|:|-)?[[:space:]]*(.+)$'
+    # #2603: an id in the wrong form (LIMIT-OUT1) is still an id: the id check
+    # says what is wrong with it, never "has no id".
+    local re_odd='^([A-Z][A-Z0-9_]*-[A-Z0-9_]+|[A-Za-z][A-Za-z0-9_]*[0-9][A-Za-z0-9_]*-[A-Za-z0-9_]+|[A-Za-z][A-Za-z0-9_]*-[A-Za-z_]*[0-9][A-Za-z0-9_]*)()[[:space:]]+(.+)$'
+    # (all capitals, or a digit in it — LIMIT-OUT1, LIMSCOPE-1 — never a
+    # hyphenated word such as "Read-only")
     local re_rm='^[[:space:]]*REMOVED:[[:space:]]*([A-Za-z][A-Za-z0-9_]*-[0-9]+)[[:space:]]*(—|–|-|:)?[[:space:]]*(.*[^[:space:]])?[[:space:]]*$'
     local re_nr='^[[:space:]]*NOT-A-REQUIREMENT:[[:space:]]*([A-Za-z][A-Za-z0-9_]*-[0-9]+)[[:space:]]*(—|–|-|:)?[[:space:]]*(.*[^[:space:]])?[[:space:]]*$'
     _IREQ_IDS=() _IREQ_TEXTS=() _IREQ_RM_IDS=() _IREQ_RM_WHY=() _IREQ_FORM=() _IREQ_NR_IDS=() _IREQ_NR_WHY=()
@@ -218,8 +237,8 @@ _ireq_parse() {
         # either call's answer, and keeps its "Do not".
         if [[ "$line" =~ ^[[:space:]]*LIMIT:[[:space:]]*(.*[^[:space:]])[[:space:]]*$ ]]; then
             rest="${BASH_REMATCH[1]}"
-            if [[ ! "$rest" =~ $re_id ]]; then
-                _IREQ_FORM+=("\"${rest:0:60}\" has no id — write it as LIMIT: <id> Do not <what the change must not do>")
+            if [[ ! "$rest" =~ $re_id && ! "$rest" =~ $re_odd ]]; then
+                _IREQ_FORM+=("\"${rest:0:60}\" has no id — write it as LIMIT: ${_IREQ_LX:-LM}<code>-<n> Do not <what the change must not do>")
                 continue
             fi
             local _lid="${BASH_REMATCH[1]}" _ltx="${BASH_REMATCH[3]}"
@@ -244,10 +263,10 @@ _ireq_parse() {
         [[ "$line" =~ ^[[:space:]]*$label:[[:space:]]*(.*[^[:space:]])[[:space:]]*$ ]] || continue
         rest="${BASH_REMATCH[1]}"
         [[ "$label" == MISSING && "${rest,,}" == none ]] && continue
-        if [[ "$rest" =~ $re_id ]]; then
+        if [[ "$rest" =~ $re_id || "$rest" =~ $re_odd ]]; then
             _IREQ_IDS+=("${BASH_REMATCH[1]}"); _IREQ_TEXTS+=("${BASH_REMATCH[3]}")
         else
-            _IREQ_FORM+=("\"${rest:0:60}\" has no id — write it as $label: <id> <the requirement>")
+            _IREQ_FORM+=("\"${rest:0:60}\" has no id — write it as $label: ${_IREQ_PX}<code>-<n> <the requirement>")
         fi
     done <<< "$2"
     [[ "$label" == MISSING || ${#_IREQ_IDS[@]} -gt 0 || ${#_IREQ_FORM[@]} -gt 0 ]] \
@@ -269,7 +288,29 @@ _ireq_call_parsed() {
         _ireq_call_v reply "$ask" || return 1
         zb_reply_join_v reply "$reply"
         _ireq_parse "$label" "$reply"
-        zb_ids_check_v _iv "$3" "$4" "$6 ${_IREQ_IDS[*]+${_IREQ_IDS[*]}}" "${_IREQ_RM_IDS[*]+${_IREQ_RM_IDS[*]}}" "$5" "$_IREQ_PX" 0
+        # #2603: requirements are checked with RQ and limits with LM, each
+        # against the last list's ids of its kind. A limit kept under an old RQ
+        # id is not an RQ id that went missing: it gets an LM one, no REMOVED.
+        # The kind is this answer's (and, on the check call, the list's): an
+        # old RQ-id limit this issue now makes a requirement is a requirement.
+        local _ik=" ${_IREQ_LIMS_NOW:-} $_IREQ_LIMITS " _x
+        local _rp="$3" _rn="" _rr="" _ln="" _lr=""
+        local -a _xs=()
+        _IREQ_OLD_LIMS_GONE=""
+        read -ra _xs <<< "${_IREQ_PREV_LIMS:-}"
+        for _x in ${_xs[@]+"${_xs[@]}"}; do
+            zb_id_new_form "$_x" "$_IREQ_PX" || continue
+            [[ " ${_IREQ_IDS[*]+${_IREQ_IDS[*]}} $6 " == *" $_x "* ]] || _IREQ_OLD_LIMS_GONE+="$_x "
+        done
+        read -ra _xs <<< "$6"
+        _xs+=(${_IREQ_IDS[@]+"${_IREQ_IDS[@]}"})
+        for _x in ${_xs[@]+"${_xs[@]}"}; do
+            if [[ "$_ik" == *" $_x "* ]]; then _ln+="$_x "; else _rn+="$_x "; fi
+        done
+        for _x in ${_IREQ_RM_IDS[@]+"${_IREQ_RM_IDS[@]}"}; do if [[ "$_ik" == *" $_x "* ]]; then _lr+="$_x "; else _rr+="$_x "; fi; done
+        local -a _ivl=()
+        zb_ids_check_v _iv "$_rp" "$4" "$_rn" "$_rr $_IREQ_OLD_LIMS_GONE" "$5" "$_IREQ_PX" 0
+        zb_ids_check_v _ivl "$3" "$4" "$_ln" "$_lr" "$5" "$_IREQ_LX" 0
         plain=""
         for v in "${_IREQ_NR_IDS[@]+"${_IREQ_NR_IDS[@]}"}"; do
             # #2550: a limit is kept — not dropped as a note (lens review).
@@ -305,7 +346,7 @@ _ireq_call_parsed() {
         # #2550: an id keeps its kind — a limit in the last list stays a limit.
         for i in "${!_IREQ_IDS[@]}"; do
             v="${_IREQ_IDS[i]}"
-            if [[ "${_IREQ_PREV_LIMS:-}" == *" $v "* && "$_IREQ_LIMITS" != *" $v "* ]]; then
+            if [[ "${_IREQ_PREV_LIMS:-}" == *" $v "* && "$_IREQ_LIMITS" != *" $v "* ]] && zb_id_new_form "$v" "$_IREQ_LX"; then
                 _IREQ_FORM+=("$v was a limit in the last list — keep it a LIMIT: line starting \"Do not\", or remove it and give the new item a new id")
             elif [[ "${_IREQ_PREV_IDS:-}" == *"$v "* && "${_IREQ_PREV_LIMS:-}" != *" $v "* && "$_IREQ_LIMITS" == *" $v "* ]]; then
                 _IREQ_FORM+=("$v was a requirement in the last list — keep it a REQUIREMENT: line, or remove it and give the limit a new id")
@@ -313,6 +354,7 @@ _ireq_call_parsed() {
         done
         for v in "${_IREQ_FORM[@]+"${_IREQ_FORM[@]}"}"; do plain+="${plain:+; }$v"; done
         for v in "${_iv[@]+"${_iv[@]}"}"; do plain+="${plain:+; }$(zb_id_plain "$v" requirement)"; done
+        for v in "${_ivl[@]+"${_ivl[@]}"}"; do plain+="${plain:+; }$(zb_id_plain "$v" limit)"; done
         # #2569 review: after the one re-ask, a line still not in the issue's
         # words does not stop the run — it is kept, and intake's result says so.
         if [[ -z "$plain" && ( -z "$_unq$_usoft" || $_try -eq 2 ) ]]; then
@@ -404,6 +446,10 @@ _intake_requirements_json_v() {
     _ireq_call_parsed "$prompt" REQUIREMENT "$_IREQ_PREV_IDS" "$_IREQ_PREV_REMOVED" "$issue" "" || return 1
     ids=("${_IREQ_IDS[@]+"${_IREQ_IDS[@]}"}"); texts=("${_IREQ_TEXTS[@]+"${_IREQ_TEXTS[@]}"}")
     rm_ids=("${_IREQ_RM_IDS[@]+"${_IREQ_RM_IDS[@]}"}"); rm_why=("${_IREQ_RM_WHY[@]+"${_IREQ_RM_WHY[@]}"}")
+    # #2603: an old RQ-id limit this list does not keep is removed, so its id
+    # stays taken (a limit's id now starts with LM).
+    local _og
+    for _og in ${_IREQ_OLD_LIMS_GONE:-}; do rm_ids+=("$_og"); rm_why+=("a limit, now under an LM id or no longer listed (#2603)"); done
     local _lims="$_IREQ_LIMITS"
 
     listed=""
