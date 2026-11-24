@@ -233,6 +233,47 @@ Concretely:
 - `tests/e2e/fork-budget-test.sh` — the ADR-065 process budget still holds with the
   probes in place.
 
+## ZBUILD_PLATFORM Contract (amended 2026-11-21, Issue #2532)
+
+`ZBUILD_PLATFORM` is the target platform a work unit builds for. It says
+nothing about the host OS.
+
+Four statements govern its use:
+
+- **§C1** — `ZBUILD_PLATFORM` is the target platform a work unit builds for;
+  it carries a value such as `ios`, `node`, or `generic` and must never be
+  equated with a host OS name.
+- **§C2** — Every strategy that runs a work unit per platform (fanout, map over
+  `platforms`) sets `ZBUILD_PLATFORM` to that platform before invoking the
+  plugin. All other work units receive `ZBUILD_PLATFORM=generic`.
+- **§C3** — Sourcing the shared libraries (`scripts/lib/helpers.sh`,
+  `scripts/lib/compat.sh`, or any file they source) never changes
+  `ZBUILD_PLATFORM`. A value set by the dispatcher is preserved.
+- **§C4** — Nothing in `core/`, `plugins/`, or `scripts/` reads
+  `ZBUILD_PLATFORM` to make a host-OS decision.
+
+### Enforced by
+
+- `tests/integration/strategy-platform-env-test.sh` — §C1: asserts the work
+  unit baked by `_strategy_make_work_unit` exports `ZBUILD_PLATFORM=ios` and
+  `ZBUILD_PLATFORM=node` (target platform values, never host OS names); §C2:
+  asserts that the work unit baked for a platform exports that platform;
+  `tests/unit/map-strategy-test.sh` SPEC-5 that map over `platforms` passes the
+  element as the platform and any other dimension keeps `generic`; and
+  `tests/integration/map-review-lenses-dispatch-test.sh` SPEC-5, which reads the baked
+  `export ZBUILD_PLATFORM=` of a lens work unit, that it is `generic`;
+  §C3 (DSPLAT-1): asserts that `ZBUILD_PLATFORM=ios` survives sourcing
+  `scripts/lib/helpers.sh` in a fresh subprocess.
+- `tests/unit/zbuild-platform-host-guard-test.sh` — §C4: scans every bash
+  file under `core/`, `plugins/`, and `scripts/` (a `.sh` name, or a bash or sh
+  first line, as `scripts/zbuild`), comments set aside, and fails on
+  `ZBUILD_PLATFORM` assigned or compared to a host OS name (`macos`, `linux`,
+  `darwin`, `unknown`, in any case), a `case` on it with a host-name label, or
+  the same through a variable copied from it on an earlier line. A host name
+  in other text (a log message) is not a comparison. One scan function serves
+  every check. A value passed through a function argument or another file is
+  not followed: the scan reads each file on its own.
+
 ## References
 
 - [ADR-001 — Plugin Contract](ADR-001-plugin-contract.md) — manifest schema (extended here)

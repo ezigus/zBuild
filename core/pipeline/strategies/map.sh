@@ -341,15 +341,11 @@ _strategy_run_map() {
             [[ -z "$plugin_dir" ]] && continue
             any_plugin_found=true
 
-            # Only the platforms dimension populates ZBUILD_PLATFORM (ADR-009 §6
-            # env contract) — pass the element as the 4th arg so the platforms
-            # path stays byte-identical to fanout. For non-platform dimensions
-            # (lenses/mutants), pass the generic element identity via args 5+6
-            # (ZBUILD_MAP_ELEMENT / ZBUILD_MAP_DIMENSION, issue #1295, ADR-047 §2)
-            # so each work unit is distinguishable without hijacking ZBUILD_PLATFORM.
-            # An optional env_target (arg 7, from the template's `as:`) additionally
-            # sets a named env var to the element — a generic mapping the strategy
-            # applies without knowing which dimension or var it is.
+            # Only `platforms` sets ZBUILD_PLATFORM, to the target platform (never
+            # the host OS, ADR-009 §C2): the element is arg 4, as fanout passes it.
+            # Other dimensions (lenses, mutants) pass the element via args 5+6
+            # (ZBUILD_MAP_ELEMENT/DIMENSION, #1295, ADR-047 §2), and arg 7 (`as:`)
+            # names one more env var to set to it, whatever the dimension.
             _map_unit_element _u_elem "$_u_roles" "$role" "$element"
             # The group's cardinal comes from the runner (ZBUILD_SEQ_PREFIX).
             _u_label="${ZBUILD_SEQ_PREFIX:+${ZBUILD_SEQ_PREFIX}.$(( ${#wu_list[@]} + 1 ))}"

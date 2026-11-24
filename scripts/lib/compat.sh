@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ╔═══════════════════════════════════════════════════════════════════════════╗
-# ║  zBuild compat — Bash 5+ floor; platform detection                       ║
+# ║  zBuild compat — Bash 5+ floor; flock and sed probes                     ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 #
 # zBuild requires Bash 5+. No Bash 3.2 polyfills (cleared from legacy per
@@ -25,15 +25,6 @@ _zbuild_check_bash() {
     return 0
 }
 _zbuild_check_bash || return 1
-
-# ─── Platform detection ─────────────────────────────────────────────────────
-ZBUILD_OS="$(uname -s)"
-case "$ZBUILD_OS" in
-    Darwin)  ZBUILD_PLATFORM=macos ;;
-    Linux)   ZBUILD_PLATFORM=linux ;;
-    *)       ZBUILD_PLATFORM=unknown ;;
-esac
-export ZBUILD_OS ZBUILD_PLATFORM
 
 # ─── flock availability (Linux native, macOS via brew) ──────────────────────
 zbuild_has_flock() {

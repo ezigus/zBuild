@@ -7,7 +7,7 @@
 # only a value with other bytes goes to jq (E6 pins the line against jq's). The timestamp is read
 # from the shell's own clock, so it has milliseconds on every host and does not
 # depend on ZBUILD_PLATFORM, which a map work unit sets to its TARGET platform
-# (ADR-009 §6). The envelope a reader sees is pinned field by field.
+# (ADR-009 §C2). The envelope a reader sees is pinned field by field.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
