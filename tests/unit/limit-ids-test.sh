@@ -101,6 +101,7 @@ LIMIT: LIMIT-OUT1 Do not build a check of a CI job status through the GitHub Act
 LIMIT: LMNCI-1 Do not build a check of a CI job status through the GitHub Actions API'
 _a6="$(_asks)"
 assert_contains "[LI6] a 5-letter code is named, with a corrected id" "$_a6" "RQCLAIM-1's code CLAIM has 5 letters; it needs 3 or 4"
+assert_contains "[LI6] ...the corrected id has one prefix (review on PR #2604)" "$_a6" "for example RQCLM-1"
 assert_contains "[LI6] LIMIT-OUT1 is not in the id form, with an example" "$_a6" "LIMIT-OUT1 is not in the id form"
 _lacks() { if [[ "$2" == *"$3"* ]]; then assert_fail "$1" "it says: $3"; else assert_pass "$1"; fi; }
 _lacks "[LI6] ...never 'has no id'" "$_a6" "has no id"
@@ -188,7 +189,13 @@ print_test_section "LI13: LM is taken"
   _mk() { mkdir -p "$P/tool/$1"; printf 'id: %s\nname: %s\nkind: tool\nversion: 0.0.1\n%s\nhooks:\n  run: %s_run\ninputs: []\noutputs: []\n' "$1" "$1" "$2" "$1" > "$P/tool/$1/manifest.yaml"; printf '%s_run() { return 0; }\n' "$1" > "$P/tool/$1/plugin.sh"; }
   _mk intake $'id_prefix: RQ\nlimit_id_prefix: LM'; _mk alpha 'id_prefix: LM'
   zb_id_prefixes_check "$P"; echo "LI13|rc=$?" ) > "$TEST_TEMP_DIR/li13.out" 2>&1
+( source "$REPO_ROOT/scripts/lib/helpers.sh"; source "$REPO_ROOT/core/plugin-registry/registry.sh" 2>/dev/null; source "$REPO_ROOT/scripts/lib/item-ids.sh"
+  P="$TEST_TEMP_DIR/plugins13b"
+  _mk() { mkdir -p "$P/tool/$1"; printf 'id: %s\nname: %s\nkind: tool\nversion: 0.0.1\n%s\nhooks:\n  run: %s_run\ninputs: []\noutputs: []\n' "$1" "$1" "$2" "$1" > "$P/tool/$1/manifest.yaml"; printf '%s_run() { return 0; }\n' "$1" > "$P/tool/$1/plugin.sh"; }
+  _mk intake $'id_prefix: RQ\nlimit_id_prefix: LMX'
+  zb_id_prefixes_check "$P"; echo "LI13b|rc=$?" ) > "$TEST_TEMP_DIR/li13b.out" 2>&1
 assert_contains "[LI13] a stage taking LM is refused" "$(cat "$TEST_TEMP_DIR/li13.out")" "rc=1"
+assert_contains "[LI13] a limit prefix not of two capital letters is refused (review on PR #2604)" "$(cat "$TEST_TEMP_DIR/li13b.out")" "rc=1"
 
 cleanup_test_env
 print_test_results

@@ -175,7 +175,7 @@ zb_ids_check_v() {
 # stage without one, with one of another form, or sharing one, is an `error`
 # line; rc 1 when there is any. Read from the manifest index: no process.
 zb_id_prefixes_check() {
-    local root="$1" d m kind px rc=0
+    local root="$1" d m kind px rc=0 _ml
     local -a dirs=()
     local -A owner=()
     discover_plugins_into dirs "$root" || return 1
@@ -194,10 +194,15 @@ zb_id_prefixes_check() {
             owner[$px]="$m"
         fi
         # #2603: intake's limit prefix is taken too — read by the shell, as no
-        # program per manifest (ADR-065).
-        zb_id_prefix_v px "$m" limit_id_prefix
+        # program per manifest (ADR-065), and held to the same form.
+        px=""
+        while IFS= read -r _ml || [[ -n "$_ml" ]]; do
+            [[ "$_ml" =~ ^limit_id_prefix:[[:space:]]*([^[:space:]#]+) ]] && { px="${BASH_REMATCH[1]}"; break; }
+        done < "$m"
         if [[ -n "$px" ]]; then
-            if [[ -n "${owner[$px]:-}" ]]; then
+            if [[ ! "$px" =~ ^[A-Z][A-Z]$ ]]; then
+                error "$m: limit_id_prefix '$px' is not two capital letters (ADR-001)"; rc=1
+            elif [[ -n "${owner[$px]:-}" ]]; then
                 error "id prefix '$px' is declared by both ${owner[$px]} and $m — each is its own (ADR-001)"; rc=1
             else owner[$px]="$m"; fi
         fi
@@ -223,7 +228,7 @@ _zb_id_suggest_v() {
     code="${code//[^A-Za-z0-9]/}"; code="${code^^}"
     local _o
     for _o in "$px" ${_ZB_ID_OTHER_PX:-}; do
-        [[ "$code" == "$_o"??? ]] && { code="${code#"$_o"}"; break; }
+        [[ "$code" == "$_o"???* ]] && { code="${code#"$_o"}"; break; }
     done
     if (( ${#code} > 4 )); then
         out="${code:0:1}"
