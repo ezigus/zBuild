@@ -13,6 +13,10 @@ _ZBUILD_CLAIM_ACQUIRED=""        # the issue this run holds the claim on
 _ZBUILD_COORDINATOR_DIR=""       # the coordinator that gave it
 _ZBUILD_CLAIM_THEIR_HOLDER=""    # who holds the claim that refused this run
 
+# ADR-005 §3 (#2533): heartbeat and staleness thresholds.
+: "${ZBUILD_CLAIM_HEARTBEAT_S:=600}"   # seconds between heartbeat flushes
+: "${ZBUILD_CLAIM_STALE_S:=1800}"      # seconds before a cross-machine claim is stale
+
 # The coordinator: the first claim-coordinator plugin under the plugins root,
 # found as every other plugin is.
 _zbuild_claim_coordinator_v() {
@@ -112,7 +116,76 @@ zbuild_claim_acquire() {
             local _zca_rc=0
             _ZBUILD_CLAIM_RETRIED=1 zbuild_claim_acquire "$issue" "$state_dir" || _zca_rc=$?
             return "$_zca_rc"
+        elif [[ -z "$_zca_own" && -z "${_ZBUILD_CLAIM_RETRIED:-}" ]]; then
+            # ADR-005 §3 (#2533): cross-machine stale takeover.
+            # Lazily source run-status-comment.sh so its functions are available;
+            # the loaded guard prevents double-sourcing.
+            if [[ -z "${_ZBUILD_RUN_STATUS_COMMENT_LOADED:-}" ]]; then
+                local _zca_rsc_path="${_ZBUILD_ROOT:-}/scripts/lib/run-status-comment.sh"
+                if [[ ! -f "$_zca_rsc_path" ]]; then
+                    printf 'zbuild_claim_acquire: run-status-comment.sh not found (%s) — refusing cross-machine takeover\n' \
+                        "$_ZBUILD_CLAIM_THEIR_HOLDER" >&2
+                    return 1
+                fi
+                # shellcheck source=../../scripts/lib/run-status-comment.sh
+                source "$_zca_rsc_path" 2>/dev/null || true
+                if ! declare -F rsc_takeover_note_post >/dev/null 2>&1; then
+                    printf 'zbuild_claim_acquire: rsc_takeover_note_post not defined — refusing cross-machine takeover (%s)\n' \
+                        "$_ZBUILD_CLAIM_THEIR_HOLDER" >&2
+                    return 1
+                fi
+            fi
+            # Determine the age of the claim from the heartbeat line, or fall back
+            # to the label-added timestamp. Call via temp file so the functions run in
+            # THIS shell (a $(...) subshell would prevent mock side-effects from
+            # propagating back in tests, and the functions need to touch globals).
+            local _zca_slug; _zca_slug="$(zbuild_repo_slug "${_ZBUILD_ROOT:-$PWD}" 2>/dev/null || true)"
+            local _zca_hb_tf; _zca_hb_tf="$(mktemp "${TMPDIR:-$state_dir}/claim-hb.XXXXXX" 2>/dev/null)" || _zca_hb_tf=""
+            local _zca_hb_ts=""
+            rsc_heartbeat_find "$state_dir" "$_zca_slug" "$issue" > "${_zca_hb_tf:-/dev/null}" 2>/dev/null || true
+            [[ -n "$_zca_hb_tf" ]] && { IFS= read -r -d '' _zca_hb_ts < "$_zca_hb_tf" || true; rm -f "$_zca_hb_tf"; }
+            local _zca_ref_ts="$_zca_hb_ts"
+            local _zca_used_label=0
+            if [[ -z "$_zca_ref_ts" ]]; then
+                local _zca_lb_tf; _zca_lb_tf="$(mktemp "${TMPDIR:-$state_dir}/claim-lb.XXXXXX" 2>/dev/null)" || _zca_lb_tf=""
+                rsc_label_added_at "$state_dir" "$_zca_slug" "$issue" > "${_zca_lb_tf:-/dev/null}" 2>/dev/null || true
+                [[ -n "$_zca_lb_tf" ]] && { IFS= read -r -d '' _zca_ref_ts < "$_zca_lb_tf" || true; rm -f "$_zca_lb_tf"; }
+                _zca_used_label=1
+            fi
+            if [[ -z "$_zca_ref_ts" ]]; then
+                # No timestamp available — fail closed rather than taking over blindly.
+                printf 'zbuild_claim_acquire: no heartbeat or label-added timestamp for %s — refusing (fail closed)\n' \
+                    "$_ZBUILD_CLAIM_THEIR_HOLDER" >&2
+                return 1
+            fi
+            local _zca_ref_epoch=0
+            _rsc_epoch_to _zca_ref_epoch "$_zca_ref_ts" 2>/dev/null || true
+            local _zca_now; _zca_now="$(date +%s)"
+            local _zca_age=$(( _zca_now - _zca_ref_epoch ))
+            if (( _zca_ref_epoch <= 0 || _zca_age < 0 )); then
+                printf 'zbuild_claim_acquire: could not parse timestamp %s — refusing (fail closed)\n' \
+                    "$_zca_ref_ts" >&2
+                return 1
+            fi
+            if (( _zca_age >= ZBUILD_CLAIM_STALE_S )); then
+                # Stale: post a takeover note, release, re-acquire once.
+                rsc_takeover_note_post "$state_dir" "$_zca_slug" "$issue" "$_ZBUILD_CLAIM_THEIR_HOLDER" 2>/dev/null || true
+                plugin_hook_call "$_ZBUILD_COORDINATOR_DIR" release "$issue" >/dev/null 2>&1 || true
+                local _zca_rc2=0
+                _ZBUILD_CLAIM_RETRIED=1 zbuild_claim_acquire "$issue" "$state_dir" || _zca_rc2=$?
+                return "$_zca_rc2"
+            else
+                # Fresh: refuse, naming the holder.
+                printf 'zbuild_claim_acquire: issue #%s is held by %s (not stale yet) — refused\n' \
+                    "$issue" "$_ZBUILD_CLAIM_THEIR_HOLDER" >&2
+                return 1
+            fi
         fi
+    fi
+    # Refused — holder named in _ZBUILD_CLAIM_THEIR_HOLDER; print it for the caller.
+    if [[ -n "$_ZBUILD_CLAIM_THEIR_HOLDER" ]]; then
+        printf 'zbuild_claim_acquire: issue #%s is held by %s — refused\n' \
+            "$issue" "$_ZBUILD_CLAIM_THEIR_HOLDER" >&2
     fi
     return 1
 }

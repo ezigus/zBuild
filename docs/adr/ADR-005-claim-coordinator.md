@@ -66,6 +66,28 @@ The claim is advisory across machines; this machine's admission lock still seria
 - A release that fails emits `pipeline.claim.release_failed` and never changes the run's exit status; the
   coordinator says on stderr how to clear the claim by hand.
 
+### §3 (amended 2026-11-24, #2533) — Heartbeat and cross-machine staleness
+
+- **§3a Heartbeat interval.** While a run holds the claim, the run-status sidecar flushes a fresh body
+  to GitHub every `ZBUILD_CLAIM_HEARTBEAT_S` seconds (default 600) even when no new stage events have
+  arrived. The first visible line of a running body is `still running — <ISO8601> — now: <stage>` (or
+  without the stage suffix when no stage is active), updated on every flush.
+- **§3b Staleness threshold.** A cross-machine claim is considered stale when its heartbeat timestamp
+  is at least `ZBUILD_CLAIM_STALE_S` seconds old (default 1800). `ZBUILD_CLAIM_STALE_S` and
+  `ZBUILD_CLAIM_HEARTBEAT_S` are set as shell defaults (`:-` expansion) in `core/claim/claim.sh`.
+- **§3c Always-claimed when no heartbeat.** A claim with no heartbeat line in the run-status comment
+  falls back to the `zbuild:claimed` label's `added` event timestamp (GitHub issues events API). If
+  that timestamp is also unavailable (API error), the run refuses rather than taking over blindly
+  (fail closed).
+- **§3d Stale takeover.** When a cross-machine claim's reference timestamp (heartbeat or label-added)
+  is at least `ZBUILD_CLAIM_STALE_S` old: `rsc_takeover_note_post` posts "took over a stale claim
+  from <holder>" as a new issue comment, the old claim is released, and the new run acquires once.
+  The takeover is attempted at most once per `zbuild_claim_acquire` call chain
+  (`_ZBUILD_CLAIM_RETRIED` guard).
+- **§3e Lazy source.** `zbuild_claim_acquire` sources `run-status-comment.sh` lazily when a
+  cross-machine stale check is needed; it refuses if the file cannot be sourced or
+  `rsc_takeover_note_post` is not defined after sourcing.
+
 ### §4 — Finding and calling the coordinator
 
 - The coordinator is the claim-coordinator plugin found under the plugins root
@@ -168,6 +190,16 @@ A claim hook whose reply says `"acquired": true` holds the claim, whatever the h
 - **A run whose GitHub login is rejected stops at once and says so.** Two GitHub calls in a row refused with "Bad credentials" or HTTP 401 leave a marker (`rsc_gh`). Two, so a single short-lived 401 does not end a long run, and a call that works in between starts the count again. The marker is cleared when a run starts, so a resume, its token since fixed, is not stopped by it. The status sidecar then stops the run once. The run ends with the word `github_login_rejected`, with the plain words "GitHub no longer accepts this run's login", releasing what it holds on its way out. Before, the run went on for two more rounds with its status comment frozen. This works where the status sidecar runs (the run-status comment is on). A run with it off is not stopped by the engine's other GitHub calls, and its clean-up still covers the label.
 
 ## Enforced by
+
+- §3 amendment 2026-11-24 (#2533: heartbeat interval, staleness threshold, stale takeover, label-added fallback):
+  - §3a heartbeat interval default (600 s) → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-7
+  - §3b staleness threshold default (1800 s) → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-8
+  - §3b stale takeover after `ZBUILD_CLAIM_STALE_S` → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-4
+  - §3b fresh claim refused → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-3
+  - §3c label-added fallback → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-5
+  - §3d takeover note posted → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-4
+  - §3 same-machine dead-pid path runs before heartbeat check → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-6
+  - §3 unclaimed issue acquired without heartbeat → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-12
 
 - §1 §3 amendment 2026-11-23 (#2589: the label always cleared; a rejected login stops the run) → `tests/unit/claim-cleanup-test.sh` CL1–CL8; `tests/unit/claim-acquire-release-test.sh` S1–S4; `tests/integration/claim-release-on-exit-test.sh` C8, C9; `tests/integration/claim-holder-status-comment-test.sh` H1 (the holder carries the pid); `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh` (the refusal gives the command)
 

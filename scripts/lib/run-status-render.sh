@@ -275,6 +275,28 @@ rsc_render_row() {
     printf '%s' "$line"
 }
 
+# ─── rsc_heartbeat_at_v <var> <comment_body> — parse ISO8601 from heartbeat line ─
+# Pure: extracts the timestamp from the first `still running — <ts>` line in the
+# body, writing it to <var>. Writes "" when no heartbeat line is found.
+rsc_heartbeat_at_v() {
+    local -n _rha="$1"
+    _rha=""
+    local _rha_l
+    while IFS= read -r _rha_l; do
+        case "$_rha_l" in
+            "still running — "*)
+                local _rha_rest="${_rha_l#still running — }"
+                local _rha_ts="${_rha_rest%% *}"
+                # Accept only ISO8601 Z-terminated timestamps
+                [[ "$_rha_ts" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || continue
+                _rha="$_rha_ts"
+                return 0
+                ;;
+        esac
+    done <<< "$2"
+    return 0
+}
+
 # ─── rsc_render_header <model_json> <state_dir> [status_override] ───────────
 rsc_render_header() {
     local model="$1" state_dir="$2" override="${3:-}"
@@ -326,6 +348,20 @@ rsc_render_header() {
     holder="${holder//[[:cntrl:]]/}"
     [[ "$status" == running ]] || holder=""
     [[ -n "$holder" ]] && printf '%s%s -->\n' "$_RSC_HOLDER_PREFIX" "${holder//-->/}"
+    # ADR-064 (#2533): heartbeat line — first visible line when running, so the
+    # reader sees a fresh timestamp and the stage it is on without opening the log.
+    # `current` is "<seq> <stage>"; the heartbeat line names only the stage.
+    if [[ "$status" == "running" ]]; then
+        local _hb_ts; _hb_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        # Strip the seq prefix ("1 build" → "build"); leave as-is when no space.
+        local _hb_stage="${current#* }"
+        [[ "$_hb_stage" == "$current" ]] && _hb_stage="$current"
+        if [[ -n "$current" ]]; then
+            printf 'still running — %s — now: %s\n' "$_hb_ts" "$_hb_stage"
+        else
+            printf 'still running — %s\n' "$_hb_ts"
+        fi
+    fi
     printf '### zbuild run `%s` · issue #%s · **%s**\n' "$run_id" "$issue" "$status"
     local meta="engine \`${sha}\`"
     [[ -n "$branch" ]] && meta+=" (\`${branch}\`)"
@@ -440,7 +476,8 @@ rsc_finalize_body() {
     # a body the runner already finished (or post-run already finalized) is
     # returned unchanged, so two finalizers cannot stack two closing lines.
     printf '%s\n' "$body" | awk -v st="$status" -v closing="$closing" '
-        NR <= 3 && /· \*\*running\*\*/ { sub(/\*\*running\*\*/, "**" st "**"); hit = 1 }
+        NR <= 4 && /· \*\*running\*\*/ { sub(/\*\*running\*\*/, "**" st "**"); hit = 1 }
+        /^still running — / { next }
         /^current: / { next }
         { print }
         END { if (hit && closing != "") print closing }'

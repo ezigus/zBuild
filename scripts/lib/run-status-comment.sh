@@ -225,6 +225,51 @@ rsc_holder_find() {
     return 0
 }
 
+# ─── rsc_heartbeat_find <state_dir> <slug> <issue> — ISO8601 of latest heartbeat ─
+# Fetches the newest trusted run-status comment and extracts the heartbeat
+# timestamp from it. Prints ISO8601 or "" when no heartbeat line found.
+rsc_heartbeat_find() {
+    local state_dir="$1" slug="$2" issue="$3" out body="" ts=""
+    out="$(mktemp "${TMPDIR:-$state_dir}/rsc-hbfind.XXXXXX")" || return 0
+    if rsc_gh "$state_dir" "$out" api --paginate "repos/${slug}/issues/${issue}/comments" 2>/dev/null; then
+        body="$(jq -rs --arg m "$_RSC_MARKER_PREFIX" --arg h "$_RSC_HOLDER_PREFIX" '
+            [.[][]? | (.author_association // "") as $a
+             | select(.user.login == "github-actions[bot]" or $a == "OWNER" or $a == "MEMBER" or $a == "COLLABORATOR")
+             | (.body // "") | select(startswith($m) and contains($h))] | last // empty' "$out" 2>/dev/null || true)"
+    fi
+    rm -f "$out"
+    rsc_heartbeat_at_v ts "$body"
+    printf '%s' "$ts"
+    return 0
+}
+
+# ─── rsc_label_added_at <state_dir> <slug> <issue> — ISO8601 when zbuild:claimed last added ─
+# Uses the GitHub issues events API to find when `zbuild:claimed` was last added.
+# Prints ISO8601 or "" when unavailable.
+rsc_label_added_at() {
+    local state_dir="$1" slug="$2" issue="$3" out ts=""
+    out="$(mktemp "${TMPDIR:-$state_dir}/rsc-labelat.XXXXXX")" || return 0
+    if rsc_gh "$state_dir" "$out" api --paginate "repos/${slug}/issues/${issue}/events" 2>/dev/null; then
+        ts="$(jq -rs '[.[][]? | select(.event == "labeled" and (.label.name // "") == "zbuild:claimed") | .created_at] | last // empty' "$out" 2>/dev/null || true)"
+    fi
+    rm -f "$out"
+    # Normalise to Z-terminated ISO8601 (GitHub returns e.g. 2026-11-24T12:00:00Z)
+    printf '%s' "$ts"
+    return 0
+}
+
+# ─── rsc_takeover_note_post <state_dir> <slug> <issue> <holder> — post takeover note ─
+# Posts "took over a stale claim from <holder>" as a new issue comment via rsc_gh.
+rsc_takeover_note_post() {
+    local state_dir="$1" slug="$2" issue="$3" holder="$4" out bf
+    bf="$(mktemp "${TMPDIR:-$state_dir}/rsc-takeover.XXXXXX")" || return 0
+    printf 'took over a stale claim from %s\n' "$holder" > "$bf"
+    out="$(mktemp "${TMPDIR:-$state_dir}/rsc-takeover-out.XXXXXX")" || { rm -f "$bf"; return 0; }
+    rsc_gh "$state_dir" "$out" api "repos/${slug}/issues/${issue}/comments" -F "body=@${bf}" >/dev/null 2>&1 || true
+    rm -f "$bf" "$out"
+    return 0
+}
+
 # ─── rsc_claim_cleanup <state_dir> <slug> <issue> <holder> (#2589) ──────────
 # CI's clean-up: remove zbuild:claimed when the issue's newest run-status
 # comment names <holder> (this run) — the run's own release can fail (a revoked
@@ -347,7 +392,7 @@ _rsc_has_type() {   # _rsc_has_type <events> <regex-of-types>
 # them. TERM/INT → final render; parent death → final render marked as such.
 rsc_tail_loop() {
     local events="$1" state_dir="$2" parent="$3" slug="$4" issue="$5" run_id="$6"
-    local last_size=-1 size dirty=0 seen_start=0 terminal_seen=0 last_flush=0 now flushed_once=0 _rsc_login_stopped=0
+    local last_size=-1 size dirty=0 seen_start=0 terminal_seen=0 last_flush=0 now flushed_once=0 _rsc_login_stopped=0 last_heartbeat=0
     trap '_rsc_on_stop' TERM INT
     trap '' HUP
     while :; do
@@ -381,7 +426,16 @@ rsc_tail_loop() {
         if [[ $dirty -eq 1 && $seen_start -eq 1 ]] && \
            [[ $flushed_once -eq 0 || $terminal_now -eq 1 || $(( now - last_flush )) -ge "${ZBUILD_STATUS_COMMENT_MIN_INTERVAL%.*}" ]]; then
             rsc_flush "$events" "$state_dir" "$slug" "$issue" "$run_id"
-            dirty=0; flushed_once=1; last_flush="$now"
+            dirty=0; flushed_once=1; last_flush="$now"; last_heartbeat="$now"
+        fi
+        # ADR-064 (#2533): heartbeat — force a flush on the heartbeat interval even
+        # when dirty==0, so the timestamp in the body stays fresh while the run is live.
+        if [[ $seen_start -eq 1 && $terminal_seen -eq 0 && $flushed_once -eq 1 ]]; then
+            local _hb_interval="${ZBUILD_CLAIM_HEARTBEAT_S:-600}"
+            if (( now - last_heartbeat >= ${_hb_interval%.*} )); then
+                rsc_flush "$events" "$state_dir" "$slug" "$issue" "$run_id"
+                last_heartbeat="$now"; last_flush="$now"
+            fi
         fi
         # #2589 (ADR-005): GitHub rejected the run's login — nothing it does
         # can reach GitHub again. Stop it once; its exit trap releases what it
