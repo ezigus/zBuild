@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Guard: no code in core/, plugins/, or scripts/ uses ZBUILD_PLATFORM as a host
-# OS variable (ADR-009, issue #2532 DSPLAT-2).
+# OS variable (ADR-009 §C4, issue #2532 DSPLAT-2).
 #
 # ZBUILD_PLATFORM is the target platform a work unit builds for. It must never
-# be equated with a host OS name (macos, linux, unknown). This guard scans for
-# lines where ZBUILD_PLATFORM appears on the same line as a host OS name in a
-# non-comment context, catching both assignments and comparisons. Full-line
-# comments and trailing inline comments are excluded before the host-OS check.
+# be equated with a host OS name (macos, linux, darwin, unknown, in any case).
+# One scan (_zbp_scan) serves every check: it flags ZBUILD_PLATFORM assigned
+# or compared to a host name, a case on it with a host-name label, and the same
+# through a variable copied from it. It reads every bash file (by name, or by
+# its first line), with comments set aside.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,36 +34,44 @@ print_test_section "[DSPLAT-2] detector fixture tests"
 # aside first: a whole comment line, and a trailing one. Every scan here uses
 # this one function, so the single-file and multi-file checks cannot drift.
 _zbp_scan() {
-    local -a _zbp_files=()
-    mapfile -t _zbp_files < <(grep -rlE '\bZBUILD_PLATFORM\b' "$@" --include='*.sh' 2>/dev/null || true)
+    local -a _zbp_c=() _zbp_files=(); local _zbp_f _zbp_l
+    mapfile -t _zbp_c < <(grep -rlE '\bZBUILD_PLATFORM\b' "$@" 2>/dev/null || true)
+    # Bash files: by name, or by a bash or sh first line (scripts/zbuild).
+    for _zbp_f in ${_zbp_c[@]+"${_zbp_c[@]}"}; do
+        if [[ "$_zbp_f" == *.sh ]]; then _zbp_files+=("$_zbp_f"); continue; fi
+        _zbp_l=""; IFS= read -r _zbp_l < "$_zbp_f" 2>/dev/null || true
+        [[ "$_zbp_l" =~ ^\#!.*(/|[[:space:]])(ba)?sh([[:space:]]|$) ]] && _zbp_files+=("$_zbp_f")
+    done
     (( ${#_zbp_files[@]} > 0 )) || return 0
     awk '
-        FNR == 1 { split("", copy) }
-        { line = $0; sub(/^[[:space:]]*#.*$/, "", line); sub(/[[:space:]]+#.*$/, "", line) }
-        line == "" { next }
-        { hostos = (line ~ /(^|[^A-Za-z0-9_])(macos|linux|unknown)([^A-Za-z0-9_]|$)/) }
-        line ~ /(^|[^A-Za-z0-9_])ZBUILD_PLATFORM([^A-Za-z0-9_]|$)/ {
-            if (hostos) { print FILENAME ":" FNR ":" line; next }
-            if (match(line, /[A-Za-z_][A-Za-z0-9_]*=["\047]?\$\{?ZBUILD_PLATFORM/)) {
-                v = substr(line, RSTART, RLENGTH); sub(/=.*/, "", v); copy[v] = 1
+        function cmp(t) { return t ~ /(==|!=|=~)[[:space:]]*["\047]?(macos|linux|darwin|unknown)([^a-z0-9_]|$)/ \
+                              || t ~ /(^|[^a-z0-9_])(macos|linux|darwin|unknown)["\047]?[[:space:]]*(==|!=)/ }
+        function label(t) { return t ~ /(^|[[:space:](|])(macos|linux|darwin|unknown)[[:space:]]*[|)]/ }
+        function names(t,  v) { if (t ~ /(^|[^a-z0-9_])zbuild_platform([^a-z0-9_]|$)/) return 1
+                                for (v in copy) if (t ~ ("\\$\\{?" v "([^a-z0-9_]|$)")) return 1
+                                return 0 }
+        FNR == 1 { split("", copy); incase = 0 }
+        { line = $0; sub(/^[[:space:]]*#.*$/, "", line); sub(/[[:space:]]+#.*$/, "", line); t = tolower(line) }
+        t == "" { next }
+        incase { if (t ~ /(^|[^a-z0-9_])esac([^a-z0-9_]|$)/) { incase = 0; next }
+                 if (label(t)) { print FILENAME ":" FNR ":" line; next } }
+        names(t) {
+            if (t ~ /zbuild_platform=["\047]?(macos|linux|darwin|unknown)([^a-z0-9_]|$)/ || cmp(t) || label(t)) { print FILENAME ":" FNR ":" line; next }
+            if (t ~ /(^|[^a-z0-9_])case[[:space:]]/) incase = 1
+            if (t ~ /zbuild_platform/ && match(t, /[a-z_][a-z0-9_]*=["\047]?\$\{?zbuild_platform/)) {
+                v = substr(t, RSTART, RLENGTH); sub(/=.*/, "", v); copy[v] = 1
             }
-            next
         }
-        hostos { for (v in copy) if (line ~ ("\\$\\{?" v "([^A-Za-z0-9_]|$)")) { print FILENAME ":" FNR ":" line; next } }
     ' "${_zbp_files[@]}"
 }
 
-# Helper: run the guard scan on a single temporary fixture file.
-# Prints the offending lines found (empty string = clean).
-# Single-file grep -n outputs "linenum:content"; filter comments with ^[0-9]+:.
-_zbp_scan_file() { _zbp_scan "$1"; }
 
 # Given: a fixture file with ZBUILD_PLATFORM assigned to a host OS name
 _zbp_fixture="$TEST_TEMP_DIR/fixture.sh"
 
 # When: fixture assigns macos to ZBUILD_PLATFORM
 printf '    Darwin)  ZBUILD_PLATFORM=macos ;;\n' > "$_zbp_fixture"
-_zbp_hit="$(_zbp_scan_file "$_zbp_fixture")"
+_zbp_hit="$(_zbp_scan "$_zbp_fixture")"
 # Then: guard finds the violation (non-empty output)
 if [[ -n "$_zbp_hit" ]]; then
     assert_pass "[DSPLAT-2] detector catches ZBUILD_PLATFORM=macos (assignment)"
@@ -73,7 +82,7 @@ fi
 
 # When: fixture assigns linux to ZBUILD_PLATFORM
 printf '    Linux)   ZBUILD_PLATFORM=linux ;;\n' > "$_zbp_fixture"
-_zbp_hit="$(_zbp_scan_file "$_zbp_fixture")"
+_zbp_hit="$(_zbp_scan "$_zbp_fixture")"
 # Then: guard finds the violation
 if [[ -n "$_zbp_hit" ]]; then
     assert_pass "[DSPLAT-2] detector catches ZBUILD_PLATFORM=linux (assignment)"
@@ -84,7 +93,7 @@ fi
 
 # When: fixture assigns unknown to ZBUILD_PLATFORM
 printf '    *)       ZBUILD_PLATFORM=unknown ;;\n' > "$_zbp_fixture"
-_zbp_hit="$(_zbp_scan_file "$_zbp_fixture")"
+_zbp_hit="$(_zbp_scan "$_zbp_fixture")"
 # Then: guard finds the violation
 if [[ -n "$_zbp_hit" ]]; then
     assert_pass "[DSPLAT-2] detector catches ZBUILD_PLATFORM=unknown (assignment)"
@@ -95,7 +104,7 @@ fi
 
 # When: fixture reads ZBUILD_PLATFORM in a comparison with a host OS name
 printf '[[ "$ZBUILD_PLATFORM" == "macos" ]] && do_mac_thing\n' > "$_zbp_fixture"
-_zbp_hit="$(_zbp_scan_file "$_zbp_fixture")"
+_zbp_hit="$(_zbp_scan "$_zbp_fixture")"
 # Then: guard finds the violation
 if [[ -n "$_zbp_hit" ]]; then
     assert_pass "[DSPLAT-2] detector catches \$ZBUILD_PLATFORM == macos (comparison)"
@@ -106,7 +115,7 @@ fi
 
 # When: fixture uses ZBUILD_PLATFORM against linux in a case statement
 printf 'case "$ZBUILD_PLATFORM" in linux) use_gnu ;; esac\n' > "$_zbp_fixture"
-_zbp_hit="$(_zbp_scan_file "$_zbp_fixture")"
+_zbp_hit="$(_zbp_scan "$_zbp_fixture")"
 # Then: guard finds the violation
 if [[ -n "$_zbp_hit" ]]; then
     assert_pass "[DSPLAT-2] detector catches case on \$ZBUILD_PLATFORM with linux"
@@ -117,7 +126,7 @@ fi
 
 # When: fixture uses ZBUILD_PLATFORM=ios (a target platform, not a host OS name)
 printf 'export ZBUILD_PLATFORM=ios\n' > "$_zbp_fixture"
-_zbp_hit="$(_zbp_scan_file "$_zbp_fixture")"
+_zbp_hit="$(_zbp_scan "$_zbp_fixture")"
 # Then: guard finds no violation (ios is a target platform, not a host OS name)
 if [[ -z "$_zbp_hit" ]]; then
     assert_pass "[DSPLAT-2] detector ignores ZBUILD_PLATFORM=ios (target platform)"
@@ -128,7 +137,7 @@ fi
 
 # When: fixture mentions ZBUILD_PLATFORM_OVERRIDE with macos (different variable)
 printf 'ZBUILD_PLATFORM_OVERRIDE=macos\n' > "$_zbp_fixture"
-_zbp_hit="$(_zbp_scan_file "$_zbp_fixture")"
+_zbp_hit="$(_zbp_scan "$_zbp_fixture")"
 # Then: guard finds no violation (ZBUILD_PLATFORM_OVERRIDE is a different variable)
 if [[ -z "$_zbp_hit" ]]; then
     assert_pass "[DSPLAT-2] detector ignores ZBUILD_PLATFORM_OVERRIDE=macos"
@@ -139,7 +148,7 @@ fi
 
 # When: fixture is a comment explaining the contract
 printf '# ZBUILD_PLATFORM is not a host OS; macos and linux are not valid values\n' > "$_zbp_fixture"
-_zbp_hit="$(_zbp_scan_file "$_zbp_fixture")"
+_zbp_hit="$(_zbp_scan "$_zbp_fixture")"
 # Then: guard finds no violation (comment lines are excluded)
 if [[ -z "$_zbp_hit" ]]; then
     assert_pass "[DSPLAT-2] detector ignores comment lines mentioning host OS names"
@@ -151,7 +160,7 @@ fi
 # When: code line has ZBUILD_PLATFORM where the host OS name appears only in a trailing
 # inline comment (the code itself carries a target platform, not a host OS name)
 printf 'export ZBUILD_PLATFORM="${platform}"  # was linux in compat.sh\n' > "$_zbp_fixture"
-_zbp_hit="$(_zbp_scan_file "$_zbp_fixture")"
+_zbp_hit="$(_zbp_scan "$_zbp_fixture")"
 # Then: guard does NOT flag this — host OS name is only in the inline comment
 if [[ -z "$_zbp_hit" ]]; then
     assert_pass "[DSPLAT-2] detector ignores host OS name that appears only in a trailing inline comment"
@@ -209,6 +218,24 @@ else
     assert_pass "[DSPLAT-2] the multi-file scan sets comments aside"
 fi
 rm -f "$_zbp_scan_dir/scripts/lib/fake-comments.sh"
+
+# Review of #2532: forms a one-line scan misses, and one it must not flag.
+_zbp_d="$_zbp_scan_dir/scripts/lib"
+_zbp_case() {  # <label> <file> <content> <want: hit|clean>
+    printf '%b' "$3" > "$_zbp_d/$2"
+    local _h; _h="$(_zbp_scan "$_zbp_scan_dir/core" "$_zbp_scan_dir/plugins" "$_zbp_scan_dir/scripts")"
+    if [[ "$4" == hit ]]; then
+        [[ "$_h" == *"$2"* ]] && assert_pass "[DSPLAT-2] $1" || assert_fail "[DSPLAT-2] $1" "no hit: ${_h:-<none>}"
+    else
+        [[ "$_h" == *"$2"* ]] && assert_fail "[DSPLAT-2] $1" "hit: $_h" || assert_pass "[DSPLAT-2] $1"
+    fi
+    rm -f "$_zbp_d/$2"
+}
+_zbp_case "a case on ZBUILD_PLATFORM with a host-OS label is caught" fake-case.sh 'case "$ZBUILD_PLATFORM" in\n    macos) use_bsd ;;\nesac\n' hit
+_zbp_case "...and a case on a copy of it" fake-case2.sh '_p="$ZBUILD_PLATFORM"\ncase "$_p" in\n    linux) : ;;\nesac\n' hit
+_zbp_case "a host name in any case, darwin included, is caught" fake-darwin.sh '[[ "$ZBUILD_PLATFORM" == Darwin ]] && :\n' hit
+_zbp_case "a bash file with no .sh name is scanned" fake-cli '#!/usr/bin/env bash\n[[ "$ZBUILD_PLATFORM" == macos ]] && :\n' hit
+_zbp_case "the word unknown in a message is not a comparison" fake-log.sh 'log "platform=$ZBUILD_PLATFORM status=unknown"\n' clean
 
 # Given: the violating file is removed (clean state)
 rm -f "$_zbp_inject"

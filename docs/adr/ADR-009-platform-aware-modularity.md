@@ -257,19 +257,22 @@ Four statements govern its use:
 - `tests/integration/strategy-platform-env-test.sh` — §C1: asserts the work
   unit baked by `_strategy_make_work_unit` exports `ZBUILD_PLATFORM=ios` and
   `ZBUILD_PLATFORM=node` (target platform values, never host OS names); §C2:
-  asserts that every per-platform invocation receives `ZBUILD_PLATFORM=<platform>`,
-  and `tests/unit/map-strategy-test.sh` SPEC-5 that a work unit of any other
-  dimension keeps `ZBUILD_PLATFORM=generic`;
+  asserts that the work unit baked for a platform exports that platform;
+  `tests/unit/map-strategy-test.sh` SPEC-5 that map over `platforms` passes the
+  element as the platform and any other dimension keeps `generic`; and
+  `tests/integration/map-review-lenses-dispatch-test.sh` SPEC-5, which reads the baked
+  `export ZBUILD_PLATFORM=` of a lens work unit, that it is `generic`;
   §C3 (DSPLAT-1): asserts that `ZBUILD_PLATFORM=ios` survives sourcing
   `scripts/lib/helpers.sh` in a fresh subprocess.
-- `tests/unit/zbuild-platform-host-guard-test.sh` — §C4: scans all `.sh`
-  files under `core/`, `plugins/`, and `scripts/` and fails if any non-comment
-  line reads `ZBUILD_PLATFORM` alongside a host OS name (`macos`, `linux`,
-  `unknown`), or if a variable copied from `ZBUILD_PLATFORM` is compared with
-  one on a later line (a two-line indirection). One scan function serves every
-  check, so the single-file and multi-file checks read comments the same way.
-  A value passed through a function argument or another file is not followed:
-  the scan reads each file on its own.
+- `tests/unit/zbuild-platform-host-guard-test.sh` — §C4: scans every bash
+  file under `core/`, `plugins/`, and `scripts/` (a `.sh` name, or a bash or sh
+  first line, as `scripts/zbuild`), comments set aside, and fails on
+  `ZBUILD_PLATFORM` assigned or compared to a host OS name (`macos`, `linux`,
+  `darwin`, `unknown`, in any case), a `case` on it with a host-name label, or
+  the same through a variable copied from it on an earlier line. A host name
+  in other text (a log message) is not a comparison. One scan function serves
+  every check. A value passed through a function argument or another file is
+  not followed: the scan reads each file on its own.
 
 ## References
 
