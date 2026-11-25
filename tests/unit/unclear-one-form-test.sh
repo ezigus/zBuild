@@ -81,10 +81,10 @@ _blk=""; _has zb_unclear_judge_block_v && zb_unclear_judge_block_v _blk "$CARRIE
 _bf="$(tr -s '[:space:]' ' ' <<< "$_blk")"
 assert_contains "[U4] each carried question shown" "$_bf" "$NEW"
 assert_contains "[U4] ...an old one too" "$_bf" "UNCLEAR: RQOLD-1 | is the flag needed? | it is"
-assert_contains "[U4] answered, quoting the issue" "$_bf" "UNCLEAR <id>: answered | WHY: <how the issue answers it> | QUOTE: <the issue's words that answer it>"
+assert_contains_lines "[U4] answered, quoting the issue" "$_bf" $'UNCLEAR <id>: answered\nwhy: <how the issue answers it>\nquote: <the issue\'s words that answer it>'
 assert_contains "[U4] open" "$_bf" "UNCLEAR <id>: open"
-assert_contains "[U4] not needed" "$_bf" "UNCLEAR <id>: not needed | WHY: <the requirement it was about is gone or rewritten>"
-assert_contains "[U4] one line for every question" "$_bf" "One line for every question"
+assert_contains_lines "[U4] not needed" "$_bf" $'UNCLEAR <id>: not needed\nwhy: <the requirement it was about is gone or rewritten>'
+assert_contains "[U4] one answer for every question" "$_bf" "One answer for every question"
 _blk=""; _has zb_unclear_judge_block_v && zb_unclear_judge_block_v _blk ""
 assert_eq "[U4] no question carried: no block" "" "$_blk"
 

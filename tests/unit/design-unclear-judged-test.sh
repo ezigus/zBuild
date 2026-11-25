@@ -79,7 +79,7 @@ _run "$OK"$'\n'"$ANSWERED"
 _P="$(tr -s '[:space:]' ' ' < "$_P_FILE")"
 assert_contains "[DU1] the check is shown the carried question" "$_P" \
     'UNCLEAR: RQADR-2 | "the holder is in the run-status comment" — which comment is this? | the ADR-064 one'
-assert_contains "[DU1] ...and the answer forms" "$_P" "UNCLEAR <id>: answered | WHY: <how the issue answers it> | QUOTE: <the issue's words that answer it>"
+assert_contains_lines "[DU1] ...and the answer forms" "$_P" $'UNCLEAR <id>: answered\nwhy: <how the issue answers it>\nquote: <the issue\'s words that answer it>'
 assert_contains "[DU1] ...and the issue's words to judge it against" "$_P" "the comment ADR-064 already posts and edits for every run"
 assert_eq "[DU2] the answer is read" "" "$_DESIGN_COV_OUTCOME"
 assert_contains "[DU2] design gets a finding to drop the question" "$FX" \

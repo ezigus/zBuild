@@ -134,33 +134,6 @@ _ta_collect_answers() { zb_answers_finish _TA_ANSWERS "${2:-}" "${1:-}"; }
 # ─── test_author_run <stage_id> <state_file> [resolved_inputs] ───────────────
 # ADR-054 §4: rc is binary. rc=0 = "my result file is on disk"; rc=1 = "I
 # failed". Nothing else.
-# _ta_commit_testfiles <design.md> <repo_root> <message>
-# #2188: the author's testfiles are committed — after a pass AND after a call
-# that stopped mid-write — so the next attempt, or a new session restoring the
-# work branch, continues from them instead of from nothing. #2508 (ADR-069 §11):
-# every file it changed inside the test folders is staged — a test, a helper
-# file it needs — and nothing outside them. Best-effort: a commit failure never fails the
-# stage, it only leaves the work uncommitted as before. Sets _TA_CHANGED to how
-# many testfiles this attempt changed, for a pass's or fail's reason (as build's
-# says). Never in a retryable outcome's: the engine retries only while an attempt
-# changes the stage's outputs, and a count would make a no-op attempt look like
-# one that wrote (#2186).
-_TA_CHANGED=0
-_ta_commit_testfiles() {
-    local repo="$2" msg="$3"; : "$1"
-    local -a files=()
-    _TA_CHANGED=0
-    git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 || return 0
-    zb_test_folder_changes_v files "$repo"
-    [[ ${#files[@]} -gt 0 ]] || return 0
-    # -A: a test file it deleted is part of its change too.
-    git -C "$repo" add -A -- "${files[@]}" 2>/dev/null || return 0
-    _TA_CHANGED=${#files[@]}
-    git -C "$repo" commit -q --no-verify --author "zbuild-pipeline <pipeline@local>" \
-        -m "$msg" -- "${files[@]}" >/dev/null 2>&1 || return 0
-    _ta_emit "test_author.committed" "files=${#files[@]}"
-}
-
 test_author_run() {
     local stage_id="${1:-test-author}"; : "$stage_id"
     local state_file="${2:-}"
@@ -299,8 +272,14 @@ Each assertion must be able to FAIL: if the requirement were not met, your asser
 
 For every condition the code checks, test the case where it is false as well as the one where it is true: a test of only the true case still passes when the condition is deleted. Test the values at each boundary. A test that finds, extracts or lists things must fail when it finds nothing, never pass over an empty set. Derive what a test compares against (a commit, a count, a path) from the code or the setup: never hard-code a value that changes.
 
-A [code] requirement may be one the code from before this change already does — by any route, a fallback included. Then no test of it can fail on that code, and no test you write can change that: do not write a test for it. Report it instead, on its own line:
-<SPEC id>: already_done | WHY: <how the code from before this change already does it> | QUOTE: <file> | <one line of that file, copied as it is>
+A [code] requirement may be one the code from before this change already does — by any route, a fallback included. Then no test of it can fail on that code, and no test you write can change that: do not write a test for it. Report it instead, as a block of its own:
+Write each answer as a block: its first line as shown, then each field on a
+line of its own. A quote: line holds only the quote, copied as it is; your own
+words go in why: or note:. A blank line ends the answer.
+
+<SPEC id>: already_done
+why: <how the code from before this change already does it>
+quote: <file> | <one line of that file, copied as it is>
 The QUOTE is checked in the code from before this change.
 
 Write each SPEC's test in sections, marked with comments in the test's own language — in a shell test:

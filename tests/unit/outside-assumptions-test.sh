@@ -94,8 +94,8 @@ C="$(_flat "$(cat "$TEST_TEMP_DIR/check-prompt.txt" 2>/dev/null)")"
 assert_contains "[OA5] the check's prompt carries the rule" "$C" "$RULE"
 assert_contains "[OA5] ...as a judged item: one missing is a finding" "$C" \
     "The decisions must name each outside assumption the design makes and how it is handled; one not named, or named without how it is handled, is a finding"
-assert_contains "[OA5] ...in the Decision line's form" "$C" \
-    "Decision: unhandled | WHY: <the outside thing the design assumes, and what it leaves unsaid> | ACCEPTED IF: <what the decisions must say about it> | QUOTE: <the decisions' words that rely on it>"
+assert_contains_lines "[OA5] ...in the Decision line's form" "$C" \
+    $'Decision: unhandled\nwhy: <the outside thing the design assumes, and what it leaves unsaid>\naccepted if: <what the decisions must say about it>\nquote: <the decisions\' words that rely on it>'
 assert_eq "[OA5] the answer is used" "" "$(cat "$TEST_TEMP_DIR/oa5-outcome" 2>/dev/null)"
 assert_contains "[OA5] ...a finding for design" "$(cat "$TEST_TEMP_DIR/oa5-findings" 2>/dev/null)" \
     "Decision: the design does not handle an outside assumption: the zbuild:claimed label is assumed to exist in the repository — adding the zbuild:claimed label with gh issue edit [FIX IN DESIGN:"

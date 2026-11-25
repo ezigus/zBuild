@@ -86,7 +86,7 @@ _P="$(tr -s '[:space:]' ' ' < "$_P_FILE")"
 assert_contains "[S1] the facts: is it a document" "$_P" "Is it a change to a document only? Then it is [doc]."
 assert_contains "[S1] ...does the old code already behave so, a fallback included" "$_P" "does the code from before this change already behave as the SPEC says — by any route, a fallback included? If not, it is [code]."
 assert_contains "[S1] ...is work still needed" "$_P" "is work still needed that changes no behaviour — a test, a config, a refactor? Then it is [no-code]; if none, it is [done]."
-assert_contains "[S1] the answer's form" "$_P" "<SPEC id> Title: status | DOC: <yes or no> | BEFORE: <yes or no> | WORK: <yes or no> | WHY: <what shows it> | ACCEPTED IF: <the status the SPEC must have, and what shows it> | QUOTE: <file> | <one line of it>"
+assert_contains_lines "[S1] the answer's form" "$_P" $'<SPEC id> Title: status\ndoc: <yes or no>\nbefore: <yes or no>\nwork: <yes or no>\nwhy: <what shows it>\naccepted if: <the status the SPEC must have, and what shows it>\nquote: <file> | <one line of it>'
 if [[ "$_P" == *done_wrong* ]]; then assert_fail "[S1] done_wrong is gone" "the prompt still asks for done_wrong"
 else assert_pass "[S1] done_wrong is gone"; fi
 D2="$TEST_TEMP_DIR/design-nodone.md"

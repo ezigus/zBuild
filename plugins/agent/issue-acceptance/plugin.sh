@@ -77,9 +77,12 @@ _ia_prompt() {
 Then answer the reverse question: each part of the DIFF that no requirement asks
 for — not the ISSUE, not ISSUE REQUIREMENTS, not REQUIREMENTS. A test for a
 requirement, and a file that test needs, are asked for by that requirement.
-Write one line for each part nothing asks for:
+Write one answer for each part nothing asks for:
 
-UNASKED: <what the change does> | WHY: <why no requirement asks for it> | ACCEPTED IF: <the change without it, or the requirement that would ask for it> | QUOTE: <file> | <one line of the code that does it>
+UNASKED: <what the change does>
+why: <why no requirement asks for it>
+accepted if: <the change without it, or the requirement that would ask for it>
+quote: <file> | <one line of the code that does it>
 
 Its QUOTE is the code that does it. When every part of the DIFF is asked for,
 write one line: UNASKED: none
@@ -93,11 +96,20 @@ You are checking whether a finished CHANGE does what an ISSUE asked for.
 One verdict on the whole issue: does THE CHANGE meet every requirement the
 issue states, in full — including what its tests must catch?
 
-Answer with one line for every requirement in ISSUE REQUIREMENTS, by its id:
+Answer once for every requirement in ISSUE REQUIREMENTS, by its id.
+Write each answer as a block: its first line as shown, then each field on a
+line of its own. A quote: line holds only the quote, copied as it is; your own
+words go in why: or note:. A blank line ends the answer.
 
 MET: <id>
-UNMET: [fix-code] <id> | WHY: <what the change does not do> | ACCEPTED IF: <the requirement, in its own words> | QUOTE: <quote>
-UNMET: [fix-design] <id> | WHY: <what the requirements miss or get wrong> | ACCEPTED IF: <the requirement, in its own words> | QUOTE: <quote>
+UNMET: [fix-code] <id>
+why: <what the change does not do>
+accepted if: <the requirement, in its own words>
+quote: <quote>
+UNMET: [fix-design] <id>
+why: <what the requirements miss or get wrong>
+accepted if: <the requirement, in its own words>
+quote: <quote>
 
 ACCEPTED IF names the line you judge against: the requirement or the limit, in
 its own words, so the finding says what would be accepted. An UNASKED line with
@@ -134,7 +146,10 @@ Then judge each LIMIT — something the issue says the change must not do — on
 line for each, by its id:
 
 KEPT: <id>
-BROKEN: <id> | WHY: <what the change does that the limit forbids> | ACCEPTED IF: <the limit, in its own words> | QUOTE: <file> | <one line of the code that does it>
+BROKEN: <id>
+why: <what the change does that the limit forbids>
+accepted if: <the limit, in its own words>
+quote: <file> | <one line of the code that does it>
 
 A limit is broken only by code the change adds or changes; its QUOTE is that
 code.

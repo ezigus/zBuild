@@ -229,6 +229,16 @@ assert_eq() {
     fi
 }
 
+# assert_contains_lines <desc> <haystack> <needle> — <needle>, of one or more
+# lines, is in <haystack> as its words in sequence: spacing and line breaks
+# aside, so it does not check line boundaries (#2609: a block answer form; a
+# test may have flattened the haystack's spacing).
+assert_contains_lines() {
+    local -a _acl_h=() _acl_n=()
+    read -r -d '' -a _acl_h <<< "$2" || true; read -r -d '' -a _acl_n <<< "$3" || true
+    if [[ " ${_acl_h[*]} " == *" ${_acl_n[*]} "* ]]; then assert_pass "$1"; else assert_fail "$1" "output missing: ${3//$'\n'/⏎}"; fi
+}
+
 assert_contains() {
     local desc="$1"
     local haystack="$2"

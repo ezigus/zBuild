@@ -129,7 +129,7 @@ MD
     echo "G7b|${#_TA_CORR_FINDINGS[@]}|$(tr '\036' '~' <<< "${_TA_CORR_FINDINGS[0]:-}")|$_TA_CORR_OUTCOME"
 ) > "$TEST_TEMP_DIR/t.out" 2>/dev/null
 T="$TEST_TEMP_DIR/t.out"
-assert_contains "[G7] the check asks what the test leaves changed outside its sandbox" "$(_l "$T" G7a)" "<identifier> cleanup: missing | WHY: <what the test leaves changed> | ACCEPTED IF: <what the test must put back> | QUOTE: <test file> | <the line that changes it>"
+assert_contains_lines "[G7] the check asks what the test leaves changed outside its sandbox" "$(_l "$T" G7a)" $'<identifier> cleanup: missing\nwhy: <what the test leaves changed>\naccepted if: <what the test must put back>\nquote: <test file> | <the line that changes it>'
 assert_contains "[G7] ...and is not asked about a Cleanup part" "$(_l "$T" G7a)" "cleanup: does the test change anything outside its own sandbox"
 assert_contains "[G7] what it finds is a finding on the test" "$(_l "$T" G7b)" "1|LOOP-1 cleanup: it exports ZB_ROUND and never unsets it"
 assert_contains "[G7] ...that says to put it back" "$(_l "$T" G7b)" "[FIX IN TEST: it exports ZB_ROUND and never unsets it — ACCEPTED IF: the test unsets ZB_ROUND at its end]"

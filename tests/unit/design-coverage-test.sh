@@ -241,7 +241,7 @@ assert_contains "[X1] ...for what the design commits to that the issue does not 
 assert_not_contains "[X3] the check is not shown the design's scope" "$_P" "scripts/telemetry.sh"
 assert_contains "[X4] the check is pointed at the file a [done] SPEC's evidence names" "$_P" 'CNFG-1: scripts/cfg.sh:"refuse_missing_config()" — open'
 # #2543: every SPEC's status is judged from three facts (design-status-check-test.sh).
-assert_contains "[X4] ...and asked whether its status is the one the facts give" "$_P" "<SPEC id> Title: status | DOC: <yes or no> | BEFORE: <yes or no> | WORK: <yes or no>"
+assert_contains_lines "[X4] ...and asked whether its status is the one the facts give" "$_P" $'<SPEC id> Title: status\ndoc: <yes or no>\nbefore: <yes or no>\nwork: <yes or no>'
 _REPLY='RQST-1: covered
 RQST-2: covered
 WORK-1 Title: not-asked | WHY: also renames the flag | ACCEPTED IF: it is accepted | QUOTE: "a --dry-run flag is accepted"

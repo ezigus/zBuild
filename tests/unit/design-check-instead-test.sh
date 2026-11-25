@@ -61,8 +61,8 @@ MD
   _P="$(tr -s '[:space:]' ' ' < "$_P_FILE")"
   assert_contains "[I1] an untestable or how line names what a test could observe instead" "$_P" \
       "For an untestable or a how line, ACCEPTED IF is what a test could observe after the When for the same requirement."
-  assert_contains "[I1] ...and a requirement nothing could observe is none" "$_P" \
-      "<requirement id>: none | WHY: <why nothing a test could observe after the change would show it met> | ACCEPTED IF: <what the requirement must say for a test to observe it met> | QUOTE: <the requirement's own words>"
+  assert_contains_lines "[I1] ...and a requirement nothing could observe is none" "$_P" \
+      $'<requirement id>: none\nwhy: <why nothing a test could observe after the change would show it met>\naccepted if: <what the requirement must say for a test to observe it met>\nquote: <the requirement\'s own words>'
 
   print_test_section "I2/I3: ACCEPTED IF reaches design, and is required"
   _run $'RQCL-1: covered\nCLA-10 And: untestable | WHY: it is what a file contains | ACCEPTED IF: pipeline.refused.claimed is emitted with no unknown-event warning | QUOTE: is registered in config/event-schema.json'

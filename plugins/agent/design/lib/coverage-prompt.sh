@@ -38,7 +38,7 @@ When a SPEC is a test the issue asks for, judge the behaviour that test proves: 
 Find every SPEC whose status is not the one these facts give. Then judge each
 of its parts.
 
-Answer in exactly this form, each line starting with its id.
+Answer in exactly this form, each answer starting with its id.
 
 Every refusal — every line below that is not ok or covered — says what would
 be accepted, after its WHY: ACCEPTED IF. ACCEPTED IF says what must be true for the part to be accepted, in the issue's words — never how to build it: no file, function, command or change to make. Not this:
@@ -49,15 +49,23 @@ A refusal with no ACCEPTED IF cannot be used.
 EOF2
     [[ -n "$reqs" ]] && cat <<'EOF2'
 
-One line for every requirement:
+One answer for every requirement. Write each answer as a block: its first line as shown, then each field on a
+line of its own. A quote: line holds only the quote, copied as it is; your own
+words go in why: or note:. A blank line ends the answer.
 
 <requirement id>: covered
-<requirement id>: uncovered | WHY: <what no SPEC covers> | ACCEPTED IF: <what the SPECs must demand for it to be covered> | QUOTE: <the requirement's own words that no SPEC covers>
+<requirement id>: uncovered
+why: <what no SPEC covers>
+accepted if: <what the SPECs must demand for it to be covered>
+quote: <the requirement's own words that no SPEC covers>
 
 When nothing a test could observe would show a requirement met, no SPEC can
 cover it and the issue must be fixed by its owner:
 
-<requirement id>: none | WHY: <why nothing a test could observe after the change would show it met> | ACCEPTED IF: <what the requirement must say for a test to observe it met> | QUOTE: <the requirement's own words>
+<requirement id>: none
+why: <why nothing a test could observe after the change would show it met>
+accepted if: <what the requirement must say for a test to observe it met>
+quote: <the requirement's own words>
 EOF2
     cat <<'EOF2'
 
@@ -66,10 +74,13 @@ one line:
 
 <SPEC id>: ok
 
-When something is wrong with it, one line for each thing wrong, and no ok line,
+When something is wrong with it, one answer for each thing wrong, and no ok line,
 every one in this form:
 
-<SPEC id> <line>: <problem> | WHY: <why> | ACCEPTED IF: <what must be true of that line for it to be accepted> | QUOTE: <words from that line>
+<SPEC id> <line>: <problem>
+why: <why>
+accepted if: <what must be true of that line for it to be accepted>
+quote: <words from that line>
 
 <line> is the word the line starts with: Title (the SPEC's first line), Given, When, Then, And or Cleanup.
 The QUOTE is copied from that line, and says which line it is when the SPEC has
@@ -97,7 +108,13 @@ the When for the same requirement.
   with the three facts, each yes or no, and a QUOTE from the code instead of the
   SPEC:
 
-<SPEC id> Title: status | DOC: <yes or no> | BEFORE: <yes or no> | WORK: <yes or no> | WHY: <what shows it> | ACCEPTED IF: <the status the SPEC must have, and what shows it> | QUOTE: <file> | <one line of it>
+<SPEC id> Title: status
+doc: <yes or no>
+before: <yes or no>
+work: <yes or no>
+why: <what shows it>
+accepted if: <the status the SPEC must have, and what shows it>
+quote: <file> | <one line of it>
 
 A status QUOTE is a line of the code from before this change, or of the
 document, that shows the fact the status gets wrong: when it already behaves
@@ -114,10 +131,22 @@ change already does; look for it before you answer: the plugin kinds in
 docs/ARCHITECTURE.md, the ADRs for the area, the existing plugins and libraries.
 
 Steps: ok
-Steps: not-asked | WHY: <no requirement needs this step> | ACCEPTED IF: <what must be true for the steps to be accepted> | QUOTE: <the step's words>
-Steps: contradicts | WHY: <which requirement, limit or term, and how> | ACCEPTED IF: <what must be true for the steps to be accepted> | QUOTE: <the step's words>
-Steps: new-owner | WHY: <what the steps build, and what already owns that job> | ACCEPTED IF: <what must be true for the steps to be accepted> | QUOTE: <file> | <one line of the existing owner>
-Steps: test | WHY: <the step whose work is writing or changing a test> | ACCEPTED IF: <what must be true for the steps to be accepted> | QUOTE: <the step's words>
+Steps: not-asked
+why: <no requirement needs this step>
+accepted if: <what must be true for the steps to be accepted>
+quote: <the step's words>
+Steps: contradicts
+why: <which requirement, limit or term, and how>
+accepted if: <what must be true for the steps to be accepted>
+quote: <the step's words>
+Steps: new-owner
+why: <what the steps build, and what already owns that job>
+accepted if: <what must be true for the steps to be accepted>
+quote: <file> | <one line of the existing owner>
+Steps: test
+why: <the step whose work is writing or changing a test>
+accepted if: <what must be true for the steps to be accepted>
+quote: <the step's words>
 EOF2
     [[ -n "$decision" ]] && cat <<'EOF2'
 
@@ -125,10 +154,22 @@ At least one line for the design's decisions (DECISIONS below): ok, or one line
 for each problem, in the forms of the steps:
 
 Decision: ok
-Decision: not-asked | WHY: <no requirement needs this> | ACCEPTED IF: <what must be true for the decisions to be accepted> | QUOTE: <the decisions' words>
-Decision: contradicts | WHY: <which requirement, limit or term, and how> | ACCEPTED IF: <what must be true for the decisions to be accepted> | QUOTE: <the decisions' words>
-Decision: new-owner | WHY: <what it builds, and what already owns that job> | ACCEPTED IF: <what must be true for the decisions to be accepted> | QUOTE: <file> | <one line of the existing owner>
-Decision: unhandled | WHY: <the outside thing the design assumes, and what it leaves unsaid> | ACCEPTED IF: <what the decisions must say about it> | QUOTE: <the decisions' words that rely on it>
+Decision: not-asked
+why: <no requirement needs this>
+accepted if: <what must be true for the decisions to be accepted>
+quote: <the decisions' words>
+Decision: contradicts
+why: <which requirement, limit or term, and how>
+accepted if: <what must be true for the decisions to be accepted>
+quote: <the decisions' words>
+Decision: new-owner
+why: <what it builds, and what already owns that job>
+accepted if: <what must be true for the decisions to be accepted>
+quote: <file> | <one line of the existing owner>
+Decision: unhandled
+why: <the outside thing the design assumes, and what it leaves unsaid>
+accepted if: <what the decisions must say about it>
+quote: <the decisions' words that rely on it>
 EOF2
     # #2584 (ADR-038): the rule on outside assumptions is a judged item.
     [[ -n "$decision" ]] && printf '\n%s\nThe decisions must name each outside assumption the design makes and how it is handled; one not named, or named without how it is handled, is a finding: Decision: unhandled.\n' \

@@ -24,12 +24,18 @@ stands unless you can quote code that shows it cannot happen on a real run —
 its trigger never occurs, or something already stops it. Judge only these
 findings: add none of your own.
 
-Answer one line for each finding, by its number:
+Answer once for each finding, by its number. Write each answer as a block: its
+first line as shown, then each field on a line of its own. A quote: line holds
+only the quote, copied as it is; your own words go in why: or note:. A blank
+line ends the answer.
 
 <n>: stands
-<n>: knocked down | WHY: <why it cannot happen> | QUOTE: <file> | <one line of the code that shows it>
 
-Copy each QUOTE as it is, with no quote marks around it: it is checked, and a
+<n>: knocked down
+why: <why it cannot happen>
+quote: <file> | <one line of the code that shows it>
+
+Copy each quote as it is, with no quote marks around it: it is checked, and a
 knock-down whose quote is not there leaves the finding standing.
 
 ## What you judge against

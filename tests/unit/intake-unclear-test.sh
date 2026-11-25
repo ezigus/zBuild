@@ -137,8 +137,8 @@ WRITE_REPLY="$REQS"
 CHECK_REPLY=$'MISSING: none\nUNCLEAR RQAGE-1: answered | WHY: the Terms say an old item is one not updated for a week | QUOTE: an item not updated for a week'
 _intake
 assert_contains "[IU5] the check is shown the carried question" "$(_flat "$TEST_TEMP_DIR/check-1")" "$Q"
-assert_contains "[IU5] ...and the answer forms" "$(_flat "$TEST_TEMP_DIR/check-1")" \
-    "UNCLEAR <id>: answered | WHY: <how the issue answers it> | QUOTE: <the issue's words that answer it>"
+assert_contains_lines "[IU5] ...and the answer forms" "$(_flat "$TEST_TEMP_DIR/check-1")" \
+    $'UNCLEAR <id>: answered\nwhy: <how the issue answers it>\nquote: <the issue\'s words that answer it>'
 assert_eq "[IU6] intake passes" "pass" "$OUTCOME"
 assert_eq "[IU6] the answered question is dropped from intake's result" "" "$(_unclear)"
 _dres() { jq -r "$1" "$_RES" 2>/dev/null || echo MISSING; }

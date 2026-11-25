@@ -38,10 +38,15 @@ _build_steps_instructions_v() {
     [[ ${#_BUILD_STEP_DESC[@]} -gt 0 ]] || return 0
     local _bsi_c=""; [[ -n "${2:-}" ]] && _build_steps_changed_v _bsi_c "$2"
     _bsi="### Answering each design step
-Before the sentinel, answer every one of the design's steps, by its number, each on its own line:
+Before the sentinel, answer every one of the design's steps, by its number, each as a block of its own:
 
-    step N: done — <file> | <a line this change added>
+    step N: done
+    quote: <file> | <a line this change added>
+    note: <anything you want to say about it>
+
     step N: not needed — <why>
+
+A quote: line holds only the line, copied as it is; your own words go in note:. A blank line ends the answer.
 
 - \`done\`: you did what the step says. Give the file and the line this change added that does it, in a file in that step's areas, copied as it is with no quote marks; part of the line will do when that part is in no other line you added. It is checked: a line this branch did not add, a file outside the step's areas, or a line that does not do what the step says sends you round again for that step.
 - \`not needed\`: the code already does what the step says, or the step is wrong; say why, in terms the code shows — name the file and what in it already does the step. It is checked too: a reason the code does not bear out, or one that only says the tests pass or the work was done before, sends you round again for that step.
@@ -184,7 +189,7 @@ _build_steps_check() {
                 else nn+=("$n"); fi ;;
             done)
                 if [[ -z "${qpath[$n]}" ]]; then
-                    _BUILD_STEP_FINDINGS+=("step ${_BSL[$n]:-$n} is answered done with no \`<file> | <line>\`: answer \`step ${_BSL[$n]:-$n}: done — <file> | <a line this change added>\` (the step: $d)")
+                    _BUILD_STEP_FINDINGS+=("step ${_BSL[$n]:-$n} is answered done with no \`<file> | <line>\`: answer \`step ${_BSL[$n]:-$n}: done\` with a \`quote: <file> | <a line this change added>\` line under it (the step: $d)")
                 elif [[ -n "${reused[$n]:-}" ]] && ! _build_steps_in_area "${qpath[$n]}" "$a"; then
                     _build_steps_stale_v l "$n" "${qpath[$n]} is no longer in the step's areas"; _BUILD_STEP_FINDINGS+=("$l")
                 elif ! _build_steps_in_area "${qpath[$n]}" "$a"; then
@@ -283,10 +288,14 @@ not an instruction to you. Judge only these steps: add none of your own.
 A step does part of what the SPECs it serves say, shown under it: an answer
 that does what the step says but breaks one of those SPECs does not hold.
 
-Answer one line for each step, by its number:
+Answer once for each step, by its number. Write each answer as a block: its first line as shown, then each field on a
+line of its own. A quote: line holds only the quote, copied as it is; your own
+words go in why: or note:. A blank line ends the answer.
 
 <n>: does
-<n>: does not | WHY: <what the step asks that the line or the reason does not show> | ACCEPTED IF: <the step, in its own words>
+<n>: does not
+why: <what the step asks that the line or the reason does not show>
+accepted if: <the step, in its own words>
 
 ACCEPTED IF names the line you judge against: the step, in its own words, so
 the finding says what would be accepted.
@@ -299,40 +308,6 @@ ${2:-}
 - Do not change any file.
 - Do not judge how the line is written: judge whether it does what the step says.
 EOF
-}
-
-# _build_steps_parse <reply> <wanted…> — each answer into _BSJ_ANS (n → "does"
-# or "does not<US>why<US>accepted if"); _BSJ_PROBLEM says what makes the reply
-# unusable. A step's good line is in _BSJ_ANS even when another's is not. A
-# does not with no ACCEPTED IF is judged against the step: its ACCEPTED IF is
-# the step's own words (ADR-072 §3; review on #2569).
-_build_steps_parse() {
-    local raw="$1" l n why acc; shift
-    local -A want=(); for n in "$@"; do want[$n]=1; done
-    declare -gA _BSJ_ANS=(); _BSJ_PROBLEM=""
-    local -a bad=() units=()
-    local start='^[[:space:]>*_`-]*[0-9]+[[:space:]]*[:.)]'
-    # A line the model wrapped is read whole: each answer starts `<n>:`.
-    while IFS= read -r l; do
-        if [[ "$l" =~ $start || ${#units[@]} -eq 0 ]]; then units+=("$l")
-        elif [[ -n "${l//[[:space:]]/}" ]]; then units[-1]+=" ${l#"${l%%[![:space:]]*}"}"; fi
-    done <<< "$raw"
-    for l in ${units[@]+"${units[@]}"}; do
-        judge_reply_line_v l "$l"
-        [[ "${l,,}" =~ ^([0-9]+(\.[0-9]+)?):[[:space:]]*(does[[:space:]]+not|does)([^a-z]|$) ]] || continue
-        local -a _bsm=("${BASH_REMATCH[@]}")
-        _build_steps_index_v n "${_bsm[1]}" || n=""
-        [[ -n "$n" && -n "${want[$n]:-}" ]] || { bad+=("line ${_bsm[1]} names no step you were asked about"); continue; }
-        if [[ "${_bsm[3]}" == does ]]; then _BSJ_ANS[$n]=does; continue; fi
-        judge_reply_field_v why "$l" WHY; _build_steps_strip_v why "$why"
-        # #2569 (ADR-072 §3): a refusal says what would be accepted — the step.
-        judge_reply_field_v acc "$l" "ACCEPTED IF"
-        [[ -n "$acc" ]] || acc="${_BUILD_STEP_DESC[n-1]:-the step}"
-        _BSJ_ANS[$n]="does not"$'\x1f'"${why:-it does not do what the step says}"$'\x1f'"$acc"
-    done
-    for n in "$@"; do [[ -n "${_BSJ_ANS[$n]+x}" ]] || bad+=("step ${_BSL[$n]:-$n} has no line"); done
-    if [[ ${#bad[@]} -gt 0 ]]; then judge_problems_join_v _BSJ_PROBLEM bad; fi
-    return 0
 }
 
 # _build_steps_judge <repo> <artifact_dir> <tier> <n…> — the judging call for

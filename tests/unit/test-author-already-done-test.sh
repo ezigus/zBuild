@@ -105,7 +105,7 @@ REPORT_NEW='SPEC-1: already_done | WHY: it is set | QUOTE: scripts/x.sh | added_
 print_test_section "D1/D5: the prompt says how to report it"
 REPLY_LINES="" _run
 _AP="$(tr -s '[:space:]' ' ' < "$TEST_TEMP_DIR/author-prompt-1" 2>/dev/null)"
-assert_contains "[D1] the prompt gives the report's form" "$_AP" "<SPEC id>: already_done | WHY: <how the code from before this change already does it> | QUOTE: <file> | <one line of that file, copied as it is>"
+assert_contains_lines "[D1] the prompt gives the report's form" "$_AP" $'<SPEC id>: already_done\nwhy: <how the code from before this change already does it>\nquote: <file> | <one line of that file, copied as it is>'
 assert_contains "[D1] ...says not to write a test for it" "$_AP" "do not write a test for it"
 assert_contains "[D1] ...and that the quote is checked in the code from before this change" "$_AP" "The QUOTE is checked in the code from before this change"
 if grep -qiE '\bdesign\b' <<< "$(sed -n '/requirement may be one the code from before/,/The QUOTE is checked/p' "$TEST_TEMP_DIR/author-prompt-1")"; then
@@ -123,6 +123,11 @@ assert_contains "[D2] ...says the old code already does it" "$FINDINGS" "the cod
 assert_contains "[D2] ...and names the evidence" "$FINDINGS" "scripts/x.sh | mode_of()"
 assert_contains "[D2] the other requirement's test is committed" "$COMMITTED" "test-author"
 assert_eq "[D2] its own check is not run" "" "${JUDGED:-}"
+
+print_test_section "D2b: a report written as a block, as the prompt asks (#2609)"
+REPLY_LINES=$'SPEC-1: already_done\nwhy: when the first stat form fails it runs the other\nquote: scripts/x.sh | mode_of() { stat -f %Lp "$1" 2>/dev/null || stat -c %a "$1"; }' _run
+assert_eq "[D2b] the block report is read: the round ends" "true" "$ENDS"
+assert_contains "[D2b] ...naming the evidence" "$FINDINGS" "scripts/x.sh | mode_of()"
 
 print_test_section "D3: a quote not in the old code is a finding back to test-author"
 REPLY_LINES="$REPORT_NEW" _run

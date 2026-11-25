@@ -125,7 +125,7 @@ MD
     echo "Q2g|$([[ "$_p1" == *"|| return 2"* || "$_p1" == *"|| return 3"* ]] && echo snippet || echo nosnippet)"
     echo "Q2g2|$([[ "$_p1" == *"scripts/cfg.sh"* ]] && echo named)"
     echo "Q2g3|$([[ "$_p1" == *"$ZBUILD_STATE_DIR"* ]] && echo base)"
-    echo "Q2g4|$([[ "$_p1" == *"QUOTE:"* ]] && echo quote)"
+    echo "Q2g4|$([[ "$_p1" == *"quote:"* ]] && echo quote)"
 
     _R1="${_ok}UNCOVERED: omitted
 OUTSIDE: (none)
@@ -189,7 +189,7 @@ print_test_section "Q3: test-author's assertion check"
     # one Then), named by its word (#2470).
     _R1=$'DSLOOP-1 Then: missing | WHY: only a fresh run is tested | ACCEPTED IF: it is accepted | QUOTE: "nested re-entries"'; _R2=""; _j
     echo "Q3a|${#_TA_CORR_FINDINGS[@]}|${_TA_CORR_FINDINGS[0]:-}|$_TA_CORR_OUTCOME|$(cat "$_N")"
-    echo "Q3p|$([[ "$(cat "$_P.1")" == *'QUOTE: <that part'"'"'s own words'* ]] && echo asked)"
+    echo "Q3p|$([[ "$(cat "$_P.1")" == *'quote: <that part'"'"'s own words'* ]] && echo asked)"
 
     _R1=$'DSLOOP-1 Then: missing | WHY: only a fresh run is tested'
     _R2=$'DSLOOP-1 Then: missing | WHY: only a fresh run is tested | ACCEPTED IF: it is accepted | QUOTE: "nested re-entries"'; _j

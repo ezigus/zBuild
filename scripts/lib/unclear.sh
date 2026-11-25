@@ -247,13 +247,18 @@ zb_unclear_judge_block_v() {
     _zjb="QUESTIONS — what was found unclear in the issue earlier, each with the reading the work went on with. Judge each against the issue as it is now:
 ${2%$'\n'}
 
-One line for every question, by its id:
+One answer for every question, by its id. Write each answer as a block: its first line as shown, then each field on a line of its own. A quote: line holds only the quote, copied as it is; your own words go in why: or note:. A blank line ends the answer.
 
-UNCLEAR <id>: answered | WHY: <how the issue answers it> | QUOTE: <the issue's words that answer it>
-UNCLEAR <id>: not needed | WHY: <the requirement it was about is gone or rewritten>
+UNCLEAR <id>: answered
+why: <how the issue answers it>
+quote: <the issue's words that answer it>
+
+UNCLEAR <id>: not needed
+why: <the requirement it was about is gone or rewritten>
+
 UNCLEAR <id>: open
 
-answered — the issue's words settle it now. The QUOTE is copied from the issue as it is, with no quote marks around it; it is checked.
+answered — the issue's words settle it now. The quote is copied from the issue as it is, with no quote marks around it; it is checked.
 not needed — the requirement it was about is gone from the issue or rewritten.
 open — the issue still leaves it unclear."
 }
