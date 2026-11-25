@@ -444,7 +444,17 @@ no model ever reads that line.
 - **Any other credential is still refused, as before.** It is not masked: hiding a foreign credential would hide a real leak. Text the engine posts (status and completion comments, PR bodies) is built from these masked artifacts and from events; it is not scanned separately here. The shared scan also knows GitHub's tokens now (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`).
 - **A refused push's reason keeps GitHub's words.** Banner rules and `remote:` prefixes are set aside, the job's token is masked, and the reason is capped at 1500 characters. Before, a 300-character cut kept only the banner.
 
+## Amendment 2026-11-25 (#2611) — §3: a file named after one item is in a folder for its type, and is cleared as that type
+
+Every file in `artifacts/` is saved and put back, so a file named after one item — a SPEC, a changed file, a requirement — outlived the item: on #2533 run 45644128060 a negative-control log for a SPEC design had since merged away came back in every run, and on run 45537497322 items an earlier run had handed to build kept their old verdicts for a round.
+
+- `artifacts/negctl/` holds `negctl-<spec>.log` (`scripts/lib/acceptance-negctl.sh`) and `artifacts/reachability/` holds `reachability-<file>.log` (`scripts/lib/acceptance-reachability.sh`). The gate empties both when it starts (`plugins/tool/test/lib/acceptance-check.sh`).
+- `artifacts/handoffs/` holds the judge hand-offs (`<kept>-handed-<item>`, `<kept>-handoffs-<item>`, `scripts/lib/judge-handoff.sh`). It is never put back (`_artifact_persist_put_back`), nor are hand-off files saved before the folder: a hand-off lives from one stage to the next within a run.
+- Nothing outside these folders is cleared: not the finding ledgers, not each stage's latest output, not `attempts/`. (`authored-testfiles/` was already emptied by test-author before each write.)
+
 ## Enforced by
+
+- §3 amendment 2026-11-25 (#2611: a folder per type, cleared by type) → `tests/integration/acceptance-gate-test.sh` S8 (#2611: an old log is gone; nothing else is cleared); `tests/unit/hydrate-stage-test.sh` #2611 R11 (an earlier run's hand-offs are not put back); `tests/unit/checks-handoff-test.sh` TH2 (the hand-off is in its folder)
 
 - 2026-11-23 amendment (#2588: own tokens masked before a push or upload; GitHub tokens scanned; a refused push says why) → `tests/unit/persist-secret-mask-test.sh` M1–M7 (M7: the snapshot commit holds `<secret>`)
 
