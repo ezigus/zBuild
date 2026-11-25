@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests: claim heartbeat defaults and cross-machine staleness (ADR-005 §3, #2533).
-# Covers: DSHBT-3, DSHBT-4, DSHBT-5, DSHBT-6, DSHBT-7, DSHBT-8, DSHBT-12
+# Covers: DSHBT-3, DSHBT-4, DSHBT-5, DSHBT-6, DSHBT-7, DSHBT-8, DSHBT-12, DSHBT-15, DSHBT-16
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -267,6 +267,99 @@ _MOCK_LABEL_TS=""   # API error — empty means unknown
 _acq 9105
 # Then: refuse (fail closed) rather than taking over
 assert_eq "[DSHBT-5] label-added unavailable → refuse (rc=1, fail closed)" "1" "$_ACQ_RC"
+# And: rsc_label_added_at was consulted even when it returns no timestamp
+assert_eq "[DSHBT-5] label-added unavailable → rsc_label_added_at was consulted" \
+    "1" "$_MOCK_LABEL_CALLED"
+
+# ═══════════════════════════════════════════════════════════════════════════
+# DSHBT-15: rsc_takeover_note_post non-zero → refuse, claim not acquired
+# ═══════════════════════════════════════════════════════════════════════════
+print_test_section "DSHBT-15: rsc_takeover_note_post failure → refuse (rc=1)"
+export ZBUILD_CLAIM_STALE_S=1800
+
+# Given: CI holder, heartbeat is stale (>= ZBUILD_CLAIM_STALE_S seconds old);
+# rsc_takeover_note_post returns non-zero (GitHub API failure)
+# Coordinator first returns acquired:false (triggering stale path), then true if retried
+_stale_ci_stub "$TEST_TEMP_DIR/p-stale-note-fail" "$(_ci_holder 104)"
+_mock_reset
+_MOCK_HB_TS="$(_ts_ago $(( ZBUILD_CLAIM_STALE_S + 100 )))"
+# Override the mock to return failure for this section
+rsc_takeover_note_post() { _MOCK_TAKEOVER_CALLED=1; _MOCK_TAKEOVER_ARGS="$*"; return 1; }
+# When: zbuild_claim_acquire calls rsc_takeover_note_post and it returns non-zero
+_acq 9106
+# Then: rsc_takeover_note_post was called (proves the stale path was reached)
+assert_eq "[DSHBT-15] note-post failure → rsc_takeover_note_post was called" \
+    "1" "$_MOCK_TAKEOVER_CALLED"
+# Then: zbuild_claim_acquire returns 1 (refused)
+assert_eq "[DSHBT-15] note-post failure → refused (rc=1)" "1" "$_ACQ_RC"
+# And: the claim is not acquired (no acquisition even if coordinator would return true on retry)
+assert_eq "[DSHBT-15] note-post failure → claim not acquired" "" "${_ZBUILD_CLAIM_ACQUIRED:-}"
+# Cleanup: restore the mock to return 0 (default for other sections)
+rsc_takeover_note_post() { _MOCK_TAKEOVER_CALLED=1; _MOCK_TAKEOVER_ARGS="$*"; return 0; }
+
+# ═══════════════════════════════════════════════════════════════════════════
+# DSHBT-16: stale takeover refused when run-status-comment.sh cannot be loaded
+# ═══════════════════════════════════════════════════════════════════════════
+print_test_section "DSHBT-16a: stale takeover refused when run-status-comment.sh is absent"
+export ZBUILD_CLAIM_STALE_S=1800
+
+# Given: CI holder, heartbeat is stale (>= ZBUILD_CLAIM_STALE_S);
+# _ZBUILD_RUN_STATUS_COMMENT_LOADED is unset so the lazy source fires;
+# run-status-comment.sh does not exist at the expected path under _ZBUILD_ROOT
+_stub "$TEST_TEMP_DIR/p-rsc-absent" \
+    "$(jq -nc --arg h "$(_ci_holder 105)" '{acquired:false, holder:$h}')"
+_mock_reset
+_MOCK_HB_TS="$(_ts_ago $(( ZBUILD_CLAIM_STALE_S + 100 )))"
+_zb_root_saved="$_ZBUILD_ROOT"
+_ZBUILD_ROOT="$TEST_TEMP_DIR/fake-root-absent"
+mkdir -p "$_ZBUILD_ROOT/scripts/lib"
+# Note: do NOT create run-status-comment.sh — intentionally absent
+unset _ZBUILD_RUN_STATUS_COMMENT_LOADED
+# When: zbuild_claim_acquire is called (lazy source fails to find the file)
+_acq 9107
+# Then: zbuild_claim_acquire returns 1 (refused)
+assert_eq "[DSHBT-16] rsc absent → stale takeover refused (rc=1)" "1" "$_ACQ_RC"
+# And: the claim is not acquired
+assert_eq "[DSHBT-16] rsc absent → claim not acquired" "" "${_ZBUILD_CLAIM_ACQUIRED:-}"
+# Cleanup: restore _ZBUILD_ROOT and re-establish the loaded guard
+_ZBUILD_ROOT="$_zb_root_saved"
+_ZBUILD_RUN_STATUS_COMMENT_LOADED=1
+
+print_test_section "DSHBT-16b: stale takeover refused when rsc_takeover_note_post is not defined"
+export ZBUILD_CLAIM_STALE_S=1800
+
+# Given: CI holder, heartbeat is stale; run-status-comment.sh exists at _ZBUILD_ROOT
+# but does NOT define rsc_takeover_note_post;
+# _ZBUILD_RUN_STATUS_COMMENT_LOADED is unset so the lazy source fires
+_stub "$TEST_TEMP_DIR/p-rsc-no-fn" \
+    "$(jq -nc --arg h "$(_ci_holder 106)" '{acquired:false, holder:$h}')"
+_mock_reset
+_MOCK_HB_TS="$(_ts_ago $(( ZBUILD_CLAIM_STALE_S + 100 )))"
+_zb_root_saved2="$_ZBUILD_ROOT"
+_ZBUILD_ROOT="$TEST_TEMP_DIR/fake-root-no-fn"
+mkdir -p "$_ZBUILD_ROOT/scripts/lib"
+# Create a stub rsc file that sets a sentinel but does NOT define rsc_takeover_note_post
+printf '#!/usr/bin/env bash\n# stub — deliberately omits rsc_takeover_note_post\n_ZBUILD_RUN_STATUS_COMMENT_LOADED=1\n_DSHBT16_STUB_SOURCED=1\n' \
+    > "$_ZBUILD_ROOT/scripts/lib/run-status-comment.sh"
+_DSHBT16_STUB_SOURCED=0
+unset _ZBUILD_RUN_STATUS_COMMENT_LOADED
+# Remove the in-process mock so declare -F rsc_takeover_note_post also fails after sourcing
+unset -f rsc_takeover_note_post
+# When: zbuild_claim_acquire is called (lazy source loads stub; function not defined)
+_acq 9108
+# Then: the stub was sourced by the lazy load (new code enters this path; base code never does)
+assert_eq "[DSHBT-16] rsc_takeover_note_post not defined → stub file was sourced" \
+    "1" "$_DSHBT16_STUB_SOURCED"
+# Then: zbuild_claim_acquire returns 1 (refused)
+assert_eq "[DSHBT-16] rsc_takeover_note_post not defined → stale takeover refused (rc=1)" \
+    "1" "$_ACQ_RC"
+# And: the claim is not acquired
+assert_eq "[DSHBT-16] rsc_takeover_note_post not defined → claim not acquired" \
+    "" "${_ZBUILD_CLAIM_ACQUIRED:-}"
+# Cleanup: restore _ZBUILD_ROOT, re-establish guard, restore mock
+_ZBUILD_ROOT="$_zb_root_saved2"
+_ZBUILD_RUN_STATUS_COMMENT_LOADED=1
+rsc_takeover_note_post() { _MOCK_TAKEOVER_CALLED=1; _MOCK_TAKEOVER_ARGS="$*"; return 0; }
 
 # Cleanup
 unset ZBUILD_CLAIM_STALE_S
