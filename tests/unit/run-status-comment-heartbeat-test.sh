@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests: run-status comment heartbeat — DSHBT-1, DSHBT-2, DSHBT-13, DSHBT-14
+# Tests: run-status comment heartbeat — DSHBT-1, DSHBT-2, DSHBT-13
 # Heartbeat line in render, heartbeat timer in the sidecar loop, and
 # rsc_holder_line_v compatibility with the new body layout (ADR-064, #2533).
 set -uo pipefail
@@ -55,9 +55,9 @@ assert_eq "[DSHBT-13] rsc_holder_find returns holder despite heartbeat line befo
 unset -f rsc_gh
 
 # ═══════════════════════════════════════════════════════════════════════════
-# DSHBT-1, DSHBT-2, DSHBT-14: heartbeat timer in rsc_tail_loop
+# DSHBT-1, DSHBT-2: heartbeat timer in rsc_tail_loop
 # ═══════════════════════════════════════════════════════════════════════════
-print_test_section "DSHBT-1/2/14: sidecar loop fires heartbeat PATCH with still-running line"
+print_test_section "DSHBT-1/2: sidecar loop fires heartbeat PATCH with still-running line"
 
 # Helper: event writer (matches the shape core/event-bus/event-bus.sh writes)
 ev() {   # ev <events-file> <HH:MM:SS> <type> [seq] [stage] [k=v...]
@@ -232,15 +232,15 @@ fi
 assert_eq "[DSHBT-2] no new POST during heartbeat (existing comment is updated, not re-created)" \
     "0" "$heartbeat_post_count"
 
-# Then (DSHBT-14): body contains exactly one line starting with `still running — `
-# And (DSHBT-14): no prior heartbeat line from an earlier flush appears
+# Then (DSHBT-1): body contains exactly one line starting with `still running — `
+# And (DSHBT-1): no prior heartbeat line from an earlier flush appears
 hb_line_count=0
 while IFS= read -r line; do
     case "$line" in
         "still running — "*) hb_line_count=$(( hb_line_count + 1 )) ;;
     esac
 done <<< "$heartbeat_body"
-assert_eq "[DSHBT-14] body contains exactly one 'still running — ' line" \
+assert_eq "[DSHBT-1] body contains exactly one 'still running — ' line" \
     "1" "$hb_line_count"
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -274,7 +274,6 @@ sleep 0.3
 
 ns_heartbeat_body=""
 if wait_for_event "$GH_LOG" 'PATCH' 50 0.1; then
-    sleep 0.2
     ns_heartbeat_body="$(last_body)"
 fi
 
