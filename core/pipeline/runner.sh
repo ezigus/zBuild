@@ -24,6 +24,8 @@ source "$_ZBUILD_ROOT/scripts/lib/abort-propagation.sh"
 source "$_ZBUILD_ROOT/scripts/lib/runner-final-status.sh"
 # shellcheck source=../../scripts/lib/run-open-items.sh
 source "$_ZBUILD_ROOT/scripts/lib/run-open-items.sh"   # run_end_words, open_items_markdown (#2330)
+# shellcheck source=../../scripts/lib/stage-stop-word.sh
+source "$_ZBUILD_ROOT/scripts/lib/stage-stop-word.sh"   # _runner_stage_stop_word_v (#2582, #2611)
 # shellcheck source=../../scripts/lib/stage-requires.sh
 source "$_ZBUILD_ROOT/scripts/lib/stage-requires.sh"   # stage_requires_gate (#2611)
 source "$_ZBUILD_ROOT/core/output/stage-colors.sh"
@@ -197,35 +199,7 @@ _runner_leaf_contract_halt() {
     return 0
 }
 
-# ─── _runner_stage_stop_word_v <var> <stage> <reason> (#2582) ────────────────
-# The word a run ends on when a stage stopped it (ADR-054 §6): the stage and its
-# own reason, `stage_stopped:<stage>:<reason>` — one line, capped, as the abort
-# sentinel and the events hold it. run_end_words says it in words. The reason
-# leaves the machine (the events, the state, the comments), so it is cleaned
-# first: credentials masked (secret-patterns.sh), private paths taken out (the
-# scope redactor); one that cannot be cleaned is not shown.
-_runner_stage_stop_word_v() {
-    local -n _rssw="$1"; local _rssw_r="${3:-}" _rssw_in _rssw_out _rssw_c=""
-    _rssw_r="${_rssw_r//[$'\n\r\t']/ }"
-    if [[ -n "$_rssw_r" ]]; then
-        declare -F zbuild_mask_secrets_v >/dev/null 2>&1 \
-            || source "$_ZBUILD_ROOT/scripts/lib/secret-patterns.sh" 2>/dev/null || true
-        declare -F apply_scope_redaction >/dev/null 2>&1 \
-            || source "$_ZBUILD_ROOT/core/redaction/scope-redaction.sh" 2>/dev/null || true
-        if declare -F zbuild_mask_secrets_v >/dev/null 2>&1 && declare -F apply_scope_redaction >/dev/null 2>&1 \
-           && _rssw_in="$(mktemp "${TMPDIR:-/tmp}/zb-stop-in.XXXXXX")"; then
-            _rssw_out="$_rssw_in.out"
-            zbuild_mask_secrets_v _rssw_r "$_rssw_r"
-            printf '%s\n' "$_rssw_r" > "$_rssw_in"
-            apply_scope_redaction "$_rssw_in" "$_rssw_out" "" "" 0 >/dev/null 2>&1 \
-                && IFS= read -r _rssw_c < "$_rssw_out"
-            rm -f "$_rssw_in" "$_rssw_out"
-        fi
-        _rssw_r="${_rssw_c:-its reason could not be cleaned, so it is not shown}"
-    fi
-    (( ${#_rssw_r} > 300 )) && _rssw_r="${_rssw_r:0:300}…"
-    _rssw="stage_stopped:${2:-a stage}:${_rssw_r:-it gave no reason}"
-}
+# _runner_stage_stop_word_v: scripts/lib/stage-stop-word.sh (#2611: the loop uses it too).
 
 # ─── _runner_leaf_verdict_halt <state_file> <stage> <class> <raw> ────────────
 # #1798 (ADR-054 §4): a leaf stage that reports a failure ends the run; rc 0
@@ -3623,17 +3597,22 @@ main() {
         for (( _ui = 0; _ui < ${#_TPL_DISPATCH_UNITS[@]}; _ui++ )); do
             _unit="${_TPL_DISPATCH_UNITS[_ui]}"
             _runner_cardinal=$(( _runner_cardinal + 1 ))
-            # #2611 (ADR-068 §3): a unit runs only when the stages it requires passed.
-            if ! stage_requires_gate "$state_file" "${_unit#*:}"; then
+            # #2611 (ADR-068 §3): a unit runs only when the stages it requires
+            # passed; a unit a later one requires that did not pass ends the run
+            # now, naming the later one — not after every unit between has run.
+            local _rq_held=""
+            if ! stage_requires_ahead "$state_file" "$_ui"; then _rq_held="$_STAGE_REQUIRES_HELD"
+            elif ! stage_requires_gate "$state_file" "${_unit#*:}"; then _rq_held="${_unit#*:}"; fi
+            if [[ -n "$_rq_held" ]]; then
                 _set_pipeline_status "$state_file" "failed"
-                _update_stage_status "$state_file" "${_unit#*:}" "failed"
-                _runner_stage_stop_word_v _RUNNER_END_REASON "${_unit#*:}" \
+                _update_stage_status "$state_file" "$_rq_held" "failed"
+                _runner_stage_stop_word_v _RUNNER_END_REASON "$_rq_held" \
                     "it requires ${_STAGE_REQUIRES_UNMET// /, } to pass, and it did not"
-                eb_emit_event "pipeline.end" "status=failed" "stage=${_unit#*:}" "reason=$_RUNNER_END_REASON" \
+                eb_emit_event "pipeline.end" "status=failed" "stage=$_rq_held" "reason=$_RUNNER_END_REASON" \
                     "run_id=$_runner_run_id" "issue=$_runner_issue" || true
-                _render_pipeline_end "failed" "${_unit#*:}"
+                _render_pipeline_end "failed" "$_rq_held"
                 _runner_ended=true
-                error "Stage ${_unit#*:} requires ${_STAGE_REQUIRES_UNMET// /, } to pass — the run stops here"
+                error "Stage $_rq_held requires ${_STAGE_REQUIRES_UNMET// /, } to pass — the run stops here"
                 return 1
             fi
             case "$_unit" in
@@ -4159,6 +4138,19 @@ main() {
             return 1
         fi
         _runner_linear_cardinal=$(( _runner_linear_cardinal + 1 ))
+        # #2611 (ADR-068 §3): a linear template's stage honours requires: too.
+        if ! stage_requires_gate "$state_file" "$stage"; then
+            _set_pipeline_status "$state_file" "failed"
+            _update_stage_status "$state_file" "$stage" "failed"
+            _runner_stage_stop_word_v _RUNNER_END_REASON "$stage" \
+                "it requires ${_STAGE_REQUIRES_UNMET// /, } to pass, and it did not"
+            eb_emit_event "pipeline.end" "status=failed" "stage=$stage" "reason=$_RUNNER_END_REASON" \
+                "run_id=$_runner_run_id" "issue=$_runner_issue" || true
+            _render_pipeline_end "failed" "$stage"
+            _runner_ended=true
+            error "Stage $stage requires ${_STAGE_REQUIRES_UNMET// /, } to pass — the run stops here"
+            return 1
+        fi
         # When resuming, skip stages already marked complete unless --from-stage overrides
         if $resume_mode && [[ -z "$skip_until_stage" ]]; then
             local stage_status

@@ -600,7 +600,10 @@ load_template() {
                 # #2611 (ADR-068 §3): the earlier stages this one requires passed.
                 local rq_id rq_val
                 IFS='|' read -r rq_id rq_val <<< "$payload"
-                [[ "$rq_val" =~ ^[A-Za-z0-9_\ -]+$ ]] || continue
+                if [[ ! "$rq_val" =~ ^[A-Za-z0-9_\ -]+$ ]]; then
+                    error "stage '$rq_id': requires: must be a flow list of stage names, e.g. requires: [intake, delivery_loop], or requires: all (got: $rq_val)"
+                    return 1
+                fi
                 printf -v "_TPL_STAGE_REQUIRES_${rq_id//-/_}" '%s' "$rq_val"
                 export "_TPL_STAGE_REQUIRES_${rq_id//-/_}"
                 ;;
@@ -1478,6 +1481,15 @@ _tpl_build_dispatch_units() {
         done
         _rq_seen+="$_rq_id "
     done
+    # A stage that is not a top-level unit (a loop's member) is never asked.
+    local _rq_seen_safe="${_rq_seen//-/_}"
+    for _rq_v in "${!_TPL_STAGE_REQUIRES_@}"; do
+        _rq_id="${_rq_v#_TPL_STAGE_REQUIRES_}"
+        if [[ "$_rq_seen_safe" != *" $_rq_id "* ]]; then
+            error "stage '$_rq_id': requires: is for a top-level stage, and '$_rq_id' runs inside a loop or group"
+            return 1
+        fi
+    done
     return 0
 }
 
@@ -1983,7 +1995,10 @@ _tpl_translate_new_shape() {
         # requires: (#2611, ADR-068 §3) — earlier stages that must have passed, a flow list.
         if ($0 ~ /^[[:space:]]+requires:/) {
             v = $0; sub(/^[[:space:]]+requires:[[:space:]]*/, "", v)
-            gsub(/[\[\],]/, " ", v); gsub(/[[:space:]]+/, " ", v); sec_requires = trim(v); next
+            gsub(/[\[\],]/, " ", v); gsub(/[[:space:]]+/, " ", v); sec_requires = trim(v)
+            # A block list (the names on the lines below) is not read: say so.
+            if (sec_requires == "") sec_requires = "<not a flow list>"
+            next
         }
         # fail_on: (#2368) — the severities that make the stage fail, a flow list.
         if ($0 ~ /^[[:space:]]+fail_on:/) {

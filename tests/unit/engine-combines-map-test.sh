@@ -16,6 +16,9 @@
 #               broken — not one that failed or did not finish
 #   M6 [change] (#2611 R7) an element the group's wait stopped is timed_out,
 #               not interrupted
+#   M8 [change] (#2611 review) each member's own time limit is its own: one
+#               member's limit marks only it timed_out, not a member stopped by
+#               an outside signal; the marker is keyed on the element
 #   M7 [change] (#2611 R6) the group's wait is the stage limit plus the call
 #               grace plus a margin, so the element's own limits stop it first
 set -uo pipefail
@@ -170,6 +173,24 @@ assert_contains "[M6] ...and so does the element not passed" "${_ZB_MAP_NOT_PASS
 orch_collect() { printf '%s\n' "$*" > "$COLLECT_ARGS"; _ORCH_COLLECT_OUTCOME="passed"; return 0; }
 rm -f "$ART"/lens-*.json; _run_map a b c
 assert_contains "[M6] an outside signal stays interrupted" "${_ZB_MAP_NOT_PASSED:-}" "b (interrupted)"
+
+print_test_section "M8 (#2611 review): a member's own limit marks only it"
+orch_dispatch() {
+    local _e; _e="$(/usr/bin/grep -m1 "^export ZBUILD_REVIEW_LENS_ID=" "$2" | sed "s/^export ZBUILD_REVIEW_LENS_ID='//;s/'$//")"
+    case "$_e" in
+        b|c) stage_result_write "$ART/lens-$_e.json" interrupted "signal_interrupt" ;;
+        *)   stage_result_write "$ART/lens-$_e.json" pass "nothing found" ;;
+    esac
+    printf 'slot\n'
+}
+mkdir -p "$ZBUILD_STATE_DIR/runtime"
+_m8_marker="$(ZBUILD_MAP_ELEMENT=b stage_time_limit_marker_path "$STATE_FILE" review_lenses)"
+: > "$_m8_marker"
+rm -f "$ART"/lens-*.json; _run_map a b c
+assert_eq "[M8] the marker is the element's" "$ZBUILD_STATE_DIR/runtime/stage-time-limit.review_lenses.b" "$_m8_marker"
+assert_contains "[M8] b, stopped by its own limit, is timed_out" "${_ZB_MAP_NOT_PASSED:-}" "b (timed_out)"
+assert_contains "[M8] c, stopped by an outside signal, stays interrupted" "${_ZB_MAP_NOT_PASSED:-}" "c (interrupted)"
+rm -f "$_m8_marker"
 
 print_test_section "M7 (#2611 R6): the group's wait has the call grace"
 ZBUILD_CALL_GRACE_S=300 _run_map a c

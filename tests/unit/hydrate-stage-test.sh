@@ -53,6 +53,13 @@ _A_STATE="$TEST_TEMP_DIR/author-state"
 mkdir -p "$_A_STATE/artifacts"
 printf 'prior plan\n' > "$_A_STATE/artifacts/plan.json"
 printf 'prior design\n' > "$_A_STATE/artifacts/design.md"
+# #2611 (ADR-050 §3): an earlier run's hand-offs and its logs saved before
+# their folders existed — none is put back by hydrate (SPEC-1 counts 2).
+mkdir -p "$_A_STATE/artifacts/handoffs"
+printf 'build\n' > "$_A_STATE/artifacts/handoffs/issue-acceptance-judged-handed-RQHBT-1"
+printf '1\n' > "$_A_STATE/artifacts/issue-acceptance-judged-handoffs-RQHBT-1"
+printf 'old\n' > "$_A_STATE/artifacts/negctl-DSHBT-14.log"
+printf 'old\n' > "$_A_STATE/artifacts/reachability-core_a.sh.log"
 _seed_rc=0
 ( cd "$_H_AUTHOR" && _artifact_persist_snapshot "$_A_STATE" $_ZB_ID && _artifact_persist_push $_ZB_ID ) \
     >"$TEST_TEMP_DIR/seed.log" 2>&1 || _seed_rc=$?
@@ -111,6 +118,10 @@ assert_eq "[SPEC-1] the result records how many were restored" "2" \
     "$(jq -r '.data.restored' "$ZBUILD_ARTIFACT_DIR/hydrate-result.json" 2>/dev/null)"
 
 # ─── [SPEC-6][change] an earlier run's outputs land in the live places ──────
+for _gone in handoffs/issue-acceptance-judged-handed-RQHBT-1 issue-acceptance-judged-handoffs-RQHBT-1 \
+             negctl-DSHBT-14.log reachability-core_a.sh.log; do
+    assert_file_not_exists "[#2611] hydrate does not put back an earlier run's $_gone" "$_H_STATE/artifacts/$_gone"
+done
 assert_eq "[SPEC-6] no separate restored area is made" "no" \
     "$([[ -e "$_H_STATE/restored-artifacts" ]] && echo yes || echo no)"
 # A file the run already has live is newer than an earlier run's: kept.
@@ -232,20 +243,14 @@ assert_file_exists "[SPEC-7] a stage's output is put back" "$_S7_TO/plan.json"
 assert_file_not_exists "[SPEC-7] an earlier run's stage-io record is not put back" \
     "$_S7_TO/stage-io/design-iter4-error.json"
 
-print_test_section "[#2611 R11] an earlier run's hand-offs are not put back"
-# On #2533 run 45537497322 items an earlier run had handed to build kept their
-# old verdicts for a round: a hand-off lives within one run (ADR-050 §3).
+print_test_section "[#2611 review] a resumed run's own hand-offs are put back"
+# hydrate drops an earlier run's (SPEC-1 above); the put-back a resume uses keeps
+# the run's own, so a part still waiting keeps waiting, and its count.
 _S8_FROM="$TEST_TEMP_DIR/s8-from"; _S8_TO="$TEST_TEMP_DIR/s8-to"
 mkdir -p "$_S8_FROM/handoffs"
-printf 'prior plan\n' > "$_S8_FROM/plan.json"
 printf 'build\n' > "$_S8_FROM/handoffs/issue-acceptance-judged-handed-RQHBT-1"
-printf '1\n' > "$_S8_FROM/issue-acceptance-judged-handoffs-RQHBT-1"
-printf 'build\n' > "$_S8_FROM/issue-acceptance-judged-handed-RQHBT-2"
 _artifact_persist_put_back "$_S8_FROM" "$_S8_TO"
-assert_file_exists "[#2611] a stage's output is put back" "$_S8_TO/plan.json"
-assert_file_not_exists "[#2611] the handoffs folder is not put back" "$_S8_TO/handoffs/issue-acceptance-judged-handed-RQHBT-1"
-assert_file_not_exists "[#2611] ...nor a hand-off count saved before the folder" "$_S8_TO/issue-acceptance-judged-handoffs-RQHBT-1"
-assert_file_not_exists "[#2611] ...nor a hand-off marker saved before the folder" "$_S8_TO/issue-acceptance-judged-handed-RQHBT-2"
+assert_file_exists "[#2611] a resume keeps a hand-off still waiting" "$_S8_TO/handoffs/issue-acceptance-judged-handed-RQHBT-1"
 
 # ─── [#1805/DSDLGT-1] hydrate_run delegates copy-back to _artifact_persist_put_back ─
 # hydrate_run must call _artifact_persist_put_back (not the old inline _hydrate_put_back)

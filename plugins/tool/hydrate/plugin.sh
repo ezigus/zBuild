@@ -148,6 +148,9 @@ hydrate_run() {
     # discarded whole — a half-restored artifact set seeded into a stage is
     # worse than no prior work at all (PR #1880 review). No-clobber: a live
     # file is this run's own, and newer.
+    # #2611 (ADR-050 §3): an earlier run's hand-offs and old per-item logs are
+    # that run's alone — dropped before anything is counted or put back.
+    [[ "$_status" != "failed" ]] && _artifact_persist_drop_run_only "$_staging/artifacts"
     if [[ "$_status" != "failed" && -d "$_staging/artifacts" ]] \
        && [[ -n "$(ls -A "$_staging/artifacts" 2>/dev/null)" ]]; then
         _count="$(find "$_staging/artifacts" -type f 2>/dev/null | /usr/bin/grep -c . || true)"

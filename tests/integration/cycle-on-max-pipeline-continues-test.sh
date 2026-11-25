@@ -317,11 +317,11 @@ assert_eq "T1.4: pipeline.end emitted exactly once" "1" "$end_count"
 # code coupled to the retired lattice — reported as a #979 coupling finding for a
 # follow-up (generalize the rescue to the template's terminal-stage verdict, or
 # drop it). The #766 mechanic under test (unconverged on_max=continue → NO
-# pipeline.abort, runner CONTINUES past the cycle) is fully proven by T1.1–T2.2.
+# pipeline.abort, runner CONTINUES past the cycle) is fully proven by T1.1–T2.1; T2.2 is pr's requires: (#2611).
 end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | head -1)"
 assert_eq "T1.5 (#979): pipeline.end status=failed (no review.json rescue under simple.yaml; see coupling note)" "failed" "$end_status"
 
-print_test_section "T2: build ran, and pr was dispatched after the loops ran out"
+print_test_section "T2: build ran; the runner reached pr, which requires every stage before it (#2611)"
 
 # T2.1: build_test_cycle entered (build runs at least once).
 build_run_count="$(jq -c 'select(.type=="plugin.run.start" and .data.plugin=="build")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
@@ -329,13 +329,14 @@ build_run_count="$(jq -c 'select(.type=="plugin.run.start" and .data.plugin=="bu
     && assert_pass "T2.1: build plugin ran (build_test_cycle was dispatched)" \
     || assert_fail "T2.1: build plugin did NOT run (runner stopped before build_test_cycle)" "build_run_count=$build_run_count"
 
-# T2.2 (#979): the retired standard.yaml had a merge-blocking `review` member; simple.yaml
-# ends with the pr tool stage after the advisory review_lenses group. Assert pr ran —
-# it proves the runner walked ALL THE WAY to the terminal stage after the cycle exhausted.
+# T2.2 (#2611, ADR-068 §3): the runner walks past the exhausted loop to pr, and
+# pr — `requires: all` in simple.yaml — does not run on a loop that did not pass;
+# the run ends there, naming it.
 pr_run_count="$(jq -c 'select(.type=="plugin.run.start" and .data.plugin=="pr")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
-[[ "$pr_run_count" -ge 1 ]] \
-    && assert_pass "T2.2: pr plugin ran (proves the pipeline reached its terminal stage past the exhausted cycle)" \
-    || assert_fail "T2.2: pr plugin did NOT run" "pr_run_count=$pr_run_count"
+assert_eq "T2.2: pr is not run on a loop that did not pass" "0" "$pr_run_count"
+end_reason="$(jq -r 'select(.type=="pipeline.end") | .data.reason // empty' "$EVENTS_JSONL" 2>/dev/null | head -1)"
+assert_contains "T2.2: the run ends at pr, naming the loop it requires" "$end_reason" "stage_stopped:pr:it requires"
+assert_contains "T2.2: ...delivery_loop among them" "$end_reason" "delivery_loop"
 
 cleanup_test_env
 print_test_results

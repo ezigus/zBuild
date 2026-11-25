@@ -16,21 +16,47 @@ _ZBUILD_STAGE_REQUIRES_LOADED=1
 # with _STAGE_REQUIRES_UNMET naming each (space-separated). A stage that
 # requires nothing is never told it was met.
 _STAGE_REQUIRES_UNMET=""
+# _stage_requires_unmet_v <var> <state_file> <names> — those of <names> not
+# complete with a pass; fail closed: no state, or one jq cannot read, meets nothing.
+_stage_requires_unmet_v() {
+    local -n _sru="$1"
+    if [[ ! -s "$2" ]] || ! _sru="$(jq -r --arg n "$3" '
+        . as $s | [($n | split(" ") | map(select(length > 0)))[]
+        | select((($s.stage_statuses // {})[.] // "") != "complete"
+                 or ((($s.stage_verdicts // {})[.] // "pass") | IN("pass", "complete") | not))]
+        | join(" ")' "$2" 2>/dev/null)"; then
+        _sru="$3"
+    fi
+}
 stage_requires_gate() {
     local sf="$1" names v="_TPL_STAGE_REQUIRES_${2//-/_}"
     unset ZBUILD_STAGE_REQUIRES_MET
     _STAGE_REQUIRES_UNMET=""
     names="${!v:-}"   # template_stage_requires, without a process per unit
     [[ -n "${names// /}" ]] || return 0
-    # Fail closed: no state, or one jq cannot read, meets nothing.
-    if [[ ! -s "$sf" ]] || ! _STAGE_REQUIRES_UNMET="$(jq -r --arg n "$names" '
-        . as $s | [($n | split(" ") | map(select(length > 0)))[]
-        | select((($s.stage_statuses // {})[.] // "") != "complete"
-                 or ((($s.stage_verdicts // {})[.] // "pass") | IN("pass", "complete") | not))]
-        | join(" ")' "$sf" 2>/dev/null)"; then
-        _STAGE_REQUIRES_UNMET="$names"
-    fi
+    _stage_requires_unmet_v _STAGE_REQUIRES_UNMET "$sf" "$names"
     [[ -z "$_STAGE_REQUIRES_UNMET" ]] || return 1
     export ZBUILD_STAGE_REQUIRES_MET=yes
+    return 0
+}
+
+# stage_requires_ahead <state_file> <next_index> — rc 1 when a unit from
+# <next_index> on (in _TPL_DISPATCH_UNITS) requires a unit that has already run
+# and did not pass: the run ends now, not after every unit between has run
+# (#2611 review). _STAGE_REQUIRES_HELD names that unit, _STAGE_REQUIRES_UNMET
+# what it requires. One jq per unit whose requires include a unit that ran.
+_STAGE_REQUIRES_HELD=""
+stage_requires_ahead() {
+    local sf="$1" from="${2:-0}" j id v n done=" " ask
+    _STAGE_REQUIRES_HELD=""; _STAGE_REQUIRES_UNMET=""
+    for (( j = 0; j < from && j < ${#_TPL_DISPATCH_UNITS[@]}; j++ )); do done+="${_TPL_DISPATCH_UNITS[j]#*:} "; done
+    [[ "$done" != " " ]] || return 0
+    for (( j = from; j < ${#_TPL_DISPATCH_UNITS[@]}; j++ )); do
+        id="${_TPL_DISPATCH_UNITS[j]#*:}"; v="_TPL_STAGE_REQUIRES_${id//-/_}"; ask=""
+        for n in ${!v:-}; do [[ "$done" == *" $n "* ]] && ask+="$n "; done
+        [[ -n "$ask" ]] || continue
+        _stage_requires_unmet_v _STAGE_REQUIRES_UNMET "$sf" "${ask% }"
+        if [[ -n "$_STAGE_REQUIRES_UNMET" ]]; then _STAGE_REQUIRES_HELD="$id"; return 1; fi
+    done
     return 0
 }

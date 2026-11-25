@@ -36,6 +36,8 @@ source "$_CYCLE_ORCH_ROOT/scripts/lib/helpers.sh"
 # ADR-025 (Wave 15-B #684) abort-propagation contract helpers.
 # shellcheck source=../../scripts/lib/abort-propagation.sh
 source "$_CYCLE_ORCH_ROOT/scripts/lib/abort-propagation.sh"
+# shellcheck source=../../scripts/lib/stage-stop-word.sh
+source "$_CYCLE_ORCH_ROOT/scripts/lib/stage-stop-word.sh"   # #2611: a member's stop, cleaned
 # shellcheck source=../state/atomic.sh
 source "$_CYCLE_ORCH_ROOT/core/state/atomic.sh"
 # shellcheck source=../state/resume.sh
@@ -2805,11 +2807,7 @@ _cycle_orchestrator_run_body() {
             # #2611 (ADR-064 §4): a member that stopped the run with its own
             # reason is named with it; only a member out of its tries is that.
             if [[ -n "${_CYCLE_STOP_RUN_REASON:-}" ]]; then
-                if declare -F _runner_stage_stop_word_v >/dev/null 2>&1; then
-                    _runner_stage_stop_word_v _CYCLE_LAST_TERMINATED_REASON "$_CYCLE_STOP_RUN_MEMBER" "$_CYCLE_STOP_RUN_REASON"
-                else
-                    _CYCLE_LAST_TERMINATED_REASON="stage_stopped:$_CYCLE_STOP_RUN_MEMBER:${_CYCLE_STOP_RUN_REASON//[$'\n\r\t']/ }"
-                fi
+                _runner_stage_stop_word_v _CYCLE_LAST_TERMINATED_REASON "$_CYCLE_STOP_RUN_MEMBER" "$_CYCLE_STOP_RUN_REASON"
             fi
             overall_status="stopped_on_fail"; term_outcome="failed"
             _cycle_emit "cycle.run.stopped_on_fail" "iter=$iter" \

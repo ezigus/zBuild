@@ -110,10 +110,11 @@ _zb_answers_carry() {
     [[ -n "$_f" && -s "$_f" && -n "$_m" && -e "$_m" && "$_f" -nt "$_m" ]] || return 0
     _rows="$(jq -r '(.data.answer_findings // {}) as $af | (.data.answers // [])[]? | strings
         | (split(":")[0]) as $id | select($af[$id] != null)
-        | [$id, ., $af[$id]] | map(gsub("[\t\n\r]"; " ")) | @tsv' "$_f" 2>/dev/null)" || return 0
+        | [$id, ., $af[$id]] | map(gsub("[\t\n\r\u001f]"; " ")) | join("\u001f")' "$_f" 2>/dev/null)" || return 0
     [[ -n "$_rows" ]] || return 0
     local -A _prior=() _ptext=()
-    while IFS=$'\t' read -r _id _a _t; do _prior["$_id"]="$_a"; _ptext["$_id"]="$_t"; done <<< "$_rows"
+    # Joined by US, not @tsv: @tsv escapes a backslash, and the text must match word for word.
+    while IFS=$'\x1f' read -r _id _a _t; do _prior["$_id"]="$_a"; _ptext["$_id"]="$_t"; done <<< "$_rows"
     while IFS= read -r _id; do
         [[ -n "$_id" ]] || continue
         _t="${_ZB_ANS_FINDING[$_id]:-}"; _t="${_t//[$'\t\n\r']/ }"

@@ -76,3 +76,17 @@ template_stage_time_limits_reload() {
     done
     template_stage_time_limits_load
 }
+
+# stage_time_limit_marker_path <state_file> <stage> — the file the stage's
+# watchdog writes when it stops the stage at its limit (plugin_hook_call), and
+# beside it the stage's pid file. #2611: a map element's is its own
+# (ZBUILD_MAP_ELEMENT), or every element of the group shares one pid file and
+# one marker. _v <var> <state_file> <stage> [element]: the same into <var>, no process.
+stage_time_limit_marker_path() {
+    local _stlm; stage_time_limit_marker_path_v _stlm "$1" "$2" "${ZBUILD_MAP_ELEMENT:-}"; printf '%s' "$_stlm"
+}
+stage_time_limit_marker_path_v() {
+    local -n _stlmv="$1"; local _sd="${2%/*}" _e="${4:-}"
+    [[ "$_sd" == "$2" ]] && _sd="."
+    _stlmv="$_sd/runtime/stage-time-limit.${3//[^A-Za-z0-9._-]/_}${_e:+.${_e//[^A-Za-z0-9._-]/_}}"
+}

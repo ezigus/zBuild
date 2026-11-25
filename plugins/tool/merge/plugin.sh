@@ -69,7 +69,7 @@ merge_run() {
     # branch the engine did not say passed them (ZBUILD_STAGE_REQUIRES_MET,
     # #2611); without it → route to the PR path (which itself fail-closes).
     if [[ "${ZBUILD_STAGE_REQUIRES_MET:-}" != yes ]]; then
-        warn "merge_run: no review ran — fail-closed, routing to PR path (ADR-001/#358)"
+        warn "merge_run: the stages pr requires were not shown to pass — fail-closed, routing to PR path (ADR-001/#358)"
         _merge_pr_fallback "$stage_id" "$state_file" "$merge_result_out" "review_absent"
         return $?
     fi

@@ -129,6 +129,12 @@ _b6_prior "the jq error is hidden"; touch -t 202501010000 "$_B6_R"
 _ANS=()
 zb_answers_finish _ANS "$_P_SHOWN" $'ANSWER lens-sre-code finding 1: done — the write emits an event' "$_B6_R"
 assert_eq "[B6] an answer from an earlier run is not carried" $'lens-sre-code finding 2\nissue-acceptance finding 1' "$_ZB_ANS_MISSING"
+_P_BS=$'Previous work\n- BUFND-14 (opened by build): uses grep -E "a\\.b" on the path'
+jq -n --arg t 'uses grep -E "a\.b" on the path' '{result_contract:3, outcome:"fail", reason:"x", data:{
+    answers:["BUFND-14: wrong — the pattern is quoted"], answer_findings:{"BUFND-14": $t}}}' > "$_B6_R"
+_ANS=()
+zb_answers_finish _ANS "$_P_BS" "no answers" "$_B6_R"
+assert_eq "[B6] a finding with a backslash carries too" "BUFND-14: wrong — the pattern is quoted" "$(printf '%s\n' "${_ANS[@]}")"
 unset ZBUILD_RUN_START_MARKER
 
 _ANS=()

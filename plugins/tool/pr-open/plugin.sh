@@ -185,8 +185,8 @@ _pr_open_run_inner() {
     if [[ "${ZBUILD_STAGE_REQUIRES_MET:-}" != yes ]]; then
         error "pr_open: refusing to open PR — the stages it requires were not shown to pass (fail-closed per ADR-001)"
         stage_summary_write "$artifacts_dir/pr-open-summary.md" "pr-open" "fail" \
-            "no review signal was available to authorise a PR" \
-            "No PR was opened. Fail-closed: absence of a review is not approval."
+            "the stages it requires were not shown to pass (the template's pr: requires:), so no PR was opened" \
+            "No PR was opened. Fail-closed: a run the engine did not say passed what pr requires is not approval."
         emit_event "plugin.result" "verdict=fail" "plugin=pr-open" \
             "reason=review_signal_missing"
         stage_result_write "$output_pr_result_json" fail "no review signal — fail-closed per ADR-001"

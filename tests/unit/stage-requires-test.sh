@@ -11,6 +11,11 @@
 #                template
 #   RQ3 [change] simple.yaml and deployed.yaml give pr `requires: all`: every
 #                stage and loop the flow runs before it, not only the lenses'
+#   RQ7 [change] (review) a unit a later one requires that did not pass ends the
+#                run at once, naming the later unit — not after every stage
+#                between has run
+#   RQ8 [change] (review) a requires: that cannot be read refuses the template:
+#                a bad name, the block-list form, one on a loop member
 #   RQ6 [change] `requires: all` means every earlier top-level unit; a stage
 #                that failed without ending the run (`blocking: false`) is not met
 #   RQ4 [change] the gate: every required stage complete with a pass → met,
@@ -102,7 +107,10 @@ rc=0; load_template "$T6" >/dev/null 2>&1 || rc=$?
 assert_eq "[RQ6] the template loads" "0" "$rc"
 assert_eq "[RQ6] all = every unit the flow runs before it" "intake build" "$(template_stage_requires pr)"
 SF6="$TEST_TEMP_DIR/state6.json"
-jq -n '{schema_version:1, stage_statuses:{intake:"complete", build:"complete"}, stage_verdicts:{intake:"pass", build:"fail"}}' > "$SF6"
+jq -n '{schema_version:1, stage_statuses:{}, stage_verdicts:{}}' > "$SF6"
+for _s in intake build; do _update_stage_status "$SF6" "$_s" complete >/dev/null 2>&1; done
+_zbuild_state_set_stage_verdict "$SF6" intake pass >/dev/null 2>&1
+_zbuild_state_set_stage_verdict "$SF6" build fail >/dev/null 2>&1
 rc=0; stage_requires_gate "$SF6" pr || rc=$?
 assert_eq "[RQ6] a stage that failed and did not end the run → not met" "build" "${_STAGE_REQUIRES_UNMET:-}"
 
@@ -132,9 +140,63 @@ rc=0; stage_requires_gate "$SF" build || rc=$?
 assert_eq "[RQ4] no requires: → nothing to meet" "0" "$rc"
 assert_eq "[RQ4] ...and the stage is not told it was met" "unset" "${ZBUILD_STAGE_REQUIRES_MET:-unset}"
 
+print_test_section "RQ7: a required unit that did not pass ends the run at once"
+load_template "$T6" >/dev/null 2>&1
+SF7="$TEST_TEMP_DIR/state7.json"
+jq -n '{schema_version:1, stage_statuses:{}, stage_verdicts:{}}' > "$SF7"
+_update_stage_status "$SF7" intake complete >/dev/null 2>&1
+_zbuild_state_set_stage_verdict "$SF7" intake fail >/dev/null 2>&1
+rc=0; stage_requires_ahead "$SF7" 1 || rc=$?
+assert_eq "[RQ7] before build: intake failed, and pr requires it → stop now" "1" "$rc"
+assert_eq "[RQ7] ...naming the unit that requires it" "pr" "${_STAGE_REQUIRES_HELD:-}"
+assert_eq "[RQ7] ...and what it requires" "intake" "${_STAGE_REQUIRES_UNMET:-}"
+_zbuild_state_set_stage_verdict "$SF7" intake pass >/dev/null 2>&1
+rc=0; stage_requires_ahead "$SF7" 1 || rc=$?
+assert_eq "[RQ7] intake passed → go on" "0" "$rc"
+rc=0; stage_requires_ahead "$SF7" 0 || rc=$?
+assert_eq "[RQ7] nothing has run yet → go on" "0" "$rc"
+
+print_test_section "RQ8: a requires: that cannot be read refuses the template"
+for _bad in "  requires: [deliv.ery]" "  requires:
+    - intake"; do
+    T8="$TEST_TEMP_DIR/rq8.yaml"; _tpl "$T8" "$_bad"
+    rc=0; out="$(load_template "$T8" 2>&1)" || rc=$?
+    assert_eq "[RQ8] refused: ${_bad//$'\n'/ }" "1" "$(( rc != 0 ))"
+done
+T8b="$TEST_TEMP_DIR/rq8b.yaml"
+cat > "$T8b" <<'YAML'
+id: rq
+name: Requires
+defaults:
+  strategy: fanout
+flow:
+  - intake
+  - loop
+loop:
+  type: cycle
+  flow:
+    - build
+  exit_when:
+    all:
+      - { stage: build, field: verdict, op: eq, value: pass }
+  max_iterations: 1
+  on_max: halt
+intake:
+  roles: [intake]
+build:
+  roles: [builder]
+  requires: [intake]
+YAML
+rc=0; out="$(load_template "$T8b" 2>&1)" || rc=$?
+assert_eq "[RQ8] refused: requires: on a loop member" "1" "$(( rc != 0 ))"
+assert_contains "[RQ8] ...and says so" "$out" "requires: is for a top-level stage"
+
 print_test_section "RQ5: the runner asks the gate before each top-level unit"
 _loop="$(awk '/for \(\( _ui = 0; _ui < \$\{#_TPL_DISPATCH_UNITS\[@\]\}/{p=1} p{print} p&&/case "\$_unit" in/{exit}' "$REPO_ROOT/core/pipeline/runner.sh")"
 assert_contains "[RQ5] the gate is asked before the unit's case" "$_loop" "stage_requires_gate"
+assert_contains "[RQ5] ...a later unit's requires are asked too" "$_loop" "stage_requires_ahead"
+_lin="$(awk '/for stage in "\$\{active_stages\[@\]\}"; do/{n++} n==2{print} n==2&&/When resuming, skip stages/{exit}' "$REPO_ROOT/core/pipeline/runner.sh")"
+assert_contains "[RQ5] the linear loop asks the gate too" "$_lin" "stage_requires_gate"
 
 cleanup_test_env
 print_test_results
