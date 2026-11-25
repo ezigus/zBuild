@@ -46,40 +46,6 @@ assert_eq "[DSHBT-13] rsc_holder_line_v returns holder despite heartbeat line be
 # ═══════════════════════════════════════════════════════════════════════════
 print_test_section "DSHBT-1/2/14: sidecar loop fires heartbeat PATCH with still-running line"
 
-GH_LOG="$TEST_TEMP_DIR/gh.log"
-GH_BODIES="$TEST_TEMP_DIR/bodies"
-mkdir -p "$GH_BODIES"
-
-# Mock gh: records every call, copies request body, returns minimal valid JSON.
-# Paths are baked in at write time (double-quoted heredoc).
-cat > "$TEST_TEMP_DIR/bin/gh" <<MOCK
-#!/usr/bin/env bash
-args="\$*"
-case "\$args" in
-    *body=@*)
-        f="\${args##*body=@}"; f="\${f%% *}"
-        n="\$(ls "$GH_BODIES" | wc -l | tr -d ' ')"
-        cp "\$f" "$GH_BODIES/body-\$((n+1)).txt" 2>/dev/null || true
-        ;;
-esac
-printf '%s\n' "\$*" >> "$GH_LOG"
-case "\$args" in
-    "auth status"*)       exit 0 ;;
-    *--paginate*)         printf '[]\n'; exit 0 ;;
-    *"-X PATCH"*)         printf '{}\n'; exit 0 ;;
-    *issues/*/comments*)  printf '7777\n'; exit 0 ;;
-esac
-exit 1
-MOCK
-chmod +x "$TEST_TEMP_DIR/bin/gh"
-
-# Fast settings: 1-second heartbeat, 0.1-second poll, no coalescing delay
-export ZBUILD_CLAIM_HEARTBEAT_S=1
-export ZBUILD_STATUS_COMMENT_POLL=0.1
-export ZBUILD_STATUS_COMMENT_MIN_INTERVAL=0
-export ZBUILD_STATUS_COMMENT_GH_TIMEOUT=10
-unset NO_GITHUB
-
 # Helper: event writer (matches the shape core/event-bus/event-bus.sh writes)
 ev() {   # ev <events-file> <HH:MM:SS> <type> [seq] [stage] [k=v...]
     local f="$1" t="$2" type="$3" seq="${4:-}" stage="${5:-}"; shift 5
@@ -141,7 +107,42 @@ wait_gone() {
     return 1
 }
 
-# ─── Setup: state dir with pipeline events ─────────────────────────────────
+# Given: a run is in progress (pipeline.start seen, plugin.run.start "build" fired, no terminal
+#        event); ZBUILD_CLAIM_HEARTBEAT_S=1 so the heartbeat fires quickly in test
+GH_LOG="$TEST_TEMP_DIR/gh.log"
+GH_BODIES="$TEST_TEMP_DIR/bodies"
+mkdir -p "$GH_BODIES"
+
+# Mock gh: records every call, copies request body, returns minimal valid JSON.
+# Paths are baked in at write time (double-quoted heredoc).
+cat > "$TEST_TEMP_DIR/bin/gh" <<MOCK
+#!/usr/bin/env bash
+args="\$*"
+case "\$args" in
+    *body=@*)
+        f="\${args##*body=@}"; f="\${f%% *}"
+        n="\$(ls "$GH_BODIES" | wc -l | tr -d ' ')"
+        cp "\$f" "$GH_BODIES/body-\$((n+1)).txt" 2>/dev/null || true
+        ;;
+esac
+printf '%s\n' "\$*" >> "$GH_LOG"
+case "\$args" in
+    "auth status"*)       exit 0 ;;
+    *--paginate*)         printf '[]\n'; exit 0 ;;
+    *"-X PATCH"*)         printf '{}\n'; exit 0 ;;
+    *issues/*/comments*)  printf '7777\n'; exit 0 ;;
+esac
+exit 1
+MOCK
+chmod +x "$TEST_TEMP_DIR/bin/gh"
+
+# Fast settings: 1-second heartbeat, 0.1-second poll, no coalescing delay
+export ZBUILD_CLAIM_HEARTBEAT_S=1
+export ZBUILD_STATUS_COMMENT_POLL=0.1
+export ZBUILD_STATUS_COMMENT_MIN_INTERVAL=0
+export ZBUILD_STATUS_COMMENT_GH_TIMEOUT=10
+unset NO_GITHUB
+
 SD="$TEST_TEMP_DIR/sd1"; mkdir -p "$SD"; : > "$SD/events.jsonl"; : > "$GH_LOG"
 rm -f "$GH_BODIES"/body-*.txt 2>/dev/null || true
 
@@ -161,20 +162,17 @@ else
     cleanup_test_env; print_test_results; exit $((FAIL > 0))
 fi
 
-# Wait for all events (the stage start) to be processed and flushed
+# Wait for the stage-start event to be processed and flushed (first PATCH after POST)
 if wait_for_event "$GH_LOG" 'PATCH' 60 0.1; then
     sleep 0.3  # let body copy complete
 fi
-
-# Record state before heartbeat window; clear log and bodies
+# Clear logs and bodies so only the heartbeat-triggered writes are captured below
 : > "$GH_LOG"; rm -f "$GH_BODIES"/body-*.txt 2>/dev/null || true
-# Wait briefly for sidecar to finish any in-flight flush
-sleep 0.5
-# Clear again so only heartbeat-triggered writes are captured
+sleep 0.5   # brief pause so any in-flight flush completes before the second clear
 : > "$GH_LOG"; rm -f "$GH_BODIES"/body-*.txt 2>/dev/null || true
 
-# Wait up to 5 seconds for a heartbeat-triggered PATCH (no new events written)
-# ZBUILD_CLAIM_HEARTBEAT_S=1, so the heartbeat should fire within ~1–2 seconds
+# When: ZBUILD_CLAIM_HEARTBEAT_S seconds have elapsed since the last flush
+#       (the heartbeat timer fires in rsc_tail_loop; no new stage events are written)
 if wait_for_event "$GH_LOG" 'PATCH' 50 0.1; then
     sleep 0.2   # let body copy complete
     heartbeat_body="$(last_body)"
@@ -185,15 +183,10 @@ else
     heartbeat_patch_count=0
     heartbeat_post_count=0
 fi
-
-# Kill sidecar before assertions to avoid racing writes
 kill "$sidecar_pid" 2>/dev/null; wait_gone "$sidecar_pid"; wait "$sidecar_pid" 2>/dev/null || true
 
-# ─── DSHBT-1: first visible line is `still running — ` (stage present) ──────
-# Given: run is in progress (pipeline.start seen, no terminal event, stage running)
-# When: heartbeat timer fires in rsc_tail_loop
-# Then: first visible line (after HTML comments) is `still running — <ISO8601> — now: <stage>`
-# And:  a PATCH is sent even when no stage events changed since the last flush
+# Then (DSHBT-1): the comment's first visible line is `still running — <ISO8601> — now: <stage>`
+# And (DSHBT-1): a PATCH is sent even when no stage events changed since the last flush
 fv="$(first_visible "$heartbeat_body")"
 assert_contains_regex "[DSHBT-1] heartbeat body's first visible line starts with 'still running — '" \
     "$fv" "^still running — "
@@ -201,7 +194,6 @@ assert_contains_regex "[DSHBT-1] heartbeat line has ISO8601 timestamp (YYYY-MM-D
     "$fv" "[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
 assert_contains "[DSHBT-1] heartbeat line names the current stage (now: build)" \
     "$fv" "now: build"
-# And: a PATCH is sent even when no stage events changed since the last flush
 if [[ "$heartbeat_patch_count" -ge 1 ]]; then
     assert_pass "[DSHBT-1] heartbeat triggers PATCH even when no stage events changed since last flush"
 else
@@ -209,11 +201,8 @@ else
         "no PATCH after heartbeat interval (got patches=$heartbeat_patch_count)"
 fi
 
-# ─── DSHBT-2: PATCH, not a new POST ─────────────────────────────────────────
-# Given: heartbeat timer fires (ZBUILD_CLAIM_HEARTBEAT_S elapsed, dirty==0, seen_start==1)
-# When: rsc_tail_loop forces a flush on the heartbeat timer
-# Then: a PATCH is sent to the existing comment (rsc_upsert issues PATCH)
-# And:  no new POST is made (the existing comment is updated in place)
+# Then (DSHBT-2): a PATCH is sent to the existing comment on GitHub with the updated body
+# And (DSHBT-2): no new comment is POSTed to the issue
 if [[ "$heartbeat_patch_count" -ge 1 ]]; then
     assert_pass "[DSHBT-2] heartbeat triggers a PATCH even when no stage events changed"
 else
@@ -223,11 +212,8 @@ fi
 assert_eq "[DSHBT-2] no new POST during heartbeat (existing comment is updated, not re-created)" \
     "0" "$heartbeat_post_count"
 
-# ─── DSHBT-14: exactly one `still running — ` line in the heartbeat body ─────
-# Given: run is in progress; ZBUILD_CLAIM_HEARTBEAT_S has elapsed since last flush
-# When: rsc_tail_loop calls rsc_flush → rsc_outbound_pages → rsc_render_header → rsc_upsert
-# Then: body contains exactly one line starting with `still running — `
-# And:  no prior heartbeat line from an earlier flush appears (body is built fresh each time)
+# Then (DSHBT-14): body contains exactly one line starting with `still running — `
+# And (DSHBT-14): no prior heartbeat line from an earlier flush appears
 hb_line_count=0
 while IFS= read -r line; do
     case "$line" in
