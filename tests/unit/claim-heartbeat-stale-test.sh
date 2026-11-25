@@ -147,9 +147,9 @@ assert_eq "[DSHBT-8] ZBUILD_CLAIM_STALE_S defaults to 1800 when unset" "1800" "$
 # DSHBT-6 (done): a local dead-pid claim is cleared without consulting a heartbeat
 # ═══════════════════════════════════════════════════════════════════════════
 print_test_section "DSHBT-6 (done): local dead-pid claim cleared before any heartbeat check"
-export ZBUILD_CLAIM_STALE_S=1800
 
 # Given: local holder on this machine with a dead PID
+export ZBUILD_CLAIM_STALE_S=1800
 _stale_local() {  # <root> <holder>
     local dir="$1/claim-coordinator/stub"
     _stub "$1" "$(jq -nc --arg h "$2" '{acquired:false, holder:$h}')"
