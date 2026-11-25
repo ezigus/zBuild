@@ -369,7 +369,7 @@ On #2533 run 45403848593 the engine stopped the run because the test stage chang
 - 2026-11-24 amendment (#2533: heartbeat line; heartbeat timer):
   - heartbeat line as first visible line (stage present) → `tests/unit/run-status-comment-heartbeat-test.sh` DSHBT-1
   - heartbeat timer fires PATCH when dirty==0 → `tests/unit/run-status-comment-heartbeat-test.sh` DSHBT-1, DSHBT-2
-  - exactly one heartbeat line per body → `tests/unit/run-status-comment-heartbeat-test.sh` DSHBT-14
+  - exactly one heartbeat line per body → `tests/unit/run-status-comment-heartbeat-test.sh` DSHBT-1
   - heartbeat line without stage when no stage active → `tests/unit/run-status-comment-heartbeat-test.sh` DSHBT-1 (no-stage)
   - rsc_holder_line_v unaffected by heartbeat line before `###` → `tests/unit/run-status-comment-heartbeat-test.sh` DSHBT-13
 
