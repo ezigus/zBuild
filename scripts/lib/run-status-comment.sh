@@ -260,13 +260,15 @@ rsc_label_added_at() {
 
 # ─── rsc_takeover_note_post <state_dir> <slug> <issue> <holder> — post takeover note ─
 # Posts "took over a stale claim from <holder>" as a new issue comment via rsc_gh.
+# Uses -f (raw-field, literal string) rather than -F body=@file: the message is
+# short and fixed-format, so no temp file is needed.
 rsc_takeover_note_post() {
-    local state_dir="$1" slug="$2" issue="$3" holder="$4" out bf
-    bf="$(mktemp "${TMPDIR:-$state_dir}/rsc-takeover.XXXXXX")" || return 0
-    printf 'took over a stale claim from %s\n' "$holder" > "$bf"
-    out="$(mktemp "${TMPDIR:-$state_dir}/rsc-takeover-out.XXXXXX")" || { rm -f "$bf"; return 0; }
-    rsc_gh "$state_dir" "$out" api "repos/${slug}/issues/${issue}/comments" -F "body=@${bf}" >/dev/null 2>&1 || true
-    rm -f "$bf" "$out"
+    local state_dir="$1" slug="$2" issue="$3" holder="$4" out
+    local _msg="took over a stale claim from ${holder//[[:cntrl:]]/}"
+    out="$(mktemp "${TMPDIR:-$state_dir}/rsc-takeover-out.XXXXXX")" || return 0
+    rsc_gh "$state_dir" "$out" api "repos/${slug}/issues/${issue}/comments" \
+        -f "body=${_msg}" >/dev/null 2>&1 || true
+    rm -f "$out"
     return 0
 }
 
