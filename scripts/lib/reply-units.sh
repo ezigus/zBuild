@@ -170,7 +170,7 @@ _zb_reply_blocks_v() {
             _raw+="$_l"$'\n'
             if [[ -z "$_f" ]]; then _h+=" $_t"
             elif [[ "$_f" != "-" ]]; then _v[$_f]+=" $_t"
-            else _zb_rb_flush; _zrb+=$'\n'"$_l"$'\n'; _raw=""; fi   # prose after a quote is its own unit
+            else _zb_rb_flush; _zrb+=$'\n'"$_l"$'\n'; fi   # prose after a quote is its own unit
             continue
         fi
         _zrb+="$_l"$'\n'

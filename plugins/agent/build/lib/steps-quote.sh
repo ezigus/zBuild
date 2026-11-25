@@ -147,7 +147,8 @@ _build_steps_parse() {
     declare -gA _BSJ_ANS=(); _BSJ_PROBLEM=""
     local -a bad=() units=()
     local start='^[[:space:]>*_`-]*[0-9]+[[:space:]]*[:.)]'
-    # #2609 (ADR-072 §3): a block answer is one line first (the shared reader).
+    # #2609 (ADR-072 §3): a block answer is one line first (the shared reader);
+    # from here `raw` holds that joined form.
     _zb_reply_blocks_v raw "$raw"
     # A line the model wrapped is read whole: each answer starts `<n>:`.
     while IFS= read -r l; do
