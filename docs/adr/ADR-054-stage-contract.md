@@ -1,6 +1,6 @@
 # ADR-054: Stage Contract
 
-**Status:** Accepted (2026-08-09); amended 2026-11-24 (#2605: §6a the test stage's copies have their own git); amended 2026-11-22 (#2586: §6a progress is a change to the repository's tracked files); amended 2026-11-20 (#2573: one shared, forgiving reader of test output); amended 2026-11-18 (#2563: the run watchdog signals only the runner's own tree)
+**Status:** Accepted (2026-08-09); amended 2026-11-24 (#2607: §6 a loop member's stop is named and cleaned); amended 2026-11-24 (#2605: §6a the test stage's copies have their own git); amended 2026-11-22 (#2586: §6a progress is a change to the repository's tracked files); amended 2026-11-20 (#2573: one shared, forgiving reader of test output); amended 2026-11-18 (#2563: the run watchdog signals only the runner's own tree)
 **Date:** 2026-08-09
 **Issue:** #1820
 **Amended:** 2026-11-08 (#2493) — §7: a signal that arrives while a signal handler runs is ignored, never handled inside it (Amendment at the end).
@@ -756,6 +756,12 @@ On #2533 run 45403848593 the run's folder was a linked checkout, whose `.git` is
 
 The check's tests used a plain git folder, where a copy's git is its own, so they never saw it. They now use a linked checkout too.
 
+## Amendment 2026-11-24 (#2607) — §6: a loop member's stop is named and cleaned like a stage's
+
+A member of a loop whose result stops the run (`misconfigured`, `broken`), or whose result is terminal, ends it as a leaf stage does: `stage_stopped:<member>:<its reason>`. It is built by `_runner_stage_stop_word_v`, so credentials are masked and private paths taken out before the reason reaches the events, the state or the comments.
+
+Before, the loop passed "<word>: <its reason>" on as it was. On #2533 run 45403848593 that reached no comment, because the stop line had no words for it (ADR-064 §4). Once the stop line shows such a reason (#2607), it must be clean. A test showed the raw form carried a token into the run's events, its state and its end-of-run words.
+
 ## Amendment 2026-11-23 (#2598) — §5: build's round is its own place and its own commits
 
 Build's round is keyed by its dispatch's place as well as run, cycle and iteration. The place is its seq label, which holds every enclosing loop's round. Build counts only the commits it made itself, which are marked `Zbuild-Stage: build` (test-author commits as the same author).
@@ -767,6 +773,7 @@ On #2532 run 45231040380, the outer loop's round 2 was again "iteration 1" of th
 - §5 amendment 2026-11-23 (#2598: build's round is its own place and its own commits) → `tests/unit/build-round-summary-test.sh` R4, R5
 
 - Amendment 2026-11-23 (#2591: §6a a test already failing before the change does not send the round back) → `tests/unit/test-already-failing-test.sh` AF1–AF7
+- Amendment 2026-11-24 (#2607: §6 a loop member's stop is named and cleaned like a stage's) → `tests/integration/stage-stop-names-cause-test.sh` S6
 - Amendment 2026-11-24 (#2605: §6a the test stage's copies have their own git — they never move the run's HEAD, branch or staged state; they leave out what the run's folder leaves out; the nested run's state folder is hidden from git) → `tests/unit/test-already-failing-test.sh` AF8–AF11, `tests/integration/state-root-isolation-test.sh` SPEC-F
 
 - 2026-11-23 amendment (#2592: large text through stdin or a file) → `tests/unit/large-text-not-argv-test.sh` L1 (the result writer, 1.2 MiB), L2 (intake's data), L3 (a comment's body on stdin), L4 (lint detail), L5 (the monitor's checks), L6 (a stage-io comment for a 1.2 MiB prompt); L1 also refuses data that is two JSON values

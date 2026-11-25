@@ -2062,6 +2062,11 @@ _cycle_iter_dispatch() {
         # through the same terminal path, naming the word and the reason.
         local _halt_why=""
         _halt_why="$(_cycle_member_halt_reason 2>/dev/null)" || _halt_why=""
+        # #2607 (ADR-054 §6): a member's stop leaves the runner as a leaf
+        # stage's does — named and cleaned, never its raw reason.
+        if [[ -n "$_halt_why" ]] && declare -F _runner_stage_stop_word_v >/dev/null 2>&1; then
+            _runner_stage_stop_word_v _halt_why "$s" "${_CYCLE_DISPATCH_REASON:-}"
+        fi
         if [[ -n "$_halt_why" ]] || { [[ $rc -ne 0 ]] && _cycle_member_is_blocking "$s"; }; then
             _cycle_emit "cycle.member.blocking_failure" \
                 "iter=$iter" "stage=$s" "rc=$rc" "reason=${_halt_why:-blocking_member}"
@@ -2786,6 +2791,11 @@ _cycle_orchestrator_run_body() {
             # #1220: prefer the member's specific human reason (names SPEC ids +
             # violation class) over the opaque token; fall back when absent.
             _term_reason="${_CYCLE_TERMINAL_MEMBER_REASON:-}"
+            # #2607: named and cleaned like any stage's stop.
+            if [[ -n "$_term_reason" ]] && declare -F _runner_stage_stop_word_v >/dev/null 2>&1; then
+                local _term_raw="$_term_reason"
+                _runner_stage_stop_word_v _term_reason "$_term_member" "$_term_raw"
+            fi
             _CYCLE_LAST_TERMINATED_REASON="${_term_reason:-member_terminal_failure}"
             overall_status="member_terminal_failure"; term_outcome="failed"
             eb_emit_event "cycle.member.terminal_failure" \
