@@ -9,7 +9,15 @@
 #
 #   M1 [change] after a map group the engine writes <group>-summary.md: every
 #               element, its outcome and its one-line reason
-#   M2 [change] ZBUILD_RUN_FLAGGED is yes when an element failed, no otherwise
+#   M2 [change] (#2611 R5) the group names every element that did not pass
+#               (_ZB_MAP_NOT_PASSED); ZBUILD_RUN_FLAGGED is retired, never set
+#   M5 [change] (#2611 R2) the elements whose result halts the run are named
+#               apart (_ZB_MAP_HALTED): rate_limited, unavailable, misconfigured,
+#               broken — not one that failed or did not finish
+#   M6 [change] (#2611 R7) an element the group's wait stopped is timed_out,
+#               not interrupted
+#   M7 [change] (#2611 R6) the group's wait is the stage limit plus the call
+#               grace plus a margin, so the element's own limits stop it first
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -42,7 +50,8 @@ orch_dispatch() {
     else stage_result_write "$ART/lens-$_e.json" pass "nothing found"; fi
     printf 'slot\n'
 }
-orch_collect()  { return 0; }
+COLLECT_ARGS="$TEST_TEMP_DIR/collect-args"
+orch_collect()  { printf '%s\n' "$*" > "$COLLECT_ARGS"; return 0; }
 orch_shutdown() { return 0; }
 resolve_plugin_for_role() { echo "$PLUGINS_ROOT/agent/review-lens"; }
 _check_artifact_contract() { return 0; }
@@ -62,7 +71,7 @@ assert_contains "[M1] each element, its outcome and its reason" "$(cat "$S" 2>/d
 assert_contains "[M1] ...every one" "$(cat "$S" 2>/dev/null)" "- c: pass — nothing found"
 
 print_test_section "M2: the engine's word for later stages"
-assert_eq "[M2] an element failed → ZBUILD_RUN_FLAGGED=yes" "yes" "${ZBUILD_RUN_FLAGGED:-unset}"
+assert_eq "[M2] ZBUILD_RUN_FLAGGED is retired: never set" "unset" "${ZBUILD_RUN_FLAGGED:-unset}"
 # #1753 (lens review): the run's stop message names every member that did not
 # pass, a conclusive fail as much as one that did not finish.
 assert_eq "[#1753/M3] the members that did not pass, for the runner" \
@@ -70,14 +79,13 @@ assert_eq "[#1753/M3] the members that did not pass, for the runner" \
 assert_eq "[#1753/M4] a group with a failed member reads fail" "fail" "$(_map_group_verdict)"
 rm -f "$ART"/lens-*.json
 _run_map a c
-assert_eq "[M2] none failed → ZBUILD_RUN_FLAGGED=no" "no" "${ZBUILD_RUN_FLAGGED:-unset}"
 assert_eq "[#1753/M3] every member passed → nothing to name" "" "${_ZB_MAP_NOT_PASSED-unset}"
 assert_eq "[#1753/M4] every member passed → the group reads pass" "pass" "$(_map_group_verdict)"
 assert_eq "[#1753/M4] a member that did not finish → the group reads incomplete" "incomplete" \
-    "$(_ZB_MAP_UNFINISHED="1 of 2 lenses did not finish: a (timed_out)" ZBUILD_RUN_FLAGGED=yes _map_group_verdict)"
+    "$(_ZB_MAP_UNFINISHED="1 of 2 lenses did not finish: a (timed_out)" _ZB_MAP_NOT_PASSED="1 of 2 lenses did not pass: a (timed_out)" _map_group_verdict)"
 
-print_test_section "#1753/SPEC-1: any non-pass outcome sets ZBUILD_RUN_FLAGGED"
-# Requirement: _strategy_run_map exports ZBUILD_RUN_FLAGGED=yes when ANY member
+print_test_section "#1753/SPEC-1: any non-pass outcome names the element"
+# Requirement: _strategy_run_map names an element in _ZB_MAP_NOT_PASSED when ANY member
 # has an outcome that is not `pass`. The old code only checked `outcome == fail`;
 # unfinished outcomes (timed_out, out_of_turns, interrupted) were not flagged.
 # New code: `outcome != pass` → flagged=yes.
@@ -94,7 +102,7 @@ orch_dispatch() {
 }
 rm -f "$ART"/lens-*.json
 _run_map a b c
-assert_eq "[#1753/SPEC-1] timed_out outcome → ZBUILD_RUN_FLAGGED=yes" "yes" "${ZBUILD_RUN_FLAGGED:-unset}"
+assert_contains "[#1753/SPEC-1] timed_out outcome → b did not pass" "${_ZB_MAP_NOT_PASSED:-}" "b (timed_out)"
 
 # sub-test: out_of_turns — lens exhausted its turn budget
 orch_dispatch() {
@@ -105,7 +113,7 @@ orch_dispatch() {
 }
 rm -f "$ART"/lens-*.json
 _run_map a b c
-assert_eq "[#1753/SPEC-1] out_of_turns outcome → ZBUILD_RUN_FLAGGED=yes" "yes" "${ZBUILD_RUN_FLAGGED:-unset}"
+assert_contains "[#1753/SPEC-1] out_of_turns outcome → b did not pass" "${_ZB_MAP_NOT_PASSED:-}" "b (out_of_turns)"
 
 # sub-test: interrupted — lens was stopped by an outside signal
 orch_dispatch() {
@@ -116,7 +124,7 @@ orch_dispatch() {
 }
 rm -f "$ART"/lens-*.json
 _run_map a b c
-assert_eq "[#1753/SPEC-1] interrupted outcome → ZBUILD_RUN_FLAGGED=yes" "yes" "${ZBUILD_RUN_FLAGGED:-unset}"
+assert_contains "[#1753/SPEC-1] interrupted outcome → b did not pass" "${_ZB_MAP_NOT_PASSED:-}" "b (interrupted)"
 
 # sub-tests: remaining non-pass outcomes — prove the requirement is "any non-pass",
 # not only the three unfinished cases already tested above. All 10 non-pass outcomes
@@ -133,9 +141,39 @@ orch_dispatch() {
 for _spec1_outcome in unusable throttled rate_limited unavailable misconfigured broken fail; do
     rm -f "$ART"/lens-*.json
     _run_map a b c
-    assert_eq "[#1753/SPEC-1] $_spec1_outcome outcome → ZBUILD_RUN_FLAGGED=yes" "yes" "${ZBUILD_RUN_FLAGGED:-unset}"
+    assert_contains "[#1753/SPEC-1] $_spec1_outcome outcome → b did not pass" "${_ZB_MAP_NOT_PASSED:-}" "b ($_spec1_outcome)"
 done
 unset _spec1_outcome
+
+print_test_section "M5 (#2611 R2): the elements whose result halts the run"
+for _spec1_outcome in rate_limited unavailable misconfigured broken; do
+    rm -f "$ART"/lens-*.json; _run_map a b c
+    assert_contains "[M5] $_spec1_outcome halts: b is named" "${_ZB_MAP_HALTED:-}" "b ($_spec1_outcome)"
+done
+for _spec1_outcome in fail timed_out interrupted out_of_turns unusable; do
+    rm -f "$ART"/lens-*.json; _run_map a b c
+    assert_eq "[M5] $_spec1_outcome does not halt" "" "${_ZB_MAP_HALTED-unset}"
+done
+unset _spec1_outcome
+
+print_test_section "M6 (#2611 R7): the group's wait stopped it → timed_out"
+orch_dispatch() {
+    local _e; _e="$(/usr/bin/grep -m1 "^export ZBUILD_REVIEW_LENS_ID=" "$2" | sed "s/^export ZBUILD_REVIEW_LENS_ID='//;s/'$//")"
+    if [[ "$_e" == b ]]; then stage_result_write "$ART/lens-$_e.json" interrupted "signal_interrupt"
+    else stage_result_write "$ART/lens-$_e.json" pass "nothing found"; fi
+    printf 'slot\n'
+}
+orch_collect() { printf '%s\n' "$*" > "$COLLECT_ARGS"; _ORCH_COLLECT_OUTCOME="timed_out"; return 1; }
+rm -f "$ART"/lens-*.json; _run_map a b c
+assert_contains "[M6] the summary says timed_out" "$(cat "$S" 2>/dev/null)" "- b: timed_out"
+assert_contains "[M6] ...and so does the element not passed" "${_ZB_MAP_NOT_PASSED:-}" "b (timed_out)"
+orch_collect() { printf '%s\n' "$*" > "$COLLECT_ARGS"; _ORCH_COLLECT_OUTCOME="passed"; return 0; }
+rm -f "$ART"/lens-*.json; _run_map a b c
+assert_contains "[M6] an outside signal stays interrupted" "${_ZB_MAP_NOT_PASSED:-}" "b (interrupted)"
+
+print_test_section "M7 (#2611 R6): the group's wait has the call grace"
+ZBUILD_CALL_GRACE_S=300 _run_map a c
+assert_contains "[M7] stage limit 900 + grace 300 + margin 30" "$(cat "$COLLECT_ARGS" 2>/dev/null)" "--timeout 1230"
 
 cleanup_test_env
 print_test_results

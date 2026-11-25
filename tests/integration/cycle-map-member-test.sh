@@ -9,8 +9,13 @@
 #                converges on round 2
 #   M2 [change] (R6): a lens fails in both rounds — the loop stops after round 2,
 #                not converged
-#   M3 [change] (R7, R8): a lens that did not finish (or found the issue itself
-#                wrong) stops the run at once — no second round
+#   M3 [change] (#2611 R1, ADR-068 §3): a lens that did not finish only does
+#                not pass — the loop goes round, as the template says
+#   M5 [guard] (#2611 R2, R3): a lens whose result halts the run (the issue
+#                itself is wrong) stops it at once, and the stop says so in the
+#                lens group's words — not "out of tries"
+#   M6 [change] (#2611 R2): a lens unfinished in both rounds — the loop's
+#                on_max decides, after round 2
 #   M4 [change]: the group's verdict is recorded like any member's
 set -uo pipefail
 
@@ -85,16 +90,19 @@ cycle_dispatch_stage() {
     return 0
 }
 # The map group's run: how each round ends is $SCENARIO's word for that round
-# (pass | fail | unfinished), set the way _map_write_summary sets it.
+# (pass | fail | unfinished | halted), set the way _map_write_summary sets it.
 map_group_run() {
     local round="${ZBUILD_CYCLE_ITER:-1}" word
     printf '%s\n' "$1" >> "$RAN"
     word="$(cut -d, -f"$round" <<< "$SCENARIO")"
-    _ZB_MAP_UNFINISHED=""; _ZB_MAP_NOT_PASSED=""; ZBUILD_RUN_FLAGGED=no
+    _ZB_MAP_UNFINISHED=""; _ZB_MAP_NOT_PASSED=""; _ZB_MAP_HALTED=""
     case "$word" in
-        fail)       ZBUILD_RUN_FLAGGED=yes; _ZB_MAP_NOT_PASSED="1 of 2 lenses did not pass: correctness (fail)" ;;
-        unfinished) ZBUILD_RUN_FLAGGED=yes; _ZB_MAP_UNFINISHED="1 of 2 lenses did not finish: scope (timed_out)"
+        fail)       _ZB_MAP_NOT_PASSED="1 of 2 lenses did not pass: correctness (fail)" ;;
+        unfinished) _ZB_MAP_UNFINISHED="1 of 2 lenses did not finish: scope (timed_out)"
                     _ZB_MAP_NOT_PASSED="1 of 2 lenses did not pass: scope (timed_out)" ;;
+        halted)     _ZB_MAP_UNFINISHED="1 of 2 lenses did not finish: scope (misconfigured)"
+                    _ZB_MAP_NOT_PASSED="1 of 2 lenses did not pass: scope (misconfigured)"
+                    _ZB_MAP_HALTED="scope (misconfigured): the issue's R2 contradicts R4" ;;
     esac
     return 0
 }
@@ -132,12 +140,28 @@ else
 fi
 assert_eq "M2: the group is recorded failed" "fail" "$(jq -r '.stage_verdicts.lenses // "missing"' "$STATE_FILE")"
 
-print_test_section "M3 (R7, R8): a lens that did not finish stops the run at once"
+print_test_section "M3 (#2611 R1): a lens that did not finish only does not pass"
 _seed; rm -f "$RAN"; SCENARIO="unfinished,pass"
 rc=0; cycle_orchestrator_run "delivery_loop" "$ZBUILD_STATE_DIR" "$STATE_FILE" >/dev/null 2>&1 || rc=$?
-assert_eq "M3: the run stops" "1" "$(( rc != 0 ))"
-assert_eq "M3: no second round" "1" "$(_runs)"
-assert_contains "M3: the stop names the group" "${_CYCLE_LAST_TERMINATED_REASON:-}" "lenses"
+assert_eq "M3: the loop ends well" "0" "$rc"
+assert_eq "M3: it went round" "2" "$(_runs)"
+assert_eq "M3: converged on round 2" "converged" "${_CYCLE_LAST_TERMINATED_REASON:-}"
+
+print_test_section "M5 (#2611 R2, R3): a lens whose result halts the run stops it at once"
+_seed; rm -f "$RAN"; SCENARIO="halted,pass"
+rc=0; cycle_orchestrator_run "delivery_loop" "$ZBUILD_STATE_DIR" "$STATE_FILE" >/dev/null 2>&1 || rc=$?
+assert_eq "M5: the run stops" "1" "$(( rc != 0 ))"
+assert_eq "M5: no second round" "1" "$(_runs)"
+assert_contains "M5: the stop is the lens group's, in its words" "${_CYCLE_LAST_TERMINATED_REASON:-}" \
+    "stage_stopped:lenses:scope (misconfigured)"
+assert_not_contains "M5: not out of tries" "${_CYCLE_LAST_TERMINATED_REASON:-}" "out_of_tries"
+
+print_test_section "M6 (#2611 R2): unfinished in both rounds — on_max decides"
+_seed; rm -f "$RAN"; SCENARIO="unfinished,unfinished"
+rc=0; cycle_orchestrator_run "delivery_loop" "$ZBUILD_STATE_DIR" "$STATE_FILE" >/dev/null 2>&1 || rc=$?
+assert_eq "M6: the loop does not end well" "1" "$(( rc != 0 ))"
+assert_eq "M6: after 2 rounds" "2" "$(_runs)"
+assert_not_contains "M6: not out of tries" "${_CYCLE_LAST_TERMINATED_REASON:-}" "out_of_tries"
 
 cleanup_test_env
 print_test_results

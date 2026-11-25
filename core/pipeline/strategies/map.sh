@@ -129,21 +129,29 @@ _map_unit_element() {
 # #2368: the engine sums up a map group — every element, its outcome and its
 # one-line reason, read from the element's own primary result — into
 # artifacts/<stage>-summary.md, and tells later stages whether any element
-# failed or did not finish (ZBUILD_RUN_FLAGGED=yes|no). Fail-open: a diagnostic never fails the group.
+# failed or did not finish (_ZB_MAP_NOT_PASSED). Fail-open: a diagnostic never fails the group.
 # Its first line says whether every element finished — a pass or a fail is a
 # finish; anything else (timed_out, an error, no result) is not — and
 # _ZB_MAP_UNFINISHED keeps that line for the runner when one did not, and
 # _ZB_MAP_NOT_PASSED names every member that did not pass, for the run's stop
-# message (#1753).
+# message (#1753), and _ZB_MAP_HALTED each whose result halts the run (#2611,
+# ADR-054 §6: rate_limited, unavailable, misconfigured, broken), with its reason.
+# A member the group's wait stopped (_ZB_MAP_WAIT_TIMED_OUT), or the stage's own
+# limit (its marker), and that recorded only a signal or nothing, is timed_out.
 # Each member's row on the status comment is closed with its own outcome and
 # what it reported (parallel.member.dispatch.complete under its seq).
 _map_write_summary() {
     local stage="$1" state_file="$2" env_target="$3" dimension="$4" n="$5"; shift 5
     local -a plugins=("${@:1:$n}") elems=("${@:$((n + 1)):$n}")
-    local state_dir art i raw res line body="" flagged=no outcome reason sum
-    local -a unfinished=() notpassed=()
-    _ZB_MAP_UNFINISHED=""; _ZB_MAP_NOT_PASSED=""
+    local state_dir art i raw res line body="" outcome reason sum
+    local -a unfinished=() notpassed=() halted=()
+    local _resp _tl_hit=0
+    _ZB_MAP_UNFINISHED=""; _ZB_MAP_NOT_PASSED=""; _ZB_MAP_HALTED=""
+    declare -F disposition_response_v >/dev/null 2>&1 \
+        || source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd ".." && pwd)/disposition.sh" 2>/dev/null || true
     state_dir="$(dirname "$state_file")"; art="${ZBUILD_ARTIFACT_DIR:-$state_dir/artifacts}"
+    # #2611 (ADR-063): stopped by the group's wait or the stage's own limit.
+    [[ -n "${_ZB_MAP_WAIT_TIMED_OUT:-}" || -f "$state_dir/runtime/stage-time-limit.${stage//[^A-Za-z0-9._-]/_}" ]] && _tl_hit=1
     declare -F _registry_output_path_rows >/dev/null 2>&1 \
         || source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../../plugin-registry" && pwd)/output-paths.sh" 2>/dev/null || true
     declare -F manifest_graph_get_outputs >/dev/null 2>&1 \
@@ -156,7 +164,12 @@ _map_write_summary() {
             outcome="$(jq -r '.outcome // "missing"' "$res" 2>/dev/null || echo missing)"
             reason="$(jq -r '(.reason // "") | gsub("[\r\n]+"; " ")' "$res" 2>/dev/null || true)"
         fi
-        [[ "$outcome" != pass ]] && { flagged=yes; notpassed+=("${elems[$i]} (${outcome})"); }
+        if (( _tl_hit )) && [[ "$outcome" == interrupted || "$outcome" == missing ]]; then
+            outcome=timed_out; reason="the stage's time limit stopped it${reason:+ ($reason)}"
+        fi
+        [[ "$outcome" != pass ]] && notpassed+=("${elems[$i]} (${outcome})")
+        disposition_response_v _resp "$outcome" 2>/dev/null || _resp=""
+        [[ "$_resp" == halt_* ]] && halted+=("${elems[$i]} (${outcome})${reason:+: $reason}")
         [[ "$outcome" == pass || "$outcome" == fail ]] || unfinished+=("${elems[$i]} (${outcome})")
         line="- ${elems[$i]}: $outcome${reason:+ — $reason}"
         body+="$line"$'\n'
@@ -183,7 +196,10 @@ _map_write_summary() {
         for p in "${notpassed[@]}"; do plist+="${plist:+, }$p"; done
         _ZB_MAP_NOT_PASSED="${#notpassed[@]} of $n $noun did not pass: $plist"
     fi
-    export ZBUILD_RUN_FLAGGED="$flagged"
+    if [[ ${#halted[@]} -gt 0 ]]; then
+        local hl=""; for p in "${halted[@]}"; do hl+="${hl:+; }$p"; done
+        _ZB_MAP_HALTED="$hl"
+    fi
     mkdir -p "$art" 2>/dev/null || true
     printf '## %s\n\n%s\n\n%s' "$stage" "$head" "$body" > "$art/${stage//[^A-Za-z0-9_.-]/_}-summary.md" 2>/dev/null || true
     return 0
@@ -191,7 +207,7 @@ _map_write_summary() {
 
 # map_group_run <gid> <state_file> <plugins_root> — one map group's run (ADR-047
 # §2): each element dispatched, then the group summed up by _map_write_summary
-# (ZBUILD_RUN_FLAGGED, _ZB_MAP_UNFINISHED, _ZB_MAP_NOT_PASSED). The runner calls
+# (_ZB_MAP_UNFINISHED, _ZB_MAP_NOT_PASSED, _ZB_MAP_HALTED). The runner calls
 # it for a group in the top-level flow, the loop for a group among its members
 # (#2433). rc 1, with _ZB_MAP_ERROR saying why, when the group could not run.
 map_group_run() {
@@ -236,7 +252,7 @@ map_group_run() {
 # failed, else pass (#1753).
 _map_group_verdict() {
     if [[ -n "${_ZB_MAP_UNFINISHED:-}" ]]; then printf 'incomplete'
-    elif [[ "${ZBUILD_RUN_FLAGGED:-}" == yes ]]; then printf 'fail'
+    elif [[ -n "${_ZB_MAP_NOT_PASSED:-}" ]]; then printf 'fail'
     else printf 'pass'
     fi
 }
@@ -378,6 +394,15 @@ _strategy_run_map() {
     # on_member_error=continue: all batches run regardless of prior batch failures.
     local total_wu="${#wu_list[@]}"
     local batch_start=0 batch_seq=0
+    # #2611 (ADR-063, #2517): the group waits the stage limit, the call grace
+    # plugin_hook_call gives it, and a margin for that watchdog's TERM-then-KILL:
+    # each member's own limits stop it first, and it records how it ended.
+    local _map_wait _map_grace="${ZBUILD_CALL_GRACE_S:-300}"
+    [[ "$_map_grace" =~ ^[0-9]+$ ]] || _map_grace=300
+    declare -F template_stage_time_limit_v >/dev/null 2>&1 \
+        || source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../../../scripts/lib" && pwd)/stage-time-limit.sh" 2>/dev/null || true
+    template_stage_time_limit_v _map_wait "$stage"
+    _map_wait=$(( _map_wait + _map_grace + 30 )); _ZB_MAP_WAIT_TIMED_OUT=""
     local infra_failed=false   # #1312: orch_spawn failure = infra error → fail-closed
     local -a batch_plugins=()
     # #1312 (Copilot): backends validate pool_id against ^[a-zA-Z0-9_-]{1,64}$.
@@ -437,15 +462,15 @@ _strategy_run_map() {
         if [[ $batch_dispatched -gt 0 ]]; then
             local collect_rc=0
             _ORCH_COLLECT_OUTCOME=""
-            orch_collect "$sub_pool_id" --timeout "$(template_stage_time_limit "$stage")" || collect_rc=$?
+            orch_collect "$sub_pool_id" --timeout "$_map_wait" || collect_rc=$?
 
             if [[ $collect_rc -eq 0 ]]; then
                 success_count=$(( success_count + 1 ))
                 # #1906: artifact enforcement already ran per work unit inside
                 # plugin_hook_call (scan_plugin_outputs).
             elif [[ "${_ORCH_COLLECT_OUTCOME:-}" == "timed_out" ]]; then
-                local _map_limit; _map_limit="$(template_stage_time_limit "$stage")"
-                warn "map: stage '${stage}' timed out after ${_map_limit}s" || true
+                _ZB_MAP_WAIT_TIMED_OUT=1
+                warn "map: stage '${stage}' timed out after ${_map_wait}s" || true
                 fail_count=$(( fail_count + 1 ))
             elif [[ "${_ORCH_COLLECT_OUTCOME:-}" == "partial" ]]; then
                 success_count=$(( success_count + 1 ))

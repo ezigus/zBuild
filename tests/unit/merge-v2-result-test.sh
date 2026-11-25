@@ -91,7 +91,7 @@ source "$REPO_ROOT/scripts/lib/stage-result.sh"
 
 # Every case here is a run whose review ran and flagged nothing: the engine says
 # so (#2368); pr-open, on the fallback path, reads only that (#2364).
-export ZBUILD_RUN_FLAGGED=no
+export ZBUILD_STAGE_REQUIRES_MET=yes
 
 # _make_state <dir> [gate_verdict]
 # Sets up a state dir with pipeline-state.json and optional
@@ -337,7 +337,7 @@ _r1_dir="$TEST_TEMP_DIR/rev-noword"
 _r1_sf="$(_make_state "$_r1_dir")"
 printf '{"schema_version":1,"verdict":"approve","summary":"ok"}\n' > "$_r1_dir/artifacts/review.json"
 _mk_mocks "$TEST_TEMP_DIR/binr1" "zbuild/issue-1849-test"
-( unset ZBUILD_RUN_FLAGGED; PATH="$TEST_TEMP_DIR/binr1:$PATH" ZBUILD_RUN_LOOPS_PASSED=yes \
+( unset ZBUILD_STAGE_REQUIRES_MET; PATH="$TEST_TEMP_DIR/binr1:$PATH" ZBUILD_RUN_LOOPS_PASSED=yes \
   merge_run "pr" "$_r1_sf" ) >/dev/null 2>&1
 assert_eq "[#2364] no word that a review ran → PR fallback, whatever review.json says" "pr_fallback" \
     "$(jq -r '.data.mode // empty' "$_r1_dir/artifacts/merge-result.json" 2>/dev/null || true)"

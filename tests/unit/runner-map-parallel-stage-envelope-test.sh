@@ -20,7 +20,8 @@
 #   SPEC-8          map: arm writes stage_statuses[id]=complete
 #   SPEC-9          map: arm writes stage_verdicts[id]=pass
 #   SPEC-10         map: arm exports ZBUILD_CURRENT_STAGE=id
-#   #1753/SPEC-4    map: arm checks ZBUILD_RUN_FLAGGED and returns 1 before _update_stage_status
+#   #1753/SPEC-4    map: arm checks _ZB_MAP_NOT_PASSED and returns 1 before _update_stage_status
+#                   (#2611 R5: ZBUILD_RUN_FLAGGED is retired; `blocking: false` opts out)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -94,30 +95,32 @@ assert_eq "[SPEC-10] map: dispatch arm exports ZBUILD_CURRENT_STAGE=id" "1" "$mg
 
 print_test_section "map: #1753 stop block"
 
-# [#1753/SPEC-4]: when ZBUILD_RUN_FLAGGED=yes after _strategy_run_map, the map arm
-# returns 1 before calling _update_stage_status for the group. Three assertions:
-#   (a) static: ZBUILD_RUN_FLAGGED check appears before _update_stage_status in source
-#   (b) static: return 1 is inside the ZBUILD_RUN_FLAGGED if-block
-#   (c) runtime: with ZBUILD_RUN_FLAGGED=yes and _rc=0, _update_stage_status is not called
+# [#1753/SPEC-4]: when a member did not pass (_ZB_MAP_NOT_PASSED, #2611) after
+# _strategy_run_map, the map arm returns 1 before calling _update_stage_status
+# for the group, as a failed leaf ends the run. Three assertions:
+#   (a) static: the check appears before _update_stage_status in source
+#   (b) static: return 1 is inside its if-block
+#   (c) runtime: with a member not passed and _rc=0, _update_stage_status is not called
 
-# (a) ZBUILD_RUN_FLAGGED check precedes _update_stage_status
+# (a) the check precedes _update_stage_status
 spec4_pre_update=$(awk '/_update_stage_status.*_mg_id.*complete/{exit} {print}' <<< "$MAP_ARM")
-spec4_flagged_cnt=$(grep -cF 'ZBUILD_RUN_FLAGGED:-' <<< "$spec4_pre_update") || spec4_flagged_cnt=0
-assert_eq "[#1753/SPEC-4] map arm: ZBUILD_RUN_FLAGGED check precedes _update_stage_status" "1" "$spec4_flagged_cnt"
+spec4_flagged_cnt=$(grep -cF '_ZB_MAP_NOT_PASSED:-' <<< "$spec4_pre_update") || spec4_flagged_cnt=0
+assert_eq "[#1753/SPEC-4] map arm: the not-passed check precedes _update_stage_status" "1" "$(( spec4_flagged_cnt > 0 ))"
+assert_eq "[#2611/R5] map arm: ZBUILD_RUN_FLAGGED is not read" "0" "$(grep -c 'ZBUILD_RUN_FLAGGED' <<< "$MAP_ARM")"
 
-# (b) return 1 is inside the ZBUILD_RUN_FLAGGED if-block (not just anywhere in the arm)
+# (b) return 1 is inside the not-passed if-block (not just anywhere in the arm)
 # At baseline the block does not exist → spec4_flagged_if empty → count=0 ≠ 1 → FAILS.
 # After #1753 the block is present with return 1 inside → count=1 → PASSES.
 spec4_flagged_if=$(awk '
-    /if \[\[.*ZBUILD_RUN_FLAGGED.*==.*yes/{p=1}
+    /if \[\[.*_ZB_MAP_NOT_PASSED/{p=1}
     p{print}
     p && /^[[:space:]]*fi/{p=0; exit}
 ' <<< "$spec4_pre_update")
 spec4_return_in_if=$(grep -c 'return 1' <<< "$spec4_flagged_if") || spec4_return_in_if=0
-assert_eq "[#1753/SPEC-4] map arm: return 1 inside ZBUILD_RUN_FLAGGED block" "1" "$spec4_return_in_if"
+assert_eq "[#1753/SPEC-4] map arm: return 1 inside the not-passed block" "1" "$spec4_return_in_if"
 
 # (c) runtime: eval the code from "if [[ $_rc -ne 0 ]]" through _update_stage_status
-#     with _rc=0 (so the rc-failure branch is skipped) and ZBUILD_RUN_FLAGGED=yes.
+#     with _rc=0 (so the rc-failure branch is skipped) and a member not passed.
 #     At baseline the arm has no stop block → reaches _update_stage_status → marker
 #     created → assert_file_not_exists FAILS.
 #     After #1753 the stop block fires return 1 before _update_stage_status → marker
@@ -138,6 +141,7 @@ _spec4_runtime() {
     eb_emit_event()                  { :; }
     _render_pipeline_end()           { :; }
     error()                          { :; }
+    _runner_stage_stop_word_v()      { :; }
     _update_stage_status()           { [[ "$3" == complete ]] && touch "$_spec4_marker"; return 0; }
     state_file="$TEST_TEMP_DIR/state.json"
     _mg_id="review_lenses"
@@ -145,25 +149,26 @@ _spec4_runtime() {
     _runner_issue="1753"
     _runner_ended=false
     _ZB_MAP_UNFINISHED=""
+    _ZB_MAP_NOT_PASSED="1 of 6 lenses did not pass: correctness (fail)"
     _ZB_STRATEGY_OUTCOME="failed"
     _rc=0
-    export ZBUILD_RUN_FLAGGED=yes
     eval "$_spec4_rc_onward"
 }
 set +e
 ( _spec4_runtime ) 2>/dev/null
 set -e
 assert_file_not_exists \
-    "[#1753/SPEC-4] map arm: the group is not recorded complete when ZBUILD_RUN_FLAGGED=yes" \
+    "[#1753/SPEC-4] map arm: the group is not recorded complete when a member did not pass" \
     "$_spec4_marker"
 
 # (d)–(f) #1753 lens review: the same code run both ways, recording what it does.
-#   (d) every member passed (ZBUILD_RUN_FLAGGED=no) → the group completes (R4)
+#   (d) every member passed → the group completes (R4)
+#   (g) #2611 R5: a group the template marks `blocking: false` completes anyway
 #   (e) a member did not pass → the group is recorded failed, and the stop
 #       message names the members that did not pass
 #   (f) the group's complete event takes its verdict from _map_group_verdict
 _spec4_log="$TEST_TEMP_DIR/spec4_calls"
-_spec4_run() {   # _spec4_run <flagged> <not_passed>
+_spec4_run() {   # _spec4_run <blocking> <not_passed>
     : > "$_spec4_log"
     _spec4_body() {
         _set_pipeline_status()           { :; }
@@ -171,20 +176,24 @@ _spec4_run() {   # _spec4_run <flagged> <not_passed>
         eb_emit_event()                  { :; }
         _render_pipeline_end()           { :; }
         error()                          { printf 'error %s\n' "$*" >> "$_spec4_log"; }
+        _runner_stage_stop_word_v()      { local -n _sw="$1"; _sw="stage_stopped:$2:$3"; }
         _update_stage_status()           { printf 'status %s\n' "$3" >> "$_spec4_log"; }
         state_file="$TEST_TEMP_DIR/state.json"; _mg_id="review_lenses"
         _runner_run_id="run-001"; _runner_issue="1753"; _runner_ended=false
         _ZB_MAP_UNFINISHED=""; _ZB_MAP_NOT_PASSED="$2"; _ZB_STRATEGY_OUTCOME="failed"; _rc=0
-        export ZBUILD_RUN_FLAGGED="$1"
+        template_stage_blocking()        { printf '%s' "$_spec4_blocking"; }
+        _spec4_blocking="$1"
         eval "$_spec4_rc_onward"
     }
     ( _spec4_body "$@" ) || true
 }
-_spec4_run no ""
+_spec4_run true ""
 assert_contains "[#1753/R4] every member passed → the group is recorded complete" "$(cat "$_spec4_log")" "status complete"
-_spec4_run yes "1 of 6 lenses did not pass: correctness (fail)"
+_spec4_run true "1 of 6 lenses did not pass: correctness (fail)"
 assert_contains "[#1753/R3] a member did not pass → the group is recorded failed" "$(cat "$_spec4_log")" "status failed"
 assert_contains "[#1753/R3] … and the stop message names it" "$(cat "$_spec4_log")" "1 of 6 lenses did not pass: correctness (fail)"
+_spec4_run false "1 of 6 lenses did not pass: correctness (fail)"
+assert_contains "[#2611/R5] blocking: false → the group completes though a member did not pass" "$(cat "$_spec4_log")" "status complete"
 # Static: the source passes _map_group_verdict to the event; M4 tests what it returns.
 assert_contains "[#1753/R3] the group's complete event is emitted with _map_group_verdict (source check)" \
     "$(grep -A2 'parallel.group.complete' <<< "$MAP_ARM")" '_map_group_verdict'

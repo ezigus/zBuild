@@ -130,10 +130,10 @@ load_template() {
     # the prior _TPL_STAGES was a no-op on the first load; prefix expansion over
     # the live environment closes that cold-start gap.
     local _stale_bl
-    for _stale_bl in "${!_TPL_STAGE_BLOCKING_@}" "${!_TPL_STAGE_FAIL_ON_@}" "${!_TPL_CYCLE_STOP_RUN_@}"; do
+    for _stale_bl in "${!_TPL_STAGE_BLOCKING_@}" "${!_TPL_STAGE_FAIL_ON_@}" "${!_TPL_CYCLE_STOP_RUN_@}" "${!_TPL_STAGE_REQUIRES_@}"; do
         # Defensive: only unset well-formed identifier names ([A-Za-z0-9_]+),
         # never a name assembled from unvalidated input.
-        [[ "$_stale_bl" =~ ^_TPL_(STAGE_BLOCKING|STAGE_FAIL_ON|CYCLE_STOP_RUN)_[A-Za-z0-9_]+$ ]] || continue
+        [[ "$_stale_bl" =~ ^_TPL_(STAGE_BLOCKING|STAGE_FAIL_ON|CYCLE_STOP_RUN|STAGE_REQUIRES)_[A-Za-z0-9_]+$ ]] || continue
         unset "$_stale_bl"
     done
 
@@ -595,6 +595,14 @@ load_template() {
                 [[ "$fo_val" =~ ^[a-z\ ]+$ ]] || continue
                 printf -v "_TPL_STAGE_FAIL_ON_${fo_id//-/_}" '%s' "$fo_val"
                 export "_TPL_STAGE_FAIL_ON_${fo_id//-/_}"
+                ;;
+            RQ)
+                # #2611 (ADR-068 §3): the earlier stages this one requires passed.
+                local rq_id rq_val
+                IFS='|' read -r rq_id rq_val <<< "$payload"
+                [[ "$rq_val" =~ ^[A-Za-z0-9_\ -]+$ ]] || continue
+                printf -v "_TPL_STAGE_REQUIRES_${rq_id//-/_}" '%s' "$rq_val"
+                export "_TPL_STAGE_REQUIRES_${rq_id//-/_}"
                 ;;
             BL)
                 # ADR-013 blocking attribute (CQ-3 / issue #863).
@@ -1453,6 +1461,18 @@ _tpl_build_dispatch_units() {
             _TPL_DISPATCH_UNITS+=("stage:$s")
         fi
     done
+    # #2611 (ADR-068 §3): a stage requires only units the flow runs before it.
+    local _rq_u _rq_id _rq_v _rq_n _rq_seen=" "
+    for _rq_u in "${_TPL_DISPATCH_UNITS[@]}"; do
+        _rq_id="${_rq_u#*:}"; _rq_v="_TPL_STAGE_REQUIRES_${_rq_id//-/_}"
+        for _rq_n in ${!_rq_v:-}; do
+            if [[ "$_rq_seen" != *" $_rq_n "* ]]; then
+                error "stage '$_rq_id' requires '$_rq_n', which is not a stage the flow runs before it"
+                return 1
+            fi
+        done
+        _rq_seen+="$_rq_id "
+    done
     return 0
 }
 
@@ -1724,7 +1744,7 @@ _tpl_translate_new_shape() {
         # per-section accumulators
         sec_type = "leaf"
         sec_roles = ""; sec_strategy = ""; sec_io_dests = ""; sec_io_tail = ""
-        sec_io_redact = ""; sec_rt = ""; sec_rmt = ""; sec_rmi = ""; sec_rre = ""; sec_blocking = ""; sec_fail_on = ""
+        sec_io_redact = ""; sec_rt = ""; sec_rmt = ""; sec_rmi = ""; sec_rre = ""; sec_blocking = ""; sec_fail_on = ""; sec_requires = ""
         # cycle accumulators
         cyc_flow = ""; cyc_max = ""; cyc_on_max = "continue"
         cyc_us = ""; cyc_uf = ""; cyc_uo = ""; cyc_uv = ""
@@ -1750,7 +1770,7 @@ _tpl_translate_new_shape() {
     function reset_section(    i) {
         sec_type = "leaf"
         sec_roles = ""; sec_strategy = ""; sec_io_dests = ""; sec_io_tail = ""
-        sec_io_redact = ""; sec_rt = ""; sec_rmt = ""; sec_rmi = ""; sec_rre = ""; sec_blocking = ""; sec_fail_on = ""
+        sec_io_redact = ""; sec_rt = ""; sec_rmt = ""; sec_rmi = ""; sec_rre = ""; sec_blocking = ""; sec_fail_on = ""; sec_requires = ""
         cyc_flow = ""; cyc_max = ""; cyc_on_max = "continue"
         cyc_us = ""; cyc_uf = ""; cyc_uo = ""; cyc_uv = ""
         cyc_as = ""; cyc_af = ""; cyc_ao = ""; cyc_av = ""
@@ -1801,6 +1821,7 @@ _tpl_translate_new_shape() {
         sec_blocking_val[cur_key] = sec_blocking
         # #2368: the fail rule of a stage — the severities that make it fail.
         sec_fail_on_val[cur_key] = sec_fail_on
+        sec_requires_val[cur_key] = sec_requires
         if (sec_type == "cycle") {
             cyc_data[cur_key] = cyc_flow "|" cyc_max "|" cyc_on_max "|" \
                                 cyc_us "|" cyc_uf "|" cyc_uo "|" cyc_uv "|" \
@@ -1953,6 +1974,11 @@ _tpl_translate_new_shape() {
         # blocking: (ADR-013 / CQ-3 #863) — leaf stage attribute; ignored for cycles.
         if ($0 ~ /^[[:space:]]+blocking:/) {
             v = $0; sub(/^[[:space:]]+blocking:[[:space:]]*/, "", v); sec_blocking = trim(v); next
+        }
+        # requires: (#2611, ADR-068 §3) — earlier stages that must have passed, a flow list.
+        if ($0 ~ /^[[:space:]]+requires:/) {
+            v = $0; sub(/^[[:space:]]+requires:[[:space:]]*/, "", v)
+            gsub(/[\[\],]/, " ", v); gsub(/[[:space:]]+/, " ", v); sec_requires = trim(v); next
         }
         # fail_on: (#2368) — the severities that make the stage fail, a flow list.
         if ($0 ~ /^[[:space:]]+fail_on:/) {
@@ -2207,6 +2233,9 @@ _tpl_translate_new_shape() {
         for (k in cyc_stop_v) print "SR|" k "|" cyc_stop_v[k]
         for (k in sec_fail_on_val) {
             if (sec_fail_on_val[k] != "") print "FO|" k "|" sec_fail_on_val[k]
+        }
+        for (k in sec_requires_val) {
+            if (sec_requires_val[k] != "") print "RQ|" k "|" sec_requires_val[k]
         }
         for (k in sec_blocking_val) {
             if (sec_blocking_val[k] == "true" || sec_blocking_val[k] == "false") print "BL|" k "|" sec_blocking_val[k]
@@ -2467,6 +2496,12 @@ template_stage_blocking() {
     local stage_id="$1"
     local safe_id="${stage_id//-/_}"
     local var="_TPL_STAGE_BLOCKING_${safe_id}"
+    echo "${!var:-}"
+}
+
+# #2611 (ADR-068 §3): the earlier stages <stage> requires passed, space-separated.
+template_stage_requires() {
+    local var="_TPL_STAGE_REQUIRES_${1//-/_}"
     echo "${!var:-}"
 }
 

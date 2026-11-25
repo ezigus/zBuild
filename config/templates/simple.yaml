@@ -31,8 +31,9 @@ defaults:
 # UNREFERENCED here) is replaced by `review_lenses` — a `type: map over: lenses`
 # `aggregate: advisory` group (issue #1295, ADR-047 §2; was `type: parallel`) —
 # one work unit per lens element. #2368: the engine sums the lenses up
-# (review_lenses-summary.md) and says whether one was flagged
-# (ZBUILD_RUN_FLAGGED); review-aggregator is retired. The lens group is
+# (review_lenses-summary.md), naming each lens that did not pass (#2611: a
+# lens that did not pass sends the loop round; `pr` requires delivery_loop to
+# have passed); review-aggregator is retired. The lens group is
 # ADVISORY: it NEVER feeds the cycle's
 # exit_when/convergence (build_test_cycle's exit_when, ADR-040 §5) and never
 # blocks merge. The B5 no-LLM-on-convergence-path invariant therefore holds.
@@ -76,8 +77,9 @@ delivery_loop:
   type: cycle
   description: The design-build-test loop, then the review lenses, until both pass — the lenses send the change round once more
   # #2433 (ADR-040): the lenses run after the build, so what they find goes back
-  # to the stages that can fix it. A lens that does not finish, or finds the
-  # issue itself wrong, stops the run at once.
+  # to the stages that can fix it. #2611 (ADR-068 §3): a lens that does not
+  # finish only does not pass; one whose result halts the run (the issue itself
+  # wrong) stops it at once.
   flow:
     - build_test_cycle
     - review_lenses
@@ -300,6 +302,8 @@ review_lenses:
 pr:
   gate: auto
   roles: [pr]
+  # #2611 (ADR-068 §3): no PR unless the design-build-test-review loop passed.
+  requires: [delivery_loop]
   io:
     destinations: [file, stdout]
     tail_lines: 200

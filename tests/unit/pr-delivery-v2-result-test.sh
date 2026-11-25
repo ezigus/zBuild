@@ -5,7 +5,7 @@
 # SPEC coverage:
 #   [#1844/SPEC-1]  manifest: result_contract:2, valid_verdicts, events, role, primary, hooks
 #   [#1844/SPEC-2]  missing state_file → rc=1, pr-result.json verdict=error/misconfigured
-#   [#1844/SPEC-3]  a flagged review (ZBUILD_RUN_FLAGGED=yes, #2368) never blocks delivery
+#   [#1844/SPEC-3]  a review that did not pass (its loop unpassed, #2611) never blocks delivery
 #   [#1844/SPEC-4]  dry-run → rc=0, verdict=pass, disposition=complete
 #   [#1844/SPEC-5]  merge delegation success → rc=0, verdict=pass, disposition=complete
 #   [#1844/SPEC-6]  merge delegation failure → rc=1, verdict=error, disposition=unavailable
@@ -133,7 +133,7 @@ fi
 # critical finding) does not refuse delivery; pr-delivery hands over to pr-open,
 # which opens the PR without merging — exactly what main did before #1844. The
 # run's code refused delivery outright here (review_blocked); Eric 2026-10-03:
-# remove it. #2368: the engine says a lens was flagged (ZBUILD_RUN_FLAGGED=yes).
+# remove it. #2611: a lens that did not pass leaves its loop unpassed (ZBUILD_RUN_LOOPS_PASSED=no).
 print_test_section "SPEC-3: a flagged review does not block — pr-open is called"
 
 _s3_sf="$(_mk_state s3)"
@@ -154,7 +154,7 @@ PROMOCK
 (
     _PR_ROOT="$_s3_fake"
     ZBUILD_STAGE_INPUTS="$_s3_si"
-    export ZBUILD_RUN_FLAGGED=yes
+    export ZBUILD_STAGE_REQUIRES_MET=yes ZBUILD_RUN_LOOPS_PASSED=no
     ZBUILD_DRY_RUN=0
     _TPL_MERGE_POLICY=manual
     _pr_stage_run_inner "$_s3_sf"

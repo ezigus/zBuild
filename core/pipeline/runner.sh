@@ -24,6 +24,8 @@ source "$_ZBUILD_ROOT/scripts/lib/abort-propagation.sh"
 source "$_ZBUILD_ROOT/scripts/lib/runner-final-status.sh"
 # shellcheck source=../../scripts/lib/run-open-items.sh
 source "$_ZBUILD_ROOT/scripts/lib/run-open-items.sh"   # run_end_words, open_items_markdown (#2330)
+# shellcheck source=../../scripts/lib/stage-requires.sh
+source "$_ZBUILD_ROOT/scripts/lib/stage-requires.sh"   # stage_requires_gate (#2611)
 source "$_ZBUILD_ROOT/core/output/stage-colors.sh"
 source "$_ZBUILD_ROOT/core/state/atomic.sh"
 source "$_ZBUILD_ROOT/core/state/resume.sh"
@@ -3621,6 +3623,19 @@ main() {
         for (( _ui = 0; _ui < ${#_TPL_DISPATCH_UNITS[@]}; _ui++ )); do
             _unit="${_TPL_DISPATCH_UNITS[_ui]}"
             _runner_cardinal=$(( _runner_cardinal + 1 ))
+            # #2611 (ADR-068 §3): a unit runs only when the stages it requires passed.
+            if ! stage_requires_gate "$state_file" "${_unit#*:}"; then
+                _set_pipeline_status "$state_file" "failed"
+                _update_stage_status "$state_file" "${_unit#*:}" "failed"
+                _runner_stage_stop_word_v _RUNNER_END_REASON "${_unit#*:}" \
+                    "it requires ${_STAGE_REQUIRES_UNMET// /, } to pass, and it did not"
+                eb_emit_event "pipeline.end" "status=failed" "stage=${_unit#*:}" "reason=$_RUNNER_END_REASON" \
+                    "run_id=$_runner_run_id" "issue=$_runner_issue" || true
+                _render_pipeline_end "failed" "${_unit#*:}"
+                _runner_ended=true
+                error "Stage ${_unit#*:} requires ${_STAGE_REQUIRES_UNMET// /, } to pass — the run stops here"
+                return 1
+            fi
             case "$_unit" in
                 cycle:*)
                     local _cyc_id="${_unit#cycle:}"
@@ -3934,14 +3949,15 @@ main() {
                         error "map group '$_mg_id' failed (${_ZB_MAP_ERROR:-${_ZB_STRATEGY_OUTCOME:-failed}})"
                         return 1
                     fi
-                    # #1753 (ADR-040 §2368-part-2): any non-pass member outcome sets
-                    # ZBUILD_RUN_FLAGGED=yes — stop the run here, before pr-delivery,
-                    # so no PR is opened and nothing merges unless every member passed.
-                    if [[ "${ZBUILD_RUN_FLAGGED:-}" == yes ]]; then
+                    # #1753, #2611 (ADR-054 §4): a group a member of which did not
+                    # pass ends the run here, as a failed leaf does — unless the
+                    # template marks it `blocking: false` (ADR-013).
+                    if [[ -n "${_ZB_MAP_NOT_PASSED:-}" && "$(template_stage_blocking "$_mg_id" 2>/dev/null)" != "false" ]]; then
                         _set_pipeline_status "$state_file" "failed"
                         _update_stage_status "$state_file" "$_mg_id" "failed"
                         _zbuild_state_set_stage_verdict "$state_file" "$_mg_id" "failed"
-                        eb_emit_event "pipeline.end" "status=failed" "map=$_mg_id" \
+                        _runner_stage_stop_word_v _RUNNER_END_REASON "$_mg_id" "$_ZB_MAP_NOT_PASSED"
+                        eb_emit_event "pipeline.end" "status=failed" "map=$_mg_id" "reason=$_RUNNER_END_REASON" \
                             "run_id=$_runner_run_id" "issue=$_runner_issue" || true
                         _render_pipeline_end "failed"
                         _runner_ended=true

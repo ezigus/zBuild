@@ -1342,7 +1342,7 @@ _cycle_iter_dispatch() {
     _CYCLE_LAST_VERDICTS_BLOB="{}"
     _CYCLE_LAST_FAILURE_COUNT=0
     _CYCLE_ITER_OUTCOME="error"
-    _CYCLE_STOP_RUN_MEMBER=""
+    _CYCLE_STOP_RUN_MEMBER=""; _CYCLE_STOP_RUN_REASON=""
     # #2543 (ADR-068 §3): set when a member ends this round for an earlier one.
     _CYCLE_ITER_ENDED_FOR_EARLIER=0
 
@@ -1856,9 +1856,9 @@ _cycle_iter_dispatch() {
         fi
         # #2433 (ADR-040): map-group-as-member — the review lenses inside the
         # loop. Every element runs (map_group_run); the group passes when every
-        # element passed. A failed element sends the loop round again; one that
-        # did not finish (or found the issue itself wrong) stops the run at
-        # once — no stage can fix that by going round (#1753).
+        # element passed. An element that failed or did not finish sends the
+        # loop round again (#2611, ADR-068 §3: only a member the template names
+        # ends the run); one whose result halts the run stops it at once.
         if [[ "$_member_type" == "map" ]]; then
             if ! declare -F map_group_run >/dev/null 2>&1; then
                 error "cycle_orchestrator: map member '$s' but the map strategy is not loaded"
@@ -1897,10 +1897,10 @@ _cycle_iter_dispatch() {
             local _mg_stop=""
             if [[ $rc -ne 0 ]]; then
                 _mg_stop="the group could not run (${_ZB_MAP_ERROR:-failed})"
-            elif [[ -n "${_ZB_MAP_UNFINISHED:-}" ]]; then
-                _mg_stop="${_ZB_MAP_NOT_PASSED:-$_ZB_MAP_UNFINISHED}"
+            elif [[ -n "${_ZB_MAP_HALTED:-}" ]]; then
+                _mg_stop="$_ZB_MAP_HALTED"
             fi
-            if [[ -z "$_mg_stop" && "${ZBUILD_RUN_FLAGGED:-}" != yes ]]; then
+            if [[ -z "$_mg_stop" && -z "${_ZB_MAP_NOT_PASSED:-}" ]]; then
                 _CYCLE_DISPATCH_VERDICT="pass"; _CYCLE_DISPATCH_VERDICT_RAW="pass"
                 _CYCLE_DISPATCH_STATUS="complete"
             else
@@ -1908,9 +1908,6 @@ _cycle_iter_dispatch() {
                 _CYCLE_DISPATCH_STATUS="failed"
                 fail=$(( fail + 1 ))
             fi
-            # A lens's verdict is this round's: the flag must not leak into the
-            # rest of the run (pr-delivery reads it).
-            [[ "$_CYCLE_DISPATCH_VERDICT" == pass ]] && export ZBUILD_RUN_FLAGGED=no
             verdict="$_CYCLE_DISPATCH_VERDICT"
             status="$_CYCLE_DISPATCH_STATUS"
             blob="$(jq -c --arg s "$s" --arg v "$verdict" --arg st "$status" \
@@ -1919,10 +1916,10 @@ _cycle_iter_dispatch() {
             _cycle_state_write_member_atomic "$state_file" "$s" "$_CYCLE_DISPATCH_STATUS" "$_CYCLE_DISPATCH_VERDICT" || true
             if [[ -n "$_mg_stop" ]]; then
                 error "cycle_orchestrator: '$s': run stopped — $_mg_stop"
-                _CYCLE_STOP_RUN_MEMBER="$s"
+                _CYCLE_STOP_RUN_MEMBER="$s"; _CYCLE_STOP_RUN_REASON="$_mg_stop"
                 break
             fi
-            [[ "${ZBUILD_RUN_FLAGGED:-}" == yes ]] \
+            [[ -n "${_ZB_MAP_NOT_PASSED:-}" ]] \
                 && warn "cycle_orchestrator: '$s': ${_ZB_MAP_NOT_PASSED:-a member did not pass} — going round again"
             continue
         fi
@@ -2805,6 +2802,15 @@ _cycle_orchestrator_run_body() {
                 2>/dev/null || true
         elif [[ -n "${_CYCLE_STOP_RUN_MEMBER:-}" ]]; then
             _CYCLE_LAST_TERMINATED_REASON="out_of_tries:$_CYCLE_STOP_RUN_MEMBER"
+            # #2611 (ADR-064 §4): a member that stopped the run with its own
+            # reason is named with it; only a member out of its tries is that.
+            if [[ -n "${_CYCLE_STOP_RUN_REASON:-}" ]]; then
+                if declare -F _runner_stage_stop_word_v >/dev/null 2>&1; then
+                    _runner_stage_stop_word_v _CYCLE_LAST_TERMINATED_REASON "$_CYCLE_STOP_RUN_MEMBER" "$_CYCLE_STOP_RUN_REASON"
+                else
+                    _CYCLE_LAST_TERMINATED_REASON="stage_stopped:$_CYCLE_STOP_RUN_MEMBER:${_CYCLE_STOP_RUN_REASON//[$'\n\r\t']/ }"
+                fi
+            fi
             overall_status="stopped_on_fail"; term_outcome="failed"
             _cycle_emit "cycle.run.stopped_on_fail" "iter=$iter" \
                 "stage=$_CYCLE_STOP_RUN_MEMBER" "reason=member_failed" 2>/dev/null || true

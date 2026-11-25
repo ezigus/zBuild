@@ -176,14 +176,14 @@ _pr_open_run_inner() {
         return 1
     fi
 
-    # ── Safety check 2/3: a review must have run (#1142, ADR-040) ─────────────
-    # Advisory lenses never refuse a PR (ADR-040 §4); the run's convergence was
-    # already gated. Fail-closed (ADR-001/#358) only when NO review ran — the
-    # engine sets ZBUILD_RUN_FLAGGED once a review group has run (#2368). #2364:
-    # the retired review stage's file is no longer read. The refusal is this
+    # ── Safety check 2/3: what the template requires must have passed ──────────
+    # Fail-closed (ADR-001/#358): a PR opens only when the engine says the
+    # stages this one requires passed (#2611: `requires:`, ZBUILD_STAGE_REQUIRES_MET;
+    # the shipped templates require delivery_loop, which holds the review). A
+    # template that requires nothing never opens one. The refusal is this
     # stage's judgement: outcome fail, rc 0.
-    if [[ -z "${ZBUILD_RUN_FLAGGED:-}" ]]; then
-        error "pr_open: refusing to open PR — no review ran (fail-closed per ADR-001)"
+    if [[ "${ZBUILD_STAGE_REQUIRES_MET:-}" != yes ]]; then
+        error "pr_open: refusing to open PR — the stages it requires were not shown to pass (fail-closed per ADR-001)"
         stage_summary_write "$artifacts_dir/pr-open-summary.md" "pr-open" "fail" \
             "no review signal was available to authorise a PR" \
             "No PR was opened. Fail-closed: absence of a review is not approval."

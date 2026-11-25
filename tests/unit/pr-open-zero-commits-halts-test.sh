@@ -50,7 +50,7 @@ cd "$REPO" || exit 1
 STATE_DIR="$TEST_TEMP_DIR/state"
 ART="$STATE_DIR/artifacts"
 mkdir -p "$ART"
-export ZBUILD_RUN_FLAGGED=no   # a review ran and flagged nothing (#2368, #2364)
+export ZBUILD_STAGE_REQUIRES_MET=yes   # the stages pr requires passed (#2611)
 STATE_FILE="$STATE_DIR/pipeline-state.json"
 printf '{"issue":1265,"branch":"zbuild/issue-1265"}\n' > "$STATE_FILE"
 
