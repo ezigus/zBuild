@@ -232,6 +232,21 @@ assert_file_exists "[SPEC-7] a stage's output is put back" "$_S7_TO/plan.json"
 assert_file_not_exists "[SPEC-7] an earlier run's stage-io record is not put back" \
     "$_S7_TO/stage-io/design-iter4-error.json"
 
+print_test_section "[#2611 R11] an earlier run's hand-offs are not put back"
+# On #2533 run 45537497322 items an earlier run had handed to build kept their
+# old verdicts for a round: a hand-off lives within one run (ADR-050 §3).
+_S8_FROM="$TEST_TEMP_DIR/s8-from"; _S8_TO="$TEST_TEMP_DIR/s8-to"
+mkdir -p "$_S8_FROM/handoffs"
+printf 'prior plan\n' > "$_S8_FROM/plan.json"
+printf 'build\n' > "$_S8_FROM/handoffs/issue-acceptance-judged-handed-RQHBT-1"
+printf '1\n' > "$_S8_FROM/issue-acceptance-judged-handoffs-RQHBT-1"
+printf 'build\n' > "$_S8_FROM/issue-acceptance-judged-handed-RQHBT-2"
+_artifact_persist_put_back "$_S8_FROM" "$_S8_TO"
+assert_file_exists "[#2611] a stage's output is put back" "$_S8_TO/plan.json"
+assert_file_not_exists "[#2611] the handoffs folder is not put back" "$_S8_TO/handoffs/issue-acceptance-judged-handed-RQHBT-1"
+assert_file_not_exists "[#2611] ...nor a hand-off count saved before the folder" "$_S8_TO/issue-acceptance-judged-handoffs-RQHBT-1"
+assert_file_not_exists "[#2611] ...nor a hand-off marker saved before the folder" "$_S8_TO/issue-acceptance-judged-handed-RQHBT-2"
+
 # ─── [#1805/DSDLGT-1] hydrate_run delegates copy-back to _artifact_persist_put_back ─
 # hydrate_run must call _artifact_persist_put_back (not the old inline _hydrate_put_back)
 # for the copy-back operation. This sentinel test overrides _artifact_persist_put_back;

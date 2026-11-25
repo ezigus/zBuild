@@ -152,7 +152,7 @@ EOF
     ZBUILD_NEGCTL_TIMEOUT=1 ZBUILD_NEGCTL_ARTIFACT_DIR="$LOGDIR" \
         acceptance_negctl_check "$DM4" "$REPO4" >/dev/null 2>&1
     set -e
-    [[ -f "$LOGDIR/negctl-SPEC-1.log" ]] \
+    [[ -f "$LOGDIR/negctl/negctl-SPEC-1.log" ]] \
         && assert_pass "NC-H: negctl-SPEC-1.log artifact written for diagnosis" \
         || assert_fail "NC-H: expected negctl-SPEC-1.log artifact" "missing"
 else

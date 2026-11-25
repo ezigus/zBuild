@@ -360,7 +360,7 @@ ${_dp_limits}")"; then
     [[ -f "$_dp_reply_f" ]] && { IFS= read -r -d '' _dp_reply < "$_dp_reply_f" || true; }
     # ADR-068 §6: a finding it was shown and did not answer stays open.
     _DESIGN_ANSWERS=()
-    zb_answers_finish _DESIGN_ANSWERS "$_dp_composed" "$_dp_reply"
+    zb_answers_finish _DESIGN_ANSWERS "$_dp_composed" "$_dp_reply" "$artifact_dir/design-verdict.json"
     if [[ $router_rc -eq 130 ]]; then
         warn "_design_stage_run_inner: the model call was interrupted (SIGINT) — propagating abort"
         return 130

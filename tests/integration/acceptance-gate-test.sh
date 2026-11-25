@@ -260,6 +260,13 @@ TESTFILES:
 tests/feature-test.sh
 ```
 EOF
+    # #2611 R11 (ADR-050 §3): each per-item log type has its own folder, emptied
+    # when the gate starts — on #2533 run 45644128060 a log for a SPEC design
+    # had since merged away came back in every run.
+    mkdir -p "$REPO8/.zbuild-state/artifacts/negctl" "$REPO8/.zbuild-state/artifacts/reachability"
+    printf 'old\n' > "$REPO8/.zbuild-state/artifacts/negctl/negctl-SPEC-14.log"
+    printf 'old\n' > "$REPO8/.zbuild-state/artifacts/reachability/reachability-gone.sh.log"
+    printf 'kept\n' > "$REPO8/.zbuild-state/artifacts/finding-ids-BUFND.json"
     export ZBUILD_NEGCTL_TIMEOUT=1
     set +e; _run_gate "$REPO8"; set -e
     unset ZBUILD_NEGCTL_TIMEOUT
@@ -270,9 +277,15 @@ EOF
     assert_eq "S8: failure class is negctl_error:timeout:SPEC-1 (not a violation)" \
         "negctl_error:timeout:SPEC-1" "$(jq -r '.failures[0]' <<<"$RESULT")"
     assert_event_emitted "S8: negctl_timeout event" "$EVENTS" "acceptance.gate.negctl_timeout"
-    [[ -f "$REPO8/.zbuild-state/artifacts/negctl-SPEC-1.log" ]] \
-        && assert_pass "S8: negctl-SPEC-1.log diagnostic artifact captured" \
-        || assert_fail "S8: expected negctl-SPEC-1.log artifact" "missing"
+    [[ -f "$REPO8/.zbuild-state/artifacts/negctl/negctl-SPEC-1.log" ]] \
+        && assert_pass "S8: negctl-SPEC-1.log diagnostic artifact captured, in negctl/" \
+        || assert_fail "S8: expected negctl/negctl-SPEC-1.log artifact" "missing"
+    assert_file_not_exists "S8/#2611: a log for a SPEC no longer in the design is gone" \
+        "$REPO8/.zbuild-state/artifacts/negctl/negctl-SPEC-14.log"
+    assert_file_not_exists "S8/#2611: ...and a reachability log for a file no longer changed" \
+        "$REPO8/.zbuild-state/artifacts/reachability/reachability-gone.sh.log"
+    assert_file_exists "S8/#2611: nothing outside those folders is cleared" \
+        "$REPO8/.zbuild-state/artifacts/finding-ids-BUFND.json"
 else
     assert_pass "S8: skipped (no 'timeout' binary available)"
 fi

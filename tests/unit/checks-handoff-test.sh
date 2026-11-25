@@ -84,11 +84,13 @@ source "$REPO_ROOT/scripts/lib/judge.sh"
 H="$TEST_TEMP_DIR/th2"; mkdir -p "$H/runtime/dispatched" "$H/a"
 KF="$H/a/x-judged.json"
 ZBUILD_STATE_DIR="$H" judge_handoff_put "$KF" step-1 test-author "not mine" "f"
-touch -t 202001010000 "${KF%.json}-handed-step-1"; : > "$H/after"
+_judge_handoff_paths HP HC "$KF" step-1   # the writer's own paths (#2611: in handoffs/)
+touch -t 202001010000 "$HP"; : > "$H/after"
 ZBUILD_STATE_DIR="$H" judge_handoff_put "$KF" step-1 test-author "not mine again" "f"; _rc=$?
 assert_eq "[TH2] a second not mine while it waits: taken, rc 0" "0" "$_rc"
-assert_eq "[TH2] ...the count stays at 1" "1" "$(cat "${KF%.json}-handoffs-step-1")"
-assert_eq "[TH2] ...and the wait's start is unchanged" "old" "$([[ "${KF%.json}-handed-step-1" -nt "$H/after" ]] && echo new || echo old)"
+assert_eq "[TH2] ...the count stays at 1" "1" "$(cat "$HC")"
+assert_eq "[TH2] ...and the wait's start is unchanged" "old" "$([[ "$HP" -nt "$H/after" ]] && echo new || echo old)"
+assert_eq "[#2611] the hand-off is in its own folder" "$H/a/handoffs/x-judged-handed-step-1" "$HP"
 
 print_test_section "TH3: a receiver runs before the waiting stage"
 _rcv=""

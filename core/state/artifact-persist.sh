@@ -640,14 +640,16 @@ _artifact_persist_restore() {
 # ─── _artifact_persist_put_back <from> <to> (#1805, ADR-006 §3.6) ───────────
 # Copy every file under <from> to the same place under <to>, skipping any file
 # <to> already has (no-clobber) and skipping stage-io/ records (model call logs,
-# not stage output). Extracted from _hydrate_put_back so the runner's resume
-# rehydration and the hydrate plugin share one implementation.
+# not stage output) and an earlier run's hand-offs (#2611, ADR-050 §3: handoffs/,
+# and the <kept>-handed-/-handoffs-<item> files saved before that folder): a
+# hand-off lives within one run. Extracted from _hydrate_put_back so the runner's
+# resume rehydration and the hydrate plugin share one implementation.
 _artifact_persist_put_back() {
     local from="$1" to="$2" f rel
     mkdir -p "$to" || return 1
     while IFS= read -r -d '' f; do
         rel="${f#"$from"/}"
-        [[ "$rel" == stage-io/* || -e "$to/$rel" ]] && continue
+        [[ "$rel" == stage-io/* || "$rel" == handoffs/* || "$rel" == *-handed-* || "$rel" == *-handoffs-* || -e "$to/$rel" ]] && continue
         mkdir -p "$(dirname "$to/$rel")" && cp -p "$f" "$to/$rel" || return 1
     done < <(find "$from" -type f -print0 2>/dev/null)
     return 0

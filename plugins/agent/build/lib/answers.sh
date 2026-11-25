@@ -126,7 +126,7 @@ _build_answers_json_v() {
     local -n _baj="$1"; local _bap="" _bapf="${prompt_input_file:-${artifact_dir:+$artifact_dir/build-prompt.txt}}"
     _baj="[]"; _BUILD_ANSWERS=()
     [[ -n "$_bapf" && -f "$_bapf" ]] && { IFS= read -r -d '' _bap < "$_bapf" || true; }
-    declare -F zb_answers_finish >/dev/null 2>&1 && zb_answers_finish _BUILD_ANSWERS "$_bap" "${_ROUTE_LOOP_LAST_RESPONSE:-}"
+    declare -F zb_answers_finish >/dev/null 2>&1 && zb_answers_finish _BUILD_ANSWERS "$_bap" "${_ROUTE_LOOP_LAST_RESPONSE:-}" "${artifact_dir:+$artifact_dir/build-summary.json}"
     if [[ -n "${2:-}" ]]; then local -n _bajf="$2"; zb_answers_findings_json_v _bajf _BUILD_ANSWERS; fi
     [[ ${#_BUILD_ANSWERS[@]} -gt 0 ]] || return 0
     _baj="$(printf '%s\n' "${_BUILD_ANSWERS[@]}" | jq -Rnc '[inputs | select(length > 0)]' 2>/dev/null)" || _baj="[]"

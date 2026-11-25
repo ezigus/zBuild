@@ -13,8 +13,9 @@
 #     judged when it came back is not handed on again by the reply judged with
 #     it: a new judgement comes between two hand-offs.
 #   - On the loop's last round nothing waits: the part is judged.
-# The hand-off is the check's own record beside its kept answers
-# (<kept file>-handed-<item>, and -handoffs-<item> for the count); whether the
+# The hand-off is the check's own record, in handoffs/ beside its kept answers
+# (handoffs/<kept file>-handed-<item>, and -handoffs-<item> for the count;
+# #2611: an earlier run's are never put back); whether the
 # receiver has run since is read from the engine's records of when each stage
 # last started (runtime/dispatched/<stage>), compared by the shell (-nt).
 #
@@ -164,7 +165,10 @@ judge_output_manifest_v() {
 # _judge_handoff_paths <marker_var> <count_var> <kept_file> <item>
 _judge_handoff_paths() {
     local -n _jhp="$1" _jhc="$2"; local k="${4//[^A-Za-z0-9._-]/_}"
-    _jhp="${3%.json}-handed-$k"; _jhc="${3%.json}-handoffs-$k"
+    # #2611 (ADR-050 §3): in their own folder, which an earlier run's never reaches.
+    local _jd="${3%/*}" _jb="${3##*/}"; [[ "$_jd" == "$3" ]] && _jd="."
+    _jb="${_jb%.json}"
+    _jhp="$_jd/handoffs/$_jb-handed-$k"; _jhc="$_jd/handoffs/$_jb-handoffs-$k"
 }
 
 # judge_handoff_put <kept_file> <item> <receivers> <answer> [finding] — record
@@ -178,7 +182,7 @@ judge_handoff_put() {
     local p c n=0
     [[ -n "${1:-}" && -n "${2:-}" && -n "${3:-}" && -n "${ZBUILD_STATE_DIR:-}" ]] || return 1
     _judge_handoff_paths p c "$1" "$2"
-    [[ -d "${p%/*}" ]] || return 1
+    [[ -d "${1%/*}" ]] || return 1
     [[ -n "${_JUDGE_HANDOFF_JUDGED[$1|$2]+x}" ]] && return 1
     judge_handoff_last_round && return 1
     # Already waiting: the cap counts waits, not answers, and the wait keeps
@@ -189,6 +193,7 @@ judge_handoff_put() {
     [[ -s "$c" ]] && { IFS= read -r n < "$c" || true; }
     [[ "$n" =~ ^[0-9]+$ ]] || n=0
     (( n >= _JUDGE_HANDOFF_MAX )) && { _judge_emit judge.handoff.capped "item=$2" "times=$n"; return 1; }
+    [[ -d "${p%/*}" ]] || mkdir -p "${p%/*}" 2>/dev/null || return 1
     printf '%s\n%s\n%s\n' "$3" "${4//$'\n'/ }" "${5//$'\n'/$'\x1e'}" > "$p" 2>/dev/null || return 1
     printf '%s\n' "$(( n + 1 ))" > "$c" 2>/dev/null || true
     _judge_emit judge.handoff.waiting "item=$2" "to=$3"

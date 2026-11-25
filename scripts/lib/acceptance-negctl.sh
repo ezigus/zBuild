@@ -415,10 +415,11 @@ acceptance_negctl_check() {
         local ub_after="" uh_after=""
         # Per-SPEC diagnostic log (opt-in via ZBUILD_NEGCTL_ARTIFACT_DIR, set by
         # the plugin from the pipeline state dir). Empty → output discarded.
+        # #2611 (ADR-050 §3): in their own folder, which the gate empties first.
         local logfile=""
         if [[ -n "${ZBUILD_NEGCTL_ARTIFACT_DIR:-}" ]]; then
-            mkdir -p "$ZBUILD_NEGCTL_ARTIFACT_DIR" 2>/dev/null || true
-            logfile="$ZBUILD_NEGCTL_ARTIFACT_DIR/negctl-${spec_id}.log"
+            mkdir -p "$ZBUILD_NEGCTL_ARTIFACT_DIR/negctl" 2>/dev/null || true
+            logfile="$ZBUILD_NEGCTL_ARTIFACT_DIR/negctl/negctl-${spec_id}.log"
             : > "$logfile" 2>/dev/null || logfile=""
         fi
         # The candidate testfile set for this SPEC: the files holding its tag

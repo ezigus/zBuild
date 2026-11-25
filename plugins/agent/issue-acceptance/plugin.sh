@@ -429,7 +429,7 @@ _ia_call() {
         _IA_STOP_RC=0; return 1
     fi
     # ADR-068 §6: a finding it was shown and did not answer stays open.
-    _IA_ANSWERS=(); zb_answers_finish _IA_ANSWERS "$_framed" "$_raw"; _IA_ANS_KNOWN=1
+    _IA_ANSWERS=(); zb_answers_finish _IA_ANSWERS "$_framed" "$_raw" "$art/issue-acceptance-result.json"; _IA_ANS_KNOWN=1
     _IA_RAW="$_raw"
     return 0
 }

@@ -62,7 +62,7 @@ zb_answer_kind_v() {
     return 0
 }
 
-# zb_answers_finish <arr> <prompt> <reply> — a stage's answers to the findings
+# zb_answers_finish <arr> <prompt> <reply> [own-result] — a stage's answers to the findings
 # its prompt showed it (ADR-068 §6), read from <reply> into <arr>. Sets
 # _ZB_ANS_SHOWN (how many it was shown), _ZB_ANS_MISSING (each not answered,
 # one per line) and _ZB_ANS_FINDING (each shown finding's text, by its id: what
@@ -70,7 +70,10 @@ zb_answer_kind_v() {
 # with no answer stays open, and is shown again next round. A finding is shown
 # as `- <id> (opened by …): …`, or, written before ids, `- <label> finding <n>
 # (opened by …): …` (stage-previous-work.sh); its lines after the first are
-# indented.
+# indented. #2611 (ADR-068 §6): a finding shown and not answered keeps the
+# answer [own-result] (the stage's own latest result) gave it, when that result
+# was written in this run (after ZBUILD_RUN_START_MARKER) and the finding is the
+# one it answered, word for word (data.answer_findings) — still to be judged.
 _ZB_ANS_SHOWN=0 _ZB_ANS_MISSING=""
 declare -gA _ZB_ANS_FINDING=()
 zb_answers_finish() {
@@ -96,7 +99,29 @@ zb_answers_finish() {
             _zaf_last=""
         fi
     done <<< "${2:-}"
+    [[ -n "$_ZB_ANS_MISSING" ]] && _zb_answers_carry "$1" "${4:-}"
     return 0
+}
+
+# _zb_answers_carry <arr> <own-result> — the carry zb_answers_finish describes:
+# one jq over the stage's own result, only when it is from this run.
+_zb_answers_carry() {
+    local -n _zc="$1"; local _f="${2:-}" _m="${ZBUILD_RUN_START_MARKER:-}" _rows _id _a _t _k _left=""
+    [[ -n "$_f" && -s "$_f" && -n "$_m" && -e "$_m" && "$_f" -nt "$_m" ]] || return 0
+    _rows="$(jq -r '(.data.answer_findings // {}) as $af | (.data.answers // [])[]? | strings
+        | (split(":")[0]) as $id | select($af[$id] != null)
+        | [$id, ., $af[$id]] | map(gsub("[\t\n\r]"; " ")) | @tsv' "$_f" 2>/dev/null)" || return 0
+    [[ -n "$_rows" ]] || return 0
+    local -A _prior=() _ptext=()
+    while IFS=$'\t' read -r _id _a _t; do _prior["$_id"]="$_a"; _ptext["$_id"]="$_t"; done <<< "$_rows"
+    while IFS= read -r _id; do
+        [[ -n "$_id" ]] || continue
+        _t="${_ZB_ANS_FINDING[$_id]:-}"; _t="${_t//[$'\t\n\r']/ }"
+        _k=""; [[ -n "${_prior[$_id]+x}" ]] && zb_answer_kind_v _k "${_prior[$_id]}"
+        if [[ -n "$_k" && "${_ptext[$_id]}" == "$_t" ]]; then _zc+=("${_prior[$_id]}")
+        else _left+="${_left:+$'\n'}$_id"; fi
+    done <<< "$_ZB_ANS_MISSING"
+    _ZB_ANS_MISSING="$_left"
 }
 
 # _zb_ans_json_str_v <var> <text> — <text> as a JSON string, by the shell.
