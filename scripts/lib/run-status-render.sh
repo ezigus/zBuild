@@ -352,7 +352,9 @@ rsc_render_header() {
     # reader sees a fresh timestamp and the stage it is on without opening the log.
     # `current` is "<seq> <stage>"; the heartbeat line names only the stage.
     if [[ "$status" == "running" ]]; then
-        local _hb_ts; _hb_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        # Reuse `updated` (already set from ZBUILD_STATUS_NOW or date) — avoids a
+        # second date call and lets tests pin the timestamp via ZBUILD_STATUS_NOW.
+        local _hb_ts; _hb_ts="$updated"
         # Strip the seq prefix ("1 build" → "build"); leave as-is when no space.
         local _hb_stage="${current#* }"
         [[ "$_hb_stage" == "$current" ]] && _hb_stage="$current"
