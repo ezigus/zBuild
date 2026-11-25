@@ -57,8 +57,10 @@ _test_spawn_suite() {
         export ZBUILD_COST_LEDGER="$tmp/.zbuild-nested-state/cost-ledger.jsonl"
         export ZBUILD_CACHE_DIR="$tmp/.zbuild-nested-state/cache"
         # #2367: the fence is not the repository's work — kept out of `git
-        # status`, so a nested run's dirty-tree check does not refuse it.
-        [[ -d "$tmp/.git/info" ]] && printf '/.zbuild-nested-state/\n' >> "$tmp/.git/info/exclude"
+        # status`, so a nested run's dirty-tree check does not refuse it. By a
+        # `*` ignore inside it (#2605): git reads info/exclude from the history
+        # the copy shares. The test stage's copy has it already (_test_own_git).
+        [[ -f "$tmp/.zbuild-nested-state/.gitignore" ]] || { mkdir -p "$tmp/.zbuild-nested-state" && printf '*\n' > "$tmp/.zbuild-nested-state/.gitignore"; }
         # #1208: re-supply the repo-declarable count-contract vars AFTER the
         # fresh-shell scrub so a repo's test wrapper (e.g. an xcodebuild/
         # xcresulttool shim) can honor them — write its {passed,failed,total}
