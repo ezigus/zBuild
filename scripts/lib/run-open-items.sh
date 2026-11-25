@@ -207,7 +207,9 @@ run_end_words() {
             if [[ -z "${r//[[:space:]]/}" ]]; then printf 'stopped before finishing%s' "$with"; return 0; fi
             declare -F zbuild_mask_secrets_v >/dev/null 2>&1 \
                 || source "${BASH_SOURCE[0]%/*}/secret-patterns.sh" 2>/dev/null || true
-            declare -F zbuild_mask_secrets_v >/dev/null 2>&1 && zbuild_mask_secrets_v r "$r"
+            # Not shown when it cannot be masked, as a stage's stop (_runner_stage_stop_word_v).
+            if declare -F zbuild_mask_secrets_v >/dev/null 2>&1; then zbuild_mask_secrets_v r "$r"
+            else r="its reason could not be cleaned, so it is not shown"; fi
             (( ${#r} > 300 )) && r="${r:0:300}…"
             printf 'stopped: %s%s' "$r" "$with" ;;
     esac
@@ -217,8 +219,9 @@ run_end_words() {
 # pipeline.end event's reason, else the state file's. Empty when neither says.
 run_end_reason() {
     local sd="$1" r=""
-    # The last one, whole, on one line (#2607: `| tail -n 1` kept a reason's last line).
-    [[ -s "$sd/events.jsonl" ]] && r="$(jq -rs '[.[] | select(type == "object" and .type == "pipeline.end") | .data.reason // empty]
+    # The last one, whole, on one line (#2607: `| tail -n 1` kept a reason's
+    # last line); a line that is not JSON (a crash mid-write) is passed over.
+    [[ -s "$sd/events.jsonl" ]] && r="$(jq -Rrn '[inputs | fromjson? | select(type == "object" and .type == "pipeline.end") | .data.reason // empty]
         | last // empty | gsub("[\r\n\t]"; " ")' "$sd/events.jsonl" 2>/dev/null)"
     [[ -z "$r" && -s "$sd/pipeline-state.json" ]] && r="$(jq -r '.reason // empty' "$sd/pipeline-state.json" 2>/dev/null)"
     printf '%s' "$r"

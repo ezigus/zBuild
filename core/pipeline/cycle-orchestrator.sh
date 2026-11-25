@@ -2793,7 +2793,8 @@ _cycle_orchestrator_run_body() {
             _term_reason="${_CYCLE_TERMINAL_MEMBER_REASON:-}"
             # #2607: named and cleaned like any stage's stop.
             if [[ -n "$_term_reason" ]] && declare -F _runner_stage_stop_word_v >/dev/null 2>&1; then
-                _runner_stage_stop_word_v _term_reason "$_term_member" "$_term_reason"
+                local _term_raw="$_term_reason"
+                _runner_stage_stop_word_v _term_reason "$_term_member" "$_term_raw"
             fi
             _CYCLE_LAST_TERMINATED_REASON="${_term_reason:-member_terminal_failure}"
             overall_status="member_terminal_failure"; term_outcome="failed"

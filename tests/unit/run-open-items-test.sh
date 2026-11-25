@@ -147,8 +147,9 @@ _S4="$TEST_TEMP_DIR/s4"; mkdir -p "$_S4"
 ( source "$REPO_ROOT/core/event-bus/event-bus.sh"
   export ZBUILD_EVENTS_JSONL="$_S4/events.jsonl"
   eb_emit_event "pipeline.end" "status=failed" $'reason=broken: test said:\nline two of the reason' >/dev/null 2>&1 )
+printf '{"type":"pipeline.end","data":{"reason":"half-writ\n' >> "$_S4/events.jsonl"   # a crash mid-write
 _e4="$(run_end_reason "$_S4")"
-assert_eq "[R4] the run's end reason is read whole, on one line" "broken: test said: line two of the reason" "$_e4"
+assert_eq "[R4] the run's end reason is read whole, on one line, past a half-written line" "broken: test said: line two of the reason" "$_e4"
 assert_contains "[R4] ...and the completion comment says it" \
     "$(run_completion_body failure "" "" "" "" "" "$(run_end_words "$_e4" 0)")" "stopped: broken: test said: line two of the reason"
 # Every reason the engine writes (blocked_on_scope is no longer one: ADR-021,
