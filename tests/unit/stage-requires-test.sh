@@ -9,7 +9,10 @@
 #   RQ1 [change] a top-level stage's `requires: [<stage>, …]` loads
 #   RQ2 [change] a name that is not an earlier stage in the flow refuses the
 #                template
-#   RQ3 [change] simple.yaml and deployed.yaml give pr requires: [delivery_loop]
+#   RQ3 [change] simple.yaml and deployed.yaml give pr `requires: all`: every
+#                stage and loop the flow runs before it, not only the lenses'
+#   RQ6 [change] `requires: all` means every earlier top-level unit; a stage
+#                that failed without ending the run (`blocking: false`) is not met
 #   RQ4 [change] the gate: every required stage complete with a pass → met,
 #                and the stage is told (ZBUILD_STAGE_REQUIRES_MET=yes); one not
 #                → the run ends, failed, naming it; no requires: → nothing to
@@ -90,8 +93,18 @@ print_test_section "RQ3: the shipped templates"
 for _t in simple deployed; do
     rc=0; load_template "$REPO_ROOT/config/templates/$_t.yaml" >/dev/null 2>&1 || rc=$?
     assert_eq "[RQ3] $_t.yaml loads" "0" "$rc"
-    assert_eq "[RQ3] $_t.yaml: pr requires delivery_loop" "delivery_loop" "$(template_stage_requires pr)"
+    assert_eq "[RQ3] $_t.yaml: pr requires every stage before it" "hydrate intake delivery_loop" "$(template_stage_requires pr)"
 done
+
+print_test_section "RQ6: requires: all"
+T6="$TEST_TEMP_DIR/rq6.yaml"; _tpl "$T6" "  requires: all"
+rc=0; load_template "$T6" >/dev/null 2>&1 || rc=$?
+assert_eq "[RQ6] the template loads" "0" "$rc"
+assert_eq "[RQ6] all = every unit the flow runs before it" "intake build" "$(template_stage_requires pr)"
+SF6="$TEST_TEMP_DIR/state6.json"
+jq -n '{schema_version:1, stage_statuses:{intake:"complete", build:"complete"}, stage_verdicts:{intake:"pass", build:"fail"}}' > "$SF6"
+rc=0; stage_requires_gate "$SF6" pr || rc=$?
+assert_eq "[RQ6] a stage that failed and did not end the run → not met" "build" "${_STAGE_REQUIRES_UNMET:-}"
 
 print_test_section "RQ4: the gate"
 load_template "$T1" >/dev/null 2>&1

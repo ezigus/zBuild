@@ -179,7 +179,7 @@ _pr_open_run_inner() {
     # ── Safety check 2/3: what the template requires must have passed ──────────
     # Fail-closed (ADR-001/#358): a PR opens only when the engine says the
     # stages this one requires passed (#2611: `requires:`, ZBUILD_STAGE_REQUIRES_MET;
-    # the shipped templates require delivery_loop, which holds the review). A
+    # the shipped templates require every stage before it, the review loop among them). A
     # template that requires nothing never opens one. The refusal is this
     # stage's judgement: outcome fail, rc 0.
     if [[ "${ZBUILD_STAGE_REQUIRES_MET:-}" != yes ]]; then

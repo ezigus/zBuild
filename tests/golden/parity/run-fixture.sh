@@ -256,7 +256,7 @@ pr:
   gate: auto
   # pr-delivery provides role: pr (canonical, ADR-042).
   roles: [pr]
-  requires: [review_lenses]
+  requires: all
 
 release:
   gate: auto

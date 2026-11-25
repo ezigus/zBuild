@@ -198,8 +198,8 @@ review_lenses:
 pr:
   gate: auto
   roles: [pr]
-  # #2611 (ADR-068 §3): no PR unless the design-build-test-review loop passed.
-  requires: [delivery_loop]
+  # #2611 (ADR-068 §3): no PR unless every stage and loop before it passed.
+  requires: all
   io:
     destinations: [file, stdout]
     tail_lines: 200

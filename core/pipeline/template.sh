@@ -1461,10 +1461,15 @@ _tpl_build_dispatch_units() {
             _TPL_DISPATCH_UNITS+=("stage:$s")
         fi
     done
-    # #2611 (ADR-068 §3): a stage requires only units the flow runs before it.
-    local _rq_u _rq_id _rq_v _rq_n _rq_seen=" "
+    # #2611 (ADR-068 §3): a stage requires only units the flow runs before it;
+    # `all` is every one of them.
+    local _rq_u _rq_id _rq_v _rq_n _rq_seen=" " _rq_all
     for _rq_u in "${_TPL_DISPATCH_UNITS[@]}"; do
         _rq_id="${_rq_u#*:}"; _rq_v="_TPL_STAGE_REQUIRES_${_rq_id//-/_}"
+        if [[ "${!_rq_v:-}" == all ]]; then
+            _rq_all="${_rq_seen# }"; _rq_all="${_rq_all% }"
+            printf -v "$_rq_v" '%s' "$_rq_all"; export "${_rq_v?}"
+        fi
         for _rq_n in ${!_rq_v:-}; do
             if [[ "$_rq_seen" != *" $_rq_n "* ]]; then
                 error "stage '$_rq_id' requires '$_rq_n', which is not a stage the flow runs before it"
