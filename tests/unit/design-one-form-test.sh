@@ -85,11 +85,11 @@ _run() { : > "$_P_FILE"; _REPLY="$1"; ZBUILD_REPO_ROOT="$XR" _design_coverage "$
 print_test_section "F1: the one form"
 _run $'RQCL-1: covered\nCLA-1: ok'
 _P="$(tr -s '[:space:]' ' ' < "$_P_FILE")"
-assert_contains "[F1] one form for every problem" "$_P" "<SPEC id> <line>: <problem> | WHY: <why> | ACCEPTED IF: <what must be true of that line for it to be accepted> | QUOTE: <words from that line>"
+assert_contains_lines "[F1] one form for every problem" "$_P" $'<SPEC id> <line>: <problem>\nwhy: <why>\naccepted if: <what must be true of that line for it to be accepted>\nquote: <words from that line>'
 assert_contains "[F1] ...the line is one of six" "$_P" "<line> is the word the line starts with: Title (the SPEC's first line), Given, When, Then, And or Cleanup."
 assert_contains "[F1] ...not-asked names the line that asks for what the issue does not" "$_P" \
     "not-asked — the line commits to something the issue does not ask for, or contradicts it"
-assert_contains "[F1] ...status is on Title" "$_P" "<SPEC id> Title: status | DOC: <yes or no> | BEFORE: <yes or no> | WORK: <yes or no> | WHY: <what shows it> | ACCEPTED IF: <the status the SPEC must have, and what shows it> | QUOTE: <file> | <one line of it>"
+assert_contains_lines "[F1] ...status is on Title" "$_P" $'<SPEC id> Title: status\ndoc: <yes or no>\nbefore: <yes or no>\nwork: <yes or no>\nwhy: <what shows it>\naccepted if: <the status the SPEC must have, and what shows it>\nquote: <file> | <one line of it>'
 assert_contains "[F10] a SPEC can be flagged as a new owner" "$_P" "new-owner — only on Title: the SPEC builds something new for a job"
 assert_eq "[F1] ...and the old outside form is gone" "0" "$(grep -c '<SPEC id>: outside' <<< "$_P" || true)"
 
@@ -97,6 +97,10 @@ print_test_section "F2/F3/F4: a problem on the line it is about"
 _run $'RQCL-1: covered\nCLA-1 And: not-asked | WHY: no requirement asks for an event | ACCEPTED IF: the SPEC asks only what RQCL-1 asks | QUOTE: pipeline.refused.claimed is emitted to the event bus'
 assert_eq "[F2] a not-asked And is read: the answer is used" "" "$_DESIGN_COV_OUTCOME"
 assert_contains "[F2] ...a finding on that line, with its WHY" "$FX" \
+    "And: pipeline.refused.claimed is emitted to the event bus [FIX IN DESIGN: no requirement asks for an event — ACCEPTED IF: the SPEC asks only what RQCL-1 asks]"
+# #2609: the same answer written as a block, as the prompt asks.
+_run $'RQCL-1: covered\n\nCLA-1 And: not-asked\nwhy: no requirement asks for an event\naccepted if: the SPEC asks only what RQCL-1 asks\nquote: pipeline.refused.claimed is emitted to the event bus\nnote: the event is extra'
+assert_contains "[F2] ...the same as a block (#2609)" "$FX" \
     "And: pipeline.refused.claimed is emitted to the event bus [FIX IN DESIGN: no requirement asks for an event — ACCEPTED IF: the SPEC asks only what RQCL-1 asks]"
 _run $'RQCL-1: covered\nCLA-1 Title: not-asked | WHY: the issue asks for no stage order | ACCEPTED IF: it is accepted | QUOTE: before the first stage'
 assert_contains "[F3] a not-asked Title is a finding on the first line" "$FX" \
@@ -120,8 +124,8 @@ assert_eq "[F6] status on a When is refused" "unusable" "$_DESIGN_COV_OUTCOME"
 print_test_section "F7: a new owner where one exists"
 _run $'RQCL-1: covered\nCLA-1: ok'
 _P="$(tr -s '[:space:]' ' ' < "$_P_FILE")"
-assert_contains "[F7] the check is asked about the design's steps" "$_P" \
-    "Steps: new-owner | WHY: <what the steps build, and what already owns that job> | ACCEPTED IF: <what must be true for the steps to be accepted> | QUOTE: <file> | <one line of the existing owner>"
+assert_contains_lines "[F7] the check is asked about the design's steps" "$_P" \
+    $'Steps: new-owner\nwhy: <what the steps build, and what already owns that job>\naccepted if: <what must be true for the steps to be accepted>\nquote: <file> | <one line of the existing owner>'
 _run "RQCL-1: covered
 CLA-1: ok
 Steps: new-owner | WHY: the steps build core/claim/claim.sh, but the claim coordinator plugin already adds the label | ACCEPTED IF: the label is added by the claim coordinator plugin | QUOTE: $QCODE"
@@ -145,8 +149,8 @@ _run $'RQCL-1: covered\nCLA-1: ok\nSteps: ok'
 sed -i.bak 's/Create core\/claim\/claim.sh/Call the claim coordinator/' "$D"
 _run $'Steps: ok'
 assert_eq "[F7b] a steps-only change: the kept answers stand and only Steps is asked" "" "$_DESIGN_COV_OUTCOME"
-assert_eq "[F7b] ...the requirements are not asked again" "0" "$(grep -c 'One line for every requirement' "$_P_FILE" || true)"
-assert_contains "[F7b] ...the steps are" "$(cat "$_P_FILE")" "Steps: new-owner | WHY:"
+assert_eq "[F7b] ...the requirements are not asked again" "0" "$(grep -c '<requirement id>: uncovered' "$_P_FILE" || true)"
+assert_contains_lines "[F7b] ...the steps are" "$(cat "$_P_FILE")" $'Steps: new-owner\nwhy:'
 unset artifact_dir; mv "$D.bak" "$D"
 # F7d: a `wrong` answer to the steps' finding disputes the steps only.
 _d7d() {

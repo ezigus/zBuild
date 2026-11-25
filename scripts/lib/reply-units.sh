@@ -127,6 +127,77 @@ _judge_reply_trim_v() {
     _jrt="${2#"${2%%[![:space:]|*]*}"}"; _jrt="${_jrt%"${_jrt##*[![:space:]|*]}"}"
 }
 
+# #2609 (ADR-072 §3): the one answer form — a head line (`UNMET: <id>`,
+# `step 4: done`), then one field a line: `why:`, `accepted if:`, `quote:`,
+# `note:` (and design's `doc:`, `before:`, `work:`). Each quote is alone on its line, so the model's words cannot reach
+# it. A field line, its label's marks aside; a line after it carries it on.
+_ZB_RU_FIELD='^[[:space:]>*_`-]*(why|accepted if|quote|note|doc|before|work)[[:space:]*_`]*:[*_`]*[[:space:]]*(.*)$'
+
+# _zb_reply_blocks_v <var> <reply> — each block in <reply> as the one line the
+# stages read: `<head> | [DOC/BEFORE/WORK] | WHY: … | ACCEPTED IF: … | QUOTE: …`.
+# A block is a head with a why:, accepted if: or quote: line under it; anything
+# else (an ANSWER and its note, a list, a summary) is left exactly as it was.
+# A head that wraps carries on until its first field; a quote is one line, and
+# only the first is read; a note is set aside.
+_zb_reply_blocks_v() {
+    local -n _zrb="$1"
+    _zrb="${2:-}"
+    local _lc="${2,,}"
+    [[ "$_lc" == *why*:* || "$_lc" == *quote*:* || "$_lc" == *"accepted if"*:* ]] || return 0
+    _zrb=""
+    local _l _p _t _h="" _hv=0 _f="" _lab _val _raw=""
+    local -A _v=()
+    while IFS= read -r _l || [[ -n "$_l" ]]; do
+        _t="${_l#"${_l%%[![:space:]]*}"}"; _t="${_t%"${_t##*[![:space:]]}"}"
+        if [[ -z "$_t" ]]; then _zb_rb_flush; _zrb+="$_l"$'\n'; continue; fi
+        if (( _hv )) && [[ "${_t,,}" =~ $_ZB_RU_FIELD ]]; then
+            _lab="${BASH_REMATCH[1]}"; _raw+="$_l"$'\n'
+            [[ "$_t" =~ ^[^:]*:[*_\`]*[[:space:]]*(.*)$ ]] && _val="${BASH_REMATCH[1]}" || _val=""
+            if [[ "$_lab" == quote ]]; then
+                [[ -z "${_v[quote]:-}" ]] && _v[quote]="$_val"
+                _f="-"; continue
+            fi
+            _v[$_lab]="$_val"; _f="$_lab"; continue
+        fi
+        zb_reply_plain_v _p "${_l:0:80}"
+        # A head: a unit's start (not a heading, list item, fence or ANSWER), or
+        # a numbered answer (`2: does not`).
+        if [[ ( "$_p" =~ $_ZB_RU_START && ! "$_p" =~ ^[[:space:]]*(#|[-*+][[:space:]]|[0-9]+[.\)][[:space:]]|\`\`\`|ANSWER[[:space:]]) ) \
+              || "$_p" =~ ^[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*: ]]; then
+            _zb_rb_flush; _h="$_l"; _hv=1; _raw="$_l"$'\n'; continue
+        fi
+        if (( _hv )); then
+            _raw+="$_l"$'\n'
+            if [[ -z "$_f" ]]; then _h+=" $_t"
+            elif [[ "$_f" != "-" ]]; then _v[$_f]+=" $_t"
+            else _zb_rb_flush; _zrb+=$'\n'"$_l"$'\n'; _raw=""; fi   # prose after a quote is its own unit
+            continue
+        fi
+        _zrb+="$_l"$'\n'
+    done <<< "${2:-}"
+    _zb_rb_flush
+    _zrb="${_zrb%$'\n'}"
+}
+
+# _zb_rb_flush — _zb_reply_blocks_v's one block out, read through its locals: the
+# one line when it has a why:, accepted if: or quote:, else its lines as they were.
+_zb_rb_flush() {
+    (( _hv )) || return 0
+    if [[ -n "${_v[why]:-}${_v[accepted if]:-}${_v[quote]:-}" ]]; then
+        local _o="$_h" _k
+        for _k in doc before work; do
+            [[ -n "${_v[$_k]:-}" && "$_o" != *"| ${_k^^}:"* ]] && _o+=" | ${_k^^}: ${_v[$_k]}"
+        done
+        [[ -n "${_v[why]:-}" && "$_o" != *"| WHY:"* ]] && _o+=" | WHY: ${_v[why]}"
+        [[ -n "${_v[accepted if]:-}" && "$_o" != *"| ACCEPTED IF:"* ]] && _o+=" | ACCEPTED IF: ${_v[accepted if]}"
+        [[ -n "${_v[quote]:-}" && "$_o" != *"| QUOTE:"* ]] && _o+=" | QUOTE: ${_v[quote]}"
+        _zrb+="$_o"$'\n'
+    else
+        _zrb+="$_raw"
+    fi
+    _h=""; _hv=0; _f=""; _v=(); _raw=""
+}
+
 # zb_reply_join_v <var> <reply> — <reply> with each continued line joined, by
 # one space, to the line it continues. A line continues the one before it unless
 # it is blank, follows a blank, or starts a unit of its own. A list straight
@@ -136,7 +207,9 @@ zb_reply_join_v() {
     local -n _rj="$1"
     local _zbrj_l _zbrj_t _zbrj_cur="" _zbrj_key="" _zbrj_have=0 _zbrj_blank=1
     _rj=""
-    local _zbrj_p
+    local _zbrj_p _zbrj_in
+    # #2609: blocks first, so a field line is never joined to its head as words.
+    _zb_reply_blocks_v _zbrj_in "${2:-}"
     while IFS= read -r _zbrj_l || [[ -n "$_zbrj_l" ]]; do
         _zbrj_t="${_zbrj_l#"${_zbrj_l%%[![:space:]]*}"}"; _zbrj_t="${_zbrj_t%"${_zbrj_t##*[![:space:]]}"}"
         # #2567 (ADR-060): a fence line is a line of its own — nothing joins
@@ -172,7 +245,7 @@ zb_reply_join_v() {
             else _zbrj_cur+=" $_zbrj_t"; fi
         fi
         _zbrj_blank=0
-    done <<< "${2:-}"
+    done <<< "$_zbrj_in"
     (( _zbrj_have )) && _rj+="$_zbrj_cur"$'\n'
     _rj="${_rj%$'\n'}"
 }

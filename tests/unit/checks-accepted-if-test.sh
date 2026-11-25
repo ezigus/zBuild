@@ -136,8 +136,8 @@ assert_contains "[A4] what must be true, in the issue's words, never how to buil
     "ACCEPTED IF says what must be true for the part to be accepted, in the issue's words — never how to build it: no file, function, command or change to make."
 assert_contains "[A4] ...not this" "$(_d A4)" "$NOT_THIS"
 assert_contains "[A4] ...this" "$(_d A4)" "ACCEPTED IF: $ACC"
-assert_contains "[A4] the refusal forms carry ACCEPTED IF" "$(_d A4)" \
-    "Steps: contradicts | WHY: <which requirement, limit or term, and how> | ACCEPTED IF: <what must be true for the steps to be accepted> | QUOTE: <the step's words>"
+assert_contains_lines "[A4] the refusal forms carry ACCEPTED IF" "$(_d A4)" \
+    $'Steps: contradicts\nwhy: <which requirement, limit or term, and how>\naccepted if: <what must be true for the steps to be accepted>\nquote: <the step\'s words>'
 _lacks "[A4] ...and INSTEAD is gone" "$(_d A4)" "INSTEAD:"
 
 # ── A5: test-author's check ──────────────────────────────────────────────────
@@ -157,17 +157,22 @@ print_test_section "A5: test-author's check"
   echo "A5c|$_TA_CORR_OUTCOME|$(tr -s '[:space:]' ' ' < "$_P_FILE")"
   _REPLY='SPEC-1 Then: missing | WHY: one case of several | ACCEPTED IF: the test asserts thing 1 holds for every case | QUOTE: thing 1 holds for every case'
   : > "$_P_FILE"; _ta_correspondence "$D" "$R" T2 >/dev/null 2>&1
-  echo "A5b|$_TA_CORR_OUTCOME|${_TA_CORR_FINDINGS[0]:-}|$(tr -s '[:space:]' ' ' < "$_P_FILE")" ) > "$TEST_TEMP_DIR/ta.out" 2>/dev/null
+  echo "A5b|$_TA_CORR_OUTCOME|${_TA_CORR_FINDINGS[0]:-}|$(tr -s '[:space:]' ' ' < "$_P_FILE")"
+  # #2609: the same answer as a block, as the prompt asks.
+  _REPLY=$'SPEC-1 Then: missing\nwhy: one case of several\naccepted if: the test asserts thing 1 holds for every case\nquote: thing 1 holds for every case'
+  : > "$_P_FILE"; _ta_correspondence "$D" "$R" T2 >/dev/null 2>&1
+  echo "A5d|$_TA_CORR_OUTCOME|${_TA_CORR_FINDINGS[0]:-}" ) > "$TEST_TEMP_DIR/ta.out" 2>/dev/null
 _t() { /usr/bin/grep "^$1|" "$TEST_TEMP_DIR/ta.out"; }
 assert_contains "[A5] a part's line with no ACCEPTED IF is used" "$(_t A5a)" "A5a||"
 assert_contains "[A5] ...judged against the part's own line" "$(_t A5a)" "[FIX IN TEST: one case of several — ACCEPTED IF: thing 1 holds for every case]"
 _lacks "[A5] ...and not asked again" "$(_t A5a)" "has no ACCEPTED IF"
+assert_contains "[A5] a block answer is read the same (#2609)" "$(_t A5d)" "[FIX IN TEST: one case of several — ACCEPTED IF: the test asserts thing 1 holds for every case]"
 assert_contains "[A5] a sections line with no ACCEPTED IF cannot be used" "$(_t A5c)" "A5c|unusable|"
 assert_contains "[A5] ...the re-ask says so" "$(_t A5c)" "SPEC-1 sections has no ACCEPTED IF"
 assert_contains "[A5] the finding carries the check's ACCEPTED IF" "$(_t A5b)" "[FIX IN TEST: one case of several — ACCEPTED IF: the test asserts thing 1 holds for every case]"
 _lacks "[A5] ...and not the engine's advice" "$(_t A5b)" "assert this, so the test fails"
 assert_contains "[A5] the check is told ACCEPTED IF names the SPEC line" "$(_t A5b)" "$JUDGED: the SPEC's line"
-assert_contains "[A5] ...and the forms carry it" "$(_t A5b)" "<identifier> <part>: missing | WHY: <what the test does not do> | ACCEPTED IF:"
+assert_contains_lines "[A5] ...and the forms carry it" "$(_t A5b)" $'<identifier> <part>: missing\nwhy: <what the test does not do>\naccepted if:'
 
 # ── A6: issue-acceptance ─────────────────────────────────────────────────────
 print_test_section "A6: issue-acceptance"

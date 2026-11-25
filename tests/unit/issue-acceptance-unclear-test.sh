@@ -144,8 +144,8 @@ print_test_section "IA6: the carried question, judged by the next call"
 _R1="$MET2"$'\n'"$Q"; _R2=""; _ia fresh
 _R1="$MET2"$'\nUNCLEAR RQCNFG-1: open'; _ia
 assert_contains "[IA6] the next call is shown the carried question" "$(_flat "$_P.1")" "$Q"
-assert_contains "[IA6] ...and the answer forms" "$(_flat "$_P.1")" \
-    "UNCLEAR <id>: answered | WHY: <how the issue answers it> | QUOTE: <the issue's words that answer it>"
+assert_contains_lines "[IA6] ...and the answer forms" "$(_flat "$_P.1")" \
+    $'UNCLEAR <id>: answered\nwhy: <how the issue answers it>\nquote: <the issue\'s words that answer it>'
 assert_eq "[IA6] open: the question is kept" "$Q" "$(_res '(.data.unclear // [])[]')"
 assert_eq "[IA6] ...and is no new finding" "" "$(_texts "$A/issue-acceptance-design-result.json")"
 assert_eq "[IA6] ...the verdict is a pass" "pass" "$OUT"

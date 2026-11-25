@@ -184,7 +184,7 @@ KEPT: LMSTG-1
 UNASKED: none'
 _ip="$(cat "$TEST_TEMP_DIR/ia-prompt" 2>/dev/null)"
 assert_contains "[LM8] issue-acceptance is shown each limit" "$_ip" "- LMNCI-1: Do not build a check of a CI job status"
-assert_contains "[LM8] ...and asked KEPT or BROKEN for each" "$_ip" "BROKEN: <id> | WHY:"
+assert_contains_lines "[LM8] ...and asked KEPT or BROKEN for each" "$_ip" $'BROKEN: <id>\nwhy:'
 assert_eq "[LM8] every limit kept: it passes" "pass" "$(jq -r '.outcome' "$A/issue-acceptance-result.json" 2>/dev/null)"
 _ia 'MET: RQCLM-1
 BROKEN: LMNCI-1 | WHY: the change adds a CI status check | ACCEPTED IF: it is accepted | QUOTE: core/a.sh | ci_job_status_check() { :; }

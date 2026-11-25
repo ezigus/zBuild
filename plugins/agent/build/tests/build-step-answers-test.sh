@@ -303,10 +303,12 @@ assert_eq "[BS9] build passes" "pass" "$(_outcome)"
 assert_eq "[BS9] ...and no judge is asked" "0" "$(_ncalls)"
 _lacks "[BS9] build's prompt asks for no step answer" "$(cat "$AD/build-prompt.txt" 2>/dev/null)" "step N: done"
 
+# BS21 (#2609): a block answer is read, its words in a note.
+# BS22 (#2609): every mis-copied form of a quote is read (the table).
 # ── The prompt asks for the answers ──────────────────────────────────────────
 print_test_section "the prompt asks for one answer a step"
 _bp="$(cat "$TEST_TEMP_DIR/bs1/build-prompt.txt" 2>/dev/null)"
-assert_contains "[BS1] build's prompt asks for a done line with its quote" "$_bp" "step N: done — <file> | <a line this change added>"
+assert_contains_lines "[BS1] build's prompt asks for a done block with its quote on its own line" "$_bp" $'step N: done\nquote: <file> | <a line this change added>\nnote: <anything you want to say about it>'
 assert_contains "[BS5] ...or a not needed line with why" "$_bp" "step N: not needed — <why>"
 
 # ── BS10: the judge's call is build's own declared call ──────────────────────
@@ -357,6 +359,30 @@ JUDGE_REPLY=$'1: does\n2: does'
 _run bs20 "$DONE1_OK"$'\n'"step 2: done — QUOTE: $P/ENFORCED.md | \`  §1(a) enforcement \\\`plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh\\\`\`"$'\nLOOP_COMPLETE'
 assert_eq "[BS20] build's step check takes the escaped quote: build passes" "pass" "$(_outcome)"
 _lacks "[BS20] ...with no finding about step 2's quote" "$(_findings)" "step 2's quote"
+
+# ── BS21 (#2609): the block form, build's words in a note ───────────────────
+# #2533 run 45403848593: build wrote its own words into each quote and all 5
+# step answers were refused. A block gives the words a place of their own.
+print_test_section "BS21: a step answered in a block, its words in a note"
+JUDGE_REPLY=$'1: does\n\n2: does not\nwhy: the line is not the release\naccepted if: the step, in its own words'
+_run bs21 "step 1: done"$'\n'"quote: $P/plugin.sh | $_ok_line"$'\n'"note: adds the label, as §3a–§3e say"$'\n\n'"step 2: done"$'\n'"quote: $P/release.sh | claim_release() {"$'\n'"note: the release"$'\nLOOP_COMPLETE'
+_lacks "[BS21] step 1's quote is read without the note's words: no finding on step 1" "$(_findings)" "step 1"
+assert_contains "[BS21] ...and the judge's block answer is read: step 2 does not, with its reason" "$(_findings)" "the line is not the release"
+
+# ── BS22 (#2609): the table — every mis-copied form, in a block ─────────────
+print_test_section "BS22: every way a model has mis-copied a step's quote is read"
+JUDGE_REPLY=$'1: does\n\n2: does'
+for _f in "$P/plugin.sh | $_ok_line" \
+          "$P/plugin.sh | \`$_ok_line\`" \
+          "$P/plugin.sh | **$_ok_line**" \
+          "\`$P/plugin.sh\` | $_ok_line" \
+          "$P/plugin.sh | ${_ok_line//\"/\\\"}" \
+          "$P/plugin.sh | \"$_ok_line\"" \
+          "$P/plugin.sh | gh issue edit \"\$1\" --add-label …" \
+          "$P/plugin.sh | --add-label zbuild:claimed"; do
+    _run bs22 "step 1: done"$'\n'"quote: $_f"$'\n'"note: the label"$'\n\n'"step 2: done"$'\n'"quote: $P/release.sh | claim_release() {"$'\nLOOP_COMPLETE'
+    _lacks "[BS22] read: $_f" "$(_findings)" "step 1"
+done
 
 cleanup_test_env
 print_test_results

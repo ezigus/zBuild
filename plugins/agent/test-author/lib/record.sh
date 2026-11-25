@@ -52,3 +52,29 @@ assertion_integrity_record() {
         > "$art/$_AI_DIGESTS" 2>/dev/null || true
 }
 
+# _ta_commit_testfiles <design.md> <repo_root> <message>
+# #2188: the author's testfiles are committed — after a pass AND after a call
+# that stopped mid-write — so the next attempt, or a new session restoring the
+# work branch, continues from them instead of from nothing. #2508 (ADR-069 §11):
+# every file it changed inside the test folders is staged — a test, a helper
+# file it needs — and nothing outside them. Best-effort: a commit failure never fails the
+# stage, it only leaves the work uncommitted as before. Sets _TA_CHANGED to how
+# many testfiles this attempt changed, for a pass's or fail's reason (as build's
+# says). Never in a retryable outcome's: the engine retries only while an attempt
+# changes the stage's outputs, and a count would make a no-op attempt look like
+# one that wrote (#2186).
+_TA_CHANGED=0
+_ta_commit_testfiles() {
+    local repo="$2" msg="$3"; : "$1"
+    local -a files=()
+    _TA_CHANGED=0
+    git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 || return 0
+    zb_test_folder_changes_v files "$repo"
+    [[ ${#files[@]} -gt 0 ]] || return 0
+    # -A: a test file it deleted is part of its change too.
+    git -C "$repo" add -A -- "${files[@]}" 2>/dev/null || return 0
+    _TA_CHANGED=${#files[@]}
+    git -C "$repo" commit -q --no-verify --author "zbuild-pipeline <pipeline@local>" \
+        -m "$msg" -- "${files[@]}" >/dev/null 2>&1 || return 0
+    _ta_emit "test_author.committed" "files=${#files[@]}"
+}

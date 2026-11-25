@@ -89,7 +89,7 @@ assert_contains "[BT2] the check judges a requested test by the behaviour it pro
     "When a SPEC is a test the issue asks for, judge the behaviour that test proves"
 assert_contains "[BT2] ...code that already does it is BEFORE yes, though no test exists yet" "$_cp" \
     "no test of it existing yet does not make it [code]"
-assert_contains "[BT3] the check offers Steps: test" "$_cp" "Steps: test | WHY:"
+assert_contains_lines "[BT3] the check offers Steps: test" "$_cp" $'Steps: test\nwhy:'
 _f="$(_design_coverage_findings)"
 assert_contains "[BT4] the answer is a finding on the steps: the tests are test-author's" "$_f" \
     "Steps: a step whose work is writing or changing a test — the tests are test-author's"

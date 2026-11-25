@@ -69,18 +69,35 @@ Answer at least one line for every SPEC, each starting with that SPEC's identifi
 
 <identifier>: ok
 
-Otherwise one line for each thing wrong, and no ok line:
+Otherwise one answer for each thing wrong, and no ok line. Write each answer as a block: its first line as shown, then each field on a
+line of its own. A quote: line holds only the quote, copied as it is; your own
+words go in why: or note:. A blank line ends the answer.
 
-<identifier> <part>: missing | WHY: <what the test does not do> | ACCEPTED IF: <the SPEC's line the test must do, in its own words> | QUOTE: <that part's own words>
-<identifier> <part>: wrong | WHY: <what the test does instead> | ACCEPTED IF: <the SPEC's line the test must do, in its own words> | QUOTE: <that part's own words>
-<identifier> sections: missing | WHY: <which heading is not there, or which part's code is not under its own> | ACCEPTED IF: <the headings the test must have> | QUOTE: <test file> | <the heading or line of the test that shows it>
-<identifier> cleanup: missing | WHY: <what the test leaves changed> | ACCEPTED IF: <what the test must put back> | QUOTE: <test file> | <the line that changes it>
+<identifier> <part>: missing
+why: <what the test does not do>
+accepted if: <the SPEC's line the test must do, in its own words>
+quote: <that part's own words>
+<identifier> <part>: wrong
+why: <what the test does instead>
+accepted if: <the SPEC's line the test must do, in its own words>
+quote: <that part's own words>
+<identifier> sections: missing
+why: <which heading is not there, or which part's code is not under its own>
+accepted if: <the headings the test must have>
+quote: <test file> | <the heading or line of the test that shows it>
+<identifier> cleanup: missing
+why: <what the test leaves changed>
+accepted if: <what the test must put back>
+quote: <test file> | <the line that changes it>
 
 <part> is the word the part's line starts with: Given, When, Then or And. The QUOTE is copied from that line, and says which line it is when the SPEC has several.
 
 When no test could ever prove a SPEC — it describes what a file or a test contains, or it has no pass or fail — answer instead:
 
-<identifier>: untestable | WHY: <why no test could prove it> | ACCEPTED IF: <the SPEC's line no test can prove, in its own words> | QUOTE: <the SPEC's own words>
+<identifier>: untestable
+why: <why no test could prove it>
+accepted if: <the SPEC's line no test can prove, in its own words>
+quote: <the SPEC's own words>
 
 ACCEPTED IF names the line you judge against: the SPEC's line the test must do, in its own words, so the finding says what would be accepted. A sections or cleanup line with no ACCEPTED IF cannot be used.
 

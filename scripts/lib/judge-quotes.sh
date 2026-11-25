@@ -52,7 +52,12 @@ _judge_unescape_v() {
 # backslashes, then with each escape read as the character it stands for —
 # before the marks are set aside, or "\`\`" would leave a backslash behind.
 _judge_holds() {
-    local _jh_t _jh_q _jh_u
+    local _jh_t _jh_q _jh_u _jh_2="$2"
+    # #2609: an elision mark (… or ...) at either end of a quote is not in the
+    # line — one rule for every stage (build's step quotes had it alone).
+    _jh_2="${_jh_2%"${_jh_2##*[![:space:]]}"}"; _jh_2="${_jh_2%…}"; _jh_2="${_jh_2%...}"
+    _jh_2="${_jh_2#"${_jh_2%%[![:space:]]*}"}"; _jh_2="${_jh_2#…}"; _jh_2="${_jh_2#...}"
+    set -- "$1" "$_jh_2"
     _judge_marks_v _jh_t "$1"; _judge_marks_v _jh_q "$2"
     _judge_words_v _jh_t "$_jh_t"; _judge_words_v _jh_q "$_jh_q"
     [[ -n "$_jh_q" ]] || return 1

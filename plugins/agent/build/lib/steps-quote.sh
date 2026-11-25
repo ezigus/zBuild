@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# plugins/agent/build/lib/steps-quote.sh — how build's step answers are read
+# plugins/agent/build/lib/steps-quote.sh — how build's step answers, and its judge's, are read
 # (#2582; ADR-068 §6, ADR-072 §3 §4, amended 2026-11-21): a done's quote needs
 # no label and may be part of one added line; an answer the check accepted
 # stands on a later try that does not answer the step again.
@@ -31,7 +31,7 @@ _build_steps_quote_of_v() {
 # _build_steps_noanswer_v <var> <n> — the finding for a step with no answer.
 _build_steps_noanswer_v() {
     local -n _bsna="$1"
-    _bsna="step ${_BSL[$2]:-$2} has no answer: do it and answer \`step ${_BSL[$2]:-$2}: done — <file> | <a line this change added>\`, or answer \`step ${_BSL[$2]:-$2}: not needed — <why>\` (the step: ${_BUILD_STEP_DESC[$2-1]})"
+    _bsna="step ${_BSL[$2]:-$2} has no answer: do it and answer \`step ${_BSL[$2]:-$2}: done\` with a \`quote: <file> | <a line this change added>\` line under it, or answer \`step ${_BSL[$2]:-$2}: not needed — <why>\` (the step: ${_BUILD_STEP_DESC[$2-1]})"
 }
 
 # _build_steps_stale_v <var> <n> <why> — the finding for a step whose answer,
@@ -69,7 +69,9 @@ _build_steps_quote_find() {
         _build_steps_elide_v t "$t"
         [[ -n "$t" ]] || continue
         hits=0; cand=""
-        for a in ${arr[@]+"${arr[@]}"}; do [[ "$a" == *"$t"* ]] && { hits=$((hits + 1)); cand="$a"; }; done
+        # #2609 (ADR-072 §3): the shared comparison (marks, quote marks, spacing,
+        # escapes and `…` aside); build's own rule is only that the line is added.
+        for a in ${arr[@]+"${arr[@]}"}; do _judge_holds "$a" "$t" && { hits=$((hits + 1)); cand="$a"; }; done
         if (( hits == 1 )); then qtxt[$n]="$cand"; return 0; fi
         (( hits > 1 )) && [[ -z "$many" ]] && many="$t"
     done
@@ -132,4 +134,40 @@ _build_steps_answer_record_v() {
     local -n _bsar="$1"
     if [[ "${kind[$2]}" == "done" ]]; then _bsar="done"$'\n'"${qpath[$2]}"$'\n'"${qtxt[$2]}"
     else _bsar="not"$'\n'"${said[$2]}"; fi
+}
+
+# _build_steps_parse <reply> <wanted…> — each answer into _BSJ_ANS (n → "does"
+# or "does not<US>why<US>accepted if"); _BSJ_PROBLEM says what makes the reply
+# unusable. A step's good line is in _BSJ_ANS even when another's is not. A
+# does not with no ACCEPTED IF is judged against the step: its ACCEPTED IF is
+# the step's own words (ADR-072 §3; review on #2569).
+_build_steps_parse() {
+    local raw="$1" l n why acc; shift
+    local -A want=(); for n in "$@"; do want[$n]=1; done
+    declare -gA _BSJ_ANS=(); _BSJ_PROBLEM=""
+    local -a bad=() units=()
+    local start='^[[:space:]>*_`-]*[0-9]+[[:space:]]*[:.)]'
+    # #2609 (ADR-072 §3): a block answer is one line first (the shared reader).
+    _zb_reply_blocks_v raw "$raw"
+    # A line the model wrapped is read whole: each answer starts `<n>:`.
+    while IFS= read -r l; do
+        if [[ "$l" =~ $start || ${#units[@]} -eq 0 ]]; then units+=("$l")
+        elif [[ -n "${l//[[:space:]]/}" ]]; then units[-1]+=" ${l#"${l%%[![:space:]]*}"}"; fi
+    done <<< "$raw"
+    for l in ${units[@]+"${units[@]}"}; do
+        judge_reply_line_v l "$l"
+        [[ "${l,,}" =~ ^([0-9]+(\.[0-9]+)?):[[:space:]]*(does[[:space:]]+not|does)([^a-z]|$) ]] || continue
+        local -a _bsm=("${BASH_REMATCH[@]}")
+        _build_steps_index_v n "${_bsm[1]}" || n=""
+        [[ -n "$n" && -n "${want[$n]:-}" ]] || { bad+=("line ${_bsm[1]} names no step you were asked about"); continue; }
+        if [[ "${_bsm[3]}" == does ]]; then _BSJ_ANS[$n]=does; continue; fi
+        judge_reply_field_v why "$l" WHY; _build_steps_strip_v why "$why"
+        # #2569 (ADR-072 §3): a refusal says what would be accepted — the step.
+        judge_reply_field_v acc "$l" "ACCEPTED IF"
+        [[ -n "$acc" ]] || acc="${_BUILD_STEP_DESC[n-1]:-the step}"
+        _BSJ_ANS[$n]="does not"$'\x1f'"${why:-it does not do what the step says}"$'\x1f'"$acc"
+    done
+    for n in "$@"; do [[ -n "${_BSJ_ANS[$n]+x}" ]] || bad+=("step ${_BSL[$n]:-$n} has no line"); done
+    if [[ ${#bad[@]} -gt 0 ]]; then judge_problems_join_v _BSJ_PROBLEM bad; fi
+    return 0
 }

@@ -83,7 +83,7 @@ _p="$(tr -s '[:space:]' ' ' <<< "$(_ia_prompt "ISSUE-TEXT" "SPEC-TEXT" "DIFF-TEX
 assert_contains "[U1] the composer built a real prompt" "$_p" "ISSUE-TEXT"
 assert_contains "[U1] it asks for each part of the change no requirement asks for" \
     "$_p" "each part of the DIFF that no requirement asks for"
-assert_contains "[U1] it says how to answer it" "$_p" 'UNASKED: <what the change does> | WHY: <why no requirement asks for it> | ACCEPTED IF: <the change without it, or the requirement that would ask for it> | QUOTE: <file> | <one line of the code that does it>'
+assert_contains_lines "[U1] it says how to answer it" "$_p" $'UNASKED: <what the change does>\nwhy: <why no requirement asks for it>\naccepted if: <the change without it, or the requirement that would ask for it>\nquote: <file> | <one line of the code that does it>'
 assert_contains "[U1] it says how to say there is none" "$_p" "UNASKED: none"
 
 print_test_section "U2: an unasked part is a finding for build"
@@ -125,6 +125,13 @@ assert_eq "[U5] ...and only it" "1" "$(jq -r '.data.findings | length' "$_A/issu
 assert_eq "[U5] the unasked list holds both, without any mark" "0" \
     "$(_res '[.data.unasked[] | select(startswith("["))] | length')"
 assert_eq "[U5] the manifest gives the code output the topic code-findings" "code-findings" "$(_mf_topic issue_acceptance_code)"
+
+print_test_section "U6: the answer written as blocks, as the prompt asks (#2609)"
+_setup u6
+_IA_ANSWER=$'MET: --from-stage starts the run at that stage\n\nUNASKED: it changes an old test\nwhy: no requirement asks for it\naccepted if: it is accepted\nquote: tests/unit/r-test.sh | assert_eq "[R8] shown as code" x y\nnote: an old test\n\nUNASKED: it drops the rule that --from-stage needs --resume\nwhy: no requirement asks to drop it\naccepted if: it is accepted\nquote: runner.sh | resume_required=0'
+_run
+assert_eq "[U6] both block answers are read: two findings" "2" "$(_res '.data.findings | length')"
+assert_contains "[U6] ...each with its own words, not the note's" "$(_out code)" "it drops the rule"
 
 print_test_results
 exit $((FAIL > 0))

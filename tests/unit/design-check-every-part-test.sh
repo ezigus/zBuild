@@ -84,9 +84,9 @@ _P="$(tr -s '[:space:]' ' ' < "$_P_FILE")"
 assert_contains "[E1] one rule: every part judged against everything intake gave" "$_P" \
     "Judge every part of the design — each SPEC line, the steps and the decisions — against everything the issue gives you: its REQUIREMENTS, its LIMITS, its TERMS and its own words."
 assert_contains "[E1] ...new or carried over" "$_P" "A part carried over from an earlier design is judged the same as a new one."
-assert_contains "[E1] ...a step no requirement needs" "$_P" "Steps: not-asked | WHY: <no requirement needs this step> | ACCEPTED IF: <what must be true for the steps to be accepted> | QUOTE: <the step's words>"
-assert_contains "[E1] ...a step against the issue" "$_P" "Steps: contradicts | WHY: <which requirement, limit or term, and how> | ACCEPTED IF: <what must be true for the steps to be accepted> | QUOTE: <the step's words>"
-assert_contains "[E1] ...the decisions" "$_P" "Decision: contradicts | WHY: <which requirement, limit or term, and how> | ACCEPTED IF: <what must be true for the decisions to be accepted> | QUOTE: <the decisions' words>"
+assert_contains_lines "[E1] ...a step no requirement needs" "$_P" $'Steps: not-asked\nwhy: <no requirement needs this step>\naccepted if: <what must be true for the steps to be accepted>\nquote: <the step\'s words>'
+assert_contains_lines "[E1] ...a step against the issue" "$_P" $'Steps: contradicts\nwhy: <which requirement, limit or term, and how>\naccepted if: <what must be true for the steps to be accepted>\nquote: <the step\'s words>'
+assert_contains_lines "[E1] ...the decisions" "$_P" $'Decision: contradicts\nwhy: <which requirement, limit or term, and how>\naccepted if: <what must be true for the decisions to be accepted>\nquote: <the decisions\' words>'
 assert_contains "[E1] ...shown the decisions" "$_P" "The claim lives in core/claim/claim.sh, which calls gh issue edit itself."
 assert_contains "[E1] ...terms held against any part" "$_P" "Any part of the design — a SPEC line, a step, the decisions — that uses a term differently from its definition contradicts it"
 
@@ -135,7 +135,7 @@ _run "$OK"$'\nSteps: ok\nDecision: ok'
 sed -i.bak 's/which calls gh issue edit itself/which calls the plugin hooks/' "$D"
 _run $'Decision: ok'
 assert_eq "[E9] a decisions-only change: the kept answers stand" "" "$_DESIGN_COV_OUTCOME"
-assert_eq "[E9] ...the requirements are not asked again" "0" "$(grep -c 'One line for every requirement' "$_P_FILE" || true)"
+assert_eq "[E9] ...the requirements are not asked again" "0" "$(grep -c '<requirement id>: uncovered' "$_P_FILE" || true)"
 assert_contains "[E9] ...the decisions are" "$(cat "$_P_FILE")" "which calls the plugin hooks"
 assert_contains "[E9] ...shown the requirements, though not asked" "$(cat "$_P_FILE")" "RQCL-1: the run adds the claimed label before the first stage"
 assert_contains "[E9] ...and the issue's own words" "$(cat "$_P_FILE")" "ISSUE-WORDS-2567: claim through the coordinator"

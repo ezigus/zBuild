@@ -126,8 +126,8 @@ _reset "$(_rep "\"unclear\":[\"$Q\"]")"; _lens
 _reset "$(_rep '"unclear_answers":["UNCLEAR RQCNFG-1: open"]')"; _lens
 _p="$(_flat "$_RQ/prompt-1.txt")"
 assert_contains "[LU5] the next call is shown the carried question" "$_p" "$QL"
-assert_contains "[LU5] ...and the answer forms" "$_p" \
-    "UNCLEAR <id>: answered | WHY: <how the issue answers it> | QUOTE: <the issue's words that answer it>"
+assert_contains_lines "[LU5] ...and the answer forms" "$_p" \
+    $'UNCLEAR <id>: answered\nwhy: <how the issue answers it>\nquote: <the issue\'s words that answer it>'
 assert_contains "[LU5] ...to give in its report's unclear_answers list" "$_p" "Answer each of these on a line of its own in your report"
 assert_eq "[LU5] open: the question is kept" "$QL" "$(_res '(.data.unclear // [])[]')"
 assert_eq "[LU5] ...and is no new finding for design" "" "$(_dtexts)"
