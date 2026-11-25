@@ -133,7 +133,8 @@ _test_run_inner() {
     # consumed only by review (LLM context) and operators (audit).
     # #2605: the copy's git is its own, so it never moves the run's HEAD, branch
     # or staged state; reset builds its staged state and leaves out what the
-    # run's folder leaves out.
+    # run's folder leaves out. A cp fallback copies the run's .git;
+    # _test_own_git removes it first.
     if command -v rsync >/dev/null 2>&1; then
         rsync -a --exclude=/.git "$repo_root/" "$tmp/" 2>/dev/null || \
             cp -r "$repo_root/." "$tmp/"
