@@ -50,6 +50,12 @@ holder_found="$(rsc_holder_find "$TEST_TEMP_DIR" "o/r" 9999)"
 # Then: the holder is returned from the holder comment, heartbeat line does not interfere
 assert_eq "[DSHBT-13] rsc_holder_find returns holder despite heartbeat line before ###" \
     "https://github.com/o/r/actions/runs/42" "$holder_found"
+# Then: rsc_holder_line_v itself returns the holder from the holder-comment line regardless
+#       of the heartbeat line inserted after it
+_rhlv_result=""
+rsc_holder_line_v _rhlv_result "$holder_body"
+assert_eq "[DSHBT-13] rsc_holder_line_v returns holder despite heartbeat line before ###" \
+    "https://github.com/o/r/actions/runs/42" "$_rhlv_result"
 
 # Cleanup: remove the rsc_gh override so the sidecar sections use the real binary path
 unset -f rsc_gh
