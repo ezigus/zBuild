@@ -158,17 +158,26 @@ stage_summary_write() {
 # start of each dispatch (stage_errors_clear; the attempt archive keeps the
 # earlier copy). Fail-open: a diagnostic write never changes a stage's fate.
 # stage_lens_findings_head_v <var> <findings-array-json> <none-words> [body-var]
-# #2476 (ADR-064 §4): a lens's summary line names what it found — the first
-# finding's severity, message and file, "and N more" — or <none-words>; the
-# body (when asked for) lists each. One jq.
+# #2476 (ADR-064 §4): a lens's summary line names what it found, or
+# <none-words>. #2611: each finding is said once — one finding is the line and
+# there is no list; several are counted by severity on the line ("found 2
+# findings: 1 high, 1 medium", as the status row says) and the body (when asked
+# for) lists each. One jq.
 stage_lens_findings_head_v() {
     local -n _slh="$1"; local _sl_out _sl_none="$3"
     _sl_out="$(jq -r 'def one: (if (.severity | type) == "string" then "\(.severity): " else "" end)
             + ((.message // .text // "") | tostring | gsub("[\r\n]+"; " "))
             + (if (.file // "unknown") != "unknown" then " (\(.file)\(if .line then ":\(.line)" else "" end))" else "" end);
-        [ (if type == "array" then . else (.findings // []) end)[]? | select(type == "object") | one ] as $f
-        | (if ($f | length) == 0 then "" else "found: " + $f[0] + (if ($f | length) > 1 then " (and \($f | length - 1) more)" else "" end) end),
-          ($f[] | "- " + .)' <<< "${2:-[]}" 2>/dev/null || true)"
+        [ (if type == "array" then . else (.findings // []) end)[]? | select(type == "object") ] as $o
+        | [ $o[] | one ] as $f
+        | ([ $o[] | .severity | select(type == "string") | ascii_downcase ]) as $sv
+        | (["critical", "high", "medium", "low"]
+           | map(. as $k | ([$sv[] | select(. == $k)] | length) as $c | select($c > 0) | "\($c) \($k)")) as $cnt
+        | if ($f | length) == 0 then ""
+          elif ($f | length) == 1 then "found: " + $f[0]
+          else ("found \($f | length) findings" + (if ($cnt | length) > 0 then ": " + ($cnt | join(", ")) else "" end)),
+               ($f[] | "- " + .)
+          end' <<< "${2:-[]}" 2>/dev/null || true)"
     _slh="${_sl_out%%$'\n'*}"
     [[ -n "$_slh" ]] || _slh="$_sl_none"
     if [[ -n "${4:-}" ]]; then

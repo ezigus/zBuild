@@ -27,6 +27,7 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../tests/lib/test-helpers.sh
 source "$REPO_ROOT/tests/lib/test-helpers.sh"
 print_test_header "cycle-orchestrator — map group as member (#2433)"
+assert_not_contains_x() { if grep -qF -- "$3" <<< "$2"; then assert_fail "$1" "found: $3"; else assert_pass "$1"; fi; }
 setup_test_env "cycle-map-member"
 
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
@@ -154,14 +155,14 @@ assert_eq "M5: the run stops" "1" "$(( rc != 0 ))"
 assert_eq "M5: no second round" "1" "$(_runs)"
 assert_contains "M5: the stop is the lens group's, in its words" "${_CYCLE_LAST_TERMINATED_REASON:-}" \
     "stage_stopped:lenses:scope (misconfigured)"
-assert_not_contains "M5: not out of tries" "${_CYCLE_LAST_TERMINATED_REASON:-}" "out_of_tries"
+assert_not_contains_x "M5: not out of tries" "${_CYCLE_LAST_TERMINATED_REASON:-}" "out_of_tries"
 
 print_test_section "M6 (#2611 R2): unfinished in both rounds — on_max decides"
 _seed; rm -f "$RAN"; SCENARIO="unfinished,unfinished"
 rc=0; cycle_orchestrator_run "delivery_loop" "$ZBUILD_STATE_DIR" "$STATE_FILE" >/dev/null 2>&1 || rc=$?
 assert_eq "M6: the loop does not end well" "1" "$(( rc != 0 ))"
 assert_eq "M6: after 2 rounds" "2" "$(_runs)"
-assert_not_contains "M6: not out of tries" "${_CYCLE_LAST_TERMINATED_REASON:-}" "out_of_tries"
+assert_not_contains_x "M6: not out of tries" "${_CYCLE_LAST_TERMINATED_REASON:-}" "out_of_tries"
 
 cleanup_test_env
 print_test_results
