@@ -138,8 +138,7 @@ _open_items_n() {
     if [[ "$1" == "1" ]]; then printf '1 %s' "$2"; else printf '%s %ss' "$1" "$2"; fi
 }
 
-# run_end_words <reason> <open_count> — why the run stopped, in words. <reason>
-# is the engine's code (events keep it); the words never repeat it.
+# Why the run stopped, in words: a known code is never shown; any other reason is, masked (#2607).
 run_end_words() {
     local reason="${1:-}" n="${2:-0}" with=""
     [[ "$n" =~ ^[0-9]+$ ]] || n=0
@@ -181,8 +180,36 @@ run_end_words() {
             printf 'stopped: a stage reported that it failed (%s)%s' "${reason#stage_failed:}" "$with" ;;
         converged|complete|success)
             printf 'finished%s' "$with" ;;
+        config_invalid)
+            printf 'stopped: the run'"'"'s template is not valid%s' "$with" ;;
+        error)
+            printf 'stopped: a loop could not keep its own state%s' "$with" ;;
+        contract_violation:*)
+            local why
+            case "${reason#contract_violation:}" in
+                missing_result)       why="it left no result" ;;
+                malformed_json)       why="its result is not valid JSON" ;;
+                missing_field)        why="its result lacks a field it must have" ;;
+                no_manifest)          why="it has no manifest" ;;
+                no_primary)           why="it wrote no primary output" ;;
+                nonjson_primary)      why="its primary output is not JSON" ;;
+                unknown_disposition)  why="its result gives a word the engine does not know" ;;
+                unknown_outcome)      why="its result gives an outcome the engine does not know" ;;
+                unsupported_contract) why="its result's contract is not one the engine reads" ;;
+                *)                    why="it broke the stage contract" ;;
+            esac
+            printf 'stopped: a stage'"'"'s result could not be used — %s%s' "$why" "$with" ;;
         *)
-            printf 'stopped before finishing%s' "$with" ;;
+            # #2607 (ADR-064 §4): a reason with no words is shown as written —
+            # one line, credentials masked, capped like a stage's stop — never
+            # dropped. A blank one is no reason.
+            local r="${reason//[$'\n\r\t']/ }"
+            if [[ -z "${r//[[:space:]]/}" ]]; then printf 'stopped before finishing%s' "$with"; return 0; fi
+            declare -F zbuild_mask_secrets_v >/dev/null 2>&1 \
+                || source "${BASH_SOURCE[0]%/*}/secret-patterns.sh" 2>/dev/null || true
+            declare -F zbuild_mask_secrets_v >/dev/null 2>&1 && zbuild_mask_secrets_v r "$r"
+            (( ${#r} > 300 )) && r="${r:0:300}…"
+            printf 'stopped: %s%s' "$r" "$with" ;;
     esac
 }
 
@@ -190,8 +217,9 @@ run_end_words() {
 # pipeline.end event's reason, else the state file's. Empty when neither says.
 run_end_reason() {
     local sd="$1" r=""
-    [[ -s "$sd/events.jsonl" ]] && r="$(jq -r 'select(type == "object" and .type == "pipeline.end") | .data.reason // empty' \
-        "$sd/events.jsonl" 2>/dev/null | tail -n 1)"
+    # The last one, whole, on one line (#2607: `| tail -n 1` kept a reason's last line).
+    [[ -s "$sd/events.jsonl" ]] && r="$(jq -rs '[.[] | select(type == "object" and .type == "pipeline.end") | .data.reason // empty]
+        | last // empty | gsub("[\r\n\t]"; " ")' "$sd/events.jsonl" 2>/dev/null)"
     [[ -z "$r" && -s "$sd/pipeline-state.json" ]] && r="$(jq -r '.reason // empty' "$sd/pipeline-state.json" 2>/dev/null)"
     printf '%s' "$r"
 }

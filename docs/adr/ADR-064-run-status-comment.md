@@ -1,7 +1,7 @@
 # ADR-064 — One live run-status comment per run
 
 **Status:** Proposed (2026-09-18)
-**Amended:** 2026-11-22 (#2586) — the header of a run that ended says why and names each blocker; the open items are read from every stage's result (§4; see the amendment below).
+**Amended:** 2026-11-24 (#2607) — a reason the stop line has no words for is shown as written; the end-of-run steps take no stage's row (§4). 2026-11-22 (#2586) — the header of a run that ended says why and names each blocker; the open items are read from every stage's result (§4; see the amendment below).
 **Amended:** 2026-11-06 (#2480) — a row shows what a stage said as text, names the round of every loop it is in, and says each finding once (§4; see the amendment below).
 **Amended:** 2026-10-14 (#2378) — the open items list only results this run wrote. Hydrate restores an earlier run's results with their saved times; one older than this run's start belongs to a stage that did not run this time, and is left out.
 **Amended:** 2026-10-31 (#2439) — each try of a stage the engine runs again has its own row (see the amendment below).
@@ -325,11 +325,28 @@ On #2532 run 45017980554 (`out_of_tries:build_test_cycle`) the status comment's 
 
 Rows are kept in the order they started, and the comment shows the newest first. A group's row, such as review_lenses, starts a moment before its members, so it sorted as the oldest: read in time order, "all 6 lenses finished" came before the lenses. A group's row now follows its last member, so its summary is shown above the work it summarises. Every other row keeps its place, and the members' own order is unchanged.
 
+## Amendment 2026-11-24 (#2607) — §4: the stop line never drops the engine's reason; the end-of-run steps take no stage's row
+
+- **A reason the stop line has no words for is shown as the engine wrote it:** "stopped: <reason>".
+  - It goes on one line (newlines, carriage returns and tabs become spaces), with credentials masked, capped at 300 characters like a stage's stop (#2582).
+  - `run_end_words` gives it to the status comment's header, the completion comment and the end-of-run words alike. The completion comment reads the run's last `pipeline.end` reason whole (`run_end_reason`).
+  - "stopped before finishing" is said only when the engine gave no reason, or a blank one.
+- **Every code the engine writes has words and is never shown raw.** Added:
+  - `config_invalid`: the run's template is not valid.
+  - `error`: a loop could not keep its own state.
+  - `contract_violation:<what>`: a stage's result could not be used, and why (e.g. "it left no result").
+- **The end-of-run words follow the stop.** When a leaf stage's result breaks the stage contract, or the stage reports a failure, the words say that stop. Before, they read the loop's last reason and could say "The run finished".
+- **The end-of-run steps (`always_run:` — release, persist) carry no step number.** They are no stage of the run, so the status comment takes none of them for a stage. The last stage's row keeps its end and how it ended.
+
+On #2533 run 45403848593 the engine stopped the run because the test stage changed files it may not change (`broken: test changed files in the repository that it may not change: …`). That reason had no words, so both comments said only "stopped before finishing", above 13 open items left over from earlier rounds. Release and persist then ran with the test stage's number (3.1.1.2.4), and the test stage's row read "→ running" on a finished run.
+
 ## Enforced by
 
 - 2026-11-23 amendment (#2598: a group's summary row follows its members) → `tests/unit/status-group-row-order-test.sh` G1, G2
 
 - §4 amendment 2026-11-22 (#2586: why it stopped, the blocker, every stage's failed checks) → `tests/unit/run-stop-names-blocker-test.sh` B1, B2 (build's and the test stage's results are open items, by id), B3 (a lens's own result adds nothing beside its routed ones), B4 (a passing one is none), B5 (the header says why and names each blocker), B6 (a running run's names none)
+
+- §4 amendment 2026-11-24 (#2607: a reason with no words is shown as written; the end-of-run steps take no stage's row) → `tests/unit/run-open-items-test.sh` R3 (as written, one line, capped; no reason at all), R4 (every code the engine writes in words, never shown; carriage returns and tabs; a blank reason; a credential masked; the run's last end reason read whole into the completion comment); `tests/integration/stage-stop-names-cause-test.sh` S7 (a stage that left no result: the end-of-run words say so, never "finished"); `tests/integration/always-run-exit-paths-test.sh` SPEC-7 (release carries no step number; the stage's row ends before release starts)
 
 - §4 amendment 2026-11-21 (#2582: the stop line names the stage and its reason) → `tests/unit/run-open-items-test.sh` R2 (the words, and the completion comment); `tests/integration/stage-stop-names-cause-test.sh` S1, S2 (the stop line and end-of-run words of a real run, and the state's reason the comment reads)
 

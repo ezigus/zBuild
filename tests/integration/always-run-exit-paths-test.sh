@@ -10,6 +10,7 @@
 # Paths covered: rc=0, rc=1, a stage killed by SIGINT (rc=130 + the recorded
 # abort word), SIGTERM to the runner, and a release hook that hangs past its
 # own timeout_s.
+# SPEC-7 (#2607): the end-of-run steps carry no stage's step number.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -122,6 +123,27 @@ print_test_section "[SPEC-2][change] release runs when a stage fails"
 _arm_release; _arm_outcome "" 1
 _run_case "rc1" skip
 assert_file_exists "[SPEC-2] release ran on a non-zero stage rc" "$RELEASE_MARKER"
+
+# ─── [SPEC-7][change] the end-of-run steps take no stage's row (#2607) ──────
+# On #2533 run 45403848593 release and persist ran with the last stage's step
+# number, so the status comment took them for that stage starting again: its
+# row lost its end and how it ended, and read "→ running" on a finished run.
+print_test_section "[SPEC-7][change] release carries no stage's number; the stage's row keeps its end"
+_ev_main="$ZBUILD_EVENTS_JSONL"; export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/spec6.jsonl"
+_arm_release; _arm_outcome "" 1
+_run_case "spec6" skip
+assert_eq "[SPEC-7] setup: the stage ran with a step number" "1" \
+    "$(jq -r 'select(.type == "plugin.run.start" and .plugin == "outcome") | .seq // "none"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null)"
+assert_eq "[SPEC-7] release's start carries no step number" "none" \
+    "$(jq -r 'select(.type == "plugin.run.start" and .plugin == "teardown") | .seq // "none"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null)"
+# shellcheck source=../../scripts/lib/run-status-render.sh
+_rows6="$(bash -c 'source "$1/scripts/lib/run-status-render.sh"; rsc_rows_json "$2"' _ "$REPO_ROOT" "$ZBUILD_EVENTS_JSONL" 2>/dev/null)"
+_rel6="$(jq -r 'select(.type == "plugin.run.start" and .plugin == "teardown") | .ts' "$ZBUILD_EVENTS_JSONL" 2>/dev/null)"
+assert_eq "[SPEC-7] the status comment's row for the stage ends before release starts" "outcome ended before release" \
+    "$(jq -r --arg r "$_rel6" '[.rows[] | select(.seq == "1")][0] | "\(.stage) \(if .ended_ts == null then "running" elif .ended_ts < $r then "ended before release" else "ended with release" end)"' <<< "$_rows6" 2>/dev/null)"
+assert_eq "[SPEC-7] ...and says how it ended: the stage's own failure" "fail" \
+    "$(jq -r '[.rows[] | select(.seq == "1")][0] | .verdict // "none"' <<< "$_rows6" 2>/dev/null)"
+export ZBUILD_EVENTS_JSONL="$_ev_main"
 
 # ─── [SPEC-3][change] the SIGINT path ─────────────────────────────────────
 # #1850 (ADR-054 §4, ADR-025): the SIGINT path is the recorded abort word, not

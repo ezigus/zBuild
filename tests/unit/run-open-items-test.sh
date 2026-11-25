@@ -107,9 +107,55 @@ if [[ "$_w4" == *"model"* ]]; then assert_fail "[R2] a stage's stop is not the m
 else assert_pass "[R2] a stage's stop is not the model's"; fi
 _c4="$(run_completion_body failure 'stage_stopped:pr:gh pr merge: refused' "" "" "" "" "")"
 assert_contains "[R2] the completion comment names the stage and its reason" "$_c4" "pr stopped the run — gh pr merge: refused"
+# R3 (#2607, ADR-064 §4): a reason the stop line has no words for is shown as
+# the engine wrote it. On #2533 run 45403848593 the engine stopped the run for a
+# stage that changed files it may not change, and both comments said only
+# "stopped before finishing".
+_r3='broken: test changed files in the repository that it may not change: /w/core/claim/claim.sh'
+_w5="$(run_end_words "$_r3" 13)"; _guard "$_w5"
+assert_eq "[R3] a reason with no words is shown as written" \
+    "stopped: broken: test changed files in the repository that it may not change: /w/core/claim/claim.sh with 13 open items" "$_w5"
+_c5="$(run_completion_body failure "$_r3" "" "" "" "" "")"
+assert_contains "[R3] ...in the completion comment" "$_c5" "stopped: broken: test changed files in the repository that it may not change"
+_w6="$(run_end_words $'first line of the reason\nsecond line' 0)"
+assert_eq "[R3] ...on one line" "stopped: first line of the reason second line" "$_w6"
+_long="$(printf 'x%.0s' {1..400})"; _w7="$(run_end_words "$_long" 0)"
+assert_eq "[R3] ...capped at 300 characters" "stopped: $(printf 'x%.0s' {1..300})…" "$_w7"
+assert_eq "[R3] no reason at all: stopped before finishing" "stopped before finishing" "$(run_end_words "" 0)"
+# R4 (review of #2607): a code the engine writes gets words — never shown raw;
+# a reason it has no words for is one line, masked, and blank is no reason.
+for _k in max_iterations max_iterations_tests_failing design_timeout_exhausted blocking_member_failure \
+          member_terminal_failure blocked no_committed_changes cycle_abort timed_out sigterm sigint \
+          github_login_rejected aborted llm_rate_limited llm_unavailable scope_too_large out_of_tries:design \
+          stage_stopped:pr:merge-refused stage_failed:fail converged complete success config_invalid \
+          contract_violation:missing_result contract_violation:malformed_json; do
+    _wk="$(run_end_words "$_k" 0)"; _guard "$_wk"
+    if [[ "$_wk" == *"${_k%%:*}"* ]]; then assert_fail "[R4] $_k is said in words, not shown" "$_wk"; else assert_pass "[R4] $_k is said in words, not shown"; fi
+done
+_wk="$(run_end_words error 0)"
+if [[ "$_wk" == "stopped: error" ]]; then assert_fail "[R4] error is said in words, not shown" "$_wk"; else assert_pass "[R4] error is said in words, not shown"; fi
+assert_contains "[R4] a stage's result with no result says so" "$(run_end_words contract_violation:missing_result 0)" "left no result"
+assert_eq "[R4] a reason with no words is shown as written" "stopped: some_new_code" "$(run_end_words some_new_code 0)"
+assert_eq "[R4] ...carriage returns and tabs are spaces" "stopped: a b c" "$(run_end_words $'a\rb\tc' 0)"
+assert_eq "[R4] ...a blank reason is no reason" "stopped before finishing" "$(run_end_words $' \t ' 0)"
+_tok="ghp_$(printf 'A%.0s' {1..36})"
+_wk="$(run_end_words "broken: gh auth failed with $_tok" 0)"
+if [[ "$_wk" == *"$_tok"* ]]; then assert_fail "[R4] ...a credential in it is masked" "$_wk"; else assert_pass "[R4] ...a credential in it is masked"; fi
+# The completion comment reads the reason as the workflow does: run_end_reason
+# on the state dir (the run's last pipeline.end), into run_completion_body.
+_S4="$TEST_TEMP_DIR/s4"; mkdir -p "$_S4"
+( source "$REPO_ROOT/core/event-bus/event-bus.sh"
+  export ZBUILD_EVENTS_JSONL="$_S4/events.jsonl"
+  eb_emit_event "pipeline.end" "status=failed" $'reason=broken: test said:\nline two of the reason' >/dev/null 2>&1 )
+_e4="$(run_end_reason "$_S4")"
+assert_eq "[R4] the run's end reason is read whole, on one line" "broken: test said: line two of the reason" "$_e4"
+assert_contains "[R4] ...and the completion comment says it" \
+    "$(run_completion_body failure "" "" "" "" "" "$(run_end_words "$_e4" 0)")" "stopped: broken: test said: line two of the reason"
+# Every reason the engine writes (blocked_on_scope is no longer one: ADR-021,
+# #2508); a reason with no words is shown as written (R3).
 for _r in stage_failed:fail max_iterations_tests_failing blocking_member_failure member_terminal_failure \
-          blocked blocked_on_scope cycle_abort sigint sigterm llm_rate_limited llm_unavailable \
-          scope_too_large design_timeout_exhausted no_committed_changes some_new_code ""; do
+          blocked cycle_abort sigint sigterm llm_rate_limited llm_unavailable \
+          scope_too_large design_timeout_exhausted no_committed_changes ""; do
     _guard "$(run_end_words "$_r" 1)"
     _guard "$(run_end_words "$_r" 0)"
 done

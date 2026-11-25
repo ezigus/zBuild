@@ -188,6 +188,7 @@ _runner_leaf_contract_halt() {
     eb_emit_event "stage.fail" "stage=$st" "reason=$why" 2>/dev/null || true
     eb_emit_event "pipeline.end" "status=failed" "stage=$st" "reason=$why" \
         "run_id=${_runner_run_id:-}" "issue=${_runner_issue:-}" 2>/dev/null || true
+    _RUNNER_END_REASON="$why"   # #2607: the end-of-run words say this stop
     _render_pipeline_end "failed" "$st"
     _runner_ended=true
     error "Stage $st wrote a result the engine rejects ($why) — a zBuild defect; the run stops here"
@@ -249,6 +250,7 @@ _runner_leaf_verdict_halt() {
     eb_emit_event "stage.fail" "stage=$st" "verdict=$raw" "reason=stage_failed:$raw" 2>/dev/null || true
     eb_emit_event "pipeline.end" "status=failed" "stage=$st" "reason=stage_failed:$raw" \
         "run_id=${_runner_run_id:-}" "issue=${_runner_issue:-}" 2>/dev/null || true
+    _RUNNER_END_REASON="stage_failed:$raw"   # #2607: the end-of-run words say this stop
     _render_pipeline_end "failed" "$st"
     _runner_ended=true
     error "Stage $st reported $raw — the run stops here"
@@ -2666,6 +2668,10 @@ main() {
     _runner_dispatch_always_run() {
         [[ -n "${_runner_state_file:-}" && -f "${_runner_state_file}" ]] || return 0
         [[ "${#_TPL_ALWAYS_RUN[@]}" -gt 0 ]] || return 0
+        # #2607 (ADR-064 §4): an end-of-run step is no stage of the run. With
+        # the last stage's step number still set, the status comment took it
+        # for that stage starting again, and the stage's row lost its end.
+        unset ZBUILD_STAGE_IO_SEQ_LABEL
         local plugins_root="${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}"
         local _ar_stage _ar_safe _ar_role _ar_to _ar_dir _ar_guard
         for _ar_stage in "${_TPL_ALWAYS_RUN[@]}"; do

@@ -18,6 +18,11 @@
 #         the state or the words
 # S5 [review 5] a stage that ends broken on an engine code (router_oom_kill),
 #         or interrupted: no stage_stopped word, and no engine code in the words
+# S6 [#2607] a member of a loop that ends misconfigured stops the run the same
+#         way: it is named, and its reason is cleaned before it leaves the
+#         runner (a credential and a private path are in no stop text)
+# S7 [#2607 review] a stage whose result cannot be used (it wrote none): the
+#         end-of-run words say so in words, and never "finished"
 # Real runner (core/pipeline/runner.sh --template simple) over stub plugins
 # (tests/lib/simple-run-stubs.sh).
 set -euo pipefail
@@ -133,6 +138,40 @@ for _s5 in broken interrupted; do
     _lacks "[S5 $_s5] the end words hold no engine code" \
         "$(/usr/bin/grep 'The run' "$TEST_TEMP_DIR/runner.stderr" || true)" "router_oom_kill"
 done
+
+# ── S6 ───────────────────────────────────────────────────────────────────────
+# #2607: before, a loop member's stop went out as "<word>: <its reason>", raw;
+# the stop line now shows a reason it has no words for, so it must be clean.
+print_test_section "S6: a loop member's stop is named and cleaned like a stage's"
+_make_stopping_pr_plugin pass "merged"
+_mdir="$PLUGINS_ROOT/agent/test"; rm -rf "$_mdir"; mock_plugin_factory test agent 0 "" tester >/dev/null
+cat > "$_mdir/plugin.sh" <<'PLUG'
+test_run() {
+    local state_dir; state_dir="$(dirname "$2")"
+    mkdir -p "$state_dir/artifacts"
+    source "$STAGE_RESULT_LIB"
+    stage_result_write "$state_dir/artifacts/test-result.json" misconfigured "gh auth: HTTP 401: token=ghs_Z9y8X7w6V5u4T3s2R1q0 read from .env failed"
+    return 1
+}
+PLUG
+_run_pipeline
+_s6="$(_ended)"$'\n'"$(_state_reason)"$'\n'"$(/usr/bin/grep -E 'The run stopped|Stage test:' "$TEST_TEMP_DIR/runner.stderr" || true)"
+assert_contains "[S6] the stop names the loop member" "$(_ended)" "stage_stopped:test:gh auth: HTTP 401"
+_lacks "[S6] the credential is in no stop text" "$_s6" "ghs_Z9y8X7w6V5u4T3s2R1q0"
+_lacks "[S6] the private path is in no stop text" "$_s6" ".env failed"
+assert_contains "[S6] the end-of-run words name the member" "$(cat "$TEST_TEMP_DIR/runner.stderr")" "The run stopped: test stopped the run"
+_make_plugin "test" "tester"
+
+# ── S7 ───────────────────────────────────────────────────────────────────────
+print_test_section "S7: a stage that wrote no result: the end-of-run words say so"
+cat > "$PLUGINS_ROOT/agent/pr/plugin.sh" <<'PLUG'
+pr_run() { return 0; }
+PLUG
+_run_pipeline
+assert_eq "[S7] setup: the run ended on pr's missing result" "contract_violation:missing_result" "$(_ended)"
+_e7="$(/usr/bin/grep 'The run' "$TEST_TEMP_DIR/runner.stderr" || true)"
+assert_contains "[S7] the end-of-run words say the stage left no result" "$_e7" "left no result"
+_lacks "[S7] ...and never that the run finished" "$_e7" "The run finished"
 
 cleanup_test_env
 print_test_results
