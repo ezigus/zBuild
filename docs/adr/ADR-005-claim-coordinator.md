@@ -74,7 +74,7 @@ The claim is advisory across machines; this machine's admission lock still seria
   without the stage suffix when no stage is active), updated on every flush.
 - **§3b Staleness threshold.** A cross-machine claim is considered stale when its heartbeat timestamp
   is at least `ZBUILD_CLAIM_STALE_S` seconds old (default 1800). `ZBUILD_CLAIM_STALE_S` and
-  `ZBUILD_CLAIM_HEARTBEAT_S` are set as shell defaults (`:-` expansion) in `core/claim/claim.sh`.
+  `ZBUILD_CLAIM_HEARTBEAT_S` are set with `:=` (assign-if-unset) in `core/claim/claim.sh`.
 - **§3c Always-claimed when no heartbeat.** A claim with no heartbeat line in the run-status comment
   falls back to the `zbuild:claimed` label's `added` event timestamp (GitHub issues events API). If
   that timestamp is also unavailable (API error), the run refuses rather than taking over blindly
@@ -200,6 +200,8 @@ A claim hook whose reply says `"acquired": true` holds the claim, whatever the h
   - §3d takeover note posted → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-4
   - §3 same-machine dead-pid path runs before heartbeat check → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-6
   - §3 unclaimed issue acquired without heartbeat → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-12
+  - §3d `rsc_takeover_note_post` failure → refuse (rc=1) → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-15
+  - §3e lazy source refusal (file absent or function not defined) → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-16
 
 - §1 §3 amendment 2026-11-23 (#2589: the label always cleared; a rejected login stops the run) → `tests/unit/claim-cleanup-test.sh` CL1–CL8; `tests/unit/claim-acquire-release-test.sh` S1–S4; `tests/integration/claim-release-on-exit-test.sh` C8, C9; `tests/integration/claim-holder-status-comment-test.sh` H1 (the holder carries the pid); `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh` (the refusal gives the command)
 

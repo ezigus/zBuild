@@ -263,13 +263,13 @@ rsc_label_added_at() {
 # Uses -f (raw-field, literal string) rather than -F body=@file: the message is
 # short and fixed-format, so no temp file is needed.
 rsc_takeover_note_post() {
-    local state_dir="$1" slug="$2" issue="$3" holder="$4" out
+    local state_dir="$1" slug="$2" issue="$3" holder="$4" out _rc=0
     local _msg="took over a stale claim from ${holder//[[:cntrl:]]/}"
-    out="$(mktemp "${TMPDIR:-$state_dir}/rsc-takeover-out.XXXXXX")" || return 0
+    out="$(mktemp "${TMPDIR:-$state_dir}/rsc-takeover-out.XXXXXX")" || return 1
     rsc_gh "$state_dir" "$out" api "repos/${slug}/issues/${issue}/comments" \
-        -f "body=${_msg}" >/dev/null 2>&1 || true
+        -f "body=${_msg}" >/dev/null 2>&1 || _rc=$?
     rm -f "$out"
-    return 0
+    return "$_rc"
 }
 
 # ─── rsc_claim_cleanup <state_dir> <slug> <issue> <holder> (#2589) ──────────
@@ -395,6 +395,7 @@ _rsc_has_type() {   # _rsc_has_type <events> <regex-of-types>
 rsc_tail_loop() {
     local events="$1" state_dir="$2" parent="$3" slug="$4" issue="$5" run_id="$6"
     local last_size=-1 size dirty=0 seen_start=0 terminal_seen=0 last_flush=0 now flushed_once=0 _rsc_login_stopped=0 last_heartbeat=0
+    local _hb_interval="${ZBUILD_CLAIM_HEARTBEAT_S:-600}"
     trap '_rsc_on_stop' TERM INT
     trap '' HUP
     while :; do
@@ -433,7 +434,6 @@ rsc_tail_loop() {
         # ADR-064 (#2533): heartbeat — force a flush on the heartbeat interval even
         # when dirty==0, so the timestamp in the body stays fresh while the run is live.
         if [[ $seen_start -eq 1 && $terminal_seen -eq 0 && $flushed_once -eq 1 ]]; then
-            local _hb_interval="${ZBUILD_CLAIM_HEARTBEAT_S:-600}"
             if (( now - last_heartbeat >= ${_hb_interval%.*} )); then
                 rsc_flush "$events" "$state_dir" "$slug" "$issue" "$run_id"
                 last_heartbeat="$now"; last_flush="$now"

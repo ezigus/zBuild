@@ -145,12 +145,10 @@ zbuild_claim_acquire() {
             rsc_heartbeat_find "$state_dir" "$_zca_slug" "$issue" > "${_zca_hb_tf:-/dev/null}" 2>/dev/null || true
             [[ -n "$_zca_hb_tf" ]] && { IFS= read -r -d '' _zca_hb_ts < "$_zca_hb_tf" || true; rm -f "$_zca_hb_tf"; }
             local _zca_ref_ts="$_zca_hb_ts"
-            local _zca_used_label=0
             if [[ -z "$_zca_ref_ts" ]]; then
                 local _zca_lb_tf; _zca_lb_tf="$(mktemp "${TMPDIR:-$state_dir}/claim-lb.XXXXXX" 2>/dev/null)" || _zca_lb_tf=""
                 rsc_label_added_at "$state_dir" "$_zca_slug" "$issue" > "${_zca_lb_tf:-/dev/null}" 2>/dev/null || true
                 [[ -n "$_zca_lb_tf" ]] && { IFS= read -r -d '' _zca_ref_ts < "$_zca_lb_tf" || true; rm -f "$_zca_lb_tf"; }
-                _zca_used_label=1
             fi
             if [[ -z "$_zca_ref_ts" ]]; then
                 # No timestamp available — fail closed rather than taking over blindly.
@@ -168,8 +166,13 @@ zbuild_claim_acquire() {
                 return 1
             fi
             if (( _zca_age >= ZBUILD_CLAIM_STALE_S )); then
-                # Stale: post a takeover note, release, re-acquire once.
-                rsc_takeover_note_post "$state_dir" "$_zca_slug" "$issue" "$_ZBUILD_CLAIM_THEIR_HOLDER" 2>/dev/null || true
+                # Stale: post a takeover note (required — RQHBT-4), then release and re-acquire.
+                # Refuse if the note cannot be posted: a takeover without a note violates RQHBT-4.
+                if ! rsc_takeover_note_post "$state_dir" "$_zca_slug" "$issue" "$_ZBUILD_CLAIM_THEIR_HOLDER" 2>/dev/null; then
+                    printf 'zbuild_claim_acquire: rsc_takeover_note_post failed — refusing cross-machine takeover (%s)\n' \
+                        "$_ZBUILD_CLAIM_THEIR_HOLDER" >&2
+                    return 1
+                fi
                 plugin_hook_call "$_ZBUILD_COORDINATOR_DIR" release "$issue" >/dev/null 2>&1 || true
                 local _zca_rc2=0
                 _ZBUILD_CLAIM_RETRIED=1 zbuild_claim_acquire "$issue" "$state_dir" || _zca_rc2=$?
