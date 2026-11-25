@@ -20,7 +20,8 @@ _test_own_git() {
     mkdir -p "$copy/.git/info" "$copy/.zbuild-nested-state" || return 1
     printf '%s\n' "${l[0]}" > "$copy/.git/commondir" || return 1
     printf '%s\n' "${l[3]}" > "$copy/.git/HEAD" || return 1
-    printf '*\n' > "$copy/.zbuild-nested-state/.gitignore"
+    # Not a failure of the copy's git: suite.sh makes the fence again when it is missing.
+    printf '*\n' > "$copy/.zbuild-nested-state/.gitignore" 2>/dev/null || true
     # What the run's folder leaves out, the copy leaves out (legacy-DoNotUse/).
     for f in config.worktree info/sparse-checkout; do
         [[ -f "${l[1]}/$f" ]] || continue
