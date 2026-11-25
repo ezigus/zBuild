@@ -8,6 +8,28 @@
 [[ -n "${_ZBUILD_TEST_RUN_LOADED:-}" ]] && return 0
 _ZBUILD_TEST_RUN_LOADED=1
 
+# <copy> gets its own HEAD and staged state over <repo>'s history (#2605, ADR-054 §6a); rc 1: no git.
+_test_own_git() {
+    local repo="$1" copy="$2" out f c
+    local -a l=()
+    [[ -e "$copy/.git" || -L "$copy/.git" ]] && rm -rf "${copy:?}/.git"
+    out="$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir --absolute-git-dir --show-prefix HEAD 2>/dev/null)" || return 1
+    mapfile -t l <<< "$out"
+    [[ ${#l[@]} -eq 4 && "${l[0]}" == /* && "${l[1]}" == /* && -z "${l[2]}" && "${l[3]}" =~ ^[0-9a-f]{40,64}$ ]] || return 1
+    # The suite's nested-run fence (suite.sh) is made here, in the same mkdir.
+    mkdir -p "$copy/.git/info" "$copy/.zbuild-nested-state" || return 1
+    printf '%s\n' "${l[0]}" > "$copy/.git/commondir" || return 1
+    printf '%s\n' "${l[3]}" > "$copy/.git/HEAD" || return 1
+    printf '*\n' > "$copy/.zbuild-nested-state/.gitignore"
+    # What the run's folder leaves out, the copy leaves out (legacy-DoNotUse/).
+    for f in config.worktree info/sparse-checkout; do
+        [[ -f "${l[1]}/$f" ]] || continue
+        c=""; IFS= read -r -d '' c < "${l[1]}/$f" || true
+        printf '%s' "$c" > "$copy/.git/$f"
+    done
+    return 0
+}
+
 # ─── _test_run_inner ──────────────────────────────────────────────────────────
 # Core logic: rsync repo HEAD to a temp dir, run tests, write artifact.
 # Always returns 0 — verdict is in the JSON.
@@ -108,13 +130,17 @@ _test_run_inner() {
     # which describes work already committed to HEAD. Applying it would be a
     # dup-apply guaranteed to fail. Removed entirely; diff.patch is now
     # consumed only by review (LLM context) and operators (audit).
+    # #2605: the copy's git is its own, so it never moves the run's HEAD, branch
+    # or staged state; reset builds its staged state and leaves out what the
+    # run's folder leaves out.
     if command -v rsync >/dev/null 2>&1; then
-        rsync -a "$repo_root/" "$tmp/" 2>/dev/null || \
+        rsync -a --exclude=/.git "$repo_root/" "$tmp/" 2>/dev/null || \
             cp -r "$repo_root/." "$tmp/"
     else
         cp -r "$repo_root/." "$tmp/"
     fi
-    git -C "$tmp" checkout HEAD -- . >/dev/null 2>&1 || true
+    _test_own_git "$repo_root" "$tmp" || warn "test: the tested copy has no git of its own; it is tested without git (#2605)"
+    git -C "$tmp" reset -q --hard HEAD >/dev/null 2>&1 || true
     git -C "$tmp" clean -fdq >/dev/null 2>&1 || true
     # Wave 12-C (#662): diff_applied is now deprecated — no apply step runs
     # in any path, so the field stays `false` for the whole run. The JSON slot

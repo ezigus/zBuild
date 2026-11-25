@@ -22,6 +22,17 @@
 #              file stands
 # AF7 [change] the starting code is set up like the copy tested — the files git
 #              ignores are there — so a test does not fail there for want of them
+# AF8 [change] in a run folder made the way CI makes it (a linked checkout),
+#              the check still runs, and the run is left as it was: on its
+#              branch, at its commit, with its files and staged state (#2605:
+#              on #2533 run 45403848593 the check moved the run itself back to
+#              the starting code, through a copy that shared the run's git)
+# AF9 [change] the tested copy alone, with nothing failing, leaves the run's
+#              staged state as it was
+# AF10 [change] the copy leaves out what the run's folder leaves out (a run
+#              folder leaves out legacy-DoNotUse/, ADR-059 §2)
+# AF11 [change] the nested run's state folder is not the repository's work:
+#              git status in the copy does not show it (#2367)
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -56,6 +67,14 @@ printf 'unit: %d/%d passed\n' "$p" "${#files[@]}"; (( p == ${#files[@]} ))
 RUN
     git init -q -b main "$R"; _g add -A; _g commit -q -m base; _g checkout -q -b work
 }
+# The run's folder as CI makes it (#2605): a linked checkout, whose .git is a
+# file pointing at the repository's own git. The branch is checked out there.
+_linked() {
+    _repo "$1"; local _m="$R"
+    _g checkout -q main; R="$TEST_TEMP_DIR/$1-run"; rm -rf "$R"
+    git -C "$_m" worktree add -q "$R" work >/dev/null 2>&1
+}
+_state() { printf '%s %s [%s]' "$(git -C "$R" symbolic-ref -q HEAD)" "$(git -C "$R" rev-parse HEAD)" "$(git -C "$R" status --porcelain | tr '\n' ' ')"; }
 _run() {
     A="$TEST_TEMP_DIR/art-$1"; rm -rf "$A"; mkdir -p "$A"; : > "$A/diff.patch"
     ( unset ZBUILD_TEST_CHANGED_FILES ZBUILD_TEST_CMD_TARGETED
@@ -123,6 +142,42 @@ _run 7
 assert_eq "[AF7] the stage fails on the file the change broke" "fail" "$(_j '.outcome')"
 _a7="$(_j '.data.already_failing // [] | join(",")')"
 if [[ "$_a7" == *ok-test.sh* ]]; then assert_fail "[AF7] ...which is not excused" "$_a7"; else assert_pass "[AF7] ...which is not excused"; fi
+
+print_test_section "AF8: a linked checkout, as CI makes it, is left as it was"
+_linked r8; printf '# a change\n' > "$R/README.md"; _g add -A; _g commit -q -m change
+printf 'ok=1 # staged, not committed\n' > "$R/lib.sh"; _g add lib.sh
+_s8="$(_state)"
+_run 8
+assert_eq "[AF8] setup: the run folder is a linked checkout" "file" "$([[ -f "$R/.git" ]] && echo file || echo other)"
+assert_eq "[AF8] the check still runs there: the file is listed as already failing" "tests/unit/old-test.sh" "$(_j '.data.already_failing // [] | join(",")')"
+assert_eq "[AF8] the run is on its branch, at its commit, with its files and staged state" "$_s8" "$(_state)"
+
+print_test_section "AF9: the tested copy alone leaves the run's staged state"
+_linked r9; rm -f "$R/tests/unit/old-test.sh"; _g add -A; _g commit -q -m drop-old
+printf 'ok=1 # staged, not committed\n' > "$R/lib.sh"; _g add lib.sh
+_s9="$(_state)"
+_run 9
+assert_eq "[AF9] setup: nothing failed" "pass" "$(_j '.outcome')"
+assert_eq "[AF9] the run is as it was" "$_s9" "$(_state)"
+
+print_test_section "AF10: the copy leaves out what the run's folder leaves out"
+_repo r10; rm -f "$R/tests/unit/old-test.sh"; mkdir -p "$R/left-out"; printf 'x\n' > "$R/left-out/a.txt"
+printf '#!/usr/bin/env bash\n[[ ! -e left-out ]]\n' > "$R/tests/unit/sparse-test.sh"; _g add -A; _g commit -q -m sparse
+_m10="$R"; _g checkout -q main; _g config extensions.worktreeConfig true
+R="$TEST_TEMP_DIR/r10-run"; git -C "$_m10" worktree add -q "$R" work >/dev/null 2>&1
+git -C "$R" sparse-checkout set --no-cone '/*' '!/left-out/' >/dev/null 2>&1
+_s10="$(_state)"
+assert_eq "[AF10] setup: the run's folder leaves left-out/ out" "absent" "$([[ -e "$R/left-out" ]] && echo present || echo absent)"
+_run 10
+assert_eq "[AF10] the tested copy leaves it out too: the suite passes" "pass" "$(_j '.outcome')"
+assert_eq "[AF10] ...and the run is as it was" "$_s10" "$(_state)"
+
+print_test_section "AF11: the nested run's state folder is hidden from git"
+_linked r11; rm -f "$R/tests/unit/old-test.sh"
+printf '#!/usr/bin/env bash\nmkdir -p "$ZBUILD_STATE_ROOT" && printf x > "$ZBUILD_STATE_ROOT/probe"\n[[ -z "$(git status --porcelain --untracked-files=all)" ]]\n' > "$R/tests/unit/fence-test.sh"
+_g add -A; _g commit -q -m fence
+_run 11
+assert_eq "[AF11] git status in the copy does not show the nested run's state: the suite passes" "pass" "$(_j '.outcome')"
 
 cleanup_test_env
 print_test_results

@@ -1,6 +1,6 @@
 # ADR-054: Stage Contract
 
-**Status:** Accepted (2026-08-09); amended 2026-11-22 (#2586: §6a progress is a change to the repository's tracked files); amended 2026-11-20 (#2573: one shared, forgiving reader of test output); amended 2026-11-18 (#2563: the run watchdog signals only the runner's own tree)
+**Status:** Accepted (2026-08-09); amended 2026-11-24 (#2605: §6a the test stage's copies have their own git); amended 2026-11-22 (#2586: §6a progress is a change to the repository's tracked files); amended 2026-11-20 (#2573: one shared, forgiving reader of test output); amended 2026-11-18 (#2563: the run watchdog signals only the runner's own tree)
 **Date:** 2026-08-09
 **Issue:** #1820
 **Amended:** 2026-11-08 (#2493) — §7: a signal that arrives while a signal handler runs is ignored, never handled inside it (Amendment at the end).
@@ -733,6 +733,29 @@ In #2532, runs 45017980554 (C7) and 45102665787 (RG9) each had a test outside th
 
 So this is a race over whether the hook has exited before the signal is handled. It is not an Ubuntu fault, and it is more likely on a busy machine. #2586 already believes a reply that says acquired, whatever the status, so nothing more is changed.
 
+## Amendment 2026-11-24 (#2605) — §6a: the test stage's copies have their own git
+
+The test stage tests a copy of the run's folder, and the already-failing check (#2591) tests a copy of that copy set to the starting code. Each copy has a git of its own:
+- its own HEAD, at the run's commit and detached;
+- its own staged state;
+- the run's history and branch names, read through the copy's `commondir`.
+
+So switching a copy to the starting code, or rebuilding its staged state, never moves the run's HEAD, branch or staged state. After the test stage the run is on its branch, at its commit, with its files and staged state as they were.
+- **What the copy shares:** the run's history, branch names, config and hooks. The test stage's own code changes none of them.
+- **Left-out files:** the copy leaves out what the run's folder leaves out (`legacy-DoNotUse/`, ADR-059 §2), because it carries the folder's partial-checkout settings. Its staged state is built by `reset --hard`.
+- **The nested run's state folder:** `.zbuild-nested-state/` (#1127) hides itself from git with a `*` ignore file inside it. A copy's `info/exclude` would be read from the shared history.
+- **When the copy's git cannot be made:** git's answer is refused unless it gives absolute paths, the top of the checkout and a commit id. The copy then has no git, never the run's, and the stage says so. That happens with git older than 2.31, or a run folder below the top of its checkout.
+- **With worktrees off** (`ZBUILD_NO_WORKTREE=1`), a copy of the operator's checkout shares that checkout's history, as a linked run's copy shares the run's.
+
+On #2533 run 45403848593 the run's folder was a linked checkout, whose `.git` is a file pointing at the run's own git, and both copies kept that file:
+- the check's switch to the starting code switched the run;
+- the write guard then blamed the test stage, and its undo erased build's work;
+- issue-acceptance judged the starting code;
+- round 2 was built off the run's branch and never pushed;
+- the second time, the run was stopped.
+
+The check's tests used a plain git folder, where a copy's git is its own, so they never saw it. They now use a linked checkout too.
+
 ## Amendment 2026-11-23 (#2598) — §5: build's round is its own place and its own commits
 
 Build's round is keyed by its dispatch's place as well as run, cycle and iteration. The place is its seq label, which holds every enclosing loop's round. Build counts only the commits it made itself, which are marked `Zbuild-Stage: build` (test-author commits as the same author).
@@ -744,6 +767,7 @@ On #2532 run 45231040380, the outer loop's round 2 was again "iteration 1" of th
 - §5 amendment 2026-11-23 (#2598: build's round is its own place and its own commits) → `tests/unit/build-round-summary-test.sh` R4, R5
 
 - Amendment 2026-11-23 (#2591: §6a a test already failing before the change does not send the round back) → `tests/unit/test-already-failing-test.sh` AF1–AF7
+- Amendment 2026-11-24 (#2605: §6a the test stage's copies have their own git — they never move the run's HEAD, branch or staged state; they leave out what the run's folder leaves out; the nested run's state folder is hidden from git) → `tests/unit/test-already-failing-test.sh` AF8–AF11, `tests/integration/state-root-isolation-test.sh` SPEC-F
 
 - 2026-11-23 amendment (#2592: large text through stdin or a file) → `tests/unit/large-text-not-argv-test.sh` L1 (the result writer, 1.2 MiB), L2 (intake's data), L3 (a comment's body on stdin), L4 (lint detail), L5 (the monitor's checks), L6 (a stage-io comment for a 1.2 MiB prompt); L1 also refuses data that is two JSON values
 
