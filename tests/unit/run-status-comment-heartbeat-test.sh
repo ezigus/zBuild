@@ -22,9 +22,9 @@ LIB="$REPO_ROOT/scripts/lib/run-status-comment.sh"
 source "$LIB" 2>/dev/null || true
 
 # ═══════════════════════════════════════════════════════════════════════════
-# DSHBT-13 (done): rsc_holder_line_v works when heartbeat line precedes ###
+# DSHBT-13 (done): rsc_holder_find works when heartbeat line precedes ###
 # ═══════════════════════════════════════════════════════════════════════════
-print_test_section "DSHBT-13 (done): rsc_holder_line_v with heartbeat line before ###"
+print_test_section "DSHBT-13 (done): rsc_holder_find with heartbeat line before ###"
 
 # Given: a comment body with the layout marker → holder → heartbeat → ###
 holder_body="<!-- zbuild-run-status run_id=test-13 -->
@@ -34,12 +34,25 @@ still running — 2026-11-24T12:00:00Z — now: build
 engine \`abc1234\` · started 8:00 AM ET · updated 12:00 PM ET
 current: **1 build**"
 
-# When: rsc_holder_line_v is called
-holder_found=""
-rsc_holder_line_v holder_found "$holder_body"
+# Mock rsc_gh to return a JSON array containing the comment body above;
+# rsc_holder_find reads its response from $2 (the temp out-file).
+# jq -rs slurps the array as [[item]], and .[][]? flattens it to items.
+rsc_gh() {
+    local _out="$2"
+    jq -cn --arg body "$holder_body" \
+        '[{"user":{"login":"github-actions[bot]"},"author_association":"","body":$body}]' \
+        > "$_out"
+    return 0
+}
+
+# When: rsc_holder_find is called
+holder_found="$(rsc_holder_find "$TEST_TEMP_DIR" "o/r" 9999)"
 # Then: the holder is returned from the holder comment, heartbeat line does not interfere
-assert_eq "[DSHBT-13] rsc_holder_line_v returns holder despite heartbeat line before ###" \
+assert_eq "[DSHBT-13] rsc_holder_find returns holder despite heartbeat line before ###" \
     "https://github.com/o/r/actions/runs/42" "$holder_found"
+
+# Cleanup: remove the rsc_gh override so the sidecar sections use the real binary path
+unset -f rsc_gh
 
 # ═══════════════════════════════════════════════════════════════════════════
 # DSHBT-1, DSHBT-2, DSHBT-14: heartbeat timer in rsc_tail_loop
@@ -66,12 +79,19 @@ ev() {   # ev <events-file> <HH:MM:SS> <type> [seq] [stage] [k=v...]
 }
 
 # Helper: count POSTs (new comments) to the issue
-posts()   {
-    grep -cF 'api repos/testuser/testrepo/issues/90000099/comments' "$GH_LOG" 2>/dev/null \
-        || printf '0'
+# grep -c exits 1 when count is 0, so capture in a variable and default to 0 on error.
+posts() {
+    local _c
+    _c="$(grep -cF 'api repos/testuser/testrepo/issues/90000099/comments' "$GH_LOG" 2>/dev/null)" \
+        || _c=0
+    printf '%s' "$_c"
 }
 # Helper: count PATCHes (edits to existing comment)
-patches() { grep -c 'PATCH' "$GH_LOG" 2>/dev/null || printf '0'; }
+patches() {
+    local _c
+    _c="$(grep -c 'PATCH' "$GH_LOG" 2>/dev/null)" || _c=0
+    printf '%s' "$_c"
+}
 # Helper: get last body written
 last_body() {
     local last
