@@ -56,6 +56,8 @@ _test_already_failing_v() {
     done <<< "$failing"
     (( ${#cand[@]} > 0 )) || return 0
     rm -rf "$wt"
+    # $tmp/.git is the copy's own (_test_own_git, #2605): carried to $wt, so the
+    # checkout below moves only $wt. Leaving it out would leave $wt with no git.
     if command -v rsync >/dev/null 2>&1; then rsync -a "$tmp/" "$wt/" 2>/dev/null || cp -r "$tmp/." "$wt/"
     else mkdir -p "$wt" && cp -r "$tmp/." "$wt/"; fi
     git -C "$wt" checkout -q -f --detach "$base" >/dev/null 2>&1 || { rm -rf "$wt"; return 0; }
