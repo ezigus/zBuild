@@ -50,6 +50,7 @@ hooks:
   release: stub_release
   heartbeat: stub_heartbeat
   list_claims: stub_list
+  takeover: stub_takeover
 provides:
   role: claim-coordinator
   alias: stub
@@ -59,6 +60,7 @@ stub_claim()   { printf 'claim %s\n'   "\$1" >> "$CALLS"; cat "$dir/reply"; retu
 stub_release() { printf 'release %s\n' "\$1" >> "$CALLS"; return ${4:-0}; }
 stub_heartbeat() { return 0; }
 stub_list()    { printf '[]\n'; }
+stub_takeover() { printf 'takeover %s\n' "\$1" >> "$CALLS"; printf '{"taken_over":false}\n'; }
 EOF
     export ZBUILD_PLUGINS_ROOT="$root"
     : > "$CALLS"; : > "$ZBUILD_EVENTS_JSONL"
@@ -83,10 +85,10 @@ _mock_reset() {
     _MOCK_TAKEOVER_ARGS=""
 }
 
-# A spy on the takeover's first read: the same-machine and unclaimed paths
-# never reach it. claim-takeover.sh is not loaded while claim_age_v is defined.
+# #2616: the takeover is the coordinator's hook; the stub's logs each call, and
+# the same-machine and unclaimed paths never reach it.
 _mock_reset
-claim_age_v() { _MOCK_HB_CALLED=1; return 1; }
+_takeovers() { grep -c '^takeover' "$CALLS" 2>/dev/null || true; }
 
 # ═══════════════════════════════════════════════════════════════════════════
 # DSHBT-7: ZBUILD_CLAIM_HEARTBEAT_S defaults to 600 when unset
@@ -146,8 +148,8 @@ _acq 9100
 # Then: cleared and re-acquired (rc=0)
 assert_eq "[DSHBT-6] local dead-pid holder → cleared and re-acquired (rc=0)" "0" "$_ACQ_RC"
 # And: the takeover read is not made (the same-machine path runs first)
-assert_eq "[DSHBT-6] the takeover read is not made for a local dead-pid claim" \
-    "0" "$_MOCK_HB_CALLED"
+assert_eq "[DSHBT-6] the takeover is not asked for a local dead-pid claim" \
+    "0" "$(_takeovers)"
 
 # ═══════════════════════════════════════════════════════════════════════════
 # DSHBT-12 (done): unclaimed issue acquired without consulting heartbeat
@@ -162,8 +164,8 @@ _acq 9101
 # Then: rc=0 (acquired)
 assert_eq "[DSHBT-12] unclaimed issue → rc=0 (acquired)" "0" "$_ACQ_RC"
 # And: the takeover read is not made
-assert_eq "[DSHBT-12] the takeover read is not made for an unclaimed issue" \
-    "0" "$_MOCK_HB_CALLED"
+assert_eq "[DSHBT-12] the takeover is not asked for an unclaimed issue" \
+    "0" "$(_takeovers)"
 
 # DSHBT-3, DSHBT-4, DSHBT-5, DSHBT-15, DSHBT-16: the takeover, end to end with
 # only gh faked — tests/unit/claim-takeover-real-test.sh (#2533 review).

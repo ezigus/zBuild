@@ -192,6 +192,12 @@ _zbuild_claim_takeover() {
     if [[ "$reply" =~ \"taken_over\"[[:space:]]*:[[:space:]]*true ]]; then
         local age=""; [[ "$reply" =~ \"age_s\"[[:space:]]*:[[:space:]]*([0-9]+) ]] && age="${BASH_REMATCH[1]}"
         eb_emit_event "pipeline.claim.taken_over" "issue=$issue" "holder=$them" "age_s=$age" 2>/dev/null || true
+        # The coordinator claimed it again for this run (review of #2616).
+        if [[ "$reply" =~ \"claimed\"[[:space:]]*:[[:space:]]*true ]]; then
+            _ZBUILD_CLAIM_ACQUIRED="$issue"
+            eb_emit_event "pipeline.claim.acquired" "issue=$issue" "holder=$me" 2>/dev/null || true
+            return 0
+        fi
         local arc=0
         _ZBUILD_CLAIM_RETRIED=1 zbuild_claim_acquire "$issue" "$state_dir" || arc=$?
         return "$arc"

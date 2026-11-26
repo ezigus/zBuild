@@ -39,6 +39,14 @@
 #                which run
 #   TR15 [change] the engine holds no GitHub claim code: the coordinator declares
 #                the takeover hook and holds its library
+#   (review of #2616)
+#   TR16 [change] GitHub's Date is read in any locale, and the mark's time is UTC
+#                in any time zone
+#   TR17 [change] the claim is this run's again before the old comment is marked
+#                or the takeover said: one taken by another run in between is
+#                refused, unmarked
+#   TR18 [change] a coordinator with no takeover hook refuses, saying so
+#   TR19 [change] a mark that cannot be made is said, and the takeover stands
 # The design's ids: DSHBT-3 TR1, DSHBT-4 TR2, DSHBT-5 TR7, DSHBT-15 TR11, DSHBT-16 TR5.
 # Since #2616 the coordinator is the real github-labels plugin, its labels in the
 # local store (ZBUILD_CLAIM_BACKEND=local-fs) and every GitHub read and write of
@@ -80,7 +88,9 @@ case "$args" in
         printf 'HTTP/2.0 200 OK\r\nDate: %s\r\nContent-Type: application/json\r\n\r\n{}\n' \
             "$(cat "$F/gh-now" 2>/dev/null || LC_ALL=C date -u '+%a, %d %b %Y %H:%M:%S GMT')" ;;  # determinism-ok: the fake's clock, a timestamp
     *"-X PATCH"*)
-        f="${args##*--input }"; f="${f%% *}"; cp "$f" "$F/patched" ;;
+        [[ -e "$F/fail-patch" ]] && { echo "fake gh: HTTP 500" >&2; exit 1; }
+        f="${args##*--input }"; f="${f%% *}"; cp "$f" "$F/patched"
+        id="${args##*/comments/}"; printf '%s\n' "${id%% *}" > "$F/patched-id"; printf '{}\n' ;;
     *"-X DELETE"*)
         id="${args##*/comments/}"; id="${id%% *}"; printf '%s\n' "$id" >> "$F/deleted"
         jq -c --argjson i "$id" 'select(.id != $i)' "$F/notes" > "$F/notes.n" 2>/dev/null; mv "$F/notes.n" "$F/notes"
@@ -124,7 +134,7 @@ _note() {   # <created seconds ago> <by> [login] — another run's takeover note
     jq -cn --arg b "took over a stale claim from \`$THEIRS\` — by \`$2\`" --arg t "$(_iso_ago "$1")" --arg l "${3:-github-actions[bot]}" \
         '{id:50, user:{login:$l}, author_association:(if $l == "github-actions[bot]" then "" else "NONE" end), body:$b, created_at:$t, updated_at:$t}' >> "$F/notes"
 }
-_fresh() { rm -f "$F/notes" "$F/rel-rc" "$F/gh.log" "$F/deleted" "$F/label" "$F/fail-comments" "$F/fail-post" "$F/no-id" "$F/gh-now" "$F/patched"; : > "$F/notes"
+_fresh() { rm -f "$F/notes" "$F/rel-rc" "$F/gh.log" "$F/deleted" "$F/label" "$F/fail-comments" "$F/fail-post" "$F/no-id" "$F/gh-now" "$F/patched" "$F/patched-id" "$F/fail-patch"; : > "$F/notes"
            chmod -R u+w "$ZBUILD_CLAIM_STORE" 2>/dev/null; rm -rf "$ZBUILD_CLAIM_STORE"; mkdir -p "$ZBUILD_CLAIM_STORE/9"
            printf 'zbuild:claimed\n' > "$ZBUILD_CLAIM_STORE/9/labels.txt"
            printf '<!-- zbuild-run-status run_id=old -->\n<!-- zbuild-holder: %s -->\n' "$THEIRS" > "$ZBUILD_CLAIM_STORE/9/run-status-comment.txt"
@@ -261,7 +271,10 @@ _fresh; _iso_ago 4000 > "$F/hb"
 _acq
 assert_eq "[TR14] taken over" "0" "$_RC"
 _p14="$(jq -r '.body' "$F/patched" 2>/dev/null)"
-assert_contains "[TR14] the old comment is edited, its holder line kept" "$_p14" "<!-- zbuild-holder: $THEIRS -->"
+assert_eq "[TR14] the old holder's comment is the one edited" "1" "$(cat "$F/patched-id" 2>/dev/null)"
+assert_contains "[TR14] ...the rest of it kept" "$_p14" "### zbuild run \`old\` · issue #9"
+_lacks14p() { if [[ "$2" == *"$3"* ]]; then assert_fail "$1" "it has: $3"; else assert_pass "$1"; fi; }
+_lacks14p "[TR14] ...its holder line gone: a refusal never names a run that lost the claim" "$_p14" "<!-- zbuild-holder: $THEIRS -->"
 _lacks14() { if [[ "$2" == *"$3"* ]]; then assert_fail "$1" "it has: $3"; else assert_pass "$1"; fi; }
 _lacks14 "[TR14] ...it no longer says still running" "$_p14" "still running —"
 assert_contains "[TR14] ...it says the claim was taken over, by this run" "$_p14" "taken over — "
@@ -274,6 +287,41 @@ assert_file_exists "[TR15] ...and holds its library" "$REPO_ROOT/plugins/claim-c
 assert_file_not_exists "[TR15] the engine's library is gone" "$REPO_ROOT/scripts/lib/claim-takeover.sh"
 _eng="$(grep -nE 'repos/|rsc_gh|gh api|claim_age_v|takeover_note' "$REPO_ROOT/core/claim/claim.sh" || true)"
 assert_eq "[TR15] core/claim/claim.sh holds no GitHub claim code" "" "$_eng"
+
+print_test_section "TR16: any locale, any time zone"
+_fresh; _iso_ago 4000 > "$F/hb"
+_RC=0; LC_ALL=de_DE.UTF-8 LANG=de_DE.UTF-8 TZ=America/Los_Angeles zbuild_claim_acquire 9 "$STATE" > "$F/out" 2>&1 || _RC=$?
+assert_eq "[TR16] taken over under a German locale and a Pacific time zone" "0" "$_RC"
+_w16="$(jq -r '.body' "$F/patched" 2>/dev/null | grep -o 'taken over — [0-9T:-]*Z' || true)"
+_d16="$(date -u +%Y-%m-%dT%H)"  # determinism-ok: the hour now, to compare a timestamp with
+assert_contains "[TR16] ...the mark's time is UTC" "$_w16" "taken over — $_d16"
+
+print_test_section "TR17: the claim is this run's before the mark"
+_fresh; _iso_ago 4000 > "$F/hb"
+# Another run takes the label the moment the old claim is released.
+_d17="$CR/claim-coordinator/github-labels/plugin.sh"; cp "$_d17" "$F/plugin.keep"
+printf '%s\n' 'claim_coordinator_release() { printf "zbuild:claimed\n" > "$ZBUILD_CLAIM_STORE/9/labels.txt"; return 0; }' >> "$_d17"
+_acq
+cp "$F/plugin.keep" "$_d17"
+assert_eq "[TR17] another run took the claim in between → refused" "1" "$_RC"
+assert_file_not_exists "[TR17] ...the old comment is not marked" "$F/patched"
+_lacks17() { if [[ "$2" == *"$3"* ]]; then assert_fail "$1" "it has: $3"; else assert_pass "$1"; fi; }
+_lacks17 "[TR17] ...and no takeover is said" "$(cat "$ZBUILD_EVENTS_JSONL")" "pipeline.claim.taken_over"
+
+print_test_section "TR18: a coordinator with no takeover hook"
+_fresh; _iso_ago 4000 > "$F/hb"
+_CR18="$TEST_TEMP_DIR/plugins-nohook"; mkdir -p "$_CR18/claim-coordinator"
+cp -R "$CR/claim-coordinator/github-labels" "$_CR18/claim-coordinator/"
+grep -v 'takeover: claim_coordinator_takeover' "$CR/claim-coordinator/github-labels/manifest.yaml" > "$_CR18/claim-coordinator/github-labels/manifest.yaml"
+ZBUILD_PLUGINS_ROOT="$_CR18" _acq
+assert_eq "[TR18] refused" "1" "$_RC"
+assert_contains "[TR18] ...saying the coordinator cannot judge a stale claim" "$_OUT" "cannot judge a stale claim"
+
+print_test_section "TR19: a mark that cannot be made"
+_fresh; _iso_ago 4000 > "$F/hb"; : > "$F/fail-patch"
+_acq
+assert_eq "[TR19] the takeover stands" "0" "$_RC"
+assert_contains "[TR19] ...and the failed mark is said" "$_OUT" "could not be marked as taken over"
 
 cleanup_test_env
 print_test_results

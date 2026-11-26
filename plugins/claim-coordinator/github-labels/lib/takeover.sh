@@ -121,7 +121,8 @@ claim_github_now_v() {
     done < "$out"
     rm -f "$out"
     [[ -n "$d" ]] || return 1
-    _cgn="$(jq -rn --arg d "$d" '$d | strptime("%a, %d %b %Y %H:%M:%S GMT") | mktime' 2>/dev/null)" || _cgn=0
+    # GitHub's day and month names are English: read in the C locale (review of #2616).
+    _cgn="$(LC_ALL=C jq -rn --arg d "$d" '$d | strptime("%a, %d %b %Y %H:%M:%S GMT") | mktime' 2>/dev/null)" || _cgn=0
     [[ "$_cgn" =~ ^[0-9]+$ && "$_cgn" -gt 0 ]] || { _cgn=0; return 1; }
     return 0
 }
@@ -139,13 +140,14 @@ claim_takeover_mark_old() {
         | sort_by(.updated_at) | last | .id // empty" "$out" 2>/dev/null)"
     body="$(jq -rs --argjson i "${id:-0}" '[.[][]? | select(.id == $i)] | first | .body // empty' "$out" 2>/dev/null)"
     [[ "$id" =~ ^[0-9]+$ && -n "$body" ]] || { rm -f "$out"; return 1; }
-    printf -v when '%(%Y-%m-%dT%H:%M:%SZ)T' "$now"
+    TZ=UTC0 printf -v when '%(%Y-%m-%dT%H:%M:%SZ)T' "$now"
     line="taken over — $when — by $by"
-    if [[ "$body" == *$'\n'"still running — "* || "$body" == "still running — "* ]]; then
-        body="$(awk -v t="$line" '/^still running — / { print t; next } { print }' <<< "$body")"
-    else
-        body="$(awk -v t="$line" -v h="$_RSC_HOLDER_PREFIX" '{ print } !done && index($0, h) == 1 { print t; done = 1 }' <<< "$body")"
-    fi
+    # Its holder line goes too: the old run no longer holds the claim, so no
+    # refusal names it (review of #2616). The mark takes its place.
+    body="$(awk -v t="$line" -v h="$_RSC_HOLDER_PREFIX" '
+        /^still running — / { if (!done) { print t; done = 1 } next }
+        index($0, h) == 1 { if (!done) { print t; done = 1 } next }
+        { print }' <<< "$body")"
     jq -n --arg b "$body" '{body: $b}' > "$out.json" 2>/dev/null || { rm -f "$out" "$out.json"; return 1; }
     local rc=0
     rsc_gh "$sd" "$out" api -X PATCH "repos/${slug}/issues/comments/${id}" --input "$out.json" >/dev/null 2>&1 || rc=1
@@ -153,12 +155,13 @@ claim_takeover_mark_old() {
     return "$rc"
 }
 
-# claim_takeover_run <issue> <holder> <by> <stale_s> <state_dir> <release_fn>
-# — the takeover (ADR-005 §3): stdout {"taken_over":true,"age_s":N},
-# {"taken_over":false} or {"taken_over":false,"failed":"release_failed"}; what
-# happened is said on stderr. Every way it cannot tell refuses (fail closed).
+# claim_takeover_run <issue> <holder> <by> <stale_s> <state_dir> <release_fn> <claim_fn>
+# — the takeover (ADR-005 §3): stdout {"taken_over":true,"age_s":N} once the
+# claim is this run's again, {"taken_over":false} or {"taken_over":false,
+# "failed":"<why>"}; what happened is said on stderr. Every way it cannot tell
+# refuses (fail closed).
 claim_takeover_run() {
-    local issue="$1" them="$2" me="$3" stale="$4" state_dir="$5" release_fn="$6"
+    local issue="$1" them="$2" me="$3" stale="$4" state_dir="$5" release_fn="$6" claim_fn="$7"
     local slug; claim_takeover_slug_v slug
     if [[ -z "$slug" ]]; then
         printf 'zbuild_claim_acquire: no repository to read the claim from (no GITHUB_REPOSITORY, no origin here) — refusing to take over %s\n' "$them" >&2
@@ -214,8 +217,16 @@ claim_takeover_run() {
         printf 'zbuild_claim_acquire: releasing %s'"'"'s claim failed — refused; the claim is still theirs\n' "$them" >&2
         printf '{"taken_over":false,"failed":"release_failed"}\n'; return 0
     fi
+    # The claim is this run's again before anything says so (review of #2616):
+    # a run that took it in between keeps it, and nothing is marked.
+    local cl=""
+    cl="$("$claim_fn" "$issue" 2>/dev/null)" || cl=""
+    if [[ ! "$cl" =~ \"acquired\"[[:space:]]*:[[:space:]]*true ]]; then
+        printf 'zbuild_claim_acquire: another run claimed issue #%s once %s'"'"'s stale claim was released — refused\n' "$issue" "$them" >&2
+        printf '{"taken_over":false,"failed":"claimed_by_another"}\n'; return 0
+    fi
     claim_takeover_mark_old "$state_dir" "$slug" "$issue" "$them" "$me" "$now" \
         || printf 'zbuild_claim_acquire: the old holder'"'"'s run-status comment could not be marked as taken over\n' >&2
     printf 'zbuild_claim_acquire: took over a stale claim from %s (last seen %ss ago) on issue #%s\n' "$them" "$age" "$issue" >&2
-    printf '{"taken_over":true,"age_s":%s}\n' "$age"
+    printf '{"taken_over":true,"claimed":true,"age_s":%s}\n' "$age"
 }

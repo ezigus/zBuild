@@ -208,8 +208,9 @@ claim_coordinator_heartbeat() {
 
 # ─── Hook: takeover <issue> <holder> <by> <stale_s> <state_dir> ───────────────
 # ADR-005 §3 (#2616): a claim another machine holds, judged on GitHub's clock
-# and taken over when stale (lib/takeover.sh, loaded only here). stdout:
-# {"taken_over":true,"age_s":N} | {"taken_over":false[,"failed":"<why>"]}.
+# and taken over when stale (lib/takeover.sh, loaded only here): released, and
+# claimed again for this run. stdout: {"taken_over":true,"claimed":true,"age_s":N}
+# | {"taken_over":false[,"failed":"<why>"]}.
 claim_coordinator_takeover() {
     if ! declare -F claim_takeover_run >/dev/null 2>&1; then
         local _lrc=0
@@ -220,7 +221,7 @@ claim_coordinator_takeover() {
             printf '{"taken_over":false}\n'; return 0
         fi
     fi
-    claim_takeover_run "$1" "$2" "$3" "$4" "$5" claim_coordinator_release
+    claim_takeover_run "$1" "$2" "$3" "$4" "$5" claim_coordinator_release claim_coordinator_claim
 }
 
 # ─── Hook: list_claims ────────────────────────────────────────────────────────
