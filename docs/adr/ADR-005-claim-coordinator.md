@@ -81,12 +81,19 @@ The claim is advisory across machines; this machine's admission lock still seria
   (fail closed).
 - **§3d Stale takeover.** When a cross-machine claim's reference timestamp (heartbeat or label-added)
   is at least `ZBUILD_CLAIM_STALE_S` old: `rsc_takeover_note_post` posts "took over a stale claim
-  from <holder>" as a new issue comment, the old claim is released, and the new run acquires once.
-  The takeover is attempted at most once per `zbuild_claim_acquire` call chain
+  from <holder> — by <this run>" as a new issue comment, the old claim is released, and the new run
+  acquires once. The takeover is attempted at most once per `zbuild_claim_acquire` call chain
   (`_ZBUILD_CLAIM_RETRIED` guard).
+  - **Two runs, one stale claim:** after posting its note the run reads the issue's takeover notes for
+    that holder back (`rsc_takeover_first_v`, trusted authors only, as the heartbeat is read). Only
+    the run whose note came first goes on; another refuses, naming it, and releases nothing. Notes
+    that cannot be read back refuse too.
+  - **A release that fails after the note** is said — `pipeline.claim.takeover_failed`
+    (`reason=release_failed`) and a message that the note was posted and the claim is still theirs —
+    and the run refuses.
 - **§3e Lazy source.** `zbuild_claim_acquire` sources `run-status-comment.sh` lazily when a
-  cross-machine stale check is needed; it refuses if the file cannot be sourced or
-  `rsc_takeover_note_post` is not defined after sourcing.
+  cross-machine stale check is needed; it refuses if the file is absent, cannot be loaded (saying
+  so), or does not define `rsc_takeover_note_post`.
 
 ### §4 — Finding and calling the coordinator
 
@@ -202,6 +209,10 @@ A claim hook whose reply says `"acquired": true` holds the claim, whatever the h
   - §3 unclaimed issue acquired without heartbeat → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-12
   - §3d `rsc_takeover_note_post` failure → refuse (rc=1) → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-15
   - §3e lazy source refusal (file absent or function not defined) → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-16
+  - §3a §3b the heartbeat written is the one read (no stub) → `tests/unit/run-status-comment-heartbeat-test.sh` DSHBT-17; `tests/unit/claim-takeover-real-test.sh` TR1, TR2
+  - §3d two runs, one stale claim: the first note wins → `tests/unit/claim-takeover-real-test.sh` TR3
+  - §3d a release that fails after the note is said → `tests/unit/claim-takeover-real-test.sh` TR4
+  - §3e a library that cannot be loaded is said → `tests/unit/claim-takeover-real-test.sh` TR5
 
 - §1 §3 amendment 2026-11-23 (#2589: the label always cleared; a rejected login stops the run) → `tests/unit/claim-cleanup-test.sh` CL1–CL8; `tests/unit/claim-acquire-release-test.sh` S1–S4; `tests/integration/claim-release-on-exit-test.sh` C8, C9; `tests/integration/claim-holder-status-comment-test.sh` H1 (the holder carries the pid); `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh` (the refusal gives the command)
 

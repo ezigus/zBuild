@@ -14,6 +14,9 @@ source "$REPO_ROOT/tests/lib/test-helpers.sh"
 print_test_header "claim heartbeat defaults and cross-machine staleness (ADR-005 §3, #2533)"
 setup_test_env "claim-heartbeat-stale"
 unset NO_GITHUB GITHUB_ACTIONS
+# Never real GitHub: a gh that refuses, first on PATH (the takeover's own calls are stubbed below).
+mkdir -p "$TEST_TEMP_DIR/bin"; printf '#!/usr/bin/env bash\necho "fake gh: unexpected call: $*" >&2; exit 1\n' > "$TEST_TEMP_DIR/bin/gh"
+chmod +x "$TEST_TEMP_DIR/bin/gh"; export PATH="$TEST_TEMP_DIR/bin:$PATH"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 _ZBUILD_ROOT="$REPO_ROOT"
 
@@ -106,6 +109,9 @@ rsc_heartbeat_find()     { _MOCK_HB_CALLED=1;      printf '%s' "$_MOCK_HB_TS";  
 rsc_label_added_at()     { _MOCK_LABEL_CALLED=1;    printf '%s' "$_MOCK_LABEL_TS"; return 0; }
 # Capture all args so tests can verify rsc_takeover_note_post is called with the right holder
 rsc_takeover_note_post() { _MOCK_TAKEOVER_CALLED=1; _MOCK_TAKEOVER_ARGS="$*"; return 0; }
+# #2533 review: the first takeover note for the holder is this run's (the race
+# is tests/unit/claim-takeover-real-test.sh TR3).
+rsc_takeover_first_v() { local -n _m="$1"; _zbuild_claim_holder_v _m; return 0; }
 
 # ═══════════════════════════════════════════════════════════════════════════
 # DSHBT-7: ZBUILD_CLAIM_HEARTBEAT_S defaults to 600 when unset
@@ -296,6 +302,9 @@ assert_eq "[DSHBT-15] note-post failure → refused (rc=1)" "1" "$_ACQ_RC"
 assert_eq "[DSHBT-15] note-post failure → claim not acquired" "" "${_ZBUILD_CLAIM_ACQUIRED:-}"
 # Cleanup: restore the mock to return 0 (default for other sections)
 rsc_takeover_note_post() { _MOCK_TAKEOVER_CALLED=1; _MOCK_TAKEOVER_ARGS="$*"; return 0; }
+# #2533 review: the first takeover note for the holder is this run's (the race
+# is tests/unit/claim-takeover-real-test.sh TR3).
+rsc_takeover_first_v() { local -n _m="$1"; _zbuild_claim_holder_v _m; return 0; }
 
 # ═══════════════════════════════════════════════════════════════════════════
 # DSHBT-16: stale takeover refused when run-status-comment.sh cannot be loaded
@@ -360,6 +369,9 @@ assert_eq "[DSHBT-16] rsc_takeover_note_post not defined → claim not acquired"
 _ZBUILD_ROOT="$_zb_root_saved2"
 _ZBUILD_RUN_STATUS_COMMENT_LOADED=1
 rsc_takeover_note_post() { _MOCK_TAKEOVER_CALLED=1; _MOCK_TAKEOVER_ARGS="$*"; return 0; }
+# #2533 review: the first takeover note for the holder is this run's (the race
+# is tests/unit/claim-takeover-real-test.sh TR3).
+rsc_takeover_first_v() { local -n _m="$1"; _zbuild_claim_holder_v _m; return 0; }
 
 # Cleanup
 unset ZBUILD_CLAIM_STALE_S

@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Tests: run-status comment heartbeat — DSHBT-1, DSHBT-2, DSHBT-13
+# Tests: run-status comment heartbeat — DSHBT-1, DSHBT-2, DSHBT-13, DSHBT-17
+# DSHBT-17 (#2533 review): the heartbeat the sidecar writes is the one the claim
+# reads — rsc_heartbeat_at_v and rsc_heartbeat_find, run for real on a body the
+# sidecar sent.
 # Heartbeat line in render, heartbeat timer in the sidecar loop, and
 # rsc_holder_line_v compatibility with the new body layout (ADR-064, #2533).
 set -uo pipefail
@@ -126,6 +129,13 @@ start_sidecar() {   # <state_dir> [<run_id>] → sets sidecar_pid
         >> "$1/status-comment.log" 2>&1 &
     sidecar_pid=$!
 }
+# Helper: wait until a body has been sent (the fake gh copies it before it
+# logs the call); a condition with a timeout, not a clock (ADR-012).
+wait_body() {
+    local i
+    for (( i=0; i<${1:-60}; i++ )); do [[ -n "$(last_body)" ]] && return 0; sleep 0.1; done
+    return 1
+}
 alive()     { kill -0 "$1" 2>/dev/null; }
 wait_gone() {
     local i
@@ -189,18 +199,13 @@ else
 fi
 
 # Wait for the stage-start event to be processed and flushed (first PATCH after POST)
-if wait_for_event "$GH_LOG" 'PATCH' 60 0.1; then
-    sleep 0.3  # let body copy complete
-fi
+wait_for_event "$GH_LOG" 'PATCH' 60 0.1 || true
 # Clear logs and bodies so only the heartbeat-triggered writes are captured below
-: > "$GH_LOG"; rm -f "$GH_BODIES"/body-*.txt 2>/dev/null || true
-sleep 0.5   # brief pause so any in-flight flush completes before the second clear
 : > "$GH_LOG"; rm -f "$GH_BODIES"/body-*.txt 2>/dev/null || true
 
 # When: ZBUILD_CLAIM_HEARTBEAT_S seconds have elapsed since the last flush
 #       (the heartbeat timer fires in rsc_tail_loop; no new stage events are written)
-if wait_for_event "$GH_LOG" 'PATCH' 50 0.1; then
-    sleep 0.2   # let body copy complete
+if wait_body 50 && wait_for_event "$GH_LOG" 'PATCH' 50 0.1; then
     heartbeat_body="$(last_body)"
     heartbeat_patch_count="$(patches)"
     heartbeat_post_count="$(posts)"
@@ -250,6 +255,22 @@ assert_eq "[DSHBT-1] body contains exactly one 'still running — ' line" \
     "1" "$hb_line_count"
 
 # ═══════════════════════════════════════════════════════════════════════════
+# DSHBT-17 (#2533 review): the heartbeat written is the heartbeat read
+# ═══════════════════════════════════════════════════════════════════════════
+print_test_section "DSHBT-17: the heartbeat the sidecar sent is the one the claim reads"
+_hb17=""; rsc_heartbeat_at_v _hb17 "$heartbeat_body"
+assert_contains_regex "[DSHBT-17] rsc_heartbeat_at_v reads the sent body's timestamp" \
+    "$_hb17" "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+assert_contains "[DSHBT-17] ...the one on its heartbeat line" "$fv" "still running — $_hb17"
+rsc_gh() {   # the GitHub call's boundary: the comments list, holding the sent body
+    jq -cn --arg body "$heartbeat_body" \
+        '[{"user":{"login":"github-actions[bot]"},"author_association":"","body":$body}]' > "$2"
+}
+assert_eq "[DSHBT-17] rsc_heartbeat_find reads it back from the issue's comments" \
+    "$_hb17" "$(rsc_heartbeat_find "$TEST_TEMP_DIR" testuser/testrepo 90000099)"
+unset -f rsc_gh
+
+# ═══════════════════════════════════════════════════════════════════════════
 # DSHBT-1 (no-stage case): heartbeat writes `still running — <ISO8601>` without
 # `— now: <stage>` when no stage event has fired
 # ═══════════════════════════════════════════════════════════════════════════
@@ -275,11 +296,10 @@ else
     cleanup_test_env; print_test_results; exit $((FAIL > 0))
 fi
 # No stage event means no event-triggered PATCH; clear log and wait only for heartbeat
-sleep 0.3
 : > "$GH_LOG"; rm -f "$GH_BODIES"/body-*.txt 2>/dev/null || true
 
 ns_heartbeat_body=""
-if wait_for_event "$GH_LOG" 'PATCH' 50 0.1; then
+if wait_body 50 && wait_for_event "$GH_LOG" 'PATCH' 50 0.1; then
     ns_heartbeat_body="$(last_body)"
 fi
 

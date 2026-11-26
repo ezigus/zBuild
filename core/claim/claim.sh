@@ -128,7 +128,11 @@ zbuild_claim_acquire() {
                     return 1
                 fi
                 # shellcheck source=../../scripts/lib/run-status-comment.sh
-                source "$_zca_rsc_path" 2>/dev/null || true
+                if ! source "$_zca_rsc_path" 2>/dev/null; then
+                    printf 'zbuild_claim_acquire: run-status-comment.sh could not be loaded (%s) — refusing cross-machine takeover (%s)\n' \
+                        "$_zca_rsc_path" "$_ZBUILD_CLAIM_THEIR_HOLDER" >&2
+                    return 1
+                fi
                 if ! declare -F rsc_takeover_note_post >/dev/null 2>&1; then
                     printf 'zbuild_claim_acquire: rsc_takeover_note_post not defined — refusing cross-machine takeover (%s)\n' \
                         "$_ZBUILD_CLAIM_THEIR_HOLDER" >&2
@@ -168,12 +172,33 @@ zbuild_claim_acquire() {
             if (( _zca_age >= ZBUILD_CLAIM_STALE_S )); then
                 # Stale: post a takeover note (required — RQHBT-4), then release and re-acquire.
                 # Refuse if the note cannot be posted: a takeover without a note violates RQHBT-4.
-                if ! rsc_takeover_note_post "$state_dir" "$_zca_slug" "$issue" "$_ZBUILD_CLAIM_THEIR_HOLDER" 2>/dev/null; then
+                local _zca_me; _zbuild_claim_holder_v _zca_me
+                if ! rsc_takeover_note_post "$state_dir" "$_zca_slug" "$issue" "$_ZBUILD_CLAIM_THEIR_HOLDER" "$_zca_me" 2>/dev/null; then
                     printf 'zbuild_claim_acquire: rsc_takeover_note_post failed — refusing cross-machine takeover (%s)\n' \
                         "$_ZBUILD_CLAIM_THEIR_HOLDER" >&2
                     return 1
                 fi
-                plugin_hook_call "$_ZBUILD_COORDINATOR_DIR" release "$issue" >/dev/null 2>&1 || true
+                # Two runs may judge the same claim stale at once: only the run
+                # whose note came first goes on; the other releases nothing.
+                local _zca_first=""
+                if ! rsc_takeover_first_v _zca_first "$state_dir" "$_zca_slug" "$issue" "$_ZBUILD_CLAIM_THEIR_HOLDER" \
+                   || [[ -z "$_zca_first" ]]; then
+                    printf 'zbuild_claim_acquire: could not read the takeover notes back — refusing cross-machine takeover (%s)\n' \
+                        "$_ZBUILD_CLAIM_THEIR_HOLDER" >&2
+                    return 1
+                fi
+                if [[ "$_zca_first" != "$_zca_me" ]]; then
+                    printf 'zbuild_claim_acquire: another run took over first: %s — refused (%s was stale)\n' \
+                        "$_zca_first" "$_ZBUILD_CLAIM_THEIR_HOLDER" >&2
+                    return 1
+                fi
+                if ! plugin_hook_call "$_ZBUILD_COORDINATOR_DIR" release "$issue" >/dev/null 2>&1; then
+                    eb_emit_event "pipeline.claim.takeover_failed" "issue=$issue" \
+                        "holder=$_ZBUILD_CLAIM_THEIR_HOLDER" "reason=release_failed" 2>/dev/null || true
+                    printf 'zbuild_claim_acquire: posted the takeover note, but releasing %s'"'"'s claim failed — refused; the claim is still theirs\n' \
+                        "$_ZBUILD_CLAIM_THEIR_HOLDER" >&2
+                    return 1
+                fi
                 local _zca_rc2=0
                 _ZBUILD_CLAIM_RETRIED=1 zbuild_claim_acquire "$issue" "$state_dir" || _zca_rc2=$?
                 return "$_zca_rc2"

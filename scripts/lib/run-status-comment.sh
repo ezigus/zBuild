@@ -258,18 +258,39 @@ rsc_label_added_at() {
     return 0
 }
 
-# ─── rsc_takeover_note_post <state_dir> <slug> <issue> <holder> — post takeover note ─
-# Posts "took over a stale claim from <holder>" as a new issue comment via rsc_gh.
-# Uses -f (raw-field, literal string) rather than -F body=@file: the message is
-# short and fixed-format, so no temp file is needed.
+# ─── rsc_takeover_note_post <state_dir> <slug> <issue> <holder> <by> — post takeover note ─
+# Posts "took over a stale claim from <holder> — by <by>" as a new issue comment
+# via rsc_gh: it names the run that took over, so two runs that judged the same
+# claim stale can tell whose note came first (rsc_takeover_first_v). Uses -f
+# (raw-field, literal string): the message is short and fixed-format.
+_RSC_TAKEOVER_PREFIX='took over a stale claim from '
 rsc_takeover_note_post() {
-    local state_dir="$1" slug="$2" issue="$3" holder="$4" out _rc=0
-    local _msg="took over a stale claim from ${holder//[[:cntrl:]]/}"
+    local state_dir="$1" slug="$2" issue="$3" holder="$4" by="${5:-}" out _rc=0
+    local _msg="${_RSC_TAKEOVER_PREFIX}${holder//[[:cntrl:]]/} — by ${by//[[:cntrl:]]/}"
     out="$(mktemp "${TMPDIR:-$state_dir}/rsc-takeover-out.XXXXXX")" || return 1
     rsc_gh "$state_dir" "$out" api "repos/${slug}/issues/${issue}/comments" \
         -f "body=${_msg}" >/dev/null 2>&1 || _rc=$?
     rm -f "$out"
     return "$_rc"
+}
+
+# ─── rsc_takeover_first_v <var> <state_dir> <slug> <issue> <holder> ─────────
+# The run named by the FIRST takeover note for <holder> on the issue, from a
+# trusted author (as rsc_heartbeat_find trusts) — into <var>; "" when none could
+# be read. rc 1 when the comments could not be read at all.
+rsc_takeover_first_v() {
+    local -n _rtf="$1"; local state_dir="$2" slug="$3" issue="$4" holder="$5" out
+    _rtf=""
+    out="$(mktemp "${TMPDIR:-$state_dir}/rsc-takeover-first.XXXXXX")" || return 1
+    if ! rsc_gh "$state_dir" "$out" api --paginate "repos/${slug}/issues/${issue}/comments" 2>/dev/null; then
+        rm -f "$out"; return 1
+    fi
+    _rtf="$(jq -rs --arg p "${_RSC_TAKEOVER_PREFIX}${holder//[[:cntrl:]]/} — by " '
+        [.[][]? | (.author_association // "") as $a
+         | select(.user.login == "github-actions[bot]" or $a == "OWNER" or $a == "MEMBER" or $a == "COLLABORATOR")
+         | (.body // "") | select(startswith($p)) | .[($p | length):] | split("\n")[0]] | first // empty' "$out" 2>/dev/null || true)"
+    rm -f "$out"
+    return 0
 }
 
 # ─── rsc_claim_cleanup <state_dir> <slug> <issue> <holder> (#2589) ──────────
