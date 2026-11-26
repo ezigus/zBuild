@@ -21,6 +21,8 @@
     "pipeline.claim.skipped",
     "pipeline.claim.release_failed",
     "pipeline.claim.stale_cleared",
+    "pipeline.claim.takeover_failed",
+    "pipeline.claim.taken_over",
     "stage.verdict.missing",
     "stage.verdict.contract_violation",
     "stage.verdict.stale_artifact",

@@ -345,9 +345,13 @@ _rsc_has_type() {   # _rsc_has_type <events> <regex-of-types>
 # A terminal event flushes at once but does NOT end the loop: always-run
 # stages emit after pipeline.end, and the runner's EXIT trap reaps us after
 # them. TERM/INT → final render; parent death → final render marked as such.
+# ZBUILD_CLAIM_HEARTBEAT_S in seconds; not a number ("10m") or 0 → 600 (#2533).
+_rsc_heartbeat_interval_v() { local -n _rhi="$1"; _rhi="${ZBUILD_CLAIM_HEARTBEAT_S:-600}"; [[ "$_rhi" =~ ^[1-9][0-9]*$ ]] || _rhi=600; }
+
 rsc_tail_loop() {
     local events="$1" state_dir="$2" parent="$3" slug="$4" issue="$5" run_id="$6"
-    local last_size=-1 size dirty=0 seen_start=0 terminal_seen=0 last_flush=0 now flushed_once=0 _rsc_login_stopped=0
+    local last_size=-1 size dirty=0 seen_start=0 terminal_seen=0 last_flush=0 now flushed_once=0 _rsc_login_stopped=0 last_heartbeat=0
+    local _hb_interval; _rsc_heartbeat_interval_v _hb_interval
     trap '_rsc_on_stop' TERM INT
     trap '' HUP
     while :; do
@@ -381,7 +385,15 @@ rsc_tail_loop() {
         if [[ $dirty -eq 1 && $seen_start -eq 1 ]] && \
            [[ $flushed_once -eq 0 || $terminal_now -eq 1 || $(( now - last_flush )) -ge "${ZBUILD_STATUS_COMMENT_MIN_INTERVAL%.*}" ]]; then
             rsc_flush "$events" "$state_dir" "$slug" "$issue" "$run_id"
-            dirty=0; flushed_once=1; last_flush="$now"
+            dirty=0; flushed_once=1; last_flush="$now"; last_heartbeat="$now"
+        fi
+        # ADR-064 (#2533): heartbeat — force a flush on the heartbeat interval even
+        # when dirty==0, so the timestamp in the body stays fresh while the run is live.
+        if [[ $seen_start -eq 1 && $terminal_seen -eq 0 && $flushed_once -eq 1 ]]; then
+            if (( now - last_heartbeat >= _hb_interval )); then
+                rsc_flush "$events" "$state_dir" "$slug" "$issue" "$run_id"
+                last_heartbeat="$now"; last_flush="$now"
+            fi
         fi
         # #2589 (ADR-005): GitHub rejected the run's login — nothing it does
         # can reach GitHub again. Stop it once; its exit trap releases what it

@@ -326,6 +326,22 @@ rsc_render_header() {
     holder="${holder//[[:cntrl:]]/}"
     [[ "$status" == running ]] || holder=""
     [[ -n "$holder" ]] && printf '%s%s -->\n' "$_RSC_HOLDER_PREFIX" "${holder//-->/}"
+    # ADR-064 (#2533): heartbeat line — first visible line when running, so the
+    # reader sees a fresh timestamp and the stage it is on without opening the log.
+    # `current` is "<seq> <stage>"; the heartbeat line names only the stage.
+    if [[ "$status" == "running" ]]; then
+        # Reuse `updated` (already set from ZBUILD_STATUS_NOW or date) — avoids a
+        # second date call and lets tests pin the timestamp via ZBUILD_STATUS_NOW.
+        local _hb_ts; _hb_ts="$updated"
+        # Strip the seq prefix ("1 build" → "build"); leave as-is when no space.
+        local _hb_stage="${current#* }"
+        [[ "$_hb_stage" == "$current" ]] && _hb_stage="$current"
+        if [[ -n "$current" ]]; then
+            printf 'still running — %s — now: %s\n' "$_hb_ts" "$_hb_stage"
+        else
+            printf 'still running — %s\n' "$_hb_ts"
+        fi
+    fi
     printf '### zbuild run `%s` · issue #%s · **%s**\n' "$run_id" "$issue" "$status"
     local meta="engine \`${sha}\`"
     [[ -n "$branch" ]] && meta+=" (\`${branch}\`)"
@@ -440,7 +456,8 @@ rsc_finalize_body() {
     # a body the runner already finished (or post-run already finalized) is
     # returned unchanged, so two finalizers cannot stack two closing lines.
     printf '%s\n' "$body" | awk -v st="$status" -v closing="$closing" '
-        NR <= 3 && /· \*\*running\*\*/ { sub(/\*\*running\*\*/, "**" st "**"); hit = 1 }
+        NR <= 4 && /· \*\*running\*\*/ { sub(/\*\*running\*\*/, "**" st "**"); hit = 1 }
+        /^still running — / { next }
         /^current: / { next }
         { print }
         END { if (hit && closing != "") print closing }'

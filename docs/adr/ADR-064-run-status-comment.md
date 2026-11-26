@@ -150,6 +150,23 @@ Two constraints shaped where it lives:
   in `tests/mutation/run-status-comment.md`.
 - Tunables: `ZBUILD_STATUS_COMMENT_{MIN_INTERVAL,POLL,GH_TIMEOUT,MAX_BYTES,HEADER_RESERVE,REAP_TIMEOUT}`.
 
+## Amendment 2026-11-24 (#2533) — heartbeat line as first visible line; heartbeat timer
+
+The claim coordinator's staleness check (#2533) needs a live timestamp in the comment body to tell
+whether a run is still active. Two changes:
+
+- **The first visible line of a running body is a heartbeat line**: `still running — <ISO8601> — now:
+  <stage>` (or `still running — <ISO8601>` when no stage is active). It appears after the HTML
+  comment lines (the run-status marker and the holder comment) and before the `### zbuild run …`
+  heading. `rsc_render_header` writes it whenever `status == running`. `rsc_finalize_body` drops it
+  (a finished body carries no heartbeat line), and bumps the `NR <= 3` guard to `NR <= 4` to account
+  for the extra line before the heading.
+- **The sidecar loop flushes on the heartbeat interval.** `rsc_tail_loop` now keeps `last_heartbeat`
+  and forces `rsc_flush` every `ZBUILD_CLAIM_HEARTBEAT_S` seconds even when `dirty == 0`, while
+  `seen_start == 1` and `terminal_seen == 0`. This is the named exception to the §3 rule that an
+  unchanged body is never sent: a running body has a fresh ISO8601 timestamp on every heartbeat, so
+  the rendered body IS different from the last sent body and the PATCH goes through.
+
 ## Amendment 2026-09-19 (#2145) — time first, Eastern, the ceiling
 
 Run 35412141973 was cancelled at GitHub's 360-minute ceiling and the comment said only "running". Three changes:
@@ -348,6 +365,14 @@ On #2533 run 45403848593 the engine stopped the run because the test stage chang
 ## Enforced by
 
 - §4 amendment 2026-11-25 (#2611: each finding once; a member's own reason) → `tests/unit/stage-summary-says-what-test.sh` S6, S7; `tests/integration/cycle-map-member-test.sh` M5, M6
+
+- 2026-11-24 amendment (#2533: heartbeat line; heartbeat timer):
+  - heartbeat line as first visible line (stage present) → `tests/unit/run-status-comment-heartbeat-test.sh` DSHBT-1
+  - heartbeat timer fires PATCH when dirty==0 → `tests/unit/run-status-comment-heartbeat-test.sh` DSHBT-1, DSHBT-2
+  - exactly one heartbeat line per body → `tests/unit/run-status-comment-heartbeat-test.sh` DSHBT-1
+  - heartbeat line without stage when no stage active → `tests/unit/run-status-comment-heartbeat-test.sh` DSHBT-1 (no-stage)
+  - rsc_holder_line_v unaffected by heartbeat line before `###` → `tests/unit/run-status-comment-heartbeat-test.sh` DSHBT-13
+  - a finished body keeps no heartbeat line and says its end (`NR <= 4`) → `tests/unit/run-status-comment-heartbeat-test.sh` DSHBT-18
 
 - 2026-11-23 amendment (#2598: a group's summary row follows its members) → `tests/unit/status-group-row-order-test.sh` G1, G2
 
