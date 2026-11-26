@@ -76,6 +76,23 @@ _lib_1752() {
     printf '%s' "$lib"
 }
 
+# _lib_without <repo> <file> — a copy of the contract libraries without one part.
+_lib_without() {
+    local lib="$1/.zbuild-lib-without"
+    mkdir -p "$lib"
+    cp "$REPO_ROOT"/scripts/lib/*.sh "$lib/"
+    rm -f "$lib/$2"
+    printf '%s' "$lib"
+}
+
+# _assert_one_closing_event <tag> <events> — one closing event, and it says
+# only outcome, reason and stage: no old verdict= beside it, no second event.
+_assert_one_closing_event() {
+    assert_eq "$1: one closing event, with outcome, reason and stage only" \
+        '[["outcome","reason","stage"]]' \
+        "$(jq -sc '[.[] | select(.type=="acceptance.gate.complete") | .data | keys]' "$2" 2>/dev/null)"
+}
+
 # ── Event field extractors ────────────────────────────────────────────────────
 # Extract .data.outcome from the acceptance.gate.complete event in a JSONL file.
 _complete_event_outcome() {
@@ -113,8 +130,31 @@ assert_eq "[DSEVNT-1] E1: event outcome matches result outcome" \
     "$(jq -r .outcome <<<"$RESULT")" "$(_complete_event_outcome "$EVENTS")"
 assert_eq "[DSEVNT-1] E1: event reason matches result reason" \
     "$(jq -r .reason <<<"$RESULT")" "$(_complete_event_reason "$EVENTS")"
-assert_contains "[DSEVNT-1] E1: the check ran its SPEC on the old and new code (not a skip)" \
-    "$(_complete_event_reason "$EVENTS")" "the acceptance check passed — 1 checked on the old and new code"
+assert_eq "[DSEVNT-1] E1: the check found no failure" "[]" "$(jq -c .failures <<<"$RESULT")"
+assert_contains "[DSEVNT-1] E1: the check ran SPEC-1 on the old and new code (not a skip)" \
+    "$(cat "$REPO_E1/.zbuild-state/artifacts/acceptance-summary.txt" 2>/dev/null)" "NEGCTL PASS SPEC-1"
+_assert_one_closing_event "[DSEVNT-1] E1" "$EVENTS"
+
+# ── E7 [DSEVNT-1]: a pass whose only failures could not be measured ──────────
+# Given: the old code's test run dies with 127 (a harness error): the check
+# cannot measure SPEC-1 on it, an advisory failure, so it writes a pass whose
+# reason names what it could not measure
+REPO_E7="$(_build_repo evnt-advisory '#!/usr/bin/env bash
+# [SPEC-1] feature is implemented
+impl="$(cd "$(dirname "$0")/.." && pwd)/impl.sh"
+[[ -f "$impl" ]] || exit 127
+source "$impl"; my_feature')"
+cp "$REPO_E1/design.md" "$REPO_E7/design.md"
+# When
+set +e; _run_gate "$REPO_E7"; set -e
+# Then
+assert_eq "[DSEVNT-1] E7: the result is an advisory pass" "advisory pass" \
+    "$(jq -r '"\(.severity) \(.outcome)"' <<<"$RESULT")"
+assert_eq "[DSEVNT-1] E7: event outcome matches result outcome" \
+    "$(jq -r .outcome <<<"$RESULT")" "$(_complete_event_outcome "$EVENTS")"
+assert_eq "[DSEVNT-1] E7: event reason matches result reason" \
+    "$(jq -r .reason <<<"$RESULT")" "$(_complete_event_reason "$EVENTS")"
+_assert_one_closing_event "[DSEVNT-1] E7" "$EVENTS"
 
 # ── E2 [DSEVNT-2]: a SPEC fails (tautological) → outcome=fail, reason matches ─
 # Given
@@ -140,6 +180,7 @@ assert_eq "[DSEVNT-2] E2: event outcome matches result outcome" \
     "$(jq -r .outcome <<<"$RESULT")" "$(_complete_event_outcome "$EVENTS")"
 assert_eq "[DSEVNT-2] E2: event reason matches result reason" \
     "$(jq -r .reason <<<"$RESULT")" "$(_complete_event_reason "$EVENTS")"
+_assert_one_closing_event "[DSEVNT-2] E2" "$EVENTS"
 
 # ── E3 [DSEVNT-3]: precondition unmet → outcome=pass, reason=precondition_unmet
 # Given: a repo with no acceptance block at all
@@ -159,6 +200,38 @@ assert_eq "[DSEVNT-3] E3: event reason=precondition_unmet" \
     "precondition_unmet" "$(_complete_event_reason "$EVENTS")"
 assert_eq "[DSEVNT-3] E3: event reason matches result reason" \
     "$(jq -r .reason <<<"$RESULT")" "$(_complete_event_reason "$EVENTS")"
+_assert_one_closing_event "[DSEVNT-3] E3" "$EVENTS"
+
+# ── E3b [DSEVNT-3]: skip — no trunk to measure against ───────────────────────
+# Given: a repo with one branch and no trunk, so no merge-base resolves
+REPO_E3B="$TEST_TEMP_DIR/evnt-notrunk"
+mkdir -p "$REPO_E3B/tests"
+( cd "$REPO_E3B" && "$GIT" init -q -b feature && "$GIT" config user.email t@t && "$GIT" config user.name t \
+    && printf '#!/usr/bin/env bash\n# [SPEC-1] x\nexit 0\n' > tests/feature-test.sh \
+    && "$GIT" add -A && "$GIT" commit -q -m one ) >/dev/null 2>&1
+cp "$REPO_E1/design.md" "$REPO_E3B/design.md"
+# When
+set +e; _run_gate "$REPO_E3B"; set -e
+# Then
+assert_eq "[DSEVNT-3] E3b: the check skipped for no trunk" "merge_base_resolvable" "$(jq -r .precondition <<<"$RESULT")"
+assert_eq "[DSEVNT-3] E3b: event outcome=pass" "pass" "$(_complete_event_outcome "$EVENTS")"
+assert_eq "[DSEVNT-3] E3b: event reason matches result reason" \
+    "$(jq -r .reason <<<"$RESULT")" "$(_complete_event_reason "$EVENTS")"
+_assert_one_closing_event "[DSEVNT-3] E3b" "$EVENTS"
+
+# ── E3c [DSEVNT-3]: skip — a block that declares nothing to check ────────────
+# Given: an acceptance block with no SPEC and no test file
+REPO_E3C="$(_build_repo evnt-emptyblock '#!/usr/bin/env bash
+exit 0')"
+printf '```acceptance\n```\n' > "$REPO_E3C/design.md"
+# When
+set +e; _run_gate "$REPO_E3C"; set -e
+# Then
+assert_eq "[DSEVNT-3] E3c: the check skipped for nothing declared" "tagged_testfiles" "$(jq -r .precondition <<<"$RESULT")"
+assert_eq "[DSEVNT-3] E3c: event outcome=pass" "pass" "$(_complete_event_outcome "$EVENTS")"
+assert_eq "[DSEVNT-3] E3c: event reason matches result reason" \
+    "$(jq -r .reason <<<"$RESULT")" "$(_complete_event_reason "$EVENTS")"
+_assert_one_closing_event "[DSEVNT-3] E3c" "$EVENTS"
 
 # ── E4 [DSEVNT-4]: malformed block → outcome=fail, reason=malformed_acceptance_block
 # Given: a fence line with more after it — the gate finds the fence, the block
@@ -185,24 +258,27 @@ assert_eq "[DSEVNT-4] E4: event reason=malformed_acceptance_block" \
     "malformed_acceptance_block" "$(_complete_event_reason "$EVENTS")"
 assert_eq "[DSEVNT-4] E4: event reason matches result reason" \
     "$(jq -r .reason <<<"$RESULT")" "$(_complete_event_reason "$EVENTS")"
+_assert_one_closing_event "[DSEVNT-4] E4" "$EVENTS"
 
 # ── E5 [DSEVNT-5]: load failure → outcome=broken, reason matches result ───────
-# Given: a minimal repo; ZBUILD_CONTRACT_LIB_DIR → non-existent dir so all
-# contract-lib sources fail and _ag_fail_load is triggered
+# Given: contract libraries without one part the gate loads itself
 REPO_E5="$(setup_git_temp_repo evnt-loadfail)"
 printf '# Design\nNo acceptance block.\n' > "$REPO_E5/design.md"
 # When
-set +e; _run_gate "$REPO_E5" "$REPO_E5/.zbuild-state/no-such-contract-lib"; set -e
+set +e; _run_gate "$REPO_E5" "$(_lib_without "$REPO_E5" acceptance-coverage.sh)"; set -e
 # Then
 assert_eq "[DSEVNT-5] E5: rc=1 (load failure exits 1)" "1" "$RC"
 assert_event_emitted "[DSEVNT-5] E5: acceptance.gate.complete emitted on load failure" \
     "$EVENTS" "acceptance.gate.complete"
+assert_contains "[DSEVNT-5] E5: the result names the part that did not load" \
+    "$(jq -r .reason <<<"$RESULT")" "acceptance-coverage.sh"
 assert_eq "[DSEVNT-5] E5: event outcome=broken" \
     "broken" "$(_complete_event_outcome "$EVENTS")"
 assert_eq "[DSEVNT-5] E5: event outcome matches result outcome" \
     "$(jq -r .outcome <<<"$RESULT")" "$(_complete_event_outcome "$EVENTS")"
 assert_eq "[DSEVNT-5] E5: event reason matches result reason" \
     "$(jq -r .reason <<<"$RESULT")" "$(_complete_event_reason "$EVENTS")"
+_assert_one_closing_event "[DSEVNT-5] E5" "$EVENTS"
 
 # ── E6 [DSEVNT-6]: nothing checked → outcome=broken, reason matches result ────
 # Given: a block with a SPEC and a tagged test, and contract libraries in the
@@ -233,6 +309,7 @@ assert_eq "[DSEVNT-6] E6: event outcome matches result outcome" \
     "$(jq -r .outcome <<<"$RESULT")" "$(_complete_event_outcome "$EVENTS")"
 assert_eq "[DSEVNT-6] E6: event reason matches result reason" \
     "$(jq -r .reason <<<"$RESULT")" "$(_complete_event_reason "$EVENTS")"
+_assert_one_closing_event "[DSEVNT-6] E6" "$EVENTS"
 
 cleanup_test_env
 print_test_results
