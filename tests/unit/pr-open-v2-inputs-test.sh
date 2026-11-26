@@ -34,14 +34,14 @@ source "$REPO_ROOT/scripts/lib/stage-result.sh"
 
 # _make_pr_state <dir> [review_verdict]
 # Sets up a state dir. With a review_verdict, a review ran (#2364: the engine
-# says so with ZBUILD_RUN_FLAGGED, yes|no; nothing reads review.json); without
+# says the stages pr requires passed with ZBUILD_STAGE_REQUIRES_MET=yes, #2611 (was ZBUILD_RUN_FLAGGED, yes|no; nothing reads review.json); without
 # one, none did.
 _make_pr_state() {
     local d="$1" review_verdict="${2:-}"
     mkdir -p "$d/artifacts"
     printf '{"issue":1849,"branch":"zbuild/issue-1849-test"}\n' > "$d/pipeline-state.json"
-    if [[ -n "$review_verdict" ]]; then export ZBUILD_RUN_FLAGGED=no
-    else unset ZBUILD_RUN_FLAGGED; fi
+    if [[ -n "$review_verdict" ]]; then export ZBUILD_STAGE_REQUIRES_MET=yes
+    else unset ZBUILD_STAGE_REQUIRES_MET; fi
     printf '%s/pipeline-state.json' "$d"
 }
 

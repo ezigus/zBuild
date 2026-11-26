@@ -14,7 +14,7 @@ print_test_header "plugin: pr-open (draft PR, safety guards — issue #344)"
 
 setup_test_env "plugin-pr-open"
 # A review group ran (#2368: the engine's word pr-open requires).
-export ZBUILD_RUN_FLAGGED=no
+export ZBUILD_STAGE_REQUIRES_MET=yes
 
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
@@ -46,9 +46,9 @@ source "$PLUGIN_DIR/plugin.sh"
 
 # #1142: pr-open fails closed only when no review ran — neither review.json (the
 # retired review stage) nor the engine's word from a review group
-# (ZBUILD_RUN_FLAGGED, #2368). 2c covers the advisory path.
+# (ZBUILD_STAGE_REQUIRES_MET, #2611). 2c covers the advisory path.
 print_test_section "2b. Blocked when NO review ran"
-unset ZBUILD_RUN_FLAGGED
+unset ZBUILD_STAGE_REQUIRES_MET
 
 REVIEW_REPORT_JSON="$ARTIFACTS_DIR/review-report.json"
 rm -f "$PR_RESULT_JSON" "$REVIEW_JSON" "$REVIEW_REPORT_JSON"
@@ -83,11 +83,11 @@ if [[ -f "$PR_RESULT_JSON" ]]; then
 fi
 
 # ─── Test 2c: advisory-review mode — review.json absent, a review group ran
-# (ZBUILD_RUN_FLAGGED set) → opens the PR (#1142, ADR-040: lenses never block) ─
+# (ZBUILD_STAGE_REQUIRES_MET=yes, #2611) → opens the PR (#1142, ADR-040) ─
 print_test_section "2c. Advisory-review mode: a review group ran (no review.json) → opens PR"
 
 rm -f "$PR_RESULT_JSON" "$REVIEW_JSON"
-export ZBUILD_RUN_FLAGGED=yes
+export ZBUILD_STAGE_REQUIRES_MET=yes
 # Happy-path mocks (like Test 4): git accepts push/checkout; gh returns a PR URL.
 git() {
     if [[ "${1:-} ${2:-}" == "rev-parse --abbrev-ref" ]]; then
@@ -113,7 +113,7 @@ _pr_open_run_inner "$REVIEW_JSON" "$STATE_FILE" "$PR_RESULT_JSON" "999"
 rc=$?
 set -e
 unset -f git gh
-export ZBUILD_RUN_FLAGGED=no
+export ZBUILD_STAGE_REQUIRES_MET=yes
 
 assert_exit_code "advisory mode (a review group ran) opens PR rc=0" "0" "$rc"
 if [[ -f "$PR_RESULT_JSON" ]]; then

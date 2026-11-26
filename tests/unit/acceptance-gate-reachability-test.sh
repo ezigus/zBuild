@@ -233,7 +233,7 @@ tests/t-test.sh
 EOF
 _tt_logs="$TEST_TEMP_DIR/reach-tt-logs"
 set +e; ZBUILD_NEGCTL_ARTIFACT_DIR="$_tt_logs" acceptance_reachability_check "$REPO_TT/design.md" "$REPO_TT" >/dev/null 2>&1; set -e
-_tt_rev="$(sed -n '/^### tests\/t-test.sh reverted/,/^### tests\/t-test.sh head/p' "$_tt_logs/reachability-tests_t-test.sh.log" 2>/dev/null)"
+_tt_rev="$(sed -n '/^### tests\/t-test.sh reverted/,/^### tests\/t-test.sh head/p' "$_tt_logs/reachability/reachability-tests_t-test.sh.log" 2>/dev/null)"
 assert_contains "[#2429-R3] the reverted run sees the target's merge-base content" "$_tt_rev" "marker OLD"
 assert_eq "[#2429-R3] the TESTFILE overlay does not undo the revert" "" "$(grep 'marker NEW' <<<"$_tt_rev" || true)"
 

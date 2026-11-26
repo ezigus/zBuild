@@ -26,6 +26,10 @@
 #    no finding was open
 # B4 build: every answer is kept, and one it did not give is named, not asked for
 # B5 issue-acceptance is told the forms, and keeps its answers
+# B6 (#2611 R10) a finding the stage's own latest result, written this run,
+#    answered — the same finding, as shown — and that this try did not answer
+#    keeps that answer (still to be judged); one from an earlier run, or about
+#    a finding whose text changed, does not
 # C1 a lens sends on every finding the change introduced, each marked whether
 #    it blocks; one below its fail rule does not fail it
 # C2 Previous work marks a finding that does not block
@@ -102,6 +106,37 @@ assert_eq "[B1] nothing is asked for: no call is made" "no" "$([[ -f "$TEST_TEMP
 assert_eq "[B1] the answer given is kept" "lens-sre-code finding 1: done — the write emits an event" "$(printf '%s\n' "${_ANS[@]}")"
 assert_eq "[B1] the ones not answered are named" $'lens-sre-code finding 2\nissue-acceptance finding 1' "$_ZB_ANS_MISSING"
 assert_eq "[B1] three findings were shown" "3" "$_ZB_ANS_SHOWN"
+print_test_section "B6 (#2611 R10): an answer carries to the next try"
+_B6_R="$TEST_TEMP_DIR/b6-result.json"
+_b6_prior() {   # <answer_findings text for finding 2>
+    jq -n --arg t "$1" '{result_contract:3, outcome:"fail", reason:"x", data:{
+        answers:["lens-sre-code finding 2: wrong — the jq error is reported by the caller"],
+        answer_findings:{"lens-sre-code finding 2": $t}}}' > "$_B6_R"
+}
+export ZBUILD_RUN_START_MARKER="$TEST_TEMP_DIR/run-start"; : > "$ZBUILD_RUN_START_MARKER"
+touch -t 202601010000 "$ZBUILD_RUN_START_MARKER"
+_b6_prior "the jq error is hidden"
+_ANS=()
+zb_answers_finish _ANS "$_P_SHOWN" $'ANSWER lens-sre-code finding 1: done — the write emits an event' "$_B6_R"
+assert_contains "[B6] the earlier try's answer carries" "$(printf '%s\n' "${_ANS[@]}")" \
+    "lens-sre-code finding 2: wrong — the jq error is reported by the caller"
+assert_eq "[B6] ...so it is not named not answered" "issue-acceptance finding 1" "$_ZB_ANS_MISSING"
+_b6_prior "the jq error is hidden, and now also the exit code"
+_ANS=()
+zb_answers_finish _ANS "$_P_SHOWN" $'ANSWER lens-sre-code finding 1: done — the write emits an event' "$_B6_R"
+assert_eq "[B6] a finding whose text changed is not carried" $'lens-sre-code finding 2\nissue-acceptance finding 1' "$_ZB_ANS_MISSING"
+_b6_prior "the jq error is hidden"; touch -t 202501010000 "$_B6_R"
+_ANS=()
+zb_answers_finish _ANS "$_P_SHOWN" $'ANSWER lens-sre-code finding 1: done — the write emits an event' "$_B6_R"
+assert_eq "[B6] an answer from an earlier run is not carried" $'lens-sre-code finding 2\nissue-acceptance finding 1' "$_ZB_ANS_MISSING"
+_P_BS=$'Previous work\n- BUFND-14 (opened by build): uses grep -E "a\\.b" on the path'
+jq -n --arg t 'uses grep -E "a\.b" on the path' '{result_contract:3, outcome:"fail", reason:"x", data:{
+    answers:["BUFND-14: wrong — the pattern is quoted"], answer_findings:{"BUFND-14": $t}}}' > "$_B6_R"
+_ANS=()
+zb_answers_finish _ANS "$_P_BS" "no answers" "$_B6_R"
+assert_eq "[B6] a finding with a backslash carries too" "BUFND-14: wrong — the pattern is quoted" "$(printf '%s\n' "${_ANS[@]}")"
+unset ZBUILD_RUN_START_MARKER
+
 _ANS=()
 zb_answers_finish _ANS "no findings here" "done"
 assert_eq "[B2] a stage shown no finding has none unanswered" "" "$_ZB_ANS_MISSING"

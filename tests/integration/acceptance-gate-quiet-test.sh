@@ -83,7 +83,7 @@ assert_eq "[SPEC-1] negctl: stage-io banner does NOT reach fd 3 / terminal" \
     "0" "$(grep -c 'NESTED-STAGE-IO-MARKER' "$TERM_CAP_A")"
 assert_eq "[SPEC-1] negctl: direct fd-3 write does NOT reach the terminal" \
     "0" "$(grep -c 'NESTED-FD3-DIRECT' "$TERM_CAP_A")"
-_a_marker_n="$(grep -c 'NESTED-STAGE-IO-MARKER' "$LOGDIR_A"/negctl-SPEC-1.log 2>/dev/null)" || _a_marker_n=0
+_a_marker_n="$(grep -c 'NESTED-STAGE-IO-MARKER' "$LOGDIR_A"/negctl/negctl-SPEC-1.log 2>/dev/null)" || _a_marker_n=0
 assert_gt "[SPEC-3] negctl: nested banner captured to the per-SPEC logfile" \
     "$_a_marker_n" "0"
 
@@ -125,7 +125,7 @@ assert_eq "[SPEC-1] reachability: stage-io banner does NOT reach fd 3 / terminal
     "0" "$(grep -c 'NESTED-STAGE-IO-MARKER' "$TERM_CAP_B")"
 assert_eq "[SPEC-1] reachability: direct fd-3 write does NOT reach the terminal" \
     "0" "$(grep -c 'NESTED-FD3-DIRECT' "$TERM_CAP_B")"
-_b_marker_n="$(grep -c 'NESTED-STAGE-IO-MARKER' "$LOGDIR_B"/reachability-impl.sh.log 2>/dev/null)" || _b_marker_n=0
+_b_marker_n="$(grep -c 'NESTED-STAGE-IO-MARKER' "$LOGDIR_B"/reachability/reachability-impl.sh.log 2>/dev/null)" || _b_marker_n=0
 assert_gt "[SPEC-3] reachability: nested banner captured to the logfile" \
     "$_b_marker_n" "0"
 

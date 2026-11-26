@@ -45,7 +45,7 @@ assert_not_contains() {
 }
 setup_test_env "pr-open-unsettled"
 # A review group ran (#2368: the engine's word pr-open requires).
-export ZBUILD_RUN_FLAGGED=no
+export ZBUILD_STAGE_REQUIRES_MET=yes
 
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"

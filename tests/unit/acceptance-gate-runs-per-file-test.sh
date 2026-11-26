@@ -103,12 +103,12 @@ assert_eq "[#2110-1] two executions in total for 6 SPECs over 2 files" "2" "$(wc
 # Per-SPEC diagnostic logs keep their shape: every SPEC still gets its own log with both sections.
 for n in 1 5; do
     assert_contains "[#2110-1] negctl-SPEC-$n.log has a baseline section" \
-        "$(cat "$ZBUILD_NEGCTL_ARTIFACT_DIR/negctl-SPEC-$n.log")" "### SPEC-$n baseline tests/one-test.sh"
+        "$(cat "$ZBUILD_NEGCTL_ARTIFACT_DIR/negctl/negctl-SPEC-$n.log")" "### SPEC-$n baseline tests/one-test.sh"
     assert_contains "[#2110-1] negctl-SPEC-$n.log has a head section" \
-        "$(cat "$ZBUILD_NEGCTL_ARTIFACT_DIR/negctl-SPEC-$n.log")" "### SPEC-$n head tests/one-test.sh"
+        "$(cat "$ZBUILD_NEGCTL_ARTIFACT_DIR/negctl/negctl-SPEC-$n.log")" "### SPEC-$n head tests/one-test.sh"
 done
 assert_eq "[#2110-1] the done SPEC writes no run log" "absent" \
-    "$([[ -e "$ZBUILD_NEGCTL_ARTIFACT_DIR/negctl-SPEC-6.log" ]] && echo present || echo absent)"
+    "$([[ -e "$ZBUILD_NEGCTL_ARTIFACT_DIR/negctl/negctl-SPEC-6.log" ]] && echo present || echo absent)"
 
 # ─── [#2110-4] two files whose paths differ only by '/' vs '_' never share a memo ─
 (

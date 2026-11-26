@@ -229,8 +229,8 @@ defaults:
 
 # #1842: `flow:` (not the old `stages:` list) so the review family can run as in
 # production: review_lenses (a map group, one lens to keep the run small) -> pr.
-# pr-open fails closed when no review ran (#2368: the engine's
-# ZBUILD_RUN_FLAGGED, set once the lens group has run).
+# pr-open fails closed unless the stages pr requires passed (#2611: pr
+# requires review_lenses; the engine says so with ZBUILD_STAGE_REQUIRES_MET).
 flow:
   - hydrate
   - intake
@@ -256,6 +256,7 @@ pr:
   gate: auto
   # pr-delivery provides role: pr (canonical, ADR-042).
   roles: [pr]
+  requires: all
 
 release:
   gate: auto

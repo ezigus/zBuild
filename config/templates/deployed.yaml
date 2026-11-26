@@ -57,8 +57,9 @@ delivery_loop:
   type: cycle
   description: The design-build-test loop, then the review lenses, until both pass — the lenses send the change round once more
   # #2433 (ADR-040): the lenses run after the build, so what they find goes back
-  # to the stages that can fix it. A lens that does not finish, or finds the
-  # issue itself wrong, stops the run at once.
+  # to the stages that can fix it. #2611 (ADR-068 §3): a lens that does not
+  # finish only does not pass; one whose result halts the run (the issue itself
+  # wrong) stops it at once.
   flow:
     - build_test_cycle
     - review_lenses
@@ -197,6 +198,8 @@ review_lenses:
 pr:
   gate: auto
   roles: [pr]
+  # #2611 (ADR-068 §3): no PR unless every stage and loop before it passed.
+  requires: all
   io:
     destinations: [file, stdout]
     tail_lines: 200

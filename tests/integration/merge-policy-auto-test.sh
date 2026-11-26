@@ -36,7 +36,7 @@ mkdir -p "$ZBUILD_EVENTS_DIR"
 _MERGE_RECORD="$TEST_TEMP_DIR/merge-calls.txt"
 
 # Helper: build a state dir with an optional gate-aggregator artifact. Whether a
-# review ran is the engine's word, ZBUILD_RUN_FLAGGED (yes|no, #2368); each run
+# review ran is the engine's word, ZBUILD_STAGE_REQUIRES_MET (#2611; was ZBUILD_RUN_FLAGGED, yes|no, #2368); each run
 # below says it, or leaves it unset for "no review ran" (#2364: review.json is
 # no longer read).
 # Usage: _setup_run <tag> [gate_verdict]
@@ -107,7 +107,7 @@ _art1="$(dirname "$_sf1")/artifacts"
 > "$_MERGE_RECORD"
 
 export _TPL_MERGE_POLICY="auto"
-( ZBUILD_RUN_FLAGGED=no ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf1")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf1")/stage-inputs.json" pr_stage_run "pr" "$_sf1" ) >/dev/null 2>&1; _rc1=$?
+( ZBUILD_STAGE_REQUIRES_MET=yes ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf1")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf1")/stage-inputs.json" pr_stage_run "pr" "$_sf1" ) >/dev/null 2>&1; _rc1=$?
 
 assert_eq "pr_stage_run exits 0 on merge path" "0" "$_rc1"
 assert_file_exists "merge-result.json written on merge path" \
@@ -133,7 +133,7 @@ _art2="$(dirname "$_sf2")/artifacts"
 > "$_MERGE_RECORD"
 
 export _TPL_MERGE_POLICY="auto"
-( ZBUILD_RUN_FLAGGED=no ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf2")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf2")/stage-inputs.json" pr_stage_run "pr" "$_sf2" ) >/dev/null 2>&1; _rc2=$?
+( ZBUILD_STAGE_REQUIRES_MET=yes ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf2")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf2")/stage-inputs.json" pr_stage_run "pr" "$_sf2" ) >/dev/null 2>&1; _rc2=$?
 
 assert_eq "pr_stage_run exits 0 on PR fallback (gate fail)" "0" "$_rc2"
 assert_file_exists "pr-url.txt written on gate-fail fallback" "$_art2/pr-url.txt"
@@ -157,7 +157,7 @@ _art3="$(dirname "$_sf3")/artifacts"
 > "$_MERGE_RECORD"
 
 export _TPL_MERGE_POLICY="auto"
-( ZBUILD_RUN_FLAGGED=no ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf3")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf3")/stage-inputs.json" pr_stage_run "pr" "$_sf3" ) >/dev/null 2>&1; _rc3=$?
+( ZBUILD_STAGE_REQUIRES_MET=yes ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf3")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf3")/stage-inputs.json" pr_stage_run "pr" "$_sf3" ) >/dev/null 2>&1; _rc3=$?
 
 assert_eq "pr_stage_run exits 0 on PR fallback (gate absent)" "0" "$_rc3"
 assert_file_exists "pr-url.txt written on gate-absent fallback" "$_art3/pr-url.txt"
@@ -187,7 +187,7 @@ _art8="$(dirname "$_sf8")/artifacts"
 > "$_MERGE_RECORD"
 
 export _TPL_MERGE_POLICY="auto"
-( ZBUILD_RUN_FLAGGED=no ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf8")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf8")/stage-inputs.json" pr_stage_run "pr" "$_sf8" ) >/dev/null 2>&1; _rc8=$?
+( ZBUILD_STAGE_REQUIRES_MET=yes ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf8")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf8")/stage-inputs.json" pr_stage_run "pr" "$_sf8" ) >/dev/null 2>&1; _rc8=$?
 
 assert_eq "pr_stage_run exits 0 on specification PR fallback" "0" "$_rc8"
 assert_file_exists "pr-url.txt written on specification fallback" "$_art8/pr-url.txt"
@@ -203,7 +203,8 @@ _gh_merge8=0
 assert_eq "gh pr merge NOT called under specification" "0" "$_gh_merge8"
 
 # ─── SPEC-4: auto_unless_flagged + a flagged review → PR, not merged ──────────
-# #2364: the review report is retired; the engine's word is the signal (#2368).
+# #2611: a lens that did not pass leaves its loop unpassed (ZBUILD_RUN_LOOPS_PASSED=no);
+# ZBUILD_RUN_FLAGGED is retired.
 print_test_section "SPEC-4: merge_policy==auto_unless_flagged + a flagged review → opens a PR, no merge"
 
 _sf4="$(_setup_run s4 pass)"
@@ -211,7 +212,7 @@ _art4="$(dirname "$_sf4")/artifacts"
 > "$_MERGE_RECORD"
 
 export _TPL_MERGE_POLICY="auto_unless_flagged"
-( ZBUILD_RUN_FLAGGED=yes ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf4")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf4")/stage-inputs.json" pr_stage_run "pr" "$_sf4" ) >/dev/null 2>&1; _rc4=$?
+( ZBUILD_STAGE_REQUIRES_MET=yes ZBUILD_RUN_LOOPS_PASSED=no ZBUILD_STAGE_INPUTS="$(dirname "$_sf4")/stage-inputs.json" pr_stage_run "pr" "$_sf4" ) >/dev/null 2>&1; _rc4=$?
 
 assert_eq "pr_stage_run exits 0 for auto_unless_flagged" "0" "$_rc4"
 assert_file_exists "pr-url.txt written (PR opened, not merged)" "$_art4/pr-url.txt"
@@ -236,7 +237,7 @@ printf '{"schema_version":1,"verdict":"approve","summary":"ok"}\n' > "$_art5/rev
 
 export _TPL_MERGE_POLICY="auto"
 _rc5=0
-( unset ZBUILD_RUN_FLAGGED; ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf5")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf5")/stage-inputs.json" pr_stage_run "pr" "$_sf5" ) >/dev/null 2>&1 || _rc5=$?
+( unset ZBUILD_STAGE_REQUIRES_MET; ZBUILD_RUN_LOOPS_PASSED="$(_loops "$_sf5")" ZBUILD_STAGE_INPUTS="$(dirname "$_sf5")/stage-inputs.json" pr_stage_run "pr" "$_sf5" ) >/dev/null 2>&1 || _rc5=$?
 
 _merge_verdict5="$(jq -r '.outcome // empty' "$_art5/merge-result.json" 2>/dev/null || true)"
 _merge_mode5="$(jq -r '.data.mode // empty' "$_art5/merge-result.json" 2>/dev/null || true)"
@@ -269,7 +270,7 @@ for _r3_policy in auto auto_unless_flagged; do
     _sf_r3="$(_setup_run "r3-$_r3_policy" pass)"
     _art_r3="$(dirname "$_sf_r3")/artifacts"
     _rc_r3=0
-    ( export _TPL_MERGE_POLICY="$_r3_policy"; PATH="$TEST_TEMP_DIR/bin-refuse:$PATH" ZBUILD_RUN_FLAGGED=no \
+    ( export _TPL_MERGE_POLICY="$_r3_policy"; PATH="$TEST_TEMP_DIR/bin-refuse:$PATH" ZBUILD_STAGE_REQUIRES_MET=yes \
       ZBUILD_RUN_LOOPS_PASSED=yes ZBUILD_STAGE_INPUTS="$(dirname "$_sf_r3")/stage-inputs.json" \
       pr_stage_run "pr" "$_sf_r3" ) >/dev/null 2>&1 || _rc_r3=$?
     _r3_reason="$(jq -r '.reason // empty' "$_art_r3/pr-result.json" 2>/dev/null || true)"

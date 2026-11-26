@@ -340,7 +340,14 @@ Rows are kept in the order they started, and the comment shows the newest first.
 
 On #2533 run 45403848593 the engine stopped the run because the test stage changed files it may not change (`broken: test changed files in the repository that it may not change: …`). That reason had no words, so both comments said only "stopped before finishing", above 13 open items left over from earlier rounds. Release and persist then ran with the test stage's number (3.1.1.2.4), and the test stage's row read "→ running" on a finished run.
 
+## Amendment 2026-11-25 (#2611) — §4: a lens summary says each finding once; the stop line says a member's own reason
+
+- **A lens summary says each finding once** (`stage_lens_findings_head_v`, `scripts/lib/stage-summary.sh`). One finding is the summary's line, with no list under it. Several are counted on the line by severity — "found 2 findings: 1 high, 1 medium", as the status row says — and the list under it names each. On #2533 run 45644128060 each summary said its first finding twice.
+- **A loop that still has rounds never says it ran out of tries.** A member that stopped the run with its own reason is named with it (`stage_stopped:`, ADR-068 §3, amended 2026-11-25).
+
 ## Enforced by
+
+- §4 amendment 2026-11-25 (#2611: each finding once; a member's own reason) → `tests/unit/stage-summary-says-what-test.sh` S6, S7; `tests/integration/cycle-map-member-test.sh` M5, M6
 
 - 2026-11-23 amendment (#2598: a group's summary row follows its members) → `tests/unit/status-group-row-order-test.sh` G1, G2
 

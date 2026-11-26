@@ -17,6 +17,9 @@
 #             (#1944 2026-10-28: the security lens's notes were in its result,
 #             but its summary said it "reviewed nothing")
 # N7 [change] one that ran out of time with nothing saved says that
+# N8 [change] (#2611 R8) a lens stopped by a signal writes its summary too: on
+#             #2533 run 45644128060 red-team wrote only its result, and the
+#             status row showed an earlier run's "the model call failed"
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,6 +29,7 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../../../tests/lib/test-helpers.sh
 source "$REPO_ROOT/tests/lib/test-helpers.sh"
 print_test_header "a cut-off lens hands over its notes (#2270)"
+assert_not_contains_x() { if grep -qF -- "$3" <<< "$2"; then assert_fail "$1" "found: $3"; else assert_pass "$1"; fi; }
 setup_test_env "review-lens-partial-notes"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
@@ -82,6 +86,17 @@ printf 'Read route.sh: the retry loop never resets.\n' > "$_np4"
   _rl_out_ref="$out4"; _review_lens_interrupt_handler ) >/dev/null 2>&1
 assert_contains "[N4] a signal-stopped lens carries its saved notes" \
     "$(jq -r '.data.partial_notes // empty' "$out4" 2>/dev/null)" "the retry loop never resets"
+
+# N8: its summary is its own, not one an earlier run left.
+printf '## review-lens-architecture — skip\n\n- the model call failed, so this lens reviewed nothing\n' \
+    > "$artifact_dir/lens-architecture-summary.md"
+# shellcheck disable=SC2031  # each lens runs in its own subshell on purpose
+( export ZBUILD_MAP_ELEMENT=architecture ZBUILD_REVIEW_LENS_ID=architecture
+  _rl_out_ref="$out4"; _review_lens_interrupt_handler ) >/dev/null 2>&1
+sum8="$(cat "$artifact_dir/lens-architecture-summary.md" 2>/dev/null)"
+assert_contains "[N8] the summary says it was stopped" "$sum8" "was stopped before it finished"
+assert_contains "[N8] ...with what it noted, marked partial" "$sum8" "the retry loop never resets"
+assert_not_contains_x "[N8] ...not the earlier run's words" "$sum8" "the model call failed"
 
 # An artifacts folder with another name.
 odd="$TEST_TEMP_DIR/run-artifacts-x"; mkdir -p "$odd/notes"

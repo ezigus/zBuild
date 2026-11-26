@@ -128,7 +128,7 @@ _GH_LOG="$TEST_TEMP_DIR/gh-calls"; : > "$_GH_LOG"; export _GH_LOG
 _C5="$TEST_TEMP_DIR/c5"; mkdir -p "$_C5/artifacts"
 printf '{"issue":1849,"branch":"zbuild/issue-1849-test"}\n' > "$_C5/pipeline-state.json"
 (
-    export ZBUILD_RUN_FLAGGED=no   # a review ran and flagged nothing (#2368, #2364)
+    export ZBUILD_STAGE_REQUIRES_MET=yes   # the stages pr requires passed (#2611)
     export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events" ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
     mkdir -p "$ZBUILD_EVENTS_DIR"
     # shellcheck source=../../plugins/tool/pr-open/plugin.sh

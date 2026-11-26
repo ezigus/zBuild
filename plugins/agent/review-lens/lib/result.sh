@@ -56,9 +56,18 @@ _review_lens_write_result() {
 # Reads $_rl_out_ref (set by _review_lens_run_inner before trap registration)
 # so it can be invoked directly in tests for SIGTERM simulation (SPEC-13).
 _review_lens_interrupt_handler() {
+    local _rih_notes _rih_lens _rih_body
+    _rih_notes="$(_review_lens_saved_notes "${_rl_out_ref%/*}")"
     _review_lens_write_result "${_rl_out_ref:-}" \
-        "${1:-$STAGE_SIGNAL_DISPOSITION}" "${2:-$STAGE_SIGNAL_REASON}" \
-        "$(_review_lens_saved_notes "${_rl_out_ref%/*}")"
+        "${1:-$STAGE_SIGNAL_DISPOSITION}" "${2:-$STAGE_SIGNAL_REASON}" "$_rih_notes"
+    # #2611 (ADR-064 §4): its summary is written too, or an earlier run's stands.
+    _rih_lens="$(_review_lens_id)"
+    if [[ -n "${_rl_out_ref:-}" && -n "$_rih_lens" ]] && declare -F stage_summary_write >/dev/null 2>&1; then
+        _rih_body="Nothing it found is known: it saved no notes."
+        [[ -n "$_rih_notes" ]] && _rih_body="What it noted before it was stopped (partial):"$'\n\n'"$_rih_notes"
+        stage_summary_write "${_rl_out_ref%/*}/lens-${_rih_lens}-summary.md" "review-lens-${_rih_lens}" "skip" \
+            "the ${_rih_lens} lens was stopped before it finished" "$_rih_body" 2>/dev/null || true
+    fi
     # Ctrl-C reaches the whole process group: this trap fires AND the router
     # subshell returns 130. Record the write so the rc=130 branch skips its own.
     _rl_interrupted=1

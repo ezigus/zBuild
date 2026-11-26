@@ -417,3 +417,13 @@ On #1700 run 43617030653 test-author's calls in rounds 1 and 2 reached their lim
 - **After the limit the hook allows Read of the notes file too** (that path only), and its refusal says to read the notes file, then write it.
 
 Enforced by `tests/unit/route-time-up-not-done-test.sh` T1–T5; `tests/unit/call-time-up-hook-test.sh` H7 (the done word, and the words), H8 (the notes file may be read).
+
+## Amendment (2026-11-25, #2611): a map group's wait has the grace
+
+On #2533 run 45644128060 the lens group's wait for its members was the bare stage limit (1200 s), so it stopped red-team 9 s before its model call's grace ran out, and the lens was recorded `interrupted` — an outside signal — with its summary left from an earlier run.
+
+- **A map group waits the stage limit, the call grace and a margin** (`ZBUILD_CALL_GRACE_S`, as `plugin_hook_call` gives a stage, plus 30 s for its watchdog's TERM-then-KILL; `core/pipeline/strategies/map.sh`). Each member's own limits stop it first, and it records how it ended.
+- **A member the group's wait, or its own stage limit, stopped is `timed_out`**, not `interrupted`, when it recorded only a signal or nothing. Each element of a map group has its own limit marker and pid file (`stage_time_limit_marker_path`, keyed on `ZBUILD_MAP_ELEMENT`), so one element's limit stops only it and marks only it.
+- **A lens stopped by a signal writes its summary as well as its result**, with what it noted, marked partial — an earlier run's summary never stands for it.
+
+Enforced by `tests/unit/engine-combines-map-test.sh` M6 (the group's wait → timed_out), M7 (limit + grace + margin), M8 (an element's limit is its own); `plugins/agent/review-lens/tests/review-lens-partial-notes-test.sh` N8 (the summary is its own).

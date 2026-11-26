@@ -121,7 +121,7 @@ _ta_drop_stale_tags() {
     return 0
 }
 
-# _ta_collect_answers <reply> [prompt] — the model's `ANSWER <its id>: …`
+# _ta_collect_answers <reply> [prompt] [own-result] — the model's `ANSWER <its id>: …`
 # lines, added to _TA_ANSWERS without the word ANSWER; a finding [prompt]
 # showed it and it did not answer stays open (ADR-068 §6).
 _TA_ANSWERS=()
@@ -129,7 +129,7 @@ _TA_ANSWERS=()
 _TA_MANIFEST="${BASH_SOURCE[0]%/*}/manifest.yaml"; _TA_FCODE=""; zb_finding_code_v _TA_FCODE "$_TA_MANIFEST"
 # #2460: a wrapped answer is read whole, and a finding answered again keeps
 # only its latest answer (#2464: the one reader build and design use too).
-_ta_collect_answers() { zb_answers_finish _TA_ANSWERS "${2:-}" "${1:-}"; }
+_ta_collect_answers() { zb_answers_finish _TA_ANSWERS "${2:-}" "${1:-}" "${3:-}"; }
 
 # ─── test_author_run <stage_id> <state_file> [resolved_inputs] ───────────────
 # ADR-054 §4: rc is binary. rc=0 = "my result file is on disk"; rc=1 = "I
@@ -361,7 +361,7 @@ EOF
     route_to_model_loop "$tier" "$prompt_file" "$repo" || rc=$?
     unset ZBUILD_ROUTE_BASE_CODE
     rm -f "$prompt_file"
-    _ta_collect_answers "${_ROUTE_LOOP_LAST_RESPONSE:-}" "$prompt"
+    _ta_collect_answers "${_ROUTE_LOOP_LAST_RESPONSE:-}" "$prompt" "$art/test-author-result.json"
     _ta_write_code_findings "$art" "${_ROUTE_LOOP_LAST_RESPONSE:-}"
     local _end="${_ROUTE_LOOP_TERMINATED_REASON:-}"
 

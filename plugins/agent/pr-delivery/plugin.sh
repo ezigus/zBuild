@@ -176,10 +176,10 @@ _pr_stage_run_inner() {
         fi
     # Auto-unless-flagged path (ADR-037 §4 / I9-C #1051)
     elif [[ "$_policy" == "auto_unless_flagged" ]]; then
-        # #2368: "flagged" is the engine's word — a review lens found a high or
-        # critical problem the change introduced (ZBUILD_RUN_FLAGGED=yes). Only an
-        # explicit "no" lets it merge: no word at all is not a clean review.
-        if [[ "$_gate_verdict_early" == "pass" && "${ZBUILD_RUN_FLAGGED:-}" == "no" ]]; then
+        # #2611: a lens that did not pass leaves its loop unpassed, so the loops'
+        # word already says it; the stages pr requires must also have passed
+        # (ZBUILD_STAGE_REQUIRES_MET). Anything else is not a clean review.
+        if [[ "$_gate_verdict_early" == "pass" && "${ZBUILD_STAGE_REQUIRES_MET:-}" == "yes" ]]; then
             local merge_plugin="$_PR_ROOT/plugins/tool/merge/plugin.sh"
             if [[ -f "$merge_plugin" ]]; then
                 # shellcheck source=../../tool/merge/plugin.sh

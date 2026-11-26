@@ -641,7 +641,9 @@ _artifact_persist_restore() {
 # Copy every file under <from> to the same place under <to>, skipping any file
 # <to> already has (no-clobber) and skipping stage-io/ records (model call logs,
 # not stage output). Extracted from _hydrate_put_back so the runner's resume
-# rehydration and the hydrate plugin share one implementation.
+# rehydration and the hydrate plugin share one implementation; a resume keeps
+# the run's own hand-offs, and hydrate drops an earlier run's before this
+# (_artifact_persist_drop_run_only, #2611).
 _artifact_persist_put_back() {
     local from="$1" to="$2" f rel
     mkdir -p "$to" || return 1
@@ -650,5 +652,23 @@ _artifact_persist_put_back() {
         [[ "$rel" == stage-io/* || -e "$to/$rel" ]] && continue
         mkdir -p "$(dirname "$to/$rel")" && cp -p "$f" "$to/$rel" || return 1
     done < <(find "$from" -type f -print0 2>/dev/null)
+    return 0
+}
+
+# ─── _artifact_persist_drop_run_only <artifacts_dir> (#2611, ADR-050 §3) ────
+# Remove what lives only within the run that wrote it from an earlier run's
+# restored tree, before hydrate puts it back: its hand-offs (handoffs/, and the
+# <kept>-handed-/-handoffs-<item> files saved before that folder), and the
+# negctl and reachability logs saved before their folders (the gate empties the
+# folders themselves). Only names at the top of <artifacts_dir> are matched.
+_artifact_persist_drop_run_only() {
+    local d="${1:?}" f
+    [[ -d "$d" ]] || return 0
+    rm -rf "${d:?}/handoffs" 2>/dev/null || true
+    local -a gone=()
+    for f in "$d"/*-handed-* "$d"/*-handoffs-* "$d"/negctl-*.log "$d"/reachability-*.log; do
+        [[ -f "$f" ]] && gone+=("$f")
+    done
+    (( ${#gone[@]} )) && rm -f "${gone[@]}" 2>/dev/null
     return 0
 }

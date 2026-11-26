@@ -719,3 +719,14 @@ On #1764 run 44910536811 sre's job text excused "a step that already fails loudl
 - Every lens's prompt also carries the one rule on outside assumptions (ADR-038, amended 2026-11-22).
 
 Enforced by: `plugins/agent/review-lens/tests/review-lens-asks-test.sh` S6 (each job text asks what it must; sre no longer excuses a message alone).
+
+## Amendment 2026-11-25 (#2611) — a lens group follows the template; ZBUILD_RUN_FLAGGED is retired
+
+On #2533 run 45644128060 one lens of six did not finish and the run ended in round 1 of 2: the three lenses that had found problems never sent them back. Supersedes the #2433 bullet "A lens that does not finish stops the run at once" and the #2368 part-2 bullets on `ZBUILD_RUN_FLAGGED`.
+
+- **A lens that does not finish only does not pass.** The loop goes round, and every finding from the lenses that did finish reaches the next round. A lens whose result halts the run (`rate_limited`, `unavailable`, `misconfigured` — the issue itself wrong — or `broken`) still stops it at once, in its own words (ADR-054 §6). Out of rounds, the loop's `on_max` decides. This is ADR-068 §3: a member the template does not name in `stop_run_on_fail:` never ends the run.
+- **The engine names each element that did not pass** (`_ZB_MAP_NOT_PASSED`), and each whose result halts the run (`_ZB_MAP_HALTED`), for the stop line and the group's verdict. `ZBUILD_RUN_FLAGGED` is retired: nothing sets or reads it.
+- **A top-level map group that does not pass ends the run as a failed leaf does** (ADR-054 §4); `blocking: false` opts it out (ADR-013).
+- **What a PR waits for is the template's:** `pr` requires every stage and loop before it (`requires: all`, ADR-068 §3, amended 2026-11-25) — the lenses among them, as any other. pr-open opens a PR, and merge merges, only when the engine says the stages `pr` requires passed (`ZBUILD_STAGE_REQUIRES_MET=yes`): fail-closed as before (ADR-001), with no lens-only word.
+
+Enforced by: `tests/integration/cycle-map-member-test.sh` M3 (an unfinished lens goes round), M5 (a halting lens stops it, in its words), M6 (on_max decides); `tests/unit/engine-combines-map-test.sh` M2 (the flag is never set), M5 (the halting elements), SPEC-1 (every non-pass outcome is named); `tests/unit/runner-map-parallel-stage-envelope-test.sh` #1753/SPEC-4, #2611/R5 (a top-level group that did not pass ends the run; `blocking: false`); `plugins/tool/pr-open/tests/pr-open-test.sh` 2c; `tests/integration/merge-policy-auto-unless-flagged-test.sh` SPEC-4; `tests/integration/merge-policy-auto-test.sh` SPEC-5.

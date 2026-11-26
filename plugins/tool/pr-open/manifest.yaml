@@ -11,7 +11,7 @@ id_prefix: PR
 version: 0.1.0
 description: |
   Opens a pull request via `gh pr create`. Refuses to open one unless the
-  engine says a review ran (ZBUILD_RUN_FLAGGED, #2368, #2364). Also refuses
+  engine says the stages it requires passed (ZBUILD_STAGE_REQUIRES_MET, #2611). Also refuses
   if the current branch is main or master. Opens non-draft by default; draft mode
   is controlled by _TPL_PR_DRAFT / pr_draft template key.
   No LLM dependency — T0 tool stage (ADR-013).

@@ -174,7 +174,7 @@ assert_eq "[HO3] accepted: build passes" "pass" "$(_outcome)"
 
 # _fresh — a new step-1 refusal, its hand-off records gone: F1 is its finding.
 _fresh() {
-    rm -f "$AD"/build-steps-judged* "$AD/build-summary.json" "$AD/build-tests-result.json"
+    rm -f "$AD"/build-steps-judged* "$AD/build-summary.json" "$AD/build-tests-result.json"; rm -rf "$AD/handoffs"
     JUDGE_REPLY="1: does not | WHY: $WHY1 | ACCEPTED IF: plugin.sh does not source core/claim/claim.sh"$'\n2: does'
     _try "$DONE1"$'\n'"$DONE2"$'\nLOOP_COMPLETE'
     F1="$(jq -r '.data.findings[0].id // empty' "$AD/build-summary.json")"

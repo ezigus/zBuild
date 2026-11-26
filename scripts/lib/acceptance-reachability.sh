@@ -174,10 +174,11 @@ _reachability_revert_one() {
     local found_flip=0 saw_timeout=0 saw_harness="" red_at_head="" ran_any=0
     local logfile=""
     if [[ -n "${ZBUILD_NEGCTL_ARTIFACT_DIR:-}" ]]; then
-        mkdir -p "$ZBUILD_NEGCTL_ARTIFACT_DIR" 2>/dev/null || true
+        # #2611 (ADR-050 §3): in their own folder, which the gate empties first.
+        mkdir -p "$ZBUILD_NEGCTL_ARTIFACT_DIR/reachability" 2>/dev/null || true
         # sanitize the target path into a flat log filename
         local _safe_target="${target//\//_}"
-        logfile="$ZBUILD_NEGCTL_ARTIFACT_DIR/reachability-${_safe_target}.log"
+        logfile="$ZBUILD_NEGCTL_ARTIFACT_DIR/reachability/reachability-${_safe_target}.log"
         : > "$logfile" 2>/dev/null || logfile=""
     fi
     local -a _spec_ids=()

@@ -16,6 +16,9 @@
 # S4 [change] build names the files it changed; a try cut off says so
 # S5 [change] test says how many passed, or which files failed
 # S6 [change] a review lens names what it found, or that it found nothing
+# S7 [change] (#2611 R9) each finding is said once: one finding is the head
+#             with no list; several are counted by severity in the head and
+#             listed below it
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -105,8 +108,19 @@ s6="$( source "$REPO_ROOT/plugins/agent/review-lens/plugin.sh"
   _rl_summary_head_v h correctness '{"findings":[{"file":"core/x.sh","line":3,"severity":"high","message":"the loop never ends"},{"file":"core/y.sh","severity":"low","message":"a name"}]}'
   printf '%s\n' "$h"
   _rl_summary_head_v h correctness '{"findings":[]}'; printf '%s\n' "$h" 2>/dev/null )"
-assert_eq "[S6] a lens names what it found" "found: high: the loop never ends (core/x.sh:3) (and 1 more)" "$(sed -n 1p <<< "$s6")"
+assert_eq "[S6] a lens counts what it found" "found 2 findings: 1 high, 1 low" "$(sed -n 1p <<< "$s6")"
 assert_eq "[S6] …or that it found nothing" "reviewed the change through the correctness lens: found no problem" "$(sed -n 2p <<< "$s6")"
+
+# ── S7 each finding once ─────────────────────────────────────────────────────
+s7="$( source "$REPO_ROOT/plugins/agent/review-lens/plugin.sh"
+  _rl_summary_head_v h sre '{"findings":[{"file":"core/x.sh","severity":"high","message":"no event"}]}' b
+  printf 'H=%s\nB=%s\n' "$h" "$b"
+  _rl_summary_head_v h sre '{"findings":[{"file":"core/x.sh","severity":"high","message":"no event"},{"file":"core/y.sh","severity":"medium","message":"no log"}]}' b
+  printf 'H=%s\nB=%s\n' "$h" "$b" )"
+assert_eq "[S7] one finding: it is the head" "H=found: high: no event (core/x.sh)" "$(sed -n 1p <<< "$s7")"
+assert_eq "[S7] ...and there is no list" "B=" "$(sed -n 2p <<< "$s7")"
+assert_eq "[S7] several: the head counts them" "H=found 2 findings: 1 high, 1 medium" "$(sed -n 3p <<< "$s7")"
+assert_eq "[S7] ...and the list names each once" $'B=- high: no event (core/x.sh)\n- medium: no log (core/y.sh)' "$(sed -n 4,5p <<< "$s7")"
 
 print_test_results
 exit $((FAIL > 0))

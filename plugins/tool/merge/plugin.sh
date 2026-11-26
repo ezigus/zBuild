@@ -64,13 +64,12 @@ merge_run() {
         return $?
     fi
 
-    # ADR-001/#358 fail-closed: pr-open refuses to publish unless a review ran.
-    # Mirror that on the auto-merge path — NEVER auto-merge an unreviewed branch.
-    # The engine says a review ran (ZBUILD_RUN_FLAGGED, yes|no, #2368); no word
-    # → route to the PR path (which itself fail-closes). #2364: the retired
-    # review stage's review.json is no longer read.
-    if [[ -z "${ZBUILD_RUN_FLAGGED:-}" ]]; then
-        warn "merge_run: no review ran — fail-closed, routing to PR path (ADR-001/#358)"
+    # ADR-001/#358 fail-closed: pr-open refuses to publish unless the stages it
+    # requires passed. Mirror that on the auto-merge path — NEVER auto-merge a
+    # branch the engine did not say passed them (ZBUILD_STAGE_REQUIRES_MET,
+    # #2611); without it → route to the PR path (which itself fail-closes).
+    if [[ "${ZBUILD_STAGE_REQUIRES_MET:-}" != yes ]]; then
+        warn "merge_run: the stages pr requires were not shown to pass — fail-closed, routing to PR path (ADR-001/#358)"
         _merge_pr_fallback "$stage_id" "$state_file" "$merge_result_out" "review_absent"
         return $?
     fi
