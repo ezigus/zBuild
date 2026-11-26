@@ -36,9 +36,11 @@ _build_repo() {
 }
 
 # ── Gate runner ───────────────────────────────────────────────────────────────
-# _run_gate <repo> → sets RC, RESULT, EVENTS
+# _run_gate <repo> [lib_dir] → sets RC, RESULT, EVENTS. With lib_dir, the gate
+# loads its contract libraries from there (ZBUILD_CONTRACT_LIB_DIR), the way
+# acceptance-gate-fails-closed-test.sh reaches a gate whose code is damaged.
 _run_gate() {
-    local repo="$1"
+    local repo="$1" lib="${2:-}"
     local state_dir="$repo/.zbuild-state"
     mkdir -p "$state_dir/artifacts"
     export ZBUILD_EVENTS_DIR="$state_dir/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
@@ -47,74 +49,31 @@ _run_gate() {
     local _si_json="$state_dir/stage-inputs.json"
     printf '{"inputs":{"design":"%s"}}\n' "$state_dir/artifacts/design.md" > "$_si_json"
     export ZBUILD_STAGE_INPUTS="$_si_json"
-    unset _ZBUILD_ACCEPTANCE_GATE_LOADED
     # shellcheck disable=SC1090
-    ( cd "$repo" && source "$REPO_ROOT/plugins/tool/test/plugin.sh" \
-        && acceptance_gate_run "acceptance-gate" "$state_dir/pipeline-state.json" )
-    RC=$?
-    RESULT="$(cat "$state_dir/artifacts/acceptance-gate-result.json" 2>/dev/null || echo '{}')"
-    EVENTS="$ZBUILD_EVENTS_JSONL"
-}
-
-# _run_gate_load_fail <repo> → sets RC, RESULT, EVENTS
-# Triggers _ag_fail_load by pointing _ZBUILD_CONTRACT_LIB_DIR at a non-existent
-# directory, so every contract-lib source call fails and _ZBUILD_CONTRACT_LOAD_ERRORS
-# is populated before acceptance_gate_run is called.
-_run_gate_load_fail() {
-    local repo="$1"
-    local state_dir="$repo/.zbuild-state"
-    mkdir -p "$state_dir/artifacts"
-    export ZBUILD_EVENTS_DIR="$state_dir/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
-    export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; : > "$ZBUILD_EVENTS_JSONL"
-    cp "$repo/design.md" "$state_dir/artifacts/design.md" 2>/dev/null || true
-    local _si_json="$state_dir/stage-inputs.json"
-    printf '{"inputs":{"design":"%s"}}\n' "$state_dir/artifacts/design.md" > "$_si_json"
-    export ZBUILD_STAGE_INPUTS="$_si_json"
-    unset _ZBUILD_ACCEPTANCE_GATE_LOADED
-    local _broken_lib_dir="$state_dir/no-such-contract-lib"
-    # shellcheck disable=SC1090
-    ( cd "$repo" \
-        && export ZBUILD_CONTRACT_LIB_DIR="$_broken_lib_dir" \
-        && unset _ZBUILD_ACCEPTANCE_GATE_LOADED \
-        && source "$REPO_ROOT/plugins/tool/test/plugin.sh" \
-        && acceptance_gate_run "acceptance-gate" "$state_dir/pipeline-state.json" )
-    RC=$?
-    RESULT="$(cat "$state_dir/artifacts/acceptance-gate-result.json" 2>/dev/null || echo '{}')"
-    EVENTS="$ZBUILD_EVENTS_JSONL"
-}
-
-# _run_gate_nothing_checked <repo> → sets RC, RESULT, EVENTS
-# The #1752 shape (tests/integration/acceptance-gate-fails-closed-test.sh F3):
-# a copy of the contract libraries whose acceptance-block.sh loads a sibling
-# that is not there and loses a helper the negative control needs. Every
-# library loads, the negative control reports on no requirement, so the block
-# lists SPECs and none was checked.
-_run_gate_nothing_checked() {
-    local repo="$1"
-    local state_dir="$repo/.zbuild-state"
-    local lib="$repo/.zbuild-lib-1752"
-    mkdir -p "$state_dir/artifacts" "$lib"
-    cp "$REPO_ROOT"/scripts/lib/*.sh "$lib/"
-    # shellcheck disable=SC2016  # written into the copy, expanded when it loads
-    printf '\n# shellcheck source=/dev/null\nsource "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/zb-gone-1752.sh"\nunset -f _acceptance_timeout_prefix\n' \
-        >> "$lib/acceptance-block.sh"
-    export ZBUILD_EVENTS_DIR="$state_dir/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
-    export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; : > "$ZBUILD_EVENTS_JSONL"
-    cp "$repo/design.md" "$state_dir/artifacts/design.md" 2>/dev/null || true
-    local _si_json="$state_dir/stage-inputs.json"
-    printf '{"inputs":{"design":"%s"}}\n' "$state_dir/artifacts/design.md" > "$_si_json"
-    export ZBUILD_STAGE_INPUTS="$_si_json"
-    # shellcheck disable=SC1090
-    ( cd "$repo" \
-        && unset _ZBUILD_ACCEPTANCE_GATE_LOADED _ACCEPTANCE_REACHABILITY_LOADED \
-                 _ACCEPTANCE_NEGCTL_LOADED _ACCEPTANCE_BLOCK_LOADED _ZBUILD_MERGE_BASE_LOADED \
-                 _ACCEPTANCE_COVERAGE_LOADED \
-        && export ZBUILD_CONTRACT_LIB_DIR="$lib" \
-        && source "$REPO_ROOT/plugins/tool/test/plugin.sh" \
+    ( cd "$repo" || exit 99
+      unset _ZBUILD_ACCEPTANCE_GATE_LOADED _ACCEPTANCE_REACHABILITY_LOADED \
+            _ACCEPTANCE_NEGCTL_LOADED _ACCEPTANCE_BLOCK_LOADED _ZBUILD_MERGE_BASE_LOADED \
+            _ACCEPTANCE_COVERAGE_LOADED
+      if [[ -n "$lib" ]]; then export ZBUILD_CONTRACT_LIB_DIR="$lib"; else unset ZBUILD_CONTRACT_LIB_DIR; fi
+      source "$REPO_ROOT/plugins/tool/test/plugin.sh" \
         && acceptance_gate_run "acceptance-gate" "$state_dir/pipeline-state.json" ) >/dev/null 2>&1
     RC=$?
     RESULT="$(cat "$state_dir/artifacts/acceptance-gate-result.json" 2>/dev/null || echo '{}')"
     EVENTS="$ZBUILD_EVENTS_JSONL"
+}
+
+# _lib_1752 <repo> — the #1752 shape (acceptance-gate-fails-closed-test.sh F3):
+# a copy of the contract libraries whose acceptance-block.sh loads a sibling
+# that is not there and loses a helper the negative control needs. Every
+# library loads; the negative control reports on no requirement.
+_lib_1752() {
+    local lib="$1/.zbuild-lib-1752"
+    mkdir -p "$lib"
+    cp "$REPO_ROOT"/scripts/lib/*.sh "$lib/"
+    # shellcheck disable=SC2016  # written into the copy, expanded when it loads
+    printf '\n# shellcheck source=/dev/null\nsource "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/zb-gone-1752.sh"\nunset -f _acceptance_timeout_prefix\n' \
+        >> "$lib/acceptance-block.sh"
+    printf '%s' "$lib"
 }
 
 # ── Event field extractors ────────────────────────────────────────────────────
@@ -233,7 +192,7 @@ assert_eq "[DSEVNT-4] E4: event reason matches result reason" \
 REPO_E5="$(setup_git_temp_repo evnt-loadfail)"
 printf '# Design\nNo acceptance block.\n' > "$REPO_E5/design.md"
 # When
-set +e; _run_gate_load_fail "$REPO_E5"; set -e
+set +e; _run_gate "$REPO_E5" "$REPO_E5/.zbuild-state/no-such-contract-lib"; set -e
 # Then
 assert_eq "[DSEVNT-5] E5: rc=1 (load failure exits 1)" "1" "$RC"
 assert_event_emitted "[DSEVNT-5] E5: acceptance.gate.complete emitted on load failure" \
@@ -261,7 +220,7 @@ tests/feature-test.sh
 ```
 EOF
 # When
-set +e; _run_gate_nothing_checked "$REPO_E6"; set -e
+set +e; _run_gate "$REPO_E6" "$(_lib_1752 "$REPO_E6")"; set -e
 # Then
 assert_eq "[DSEVNT-6] E6: rc=1 (nothing_checked exits 1)" "1" "$RC"
 assert_event_emitted "[DSEVNT-6] E6: the gate found nothing checked (not a load failure)" \

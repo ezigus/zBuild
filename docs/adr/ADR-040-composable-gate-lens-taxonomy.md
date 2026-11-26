@@ -1,6 +1,6 @@
 # ADR-040 — Composable gate / lens taxonomy (the convergence-path invariant)
 
-**Status:** Accepted (2026-06-27); amended 2026-11-26 (#2615, §3: behaviour the issue asks for that no requirement covers is fix: design); amended 2026-11-22 (#2584, §3: the lens job texts ask about partial reads, data trusted without knowing its writer, calls with no timeout, what an interrupt leaves behind, tests that reach real services and Enforced-by entries; "fails loudly" means an event or a status line); amended 2026-11-16 (#2556: the shape floor is gone; a run-shaping change always runs the shape tests); amended 2026-11-15 (#2548, §3: each lens's job is its own text, ADR-038)
+**Status:** Accepted (2026-06-27); amended 2026-11-26 (#1722, #2372 amendment: the acceptance check's closing event carries the result's outcome and reason); amended 2026-11-26 (#2615, §3: behaviour the issue asks for that no requirement covers is fix: design); amended 2026-11-22 (#2584, §3: the lens job texts ask about partial reads, data trusted without knowing its writer, calls with no timeout, what an interrupt leaves behind, tests that reach real services and Enforced-by entries; "fails loudly" means an event or a status line); amended 2026-11-16 (#2556: the shape floor is gone; a run-shaping change always runs the shape tests); amended 2026-11-15 (#2548, §3: each lens's job is its own text, ADR-038)
 **Related** — dispositions below are **PLANNED** (declared here, executed in later issues of EPIC #1129 alongside the code that lands the decomposition); **this PR edits no existing ADR**:
 - evolve-planned: ADR-037 (the objective-gate *monolith* decomposes into many first-class `kind: tool` gate stages + a gate-aggregator; ADR-037's two-layer invariant is preserved and made machine-enforced)
 - supersede-planned: ADR-038 (its single-stage packaging of the lens fan-out is replaced by composable `kind: agent` lens stages + a review-aggregator; the lens *content* and evidence-fed contract are kept)
@@ -603,7 +603,7 @@ test's outcome.
   never fails for it. test-author keeps recording the authored bytes (`plugins/agent/test-author/lib/record.sh`)
   so a changed file can be restored before the next build.
 - build_test_cycle's `exit_when` requires test-author, build, test and issue-acceptance.
-- **The acceptance check's closing event (`acceptance.gate.complete`) carries `outcome=` and `reason=`
+- **(2026-11-26, #1722) The acceptance check's closing event (`acceptance.gate.complete`) carries `outcome=` and `reason=`
   matching the result it wrote on every exit path** (pass, fail, broken, precondition unmet, malformed
   block, load failure, nothing checked). `outcome=` is the result's outcome field; `reason=` is the
   reason string written to the result. The old `verdict=` field is replaced by `outcome=`.

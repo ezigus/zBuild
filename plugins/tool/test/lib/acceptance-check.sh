@@ -487,14 +487,13 @@ acceptance_gate_run() {
     # #2366 (contract 3): one outcome — pass or fail, or `broken` when the gate
     # could not check anything. severity and failures stay top-level, where
     # the cycle and the aggregator read them.
-    local _ag_outcome="$verdict"
+    local _ag_outcome="$verdict" _ag_reason="${reason_msg:-$_pass_reason}"
     [[ "$disposition" != complete ]] && _ag_outcome="$disposition"
-    _ag_write_result "$result_file" "$_ag_outcome" "${reason_msg:-$_pass_reason}" \
+    _ag_write_result "$result_file" "$_ag_outcome" "$_ag_reason" \
         "$(jq -cn --arg sv "$severity" --argjson f "$failures_json" --argjson fnd "${_ag_fnd:-[]}" \
             '{severity:$sv,failures:$f,data:{findings:$fnd}}')"
 
-    local _ag_final_reason="${reason_msg:-$_pass_reason}"
-    eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "outcome=$_ag_outcome" "reason=$_ag_final_reason"
+    eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "outcome=$_ag_outcome" "reason=$_ag_reason"
 
     [[ "$verdict" == "fail" ]] && return 1
     return 0
