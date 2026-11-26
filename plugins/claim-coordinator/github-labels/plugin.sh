@@ -206,6 +206,24 @@ claim_coordinator_heartbeat() {
     return 0
 }
 
+# ─── Hook: takeover <issue> <holder> <by> <stale_s> <state_dir> ───────────────
+# ADR-005 §3 (#2616): a claim another machine holds, judged on GitHub's clock
+# and taken over when stale (lib/takeover.sh, loaded only here): released, and
+# claimed again for this run. stdout: {"taken_over":true,"claimed":true,"age_s":N}
+# | {"taken_over":false[,"failed":"<why>"]}.
+claim_coordinator_takeover() {
+    if ! declare -F claim_takeover_run >/dev/null 2>&1; then
+        local _lrc=0
+        # shellcheck source=lib/takeover.sh
+        source "$_CCGL_DIR/lib/takeover.sh" 2>/dev/null || _lrc=$?
+        if (( _lrc != 0 )) || ! declare -F claim_takeover_run >/dev/null 2>&1; then
+            printf 'zbuild_claim_acquire: takeover.sh could not be loaded (%s) — refusing to take over %s\n' "$_CCGL_DIR/lib/takeover.sh" "${2:-}" >&2
+            printf '{"taken_over":false}\n'; return 0
+        fi
+    fi
+    claim_takeover_run "$1" "$2" "$3" "$4" "$5" claim_coordinator_release claim_coordinator_claim
+}
+
 # ─── Hook: list_claims ────────────────────────────────────────────────────────
 # stdout: JSON array of {issue, holder, acquired_at}. rc 1 on a backend error.
 claim_coordinator_list_claims() {

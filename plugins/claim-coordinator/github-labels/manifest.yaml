@@ -17,6 +17,8 @@ hooks:
   release: claim_coordinator_release
   heartbeat: claim_coordinator_heartbeat
   list_claims: claim_coordinator_list_claims
+  # ADR-005 §3 (#2616): a stale claim's age, on GitHub's clock, and its takeover.
+  takeover: claim_coordinator_takeover
 
 requires:
   core:

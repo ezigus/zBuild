@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-05-24
-**Amended:** 2026-11-21 (#1764: the engine claims and releases; one shared label; holder in the run-status comment)
+**Amended:** 2026-11-26 (#2616: the coordinator owns a claim's age and its takeover; GitHub's clock; the old comment marked); 2026-11-21 (#1764: the engine claims and releases; one shared label; holder in the run-status comment)
 
 ## Context
 
@@ -74,13 +74,13 @@ The claim is advisory across machines; this machine's admission lock still seria
   without the stage suffix when no stage is active), updated on every flush.
 - **§3b Staleness threshold.** A cross-machine claim is stale when GitHub last saw it alive
   `ZBUILD_CLAIM_STALE_S` or more seconds ago (default 1800). Its time is GitHub's, never a machine's
-  (`claim_age_v`, `scripts/lib/claim-takeover.sh`): the later of the holder's run-status comment's last
+  (`claim_age_v`, the coordinator's `lib/takeover.sh` since #2616): the later of the holder's run-status comment's last
   edit (`updated_at` — the heartbeat edits it; the comment is the trusted one whose holder line names
   the holder) and the `zbuild:claimed` label's last added time. `ZBUILD_CLAIM_STALE_S` and
   `ZBUILD_CLAIM_HEARTBEAT_S` are set with `:=` (assign-if-unset) in `core/claim/claim.sh`; a value that
   is not a number, or a heartbeat of 0, is its default, and a stale time under two heartbeats is raised
-  to two heartbeats (a live run is never stale between two of them). The age is GitHub's time against
-  this machine's clock: a machine whose clock is far off misjudges it.
+  to two heartbeats (a live run is never stale between two of them). The age compares GitHub's times
+  only: now is the `Date` of GitHub's reply (amended 2026-11-26, #2616).
 - **§3c Always claimed; a claim with no heartbeat.** A run that posts no run-status comment says its
   claim has no heartbeat (`zbuild_claim_heartbeat_say`), and is aged from its label's added time. A
   read of either time that fails, no repository to read from (`GITHUB_REPOSITORY`, else the run's own
@@ -96,7 +96,7 @@ The claim is advisory across machines; this machine's admission lock still seria
   go on deletes its note and refuses: another run's note came first (named), the notes could not be
   read back, or the release failed (`pipeline.claim.takeover_failed`, `reason=release_failed`). A note
   that cannot be posted, or one GitHub's reply gives no id for (it could not be deleted), refuses.
-- **§3e Lazy load.** `zbuild_claim_acquire` loads `scripts/lib/claim-takeover.sh` only for a
+- **§3e Lazy load.** *(Amended 2026-11-26, #2616.)* The coordinator's takeover hook loads its `lib/takeover.sh` only for a
   cross-machine claim it was refused; a library that is absent or cannot be loaded refuses, saying so.
 
 ### §4 — Finding and calling the coordinator
@@ -200,7 +200,15 @@ A claim hook whose reply says `"acquired": true` holds the claim, whatever the h
   - **When CI's clean-up uses which signal:** the run's own record (`claim_left`) decides. The holder in the status comment is used only when the run left no record, so a run that reported its release is trusted.
 - **A run whose GitHub login is rejected stops at once and says so.** Two GitHub calls in a row refused with "Bad credentials" or HTTP 401 leave a marker (`rsc_gh`). Two, so a single short-lived 401 does not end a long run, and a call that works in between starts the count again. The marker is cleared when a run starts, so a resume, its token since fixed, is not stopped by it. The status sidecar then stops the run once. The run ends with the word `github_login_rejected`, with the plain words "GitHub no longer accepts this run's login", releasing what it holds on its way out. Before, the run went on for two more rounds with its status comment frozen. This works where the status sidecar runs (the run-status comment is on). A run with it off is not stopped by the engine's other GitHub calls, and its clean-up still covers the label.
 
+## Amendment 2026-11-26 (#2616) — §3: the coordinator owns the age and the takeover
+
+- **§3f The coordinator owns it.** Whether a claim another machine holds is stale, and taking it over, is the claim coordinator's: its `takeover` hook (`claim_coordinator_takeover <issue> <holder> <by> <stale_s> <state_dir>`), answering `{"taken_over":true,"claimed":true,"age_s":N}` once it has released the stale claim and claimed it again for this run, or `{"taken_over":false[,"failed":"<why>"]}`. The github-labels coordinator holds its library, `plugins/claim-coordinator/github-labels/lib/takeover.sh` (moved from `scripts/lib/claim-takeover.sh`); another coordinator keeps its own beside its claim. The engine holds the stale threshold (§3b), emits `pipeline.claim.taken_over` / `pipeline.claim.takeover_failed` from the answer, and holds the claim; it holds no GitHub claim code. A coordinator with no takeover hook refuses a held claim, saying so.
+- **§3b on GitHub's clock.** "Now" is the `Date` of GitHub's reply to a read of the repository (`claim_github_now_v`), so the age compares GitHub's times only; a time that cannot be read refuses. This supersedes §3b's "only this machine's now is compared with them".
+- **§3d the old holder's comment is marked**, once the claim is this run's again (a run that claimed it in between keeps it, and nothing is marked or said taken over; claiming again failing on the coordinator's store is said as such, `failed: reclaim_failed`). The old holder's run-status comment has its `still running — …` line and its holder line replaced by `taken over — <when, UTC> — by <this run>` (`claim_takeover_mark_old`), so no refusal names the old run; one that cannot be marked is said, and the takeover stands. GitHub's `Date` is read in the C locale. The mark does not last if the old run wakes: its own status comment re-renders the body, and it is not told it lost the claim (#2533's, unchanged).
+
 ## Enforced by
+
+- §3 amendment 2026-11-26 (#2616: the coordinator owns the takeover; GitHub's clock; the old comment marked) → `tests/unit/claim-takeover-real-test.sh` TR13 (GitHub's clock), TR14 (the old comment marked), TR15 (the hook and its library are the coordinator's), TR16 (any locale, the mark's time UTC), TR17 (claimed again before the mark), TR18 (no takeover hook: refused), TR19 (a mark that fails: the takeover stands), TR20 (claiming again failing is said as such), TR1–TR12 (through the real coordinator)
 
 - §3 amendment 2026-11-24 (#2533: heartbeat interval, staleness threshold, stale takeover, label-added fallback):
   - §3a heartbeat interval default (600 s) → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-7

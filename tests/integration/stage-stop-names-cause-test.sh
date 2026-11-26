@@ -23,6 +23,8 @@
 #         runner (a credential and a private path are in no stop text)
 # S7 [#2607 review] a stage whose result cannot be used (it wrote none): the
 #         end-of-run words say so in words, and never "finished"
+# S8 [#2616] a flow with no loop (the runner's linear path) names a stage's
+#   stop with its reason, and aborts on unavailable, as a loop does
 # Real runner (core/pipeline/runner.sh, a one-loop template since #2615) over stub plugins
 # (tests/lib/simple-run-stubs.sh).
 set -euo pipefail
@@ -83,6 +85,17 @@ pr:
   gate: auto
   roles: [pr]
   requires: all
+TPL
+# #2616: a flow with no loop takes the runner's linear path; it names a stop too.
+cat > "$_ZB_REPO/.zbuild/templates/stop-flat.yaml" <<'TPL'
+id: stop-flat
+extends: simple
+flow:
+  - pr
+always_run: []
+pr:
+  gate: auto
+  roles: [pr]
 TPL
 ( cd "$_ZB_REPO" && git add .zbuild && git commit -qm "stop templates" ) >/dev/null 2>&1
 export _ZB_TEMPLATE=stop-loop
@@ -205,6 +218,23 @@ assert_eq "[S7] setup: the run ended on pr's missing result" "contract_violation
 _e7="$(/usr/bin/grep 'The run' "$TEST_TEMP_DIR/runner.stderr" || true)"
 assert_contains "[S7] the end-of-run words say the stage left no result" "$_e7" "left no result"
 _lacks "[S7] ...and never that the run finished" "$_e7" "The run finished"
+
+# ── S8 ───────────────────────────────────────────────────────────────────────
+# #2616: a flow with no loop runs on the runner's linear path, which ended every
+# stop as "Stage pr failed (rc=1)", naming no reason.
+print_test_section "S8: a flow with no loop names a stage's stop the same way"
+_make_stopping_pr_plugin misconfigured "$_S2_WHY"
+_ZB_TEMPLATE=stop-flat _run_pipeline
+assert_eq "[S8] pipeline.end names the stage and its reason" "stage_stopped:pr:$_S2_WHY" "$(_ended)"
+assert_eq "[S8] ...and so does the state's reason" "stage_stopped:pr:$_S2_WHY" "$(_state_reason)"
+assert_contains "[S8] the end-of-run words name pr and its reason" "$(cat "$TEST_TEMP_DIR/runner.stderr")" \
+    "The run stopped: pr stopped the run — PR opened https://github.com/o/r/pull/7; merge refused"
+_make_stopping_pr_plugin unavailable "gh pr create: error connecting to api.github.com"
+_ZB_TEMPLATE=stop-flat _run_pipeline
+assert_eq "[S8] unavailable: pipeline.aborted names the stage and its reason" \
+    "stage_stopped:pr:gh pr create: error connecting to api.github.com" "$(_aborted)"
+assert_eq "[S8] ...the run is aborted, resumable" "aborted" \
+    "$(jq -r '.status // empty' "$STATE_DIR/pipeline-state.json" 2>/dev/null || true)"
 
 cleanup_test_env
 print_test_results
