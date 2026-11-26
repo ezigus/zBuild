@@ -204,6 +204,7 @@ _ic_finish() {
     for p in "${_IC_SUGGEST[@]}"; do body+="- $p"$'\n'; sug+="${sug:+; }$p"; done
     # The better set is an open item too, so the run's last comment shows it.
     findings+="report"$'\t'"The issue needs rewriting — a better set of requirements for it: $sug — ACCEPTED IF: the issue is rewritten with requirements that still hold against the system as it is"$'\n'
+    # sigpipe-ok: stage_findings_route_each reads all of its input
     fnd="$(printf '%s' "$findings" | stage_findings_route_each "$dir" issue-check design-findings "$_IC_FCODE")"
     [[ "$fnd" == "["* ]] || fnd="[]"
     local data sj

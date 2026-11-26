@@ -224,7 +224,6 @@ _run
 assert_eq "[IC11] a goal run passes" "pass" "$(_res .outcome)"
 assert_eq "[IC11] no call" "0" "$(grep -c x "$_IC_CALLS")"
 _setup ic11b no-reqs
-printf '{"requirements_missing":true}\n' > /dev/null
 jq -n --arg i "$_S/inputs/intake-result.json" '{inputs: {a: $i}}' > "$_S/stage-inputs.json"
 _run
 assert_eq "[IC11] an issue whose requirements were not written → broken" "broken" "$(_res .outcome)"
