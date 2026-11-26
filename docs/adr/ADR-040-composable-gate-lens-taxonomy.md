@@ -609,7 +609,7 @@ test's outcome.
   reason string written to the result. The old `verdict=` field is replaced by `outcome=`.
 
 Enforced by: `tests/integration/test-checks-own-run-test.sh` R1–R5;
-`tests/integration/acceptance-gate-events-test.sh` DSEVNT-1–DSEVNT-6 (and the event it no longer carries: no `shape_floor.*` event, `tests/unit/shape-tests-list-test.sh` ST4).
+`tests/integration/acceptance-gate-events-test.sh` DSEVNT-1–DSEVNT-6 (no `shape_floor.*` event is declared: `tests/unit/shape-tests-list-test.sh` ST4; none is emitted: `tests/unit/event-schema-emitted-coverage-test.sh`).
 
 ### Amendment (2026-10-30, #2433) — the lenses run inside the loop and send the change back
 
