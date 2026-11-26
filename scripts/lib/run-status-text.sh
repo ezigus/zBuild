@@ -20,7 +20,9 @@ _ZBUILD_RUN_STATUS_TEXT_LOADED=1
 # suite's and the acceptance check's) shows every finding its try wrote —
 # each of its other JSON outputs that this run of the stage wrote
 # (stage_result_is_current) and that did not pass, as open_items_json reads a
-# check's result — each finding once, by its id, else its words.
+# check's result. A finding's routed copies (outputs by topic) carry no outcome
+# and are not read, so each is listed once; a result that does not parse is
+# left out and the rest are read.
 rsc_row_findings_v() {
     local _rfv_p="${4:-}" _rfv_m="" _rfv_raw="" _rfv_l _rfv_x _rfv_c
     local -a _rfv_fs=() _rfv_out=()
@@ -53,19 +55,16 @@ rsc_row_findings_v() {
     # #2480: one finding heads the row, the rest of its lines folded; several
     # are named by the id each is about, or counted (by severity when they
     # carry one), and each is listed once.
-    _rfv_l="$(jq -rn --arg prim "$_rfv_p" "$_RSC_JQ_ESC${_OPEN_ITEMS_JQ_PASSED:-def passed: false;}"'[ inputs as $r | input_filename as $fn | $r
+    local _rfv_jq="$_RSC_JQ_ESC${_OPEN_ITEMS_JQ_PASSED:-def passed: false;}"'[ inputs as $r | input_filename as $fn | $r
             | select(type == "object" and ($fn == $prim or (passed | not)))
             | ((.data.findings // .findings // [])[]? | select(type == "object")
-            | {id: (if (.id | type) == "string" and .id != "" then .id else null end),
-               sev: (if (.severity | type) == "string" then (.severity | ascii_downcase) else null end),
+            | {sev: (if (.severity | type) == "string" then (.severity | ascii_downcase) else null end),
                t: (if (.text | type) == "string" then .text
                    elif (.message | type) == "string" then
                        (if (.severity | type) == "string" then "\(.severity): " else "" end) + .message
                        + (if (.file // "unknown") != "unknown" then " (\(.file)\(if .line then ":\(.line)" else "" end))" else "" end)
                    else null end)}
-            | select(.t != null) | .t |= (gsub("\r"; "") | gsub("\n+$"; "") | esc) | select(.t | test("[^[:space:]]"))) ]
-        | (reduce .[] as $x ([]; if ($x.id != null and (map(.id) | index($x.id)) != null) or (map(.t) | index($x.t)) != null
-                                 then . else . + [$x] end)) as $f
+            | select(.t != null) | .t |= (gsub("\r"; "") | gsub("\n+$"; "") | esc) | select(.t | test("[^[:space:]]"))) ] as $f
         | if ($f | length) == 0 then ""
           elif ($f | length) == 1 then
             ($f[0].t | split("\n")) as $ls
@@ -87,7 +86,15 @@ rsc_row_findings_v() {
                else "what failed: \($f | length) findings" + (if ($cnt | length) > 0 then ": " + ($cnt | join(", ")) else "" end) end)
               + "\n<details><summary>what failed</summary>\n\n"
               + ([$f[] | "- " + (.t | gsub("\n"; "\n  "))] | join("\n")) + "\n\n</details>"
-          end' "${_rfv_fs[@]}" 2>/dev/null || true)"
+          end'
+    # A result that does not parse (one being written, cut short) is left out;
+    # the rest are still read. Only then is each file read on its own.
+    if ! _rfv_l="$(jq -rn --arg prim "$_rfv_p" "$_rfv_jq" "${_rfv_fs[@]}" 2>/dev/null)"; then
+        local -a _rfv_ok=()
+        for _rfv_x in "${_rfv_fs[@]}"; do jq -e . "$_rfv_x" >/dev/null 2>&1 && _rfv_ok+=("$_rfv_x"); done
+        _rfv_l=""
+        [[ ${#_rfv_ok[@]} -gt 0 ]] && { _rfv_l="$(jq -rn --arg prim "$_rfv_p" "$_rfv_jq" "${_rfv_ok[@]}" 2>/dev/null)" || _rfv_l=""; }
+    fi
     [[ -n "$_rfv_l" ]] || return 0
     _rsc_code_labels_v _rfv_l "$_rfv_l"
     printf -v "$1" '%s' "$_rfv_l"

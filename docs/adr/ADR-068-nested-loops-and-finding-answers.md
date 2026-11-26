@@ -213,7 +213,7 @@ On #1700 run 43617030653 the build loop ran out of rounds and `stop_run_on_fail`
 ## Amendment 2026-11-18 (#2565) — §6: done is only for what this call changed; a try that changed nothing is held to its answers
 
 - **The shared answer rules say:** "Answer done only for what you changed in this call. If the finding needs no change because your output is already right, answer wrong, and say why. If someone else must change something, answer not mine, and say who." (`stage_answer_forms`, `scripts/lib/stage-prompt.sh`.) *(Amended 2026-11-26, #2627: done is for what the stage changed in this round, in any try — below.)*
-- **A try that changed nothing is held to what it answered** (ADR-054 §6a, amended 2026-11-18): its `wrong` and `not mine` answers to its own check's findings are handed on to the stage that reads its handoff output and the round ends (§3); one to another stage's finding goes back to that judge as before; a `done` is a finding back to it. Only a try that failed and may be tried again is held so: a halting outcome halts.
+- **A try that changed nothing is held to what it answered** (ADR-054 §6a, amended 2026-11-18): its `wrong` and `not mine` answers to its own check's findings are handed on to the stage that reads its handoff output and the round ends (§3); one to another stage's finding goes back to that judge as before; a `done` is a finding back to it *(amended 2026-11-26, #2627: unless an earlier try of the stage's run changed its work — below)*. Only a try that failed and may be tried again is held so: a halting outcome halts.
 
 ## Amendment 2026-11-18 (#2565) — §6: build answers each design step as it answers each finding
 
@@ -337,7 +337,7 @@ Until now, `stage-handoff.sh` handed on a "not mine" only from a try that failed
 
 - §6 amendment 2026-11-19 (#2567: every claim is read by a check) → build done and not needed: `plugins/agent/build/tests/build-step-answers-test.sh` BS1, BS5, BS15; answers to a finding back to its judge: `tests/unit/finding-answers-test.sh`; build's "the test is wrong": `tests/unit/build-test-is-wrong-test.sh`; design [done]: `tests/unit/design-status-check-test.sh`
 
-- §6 amendment 2026-11-18 (#2565: done only for what this call changed; a try that changed nothing is held to its answers) → `tests/unit/no-change-handoff-test.sh` H8 (the rule's three sentences), H2–H4 (each answer of a try that changed nothing)
+- §6 amendment 2026-11-18 (#2565: done only for what this call changed; a try that changed nothing is held to its answers) → `tests/unit/no-change-handoff-test.sh` H8 (the rule's sentences, as amended by #2627), H2–H4 (each answer of a try that changed nothing, when no try of the stage's run changed its work)
 - §6 amendment 2026-11-18 (#2565: build answers each design step) → `plugins/agent/build/tests/build-step-answers-test.sh` BS1 (an answer right after prose is read), BS2 (a step with no answer stays open), BS5 (not needed needs its why)
 
 - §6 amendment 2026-11-16 (#2554: the before-run says only what it saw) → `tests/unit/test-author-before-run-test.sh` B4, B12

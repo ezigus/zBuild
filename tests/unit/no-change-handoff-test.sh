@@ -178,9 +178,8 @@ assert_eq "[H6] ...and its round goes on" "false" "$(_ends)"
 # ── H12 ──────────────────────────────────────────────────────────────────────
 _same; FIRST=1 OUTCOMES="unusable" ANSWER="$DONE" _dispatch ans
 assert_eq "[H12] try 1 changed its work, try 2 nothing: two tries" "2" "$(_runs ans)"
-if grep -qF "answered done, but this try changed nothing" <<< "$(jq -r '[.data.findings[]?.text] | join("\n")' "$A/answerer-result.json" 2>/dev/null)"; then
-    assert_fail "[H12] its done stands: the earlier try's change counts" "$(cat "$A/answerer-result.json")"
-else assert_pass "[H12] its done stands: the earlier try's change counts"; fi
+assert_eq "[H12] its done stands: its result holds only its own finding, none sent back" "1" \
+    "$(jq -r '[.data.findings[]?.n] | map(tostring) | join(" ")' "$A/answerer-result.json" 2>/dev/null)"
 _same; FIRST=1 OUTCOMES="unusable" ANSWER="$WRONG" _dispatch ans
 assert_contains "[H12] ...and its wrong is still handed on" "$(_handed)" "design must rewrite SPEC-3"
 # ── H10 / H11 (review on #2565) ──────────────────────────────────────────────
@@ -234,6 +233,7 @@ assert_contains "[H7] design is shown what test-author handed on" "$_pw" "design
 # ── H8 ───────────────────────────────────────────────────────────────────────
 _forms="$(stage_answer_forms)"
 assert_contains "[H8] done is for what the stage changed in this round, in any try" "$_forms" "Answer done for what this stage changed for it in this round, in this try or an earlier one"
+assert_contains "[H8] ...and an earlier try's change is said to be one" "$_forms" "when an earlier try made the change, say so"
 if grep -qF "only for what you changed in this call" <<< "$_forms"; then assert_fail "[H8] ...not only this call" "$_forms"
 else assert_pass "[H8] ...not only this call"; fi
 assert_contains "[H8] already right is wrong, and why" "$_forms" "If the finding needs no change because your output is already right, answer wrong, and say why."

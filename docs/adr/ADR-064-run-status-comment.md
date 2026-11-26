@@ -364,11 +364,11 @@ On #2533 run 45403848593 the engine stopped the run because the test stage chang
 
 ## Amendment 2026-11-26 (#2627) — §4: a row shows every finding its try wrote
 
-- **§4: a stage's row reads each of its results, not only its main one.** A try that did not pass shows the findings of its primary output and of each other JSON output its manifest declares that this run of the stage wrote (`stage_result_is_current`, ADR-068 §8) and that did not pass, as `open_items_json` reads a check's result; each finding once, by its id, else its words (`rsc_row_findings_v`, `scripts/lib/run-status-text.sh`). A map member's row still reads its own result only. On #1722 run 45872552515 the test row said "9 findings": the acceptance check's finding, in `acceptance-gate-result.json`, was the tenth.
+- **§4: a stage's row reads each of its results, not only its main one.** A try that did not pass shows the findings of its primary output and of each other JSON output its manifest declares that this run of the stage wrote (`stage_result_is_current`, ADR-068 §8) and that did not pass, as `open_items_json` reads a check's result (`rsc_row_findings_v`, `scripts/lib/run-status-text.sh`). A finding's routed copies (outputs by topic) carry no outcome and are not read, so each finding is listed once. A result that does not parse is left out and the rest are read. On #1722 run 45872552515 the test row said "9 findings": the acceptance check's finding, in `acceptance-gate-result.json`, was the tenth.
 
 ## Enforced by
 
-- §4 amendment 2026-11-26 (#2627: every finding a try wrote) → `tests/unit/status-row-findings-test.sh` W9 (the suite's and the acceptance check's, each once), W10 (an earlier try's result is not shown)
+- §4 amendment 2026-11-26 (#2627: every finding a try wrote) → `tests/unit/status-row-findings-test.sh` W9 (the suite's and the acceptance check's; a routed copy is not read), W10 (an earlier run's result is not shown), W11 (one that does not parse is left out), W12 (an extra result that passed is not shown)
 
 - §4 amendment 2026-11-25 (#2611: each finding once; a member's own reason) → `tests/unit/stage-summary-says-what-test.sh` S6, S7; `tests/integration/cycle-map-member-test.sh` M5, M6
 
