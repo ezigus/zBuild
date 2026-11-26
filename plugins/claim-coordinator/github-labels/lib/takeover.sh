@@ -219,9 +219,14 @@ claim_takeover_run() {
     fi
     # The claim is this run's again before anything says so (review of #2616):
     # a run that took it in between keeps it, and nothing is marked.
-    local cl=""
-    cl="$("$claim_fn" "$issue" 2>/dev/null)" || cl=""
+    local cl="" crc=0
+    cl="$("$claim_fn" "$issue" 2>/dev/null)" || crc=$?
     if [[ ! "$cl" =~ \"acquired\"[[:space:]]*:[[:space:]]*true ]]; then
+        # A store that could not be written is not another run's claim (PR review).
+        if (( crc != 0 )) || [[ "$cl" =~ \"reason\" || -z "$cl" ]]; then
+            printf 'zbuild_claim_acquire: claiming issue #%s again failed once %s'"'"'s stale claim was released (rc=%s) — refused; the issue is now unclaimed\n' "$issue" "$them" "$crc" >&2
+            printf '{"taken_over":false,"failed":"reclaim_failed"}\n'; return 0
+        fi
         printf 'zbuild_claim_acquire: another run claimed issue #%s once %s'"'"'s stale claim was released — refused\n' "$issue" "$them" >&2
         printf '{"taken_over":false,"failed":"claimed_by_another"}\n'; return 0
     fi

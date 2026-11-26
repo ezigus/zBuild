@@ -47,6 +47,8 @@
 #                refused, unmarked
 #   TR18 [change] a coordinator with no takeover hook refuses, saying so
 #   TR19 [change] a mark that cannot be made is said, and the takeover stands
+#   TR20 [change] (PR review) claiming again failing on the store is said as
+#                such, not as another run's claim
 # The design's ids: DSHBT-3 TR1, DSHBT-4 TR2, DSHBT-5 TR7, DSHBT-15 TR11, DSHBT-16 TR5.
 # Since #2616 the coordinator is the real github-labels plugin, its labels in the
 # local store (ZBUILD_CLAIM_BACKEND=local-fs) and every GitHub read and write of
@@ -273,9 +275,8 @@ assert_eq "[TR14] taken over" "0" "$_RC"
 _p14="$(jq -r '.body' "$F/patched" 2>/dev/null)"
 assert_eq "[TR14] the old holder's comment is the one edited" "1" "$(cat "$F/patched-id" 2>/dev/null)"
 assert_contains "[TR14] ...the rest of it kept" "$_p14" "### zbuild run \`old\` · issue #9"
-_lacks14p() { if [[ "$2" == *"$3"* ]]; then assert_fail "$1" "it has: $3"; else assert_pass "$1"; fi; }
-_lacks14p "[TR14] ...its holder line gone: a refusal never names a run that lost the claim" "$_p14" "<!-- zbuild-holder: $THEIRS -->"
 _lacks14() { if [[ "$2" == *"$3"* ]]; then assert_fail "$1" "it has: $3"; else assert_pass "$1"; fi; }
+_lacks14 "[TR14] ...its holder line gone: a refusal never names a run that lost the claim" "$_p14" "<!-- zbuild-holder: $THEIRS -->"
 _lacks14 "[TR14] ...it no longer says still running" "$_p14" "still running —"
 assert_contains "[TR14] ...it says the claim was taken over, by this run" "$_p14" "taken over — "
 assert_contains "[TR14] ...naming this run" "$_p14" "by $ME"
@@ -322,6 +323,17 @@ _fresh; _iso_ago 4000 > "$F/hb"; : > "$F/fail-patch"
 _acq
 assert_eq "[TR19] the takeover stands" "0" "$_RC"
 assert_contains "[TR19] ...and the failed mark is said" "$_OUT" "could not be marked as taken over"
+
+print_test_section "TR20: claiming again fails on the store"
+_fresh; _iso_ago 4000 > "$F/hb"
+_d20="$CR/claim-coordinator/github-labels/plugin.sh"; cp "$_d20" "$F/plugin20.keep"
+printf '%s\n' 'claim_coordinator_release() { : > "$ZBUILD_CLAIM_STORE/9/labels.txt"; chmod a-w "$ZBUILD_CLAIM_STORE/9" "$ZBUILD_CLAIM_STORE/9/labels.txt"; return 0; }' >> "$_d20"
+_acq
+cp "$F/plugin20.keep" "$_d20"
+assert_eq "[TR20] refused" "1" "$_RC"
+assert_contains "[TR20] ...saying claiming again failed" "$_OUT" "claiming issue #9 again failed"
+_lacks14 "[TR20] ...not that another run claimed it" "$_OUT" "another run claimed issue"
+assert_contains "[TR20] ...with the event's reason" "$(cat "$ZBUILD_EVENTS_JSONL")" "reclaim_failed"
 
 cleanup_test_env
 print_test_results
