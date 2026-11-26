@@ -372,6 +372,7 @@ On #2533 run 45403848593 the engine stopped the run because the test stage chang
   - exactly one heartbeat line per body → `tests/unit/run-status-comment-heartbeat-test.sh` DSHBT-1
   - heartbeat line without stage when no stage active → `tests/unit/run-status-comment-heartbeat-test.sh` DSHBT-1 (no-stage)
   - rsc_holder_line_v unaffected by heartbeat line before `###` → `tests/unit/run-status-comment-heartbeat-test.sh` DSHBT-13
+  - a finished body keeps no heartbeat line and says its end (`NR <= 4`) → `tests/unit/run-status-comment-heartbeat-test.sh` DSHBT-18
 
 - 2026-11-23 amendment (#2598: a group's summary row follows its members) → `tests/unit/status-group-row-order-test.sh` G1, G2
 

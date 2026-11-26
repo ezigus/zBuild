@@ -275,28 +275,6 @@ rsc_render_row() {
     printf '%s' "$line"
 }
 
-# ─── rsc_heartbeat_at_v <var> <comment_body> — parse ISO8601 from heartbeat line ─
-# Pure: extracts the timestamp from the first `still running — <ts>` line in the
-# body, writing it to <var>. Writes "" when no heartbeat line is found.
-rsc_heartbeat_at_v() {
-    local -n _rha="$1"
-    _rha=""
-    local _rha_l
-    while IFS= read -r _rha_l; do
-        case "$_rha_l" in
-            "still running — "*)
-                local _rha_rest="${_rha_l#still running — }"
-                local _rha_ts="${_rha_rest%% *}"
-                # Accept only ISO8601 Z-terminated timestamps
-                [[ "$_rha_ts" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || continue
-                _rha="$_rha_ts"
-                return 0
-                ;;
-        esac
-    done <<< "$2"
-    return 0
-}
-
 # ─── rsc_render_header <model_json> <state_dir> [status_override] ───────────
 rsc_render_header() {
     local model="$1" state_dir="$2" override="${3:-}"

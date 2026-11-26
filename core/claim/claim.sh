@@ -117,97 +117,10 @@ zbuild_claim_acquire() {
             _ZBUILD_CLAIM_RETRIED=1 zbuild_claim_acquire "$issue" "$state_dir" || _zca_rc=$?
             return "$_zca_rc"
         elif [[ -z "$_zca_own" && -z "${_ZBUILD_CLAIM_RETRIED:-}" ]]; then
-            # ADR-005 §3 (#2533): cross-machine stale takeover.
-            # Lazily source run-status-comment.sh so its functions are available;
-            # the loaded guard prevents double-sourcing.
-            if [[ -z "${_ZBUILD_RUN_STATUS_COMMENT_LOADED:-}" ]]; then
-                local _zca_rsc_path="${_ZBUILD_ROOT:-}/scripts/lib/run-status-comment.sh"
-                if [[ ! -f "$_zca_rsc_path" ]]; then
-                    printf 'zbuild_claim_acquire: run-status-comment.sh not found (%s) — refusing cross-machine takeover\n' \
-                        "$_ZBUILD_CLAIM_THEIR_HOLDER" >&2
-                    return 1
-                fi
-                # shellcheck source=../../scripts/lib/run-status-comment.sh
-                if ! source "$_zca_rsc_path" 2>/dev/null; then
-                    printf 'zbuild_claim_acquire: run-status-comment.sh could not be loaded (%s) — refusing cross-machine takeover (%s)\n' \
-                        "$_zca_rsc_path" "$_ZBUILD_CLAIM_THEIR_HOLDER" >&2
-                    return 1
-                fi
-                if ! declare -F rsc_takeover_note_post >/dev/null 2>&1; then
-                    printf 'zbuild_claim_acquire: rsc_takeover_note_post not defined — refusing cross-machine takeover (%s)\n' \
-                        "$_ZBUILD_CLAIM_THEIR_HOLDER" >&2
-                    return 1
-                fi
-            fi
-            # Determine the age of the claim from the heartbeat line, or fall back
-            # to the label-added timestamp. Call via temp file so the functions run in
-            # THIS shell (a $(...) subshell would prevent mock side-effects from
-            # propagating back in tests, and the functions need to touch globals).
-            local _zca_slug; _zca_slug="$(zbuild_repo_slug "${_ZBUILD_ROOT:-$PWD}" 2>/dev/null || true)"
-            local _zca_hb_tf; _zca_hb_tf="$(mktemp "${TMPDIR:-$state_dir}/claim-hb.XXXXXX" 2>/dev/null)" || _zca_hb_tf=""
-            local _zca_hb_ts=""
-            rsc_heartbeat_find "$state_dir" "$_zca_slug" "$issue" > "${_zca_hb_tf:-/dev/null}" 2>/dev/null || true
-            [[ -n "$_zca_hb_tf" ]] && { IFS= read -r -d '' _zca_hb_ts < "$_zca_hb_tf" || true; rm -f "$_zca_hb_tf"; }
-            local _zca_ref_ts="$_zca_hb_ts"
-            if [[ -z "$_zca_ref_ts" ]]; then
-                local _zca_lb_tf; _zca_lb_tf="$(mktemp "${TMPDIR:-$state_dir}/claim-lb.XXXXXX" 2>/dev/null)" || _zca_lb_tf=""
-                rsc_label_added_at "$state_dir" "$_zca_slug" "$issue" > "${_zca_lb_tf:-/dev/null}" 2>/dev/null || true
-                [[ -n "$_zca_lb_tf" ]] && { IFS= read -r -d '' _zca_ref_ts < "$_zca_lb_tf" || true; rm -f "$_zca_lb_tf"; }
-            fi
-            if [[ -z "$_zca_ref_ts" ]]; then
-                # No timestamp available — fail closed rather than taking over blindly.
-                printf 'zbuild_claim_acquire: no heartbeat or label-added timestamp for %s — refusing (fail closed)\n' \
-                    "$_ZBUILD_CLAIM_THEIR_HOLDER" >&2
-                return 1
-            fi
-            local _zca_ref_epoch=0
-            _rsc_epoch_to _zca_ref_epoch "$_zca_ref_ts" 2>/dev/null || true
-            local _zca_now; _zca_now="$(date +%s)"
-            local _zca_age=$(( _zca_now - _zca_ref_epoch ))
-            if (( _zca_ref_epoch <= 0 || _zca_age < 0 )); then
-                printf 'zbuild_claim_acquire: could not parse timestamp %s — refusing (fail closed)\n' \
-                    "$_zca_ref_ts" >&2
-                return 1
-            fi
-            if (( _zca_age >= ZBUILD_CLAIM_STALE_S )); then
-                # Stale: post a takeover note (required — RQHBT-4), then release and re-acquire.
-                # Refuse if the note cannot be posted: a takeover without a note violates RQHBT-4.
-                local _zca_me; _zbuild_claim_holder_v _zca_me
-                if ! rsc_takeover_note_post "$state_dir" "$_zca_slug" "$issue" "$_ZBUILD_CLAIM_THEIR_HOLDER" "$_zca_me" 2>/dev/null; then
-                    printf 'zbuild_claim_acquire: rsc_takeover_note_post failed — refusing cross-machine takeover (%s)\n' \
-                        "$_ZBUILD_CLAIM_THEIR_HOLDER" >&2
-                    return 1
-                fi
-                # Two runs may judge the same claim stale at once: only the run
-                # whose note came first goes on; the other releases nothing.
-                local _zca_first=""
-                if ! rsc_takeover_first_v _zca_first "$state_dir" "$_zca_slug" "$issue" "$_ZBUILD_CLAIM_THEIR_HOLDER" \
-                   || [[ -z "$_zca_first" ]]; then
-                    printf 'zbuild_claim_acquire: could not read the takeover notes back — refusing cross-machine takeover (%s)\n' \
-                        "$_ZBUILD_CLAIM_THEIR_HOLDER" >&2
-                    return 1
-                fi
-                if [[ "$_zca_first" != "$_zca_me" ]]; then
-                    printf 'zbuild_claim_acquire: another run took over first: %s — refused (%s was stale)\n' \
-                        "$_zca_first" "$_ZBUILD_CLAIM_THEIR_HOLDER" >&2
-                    return 1
-                fi
-                if ! plugin_hook_call "$_ZBUILD_COORDINATOR_DIR" release "$issue" >/dev/null 2>&1; then
-                    eb_emit_event "pipeline.claim.takeover_failed" "issue=$issue" \
-                        "holder=$_ZBUILD_CLAIM_THEIR_HOLDER" "reason=release_failed" 2>/dev/null || true
-                    printf 'zbuild_claim_acquire: posted the takeover note, but releasing %s'"'"'s claim failed — refused; the claim is still theirs\n' \
-                        "$_ZBUILD_CLAIM_THEIR_HOLDER" >&2
-                    return 1
-                fi
-                local _zca_rc2=0
-                _ZBUILD_CLAIM_RETRIED=1 zbuild_claim_acquire "$issue" "$state_dir" || _zca_rc2=$?
-                return "$_zca_rc2"
-            else
-                # Fresh: refuse, naming the holder.
-                printf 'zbuild_claim_acquire: issue #%s is held by %s (not stale yet) — refused\n' \
-                    "$issue" "$_ZBUILD_CLAIM_THEIR_HOLDER" >&2
-                return 1
-            fi
+            # ADR-005 §3 (#2533): cross-machine stale takeover. Its GitHub reads
+            # and writes are scripts/lib/claim-takeover.sh, loaded here.
+            _zbuild_claim_takeover "$issue" "$state_dir"
+            return $?
         fi
     fi
     # Refused — holder named in _ZBUILD_CLAIM_THEIR_HOLDER; print it for the caller.
@@ -244,4 +157,88 @@ zbuild_claim_release() {
         eb_emit_event "pipeline.claim.release_failed" "issue=$issue" "rc=$rc" 2>/dev/null || true
     fi
     return 0
+}
+
+# _zbuild_claim_stale_s_v <var> — ZBUILD_CLAIM_STALE_S as a number; one that is
+# not (e.g. "30m") is the default, 1800, not 0 (#2533 review: 0 made every
+# claim stale).
+_zbuild_claim_stale_s_v() {
+    local -n _zcs="$1"; _zcs="${ZBUILD_CLAIM_STALE_S:-1800}"
+    [[ "$_zcs" =~ ^[0-9]+$ ]] || _zcs=1800
+}
+
+# _zbuild_claim_takeover <issue> <state_dir> — ADR-005 §3 (#2533): another
+# machine's (or CI's) claim, refused: taken over when GitHub last saw it alive
+# ZBUILD_CLAIM_STALE_S or more ago (claim_age_v), else refused. rc as
+# zbuild_claim_acquire. Every way it cannot tell refuses (fail closed).
+_zbuild_claim_takeover() {
+    local issue="$1" state_dir="$2" them="$_ZBUILD_CLAIM_THEIR_HOLDER"
+    if ! declare -F claim_age_v >/dev/null 2>&1; then
+        local lib="${_ZBUILD_ROOT:-}/scripts/lib/claim-takeover.sh"
+        # shellcheck source=../../scripts/lib/claim-takeover.sh
+        if [[ ! -f "$lib" ]] || ! source "$lib" 2>/dev/null || ! declare -F claim_age_v >/dev/null 2>&1; then
+            printf 'zbuild_claim_acquire: claim-takeover.sh could not be loaded (%s) — refusing to take over %s\n' "$lib" "$them" >&2
+            return 1
+        fi
+    fi
+    local slug; claim_takeover_slug_v slug
+    if [[ -z "$slug" ]]; then
+        printf 'zbuild_claim_acquire: no repository to read the claim from (no GITHUB_REPOSITORY, no origin here) — refusing to take over %s\n' "$them" >&2
+        return 1
+    fi
+    local at=0 arc=0 stale now age
+    claim_age_v at "$state_dir" "$slug" "$issue" "$them" || arc=$?
+    if (( arc == 1 )); then
+        printf 'zbuild_claim_acquire: could not read the claim'"'"'s age from GitHub (%s#%s) — refusing to take over %s\n' "$slug" "$issue" "$them" >&2
+        return 1
+    elif (( arc != 0 )); then
+        printf 'zbuild_claim_acquire: %s has no run-status comment and no label time on #%s — refusing (fail closed)\n' "$them" "$issue" >&2
+        return 1
+    fi
+    _zbuild_claim_stale_s_v stale
+    printf -v now '%(%s)T' -1
+    age=$(( now - at ))
+    if (( age < stale )); then
+        printf 'zbuild_claim_acquire: issue #%s is held by %s (not stale yet: last seen %ss ago, stale at %ss) — refused\n' \
+            "$issue" "${them:-an unnamed holder}" "$(( age < 0 ? 0 : age ))" "$stale" >&2
+        return 1
+    fi
+    # Stale: a note (R4), then — only when this run's note is the first since the
+    # claim's time — release and claim. A run that does not go on deletes its note.
+    local me id="" first=""
+    _zbuild_claim_holder_v me
+    if ! claim_takeover_note_post_v id "$state_dir" "$slug" "$issue" "$them" "$me"; then
+        printf 'zbuild_claim_acquire: the takeover note could not be posted — refusing to take over %s\n' "$them" >&2
+        return 1
+    fi
+    if ! claim_takeover_first_v first "$state_dir" "$slug" "$issue" "$them" "$at" || [[ -z "$first" ]]; then
+        claim_takeover_note_delete "$state_dir" "$slug" "$issue" "$id"
+        printf 'zbuild_claim_acquire: could not read the takeover notes back — refusing to take over %s\n' "$them" >&2
+        return 1
+    fi
+    if [[ "$first" != "$me" ]]; then
+        claim_takeover_note_delete "$state_dir" "$slug" "$issue" "$id"
+        printf 'zbuild_claim_acquire: another run took over first: %s — refused (%s was stale)\n' "$first" "$them" >&2
+        return 1
+    fi
+    if ! plugin_hook_call "$_ZBUILD_COORDINATOR_DIR" release "$issue" >/dev/null 2>&1; then
+        claim_takeover_note_delete "$state_dir" "$slug" "$issue" "$id"
+        eb_emit_event "pipeline.claim.takeover_failed" "issue=$issue" "holder=$them" "reason=release_failed" 2>/dev/null || true
+        printf 'zbuild_claim_acquire: releasing %s'"'"'s claim failed — refused; the claim is still theirs\n' "$them" >&2
+        return 1
+    fi
+    eb_emit_event "pipeline.claim.taken_over" "issue=$issue" "holder=$them" "age_s=$age" 2>/dev/null || true
+    printf 'zbuild_claim_acquire: took over a stale claim from %s (last seen %ss ago) on issue #%s\n' "$them" "$age" "$issue" >&2
+    local rc=0
+    _ZBUILD_CLAIM_RETRIED=1 zbuild_claim_acquire "$issue" "$state_dir" || rc=$?
+    return "$rc"
+}
+
+# zbuild_claim_heartbeat_say <status-comment-pid> — R5 (#2533): a run that
+# posts no run-status comment says its claim has no heartbeat, so another
+# machine ages it from when its label was added. Nothing when it has one, or
+# holds no claim.
+zbuild_claim_heartbeat_say() {
+    [[ -n "${1:-}" || -z "${_ZBUILD_CLAIM_ACQUIRED:-}" ]] && return 0
+    printf 'zbuild: this run posts no run-status comment, so its claim has no heartbeat — another machine ages it from when its label was added\n' >&2
 }

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Tests: run-status comment heartbeat — DSHBT-1, DSHBT-2, DSHBT-13, DSHBT-17
-# DSHBT-17 (#2533 review): the heartbeat the sidecar writes is the one the claim
-# reads — rsc_heartbeat_at_v and rsc_heartbeat_find, run for real on a body the
-# sidecar sent.
+# DSHBT-17 (#2533 review): the comment the sidecar edits is the one the claim
+# ages — claim_age_v, run for real on a body the sidecar sent, finds it by its
+# holder line and reads GitHub's time of its last edit.
 # Heartbeat line in render, heartbeat timer in the sidecar loop, and
 # rsc_holder_line_v compatibility with the new body layout (ADR-064, #2533).
 set -uo pipefail
@@ -257,17 +257,20 @@ assert_eq "[DSHBT-1] body contains exactly one 'still running — ' line" \
 # ═══════════════════════════════════════════════════════════════════════════
 # DSHBT-17 (#2533 review): the heartbeat written is the heartbeat read
 # ═══════════════════════════════════════════════════════════════════════════
-print_test_section "DSHBT-17: the heartbeat the sidecar sent is the one the claim reads"
-_hb17=""; rsc_heartbeat_at_v _hb17 "$heartbeat_body"
-assert_contains_regex "[DSHBT-17] rsc_heartbeat_at_v reads the sent body's timestamp" \
-    "$_hb17" "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
-assert_contains "[DSHBT-17] ...the one on its heartbeat line" "$fv" "still running — $_hb17"
-rsc_gh() {   # the GitHub call's boundary: the comments list, holding the sent body
-    jq -cn --arg body "$heartbeat_body" \
-        '[{"user":{"login":"github-actions[bot]"},"author_association":"","body":$body}]' > "$2"
+print_test_section "DSHBT-17: the comment the sidecar edits is the one the claim ages"
+# shellcheck source=../../scripts/lib/claim-takeover.sh
+source "$REPO_ROOT/scripts/lib/claim-takeover.sh"
+rsc_gh() {   # the GitHub call's boundary: the comments list holds the sent body, edited at 12:30
+    case "$*" in
+        *"/comments"*) jq -cn --arg body "$heartbeat_body" \
+            '[{"user":{"login":"github-actions[bot]"},"author_association":"","body":$body,"updated_at":"2026-11-24T12:30:00Z"}]' > "$2" ;;
+        *) printf '[]\n' > "$2" ;;
+    esac
 }
-assert_eq "[DSHBT-17] rsc_heartbeat_find reads it back from the issue's comments" \
-    "$_hb17" "$(rsc_heartbeat_find "$TEST_TEMP_DIR" testuser/testrepo 90000099)"
+_at17=0; _rc17=0
+claim_age_v _at17 "$TEST_TEMP_DIR" testuser/testrepo 90000099 "run_id=r-hb machine=testbox pid=1" || _rc17=$?
+assert_eq "[DSHBT-17] the claim finds the sidecar's comment by its holder line" "0" "$_rc17"
+assert_eq "[DSHBT-17] ...and ages it from GitHub's time of its last edit" "$(jq -n '"2026-11-24T12:30:00Z" | fromdateiso8601')" "$_at17"
 unset -f rsc_gh
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -318,6 +321,16 @@ if grep -qF "now:" <<< "$ns_fv"; then
 else
     assert_pass "[DSHBT-1] no-stage: heartbeat line does not include '— now:' when no stage is current"
 fi
+
+print_test_section "DSHBT-18 (#2533 review): the finished body keeps no heartbeat; the interval is a number"
+_fin="$(rsc_finalize_body "$heartbeat_body" complete 2>/dev/null)"
+assert_contains "[DSHBT-18] a finished body says its end in the header" "$_fin" "· **complete**"
+_hb18=0; while IFS= read -r _l; do [[ "$_l" == "still running — "* ]] && _hb18=$(( _hb18 + 1 )); done <<< "$_fin"
+assert_eq "[DSHBT-18] ...and holds no heartbeat line" "0" "$_hb18"
+_iv=""; ZBUILD_CLAIM_HEARTBEAT_S=10m _rsc_heartbeat_interval_v _iv
+assert_eq "[DSHBT-18] an interval that is not a number is the default, 600" "600" "$_iv"
+_iv=""; ZBUILD_CLAIM_HEARTBEAT_S=42 _rsc_heartbeat_interval_v _iv
+assert_eq "[DSHBT-18] ...a number is kept" "42" "$_iv"
 
 # Cleanup
 unset ZBUILD_CLAIM_HEARTBEAT_S ZBUILD_STATUS_COMMENT_POLL ZBUILD_STATUS_COMMENT_MIN_INTERVAL

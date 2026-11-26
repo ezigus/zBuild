@@ -72,28 +72,28 @@ The claim is advisory across machines; this machine's admission lock still seria
   to GitHub every `ZBUILD_CLAIM_HEARTBEAT_S` seconds (default 600) even when no new stage events have
   arrived. The first visible line of a running body is `still running — <ISO8601> — now: <stage>` (or
   without the stage suffix when no stage is active), updated on every flush.
-- **§3b Staleness threshold.** A cross-machine claim is considered stale when its heartbeat timestamp
-  is at least `ZBUILD_CLAIM_STALE_S` seconds old (default 1800). `ZBUILD_CLAIM_STALE_S` and
-  `ZBUILD_CLAIM_HEARTBEAT_S` are set with `:=` (assign-if-unset) in `core/claim/claim.sh`.
-- **§3c Always-claimed when no heartbeat.** A claim with no heartbeat line in the run-status comment
-  falls back to the `zbuild:claimed` label's `added` event timestamp (GitHub issues events API). If
-  that timestamp is also unavailable (API error), the run refuses rather than taking over blindly
-  (fail closed).
-- **§3d Stale takeover.** When a cross-machine claim's reference timestamp (heartbeat or label-added)
-  is at least `ZBUILD_CLAIM_STALE_S` old: `rsc_takeover_note_post` posts "took over a stale claim
-  from <holder> — by <this run>" as a new issue comment, the old claim is released, and the new run
-  acquires once. The takeover is attempted at most once per `zbuild_claim_acquire` call chain
-  (`_ZBUILD_CLAIM_RETRIED` guard).
-  - **Two runs, one stale claim:** after posting its note the run reads the issue's takeover notes for
-    that holder back (`rsc_takeover_first_v`, trusted authors only, as the heartbeat is read). Only
-    the run whose note came first goes on; another refuses, naming it, and releases nothing. Notes
-    that cannot be read back refuse too.
-  - **A release that fails after the note** is said — `pipeline.claim.takeover_failed`
-    (`reason=release_failed`) and a message that the note was posted and the claim is still theirs —
-    and the run refuses.
-- **§3e Lazy source.** `zbuild_claim_acquire` sources `run-status-comment.sh` lazily when a
-  cross-machine stale check is needed; it refuses if the file is absent, cannot be loaded (saying
-  so), or does not define `rsc_takeover_note_post`.
+- **§3b Staleness threshold.** A cross-machine claim is stale when GitHub last saw it alive
+  `ZBUILD_CLAIM_STALE_S` or more seconds ago (default 1800). Its time is GitHub's, never a machine's
+  (`claim_age_v`, `scripts/lib/claim-takeover.sh`): the later of the holder's run-status comment's last
+  edit (`updated_at` — the heartbeat edits it; the comment is the trusted one whose holder line names
+  the holder) and the `zbuild:claimed` label's last added time. `ZBUILD_CLAIM_STALE_S` and
+  `ZBUILD_CLAIM_HEARTBEAT_S` are set with `:=` (assign-if-unset) in `core/claim/claim.sh`; a value that
+  is not a number is its default, never 0.
+- **§3c Always claimed; a claim with no heartbeat.** A run that posts no run-status comment says its
+  claim has no heartbeat (`zbuild_claim_heartbeat_say`), and is aged from its label's added time. A
+  read of either time that fails, no repository to read from (`GITHUB_REPOSITORY`, else the run's own
+  origin — the coordinator's), or neither time existing, refuses (fail closed): never the label's
+  time alone because the comments could not be read.
+- **§3d Stale takeover.** A stale claim: a note "took over a stale claim from `<holder>` — by
+  `<this run>`" is posted; then the trusted takeover notes for that holder posted at or after the
+  claim's time are read back (`claim_takeover_first_v`). Only the run whose note is first (GitHub's
+  `created_at`, then id) releases the claim and takes it — once per call chain
+  (`_ZBUILD_CLAIM_RETRIED`) — saying so (`pipeline.claim.taken_over`, and a line). A run that does not
+  go on deletes its note and refuses: another run's note came first (named), the notes could not be
+  read back, or the release failed (`pipeline.claim.takeover_failed`, `reason=release_failed`). A note
+  that cannot be posted refuses.
+- **§3e Lazy load.** `zbuild_claim_acquire` loads `scripts/lib/claim-takeover.sh` only for a
+  cross-machine claim it was refused; a library that is absent or cannot be loaded refuses, saying so.
 
 ### §4 — Finding and calling the coordinator
 
@@ -200,19 +200,16 @@ A claim hook whose reply says `"acquired": true` holds the claim, whatever the h
 
 - §3 amendment 2026-11-24 (#2533: heartbeat interval, staleness threshold, stale takeover, label-added fallback):
   - §3a heartbeat interval default (600 s) → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-7
-  - §3b staleness threshold default (1800 s) → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-8
-  - §3b stale takeover after `ZBUILD_CLAIM_STALE_S` → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-4
-  - §3b fresh claim refused → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-3
-  - §3c label-added fallback → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-5
-  - §3d takeover note posted → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-4
-  - §3 same-machine dead-pid path runs before heartbeat check → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-6
-  - §3 unclaimed issue acquired without heartbeat → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-12
-  - §3d `rsc_takeover_note_post` failure → refuse (rc=1) → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-15
-  - §3e lazy source refusal (file absent or function not defined) → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-16
-  - §3a §3b the heartbeat written is the one read (no stub) → `tests/unit/run-status-comment-heartbeat-test.sh` DSHBT-17; `tests/unit/claim-takeover-real-test.sh` TR1, TR2
-  - §3d two runs, one stale claim: the first note wins → `tests/unit/claim-takeover-real-test.sh` TR3
-  - §3d a release that fails after the note is said → `tests/unit/claim-takeover-real-test.sh` TR4
-  - §3e a library that cannot be loaded is said → `tests/unit/claim-takeover-real-test.sh` TR5
+  - §3b staleness threshold default (1800 s) → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-8; a value that is not a number → `tests/unit/claim-takeover-real-test.sh` TR9, `tests/unit/run-status-comment-heartbeat-test.sh` DSHBT-18
+  - §3b fresh claim refused, named, with its age → `tests/unit/claim-takeover-real-test.sh` TR1 (DSHBT-3)
+  - §3b GitHub's time of the holder's comment, found by its holder line → `tests/unit/run-status-comment-heartbeat-test.sh` DSHBT-17
+  - §3b the later of the comment and the label → `tests/unit/claim-takeover-real-test.sh` TR7 (DSHBT-5)
+  - §3c no heartbeat said; a failed read, no repository refuse → `tests/unit/claim-takeover-real-test.sh` TR10, TR6, TR8
+  - §3d stale takeover, the note, said → `tests/unit/claim-takeover-real-test.sh` TR2 (DSHBT-4)
+  - §3d the first note since the claim's time wins; an older or untrusted one does not; the loser deletes its note → `tests/unit/claim-takeover-real-test.sh` TR3
+  - §3d a release that fails after the note; a note that cannot be posted → `tests/unit/claim-takeover-real-test.sh` TR4, TR11 (DSHBT-15)
+  - §3e a library that cannot be loaded → `tests/unit/claim-takeover-real-test.sh` TR5 (DSHBT-16)
+  - §3 same-machine dead-pid path and an unclaimed issue never reach the takeover → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-6, DSHBT-12
 
 - §1 §3 amendment 2026-11-23 (#2589: the label always cleared; a rejected login stops the run) → `tests/unit/claim-cleanup-test.sh` CL1–CL8; `tests/unit/claim-acquire-release-test.sh` S1–S4; `tests/integration/claim-release-on-exit-test.sh` C8, C9; `tests/integration/claim-holder-status-comment-test.sh` H1 (the holder carries the pid); `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh` (the refusal gives the command)
 

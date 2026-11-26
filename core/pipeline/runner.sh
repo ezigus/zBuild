@@ -2545,6 +2545,8 @@ main() {
             "${_runner_issue:-}" "${_ZBUILD_CLAIM_THEIR_HOLDER:-unknown}" >&2
         return 1
     fi
+    # #2533 (ADR-005 §3, R5): a run with no status comment says its claim has no heartbeat.
+    zbuild_claim_heartbeat_say "$_RUNNER_STATUS_COMMENT_PID"
     trap 'exit 1' INT TERM
     [[ -z "$_RUNNER_EARLY_SIGNAL" ]] || exit 1
 
