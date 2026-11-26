@@ -1,6 +1,6 @@
 # ADR-054: Stage Contract
 
-**Status:** Accepted (2026-08-09); amended 2026-11-24 (#2607: §6 a loop member's stop is named and cleaned); amended 2026-11-24 (#2605: §6a the test stage's copies have their own git); amended 2026-11-22 (#2586: §6a progress is a change to the repository's tracked files); amended 2026-11-20 (#2573: one shared, forgiving reader of test output); amended 2026-11-18 (#2563: the run watchdog signals only the runner's own tree)
+**Status:** Accepted (2026-08-09); amended 2026-11-26 (#2616, §6: a flow with no loop names a stage's stop as a loop does); amended 2026-11-24 (#2607: §6 a loop member's stop is named and cleaned); amended 2026-11-24 (#2605: §6a the test stage's copies have their own git); amended 2026-11-22 (#2586: §6a progress is a change to the repository's tracked files); amended 2026-11-20 (#2573: one shared, forgiving reader of test output); amended 2026-11-18 (#2563: the run watchdog signals only the runner's own tree)
 **Date:** 2026-08-09
 **Issue:** #1820
 **Amended:** 2026-11-08 (#2493) — §7: a signal that arrives while a signal handler runs is ignored, never handled inside it (Amendment at the end).
@@ -768,7 +768,13 @@ Build's round is keyed by its dispatch's place as well as run, cycle and iterati
 
 On #2532 run 45231040380, the outer loop's round 2 was again "iteration 1" of the inner cycle. Its build took itself for round 1's second pass (`over 2 pass(es)`) and reported test-author's commit (+34 / -1) as its own change, though it changed nothing.
 
+## Amendment 2026-11-26 (#2616) — §6: a flow with no loop names a stage's stop
+
+A flow with no loop runs on the runner's linear path, which ended every stop as "Stage <id> failed (rc=1)": a stage that ended `misconfigured` or `broken` was not named with its reason, and one that ended `unavailable` did not abort, resumable. It now reads the stage's own word as a loop's dispatch does (#2582, #2607): `unavailable` aborts, naming the stage (`stage_stopped:<stage>:<reason>`); `misconfigured` or `broken` in the stage's own words is named with its reason in `pipeline.end`, the state and the end-of-run words.
+
 ## Enforced by
+
+- §6 amendment 2026-11-26 (#2616: the linear path names a stop) → `tests/integration/stage-stop-names-cause-test.sh` S8
 
 - §5 amendment 2026-11-23 (#2598: build's round is its own place and its own commits) → `tests/unit/build-round-summary-test.sh` R4, R5
 
