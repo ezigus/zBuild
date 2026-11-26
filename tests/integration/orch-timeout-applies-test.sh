@@ -203,6 +203,10 @@ done
 # Fails on old code (spy captures 300); passes on new code (spy captures _spec1_expected_timeout).
 print_test_section "[#1801/SPEC-1] map strategy uses template_stage_time_limit for orch_collect (runtime spy)"
 unset ZBUILD_ORCH_TIMEOUT 2>/dev/null || true
+# #2611 (ADR-063): a map group waits its limit plus the call grace plus 30 s,
+# so each element's own limits stop it first; a leaf strategy waits the limit.
+_spec1_leaf_timeout="$_spec1_expected_timeout"
+_spec1_expected_timeout=$(( _spec1_leaf_timeout + ${ZBUILD_CALL_GRACE_S:-300} + 30 ))
 _SPEC1_OC_TIMEOUT=""
 _s1m_rc=0
 _strategy_run_map "pool-map-spec1" "testjob" "testworker" \
@@ -230,6 +234,7 @@ else
         "spy got --timeout '${_SPEC1_OC_TIMEOUT:-<none>}'; old code passes ZBUILD_ORCH_TIMEOUT:-300 = 300"
 fi
 unset ZBUILD_ORCH_TIMEOUT 2>/dev/null || true
+_spec1_expected_timeout="$_spec1_leaf_timeout"
 
 # ── SPEC-1e: _orch_local_collect_results sets _ORCH_COLLECT_OUTCOME=timed_out ─
 # This is a runtime test: start a real hung process, run collect with a 2 s

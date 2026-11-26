@@ -98,7 +98,8 @@ acceptance_gate_run() {
     export ZBUILD_NEGCTL_ARTIFACT_DIR="$artifact_dir"
     # #2611 (ADR-050 §3): each per-item log type is in its own folder, emptied
     # here: a log for a SPEC or file this run does not check is not this run's.
-    rm -rf "${artifact_dir:?}/negctl" "${artifact_dir:?}/reachability" 2>/dev/null || true
+    [[ -d "$artifact_dir/negctl" || -d "$artifact_dir/reachability" ]] \
+        && { rm -rf "${artifact_dir:?}/negctl" "${artifact_dir:?}/reachability" 2>/dev/null || true; }
     # #2110: the measured per-file bound reads the declared `test_timing` input
     # (name-matched, ADR-055 §1); the libs never construct the path.
     local _timing_log=""

@@ -52,10 +52,17 @@ _zbuild_runner_set_stage_status() {
        '.stage_statuses[$id] = $st | .updated_at = $now'
 }
 
+# #2611: what this shell wrote, kept in memory too, so stage_requires_gate reads
+# a unit's status and verdict without a process (ADR-065 §5). Only a write that
+# landed is kept; a unit this shell did not write is read from the file.
+declare -gA _ZB_STATE_MEMO=()
 _update_stage_status() {
     export _ZB_STAGE_ID="$2" _ZB_STAGE_STATUS="$3"
-    locked_state_update "$1" "_zbuild_runner_set_stage_status"
+    local _uss_rc=0
+    locked_state_update "$1" "_zbuild_runner_set_stage_status" || _uss_rc=$?
+    (( _uss_rc == 0 )) && _ZB_STATE_MEMO["$1|$2|s"]="$3"
     unset _ZB_STAGE_ID _ZB_STAGE_STATUS
+    return "$_uss_rc"
 }
 
 # _set_pipeline_status <state_file> <status>
@@ -104,8 +111,11 @@ _zbuild_runner_set_stage_verdict() {
 
 _zbuild_state_set_stage_verdict() {
     export _ZB_STAGE_ID="$2" _ZB_STAGE_VERDICT="$3"
-    locked_state_update "$1" "_zbuild_runner_set_stage_verdict"
+    local _ssv_rc=0
+    locked_state_update "$1" "_zbuild_runner_set_stage_verdict" || _ssv_rc=$?
+    (( _ssv_rc == 0 )) && _ZB_STATE_MEMO["$1|$2|v"]="$3"
     unset _ZB_STAGE_ID _ZB_STAGE_VERDICT
+    return "$_ssv_rc"
 }
 
 # _zbuild_runner_write_llm_abort <state_file> [reason] [detail]

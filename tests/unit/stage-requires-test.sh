@@ -16,6 +16,8 @@
 #                between has run
 #   RQ8 [change] (review) a requires: that cannot be read refuses the template:
 #                a bad name, the block-list form, one on a loop member
+#   RQ9 [change] a unit another process recorded is read from the state file
+#                (the memory of this shell's writes holds only its own)
 #   RQ6 [change] `requires: all` means every earlier top-level unit; a stage
 #                that failed without ending the run (`blocking: false`) is not met
 #   RQ4 [change] the gate: every required stage complete with a pass → met,
@@ -155,6 +157,18 @@ rc=0; stage_requires_ahead "$SF7" 1 || rc=$?
 assert_eq "[RQ7] intake passed → go on" "0" "$rc"
 rc=0; stage_requires_ahead "$SF7" 0 || rc=$?
 assert_eq "[RQ7] nothing has run yet → go on" "0" "$rc"
+
+print_test_section "RQ9: a unit another process recorded is read from the file"
+load_template "$T6" >/dev/null 2>&1
+SF9="$TEST_TEMP_DIR/state9.json"
+jq -n '{schema_version:1, stage_statuses:{}, stage_verdicts:{}}' > "$SF9"
+( _update_stage_status "$SF9" intake complete; _zbuild_state_set_stage_verdict "$SF9" intake pass
+  _update_stage_status "$SF9" build complete; _zbuild_state_set_stage_verdict "$SF9" build fail ) >/dev/null 2>&1
+rc=0; stage_requires_gate "$SF9" pr || rc=$?
+assert_eq "[RQ9] written elsewhere: build failed → not met" "build" "${_STAGE_REQUIRES_UNMET:-}"
+( _zbuild_state_set_stage_verdict "$SF9" build pass ) >/dev/null 2>&1
+rc=0; stage_requires_gate "$SF9" pr || rc=$?
+assert_eq "[RQ9] ...and passed → met" "0" "$rc"
 
 print_test_section "RQ8: a requires: that cannot be read refuses the template"
 for _bad in "  requires: [deliv.ery]" "  requires:

@@ -19,6 +19,23 @@ _STAGE_REQUIRES_UNMET=""
 # _stage_requires_unmet_v <var> <state_file> <names> — those of <names> not
 # complete with a pass; fail closed: no state, or one jq cannot read, meets nothing.
 _stage_requires_unmet_v() {
+    local -n _sru="$1"; local _n _st _vd _ask="" _known=""
+    # A unit this shell recorded is read from memory (_ZB_STATE_MEMO, the state
+    # writers'); only the rest are read from the file.
+    for _n in $3; do
+        if [[ -n "${_ZB_STATE_MEMO["$2|$_n|s"]+x}" ]]; then
+            _st="${_ZB_STATE_MEMO["$2|$_n|s"]}"; _vd="${_ZB_STATE_MEMO["$2|$_n|v"]:-pass}"
+            [[ "$_st" == complete && ( "$_vd" == pass || "$_vd" == complete ) ]] || _known+="$_n "
+        else _ask+="$_n "; fi
+    done
+    _sru="${_known% }"
+    [[ -n "$_ask" ]] || return 0
+    local _fromfile=""
+    _stage_requires_unmet_file_v _fromfile "$2" "${_ask% }"
+    [[ -n "$_fromfile" ]] && _sru="${_sru:+$_sru }$_fromfile"
+    return 0
+}
+_stage_requires_unmet_file_v() {
     local -n _sru="$1"
     if [[ ! -s "$2" ]] || ! _sru="$(jq -r --arg n "$3" '
         . as $s | [($n | split(" ") | map(select(length > 0)))[]
