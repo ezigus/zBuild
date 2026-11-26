@@ -25,11 +25,12 @@ _LRT_SET='^[[:space:]]*(local[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)="?[^ ]*scrip
 _LRT_PATH='(bash[[:space:]]+|(^|[;&|({]|\$\(|then|do)[[:space:]]*)"?\$\{?REPO_ROOT\}?/scripts/lib/lint-[a-z0-9-]+\.sh"?'
 _LRT_END='([[:space:]]|$|[;|)&>])'
 _LRT_ROOTW='^[[:space:]]*("[^"]*"|[^][:space:];|)&<>[]+)'
+_LRT_REDIR='^[[:space:]]*[0-9]*[<>]'
 _LRT_ENV='[A-Z_]*ROOT="([^"]*)"([[:space:]]+[A-Za-z_]+=[^[:space:]]*)*[[:space:]]*$'
 _lrt_file() {
     local f="$1" l n=0 start=0 cur="" v vars=" " lint pre post root re
     # The variables this file sets to a lint's path.
-    while IFS= read -r l; do
+    while IFS= read -r l || [[ -n "$l" ]]; do
         [[ "$l" =~ $_LRT_SET ]] && vars+="${BASH_REMATCH[2]} "
     done < "$f"
     while IFS= read -r l || [[ -n "$l" ]]; do
@@ -49,7 +50,7 @@ _lrt_file() {
         [[ -n "$lint" ]] || continue
         pre="${l%%"${BASH_REMATCH[0]}"*}"; post="${l#*"${BASH_REMATCH[0]}"}"
         # The lint's root: the first word after it, unless it is a redirect.
-        root=""; [[ "$post" =~ ^[[:space:]]*[0-9]*[\<\>] ]] || { [[ "$post" =~ $_LRT_ROOTW ]] && root="${BASH_REMATCH[1]}"; }
+        root=""; [[ "$post" =~ $_LRT_REDIR ]] || { [[ "$post" =~ $_LRT_ROOTW ]] && root="${BASH_REMATCH[1]}"; }
         root="${root//\"/}"
         if [[ -n "$root" && "$root" != '$REPO_ROOT'* && "$root" != '${REPO_ROOT}'* ]]; then continue; fi
         # A root set on the command itself (X_ROOT="$FIX" bash …) is the test's own.
