@@ -107,16 +107,11 @@ extract_acceptance_block() {
             fi
         fi
     done < "$design_md"
-
-    if [[ $found_block -eq 0 ]]; then
+    # Closing fence with no trailing newline: EOF exits via $line; also catches no-block/unclosed.
+    [[ $in_block -eq 1 && "$line" == '```' ]] && in_block=0
+    if [[ $found_block -eq 0 || $in_block -eq 1 ]]; then
         return 1
     fi
-    # An opened fence with no closing ``` is malformed — a truncated block is
-    # not a valid contract (the closing fence is structural, not optional).
-    if [[ $in_block -eq 1 ]]; then
-        return 1
-    fi
-
     for spec in "${specs[@]+"${specs[@]}"}"; do
         printf '%s\n' "$spec"
     done
