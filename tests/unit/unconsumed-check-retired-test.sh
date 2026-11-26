@@ -113,8 +113,8 @@ _rc=0; ZBUILD_PLUGINS_ROOT="$PL" ZBUILD_LINT_UNCONSUMED=1 \
 assert_eq "[SPEC-1] and the lint exits clean" "0" "$_rc"
 
 # Also on the real tree, which is what CI runs.
-_rc2=0; bash "$REPO_ROOT/scripts/lib/lint-contract.sh" >/dev/null 2>&1 || _rc2=$?
-assert_eq "[SPEC-1] the real tree lints clean with no annotations left" "0" "$_rc2"
+assert_contains "[SPEC-1] npm run lint runs it over the tree (#2615: never a test)" \
+    "$(jq -r '.scripts.lint' "$REPO_ROOT/package.json")" "bash scripts/lib/lint-contract.sh"
 
 # ─── SPEC-2: a declared inputs: block is refused as retired ──────────────────
 print_test_section "2. a stage declaring inputs: is refused as retired"

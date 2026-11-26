@@ -533,11 +533,13 @@ zb_test_repo_spy() {
 }
 
 # zb_test_repo_spy_hits <log> <dir> — the logged calls that ran in <dir> or
-# named it with -C.
+# named it or a path under it. (A call by absolute path, /usr/bin/git, is not
+# seen: the spy is on PATH.)
 zb_test_repo_spy_hits() {
     local l
     while IFS= read -r l; do
-        [[ "${l%% :: *}" == "$2" || "${l%% :: *}" == "$2/"* || "$l" == *" :: "*"-C $2 "* || "$l" == *" :: "*"-C $2" ]] && printf '%s\n' "$l"
+        # Run in it, or naming it or a path under it (-C <dir>, an absolute path).
+        [[ "${l%% :: *}" == "$2" || "${l%% :: *}" == "$2/"* || "${l#* :: }" == *"$2 "* || "${l#* :: }" == *"$2" || "${l#* :: }" == *"$2/"* ]] && printf '%s\n' "$l"
     done < "$1"
     return 0
 }

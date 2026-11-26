@@ -18,22 +18,37 @@ setup_test_env "lint-test-real-tree"
 LINT_UNDER_TEST="$REPO_ROOT/scripts/lib/lint-test-real-tree.sh"
 T="$TEST_TEMP_DIR/tree/tests/unit"; mkdir -p "$T"
 _lint() { bash "$LINT_UNDER_TEST" "$TEST_TEMP_DIR/tree" 2>"$TEST_TEMP_DIR/err" >/dev/null; echo $?; }
-_file() { printf '%s\n' "$@" > "$T/lint-x-test.sh"; }
+_file() { printf '%s\n' "$@" > "$T/x-test.sh"; }
 # The fixture's command lines, built from parts so this file never holds one.
 B='ba''sh'; L='"$LINT"'; R='"$REPO_ROOT"'; P='"$REPO_ROOT/scripts/lib/lint-y.sh"'
 
 print_test_section "RT1: a run over the checkout"
 _file '#!/usr/bin/env bash' 'LINT="$REPO_ROOT/scripts/lib/lint-x.sh"' "_rc=0; _out=\"\$($B $L $R 2>&1)\" || _rc=\$?"
 assert_eq "[RT1] the checkout as its root → refused" "1" "$(_lint)"
-assert_contains "[RT1] ...naming the file and line" "$(cat "$TEST_TEMP_DIR/err")" "tests/unit/lint-x-test.sh:3"
-_file '#!/usr/bin/env bash' "_real=\"\$($B $L 2>&1)\"; _rc=\$?"
+assert_contains "[RT1] ...naming the file and line" "$(cat "$TEST_TEMP_DIR/err")" "tests/unit/x-test.sh:3"
+_file '#!/usr/bin/env bash' 'LINT="$REPO_ROOT/scripts/lib/lint-x.sh"' "_real=\"\$($B $L 2>&1)\"; _rc=\$?"
 assert_eq "[RT1] no root (the lint's default is the checkout) → refused" "1" "$(_lint)"
 _file '#!/usr/bin/env bash' "out=\"\$($B $P 2>&1)\""
 assert_eq "[RT1] the lint named by its path, no root → refused" "1" "$(_lint)"
 
+# (review of #2615) the forms a run takes
+V='"${LINT}"'; Q='"$CHK"'
+_file '#!/usr/bin/env bash' 'CHK="$REPO_ROOT/scripts/lib/lint-z.sh"' "rc=0; $B $Q >/dev/null 2>&1 || rc=\$?"
+assert_eq "[RT1] any variable set to a lint's path → refused" "1" "$(_lint)"
+_file '#!/usr/bin/env bash' 'LINT="$REPO_ROOT/scripts/lib/lint-x.sh"' "$B $V >/dev/null"
+assert_eq "[RT1] \${LINT} → refused" "1" "$(_lint)"
+_file '#!/usr/bin/env bash' 'LINT="$REPO_ROOT/scripts/lib/lint-x.sh"' "rc=0; $B $L \\" '    >"$TEST_TEMP_DIR/out" 2>&1 || rc=$?'
+assert_eq "[RT1] a run over two lines → refused" "1" "$(_lint)"
+_file '#!/usr/bin/env bash' 'LINT="$REPO_ROOT/scripts/lib/lint-x.sh"' "$B $L \"\$REPO_ROOT/plugins\" >/dev/null"
+assert_eq "[RT1] a root under the checkout → refused" "1" "$(_lint)"
+_file '#!/usr/bin/env bash' 'LINT="$REPO_ROOT/scripts/lib/lint-x.sh"' "LC_ALL=\"C\" $B $L >/dev/null"
+assert_eq "[RT1] a variable set on the command that is not a root → refused" "1" "$(_lint)"
+
 print_test_section "RT2: a run on the test's own fixtures"
 _file '#!/usr/bin/env bash' "rc=0; $B $L \"\$TEST_TEMP_DIR/tree\" >/dev/null 2>&1 || rc=\$?" "# $B $L $R in a comment" "out=\"\$(ZBUILD_REPO_ROOT=\"\$FIX\" $B $P 2>&1)\""
 assert_eq "[RT2] passes: its own root, a comment, a root set on the command" "0" "$(_lint)"
+_file '#!/usr/bin/env bash' 'LINT="$REPO_ROOT/scripts/lib/lint-x.sh"' 'assert_file_exists "[x] the lint exists" "$LINT"' 'sha="$(shasum "$LINT")"' "ZBUILD_REPO_ROOT=\"\$FIX\" OTHER=1 $B $L >/dev/null"
+assert_eq "[RT2] naming the lint without running it, and a fixture root with another variable, pass" "0" "$(_lint)"
 _file '#!/usr/bin/env bash' "ZBUILD_PLUGINS_ROOT=\"\$REPO_ROOT/plugins\" $B $P >/dev/null 2>&1"
 assert_eq "[RT1] a root set on the command that is the checkout → refused" "1" "$(_lint)"
 

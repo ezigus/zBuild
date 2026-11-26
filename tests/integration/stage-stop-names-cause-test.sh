@@ -23,7 +23,7 @@
 #         runner (a credential and a private path are in no stop text)
 # S7 [#2607 review] a stage whose result cannot be used (it wrote none): the
 #         end-of-run words say so in words, and never "finished"
-# Real runner (core/pipeline/runner.sh --template simple) over stub plugins
+# Real runner (core/pipeline/runner.sh, a one-loop template since #2615) over stub plugins
 # (tests/lib/simple-run-stubs.sh).
 set -euo pipefail
 

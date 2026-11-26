@@ -196,12 +196,12 @@ A test that watches a file for a partial state reads its size with one `stat`, n
 ## Amendment 2026-11-26 (#2615) — a test is sealed off from the checkout it runs from
 
 - **A test never reads the real checkout.** Code under test is pointed at the test's own repository (`ZBUILD_REPO_ROOT`, and the test runs from inside it). Two lens tests read the real repository — one grepped 956 real test files, one ran git against it 17 times — so their result depended on the branch under test. `zb_test_repo_spy` (tests/lib/test-helpers.sh) logs every git and grep call, run for real, for a test to show it.
-- **A lint test never runs its lint over the real tree.** `npm run lint` runs every lint over the tree, once; a lint test runs its lint on its own fixtures and checks that `npm run lint` runs it. Eleven lint tests also ran their lint over the checkout, paying for it on every suite run (lint-test-engine-state: 9 of 9.5 s). `scripts/lib/lint-test-real-tree.sh` (in `npm run lint`) refuses it.
+- **A test never runs a lint over the real tree.** `npm run lint` runs every lint over the tree, once; a lint test runs its lint on its own fixtures and checks that `npm run lint` runs it. Twenty-six lines in lint tests and others also ran a lint over the checkout, paying for it on every suite run (lint-test-engine-state: 9 of 9.5 s). `scripts/lib/lint-test-real-tree.sh` (in `npm run lint`) refuses it.
 - **A check runs the smallest pipeline that shows it.** The stop-reason checks run one loop and pr, not the whole simple template (46 s → 14.5 s locally).
 
 ## Enforced by
 
-- Amendment 2026-11-26 (#2615: sealed off from the checkout) → `tests/unit/lint-test-real-tree-test.sh` RT1–RT3; `plugins/agent/review-lens/tests/review-lens-whole-inputs-test.sh` W8; `tests/unit/lens-unclear-test.sh` LU9
+- Amendment 2026-11-26 (#2615: sealed off from the checkout) → `tests/unit/lint-test-real-tree-test.sh` RT1–RT3; `plugins/agent/review-lens/tests/review-lens-whole-inputs-test.sh` W8; `tests/unit/lens-unclear-test.sh` LU9; `tests/unit/lint-disposition-words-test.sh` SPEC-4 (a lint's count is shown non-vacuous on a fixture); `tests/integration/stage-stop-names-cause-test.sh` S1–S7 (on one loop and pr)
 
 - Amendment 2026-11-23 (#2591: one stat per sample, whole writes) → `tests/unit/scripts-lib-atomic-replace-test.sh` SPEC-3 (its negative control: a bare `cp` restore fails it 3/3)
 

@@ -93,9 +93,8 @@ bash "$CHECKER" "$FX_OK" >/dev/null 2>&1 || rc=$?
 assert_eq "[SPEC-5] lint exits 0 when no bad pattern is present" "0" "$rc"
 
 # The real tree must be clean, or the rule cannot be wired into CI at all.
-rc=0
-bash "$CHECKER" >/dev/null 2>&1 || rc=$?
-assert_eq "[SPEC-5] real scripts/ core/ plugins/ tree is clean" "0" "$rc"
+assert_contains "[SPEC-5] npm run lint runs it over the tree (#2615: never a test)" \
+    "$(jq -r '.scripts.lint' "$REPO_ROOT/package.json")" "bash scripts/lib/lint-grep-c.sh"
 
 # ─── SPEC-6: legacy-DoNotUse/ excluded ────────────────────────────────────────────────
 print_test_section "6. legacy-DoNotUse/ directory excluded from scan"

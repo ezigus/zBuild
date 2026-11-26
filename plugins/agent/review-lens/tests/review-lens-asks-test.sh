@@ -153,9 +153,9 @@ assert_contains "[S7] ...checked with the read-only lookup, not guessed" "$P" "l
 
 print_test_section "S10: behaviour no requirement covers is design's (#2615)"
 assert_contains "[S10] the prompt says such behaviour is fix: design" "$P" \
-    "Behaviour the issue asks for that the change does not do, and that no requirement covers, is design: a requirement, and then its test, come before the code."
+    'Behaviour the issue asks for that the change does not do, and that no requirement covers, is `design`: a requirement, and then its test, come before the code.'
 assert_contains "[S10] ...and when code applies" "$P" \
-    "code is for code that is wrong where a requirement and its test already cover the behaviour, or for how the code is written."
+    '`code` is for code that is wrong where a requirement and its test already cover the behaviour, or for how the code is written.'
 
 cleanup_test_env
 print_test_results

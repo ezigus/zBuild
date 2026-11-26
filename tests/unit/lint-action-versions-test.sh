@@ -145,9 +145,8 @@ bash "$FX_SUBPATH/scripts/lib/lint-action-versions.sh" >/dev/null 2>&1 || rc=$?
 assert_eq "[SPEC-2] sub-path reusable workflow ref (owner/repo/.../foo.yml) is skipped, rc=0" "0" "$rc"
 
 # --- SPEC-3: real repo has no current drift (guard) --------------------------
-rc=0
-out="$(bash "$CHECKER" 2>&1)" || rc=$?
-assert_eq "[SPEC-3] real .github/workflows/ has no version drift (rc=0)" "0" "$rc"
+assert_contains "[SPEC-3] npm run lint runs it over the tree (#2615: never a test)" \
+    "$(jq -r '.scripts.lint' "$REPO_ROOT/package.json")" "bash scripts/lib/lint-action-versions.sh"
 
 # --- SPEC-4: package.json wires the checker into npm run lint ----------------
 pkg_lint="$(jq -r '.scripts.lint // ""' "$REPO_ROOT/package.json")"

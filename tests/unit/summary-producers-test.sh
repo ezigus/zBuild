@@ -127,9 +127,8 @@ done
 
 # The repo-wide contract lint is the real enforcer; run it so a malformed
 # declaration fails here rather than in CI.
-_lint_rc=0
-bash "$REPO_ROOT/scripts/lib/lint-contract.sh" >/dev/null 2>&1 || _lint_rc=$?
-assert_eq "[SPEC-6] the contract lint accepts the tree" "0" "$_lint_rc"
+assert_contains "[SPEC-6] npm run lint runs it over the tree (#2615: never a test)" \
+    "$(jq -r '.scripts.lint' "$REPO_ROOT/package.json")" "bash scripts/lib/lint-contract.sh"
 
 cleanup_test_env
 print_test_results

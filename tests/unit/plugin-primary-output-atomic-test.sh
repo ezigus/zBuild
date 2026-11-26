@@ -241,9 +241,8 @@ assert_eq "[#1754/SPEC-5c] reads at the write's index pass (out: $_s5c_out)" "0"
 # scripts/ checks its write, so the lint over the whole tree exits 0.
 print_test_section "[#1754/SPEC-8] the lint passes on core/, plugins/ and scripts/"
 
-_spec8_rc=0
-_spec8_out="$(bash "$_LINT_SCRIPT" 2>&1)" || _spec8_rc=$?
-assert_eq "[#1754/SPEC-8] lint exits 0 on the real tree (output: ${_spec8_out:0:400})" "0" "$_spec8_rc"
+assert_contains "[#1754/SPEC-8] npm run lint runs it over the tree (#2615: never a test)" \
+    "$(jq -r '.scripts.lint' "$REPO_ROOT/package.json")" "bash scripts/lib/lint-atomic-write-unchecked.sh"
 
 cleanup_test_env
 print_test_results
