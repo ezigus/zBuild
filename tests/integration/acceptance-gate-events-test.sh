@@ -84,26 +84,34 @@ _run_gate_load_fail() {
 }
 
 # _run_gate_nothing_checked <repo> → sets RC, RESULT, EVENTS
-# Triggers nothing_checked by overriding acceptance_negctl_check to produce no
-# output after the normal plugin load; _ag_statused stays " " (never updated)
-# while there are SPECs in the design, so nothing_checked fires and
-# disposition=broken, _ag_outcome=broken.
+# The #1752 shape (tests/integration/acceptance-gate-fails-closed-test.sh F3):
+# a copy of the contract libraries whose acceptance-block.sh loads a sibling
+# that is not there and loses a helper the negative control needs. Every
+# library loads, the negative control reports on no requirement, so the block
+# lists SPECs and none was checked.
 _run_gate_nothing_checked() {
     local repo="$1"
     local state_dir="$repo/.zbuild-state"
-    mkdir -p "$state_dir/artifacts"
+    local lib="$repo/.zbuild-lib-1752"
+    mkdir -p "$state_dir/artifacts" "$lib"
+    cp "$REPO_ROOT"/scripts/lib/*.sh "$lib/"
+    # shellcheck disable=SC2016  # written into the copy, expanded when it loads
+    printf '\n# shellcheck source=/dev/null\nsource "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/zb-gone-1752.sh"\nunset -f _acceptance_timeout_prefix\n' \
+        >> "$lib/acceptance-block.sh"
     export ZBUILD_EVENTS_DIR="$state_dir/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
     export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; : > "$ZBUILD_EVENTS_JSONL"
     cp "$repo/design.md" "$state_dir/artifacts/design.md" 2>/dev/null || true
     local _si_json="$state_dir/stage-inputs.json"
     printf '{"inputs":{"design":"%s"}}\n' "$state_dir/artifacts/design.md" > "$_si_json"
     export ZBUILD_STAGE_INPUTS="$_si_json"
-    unset _ZBUILD_ACCEPTANCE_GATE_LOADED
     # shellcheck disable=SC1090
     ( cd "$repo" \
+        && unset _ZBUILD_ACCEPTANCE_GATE_LOADED _ACCEPTANCE_REACHABILITY_LOADED \
+                 _ACCEPTANCE_NEGCTL_LOADED _ACCEPTANCE_BLOCK_LOADED _ZBUILD_MERGE_BASE_LOADED \
+                 _ACCEPTANCE_COVERAGE_LOADED \
+        && export ZBUILD_CONTRACT_LIB_DIR="$lib" \
         && source "$REPO_ROOT/plugins/tool/test/plugin.sh" \
-        && acceptance_negctl_check() { : ; } \
-        && acceptance_gate_run "acceptance-gate" "$state_dir/pipeline-state.json" )
+        && acceptance_gate_run "acceptance-gate" "$state_dir/pipeline-state.json" ) >/dev/null 2>&1
     RC=$?
     RESULT="$(cat "$state_dir/artifacts/acceptance-gate-result.json" 2>/dev/null || echo '{}')"
     EVENTS="$ZBUILD_EVENTS_JSONL"
@@ -146,6 +154,8 @@ assert_eq "[DSEVNT-1] E1: event outcome matches result outcome" \
     "$(jq -r .outcome <<<"$RESULT")" "$(_complete_event_outcome "$EVENTS")"
 assert_eq "[DSEVNT-1] E1: event reason matches result reason" \
     "$(jq -r .reason <<<"$RESULT")" "$(_complete_event_reason "$EVENTS")"
+assert_contains "[DSEVNT-1] E1: the check ran its SPEC on the old and new code (not a skip)" \
+    "$(_complete_event_reason "$EVENTS")" "the acceptance check passed — 1 checked on the old and new code"
 
 # ── E2 [DSEVNT-2]: a SPEC fails (tautological) → outcome=fail, reason matches ─
 # Given
@@ -192,13 +202,17 @@ assert_eq "[DSEVNT-3] E3: event reason matches result reason" \
     "$(jq -r .reason <<<"$RESULT")" "$(_complete_event_reason "$EVENTS")"
 
 # ── E4 [DSEVNT-4]: malformed block → outcome=fail, reason=malformed_acceptance_block
-# Given: acceptance fence present but no closing fence / TESTFILES section
+# Given: a fence line with more after it — the gate finds the fence, the block
+# reader takes only a bare ```acceptance line, so the block cannot be read
 REPO_E4="$(_build_repo evnt-malformed '#!/usr/bin/env bash
 # [SPEC-1] x
 exit 0')"
 cat > "$REPO_E4/design.md" <<'EOF'
-```acceptance
-SPEC-1: missing testfiles section and closing fence
+```acceptance extra
+SPEC-1: x
+TESTFILES:
+tests/feature-test.sh
+```
 EOF
 # When
 set +e; _run_gate "$REPO_E4"; set -e
@@ -232,9 +246,8 @@ assert_eq "[DSEVNT-5] E5: event reason matches result reason" \
     "$(jq -r .reason <<<"$RESULT")" "$(_complete_event_reason "$EVENTS")"
 
 # ── E6 [DSEVNT-6]: nothing checked → outcome=broken, reason matches result ────
-# Given: a repo with a valid tagged testfile (Level 1 passes) but negctl
-# overridden to return empty output so _ag_statused stays " " and nothing_checked
-# fires → disposition=broken → _ag_outcome=broken
+# Given: a block with a SPEC and a tagged test, and contract libraries in the
+# #1752 shape, so the negative control names no SPEC → nothing_checked → broken
 REPO_E6="$(_build_repo evnt-nothing '#!/usr/bin/env bash
 # [SPEC-1] feature is implemented
 impl="$(cd "$(dirname "$0")/.." && pwd)/impl.sh"
@@ -251,6 +264,8 @@ EOF
 set +e; _run_gate_nothing_checked "$REPO_E6"; set -e
 # Then
 assert_eq "[DSEVNT-6] E6: rc=1 (nothing_checked exits 1)" "1" "$RC"
+assert_event_emitted "[DSEVNT-6] E6: the gate found nothing checked (not a load failure)" \
+    "$EVENTS" "acceptance.gate.nothing_checked"
 assert_event_emitted "[DSEVNT-6] E6: acceptance.gate.complete emitted on nothing_checked" \
     "$EVENTS" "acceptance.gate.complete"
 assert_eq "[DSEVNT-6] E6: event outcome=broken (not fail)" \
