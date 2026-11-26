@@ -603,8 +603,13 @@ test's outcome.
   never fails for it. test-author keeps recording the authored bytes (`plugins/agent/test-author/lib/record.sh`)
   so a changed file can be restored before the next build.
 - build_test_cycle's `exit_when` requires test-author, build, test and issue-acceptance.
+- **The acceptance check's closing event (`acceptance.gate.complete`) carries `outcome=` and `reason=`
+  matching the result it wrote on every exit path** (pass, fail, broken, precondition unmet, malformed
+  block, load failure, nothing checked). `outcome=` is the result's outcome field; `reason=` is the
+  reason string written to the result. The old `verdict=` field is replaced by `outcome=`.
 
-Enforced by: `tests/integration/test-checks-own-run-test.sh` R1–R5.
+Enforced by: `tests/integration/test-checks-own-run-test.sh` R1–R5;
+`tests/integration/acceptance-gate-events-test.sh` DSEVNT-1–DSEVNT-6.
 
 ### Amendment (2026-10-30, #2433) — the lenses run inside the loop and send the change back
 

@@ -111,6 +111,11 @@ extract_acceptance_block() {
     if [[ $found_block -eq 0 ]]; then
         return 1
     fi
+    # An opened fence with no closing ``` is malformed — a truncated block is
+    # not a valid contract (the closing fence is structural, not optional).
+    if [[ $in_block -eq 1 ]]; then
+        return 1
+    fi
 
     for spec in "${specs[@]+"${specs[@]}"}"; do
         printf '%s\n' "$spec"

@@ -150,7 +150,7 @@ acceptance_gate_run() {
         printf 'verdict=fail\nreason=malformed_acceptance_block\n' \
             | atomic_write "$artifact_dir/acceptance-summary.txt" || true
         eb_emit_event "acceptance.gate.untagged_spec" "stage=acceptance-gate" "reason=malformed_acceptance_block"
-        eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=fail"
+        eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "outcome=fail" "reason=malformed_acceptance_block"
         return 1
     fi
 
@@ -493,7 +493,8 @@ acceptance_gate_run() {
         "$(jq -cn --arg sv "$severity" --argjson f "$failures_json" --argjson fnd "${_ag_fnd:-[]}" \
             '{severity:$sv,failures:$f,data:{findings:$fnd}}')"
 
-    eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=$verdict"
+    local _ag_final_reason="${reason_msg:-$_pass_reason}"
+    eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "outcome=$_ag_outcome" "reason=$_ag_final_reason"
 
     [[ "$verdict" == "fail" ]] && return 1
     return 0
