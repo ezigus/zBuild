@@ -19,7 +19,10 @@
 #   RQ9 [change] a unit another process recorded is read from the state file
 #                (the memory of this shell's writes holds only its own)
 #   RQ6 [change] `requires: all` means every earlier top-level unit; a stage
-#                that failed without ending the run (`blocking: false`) is not met
+#                that failed without ending the run is not met
+#   RQ10 [change] (#2614, ADR-068 §3) a stage marked as not blocking
+#                (`blocking: false`, as hydrate is) is not part of `requires:
+#                all`: its failure never holds back a later stage
 #   RQ4 [change] the gate: every required stage complete with a pass → met,
 #                and the stage is told (ZBUILD_STAGE_REQUIRES_MET=yes); one not
 #                → the run ends, failed, naming it; no requires: → nothing to
@@ -97,10 +100,12 @@ assert_eq "[RQ2] a later stage → refused" "1" "$(( rc != 0 ))"
 assert_contains "[RQ2] ...and says which" "$out" "requires 'build'"
 
 print_test_section "RQ3: the shipped templates"
-for _t in simple deployed; do
-    rc=0; load_template "$REPO_ROOT/config/templates/$_t.yaml" >/dev/null 2>&1 || rc=$?
-    assert_eq "[RQ3] $_t.yaml loads" "0" "$rc"
-    assert_eq "[RQ3] $_t.yaml: pr requires every stage before it" "hydrate intake delivery_loop" "$(template_stage_requires pr)"
+# #2614: hydrate is not blocking, so it is not required; simple checks the
+# issue (issue-check) before the loop.
+for _t in "simple:intake issue-check delivery_loop" "deployed:intake delivery_loop"; do
+    rc=0; load_template "$REPO_ROOT/config/templates/${_t%%:*}.yaml" >/dev/null 2>&1 || rc=$?
+    assert_eq "[RQ3] ${_t%%:*}.yaml loads" "0" "$rc"
+    assert_eq "[RQ3] ${_t%%:*}.yaml: pr requires every blocking stage before it" "${_t#*:}" "$(template_stage_requires pr)"
 done
 
 print_test_section "RQ6: requires: all"
@@ -115,6 +120,25 @@ _zbuild_state_set_stage_verdict "$SF6" intake pass >/dev/null 2>&1
 _zbuild_state_set_stage_verdict "$SF6" build fail >/dev/null 2>&1
 rc=0; stage_requires_gate "$SF6" pr || rc=$?
 assert_eq "[RQ6] a stage that failed and did not end the run → not met" "build" "${_STAGE_REQUIRES_UNMET:-}"
+
+print_test_section "RQ10: a stage that is not blocking is not required by all (#2614)"
+T10="$TEST_TEMP_DIR/rq10.yaml"; _tpl "$T10" "  requires: all"
+printf '%s\n' '  blocking: false' > "$T10.add"
+awk -v f="$T10.add" '{print} /^intake:/ {while ((getline l < f) > 0) print l}' "$T10" > "$T10.new" && mv "$T10.new" "$T10"
+rc=0; load_template "$T10" >/dev/null 2>&1 || rc=$?
+assert_eq "[RQ10] the template loads" "0" "$rc"
+assert_eq "[RQ10] all leaves out the stage that is not blocking" "build" "$(template_stage_requires pr)"
+SF10="$TEST_TEMP_DIR/state10.json"
+jq -n '{schema_version:1, stage_statuses:{}, stage_verdicts:{}}' > "$SF10"
+for _s in intake build; do _update_stage_status "$SF10" "$_s" complete >/dev/null 2>&1; done
+_zbuild_state_set_stage_verdict "$SF10" intake fail >/dev/null 2>&1
+_zbuild_state_set_stage_verdict "$SF10" build pass >/dev/null 2>&1
+rc=0; stage_requires_gate "$SF10" pr || rc=$?
+assert_eq "[RQ10] it failed, and the later stage still runs" "0" "$rc"
+T10b="$TEST_TEMP_DIR/rq10b.yaml"; _tpl "$T10b" "  requires: [intake, build]"
+awk -v f="$T10.add" '{print} /^intake:/ {while ((getline l < f) > 0) print l}' "$T10b" > "$T10b.new" && mv "$T10b.new" "$T10b"
+load_template "$T10b" >/dev/null 2>&1
+assert_eq "[RQ10] a stage named by hand is still required" "intake build" "$(template_stage_requires pr)"
 
 print_test_section "RQ4: the gate"
 load_template "$T1" >/dev/null 2>&1

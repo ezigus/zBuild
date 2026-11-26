@@ -40,6 +40,9 @@ defaults:
 flow:
   - hydrate
   - intake
+  # #2614 (ADR-074): the issue's requirements against the system as it is
+  # today, before any design work; one that no longer holds stops the run.
+  - issue-check
   - delivery_loop
   - pr
 
@@ -191,6 +194,26 @@ intake:
   io:
     destinations: [file, stdout]
     tail_lines: 200
+
+# ─── issue-check (leaf) — #2614, ADR-074 ─────────────────────────────────────
+# One read-only call judges each of intake's requirements against the code and
+# the ADRs as they are now. One already true, that contradicts an ADR, or about
+# something that no longer exists ends the run (misconfigured: the operator
+# rewrites the issue), saying what is wrong and suggesting better requirements.
+# It runs on every run: the code moves between runs even when the issue does not.
+issue-check:
+  gate: auto
+  roles: [issue_check]
+  # The one call, asked again once when its answer cannot be used, plus a
+  # minute; a try that cannot be used is run once more.
+  timeout_s: 1500
+  retry: 1
+  io:
+    destinations: [file, stdout]
+    tail_lines: 200
+  router:
+    timeout_s: 600
+    max_turns: 0
 
 # ─── design (leaf, delivery_loop member) ───────────────────────────────
 design:

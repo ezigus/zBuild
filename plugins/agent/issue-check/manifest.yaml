@@ -1,0 +1,66 @@
+id: issue-check
+name: Issue Check
+kind: agent
+# #2614 (ADR-001): the ids this stage writes start with it.
+id_prefix: IC
+version: 0.1.0
+description: |
+  Judges each of the issue's requirements against the system as it is today,
+  before any design work starts (#2614, ADR-074): still needed, already true,
+  contradicts an ADR, or about something that no longer exists. Every judgement
+  but "still needed" quotes the line that shows it. When one is not still
+  needed, the run stops (misconfigured: the operator rewrites the issue),
+  saying what is wrong and suggesting a better set of requirements.
+
+  Intake answers from the issue alone, with no tools (#2448); this stage reads
+  the code, git and GitHub, and changes nothing. On #1722 run 45739271221 an
+  issue asking for events ADR-040 had removed was built for 2h11m.
+
+# ADR-071: the issue and intake's requirements.
+takes:
+  - topic: ask
+    for: "the issue and its requirements, to judge against the system as it is"
+
+hooks:
+  run: issue_check_run
+  # ADR-054 §7: it holds no live resources and declares no cleanup hook.
+
+requires:
+  core:
+    - router
+    - redaction
+    - event-bus
+
+provides:
+  role: issue_check
+  result_contract: 3
+  events:
+    - issue_check.judged
+
+config:
+  tier_default: T2
+
+# ADR-017 §12: its one call reads; it changes nothing.
+calls:
+  main: [read-files, read-git, read-github]
+# ADR-051 §2: the architect knows the system as it is.
+personas:
+  main: architect
+
+outputs:
+  # Its verdict and report name no topic: what it finds is the operator's to
+  # fix, so no stage takes it (ADR-071 §1).
+  - id: issue_check_result
+    description: "whether each of the issue's requirements still holds against the system as it is; findings: each one that does not, for the reports"
+    path: "${artifact_dir}/issue-check-result.json"
+    type: issue-check-result.json@1
+    format: json
+    required: true
+    primary: true
+  - id: issue_check_summary
+    description: "issue-check's report: what is wrong with the issue, and a better set of requirements"
+    path: "${artifact_dir}/issue-check-summary.md"
+    type: issue-check-summary.md@1
+    format: markdown
+    required: true
+    summary: true
