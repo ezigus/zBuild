@@ -329,6 +329,8 @@ _hb18=0; while IFS= read -r _l; do [[ "$_l" == "still running — "* ]] && _hb18
 assert_eq "[DSHBT-18] ...and holds no heartbeat line" "0" "$_hb18"
 _iv=""; ZBUILD_CLAIM_HEARTBEAT_S=10m _rsc_heartbeat_interval_v _iv
 assert_eq "[DSHBT-18] an interval that is not a number is the default, 600" "600" "$_iv"
+_iv=""; ZBUILD_CLAIM_HEARTBEAT_S=0 _rsc_heartbeat_interval_v _iv
+assert_eq "[DSHBT-18] ...and 0 is the default too (never an edit every poll)" "600" "$_iv"
 _iv=""; ZBUILD_CLAIM_HEARTBEAT_S=42 _rsc_heartbeat_interval_v _iv
 assert_eq "[DSHBT-18] ...a number is kept" "42" "$_iv"
 

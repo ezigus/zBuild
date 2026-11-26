@@ -345,8 +345,8 @@ _rsc_has_type() {   # _rsc_has_type <events> <regex-of-types>
 # A terminal event flushes at once but does NOT end the loop: always-run
 # stages emit after pipeline.end, and the runner's EXIT trap reaps us after
 # them. TERM/INT → final render; parent death → final render marked as such.
-# ZBUILD_CLAIM_HEARTBEAT_S in seconds; not a number (e.g. "10m") → 600, never 0 (#2533).
-_rsc_heartbeat_interval_v() { local -n _rhi="$1"; _rhi="${ZBUILD_CLAIM_HEARTBEAT_S:-600}"; [[ "$_rhi" =~ ^[0-9]+$ ]] || _rhi=600; }
+# ZBUILD_CLAIM_HEARTBEAT_S in seconds; not a number ("10m") or 0 → 600 (#2533).
+_rsc_heartbeat_interval_v() { local -n _rhi="$1"; _rhi="${ZBUILD_CLAIM_HEARTBEAT_S:-600}"; [[ "$_rhi" =~ ^[1-9][0-9]*$ ]] || _rhi=600; }
 
 rsc_tail_loop() {
     local events="$1" state_dir="$2" parent="$3" slug="$4" issue="$5" run_id="$6"

@@ -162,9 +162,14 @@ zbuild_claim_release() {
 # _zbuild_claim_stale_s_v <var> — ZBUILD_CLAIM_STALE_S as a number; one that is
 # not (e.g. "30m") is the default, 1800, not 0 (#2533 review: 0 made every
 # claim stale).
+# One shorter than two heartbeats would make a live run stale between two of
+# them: it is raised to that.
 _zbuild_claim_stale_s_v() {
-    local -n _zcs="$1"; _zcs="${ZBUILD_CLAIM_STALE_S:-1800}"
+    local -n _zcs="$1"; local hb="${ZBUILD_CLAIM_HEARTBEAT_S:-600}"
+    _zcs="${ZBUILD_CLAIM_STALE_S:-1800}"
     [[ "$_zcs" =~ ^[0-9]+$ ]] || _zcs=1800
+    [[ "$hb" =~ ^[1-9][0-9]*$ ]] || hb=600
+    (( _zcs >= 2 * hb )) || _zcs=$(( 2 * hb ))
 }
 
 # _zbuild_claim_takeover <issue> <state_dir> — ADR-005 §3 (#2533): another
@@ -174,10 +179,12 @@ _zbuild_claim_stale_s_v() {
 _zbuild_claim_takeover() {
     local issue="$1" state_dir="$2" them="$_ZBUILD_CLAIM_THEIR_HOLDER"
     if ! declare -F claim_age_v >/dev/null 2>&1; then
-        local lib="${_ZBUILD_ROOT:-}/scripts/lib/claim-takeover.sh"
+        local _lrc=0
         # shellcheck source=../../scripts/lib/claim-takeover.sh
-        if [[ ! -f "$lib" ]] || ! source "$lib" 2>/dev/null || ! declare -F claim_age_v >/dev/null 2>&1; then
-            printf 'zbuild_claim_acquire: claim-takeover.sh could not be loaded (%s) — refusing to take over %s\n' "$lib" "$them" >&2
+        source "${_ZBUILD_ROOT:-}/scripts/lib/claim-takeover.sh" 2>/dev/null || _lrc=$?
+        if (( _lrc != 0 )) || ! declare -F claim_age_v >/dev/null 2>&1; then
+            printf 'zbuild_claim_acquire: claim-takeover.sh could not be loaded (%s) — refusing to take over %s\n' \
+                "${_ZBUILD_ROOT:-}/scripts/lib/claim-takeover.sh" "$them" >&2
             return 1
         fi
     fi
@@ -211,7 +218,13 @@ _zbuild_claim_takeover() {
         printf 'zbuild_claim_acquire: the takeover note could not be posted — refusing to take over %s\n' "$them" >&2
         return 1
     fi
-    if ! claim_takeover_first_v first "$state_dir" "$slug" "$issue" "$them" "$at" || [[ -z "$first" ]]; then
+    # A note counts only since the claim's time and within the takeover's own
+    # window (four gh timeouts): one left by a run killed before it deleted it
+    # does not block every later takeover.
+    local gt="${ZBUILD_STATUS_COMMENT_GH_TIMEOUT:-30}" since
+    [[ "$gt" =~ ^[0-9]+$ ]] || gt=30
+    since=$(( now - 4 * gt )); (( since > at )) || since="$at"
+    if ! claim_takeover_first_v first "$state_dir" "$slug" "$issue" "$them" "$since" || [[ -z "$first" ]]; then
         claim_takeover_note_delete "$state_dir" "$slug" "$issue" "$id"
         printf 'zbuild_claim_acquire: could not read the takeover notes back — refusing to take over %s\n' "$them" >&2
         return 1

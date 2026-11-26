@@ -154,6 +154,9 @@ assert_eq "[TR3] ...and this run's note is deleted" "1" "$(_notes_left)"
 _fresh; _iso_ago 4000 > "$F/hb"; _note 5000 "https://github.com/o/r/actions/runs/77"
 _acq
 assert_eq "[TR3] a note from before the claim's time does not count" "0" "$_RC"
+_fresh; _iso_ago 4000 > "$F/hb"; _note 600 "https://github.com/o/r/actions/runs/77"
+_acq
+assert_eq "[TR3] a note older than the takeover's window (a run killed before it deleted it) does not count" "0" "$_RC"
 _fresh; _iso_ago 4000 > "$F/hb"; _note 100 "https://github.com/o/r/actions/runs/77" someone
 _acq
 assert_eq "[TR3] a note from an untrusted author does not count" "0" "$_RC"
@@ -206,6 +209,14 @@ _acq
 assert_eq "[TR11][DSHBT-15] refused" "1" "$_RC"
 assert_contains "[TR11] ...saying the note could not be posted" "$_OUT" "the takeover note could not be posted"
 assert_eq "[TR11] ...nothing released" "0" "$(_released)"
+
+print_test_section "TR9b: a stale time too short for the heartbeat"
+_fresh; _iso_ago 900 > "$F/hb"
+ZBUILD_CLAIM_STALE_S=0 _acq
+assert_eq "[TR9b] STALE_S=0 is raised to twice the heartbeat (1200 s): 900 s old is not stale" "1" "$_RC"
+_fresh; _iso_ago 900 > "$F/hb"
+ZBUILD_CLAIM_STALE_S=300 _acq
+assert_eq "[TR9b] ...so is 300 against the 600 s heartbeat" "1" "$_RC"
 
 print_test_section "TR10: a run with no status comment says its claim has no heartbeat"
 assert_contains "[TR10] said" "$(_ZBUILD_CLAIM_ACQUIRED=9 zbuild_claim_heartbeat_say "" 2>&1)" "its claim has no heartbeat"

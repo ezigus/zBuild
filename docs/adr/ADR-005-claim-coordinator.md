@@ -78,7 +78,9 @@ The claim is advisory across machines; this machine's admission lock still seria
   edit (`updated_at` — the heartbeat edits it; the comment is the trusted one whose holder line names
   the holder) and the `zbuild:claimed` label's last added time. `ZBUILD_CLAIM_STALE_S` and
   `ZBUILD_CLAIM_HEARTBEAT_S` are set with `:=` (assign-if-unset) in `core/claim/claim.sh`; a value that
-  is not a number is its default, never 0.
+  is not a number, or a heartbeat of 0, is its default, and a stale time under two heartbeats is raised
+  to two heartbeats (a live run is never stale between two of them). The age is GitHub's time against
+  this machine's clock: a machine whose clock is far off misjudges it.
 - **§3c Always claimed; a claim with no heartbeat.** A run that posts no run-status comment says its
   claim has no heartbeat (`zbuild_claim_heartbeat_say`), and is aged from its label's added time. A
   read of either time that fails, no repository to read from (`GITHUB_REPOSITORY`, else the run's own
@@ -86,7 +88,9 @@ The claim is advisory across machines; this machine's admission lock still seria
   time alone because the comments could not be read.
 - **§3d Stale takeover.** A stale claim: a note "took over a stale claim from `<holder>` — by
   `<this run>`" is posted; then the trusted takeover notes for that holder posted at or after the
-  claim's time are read back (`claim_takeover_first_v`). Only the run whose note is first (GitHub's
+  claim's time, and within the takeover's own window (four `ZBUILD_STATUS_COMMENT_GH_TIMEOUT`s), are read
+  back (`claim_takeover_first_v`) — a note left by a run killed before it deleted it blocks a takeover
+  for that window only. Only the run whose note is first (GitHub's
   `created_at`, then id) releases the claim and takes it — once per call chain
   (`_ZBUILD_CLAIM_RETRIED`) — saying so (`pipeline.claim.taken_over`, and a line). A run that does not
   go on deletes its note and refuses: another run's note came first (named), the notes could not be
@@ -206,7 +210,8 @@ A claim hook whose reply says `"acquired": true` holds the claim, whatever the h
   - §3b the later of the comment and the label → `tests/unit/claim-takeover-real-test.sh` TR7 (DSHBT-5)
   - §3c no heartbeat said; a failed read, no repository refuse → `tests/unit/claim-takeover-real-test.sh` TR10, TR6, TR8
   - §3d stale takeover, the note, said → `tests/unit/claim-takeover-real-test.sh` TR2 (DSHBT-4)
-  - §3d the first note since the claim's time wins; an older or untrusted one does not; the loser deletes its note → `tests/unit/claim-takeover-real-test.sh` TR3
+  - §3d the first note since the claim's time and within the window wins; an older, untrusted or expired one does not; the loser deletes its note → `tests/unit/claim-takeover-real-test.sh` TR3
+  - §3b a stale time under two heartbeats is raised; a heartbeat of 0 is the default → `tests/unit/claim-takeover-real-test.sh` TR9b, `tests/unit/run-status-comment-heartbeat-test.sh` DSHBT-18
   - §3d a release that fails after the note; a note that cannot be posted → `tests/unit/claim-takeover-real-test.sh` TR4, TR11 (DSHBT-15)
   - §3e a library that cannot be loaded → `tests/unit/claim-takeover-real-test.sh` TR5 (DSHBT-16)
   - §3 same-machine dead-pid path and an unclaimed issue never reach the takeover → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-6, DSHBT-12
