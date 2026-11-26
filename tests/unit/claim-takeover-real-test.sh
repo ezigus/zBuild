@@ -27,6 +27,8 @@
 #   TR9 [change] a tunable that is not a number falls back to its default
 #   TR10 [change] a run with no status comment says its claim has no heartbeat
 #   TR11 [change] a takeover note that cannot be posted refuses, releasing nothing
+#   TR12 [change] (PR review) a note posted with no id in the reply refuses: it
+#                could not be deleted, so the run does not go on with it
 # The design's ids: DSHBT-3 TR1, DSHBT-4 TR2, DSHBT-5 TR7, DSHBT-15 TR11, DSHBT-16 TR5.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -71,7 +73,7 @@ case "$args" in
         now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         jq -cn --arg b "$body" --arg t "$now" --argjson i "$n" \
             '{id:$i, user:{login:"github-actions[bot]"}, author_association:"", body:$b, created_at:$t, updated_at:$t}' >> "$F/notes"
-        printf '{"id":%s}\n' "$n" ;;
+        if [[ -e "$F/no-id" ]]; then printf '{}\n'; else printf '{"id":%s}\n' "$n"; fi ;;
     *"/comments"*)
         [[ -e "$F/fail-comments" ]] && { echo "fake gh: HTTP 502" >&2; exit 1; }
         holder="$(cat "$F/holder")"; hb="$(cat "$F/hb")"
@@ -121,7 +123,7 @@ _note() {   # <created seconds ago> <by> [login] — another run's takeover note
     jq -cn --arg b "took over a stale claim from \`$THEIRS\` — by \`$2\`" --arg t "$(_iso_ago "$1")" --arg l "${3:-github-actions[bot]}" \
         '{id:50, user:{login:$l}, author_association:(if $l == "github-actions[bot]" then "" else "NONE" end), body:$b, created_at:$t, updated_at:$t}' >> "$F/notes"
 }
-_fresh() { rm -f "$F/free" "$F/notes" "$F/calls" "$F/rel-rc" "$F/gh.log" "$F/deleted" "$F/label" "$F/fail-comments" "$F/fail-post"; : > "$F/notes"
+_fresh() { rm -f "$F/free" "$F/notes" "$F/calls" "$F/rel-rc" "$F/gh.log" "$F/deleted" "$F/label" "$F/fail-comments" "$F/fail-post" "$F/no-id"; : > "$F/notes"
            : > "$ZBUILD_EVENTS_JSONL"; _ZBUILD_CLAIM_ACQUIRED=""; unset _ZBUILD_CLAIM_RETRIED; }
 _acq() { _RC=0; zbuild_claim_acquire 9 "$STATE" > "$F/out" 2>&1 || _RC=$?; _OUT="$(cat "$F/out")"; }
 _released() { grep -c '^release' "$F/calls" 2>/dev/null || true; }
@@ -217,6 +219,13 @@ assert_eq "[TR9b] STALE_S=0 is raised to twice the heartbeat (1200 s): 900 s old
 _fresh; _iso_ago 900 > "$F/hb"
 ZBUILD_CLAIM_STALE_S=300 _acq
 assert_eq "[TR9b] ...so is 300 against the 600 s heartbeat" "1" "$_RC"
+
+print_test_section "TR12: a note posted with no id in the reply"
+_fresh; _iso_ago 4000 > "$F/hb"; : > "$F/no-id"
+_acq
+assert_eq "[TR12] refused" "1" "$_RC"
+assert_contains "[TR12] ...saying the note has no id" "$_OUT" "the takeover note was posted without an id"
+assert_eq "[TR12] ...nothing released" "0" "$(_released)"
 
 print_test_section "TR10: a run with no status comment says its claim has no heartbeat"
 assert_contains "[TR10] said" "$(_ZBUILD_CLAIM_ACQUIRED=9 zbuild_claim_heartbeat_say "" 2>&1)" "its claim has no heartbeat"

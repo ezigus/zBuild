@@ -95,7 +95,7 @@ The claim is advisory across machines; this machine's admission lock still seria
   (`_ZBUILD_CLAIM_RETRIED`) — saying so (`pipeline.claim.taken_over`, and a line). A run that does not
   go on deletes its note and refuses: another run's note came first (named), the notes could not be
   read back, or the release failed (`pipeline.claim.takeover_failed`, `reason=release_failed`). A note
-  that cannot be posted refuses.
+  that cannot be posted, or one GitHub's reply gives no id for (it could not be deleted), refuses.
 - **§3e Lazy load.** `zbuild_claim_acquire` loads `scripts/lib/claim-takeover.sh` only for a
   cross-machine claim it was refused; a library that is absent or cannot be loaded refuses, saying so.
 
@@ -212,7 +212,7 @@ A claim hook whose reply says `"acquired": true` holds the claim, whatever the h
   - §3d stale takeover, the note, said → `tests/unit/claim-takeover-real-test.sh` TR2 (DSHBT-4)
   - §3d the first note since the claim's time and within the window wins; an older, untrusted or expired one does not; the loser deletes its note → `tests/unit/claim-takeover-real-test.sh` TR3
   - §3b a stale time under two heartbeats is raised; a heartbeat of 0 is the default → `tests/unit/claim-takeover-real-test.sh` TR9b, `tests/unit/run-status-comment-heartbeat-test.sh` DSHBT-18
-  - §3d a release that fails after the note; a note that cannot be posted → `tests/unit/claim-takeover-real-test.sh` TR4, TR11 (DSHBT-15)
+  - §3d a release that fails after the note; a note that cannot be posted → `tests/unit/claim-takeover-real-test.sh` TR4, TR11 (DSHBT-15), TR12
   - §3e a library that cannot be loaded → `tests/unit/claim-takeover-real-test.sh` TR5 (DSHBT-16)
   - §3 same-machine dead-pid path and an unclaimed issue never reach the takeover → `tests/unit/claim-heartbeat-stale-test.sh` DSHBT-6, DSHBT-12
 

@@ -214,7 +214,12 @@ _zbuild_claim_takeover() {
     # claim's time — release and claim. A run that does not go on deletes its note.
     local me id="" first=""
     _zbuild_claim_holder_v me
-    if ! claim_takeover_note_post_v id "$state_dir" "$slug" "$issue" "$them" "$me"; then
+    local nrc=0
+    claim_takeover_note_post_v id "$state_dir" "$slug" "$issue" "$them" "$me" || nrc=$?
+    if (( nrc == 2 )); then
+        printf 'zbuild_claim_acquire: the takeover note was posted without an id in GitHub'"'"'s reply, so it could not be deleted — refusing to take over %s\n' "$them" >&2
+        return 1
+    elif (( nrc != 0 )); then
         printf 'zbuild_claim_acquire: the takeover note could not be posted — refusing to take over %s\n' "$them" >&2
         return 1
     fi

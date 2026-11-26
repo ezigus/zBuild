@@ -55,7 +55,8 @@ claim_age_v() {
 
 # claim_takeover_note_post_v <id-var> <state_dir> <slug> <issue> <holder> <by>
 # — posts "took over a stale claim from `<holder>` — by `<by>`"; <id-var> gets
-# the comment's id, to delete it if the takeover does not happen. rc 1 on failure.
+# the comment's id, to delete it if the takeover does not happen. rc 1 on
+# failure; rc 2 when it was posted but GitHub's reply held no id.
 claim_takeover_note_post_v() {
     local -n _ctn="$1"; local sd="$2" slug="$3" issue="$4" holder="${5//[[:cntrl:]\`]/}" by="${6//[[:cntrl:]\`]/}" out
     _ctn=""
@@ -66,6 +67,9 @@ claim_takeover_note_post_v() {
     fi
     _ctn="$(jq -r '.id // empty' "$out" 2>/dev/null || true)"
     rm -f "$out"
+    # A note with no id could not be deleted if the takeover does not happen:
+    # rc 2, and the run does not go on (it stops counting after the window).
+    [[ "$_ctn" =~ ^[0-9]+$ ]] || return 2
     return 0
 }
 
