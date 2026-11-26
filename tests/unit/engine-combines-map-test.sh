@@ -170,6 +170,7 @@ orch_collect() { printf '%s\n' "$*" > "$COLLECT_ARGS"; _ORCH_COLLECT_OUTCOME="ti
 rm -f "$ART"/lens-*.json; _run_map a b c
 assert_contains "[M6] the summary says timed_out" "$(cat "$S" 2>/dev/null)" "- b: timed_out"
 assert_contains "[M6] ...and so does the element not passed" "${_ZB_MAP_NOT_PASSED:-}" "b (timed_out)"
+assert_contains "[M6] ...and says the group's wait ran out" "$(cat "$S" 2>/dev/null)" "the group's wait for its members ran out"
 orch_collect() { printf '%s\n' "$*" > "$COLLECT_ARGS"; _ORCH_COLLECT_OUTCOME="passed"; return 0; }
 rm -f "$ART"/lens-*.json; _run_map a b c
 assert_contains "[M6] an outside signal stays interrupted" "${_ZB_MAP_NOT_PASSED:-}" "b (interrupted)"
@@ -189,6 +190,7 @@ _m8_marker="$(ZBUILD_MAP_ELEMENT=b stage_time_limit_marker_path "$STATE_FILE" re
 rm -f "$ART"/lens-*.json; _run_map a b c
 assert_eq "[M8] the marker is the element's" "$ZBUILD_STATE_DIR/runtime/stage-time-limit.review_lenses.b" "$_m8_marker"
 assert_contains "[M8] b, stopped by its own limit, is timed_out" "${_ZB_MAP_NOT_PASSED:-}" "b (timed_out)"
+assert_contains "[M8] ...and says its own limit stopped it" "$(cat "$S" 2>/dev/null)" "its stage time limit stopped it"
 assert_contains "[M8] c, stopped by an outside signal, stays interrupted" "${_ZB_MAP_NOT_PASSED:-}" "c (interrupted)"
 rm -f "$_m8_marker"
 

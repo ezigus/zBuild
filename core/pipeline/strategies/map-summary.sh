@@ -42,7 +42,10 @@ _map_write_summary() {
     declare -F manifest_graph_get_outputs >/dev/null 2>&1 \
         || source "$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; cd "../../../scripts/lib" && pwd)/manifest-graph.sh" 2>/dev/null || true
     for (( i = 0; i < n; i++ )); do
-        raw="$(_registry_output_path_rows "${plugins[$i]}/manifest.yaml" 2>/dev/null | awk -F'\t' '$2=="true"{print $1; exit}')"
+        # Captured whole, then read here (no early-exiting reader on a pipe: CLAUDE.md).
+        local _rows _rp _rpr; _rows="$(_registry_output_path_rows "${plugins[$i]}/manifest.yaml" 2>/dev/null)" || true
+        raw=""
+        while IFS=$'\t' read -r _rp _rpr _; do [[ "$_rpr" == true ]] && { raw="$_rp"; break; }; done <<< "$_rows"
         res="$(_map_member_path "$raw" "$env_target" "${elems[$i]}" "$state_dir" "$art")"
         outcome="missing"; reason=""
         if [[ -n "$res" && -s "$res" ]]; then
@@ -53,7 +56,9 @@ _map_write_summary() {
         stage_time_limit_marker_path_v _el_mk "$state_file" "$stage" "${elems[$i]}"
         [[ -f "$_el_mk" ]] && _el_tl=1
         if (( _tl_hit || _el_tl )) && [[ "$outcome" == interrupted || "$outcome" == missing ]]; then
-            outcome=timed_out; reason="the stage's time limit stopped it${reason:+ ($reason)}"
+            if (( _el_tl )); then reason="its stage time limit stopped it${reason:+ ($reason)}"
+            else reason="the group's wait for its members ran out${reason:+ ($reason)}"; fi
+            outcome=timed_out
         fi
         [[ "$outcome" != pass ]] && notpassed+=("${elems[$i]} (${outcome})")
         disposition_response_v _resp "$outcome" 2>/dev/null || _resp=""

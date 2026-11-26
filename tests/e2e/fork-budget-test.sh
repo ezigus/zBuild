@@ -320,7 +320,9 @@ PROCESS_BUDGET=$(( 2273 + BUDGET_MARGIN_TOTAL ))
 # #2574: see FORK_BUDGET — 464 and 298 a dispatch.
 # #1764: see FORK_BUDGET — 463 and 297 a dispatch.
 # #2584: see FORK_BUDGET — 437 and 289 a dispatch.
-DISPATCH_PROCS_BUDGET=$(( 430 + BUDGET_MARGIN_DISPATCH ))
+# #2611: a map group reads each element's primary output path in the shell,
+# not through awk. Measured on macOS: 427 processes a dispatch.
+DISPATCH_PROCS_BUDGET=$(( 427 + BUDGET_MARGIN_DISPATCH ))
 DISPATCH_PROCS_FLOOR=20
 DISPATCH_EXECS_BUDGET=$(( 289 + BUDGET_MARGIN_DISPATCH ))
 DISPATCH_EXECS_FLOOR=50
