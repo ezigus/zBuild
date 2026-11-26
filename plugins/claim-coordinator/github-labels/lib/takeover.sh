@@ -148,6 +148,9 @@ claim_takeover_mark_old() {
         /^still running — / { if (!done) { print t; done = 1 } next }
         index($0, h) == 1 { if (!done) { print t; done = 1 } next }
         { print }' <<< "$body")"
+    # The comment was found by its holder line, so the mark is in it; one that is
+    # not is said by the caller, never sent unchanged (PR review).
+    [[ "$body" == *"$line"* ]] || { rm -f "$out"; return 1; }
     jq -n --arg b "$body" '{body: $b}' > "$out.json" 2>/dev/null || { rm -f "$out" "$out.json"; return 1; }
     local rc=0
     rsc_gh "$sd" "$out" api -X PATCH "repos/${slug}/issues/comments/${id}" --input "$out.json" >/dev/null 2>&1 || rc=1

@@ -306,8 +306,7 @@ _acq
 cp "$F/plugin.keep" "$_d17"
 assert_eq "[TR17] another run took the claim in between → refused" "1" "$_RC"
 assert_file_not_exists "[TR17] ...the old comment is not marked" "$F/patched"
-_lacks17() { if [[ "$2" == *"$3"* ]]; then assert_fail "$1" "it has: $3"; else assert_pass "$1"; fi; }
-_lacks17 "[TR17] ...and no takeover is said" "$(cat "$ZBUILD_EVENTS_JSONL")" "pipeline.claim.taken_over"
+_lacks14 "[TR17] ...and no takeover is said" "$(cat "$ZBUILD_EVENTS_JSONL")" "pipeline.claim.taken_over"
 
 print_test_section "TR18: a coordinator with no takeover hook"
 _fresh; _iso_ago 4000 > "$F/hb"
