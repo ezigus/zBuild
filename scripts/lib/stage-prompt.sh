@@ -328,10 +328,10 @@ IFS= read -r -d '' _ZB_ANSWER_FORMS <<'EOF' || true
   Only the answers in this reply count: answer every finding listed, even one you answered in an earlier reply or a past run.
   A finding you do not answer stays open, and is shown to you again.
 - What each answer means:
-  - done — you changed your output for it.
+  - done — you changed your output for it, in this try or an earlier one of this round.
   - wrong — it does not hold, or it needs no change. Say why.
   - not mine — it holds and needs a change, and that change is to another stage's output, not yours.
-  Answer done only for what you changed in this call. If the finding needs no change because your output is already right, answer wrong, and say why. If someone else must change something, answer not mine, and say who.
+  Answer done for what this stage changed for it in this round, in this try or an earlier one; when an earlier try made the change, say so. If the finding needs no change because your output is already right, answer wrong, and say why. If someone else must change something, answer not mine, and say who.
   A finding about your own output is yours, even when its fix is outside this issue's requirements or needs a file you may not touch:
   fix it, or answer wrong and say why it needs no change. A file you may not touch, ask for it the way your instructions say.
 EOF

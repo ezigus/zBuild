@@ -25,8 +25,14 @@
 #             runs again
 # H7 [change] test-author declares a handoff output of topic design-findings
 #             (#2569), and design is shown what test-author hands on there
-# H8 [change] the shared answer rules say done is only for what this call
-#             changed; already right is wrong; someone else's is not mine
+# H8 [change] the shared answer rules say done is for what the stage changed
+#             in this round, in this try or an earlier one (#2627: on #1722 run
+#             45872552515 build's second try answered nine findings its first
+#             try had fixed "wrong — not reproduced"); already right is wrong;
+#             someone else's is not mine
+# H12 [change] (#2627) a try that changed nothing after an earlier try of the
+#             stage that did: its `done` stands — no finding back — and its
+#             `wrong` is still handed on
 # H9 [change] stage.findings.handed_on is announced, and is a known event
 set -uo pipefail
 
@@ -106,6 +112,7 @@ answerer_run() {
     local -a w=(${OUTCOMES:-pass}); local i=$(( n - 1 ))
     (( i >= ${#w[@]} )) && i=$(( ${#w[@]} - 1 ))
     if [[ "${SAME:-0}" == "1" ]]; then printf 'same' > "$art/answerer-work.txt"
+    elif [[ "${FIRST:-0}" == "1" ]]; then (( n == 1 )) && printf 'run 1' > "$art/answerer-work.txt"
     else printf 'run %s' "$n" > "$art/answerer-work.txt"; fi
     source "@RESULT_LIB@"
     stage_result_write "$art/answerer-result.json" "${w[$i]}" "1 finding open" \
@@ -168,6 +175,14 @@ assert_contains "[H5] ...and its last try, changing nothing, hands on" "$(_hande
 _same; OUTCOMES="unusable" ANSWER="$WRONG" _dispatch ans
 assert_eq "[H6] a try that changed something hands nothing on" "absent" "$([[ -e "$A/answerer-design-result.json" ]] && echo present || echo absent)"
 assert_eq "[H6] ...and its round goes on" "false" "$(_ends)"
+# ── H12 ──────────────────────────────────────────────────────────────────────
+_same; FIRST=1 OUTCOMES="unusable" ANSWER="$DONE" _dispatch ans
+assert_eq "[H12] try 1 changed its work, try 2 nothing: two tries" "2" "$(_runs ans)"
+if grep -qF "answered done, but this try changed nothing" <<< "$(jq -r '[.data.findings[]?.text] | join("\n")' "$A/answerer-result.json" 2>/dev/null)"; then
+    assert_fail "[H12] its done stands: the earlier try's change counts" "$(cat "$A/answerer-result.json")"
+else assert_pass "[H12] its done stands: the earlier try's change counts"; fi
+_same; FIRST=1 OUTCOMES="unusable" ANSWER="$WRONG" _dispatch ans
+assert_contains "[H12] ...and its wrong is still handed on" "$(_handed)" "design must rewrite SPEC-3"
 # ── H10 / H11 (review on #2565) ──────────────────────────────────────────────
 _same; SAME=1 OUTCOMES="misconfigured" ANSWER="$WRONG" _dispatch ans
 assert_eq "[H10] a halting outcome hands nothing on" "absent" "$([[ -e "$A/answerer-design-result.json" ]] && echo present || echo absent)"
@@ -218,7 +233,9 @@ assert_contains "[H7] design is shown what test-author handed on" "$_pw" "design
 
 # ── H8 ───────────────────────────────────────────────────────────────────────
 _forms="$(stage_answer_forms)"
-assert_contains "[H8] done is only for what this call changed" "$_forms" "Answer done only for what you changed in this call."
+assert_contains "[H8] done is for what the stage changed in this round, in any try" "$_forms" "Answer done for what this stage changed for it in this round, in this try or an earlier one"
+if grep -qF "only for what you changed in this call" <<< "$_forms"; then assert_fail "[H8] ...not only this call" "$_forms"
+else assert_pass "[H8] ...not only this call"; fi
 assert_contains "[H8] already right is wrong, and why" "$_forms" "If the finding needs no change because your output is already right, answer wrong, and say why."
 assert_contains "[H8] someone else's is not mine, and who" "$_forms" "If someone else must change something, answer not mine, and say who."
 

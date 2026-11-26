@@ -16,8 +16,14 @@ _ZBUILD_RUN_STATUS_TEXT_LOADED=1
 # result is the stage's primary output (a map member's is named on its event),
 # else `artifacts/<stage>-result.json`. A finding is its text, as
 # stage_findings_json writes it, or a lens's severity, message and file.
+# #2627 (ADR-064 §4): a stage with more than one result (the test stage: the
+# suite's and the acceptance check's) shows every finding its try wrote —
+# each of its other JSON outputs that this run of the stage wrote
+# (stage_result_is_current) and that did not pass, as open_items_json reads a
+# check's result — each finding once, by its id, else its words.
 rsc_row_findings_v() {
-    local _rfv_p="${4:-}" _rfv_m="" _rfv_raw="" _rfv_l
+    local _rfv_p="${4:-}" _rfv_m="" _rfv_raw="" _rfv_l _rfv_x _rfv_c
+    local -a _rfv_fs=() _rfv_out=()
     printf -v "$1" '%s' ""
     if [[ -z "$_rfv_p" ]] && declare -F _inputs_stage_manifest_v >/dev/null 2>&1 \
             && declare -F _verdict_primary_output_path_v >/dev/null 2>&1; then
@@ -26,18 +32,38 @@ rsc_row_findings_v() {
         [[ -n "$_rfv_raw" ]] && _rfv_p="$(_inputs_output_paths "$3" "$_rfv_raw" "$2" 2>/dev/null || true)"
     fi
     [[ -n "$_rfv_p" && -s "$_rfv_p" ]] || _rfv_p="$2/artifacts/${3}-result.json"
-    [[ -s "$_rfv_p" && "$(<"$_rfv_p")" == *'"findings"'* ]] || return 0
+    [[ -s "$_rfv_p" ]] && _rfv_fs=("$_rfv_p")
+    # A map member's row reads its own result only; another stage's, each of
+    # its results.
+    if [[ -z "${4:-}" && -n "$_rfv_m" ]] && declare -F _verdict_resolve_path_v >/dev/null 2>&1; then
+        _rsc_stage_json_outputs_v _rfv_out "$_rfv_m"
+        for _rfv_x in ${_rfv_out[@]+"${_rfv_out[@]}"}; do
+            _verdict_resolve_path_v _rfv_x "$_rfv_x" "$2"
+            [[ "$_rfv_x" != "$_rfv_p" && "$_rfv_x" != *'${'* && -s "$_rfv_x" ]] || continue
+            declare -F stage_result_is_current >/dev/null 2>&1 \
+                && ! stage_result_is_current "$2" "$3" "$_rfv_x" && continue
+            _rfv_fs+=("$_rfv_x")
+        done
+    fi
+    [[ ${#_rfv_fs[@]} -gt 0 ]] || return 0
+    _rfv_c=""; for _rfv_x in "${_rfv_fs[@]}"; do _rfv_c+="$(<"$_rfv_x")"; done
+    [[ "$_rfv_c" == *'"findings"'* ]] || return 0
     # #2480: one finding heads the row, the rest of its lines folded; several
     # are named by the id each is about, or counted (by severity when they
     # carry one), and each is listed once.
-    _rfv_l="$(jq -r "$_RSC_JQ_ESC"'[ ((.data.findings // .findings // [])[]? | select(type == "object")
-            | {sev: (if (.severity | type) == "string" then (.severity | ascii_downcase) else null end),
+    _rfv_l="$(jq -rn --arg prim "$_rfv_p" "$_RSC_JQ_ESC${_OPEN_ITEMS_JQ_PASSED:-def passed: false;}"'[ inputs as $r | input_filename as $fn | $r
+            | select(type == "object" and ($fn == $prim or (passed | not)))
+            | ((.data.findings // .findings // [])[]? | select(type == "object")
+            | {id: (if (.id | type) == "string" and .id != "" then .id else null end),
+               sev: (if (.severity | type) == "string" then (.severity | ascii_downcase) else null end),
                t: (if (.text | type) == "string" then .text
                    elif (.message | type) == "string" then
                        (if (.severity | type) == "string" then "\(.severity): " else "" end) + .message
                        + (if (.file // "unknown") != "unknown" then " (\(.file)\(if .line then ":\(.line)" else "" end))" else "" end)
                    else null end)}
-            | select(.t != null) | .t |= (gsub("\r"; "") | gsub("\n+$"; "") | esc) | select(.t | test("[^[:space:]]"))) ] as $f
+            | select(.t != null) | .t |= (gsub("\r"; "") | gsub("\n+$"; "") | esc) | select(.t | test("[^[:space:]]"))) ]
+        | (reduce .[] as $x ([]; if ($x.id != null and (map(.id) | index($x.id)) != null) or (map(.t) | index($x.t)) != null
+                                 then . else . + [$x] end)) as $f
         | if ($f | length) == 0 then ""
           elif ($f | length) == 1 then
             ($f[0].t | split("\n")) as $ls
@@ -59,10 +85,27 @@ rsc_row_findings_v() {
                else "what failed: \($f | length) findings" + (if ($cnt | length) > 0 then ": " + ($cnt | join(", ")) else "" end) end)
               + "\n<details><summary>what failed</summary>\n\n"
               + ([$f[] | "- " + (.t | gsub("\n"; "\n  "))] | join("\n")) + "\n\n</details>"
-          end' "$_rfv_p" 2>/dev/null || true)"
+          end' "${_rfv_fs[@]}" 2>/dev/null || true)"
     [[ -n "$_rfv_l" ]] || return 0
     _rsc_code_labels_v _rfv_l "$_rfv_l"
     printf -v "$1" '%s' "$_rfv_l"
+}
+
+# _rsc_stage_json_outputs_v <array> <manifest> — the raw path of each JSON
+# output the manifest declares, read by the shell.
+_rsc_stage_json_outputs_v() {
+    local -n _rsjo="$1"; local _rsj_l _rsj_in=0 _rsj_p
+    _rsjo=()
+    [[ -r "$2" ]] || return 0
+    while IFS= read -r _rsj_l || [[ -n "$_rsj_l" ]]; do
+        if [[ "$_rsj_l" =~ ^outputs:[[:space:]]*$ ]]; then _rsj_in=1; continue; fi
+        (( _rsj_in )) || continue
+        [[ "$_rsj_l" =~ ^[A-Za-z_] ]] && break
+        [[ "$_rsj_l" =~ ^[[:space:]]+path:[[:space:]]*([^[:space:]#]+) ]] || continue
+        _rsj_p="${BASH_REMATCH[1]}"; _rsj_p="${_rsj_p//\"/}"; _rsj_p="${_rsj_p//\'/}"
+        [[ "$_rsj_p" == *.json ]] && _rsjo+=("$_rsj_p")
+    done < "$2"
+    return 0
 }
 
 # _rsc_first_line_v <var> <summary_file> — the first line with a non-blank

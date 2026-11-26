@@ -367,7 +367,11 @@ _stage_block_previous_work() {
         any=1
         verdict="${verdicts[$s]:-}"
         content=""; [[ -n "$res_any" && -r "$res_any" ]] && content="$(<"$res_any")"
-        if [[ -z "$verdict" && -n "$content" && "$content" =~ \"(outcome|verdict)\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]]; then
+        # #2627 (ADR-068 §8): a stage run again reads its own latest try's
+        # outcome — the engine records a stage's verdict only when its last try
+        # ends, so until then it is the one from the stage's earlier run.
+        if [[ ( -z "$verdict" || ( "$s" == "$stage" && "${ZBUILD_STAGE_TRY:-1}" -gt 1 ) ) \
+              && -n "$content" && "$content" =~ \"(outcome|verdict)\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]]; then
             verdict="${BASH_REMATCH[2]}"
         fi
         own=""; [[ "$s" == "$stage" ]] && own=" — your own"

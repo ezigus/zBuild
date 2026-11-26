@@ -1,6 +1,6 @@
 # ADR-054: Stage Contract
 
-**Status:** Accepted (2026-08-09); amended 2026-11-26 (#2616, §6: a flow with no loop names a stage's stop as a loop does); amended 2026-11-24 (#2607: §6 a loop member's stop is named and cleaned); amended 2026-11-24 (#2605: §6a the test stage's copies have their own git); amended 2026-11-22 (#2586: §6a progress is a change to the repository's tracked files); amended 2026-11-20 (#2573: one shared, forgiving reader of test output); amended 2026-11-18 (#2563: the run watchdog signals only the runner's own tree)
+**Status:** Accepted (2026-08-09); amended 2026-11-26 (#2627, §6a: a done after an earlier try's change stands); amended 2026-11-26 (#2616, §6: a flow with no loop names a stage's stop as a loop does); amended 2026-11-24 (#2607: §6 a loop member's stop is named and cleaned); amended 2026-11-24 (#2605: §6a the test stage's copies have their own git); amended 2026-11-22 (#2586: §6a progress is a change to the repository's tracked files); amended 2026-11-20 (#2573: one shared, forgiving reader of test output); amended 2026-11-18 (#2563: the run watchdog signals only the runner's own tree)
 **Date:** 2026-08-09
 **Issue:** #1820
 **Amended:** 2026-11-08 (#2493) — §7: a signal that arrives while a signal handler runs is ignored, never handled inside it (Amendment at the end).
@@ -772,7 +772,13 @@ On #2532 run 45231040380, the outer loop's round 2 was again "iteration 1" of th
 
 A flow with no loop runs on the runner's linear path, which ended every stop as "Stage <id> failed (rc=1)": a stage that ended `misconfigured` or `broken` was not named with its reason, and one that ended `unavailable` did not abort, resumable. It now reads the stage's own word as a loop's dispatch does (#2582, #2607): `unavailable` aborts, naming the stage (`stage_stopped:<stage>:<reason>`); `misconfigured` or `broken` in the stage's own words is named with its reason in `pipeline.end`, the state and the end-of-run words.
 
+## Amendment 2026-11-26 (#2627) — §6a: a done after an earlier try's change is not sent back
+
+- **A try that changed nothing after an earlier try of the same run of the stage changed its work keeps its `done` answers** (ADR-068 §6, amended 2026-11-26): `plugin_hook_call` notes when any try changed the stage's work (`_ATTEMPT_LAST_WORK_CHANGED`, set by `attempt_archive_outputs`: its files, or its tracked repository files for a stage that writes the repository; new findings alone are not a change) and `stage_handoff_unchanged` then sends back no `done`. Its `wrong` and `not mine` are handed on as before. Whether a try is run again still asks only what that try changed (`_ATTEMPT_LAST_PROGRESS`).
+
 ## Enforced by
+
+- §6a amendment 2026-11-26 (#2627: a done after an earlier try's change stands) → `tests/unit/no-change-handoff-test.sh` H12
 
 - §6 amendment 2026-11-26 (#2616: the linear path names a stop) → `tests/integration/stage-stop-names-cause-test.sh` S8
 
