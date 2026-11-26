@@ -46,7 +46,9 @@ rsc_row_findings_v() {
         done
     fi
     [[ ${#_rfv_fs[@]} -gt 0 ]] || return 0
-    _rfv_c=""; for _rfv_x in "${_rfv_fs[@]}"; do _rfv_c+="$(<"$_rfv_x")"; done
+    # Read by the shell: the comment renders on every tick (ADR-065 §5).
+    local _rfv_one=""; _rfv_c=""
+    for _rfv_x in "${_rfv_fs[@]}"; do IFS= read -r -d '' _rfv_one < "$_rfv_x" || true; _rfv_c+="$_rfv_one"; done
     [[ "$_rfv_c" == *'"findings"'* ]] || return 0
     # #2480: one finding heads the row, the rest of its lines folded; several
     # are named by the id each is about, or counted (by severity when they
