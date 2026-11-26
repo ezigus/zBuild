@@ -1,6 +1,6 @@
 # ADR-070 — One fixed list of requirements per issue
 
-**Status:** Accepted (2026-10-05); amended 2026-11-20 (#2571, §1: what intake finds unclear in the issue is a question in the one form, kept in its result, and judged by its check each try); amended 2026-11-20 (#2569, §1: a missing requirement the check names is the issue's own sentences, checked; §2: the last list is a starting point, not the whole issue); amended 2026-11-16 (#2555, §1: an issue's ## Terms section reaches every stage word for word); amended 2026-11-15 (#2550, §1: an item the issue says not to do is a limit, kept with its "Do not"; intake numbers ids from its check's own count); amended 2026-11-12 (#2527, §1: intake's check is shown each removed item with its words and why, and is never told to name a listed id; §4: design's coverage check takes a quote from the issue's words too); amended 2026-11-08 (#2495, §4: the check looks both ways through the SPECs only, and does not judge the scope); amended 2026-11-09 (#2508, §4: design writes no scope block; what build changes is held to the requirements by issue-acceptance)
+**Status:** Accepted (2026-10-05); amended 2026-11-26 (#2614, §1: intake still reads only the issue; the issue is judged against the system by issue-check, ADR-074); amended 2026-11-20 (#2571, §1: what intake finds unclear in the issue is a question in the one form, kept in its result, and judged by its check each try); amended 2026-11-20 (#2569, §1: a missing requirement the check names is the issue's own sentences, checked; §2: the last list is a starting point, not the whole issue); amended 2026-11-16 (#2555, §1: an issue's ## Terms section reaches every stage word for word); amended 2026-11-15 (#2550, §1: an item the issue says not to do is a limit, kept with its "Do not"; intake numbers ids from its check's own count); amended 2026-11-12 (#2527, §1: intake's check is shown each removed item with its words and why, and is never told to name a listed id; §4: design's coverage check takes a quote from the issue's words too); amended 2026-11-08 (#2495, §4: the check looks both ways through the SPECs only, and does not judge the scope); amended 2026-11-09 (#2508, §4: design writes no scope block; what build changes is held to the requirements by issue-acceptance)
 **Issue:** #2306
 **Amends:** ADR-046 (design-gate gains C7), ADR-069 §2 (a requirement line may also carry ` covers: `)
 **Related:** ADR-055 (inter-stage data contract), ADR-040 §5 (spec-coverage judges against the issue), ADR-066 (every ADR statement has a test), ADR-067 (prompts speak plainly)
@@ -224,7 +224,13 @@ On #2533 run 45387034249 intake stopped. The prompt called a limit "not a requir
 
   A corrected id takes its code's next free number. A number with a leading 0 is named as the fault. A token that looks like an id (all capitals, or with a digit, such as `LIMIT-OUT1`) is read as an id in the wrong form, so it is never "has no id"; a hyphenated first word ("Read-only …") is not.
 
+## Amendment 2026-11-26 (#2614) — §1: the issue is judged against the system by a stage of its own
+
+- **§1: intake still answers from the issue alone** (#2448). Whether each requirement still holds against the system as it is — already true, against an ADR, about something removed — is judged after intake by `issue-check` (ADR-074), which reads the code, git and GitHub.
+
 ## Enforced by
+
+- §1 amendment 2026-11-26 (#2614: issue-check judges the issue against the system) → `plugins/agent/issue-check/tests/issue-check-test.sh` IC1–IC11
 
 - §1 amendment 2026-11-24 (#2603: a do-not sorted; LM limit ids; a wrong id answered with a corrected one) → `tests/unit/limit-ids-test.sh` LI1–LI13; `tests/unit/limits-test.sh` LM1–LM12 (limits under LM)
 

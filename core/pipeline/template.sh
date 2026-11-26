@@ -1465,12 +1465,13 @@ _tpl_build_dispatch_units() {
         fi
     done
     # #2611 (ADR-068 §3): a stage requires only units the flow runs before it;
-    # `all` is every one of them.
-    local _rq_u _rq_id _rq_v _rq_n _rq_seen=" " _rq_all
+    # `all` is every one of them — #2614: but one marked not blocking
+    # (`blocking: false`, as hydrate is), whose failure holds nothing back.
+    local _rq_u _rq_id _rq_v _rq_n _rq_seen=" " _rq_blk=" " _rq_all _rq_bl
     for _rq_u in "${_TPL_DISPATCH_UNITS[@]}"; do
         _rq_id="${_rq_u#*:}"; _rq_v="_TPL_STAGE_REQUIRES_${_rq_id//-/_}"
         if [[ "${!_rq_v:-}" == all ]]; then
-            _rq_all="${_rq_seen# }"; _rq_all="${_rq_all% }"
+            _rq_all="${_rq_blk# }"; _rq_all="${_rq_all% }"
             printf -v "$_rq_v" '%s' "$_rq_all"; export "${_rq_v?}"
         fi
         for _rq_n in ${!_rq_v:-}; do
@@ -1480,6 +1481,8 @@ _tpl_build_dispatch_units() {
             fi
         done
         _rq_seen+="$_rq_id "
+        _rq_bl="_TPL_STAGE_BLOCKING_${_rq_id//-/_}"
+        [[ "${!_rq_bl:-}" == false ]] || _rq_blk+="$_rq_id "
     done
     # A stage that is not a top-level unit (a loop's member) is never asked.
     local _rq_seen_safe="${_rq_seen//-/_}"

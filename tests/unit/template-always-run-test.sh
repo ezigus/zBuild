@@ -59,9 +59,9 @@ assert_eq "[SPEC-2] neither release nor persist is in _TPL_STAGES[]" "0" "$_in_f
 # The count is 17 (#1668 removed impact; #2368 removed both aggregators). The
 # assertion is about the always-run stages NOT being in here: release and persist
 # would make it 11 if they leaked into the flow (#2372: 10 flow stages; #2445:
-# 9, plan removed).
+# 9, plan removed; #2614: 10, issue-check added).
 assert_eq "[SPEC-2] [#1668/SPEC-9] simple.yaml flow count excludes both always-run stages" \
-    "9" "${#_TPL_STAGES[@]}"
+    "10" "${#_TPL_STAGES[@]}"
 
 # ─── [SPEC-3][guard] state does not leak between loads ──────────────────────
 # load_template is called repeatedly in one process. A template with no

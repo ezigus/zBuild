@@ -88,9 +88,11 @@ assert_eq "[SPEC-1] simple.yaml loads without error (exit 0)" "0" "$_load_rc"
 # 13 -> 10: #2372 — test checks its own run; shape-floor, acceptance-gate and
 # assertion-integrity are retired.
 # 10 -> 9: #2445 — plan is removed; design writes the work steps.
-assert_eq "[SPEC-2] [#1668/SPEC-2] _TPL_STAGES count is 9" "9" "${#_TPL_STAGES[@]}"
+# 9 -> 10: #2614 (ADR-074) — issue-check judges the issue against the system
+# as it is, after intake and before the loop.
+assert_eq "[SPEC-2] [#2614] _TPL_STAGES count is 10" "10" "${#_TPL_STAGES[@]}"
 
-_expected_stages=(hydrate intake design test-author build test issue-acceptance review_lenses pr)
+_expected_stages=(hydrate intake issue-check design test-author build test issue-acceptance review_lenses pr)
 _i=0
 for _s in "${_expected_stages[@]}"; do
     assert_eq "[SPEC-2] _TPL_STAGES[$_i] == $_s" "$_s" "${_TPL_STAGES[$_i]}"
@@ -204,11 +206,13 @@ assert_eq "[SPEC-4] resolve_template_file 'simple' returns shipped path" \
 # #2271 (ADR-068): design, impact and build_test_cycle fold into
 # ONE outer loop, delivery_loop. #2433: the review lenses run inside it, so
 # the count is 4 (#2445: plan is removed): hydrate, intake, cycle:delivery_loop, pr.
-assert_eq "[SPEC-11] dispatch units count is 4 (#2445)" "4" "${#_TPL_DISPATCH_UNITS[@]}"
+# #2614: 5 — issue-check after intake, before the loop.
+assert_eq "[SPEC-11] dispatch units count is 5 (#2614)" "5" "${#_TPL_DISPATCH_UNITS[@]}"
 assert_eq "[SPEC-11] dispatch[0] stage:hydrate"        "stage:hydrate"        "${_TPL_DISPATCH_UNITS[0]}"
 assert_eq "[SPEC-11] dispatch[1] stage:intake"         "stage:intake"         "${_TPL_DISPATCH_UNITS[1]}"
-assert_eq "[SPEC-11] dispatch[2] cycle:delivery_loop"  "cycle:delivery_loop"  "${_TPL_DISPATCH_UNITS[2]}"
-assert_eq "[SPEC-11] dispatch[3] stage:pr"             "stage:pr"             "${_TPL_DISPATCH_UNITS[3]}"
+assert_eq "[SPEC-11] [#2614] dispatch[2] stage:issue-check" "stage:issue-check" "${_TPL_DISPATCH_UNITS[2]}"
+assert_eq "[SPEC-11] dispatch[3] cycle:delivery_loop"  "cycle:delivery_loop"  "${_TPL_DISPATCH_UNITS[3]}"
+assert_eq "[SPEC-11] dispatch[4] stage:pr"             "stage:pr"             "${_TPL_DISPATCH_UNITS[4]}"
 
 # ─── SPEC-18 (#2271, ADR-068): the outer loop and its rules ──────────────────
 assert_eq "[SPEC-18] [#2433/R4] delivery_loop holds the design-build-test loop, then the lenses (ADR-068 §1)" \
@@ -265,13 +269,14 @@ assert_eq "[SPEC-15] ...over its five must-pass members, design first (ADR-068 �
 # gate-aggregator from 8 to 10 (design=2,design-gate=3,impact=4,build=5,test=6,
 # shape-floor=7,acceptance-gate=8,secret-scan=9,gate-aggregator=10).
 
-assert_eq "[SPEC-12] [#1668/SPEC-2] _TPL_STAGES[5] == test (#2372; #2445: plan removed)" "test" "${_TPL_STAGES[5]}"
-assert_eq "[SPEC-12] _TPL_STAGES[6] == issue-acceptance (the loop's last member, #2368)" \
-    "issue-acceptance" "${_TPL_STAGES[6]}"
+# #2614: issue-check before the loop moves each loop member up one.
+assert_eq "[SPEC-12] [#1668/SPEC-2] _TPL_STAGES[6] == test (#2372; #2445: plan removed; #2614)" "test" "${_TPL_STAGES[6]}"
+assert_eq "[SPEC-12] _TPL_STAGES[7] == issue-acceptance (the loop's last member, #2368)" \
+    "issue-acceptance" "${_TPL_STAGES[7]}"
 
 # ─── SPEC-13: design is at index 3; test-author follows at 4 (#2369) ─────────
-assert_eq "[SPEC-13] _TPL_STAGES[2] == design" "design" "${_TPL_STAGES[2]}"
-assert_eq "[SPEC-13] _TPL_STAGES[3] == test-author (#2369)" "test-author" "${_TPL_STAGES[3]}"
+assert_eq "[SPEC-13] _TPL_STAGES[3] == design (#2614)" "design" "${_TPL_STAGES[3]}"
+assert_eq "[SPEC-13] _TPL_STAGES[4] == test-author (#2369)" "test-author" "${_TPL_STAGES[4]}"
 
 # ─── SPEC-6 (guard, A3-pr #756): simple.yaml pr role unchanged by standard migration ──
 # GUARD: simple.yaml's pr stage declares roles: [pr]. Since #1704 that role is
@@ -300,6 +305,8 @@ load_template "$DEPLOYED_TPL"
 _dep_load_rc=$?
 set -e
 assert_eq "[SPEC-6] deployed.yaml loads without error" "0" "$_dep_load_rc"
+# #2614 (ADR-074): the issue is checked in simple only — deployed runs the last steps.
+assert_eq "[#2614] deployed.yaml runs no issue-check" "" "$(printf '%s\n' "${_TPL_STAGES[@]}" | grep -x 'issue-check' || true)"
 
 # ─── deployed.yaml has simple.yaml's loop shape (ADR-068 §1) ─────────────────
 assert_eq "[ADR-068 §1] deployed.yaml: delivery_loop holds the design-build-test loop, then the lenses" \
