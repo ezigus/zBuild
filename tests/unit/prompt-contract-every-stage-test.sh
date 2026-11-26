@@ -152,6 +152,18 @@ _c_issue_acceptance() { ( ad="$(_fixture issue-acceptance)"; sd="${ad%/artifacts
     route_to_model() { printf '%s' "$2" > "$RAW/issue-acceptance.txt"; return 1; }
     ZBUILD_STAGE_INPUTS="$sd/idx.json" ZBUILD_ARTIFACT_DIR="$ad" ZBUILD_REPO_ROOT="${sd%/state}" \
         issue_acceptance_run issue-acceptance "$sd/pipeline-state.json" ) >/dev/null 2>&1; }
+# #2614 (ADR-074): issue-check's one call, over intake's own requirements.
+_c_issue_check() { ( ad="$(_fixture issue-check)"; sd="${ad%/artifacts}"
+    zb_test_issue_output "$sd" "ISSUE-TEXT: make the stage write its result" >/dev/null
+    ( source "$REPO_ROOT/plugins/agent/intake/plugin.sh" >/dev/null 2>&1
+      route_to_model() { if [[ "$2" == *"check a list of requirements"* ]]; then printf 'MISSING: none\n'; else printf 'REQUIREMENT: RQRSLT-1 the stage writes its result\n'; fi; }
+      _intake_write_requirements "$sd" '{"title":"Result","body":"ISSUE-TEXT: make the stage write its result"}' ) >/dev/null 2>&1
+    jq -n --arg g "$sd/intake-result.json" --arg r "$sd/requirements.json" \
+        '{schema_version:2, stage:"issue-check", inputs:{a:$g, r:$r}}' > "$sd/idx.json"
+    source "$REPO_ROOT/plugins/agent/issue-check/plugin.sh" >/dev/null 2>&1
+    route_to_model() { printf '%s' "$2" > "$RAW/issue-check.txt"; return 1; }
+    ZBUILD_STAGE_INPUTS="$sd/idx.json" ZBUILD_ARTIFACT_DIR="$ad" ZBUILD_REPO_ROOT="${sd%/state}" \
+        issue_check_run issue-check "$sd/pipeline-state.json" ) >/dev/null 2>&1; }
 # #2370: test-author's check of its own assertions asks about one SPEC, and
 # about every SPEC at once (#2467: the same prompt, with one SPEC or several).
 # Checked beside test-author's own prompt.

@@ -309,7 +309,7 @@ Until now, `stage-handoff.sh` handed on a "not mine" only from a try that failed
 
 ## Enforced by
 
-- §3 amendment 2026-11-26 (#2614: a stage that does not block is not part of requires: all) → `tests/unit/stage-requires-test.sh` RQ10, RQ3
+- §3 amendment 2026-11-26 (#2614: a stage that does not block is not part of requires: all) → `tests/unit/stage-requires-test.sh` RQ10, RQ3; `tests/integration/issue-check-stops-run-test.sh` SR2 (a failed hydrate: pr still runs)
 
 - §3 §6 amendment 2026-11-25 (#2611: requires:; a map member follows stop_run_on_fail; an answer carries) → `tests/unit/stage-requires-test.sh` RQ1–RQ8; `tests/integration/cycle-map-member-test.sh` M3, M5, M6; `tests/unit/finding-answers-test.sh` B6
 

@@ -226,6 +226,7 @@ PLUG
 # and every assertion below fails for a reason unrelated to what it tests.
 _make_plugin "hydrate"         "hydrate"
 _make_plugin "intake"          "intake"
+_make_plugin "issue-check"     "issue_check"   # #2614: after intake (ADR-074)
 _make_plan_plugin
 _make_design_plugin
 # #2187: build_test_cycle's newer members. Unresolved, each was a silent

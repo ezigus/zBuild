@@ -50,6 +50,7 @@ provides:
   result_contract: 3
   events:
     - issue_check.judged
+    - issue_check.result.write_failed
 
 config:
   tier_default: T2

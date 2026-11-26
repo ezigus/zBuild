@@ -289,6 +289,7 @@ PLUG
 }
 _make_plugin "hydrate"         "hydrate"
 _make_slow_intake_plugin
+_make_plugin "issue-check"     "issue_check"   # #2614: after intake (ADR-074)
 _make_plan_plugin
 _make_design_plugin
 _make_design_gate_plugin
