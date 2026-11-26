@@ -40,9 +40,19 @@ zb_digest_v() {
 }
 
 # zb_parts_digest_v <var> <array> — the fingerprint of text that held a NUL
-# between each part of <array> (a shell string cannot hold one).
+# between each part of <array> (a shell string cannot hold one). Past
+# _ZB_DIGEST_SHELL_MAX bytes, one cksum over those bytes, as zb_digest_v and
+# zb_file_digest_v do (#2615): the same digest as a file that holds them.
 zb_parts_digest_v() {
-    local -n _zpd_a="$2"; local LC_ALL=C _zpd_h=2166136261 _zpd_n=0 _zpd_i
+    local -n _zpd_a="$2"; local LC_ALL=C _zpd_h=2166136261 _zpd_n=0 _zpd_i _zpd_c _zpd_t
+    _zpd_t=$(( ${#_zpd_a[@]} > 0 ? ${#_zpd_a[@]} - 1 : 0 ))
+    for (( _zpd_i = 0; _zpd_i < ${#_zpd_a[@]}; _zpd_i++ )); do _zpd_t=$(( _zpd_t + ${#_zpd_a[_zpd_i]} )); done
+    if (( _zpd_t > _ZB_DIGEST_SHELL_MAX )); then
+        read -r _zpd_c _zpd_n < <(cksum < <(
+            printf '%s' "${_zpd_a[0]}"
+            for (( _zpd_i = 1; _zpd_i < ${#_zpd_a[@]}; _zpd_i++ )); do printf '\0%s' "${_zpd_a[_zpd_i]}"; done))
+        printf -v "$1" 'ck%s-%s' "$_zpd_c" "$_zpd_n"; return 0
+    fi
     for (( _zpd_i = 0; _zpd_i < ${#_zpd_a[@]}; _zpd_i++ )); do
         if (( _zpd_i > 0 )); then
             (( _zpd_h = (_zpd_h * 16777619) & 0xFFFFFFFF )); _zpd_n=$(( _zpd_n + 1 ))

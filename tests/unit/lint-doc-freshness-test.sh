@@ -244,10 +244,8 @@ assert_eq "[SPEC-8] all-green fixture → rc=0" "0" "$rc"
 assert_contains "[SPEC-8] fixture pass line printed" "$out" "OK"
 
 # (b) Real repo gate: all 36 plugin pages and 16 mechanic pages must pass.
-rc=0
-out="$(bash "$CHECKER" 2>&1)" || rc=$?
-assert_eq "[SPEC-8] real repo gate → rc=0" "0" "$rc"
-assert_contains "[SPEC-8] real repo pass line mentions plugins" "$out" "plugin"
+assert_contains "[SPEC-8] npm run lint runs it over the tree (#2615: never a test)" \
+    "$(jq -r '.scripts.lint' "$REPO_ROOT/package.json")" "bash scripts/lib/lint-doc-freshness.sh"
 
 # (c) Wiring guard: package.json must include lint-doc-freshness.sh in the lint chain.
 pkg="$(cat "$REPO_ROOT/package.json")"

@@ -56,8 +56,8 @@ assert_contains "VARIANT: plugin | mechanic marker present" "$TMPL" "VARIANT: pl
 assert_contains "template references docs/DOC-STYLE.md" "$TMPL" "DOC-STYLE.md"
 
 # ── Guard: lint-doc-style.sh still passes on the real repo docs ──────────────
-lint_rc=0; bash "$REPO_ROOT/scripts/lib/lint-doc-style.sh" >/dev/null 2>&1 || lint_rc=$?
-assert_eq "lint-doc-style.sh still passes (no newcomer-opening regression)" "0" "$lint_rc"
+assert_contains "[guard] npm run lint runs it over the tree (#2615: never a test)" \
+    "$(jq -r '.scripts.lint' "$REPO_ROOT/package.json")" "bash scripts/lib/lint-doc-style.sh"
 
 print_test_results
 exit $((FAIL > 0))

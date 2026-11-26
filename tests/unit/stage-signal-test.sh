@@ -88,10 +88,10 @@ assert_eq "[G4] an unexplained unavailable is refused" "1" "$(_lint_words)"
 assert_eq "[G4] an annotated unavailable passes" "0" "$(_lint_words)"
 
 print_test_section "G5: the real tree"
-assert_eq "[G5] every plugin's signal handling uses the helper" "0" \
-    "$(bash "$REPO_ROOT/scripts/lib/lint-stage-signals.sh" >/dev/null 2>&1; echo $?)"
-assert_eq "[G5] every literal unavailable names its service" "0" \
-    "$(bash "$REPO_ROOT/scripts/lib/lint-disposition-words.sh" >/dev/null 2>&1; echo $?)"
+assert_contains "[G5] lint-stage-signals: npm run lint runs it over the tree (#2615: never a test)" \
+    "$(jq -r '.scripts.lint' "$REPO_ROOT/package.json")" "bash scripts/lib/lint-stage-signals.sh"
+assert_contains "[G5] lint-disposition-words: npm run lint runs it over the tree (#2615: never a test)" \
+    "$(jq -r '.scripts.lint' "$REPO_ROOT/package.json")" "bash scripts/lib/lint-disposition-words.sh"
 
 cleanup_test_env
 print_test_results

@@ -114,6 +114,8 @@ FIX — say what would fix each finding:
 - \`test\`: a test must be added, changed or moved — which cases a test covers and which file holds it are the tests' to fix, never the design's.
 - \`design\`: the design must change: a decision, or a requirement in its acceptance contract.
 - \`issue\`: the issue itself is wrong: it contradicts an ADR, or asks for something that cannot be built as written. No stage can fix this.
+Behaviour the issue asks for that the change does not do, and that no requirement covers, is \`design\`: a requirement, and then its test, come before the code.
+\`code\` is for code that is wrong where a requirement and its test already cover the behaviour, or for how the code is written.
 
 UNCLEAR — what the issue means, when its words could mean either of two things:
 ${_RL_UNCLEAR_RULES:-}

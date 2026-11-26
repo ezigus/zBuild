@@ -85,9 +85,6 @@ sed -i.bak '/beside-code/d' "$R/tests/unit/a-test.sh" && rm -f "$R/tests/unit/a-
 _rc=0; bash "$LINT" "$R" >/dev/null 2>&1 || _rc=$?
 assert_eq "[F3] with the helper gone, the fake repository is clean" "0" "$_rc"
 
-_rc=0; _out="$(bash "$LINT" "$REPO_ROOT" 2>&1)" || _rc=$?
-assert_eq "[F4] the real tree has no test helper outside its test folders" "0" "$_rc"
-[[ "$_rc" -eq 0 ]] || printf '%s\n' "$_out" >&2
 assert_contains "[F4] npm run lint runs it" \
     "$(jq -r '.scripts.lint' "$REPO_ROOT/package.json")" "bash scripts/lib/lint-test-helper-place.sh"
 

@@ -100,9 +100,8 @@ fi
 
 # The point of runtime enforcement: this plugin is not in the tree, so the lint
 # reports clean while the stage publishes nothing.
-_lint_rc=0
-bash "$REPO_ROOT/scripts/lib/lint-contract.sh" >/dev/null 2>&1 || _lint_rc=$?
-assert_eq "[SPEC-2] the tree lint cannot see it — hence the runtime check" "0" "$_lint_rc"
+assert_contains "[SPEC-2] npm run lint runs it over the tree (#2615: never a test)" \
+    "$(jq -r '.scripts.lint' "$REPO_ROOT/package.json")" "bash scripts/lib/lint-contract.sh"
 
 # ─── SPEC-3: backend services are exempt ─────────────────────────────────────
 print_test_section "3. backend services are unaffected (ADR-047 §5)"

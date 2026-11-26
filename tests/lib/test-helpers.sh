@@ -518,6 +518,32 @@ zb_test_goal() {
     printf '%s' "$text"
 }
 
+# zb_test_repo_spy <log> — git and grep run for real, each first writing a line
+# "<working directory> :: <arguments>" to <log> (#2615, ADR-012): a test can then
+# show the code under test never read the checkout the suite runs from.
+zb_test_repo_spy() {
+    local log="$1" bin="$TEST_TEMP_DIR/spy-bin" t real
+    mkdir -p "$bin"; : > "$log"
+    for t in git grep; do
+        real="$(command -v "$t")"
+        printf '#!/usr/bin/env bash\nprintf "%%s :: %%s\\n" "$PWD" "$*" >> "%s"\nexec "%s" "$@"\n' "$log" "$real" > "$bin/$t"
+        chmod +x "$bin/$t"
+    done
+    export PATH="$bin:$PATH"
+}
+
+# zb_test_repo_spy_hits <log> <dir> — the logged calls that ran in <dir> or
+# named it or a path under it. (A call by absolute path, /usr/bin/git, is not
+# seen: the spy is on PATH.)
+zb_test_repo_spy_hits() {
+    local l
+    while IFS= read -r l; do
+        # Run in it, or naming it or a path under it (-C <dir>, an absolute path).
+        [[ "${l%% :: *}" == "$2" || "${l%% :: *}" == "$2/"* || "${l#* :: }" == *"$2 "* || "${l#* :: }" == *"$2" || "${l#* :: }" == *"$2/"* ]] && printf '%s\n' "$l"
+    done < "$1"
+    return 0
+}
+
 # A throwaway repo WITH an origin. setup_git_temp_repo builds the working tree;
 # this adds the bare remote a push needs. Promoted out of persist-stage-test.sh,
 # where it lived as _mk_repo.

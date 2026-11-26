@@ -147,10 +147,8 @@ out="$(bash "$FX_BQ/scripts/lib/lint-doc-style.sh" 2>&1)" || rc=$?
 assert_eq "TC-5: blockquote-sentence opening passes (rc=0)" "0" "$rc"
 
 # --- TC-6: the REAL repo docs pass (a future bad page would trip CI) ---------
-rc=0
-out="$(bash "$CHECKER" 2>&1)" || rc=$?
-assert_eq "TC-6: real in-scope repo docs pass lint (rc=0)" "0" "$rc"
-assert_contains "TC-6: pass line reports in-scope page count" "$out" "in-scope page"
+assert_contains "TC-6: npm run lint runs it over the tree (#2615: never a test)" \
+    "$(jq -r '.scripts.lint' "$REPO_ROOT/package.json")" "bash scripts/lib/lint-doc-style.sh"
 
 cleanup_test_env
 print_test_results

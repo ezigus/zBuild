@@ -151,9 +151,8 @@ chmod u+w "$_C11_RO"
 if [[ -n "$_OLD_TMPDIR" ]]; then export TMPDIR="$_OLD_TMPDIR"; else unset TMPDIR; fi
 
 # ── C6 ───────────────────────────────────────────────────────────────────────
-_out="$(bash "$REPO_ROOT/scripts/lib/lint-stage-output-names.sh" 2>&1)"; _rc=$?
-assert_eq "[C6] no plugin names another stage's output" "0" "$_rc"
-[[ $_rc -eq 0 ]] || printf '%s\n' "$_out" | head -20 >&2
+assert_contains "[C6] npm run lint runs it over the tree (#2615: never a test)" \
+    "$(jq -r '.scripts.lint' "$REPO_ROOT/package.json")" "bash scripts/lib/lint-stage-output-names.sh"
 
 cleanup_test_env
 print_test_results

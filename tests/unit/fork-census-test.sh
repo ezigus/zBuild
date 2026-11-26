@@ -30,6 +30,9 @@
 #         counts as the two processes it is (#2575: 457 a dispatch under load,
 #         465 alone); a bash that replaces a process by exec is still that one
 #         (was fork-budget SPEC-1c).
+# SPEC-8: (#2615, ADR-065) the trace line sets the process's name once, on its
+#         first line, not on every line; a subshell then an exec still counts
+#         the shell and its subshell
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -134,6 +137,16 @@ assert_eq "[SPEC-7] …each named by more than its id (the time it first traced)
 fork_census_traced "$TEST_TEMP_DIR/exec.trace" bash -c 'x=1; exec bash -c "y=2"'
 assert_eq "[SPEC-7] a bash that replaces a shell by exec is still one process" "1" \
     "$(fork_census_processes "$TEST_TEMP_DIR/exec.trace")"
+
+print_test_section "SPEC-8: the trace line names its process only on the process's first line (#2615)"
+# #2575 exported the process's name on every traced line; an exported variable
+# set costs every later exec a fresh environment, and the fork-budget test went
+# 67 → 98 s on one machine. Its name is set once, on the process's first line.
+_ps4="$(fork_census_traced "$TEST_TEMP_DIR/ps4.trace" bash -c 'printf "%s" "$PS4" >&9' 9>&1)"
+assert_contains "[SPEC-8] the name is set only when this process has not set it" "$_ps4" "_ZB_FC_EP == BASHPID ||"
+fork_census_traced "$TEST_TEMP_DIR/exec2.trace" bash -c 'x=1; ( y=2 ); z=3; exec bash -c "w=4"'
+assert_eq "[SPEC-8] a subshell, then an exec: still the shell and its subshell" "2" \
+    "$(fork_census_processes "$TEST_TEMP_DIR/exec2.trace")"
 
 cleanup_test_env
 print_test_results

@@ -36,9 +36,8 @@ _file '#!/usr/bin/env bash' 'set -euo pipefail' 'set +e' 'cmd' 'set -e'
 assert_eq "[L3] an -e header may toggle it" "0" "$(_lint)"
 _file '#!/usr/bin/env bash' 'set -uo pipefail' 'set +e' 'set -o pipefail'
 assert_eq "[L4] set +e and set -o pipefail are fine" "0" "$(_lint)"
-_real="$(bash "$LINT" 2>&1)"; _rc=$?
-assert_eq "[L5] the real tree passes" "0" "$_rc"
-[[ "$_rc" -eq 0 ]] || printf '%s\n' "$_real" >&2
+assert_contains "[L5] npm run lint runs it over the tree (#2615: never this test)" \
+    "$(jq -r '.scripts.lint' "$REPO_ROOT/package.json")" "bash scripts/lib/lint-test-errexit.sh"
 
 cleanup_test_env
 print_test_results
