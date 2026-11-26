@@ -21,9 +21,9 @@ FX="$TEST_TEMP_DIR/plugins"; mkdir -p "$FX/agent/probe"
 
 _run_lint() { set +e; bash "$LINT" "$FX" >/dev/null 2>&1; local _r=$?; set -e; printf '%s' "$_r"; }
 
-# ─── SPEC-1: the real tree passes ───────────────────────────────────────────
-set +e; bash "$LINT" >/dev/null 2>&1; _s1=$?; set -e
-assert_eq "[SPEC-1] the real plugins tree has no markdown-document field" "0" "$_s1"
+# ─── SPEC-1: the lint step runs it over the tree ─────────────────────────────
+assert_contains "[SPEC-1] npm run lint runs it over the tree (#2615: never this test)" \
+    "$(jq -r '.scripts.lint' "$REPO_ROOT/package.json")" "bash scripts/lib/lint-llm-envelope.sh"
 
 # ─── SPEC-2: a field NAME ending in _md is caught ───────────────────────────
 # This is impact_feedback_md, the field that killed run 32886190954.

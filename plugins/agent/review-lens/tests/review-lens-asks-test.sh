@@ -32,6 +32,12 @@
 #             and a deliberate fail-open is visible that way (sre)
 # S7 [change] the lens is told the rule on outside assumptions, and that it may
 #             look GitHub up, read-only, to check one
+# S10 [change] (#2615, ADR-040) behaviour the issue asks for, which no
+#             requirement covers, is fix: design — so a requirement and its test
+#             come first; fix: code is for wrong code a requirement and its test
+#             already cover, or for how code is written. On #1722 run
+#             45739271221 three lenses sent such a gap to build alone, and the
+#             next round found the new code untested.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -144,6 +150,12 @@ source "$REPO_ROOT/scripts/lib/outside-assumptions.sh"
 assert_contains "[S7] the lens is told the rule" "$P" "$(_flat "${ZB_OUTSIDE_ASSUMPTIONS_RULE:-<no rule>}")"
 assert_contains "[S7] ...and that one not handled is a finding" "$P" "An outside assumption the change does not handle is a finding"
 assert_contains "[S7] ...checked with the read-only lookup, not guessed" "$P" "look it up, read-only, with zbuild-gh-get <endpoint> [jq-filter]"
+
+print_test_section "S10: behaviour no requirement covers is design's (#2615)"
+assert_contains "[S10] the prompt says such behaviour is fix: design" "$P" \
+    "Behaviour the issue asks for that the change does not do, and that no requirement covers, is design: a requirement, and then its test, come before the code."
+assert_contains "[S10] ...and when code applies" "$P" \
+    "code is for code that is wrong where a requirement and its test already cover the behaviour, or for how the code is written."
 
 cleanup_test_env
 print_test_results

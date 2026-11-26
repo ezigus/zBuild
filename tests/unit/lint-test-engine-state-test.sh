@@ -54,9 +54,8 @@ jq -r ".cycle_iterations.build_test_cycle.current_iter" "$S"')"
 _rc=0; bash "$LINT" "$R3" >/dev/null 2>&1 || _rc=$?
 assert_eq "[E3] a test using zb_engine_loop_state (and reading the state) is clean" "0" "$_rc"
 
-_rc=0; _out="$(bash "$LINT" "$REPO_ROOT" 2>&1)" || _rc=$?
-assert_eq "[E4] the real tree is clean" "0" "$_rc"
-[[ "$_rc" -eq 0 ]] || printf '%s\n' "$_out" >&2
+assert_contains "[E4] npm run lint runs it over the tree (#2615: never this test)" \
+    "$(jq -r '.scripts.lint' "$REPO_ROOT/package.json")" "bash scripts/lib/lint-test-engine-state.sh"
 
 S5="$TEST_TEMP_DIR/state.json"
 printf '{"schema_version":1,"status":"running"}\n' > "$S5"

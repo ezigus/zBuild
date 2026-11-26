@@ -70,10 +70,8 @@ _out="$(bash "$LINT" "$_root" 2>&1)"; _rc=$?
 assert_eq "[SPEC-6] pass, fail, a disposition word and a computed value pass" "0" "$_rc"
 
 print_test_section "SPEC-4: the shipped tree"
-_out="$(bash "$LINT" 2>&1)"; _rc=$?
-assert_eq "[SPEC-4] the shipped plugins/ tree passes" "0" "$_rc"
-_n="$(grep -oE '[0-9]+ literal' <<< "$_out" | grep -oE '^[0-9]+' || echo 0)"
-assert_gt "[SPEC-4] …having found literal words to check (non-vacuous)" "$_n" "20"
+assert_contains "[SPEC-4] npm run lint runs it over the tree (#2615: never this test)" \
+    "$(jq -r '.scripts.lint' "$REPO_ROOT/package.json")" "bash scripts/lib/lint-disposition-words.sh"
 
 print_test_section "SPEC-5: wiring"
 if grep -q 'lint-disposition-words.sh' "$REPO_ROOT/package.json"; then

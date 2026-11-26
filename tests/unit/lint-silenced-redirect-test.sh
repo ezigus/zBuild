@@ -43,9 +43,8 @@ printf '%s\n' 'n="$(wc -c < $f 2>/dev/null)"' > "$F"
 assert_eq "[R6] an unquoted variable path is refused" "1" "$(_lint)"
 printf '%s\n' 'n="$(wc -c 2>/dev/null < $f)"' > "$F"
 assert_eq "[R6] ...and its reordered form passes" "0" "$(_lint)"
-_real="$(bash "$LINT" 2>&1)"; _rc=$?
-assert_eq "[R4] the real tree passes" "0" "$_rc"
-[[ "$_rc" -eq 0 ]] || printf '%s\n' "$_real" >&2
+assert_contains "[R4] npm run lint runs it over the tree (#2615: never this test)" \
+    "$(jq -r '.scripts.lint' "$REPO_ROOT/package.json")" "bash scripts/lib/lint-silenced-redirect.sh"
 _err="$(bash -c 'x="$(cksum 2>/dev/null < /nonexistent/zb-2246 || printf absent)"; printf "%s" "$x"' 2>&1)"
 assert_eq "[R5] the reordered form prints nothing but its fallback" "absent" "$_err"
 

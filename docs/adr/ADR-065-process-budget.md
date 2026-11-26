@@ -1,6 +1,6 @@
 # ADR-065 — Process budget: the engine's fork count is a tested contract
 
-**Status:** Accepted (2026-09-19); amended 2026-11-20 (#2573, §2 §6: each budget sits a small margin above its measure); amended 2026-11-15 (#2548, §6: the start-up is held in total); amended 2026-11-02 (#2456, §5: an emit from a signal trap does not wait on its own lock); amended 2026-11-05 (#2472, §6: the cost in two parts — one more dispatch, and start-up per plugin — each with a budget and a floor)
+**Status:** Accepted (2026-09-19); amended 2026-11-26 (#2615, §5: the parts digest takes the fast path past the shell limit; §1: the census names a process once); amended 2026-11-20 (#2573, §2 §6: each budget sits a small margin above its measure); amended 2026-11-15 (#2548, §6: the start-up is held in total); amended 2026-11-02 (#2456, §5: an emit from a signal trap does not wait on its own lock); amended 2026-11-05 (#2472, §6: the cost in two parts — one more dispatch, and start-up per plugin — each with a budget and a floor)
 **Issue:** #2151
 **Related:** ADR-001 (Discovery + lockfile), ADR-012 (test tiering), ADR-053 (test flake policy — the serial-pin cap that also needs an amendment to raise), ADR-041 (the fd-9 lock discipline the trace harness must respect)
 
@@ -406,7 +406,14 @@ Inside the full suite the mocked run measured 8 processes fewer in all and 8 few
 
 The written measures move down by what the standalone runs over-counted: 2391 processes and 1848 execs in all; 465 and 298 a dispatch and 428 and 232 at start-up are unchanged.
 
+## Amendment 2026-11-26 (#2615) — §5: the parts digest's fast path; §1: the census names a process once
+
+- **§5: `zb_parts_digest_v` sums past `_ZB_DIGEST_SHELL_MAX` with one cksum**, over the very bytes a file holding the parts has, as `zb_digest_v` and `zb_file_digest_v` do. It had no limit: a 100 KB requirements file cost about 2 s, in tests and in real runs.
+- **§1: the census's trace line sets the exported process name once, on the process's first traced line.** #2575 set it on every line; an exported variable set makes every later exec rebuild its environment, and the fork-budget test went 67 → 98 s on one machine. The counts are the same.
+
 ## Enforced by
+
+- §5 §1 amendment 2026-11-26 (#2615) → `tests/unit/digest-parts-test.sh` DG1, DG2; `tests/unit/fork-census-test.sh` SPEC-8; `tests/e2e/fork-budget-test.sh` (the counts unchanged)
 
 - §1 §2 amendment 2026-11-20 (#2575: the same measure in every context) → `tests/unit/fork-census-test.sh` SPEC-7 (a shell and its subshell are two processes, each named by more than its id; an exec into bash is still one); `tests/e2e/fork-budget-test.sh` SPEC-9 (no slack, measured alone and with the e2e tier's TMPDIR under load)
 

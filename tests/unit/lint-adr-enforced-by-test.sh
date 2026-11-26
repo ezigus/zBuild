@@ -73,9 +73,8 @@ printf 'ADR-907-x.md\nADR-999-gone.md\n' > "$R/config/adr-enforcement-baseline.t
 assert_eq "[A6] a baseline entry with no ADR fails" "1" "$rc"
 assert_contains "[A6] it names the stale entry" "$out" "ADR-999-gone.md"
 
-_lint_real="$(bash "$LINT" "$REPO_ROOT" 2>&1)"; rc=$?
-assert_eq "[A7] the real tree passes" "0" "$rc"
-[[ $rc -eq 0 ]] || printf '%s\n' "$_lint_real" | tail -5
+assert_contains "[A7] npm run lint runs it over the tree (#2615: never this test)" \
+    "$(jq -r '.scripts.lint' "$REPO_ROOT/package.json")" "bash scripts/lib/lint-adr-enforced-by.sh"
 
 # A8: within the form's `id: adr` entry (up to the next `- type:`), `required: true`.
 # Plain awk — no YAML library the suite does not already depend on.

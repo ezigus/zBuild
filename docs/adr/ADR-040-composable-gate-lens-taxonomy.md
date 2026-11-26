@@ -1,6 +1,6 @@
 # ADR-040 — Composable gate / lens taxonomy (the convergence-path invariant)
 
-**Status:** Accepted (2026-06-27); amended 2026-11-22 (#2584, §3: the lens job texts ask about partial reads, data trusted without knowing its writer, calls with no timeout, what an interrupt leaves behind, tests that reach real services and Enforced-by entries; "fails loudly" means an event or a status line); amended 2026-11-16 (#2556: the shape floor is gone; a run-shaping change always runs the shape tests); amended 2026-11-15 (#2548, §3: each lens's job is its own text, ADR-038)
+**Status:** Accepted (2026-06-27); amended 2026-11-26 (#2615, §3: behaviour the issue asks for that no requirement covers is fix: design); amended 2026-11-22 (#2584, §3: the lens job texts ask about partial reads, data trusted without knowing its writer, calls with no timeout, what an interrupt leaves behind, tests that reach real services and Enforced-by entries; "fails loudly" means an event or a status line); amended 2026-11-16 (#2556: the shape floor is gone; a run-shaping change always runs the shape tests); amended 2026-11-15 (#2548, §3: each lens's job is its own text, ADR-038)
 **Related** — dispositions below are **PLANNED** (declared here, executed in later issues of EPIC #1129 alongside the code that lands the decomposition); **this PR edits no existing ADR**:
 - evolve-planned: ADR-037 (the objective-gate *monolith* decomposes into many first-class `kind: tool` gate stages + a gate-aggregator; ADR-037's two-layer invariant is preserved and made machine-enforced)
 - supersede-planned: ADR-038 (its single-stage packaging of the lens fan-out is replaced by composable `kind: agent` lens stages + a review-aggregator; the lens *content* and evidence-fed contract are kept)
@@ -730,3 +730,11 @@ On #2533 run 45644128060 one lens of six did not finish and the run ended in rou
 - **What a PR waits for is the template's:** `pr` requires every stage and loop before it (`requires: all`, ADR-068 §3, amended 2026-11-25) — the lenses among them, as any other. pr-open opens a PR, and merge merges, only when the engine says the stages `pr` requires passed (`ZBUILD_STAGE_REQUIRES_MET=yes`): fail-closed as before (ADR-001), with no lens-only word.
 
 Enforced by: `tests/integration/cycle-map-member-test.sh` M3 (an unfinished lens goes round), M5 (a halting lens stops it, in its words), M6 (on_max decides); `tests/unit/engine-combines-map-test.sh` M2 (the flag is never set), M5 (the halting elements), SPEC-1 (every non-pass outcome is named); `tests/unit/runner-map-parallel-stage-envelope-test.sh` #1753/SPEC-4, #2611/R5 (a top-level group that did not pass ends the run; `blocking: false`); `plugins/tool/pr-open/tests/pr-open-test.sh` 2c; `tests/integration/merge-policy-auto-unless-flagged-test.sh` SPEC-4; `tests/integration/merge-policy-auto-test.sh` SPEC-5.
+
+## Amendment 2026-11-26 (#2615) — §3: behaviour no requirement covers is design's
+
+On #1722 run 45739271221 three lenses found an arm the issue requires that the change missed, and marked it `fix: code`. Build added the code; no requirement and no test covered it, so the next round's lenses found it untested, and the run ran out of rounds.
+
+- **The FIX words, said plainly in every lens's prompt:** behaviour the issue asks for that the change does not do, and that no requirement covers, is `design` — a requirement, and then its test, come before the code (ADR-068: design → test-author → build in the same round). `code` is for code that is wrong where a requirement and its test already cover the behaviour, or for how the code is written.
+
+Enforced by: `plugins/agent/review-lens/tests/review-lens-asks-test.sh` S10 (the prompt says both).

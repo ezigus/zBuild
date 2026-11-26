@@ -54,6 +54,39 @@ mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 source "$REPO_ROOT/tests/lib/simple-run-stubs.sh"
 simple_stubs_roster
 
+# #2615: each check runs a template of one loop holding test, then pr — not the
+# whole simple pipeline (5 s a run, 9 runs). (A flow with no loop takes the
+# runner's linear path, which does not name a stage's stop.)
+mkdir -p "$_ZB_REPO/.zbuild/templates"
+cat > "$_ZB_REPO/.zbuild/templates/stop-loop.yaml" <<'TPL'
+id: stop-loop
+extends: simple
+flow:
+  - check_loop
+  - pr
+always_run: []
+check_loop:
+  type: cycle
+  description: One round of the test stage
+  flow:
+    - test
+  exit_when:
+    all:
+      - { stage: test, field: verdict, op: eq, value: pass }
+  stop_run_on_fail: [test]
+  max_iterations: 1
+  on_max: halt
+test:
+  gate: auto
+  roles: [tester]
+pr:
+  gate: auto
+  roles: [pr]
+  requires: all
+TPL
+( cd "$_ZB_REPO" && git add .zbuild && git commit -qm "stop templates" ) >/dev/null 2>&1
+export _ZB_TEMPLATE=stop-loop
+
 # The model, when a stage calls one: it answers nothing (an empty reply).
 printf '#!/usr/bin/env bash\nexit 0\n' > "$TEST_TEMP_DIR/bin/claude"; chmod +x "$TEST_TEMP_DIR/bin/claude"
 

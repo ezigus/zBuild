@@ -28,6 +28,8 @@
 #              a re-ask answered worse leaves the first report
 # LU8 [change] a carried question the lens retires is recorded in its result,
 #              data.unclear_dropped, with its WHY and QUOTE
+# LU9 [change] (#2615, ADR-012) the lens never reads the checkout the suite
+#             runs from: it reads the test's own repository
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -46,6 +48,10 @@ export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; : > "$ZBUILD_EVENT
 source "$REPO_ROOT/core/plugin-registry/registry.sh"
 # shellcheck source=../../plugins/agent/review-lens/plugin.sh
 source "$REPO_ROOT/plugins/agent/review-lens/plugin.sh" 2>/dev/null
+# #2615: git and grep calls are logged; the checkout must never be read.
+# The lens reads the test's own repository (ZBUILD_REPO_ROOT), from inside it.
+_HR="$(setup_git_temp_repo lens-own-repo)"; export ZBUILD_REPO_ROOT="$_HR"; cd "$_HR" || exit 1
+_SPY_LOG="$TEST_TEMP_DIR/spy.log"; zb_test_repo_spy "$_SPY_LOG"
 set +e
 zb_test_lens_jobs lu
 assert_not_contains() {
@@ -183,6 +189,9 @@ assert_eq "[LU8] ...with how it was retired" "answered" "$(_res '.data.unclear_d
 assert_eq "[LU8] ...its WHY" "the issue says to exit" "$(_res '.data.unclear_dropped[0].why')"
 assert_eq "[LU8] ...its QUOTE" "exit with an error" "$(_res '.data.unclear_dropped[0].quote')"
 assert_eq "[LU8] ...and the question it retired, as carried" "$QL" "$(_res '.data.unclear_dropped[0].question')"
+
+print_test_section "LU9: the checkout is never read (#2615)"
+assert_eq "[LU9] no git or grep call ran in the checkout the suite runs from" "" "$(zb_test_repo_spy_hits "$_SPY_LOG" "$REPO_ROOT")"
 
 cleanup_test_env
 print_test_results

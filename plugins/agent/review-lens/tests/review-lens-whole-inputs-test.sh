@@ -20,6 +20,8 @@
 #             piece of them
 # W7 [change] (review) such a file is sanitised and redacted as an inline
 #             section is: a private path is <private>, no terminal escape
+# W8 [change] (#2615, ADR-012) the lens never reads the checkout the suite
+#             runs from: it reads the test's own repository
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -37,6 +39,10 @@ export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; mkdir -p "$ZBUILD_
 source "$REPO_ROOT/core/plugin-registry/registry.sh"
 # shellcheck source=../../../../plugins/agent/review-lens/plugin.sh
 source "$REPO_ROOT/plugins/agent/review-lens/plugin.sh"
+# #2615: git and grep calls are logged; the checkout must never be read.
+# The lens reads the test's own repository (ZBUILD_REPO_ROOT), from inside it.
+_HR="$(setup_git_temp_repo lens-own-repo)"; export ZBUILD_REPO_ROOT="$_HR"; cd "$_HR" || exit 1
+_SPY_LOG="$TEST_TEMP_DIR/spy.log"; zb_test_repo_spy "$_SPY_LOG"
 # shellcheck source=../../../../scripts/lib/stage-result.sh
 source "$REPO_ROOT/scripts/lib/stage-result.sh"
 
@@ -102,6 +108,9 @@ _I="$(cat "$F_ISSUE" 2>/dev/null)"
 assert_contains "[W7] the file is redacted: a private path is <private>" "$_I" "see <private> BIG-END-MARKER"
 _lacks "[W7] ...and sanitised: no terminal escape" "$_I" $'\e['
 assert_contains "[W7] ...its text kept" "$_I" "RED-MARK"
+
+print_test_section "W8: the checkout is never read (#2615)"
+assert_eq "[W8] no git or grep call ran in the checkout the suite runs from" "" "$(zb_test_repo_spy_hits "$_SPY_LOG" "$REPO_ROOT")"
 
 cleanup_test_env
 print_test_results

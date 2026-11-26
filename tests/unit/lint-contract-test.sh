@@ -138,9 +138,8 @@ assert_eq "TC-5: a manifest writing no stage result is not linted (rc=0)" "0" "$
 rm -rf "$PLUGINS_ROOT/tool/backend"
 
 # TC-6
-rc=0
-ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins" bash "$REPO_ROOT/scripts/lib/lint-contract.sh" >/dev/null 2>&1 || rc=$?
-assert_eq "TC-6: real repo plugin manifests pass lint" "0" "$rc"
+assert_contains "TC-6: npm run lint runs it over the tree (#2615: never this test)" \
+    "$(jq -r '.scripts.lint' "$REPO_ROOT/package.json")" "bash scripts/lib/lint-contract.sh"
 
 cleanup_test_env
 print_test_results

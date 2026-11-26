@@ -275,12 +275,14 @@ simple_stubs_roster() {
 }
 
 # ─── Helper: run the pipeline, capture events ─────────────────────────────────
+# The template is simple unless the test names a smaller one (_ZB_TEMPLATE,
+# #2615): a check that needs one stage runs one.
 _run_pipeline() {
     : > "$EVENTS_JSONL"
     set +e
     ( cd "$_ZB_REPO" && bash "$REPO_ROOT/core/pipeline/runner.sh" \
         --goal "$_ZB_GOAL" \
-        --template simple \
+        --template "${_ZB_TEMPLATE:-simple}" \
         --no-resume \
         >"$TEST_TEMP_DIR/runner.stdout" \
         2>"$TEST_TEMP_DIR/runner.stderr" )

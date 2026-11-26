@@ -26,12 +26,9 @@ else
     assert_fail "TC-1: lint script is executable" "not executable: $LINT"
 fi
 
-# TC-2: Current repo passes the lint (post-#491 fix).
-set +e
-bash "$LINT" >/dev/null 2>&1
-rc=$?
-set -e
-assert_eq "TC-2: lint passes on production tree" "0" "$rc"
+# TC-2: the lint step runs the lint over the tree.
+assert_contains "TC-2: npm run lint runs it over the tree (#2615: never this test)" \
+    "$(jq -r '.scripts.lint' "$REPO_ROOT/package.json")" "bash scripts/lib/lint-stage-io.sh"
 
 # TC-3: Synthetic plugin with offending route_to_model line → rc=1.
 mkdir -p "$TEST_TEMP_DIR/synth/plugin.sh.d"

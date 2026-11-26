@@ -146,9 +146,6 @@ assert_eq "[T11] a comment that mentions SECONDS passes" "rc=0" "$(_rc "$U" '# t
 assert_eq "[T11] a line marked determinism-ok passes" "rc=0" "$(_rc "$U" '_t0=$SECONDS  # determinism-ok: a run id, not a timing')"
 
 print_test_section "T10: the real tree"
-_rc_t=0; _out_t="$(bash "$LINT" "$REPO_ROOT" 2>&1)" || _rc_t=$?
-assert_eq "[T10] the repository passes the lint" "0" "$_rc_t"
-[[ "$_rc_t" -eq 0 ]] || printf '%s\n' "$_out_t" >&2
 assert_contains "[T10] npm run lint runs it" \
     "$(jq -r '.scripts.lint' "$REPO_ROOT/package.json")" "bash scripts/lib/lint-test-determinism.sh"
 

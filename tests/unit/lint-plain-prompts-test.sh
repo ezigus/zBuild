@@ -137,9 +137,8 @@ printf '%s\n' 'cat <<EOF' 'UNASKED: <what> | WHY: <why> | QUOTE: <file> | <one l
 _src plugins/x/q.sh; _lint
 assert_eq "[P13] the one-line form is allowed" "0" "$rc"
 
-bash "$LINT" "$REPO_ROOT" > "$TEST_TEMP_DIR/real.out" 2>&1; rc=$?
-assert_eq "[P6] the real tree passes" "0" "$rc"
-[[ $rc -eq 0 ]] || tail -15 "$TEST_TEMP_DIR/real.out"
+assert_contains "[P6] npm run lint runs it over the tree (#2615: never this test)" \
+    "$(jq -r '.scripts.lint' "$REPO_ROOT/package.json")" "bash scripts/lib/lint-plain-prompts.sh"
 
 cleanup_test_env
 print_test_results

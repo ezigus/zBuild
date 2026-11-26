@@ -31,7 +31,10 @@ fork_census_traced() {
         # line also exports which process it ran in and its name, so a bash it
         # execs into carries the name on.
         export _ZB_FC_E=0 _ZB_FC_EP=0
-        export PS4='+@${BASH_SOURCE[0]-}:${LINENO}#${BASHPID}${_ZB_FC_ID[BASHPID]:=${EPOCHREALTIME/[.,]/}}${PS4:$(( _ZB_FC_E = _ZB_FC_ID[BASHPID], _ZB_FC_EP = BASHPID, 0 )):0}@ '
+        # #2615: the exported name is set on a process's first line only — an
+        # exported variable set on every line made every exec rebuild its
+        # environment (the fork-budget test: 67 → 98 s).
+        export PS4='+@${BASH_SOURCE[0]-}:${LINENO}#${BASHPID}${_ZB_FC_ID[BASHPID]:=${EPOCHREALTIME/[.,]/}}${PS4:$(( _ZB_FC_EP == BASHPID || (_ZB_FC_E = _ZB_FC_ID[BASHPID], _ZB_FC_EP = BASHPID), 0 )):0}@ '
         export BASH_XTRACEFD=7
         export BASH_ENV="$be"
         "$@" 7>"$trace"
