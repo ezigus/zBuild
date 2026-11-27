@@ -1,0 +1,5 @@
+{
+  "wiring_files": [
+    "core/claim/claim.sh"
+  ]
+}
