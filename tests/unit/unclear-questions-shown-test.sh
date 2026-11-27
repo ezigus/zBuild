@@ -147,10 +147,11 @@ _e="$(bash -c "
     _render_pipeline_end failed
 " 2>&1)"
 assert_contains "[Q3] the end-of-run banner shows each question" "$_e" "- R-2: Does --from-stage need --resume? — assumed: it works on its own"
-assert_not_contains "[Q3] ...as written, not escaped for markdown (a terminal shows no markdown)" "$_e" "R\\-2"
+assert_contains "[Q3] ...as written, not escaped for markdown (a terminal shows no markdown)" "$_e" "- R-4: Is the flag <b>documented</b>? — assumed: no page is needed"
 _o="$(open_items_outbound "$S")"
 _c="$(run_completion_body failure blocking_member_failure "" "https://x/run/1" "" "$_o" "")"
 assert_contains "[Q3] the completion comment shows each question" "$(_shown "$_c")" "- R-4: Is the flag"
+assert_contains "[Q3] ...escaped for GitHub" "$_c" "R\\-4"
 
 print_test_section "Q4: the PR description"
 # shellcheck source=../../plugins/tool/pr-open/plugin.sh
@@ -159,6 +160,7 @@ _qmd=""
 declare -F zb_unclear_markdown >/dev/null 2>&1 && _qmd="$(zb_unclear_markdown "$S/artifacts/design.md")"
 _pb="$(_pr_open_compose_body 2508 "" pass "src/x.sh" "" false "" "$_qmd")"
 assert_contains "[Q4] the PR description shows each question" "$(_shown "$_pb")" "- R-2: Does --from-stage need --resume? — assumed: it works on its own"
+assert_contains "[Q4] ...escaped for GitHub" "$_pb" "R\\-2"
 # The design is found among the earlier outputs by what it contains (#2364).
 jq -n --arg d "$S/artifacts/design.md" '{inputs:{design:$d}}' > "$TEST_TEMP_DIR/inputs.json"
 _pq=""

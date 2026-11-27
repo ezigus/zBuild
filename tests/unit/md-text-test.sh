@@ -58,6 +58,7 @@ _got=""; zb_md_fence_v _got 'a `span` here'; assert_eq "[M3] ...a short run need
 _got=""; zb_md_fence_v _got $'```\ncode\n```'; assert_eq "[M3] three in the text: four" '````' "$_got"
 _got=""; zb_md_fence_v _got $'````\nx\n````'; assert_eq "[M3] four in the text: five" '`````' "$_got"
 _got=""; zb_md_fence_v _got $'``` and ``````'; assert_eq "[M3] the longest run counts" '```````' "$_got"
+_got=""; zb_md_fence_v _got $'`````` and ```'; assert_eq "[M3] ...wherever it is" '```````' "$_got"
 
 print_test_section "M4: terminal escapes out"
 _got=""; zb_ansi_strip_v _got $'\e[31mred\e[0m and \e[?25lhidden\e[1;2H at\eM end'
@@ -75,12 +76,14 @@ assert_eq "[M7] one line, backticks escaped, the rest as written" 'run \`x\` _no
 
 # Bash review on the markdown PR: the strip is one pass in the shell up to its
 # limit, and one sed past it (the digest's precedent) — never one pass per escape.
-_many=""; for (( _i = 0; _i < 400; _i++ )); do _many+=$'\e[31mx\e[0m'; done
-_got=""; zb_ansi_strip_v _got "$_many"
-assert_eq "[M4] many escapes in a short string: all out" "400" "${#_got}"
-_big="$_many"; while (( ${#_big} <= _ZB_ANSI_SHELL_MAX )); do _big+="$_many"; done
+_short=""; for (( _i = 0; _i < 25; _i++ )); do _short+=$'\e[1mx\e[0m'; done
+assert_eq "[M4] (fixture) many escapes in a string under the shell's limit" "1" "$(( ${#_short} <= _ZB_ANSI_SHELL_MAX ))"
+_got=""; zb_ansi_strip_v _got "$_short"
+assert_eq "[M4] many escapes in a short string: all out" "$(printf 'x%.0s' {1..25})" "$_got"
+_big=""; while (( ${#_big} <= _ZB_ANSI_SHELL_MAX )); do _big+=$'\e[31mx\e[0m\eMy\e[200~'; done
 _got=""; zb_ansi_strip_v _got "$_big"$'\e[1m!\n\n'
-assert_eq "[M4] a string past the shell's limit: the same result" "$(( ${#_big} / 10 + 3 ))" "${#_got}"
+assert_eq "[M4] a string past the shell's limit: every kind of escape out" "$(( ${#_big} / 19 * 2 + 3 ))" "${#_got}"
+assert_eq "[M4] ...nothing but the text left" "" "${_got//[xy!$'\n']/}"
 assert_eq "[M4] ...its own trailing newlines kept" $'!\n\n' "${_got: -3}"
 _got=""; zb_ansi_strip_v _got $'\e[\e[1m31m'
 assert_eq "[M4] an escape inside an unfinished one: read as sed reads it" "31m" "$_got"

@@ -133,7 +133,11 @@ assert_not_contains "[UR5] no live @mention" "$_m5" "@octocat"
 assert_not_contains "[UR5] no live issue link" "$_m5" "#123"
 assert_contains "[UR5] backticks escaped" "$_m5" 'a \`code\`'
 assert_contains "[UR5] emphasis escaped" "$_m5" '\*bold\*'
-assert_not_contains "[UR5] no live link" "$_m5" "https://evil"
+# Read as GitHub reads it, its escapes undone but its zero-width spaces kept:
+# no link is left (audit on #2638 — every : and / is escaped, so the raw text
+# alone could never hold it).
+_seen5="$(perl -pe 's/\\([!-\/:-@\[-`{-~])/$1/g' <<< "$_m5")"
+assert_not_contains "[UR5] no live link" "$_seen5" "https://evil"
 
 print_test_section "UR6: read bounded"
 BIG="$TEST_TEMP_DIR/r6/intake-result.json"; mkdir -p "${BIG%/*}"

@@ -138,4 +138,14 @@ else
 fi
 rm -f "$_ms5_ref"
 
+# ─── MS6 (audit on #2638): a title in a table cell keeps the table a table ──
+# Its | escaped (scripts/lib/md-text.sh zb_md_cell_v). A backslash or a newline
+# in a title never reaches the cell: the script reads titles through jq's @tsv,
+# which writes them as \\ and \n and is not read back (a follow-up).
+export MOCK_ISSUE_LIST_JSON="$TEST_TEMP_DIR/ms6-issues.json"
+jq -n '[{number:300, title:"a|b c", state:"OPEN", closedAt:null, labels:[]}]' > "$MOCK_ISSUE_LIST_JSON"
+rm -f "$PR_BODY_PATH"
+bash "$REPO_ROOT/scripts/manifest-sync.sh" --apply --manifest "$TEST_MANIFEST" >/dev/null 2>&1 || true
+assert_contains "MS6: a title holding | stays one cell" "$(cat "$PR_BODY_PATH" 2>/dev/null)" '| #300 | OPEN | a\|b c |'
+
 print_test_results

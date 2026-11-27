@@ -63,6 +63,15 @@ else
     assert_pass "T2: ANSI stripped from block output"
 fi
 
+# ─── T2b: the same past the shell's strip limit, in a UTF-8 locale ─────────
+# (audit on #2638: past 256 bytes the strip is one sed, and sed must read raw
+# bytes there too, or BSD sed stops on \xc0\x80 and the text is lost.)
+_t2b_pad="$(printf 'x%.0s' {1..300})"
+_t2b_in="$(printf 'head\xc0\x80\n\x1b[31mred\x1b[0m\n')$_t2b_pad"
+_t2b="$(env -u LC_ALL LANG=en_US.UTF-8 LC_CTYPE=en_US.UTF-8 bash -c 'source "$1"; _artifact_md_escape_block "$2"' _ "$REPO_ROOT/scripts/lib/artifact-render.sh" "$_t2b_in" 2>/dev/null)"
+assert_eq "T2b: a long block with invalid bytes, in a UTF-8 locale: kept whole, its escapes out" \
+    "$(printf 'head\xc0\x80\nred\n')$_t2b_pad" "$_t2b"
+
 # ─── T3: hostile caller locale — both helpers honor per-invocation prefix ──
 set +e
 HOSTILE_INLINE="$(LC_ALL=invalid.bogus _artifact_md_escape_inline "$(printf '\x1b[31mz\x1b[0m')" 2>/dev/null)"

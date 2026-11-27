@@ -422,10 +422,9 @@ The written measures move down by what the standalone runs over-counted: 2391 pr
   - the unclear report's model text;
   - `artifact-render`'s inline, block and fence helpers (the fence picker gave four backticks to text that held four);
   - `manifest-sync`'s table cells;
-  - the event bus's value stripper;
-  - the banner's width count.
+  - the event bus's value stripper.
 
-  Each had its own rules and started `sed`, `tr` or `grep`.
+  `stage-io`'s width count, which nothing called, is gone. Each had its own rules and started `sed`, `tr` or `grep`.
 - **Escaped where the text enters markdown, at the boundary.** The questions section is built once. The status comment, the completion comment and the PR description show it escaped for GitHub, and the end-of-run banner shows the model's words as they are (`zb_unclear_text_v`, `open_items_questions_text`).
 
 ## Amendment 2026-11-27 — §5: one JSON string writer and reader for the shell; git's names as it gives them

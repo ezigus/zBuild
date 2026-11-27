@@ -905,18 +905,6 @@ _stage_io_banner_use_color() {
     return 1
 }
 
-# ─── _stage_io_visible_len <string> — visible (no-ANSI) byte length (#492) ────
-# Strip ANSI escapes via the existing sed pattern in helpers.sh's strip_ansi
-# (we re-implement inline rather than piping to a subshell — banner rendering
-# is hot-ish and forks add up). Used by the banner padder to compute right-
-# alignment math against the *visible* length, not the ANSI-laden raw length.
-_stage_io_visible_len() {
-    local LC_ALL=C s
-    # The terminal's escapes out (scripts/lib/md-text.sh, loaded with the event bus).
-    zb_ansi_strip_v s "$1"
-    printf '%s' "${#s}"
-}
-
 # ─── _stage_io_dashes <n> — emit n × ─ (horizontal-bar U+2500) ───────────────
 # Empty when n <= 0. Light divider — used by the end-trailer ("── end stage-io
 # ──") for a softer close than the heavy I/O banner header.

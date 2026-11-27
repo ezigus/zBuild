@@ -80,7 +80,9 @@ zb_ansi_strip_v() {
     if (( ${#_zma_r} > _ZB_ANSI_SHELL_MAX )); then
         # A trailing x keeps the text's own trailing newlines past $( ); the
         # here-string's own newline goes with it.
-        _zma_o="$(sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g; s/\x1b.//g' <<< "$_zma_r"; printf x)"
+        # LC_ALL=C on sed itself: a local one is not passed on unless it was
+        # exported, and BSD sed stops on a byte that is not UTF-8 (#830).
+        _zma_o="$(LC_ALL=C sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g; s/\x1b.//g' <<< "$_zma_r"; printf x)"
         _zma_o="${_zma_o%x}"; printf -v "$1" '%s' "${_zma_o%$'\n'}"
         return 0
     fi
