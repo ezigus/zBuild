@@ -199,9 +199,13 @@ else assert_pass "[W10] the earlier run's result is not shown"; fi
 S11="$TEST_TEMP_DIR/state11"; A11="$S11/artifacts"; mkdir -p "$A11"
 stage_dispatch_mark "$S11/pipeline-state.json" test
 _suite "$A11" "tests/unit/c-test.sh fails: ✗ C1 the suite failure"
-printf '%s' '{"result_contract":3,"outcome":"fail","reason":"x","data":{"findings":[{"n":1,"text":"cut sh' > "$A11/acceptance-gate-result.json"
+_gate "$A11" fail "GATE-C1 the acceptance check's finding"
+# A third declared output, cut short while it was being written.
+printf '%s' '{"result_contract":3,"outcome":"fail","reason":"x","data":{"findings":[{"n":1,"text":"cut sh' > "$A11/acceptance-gate-test-result.json"
 w11="$(rsc_render_row "$S11" "$(_row 4.1.1.1.4 test fail)")"
-assert_contains "[W11] a result cut short is left out; the suite's finding is still shown" "$w11" "what failed: tests/unit/c-test.sh fails: ✗ C1 the suite failure"
+assert_eq "[W11] a result cut short is left out; the other two are read" "what failed: 2 findings" "$(_line1 "$w11")"
+assert_contains "[W11] ...the acceptance check's finding is shown" "$w11" "GATE-C1 the acceptance check's finding"
+assert_contains "[W11] ...and the suite's" "$w11" "C1 the suite failure"
 
 # ── W12 ──────────────────────────────────────────────────────────────────────
 S12="$TEST_TEMP_DIR/state12"; A12="$S12/artifacts"; mkdir -p "$A12"
