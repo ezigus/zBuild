@@ -124,7 +124,7 @@ _dispatch_count=$(/usr/bin/grep -c "^elem=" "$WU_ENV_LOG" 2>/dev/null) || _dispa
 assert_eq "[SPEC-2] exactly 7 work units dispatched" "7" "$_dispatch_count"
 
 # Each element must appear exactly once.
-_expected_elements=("security" "performance" "red-team" "correctness" "scope" "sre")
+_expected_elements=("security" "performance" "red-team" "correctness" "tests" "scope" "sre")
 for _el in "${_expected_elements[@]}"; do
     _found=$(/usr/bin/grep -c "elem=\[${_el}\]" "$WU_ENV_LOG" 2>/dev/null) || _found=0
     assert_eq "[SPEC-3] element '$_el' dispatched exactly once" "1" "$_found"

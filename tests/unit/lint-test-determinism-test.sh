@@ -22,10 +22,13 @@
 #   T12 (#2630, ADR-012) a test that redefines a function our own code defines
 #       (under core/, plugins/ outside its tests, or scripts/) fails, naming the
 #       file, the line and the function — a fake of our own code tests the fake
-#   T13 ...and passes: a wrapper of ours around an outside service on the
-#       allowed list (config/test-fake-wrappers.txt), a function no production
-#       file defines, a definition in a heredoc (a fake plugin written to
-#       disk), and a line marked `# determinism-ok: <reason>`
+#   T13 ...and passes: our innermost wrapper around an outside service on the
+#       allowed list (config/test-fake-wrappers.txt), in either form of a
+#       definition; a function no production file defines; a definition in a
+#       heredoc (a fake plugin written to disk); a spy that calls the original
+#       (`<f>_orig "$@"`, `_real_<f>`); a define-if-missing guard (`declare -F
+#       f || f() {…}`); and a line marked `# determinism-ok: <reason>`. A
+#       definition after another command on its line is still read.
 #   T14 the baseline holds such findings from before the rule, and only shrinks
 #   T11 a test that reads the clock to see how long something took ($SECONDS,
 #       date +%s) fails; a mention in a comment or string does not (#2525: on
@@ -159,10 +162,10 @@ _lint_own() {
     local root; root="$(mktemp -d "$TEST_TEMP_DIR/own.XXXXXX")"
     mkdir -p "$root/core/x" "$root/scripts/lib" "$root/plugins/agent/p/lib" "$root/plugins/agent/p/tests" "$root/tests/unit" "$root/config"
     printf 'engine_step() {\n    :\n}\n' > "$root/core/x/x.sh"
-    printf 'route_to_model() { :; }\nhelper_join() { :; }\n' > "$root/scripts/lib/y.sh"
+    printf 'route_to_model() { :; }\nhelper_join() { :; }\n_route_call_claude() { :; }\n' > "$root/scripts/lib/y.sh"
     printf 'p_run() { :; }\n' > "$root/plugins/agent/p/lib/p.sh"
     printf 'test_only_helper() { :; }\n' > "$root/plugins/agent/p/tests/helpers.sh"
-    printf '%s\n' '# Our own wrappers around outside services: a test may fake these.' route_to_model > "$root/config/test-fake-wrappers.txt"
+    printf '%s\n' '# Our innermost wrappers around outside services: a test may fake these.' _route_call_claude > "$root/config/test-fake-wrappers.txt"
     printf '#!/usr/bin/env bash\n%s\n' "$1" > "$root/tests/unit/own-test.sh"
     [[ -n "${2:-}" ]] && printf '%s\n' "$2" > "$root/config/test-determinism-baseline.txt"
     local out rc=0
@@ -177,10 +180,16 @@ assert_contains "[T12] ...naming the file and line" "$_t12" "tests/unit/own-test
 assert_contains "[T12] ...and the function" "$_t12" "engine_step"
 assert_eq "[T12] one scripts/ defines" "rc=1" "$(_t="$(_lint_own 'helper_join () { echo x; }')"; printf '%s' "${_t%%$'\n'*}")"
 assert_eq "[T12] one a plugin defines" "rc=1" "$(_t="$(_lint_own 'function p_run { :; }')"; printf '%s' "${_t%%$'\n'*}")"
+assert_eq "[T12] a definition after another command on its line" "rc=1" "$(_t="$(_lint_own 'x=1; engine_step() { :; }')"; printf '%s' "${_t%%$'\n'*}")"
+assert_eq "[T12] a wrapper that is ours but not on the list (the model call above redaction)" "rc=1" "$(_t="$(_lint_own 'route_to_model() { :; }')"; printf '%s' "${_t%%$'\n'*}")"
 
 print_test_section "T13: what a test may define"
 _ok_own() { local _t; _t="$(_lint_own "$2")"; assert_eq "[T13] $1" "rc=0" "${_t%%$'\n'*}"; }
-_ok_own "a wrapper of ours around an outside service, on the allowed list" 'route_to_model() { printf "%s" "$REPLY"; }'
+_ok_own "our innermost wrapper around an outside service, on the allowed list" '_route_call_claude() { printf "%s" "$REPLY"; }'
+_ok_own "...written with the function keyword" 'function _route_call_claude { :; }'
+_ok_own "a spy that calls the original" 'engine_step() { printf x >> "$LOG"; engine_step_orig "$@"; }'
+_ok_own "a spy that calls the real one" 'helper_join() { _real_helper_join "$@"; }'
+_ok_own "a define-if-missing guard" 'declare -F engine_step >/dev/null || engine_step() { :; }'
 _ok_own "a function no production file defines" 'my_case() { :; }'
 _ok_own "a test helper a plugin's tests define" 'test_only_helper() { :; }'
 _ok_own "a definition in a heredoc (a fake plugin written to disk)" "cat > \"\$d/plugin.sh\" <<'PL'

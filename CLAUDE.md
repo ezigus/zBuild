@@ -7,17 +7,11 @@ zBuild's architecture and migration plan live in:
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system view, plugin contract, data flow
 - [docs/adr/](docs/adr/) — formal architecture decisions
 
-**If implementation drifts from spec, the spec wins.** PRs cite the relevant ADR or KEEPERS section in the description.
-
-### Every ADR statement has a test
-
-- **A rule that lives only in an ADR's prose is a missing test.** When a run passes something wrong, look first for the ADR statement nothing enforces, and write that test.
-- **Every live ADR has an `## Enforced by` section** naming, per statement (§), the test or lint that enforces it. A new or changed statement ships with its test in the same PR. `scripts/lib/lint-adr-enforced-by.sh` (in `npm run lint`) fails a live ADR without the section, or one naming a file that does not exist. ADRs written before this rule are listed in `config/adr-enforcement-baseline.txt`, which only shrinks.
-- **Every issue is based on an ADR:** it cites the ADR and § it implements. If no ADR covers the change, the issue first creates one or amends an existing one. ADRs must not contradict each other: a later decision amends the earlier ADR in the same PR.
+The spec wins over the code, and every ADR statement has a test: see the rules below.
 
 ## Behavioral rules
 
-The repository's rules, which every zbuild stage is also given (one source, `.zbuild/rules.md`):
+The repository's rules — test first, deterministic tests, the spec wins, Enforced by, files under 500 lines, budgets only go down, no SIGPIPE-prone pipes, models as data — live in one file, which every zbuild stage is also given:
 
 @.zbuild/rules.md
 
@@ -27,7 +21,6 @@ The repository's rules, which every zbuild stage is also given (one source, `.zb
 - NEVER proactively create documentation files (`*.md`) or READMEs unless explicitly requested.
 - NEVER save working files, tests, or scratch markdown to the root folder.
 - NEVER commit secrets, credentials, or `.env` files.
-- Keep files under 500 lines unless there is a strong reason.
 
 ## File organization
 
@@ -65,24 +58,6 @@ npm run test:unit  # unit tests only
 npm run lint       # shellcheck + lint
 ```
 
-- **Write the test first.** Before editing any file under `core/`, `plugins/`, or `scripts/`,
-  write (or amend) the test that expresses the required behavior, run it, and confirm it FAILS —
-  and fails for the reason you intend, not on a typo or a missing fixture. Only then write the
-  implementation. Then re-run and watch it go green.
-- **A test written after the implementation asserts what the code does, not what was required,**
-  so it stays green while the code is wrong. Order the work so the test cannot be shaped by the
-  implementation.
-- **Reverting the implementation afterwards to check the test goes red is NOT test-first.** It
-  produces the same two files and a weaker test, because the assertion was still authored while
-  looking at the code. Use it to verify an inherited test, never as a substitute for the ordering.
-- **State the red step in the PR body**: the assertion, and how it failed before the fix.
-- **Data another part of the engine writes is checked against its writer.** When a change reads
-  something another part of the code writes — pipeline-state.json, another stage's result, an event — open
-  the writer and use the names it really writes, when it writes them. A test makes such data with the
-  writer's own code (e.g. `zb_engine_loop_state` for loop state; `lint-test-engine-state.sh` refuses a
-  hand-written `cycle_iterations`), never by hand: hand-made data holds whatever its author assumed. A
-  review of such a change checks this too.
-- **Tests are deterministic** (ADR-012, amended 2026-11-08). Remote services (`gh`, `claude`, `curl`, the network) are mocked, never our own code; signals sent to the engine stay real. Never time a signal with a sleep: wait for a marker the process writes, with a timeout. `lint-test-determinism.sh` enforces it.
 - ALWAYS run tests after making code changes.
 - CI enforces a **29% statement coverage floor** on `core/` + `scripts/lib/`. Target is 70% — will be raised incrementally as test depth improves. If Coverage CI fails, run `bash scripts/check-coverage.sh` locally to see per-file coverage. The denominator counts every in-scope `.sh` file on disk, including ones no test ever sources — a new untested file lowers the number rather than being invisible to it.
 - ALWAYS verify the relevant test passes before opening a PR.
@@ -100,13 +75,6 @@ npm run lint       # shellcheck + lint
 - **Function headers**: one-line comment above a function only when the WHY is non-obvious (hidden constraint, workaround, invariant). Never multi-line docstrings. Apply this on touch — no mass backfill.
 - **Shellcheck**: `.shellcheckrc` at repo root sets `shell=bash` and disables SC1090/SC1091 (dynamic source paths). Per-file `# shellcheck disable=SCXXXX` is still fine for local suppressions.
 - **Editor conventions**: `.editorconfig` at repo root: 4-space indent for `.sh`, 2-space for YAML/JSON, LF line endings, final newline, no trailing whitespace.
-- **No SIGPIPE-prone pipes**: never `printf`/`echo "$var" | grep -q`, and no bare `| head`, in `scripts/`, `core/`, or `plugins/`. The reader exits early, the writer takes SIGPIPE, and under `set -euo pipefail` the surrounding function dies for a reason nothing logs. Use a here-string (`grep -q ... <<< "$var"`), or capture in full and trim in bash. `tests/unit/sigpipe-antipattern-guard-test.sh` enforces this; a genuinely safe pipe is annotated `# sigpipe-ok: <reason>`.
-
-## Models as data, not strings
-
-- Code never references `haiku`, `sonnet`, `opus`, etc. by name.
-- All model selection goes through `core/router` reading `config/models.json`.
-- Tier ordinals (T0–T4) are stable; model names change. (See ADR-003.)
 
 ## Ruflo integration (auto-generated by ruflo init)
 

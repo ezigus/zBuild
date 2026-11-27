@@ -22,8 +22,15 @@
 #             would confirm it and answer done (it holds, and is fixed) or wrong
 #             (with what it ran and what that showed); it is kept in the result
 #             (suspected)
-# S11 [change] (#2630) the same suspicion again, after it was sent round in
-#             this run, blocks nothing: the lens passes, and a person sees it
+# S11 [change] (#2630) a suspicion sent round once in a run blocks nothing
+#             for the rest of the run — a round with none between, and the same
+#             one again: the lens passes, and a person sees it
+# S12 [change] a new suspicion after one was sent still sends the change round
+# S13 [change] a suspicion is the line it is about (file and quote): reworded,
+#             it was still sent
+# S14 [change] a lens result from before this run started does not count
+# S15 [change] with no run-start marker, each round counts it new — the loop's
+#             rounds bound it
 # S5 [change] a suspicion that says nothing would confirm it is not sent on; a
 #             note says why
 # S8 [change] in a round that otherwise passes, an open suspicion is in the
@@ -122,15 +129,34 @@ assert_contains "[S4] ...saying what would confirm it" "$(_texts code)" \
 assert_contains "[S4] ...and asking the stage to run it, and answer" "$(_texts code)" \
     "Run what would confirm it: answer done when it holds and you fixed it, or wrong with what you ran and what it showed."
 assert_eq "[S4] it is kept in the result" "a.sh" "$(jq -r '.suspected[0].file // ""' "$ART/lens-red-team.json" 2>/dev/null)"
-# S11: the next round, the same suspicion again — its earlier routed result is
-# this run's (written after the run started).
-mkdir -p "$TEST_TEMP_DIR/runtime"; touch -t 202001010000 "$TEST_TEMP_DIR/runtime/run-start"
-ZBUILD_CURRENT_STAGE=review_lenses ZBUILD_REVIEW_LENS_ID=red-team _TPL_STAGE_FAIL_ON_review_lenses="medium high critical" \
-    _review_lens_run_inner red-team "" "$ART/diff.patch" "$ART/lens-red-team.json" "$ART" >/dev/null 2>&1
-OUT="$(jq -r '.outcome // "MISSING"' "$ART/lens-red-team.json" 2>/dev/null)"
-assert_eq "[S11] the same suspicion again, after it was sent round: the lens passes" "pass" "$OUT"
-assert_contains "[S11] ...and it blocks nothing" "$(_texts code)" "false The red-team lens suspects, and could not confirm"
-rm -f "$TEST_TEMP_DIR/runtime/run-start"
+# S11–S15: rounds of one run. The run started before them (ZBUILD_RUN_START_MARKER);
+# a round keeps the lens's earlier results, as the engine does.
+MARK="$TEST_TEMP_DIR/run-start"
+_round() {
+    ZBUILD_RUN_START_MARKER="${1:-}" ZBUILD_CURRENT_STAGE=review_lenses ZBUILD_REVIEW_LENS_ID=red-team \
+        _TPL_STAGE_FAIL_ON_review_lenses="medium high critical" \
+        _review_lens_run_inner red-team "" "$ART/diff.patch" "$ART/lens-red-team.json" "$ART" >/dev/null 2>&1
+    OUT="$(jq -r '.outcome // "MISSING"' "$ART/lens-red-team.json" 2>/dev/null)"
+}
+SUS1="$REPLY"
+CLEAN='{"score":10,"findings":[]}'
+_fresh() { rm -f "$ART"/lens-red-team*.json; touch -t 202001010000 "$MARK"; }
+_fresh
+REPLY="$SUS1";  _round "$MARK"; assert_eq "[S11] round 1: the suspicion sends the change round" "fail" "$OUT"
+REPLY="$CLEAN"; _round "$MARK"; assert_eq "[S11] round 2: no suspicion" "pass" "$OUT"
+REPLY="$SUS1";  _round "$MARK"; assert_eq "[S11] round 3: the same suspicion, sent already in this run, blocks nothing" "pass" "$OUT"
+assert_contains "[S11] ...it is still asked, blocking nothing" "$(_texts code)" "false The red-team lens suspects, and could not confirm"
+REPLY="${SUS1/a SIGTERM between the claim and its trap leaves the label behind/the label can be left behind by a signal}"
+_round "$MARK"; assert_eq "[S13] reworded, about the same line: still sent already" "pass" "$OUT"
+REPLY='{"score":9,"findings":[],"unclear":[{"file":"b.sh","quote":"gh label add \"$M\"","suspicion":"the second label is never removed","confirm_by":"a run that fails after it is added","fix":"code"}]}'
+_round "$MARK"; assert_eq "[S12] a new suspicion after one was sent: it sends the change round" "fail" "$OUT"
+_fresh; REPLY="$SUS1"; _round "$MARK"
+touch -t 201901010000 "$ART/lens-red-team.json"
+_round "$MARK"; assert_eq "[S14] a result from before this run started does not count" "fail" "$OUT"
+_fresh; rm -f "$MARK"; REPLY="$SUS1"; _round ""; _round ""
+assert_eq "[S15] with no run-start marker every round counts it new: the loop's rounds bound it" "fail" "$OUT"
+# Leave a run whose last round passed with the suspicion open, for S8.
+_fresh; REPLY="$SUS1"; _round "$MARK"; _round "$MARK"
 _sum="$(_flat "$(cat "$ART/lens-red-team-summary.md" 2>/dev/null)")"
 assert_contains "[S8] a round that passes: the suspicion is in the lens's summary" "$_sum" \
     "suspected, not confirmed: a SIGTERM between the claim and its trap leaves the label behind (a.sh"

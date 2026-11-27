@@ -375,7 +375,8 @@ rsc_render_header() {
     printf '%s\n' "$meta"
     # #2630 (ADR-067 §8): a repository with no rules of its own is told so —
     # every stage was given zBuild's defaults. Read by the shell, no process.
-    [[ -n "${ZBUILD_REPO_ROOT:-}" && -d "$ZBUILD_REPO_ROOT" && ! -s "$ZBUILD_REPO_ROOT/.zbuild/rules.md" ]] \
+    local _rsc_rr="${ZBUILD_RSC_REPO_ROOT:-${ZBUILD_REPO_ROOT:-}}"
+    [[ -n "$_rsc_rr" && -d "$_rsc_rr" && ! -s "$_rsc_rr/.zbuild/rules.md" ]] \
         && printf '%s\n' "This repository has no \`.zbuild/rules.md\`: every stage was given zBuild's default rules."
     case "$status" in
         running|complete|success|complete_unconverged) ;;

@@ -58,7 +58,7 @@ load_repo_rules() {
 }
 
 # _po_load_repo_file <rel> <repo_root> — the one reader for every file under a
-# target repo's .zbuild/ (its prompts/ and, #2630, its rules.md): string floor, symlink and hardlink
+# target repo's .zbuild/prompts/, and (#2630) its .zbuild/rules.md: string floor, symlink and hardlink
 # containment, size cap. Always rc 0; empty on any refusal.
 _po_load_repo_file() {
     local rel="$1" repo_root="$2"
@@ -70,18 +70,24 @@ _po_load_repo_file() {
     [[ -f "$override_file" && -s "$override_file" ]] || return 0
 
     # Symlink containment: the override's REAL path must sit strictly under the
-    # target repo's real .zbuild/. Bare `realpath` only (no GNU-only
+    # target repo's real .zbuild/prompts/ (the rules file: be .zbuild/rules.md). Bare `realpath` only (no GNU-only
     # -m/-e flags) so BSD and GNU agree. Canonicalizing both sides catches a
     # design-overrides.md symlinked out (→ /etc/passwd) AND a prompts/ dir that
     # is itself a symlink out — neither is caught by the string floor above.
     local real_root real_file expected_dir
     real_root="$(realpath "$repo_root" 2>/dev/null)" || return 0
     real_file="$(realpath "$override_file" 2>/dev/null)" || return 0
-    expected_dir="$real_root/.zbuild"
-    case "$real_file" in
-        "$expected_dir"/*) : ;;
-        *) return 0 ;;
-    esac
+    # #2630 (ADR-067 §8): a stage's guidance stays under .zbuild/prompts/; the
+    # rules file is exactly .zbuild/rules.md — no other file of .zbuild/.
+    expected_dir="$real_root/.zbuild/prompts"
+    if [[ "$rel" == ".zbuild/rules.md" ]]; then
+        [[ "$real_file" == "$real_root/.zbuild/rules.md" ]] || return 0
+    else
+        case "$real_file" in
+            "$expected_dir"/*) : ;;
+            *) return 0 ;;
+        esac
+    fi
 
     # Hardlink containment: realpath cannot see through a hardlink (it has no
     # link target), so a hardlink to an out-of-tree file passes the check above
