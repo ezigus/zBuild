@@ -134,7 +134,9 @@ assert_eq "[R3] CLAUDE.md includes it on a line of its own" "1" "$(grep -cx '@.z
 _dup=""
 while IFS= read -r _rl; do
     [[ "$_rl" == "- "* ]] || continue
-    grep -qF -- "${_rl#- }" "$REPO_ROOT/CLAUDE.md" && _dup+="$_rl"$'\n'
+    # Each rule's first sentence, its stop left off: a copy reworded after it still repeats it.
+    _first="${_rl#- }"; _first="${_first%%. *}"; _first="${_first%.}"
+    grep -qF -- "$_first" "$REPO_ROOT/CLAUDE.md" && _dup+="$_first"$'\n'
 done < "$REPO_ROOT/.zbuild/rules.md"
 assert_eq "[R3] ...and repeats none of its rules: one source" "" "$_dup"
 if [[ -e "$REPO_ROOT/.zbuild/prompts/rules.md" ]]; then assert_fail "[R3] the old file is gone" "$REPO_ROOT/.zbuild/prompts/rules.md"
@@ -164,7 +166,13 @@ MOCK
 chmod +x "$TEST_TEMP_DIR/bin/gh"; export PATH="$TEST_TEMP_DIR/bin:$PATH"; unset NO_GITHUB
 _r5() {   # <repo> — the body the runner's --once posts for <repo>
     local sd="$TEST_TEMP_DIR/r5-state"; rm -rf "$sd" "$GH_BODIES/body.txt"; mkdir -p "$sd"
-    printf '%s\n' '{"ts":"2026-11-26T01:17:00.000Z","run_id":"r-2630","issue":90000042,"type":"pipeline.start","plugin":"","kind":"","data":{},"schema_version":1}' > "$sd/events.jsonl"
+    # The run's first event, as the engine writes it.
+    ( export ZBUILD_EVENTS_DIR="$sd" ZBUILD_EVENTS_JSONL="$sd/events.jsonl" ZBUILD_RUN_ID=r-2630 ZBUILD_ISSUE=90000042 \
+          ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
+      : > "$ZBUILD_EVENTS_JSONL"
+      # shellcheck source=../../core/event-bus/event-bus.sh
+      source "$REPO_ROOT/core/event-bus/event-bus.sh"
+      emit_event pipeline.start ) >/dev/null 2>&1
     env -u ZBUILD_REPO_ROOT bash "$LIB" --events "$sd/events.jsonl" --state-dir "$sd" --parent-pid $$ \
         --slug testuser/testrepo --issue 90000042 --run-id r-2630 --repo-root "$1" --once >/dev/null 2>&1
     cat "$GH_BODIES/body.txt" 2>/dev/null

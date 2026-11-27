@@ -85,7 +85,7 @@ clock|plugins/tool/test/tests/test-test.sh|T_START="$(date +%s)"
 clock|plugins/tool/test/tests/test-test.sh|T_END="$(date +%s)"
 clock|plugins/tool/orch-ruflo-hive/tests/orch-ruflo-hive-test.sh|t_start="$(date +%s)"
 clock|plugins/tool/orch-ruflo-hive/tests/orch-ruflo-hive-test.sh|t_end="$(date +%s)"
-# own-code (#2630): tests that replaced our own functions before the rule — fakes of our code, and test helpers whose names collide with a production one; this list only shrinks.
+# own-code (#2630): tests that replaced our own functions before the rule — fakes of our code, multi-line spies, and test helpers whose names collide with a production one; this list only shrinks.
 own-code|tests/unit/layout-writer-test.sh|resolve_template_file() { echo "$REPO_ROOT/tests/fixtures/templates/two-cycles.yaml"; }
 own-code|tests/unit/layout-writer-test.sh|cycle_orchestrator_run() { _CYCLE_LAST_TERMINATED_REASON="converged"; _CYCLE_LAST_OUTCOME="converged"; _CYCLE_LAST_ITERATIONS=1; return 0; }
 own-code|tests/unit/layout-writer-test.sh|_find_plugin_for_stage() { echo "$REPO_ROOT/plugins/agent/build"; }
@@ -115,9 +115,14 @@ own-code|tests/unit/test-plugin-result-write-fallback-test.sh|atomic_write() { c
 own-code|tests/unit/test-plugin-result-write-fallback-test.sh|atomic_write() {
 own-code|tests/unit/monitor-hardening-test.sh|route_to_model() {
 own-code|tests/unit/cleanup-worktrees-test.sh|_scan() { (cd "$R" && _cleanup_scan_worktrees "${1:-14}"); }
+own-code|tests/unit/runner-contract-lib-seam-test.sh|declare -F _runner_contract_lib_closure >/dev/null 2>&1 \
+own-code|tests/unit/runner-contract-lib-seam-test.sh|declare -F _runner_snapshot_contract_libs >/dev/null 2>&1 \
+own-code|tests/unit/runner-contract-lib-seam-test.sh|declare -F _runner_design_targets_contract_lib >/dev/null 2>&1 \
 own-code|tests/unit/hydrate-stage-test.sh|_artifact_persist_put_back() {
 own-code|tests/unit/hydrate-stage-test.sh|_artifact_persist_put_back() {
 own-code|tests/unit/hydrate-stage-test.sh|_artifact_persist_restore() {
+own-code|tests/unit/timeout-cmd-test.sh|declare -F _runner_contract_lib_closure >/dev/null 2>&1 \
+own-code|tests/unit/timeout-cmd-test.sh|declare -F _runner_snapshot_contract_libs >/dev/null 2>&1 \
 own-code|tests/unit/stage-io-cycle-kind-test.sh|template_stage_io_dests()      { printf ''; }
 own-code|tests/unit/stage-io-cycle-kind-test.sh|template_stage_io_tail_lines() { printf ''; }
 own-code|tests/unit/stage-io-cycle-kind-test.sh|template_stage_io_redact()     { printf ''; }
@@ -206,9 +211,7 @@ own-code|tests/unit/test-author-checks-own-output-test.sh|route_to_model() {
 own-code|tests/unit/test-author-checks-own-output-test.sh|_router_rc_classify() { printf -v "$2" '%s' error; printf -v "$3" '%s' router_rate_limited; }
 own-code|tests/unit/test-author-checks-own-output-test.sh|zb_answers_finish() {
 own-code|tests/unit/stage-housekeeping-cost-test.sh|_runner_now_ms() { printf '1792937616000'; }
-own-code|tests/unit/discovery-cold-lookup-test.sh|_discover_plugins_walk() { printf 'walk\n' >> "$WALKS"; _orig_discover_plugins_walk "$@"; }
 own-code|tests/unit/discovery-cold-lookup-test.sh|_discover_plugins_walk() { printf 'walk\n' >> "$WALKS"; return 3; }
-own-code|tests/unit/discovery-cold-lookup-test.sh|_discover_plugins_walk() { printf 'walk\n' >> "$WALKS"; _orig_discover_plugins_walk "$@"; }
 own-code|tests/unit/runner-stage-dispatch-eb-emit-guard-test.sh|resolve_template_file() { echo "$REPO_ROOT/tests/fixtures/templates/two-cycles.yaml"; }
 own-code|tests/unit/runner-stage-dispatch-eb-emit-guard-test.sh|eb_emit_event() {
 own-code|tests/unit/runner-stage-dispatch-eb-emit-guard-test.sh|_find_plugin_for_stage() { echo "$REPO_ROOT/plugins/agent/build"; }
@@ -443,7 +446,6 @@ own-code|tests/unit/requirements-list-test.sh|resolve_tier() { printf 'T2'; }
 own-code|tests/unit/build-acceptance-spec-feedback-test.sh|route_to_model_loop() {
 own-code|tests/unit/build-acceptance-spec-feedback-test.sh|_route_loop_close_final_banner() { return 0; }
 own-code|tests/unit/build-acceptance-spec-feedback-test.sh|apply_scope_redaction() { local in="$1" out="$2"; [[ -f "$in" ]] && cp "$in" "$out"; return 0; }
-own-code|tests/unit/discover-plugins-memo-test.sh|validate_manifest() { printf 'x\n' >> "$_WALKS"; _orig_validate_manifest "$@"; }
 own-code|tests/unit/core-pipeline-cycle-final-gate-test.sh|cycle_dispatch_stage() {
 own-code|tests/unit/design-call-timeout-test.sh|route_to_model() {
 own-code|tests/unit/design-call-timeout-test.sh|apply_scope_redaction() { cp "$1" "$2"; return 0; }
@@ -479,6 +481,9 @@ own-code|tests/unit/judge-quotes-test.sh|route_to_model() { zb_test_lens_check_a
 own-code|tests/unit/judge-quotes-test.sh|route_to_model() { zb_test_lens_check_answer "$2" && return 0;
 own-code|tests/unit/judge-quotes-test.sh|resolve_tier() { printf 'T2'; }
 own-code|tests/unit/judge-quotes-test.sh|route_to_model() { zb_test_lens_check_answer "$2" && return 0;
+own-code|tests/unit/runner-engine-provenance-test.sh|declare -F _runner_engine_sha >/dev/null 2>&1 || _runner_engine_sha() { return 1; }
+own-code|tests/unit/runner-engine-provenance-test.sh|declare -F _runner_engine_branch >/dev/null 2>&1 || _runner_engine_branch() { return 1; }
+own-code|tests/unit/runner-engine-provenance-test.sh|declare -F _runner_report_engine_drift >/dev/null 2>&1 || _runner_report_engine_drift() { return 1; }
 own-code|tests/unit/scripts-lib-run-captured-command-test.sh|template_stage_io_dests() {
 own-code|tests/unit/design-one-call-keeps-last-good-test.sh|apply_scope_redaction() { cp "$1" "$2"; return 0; }
 own-code|tests/unit/design-one-call-keeps-last-good-test.sh|route_to_model() { _model_call "$2"; }
@@ -556,7 +561,6 @@ own-code|tests/unit/limit-ids-test.sh|route_to_model() {
 own-code|tests/unit/convergence-timeouts-never-fatal-1208-test.sh|cycle_dispatch_stage() {
 own-code|tests/unit/convergence-timeouts-never-fatal-1208-test.sh|cycle_dispatch_stage() {
 own-code|tests/unit/intake-missing-quote-test.sh|route_to_model() {
-own-code|tests/unit/intake-missing-quote-test.sh|_ireq_issue_norm_v() { _M12_N=$(( _M12_N + 1 )); _m12_orig__ireq_issue_norm_v "$@"; }
 own-code|tests/unit/prior-work-reuse-contract-test.sh|( cd "$_R6" && emit_event() { :; } && ZBUILD_ISSUE_NUMBER="$_ZB_ID2" ZBUILD_STATE_DIR="$_S6" \
 own-code|tests/unit/design-stage-ids-test.sh|apply_scope_redaction() { cp "$1" "$2"; return 0; }
 own-code|tests/unit/design-stage-ids-test.sh|route_to_model() {
@@ -627,7 +631,6 @@ own-code|tests/unit/checks-held-to-findings-test.sh|route_to_model() {
 own-code|tests/unit/checks-held-to-findings-test.sh|route_to_model() { printf 'x\n' >> "$_IA_CALLS"; printf '%s' "$2" > "$_IA_PROMPT"; printf '%s\n' "$_IA_ANSWER"; return 0; }
 own-code|tests/unit/checks-held-to-findings-test.sh|resolve_tier() { printf 'T2'; }
 own-code|tests/unit/checks-held-to-findings-test.sh|route_to_model() { printf '%s' "$2" > "$JP"; printf '%s\n' "$JUDGE_REPLY"; return 0; }
-own-code|tests/unit/yaml-get-cache-test.sh|_yaml_get_uncached() { printf 'x\n' >> "$_PARSE_LOG"; _yg_real "$@"; }
 own-code|tests/unit/plugin-build-prompt-render-test.sh|route_to_model_loop() {
 own-code|tests/unit/plugin-build-prompt-render-test.sh|apply_scope_redaction() {
 own-code|tests/unit/lens-fail-rule-test.sh|route_to_model() { zb_test_lens_check_answer "$2" && return 0; zb_test_lens_lines "{\"score\":7,\"findings\":$_FINDINGS}"; return 0; }
@@ -647,7 +650,6 @@ own-code|tests/unit/intake-unclear-test.sh|route_to_model() {
 own-code|tests/unit/finding-topics-test.sh|route_to_model() { printf '%s\n' "$_IA_ANSWER"; return 0; }
 own-code|tests/unit/finding-topics-test.sh|resolve_tier() { printf 'T2'; }
 own-code|tests/unit/stage-latest-output-test.sh|cycle_dispatch_stage() {
-own-code|tests/unit/shell-work-cost-test.sh|_inputs_stage_manifest() { printf 'x\n' >> "$_W3"; _ism_real "$@"; }
 own-code|tests/unit/test-result-reason-contract-test.sh|atomic_write() { cat > /dev/null; return 1; }
 own-code|tests/unit/core-output-stage-io-banner-goldens-test.sh|template_stage_io_dests()      { printf 'stdout\n'; }
 own-code|tests/unit/core-output-stage-io-banner-goldens-test.sh|template_stage_io_tail_lines() { printf ''; }
@@ -836,10 +838,14 @@ own-code|tests/lib/cycle-stall-break-fixture.sh|cycle_dispatch_stage() {
 own-code|tests/lib/cycle-report-stub.sh|cycle_dispatch_stage() {
 own-code|tests/lib/nested-loop-rounds-fixture.sh|cycle_dispatch_stage() {
 own-code|tests/e2e/parity-local-vs-ci-test.sh|_sha256() {
+own-code|plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh|_ccgl_read_holder() { printf 'run "x" \\ tab\there\x01bell'; }
 own-code|plugins/agent/validate/tests/validate-deploy-target-unit-test.sh|emit_event() { return 0; }
+own-code|plugins/agent/validate/tests/validate-deploy-target-unit-test.sh|health_check_run() { printf '%s\n' "${ZBUILD_HEALTH_CHECK_URL:-<none>}" >> "$_PROBES"; printf 'HTTP/1.1 200 OK\n'; return 0; }
 own-code|plugins/agent/validate/tests/validate-test.sh|emit_event() { return 0; }
 own-code|plugins/agent/validate/tests/validate-test.sh|apply_scope_redaction() {
+own-code|plugins/agent/validate/tests/validate-test.sh|health_check_run() {
 own-code|plugins/agent/validate/tests/validate-close-unit-test.sh|emit_event() { return 0; }
+own-code|plugins/agent/validate/tests/validate-close-unit-test.sh|health_check_run() { printf 'x\n' >> "$_HC_CALLS_F"; printf '%s\n' "$_MOCK_HC_OUT"; return "$_MOCK_HC_RC"; }
 own-code|plugins/agent/monitor/tests/monitor-test.sh|route_to_model() {
 own-code|plugins/agent/issue-check/tests/issue-check-test.sh|route_to_model() {
 own-code|plugins/agent/issue-check/tests/issue-check-test.sh|resolve_tier() { printf 'T2'; }
@@ -884,7 +890,6 @@ own-code|plugins/agent/build/tests/build-step-stands-test.sh|route_to_model() {
 own-code|plugins/agent/review-lens/tests/review-lens-v2-budget-test.sh|route_to_model() {
 own-code|plugins/agent/review-lens/tests/review-lens-v2-budget-test.sh|route_to_model() {
 own-code|plugins/agent/review-lens/tests/review-lens-v2-budget-test.sh|route_to_model() { printf 'call\n' >> "$_RL_CALLS"; return 130; }
-own-code|plugins/agent/review-lens/tests/review-lens-v2-budget-test.sh|atomic_write() { printf '%s\n' "$1" >> "$_aw_log"; _orig_atomic_write "$@"; }
 own-code|plugins/agent/review-lens/tests/review-lens-v2-budget-test.sh|route_to_model() { kill -TERM "$$"; return 130; }
 own-code|plugins/agent/review-lens/tests/review-lens-v2-budget-test.sh|template_stage_router_max_turns() { printf '99'; return 0; }
 own-code|plugins/agent/review-lens/tests/review-lens-v2-budget-test.sh|route_to_model() {

@@ -31,6 +31,9 @@
 # S14 [change] a lens result from before this run started does not count
 # S15 [change] with no run-start marker, each round counts it new — the loop's
 #             rounds bound it
+# S16 [change] (review) a round that ends early keeps what was sent
+# S17 [change] (review) two different suspicions about the same line are one:
+#             the line was sent, so the second blocks nothing
 # S5 [change] a suspicion that says nothing would confirm it is not sent on; a
 #             note says why
 # S8 [change] in a round that otherwise passes, an open suspicion is in the
@@ -153,6 +156,16 @@ _round "$MARK"; assert_eq "[S12] a new suspicion after one was sent: it sends th
 _fresh; REPLY="$SUS1"; _round "$MARK"
 touch -t 201901010000 "$ART/lens-red-team.json"
 _round "$MARK"; assert_eq "[S14] a result from before this run started does not count" "fail" "$OUT"
+_fresh; REPLY="$SUS1"; _round "$MARK"
+REPLY='this is not a lens answer'; _round "$MARK"
+assert_eq "[S16] (fixture) a round that ends early" "unusable" "$OUT"
+REPLY="$SUS1"; _round "$MARK"
+assert_eq "[S16] ...still keeps what was sent: the same suspicion after it blocks nothing" "pass" "$OUT"
+# S17: two suspicions about the same line are one — the line is what was sent.
+_fresh; REPLY="$SUS1"; _round "$MARK"
+REPLY="${SUS1/a SIGTERM between the claim and its trap leaves the label behind/the label is added twice when the call is retried}"
+REPLY="${REPLY/how bash runs a TERM trap set after a builtin has started/a retried call}"
+_round "$MARK"; assert_eq "[S17] a different suspicion about a line already sent blocks nothing: one line, one round" "pass" "$OUT"
 _fresh; rm -f "$MARK"; REPLY="$SUS1"; _round ""; _round ""
 assert_eq "[S15] with no run-start marker every round counts it new: the loop's rounds bound it" "fail" "$OUT"
 # Leave a run whose last round passed with the suspicion open, for S8.

@@ -10,10 +10,10 @@ _route_call_claude
 # GitHub, read by a stage's tools (core/router/call-tools.sh, core/router/tool-hook.sh).
 _route_call_gh_read
 _gh_get_form
-# GitHub, as each part of zBuild reaches it.
+# GitHub, as each part of zBuild reaches it. (A function that holds our own
+# logic around the call — the health check, reading the claim holder — is not
+# one: fake curl or _ccgl_gh under it.)
 run_gh
 rsc_gh
 _hydrate_fetch
-health_check_run
 _ccgl_gh
-_ccgl_read_holder

@@ -22,9 +22,12 @@
 #               outside service is faked at our own wrapper around it, listed in
 #               config/test-fake-wrappers.txt (the model call, GitHub); those
 #               may be redefined. A definition in a heredoc (a fake plugin
-#               written to disk) is not one, nor a spy that calls the
-#               original (<f>_orig, _real_<f>), nor a define-if-missing guard
-#               (declare -F <f> || <f>() {…}).
+#               written to disk) is not one, nor a spy whose body (on its
+#               line) calls a copy of the original (a name with orig or real
+#               as a part), nor a define-if-missing guard (declare -F <f>
+#               [redirs] || <f>() {…}). A test-local helper whose name only
+#               collides with a private production one is marked
+#               `# determinism-ok: test-local helper`.
 #   sleep-kill  a `sleep` followed, within three commands, by a `kill`: a
 #               signal timed by a clock. Wait for a marker the process writes
 #               at the point under test, with a timeout, then signal. A poll
@@ -86,9 +89,19 @@ findings="$(awk '
 BEGIN { P = "(^|[;&|(`!{]|[$][(]|(then|do|else|command|exec|if|while|until|time|xargs|env)[ \t])[ \t]*" }
 function at(c, w) { return match(c, P w "([ \t;|&)]|$)") }
 function bad(f, l, why) { printf "%s|%s|%s\n", f, l, why }
-# #2630: not a fake — a spy whose body calls the original (<f>_orig, _real_<f>),
-# or a define-if-missing guard (declare -F <f> || <f>() {…}).
-function spyof(c, n) { return index(c, n "_orig") || index(c, "_real_" n) || match(c, "declare[ \t]+-F[ \t]+" n "([^A-Za-z0-9_]|$)") }
+# #2630: not a fake — a define-if-missing guard, `declare -F <f> [redirs] ||`
+# right before the definition; or a spy, whose body (the rest of the line after
+# the definition) calls a copy of the original: a name with orig or real as a
+# part of it (<f>_orig, _orig_<f>, _real_<f>, _m12_orig_<f>, _yg_real). A spy
+# whose body is on the lines below stays in the baseline.
+function guarded(before, n) { return match(before, "declare[ \t]+-F[ \t]+" n "([ \t]+[^|&;]*)?[ \t]*[|][|][ \t]*$") }
+function spybody(after, n,   id) {
+    while (match(after, /[A-Za-z_][A-Za-z0-9_]*/)) {
+        id = substr(after, RSTART, RLENGTH); after = substr(after, RSTART + RLENGTH)
+        if (id != n && id ~ /(^|_)(orig|real)(_|$)/) return 1
+    }
+    return 0
+}
 { tag = substr($0, 1, 1); $0 = substr($0, 3) }
 tag == "M" {
     f = $0; sub(/:.*/, "", f); r = substr($0, length(f) + 2); l = r; sub(/:.*/, "", l)
@@ -116,15 +129,17 @@ tag == "K" {
         else if (!mocked[f, cmd]) bad(f, l, "remote|calls " cmd " with no mock in the file")
     }
     if (mark[f ":" l] != "ok") {
-        d = c
+        d = c; pre = ""
         while (match(d, /(^|[;&|(!{ \t])(function[ \t]+)?[A-Za-z_][A-Za-z0-9_:.-]*[ \t]*[(][)]/)) {
-            n = substr(d, RSTART, RLENGTH); d = substr(d, RSTART + RLENGTH)
+            n = substr(d, RSTART, RLENGTH); bef = pre substr(d, 1, RSTART); aft = substr(d, RSTART + RLENGTH)
+            pre = pre substr(d, 1, RSTART + RLENGTH - 1); d = aft
             sub(/^[;&|(!{ \t]/, "", n); sub(/^function[ \t]+/, "", n); sub(/[ \t]*[(][)]$/, "", n)
-            if (ownf[n] && !allowf[n] && !spyof(c, n)) { bad(f, l, "own-code|replaces " n ", which our own code defines, with a fake"); break }
+            if (ownf[n] && !allowf[n] && !guarded(bef, n) && !spybody(aft, n)) { bad(f, l, "own-code|replaces " n ", which our own code defines, with a fake"); break }
         }
         if (match(c, /(^|[;&|(!{ \t])function[ \t]+[A-Za-z_][A-Za-z0-9_:.-]*[ \t]*[{]/)) {
-            n = substr(c, RSTART, RLENGTH); sub(/^.*function[ \t]+/, "", n); sub(/[ \t]*[{]$/, "", n)
-            if (ownf[n] && !allowf[n] && !spyof(c, n)) bad(f, l, "own-code|replaces " n ", which our own code defines, with a fake")
+            n = substr(c, RSTART, RLENGTH); bef = substr(c, 1, RSTART); aft = substr(c, RSTART + RLENGTH)
+            sub(/^.*function[ \t]+/, "", n); sub(/[ \t]*[{]$/, "", n)
+            if (ownf[n] && !allowf[n] && !guarded(bef, n) && !spybody(aft, n)) bad(f, l, "own-code|replaces " n ", which our own code defines, with a fake")
         }
     }
     if (mark[f ":" l] != "ok" && c ~ /([$][{]?SECONDS([^A-Za-z0-9_]|$)|[(][(]([^)]*[^A-Za-z0-9_)])?SECONDS([^A-Za-z0-9_]|$)|date([ \t]+-[A-Za-z]+)*[ \t]+["'"'"']?[+]%s)/) bad(f, l, "clock|reads the clock to time something")
