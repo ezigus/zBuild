@@ -196,7 +196,10 @@ BUDGET_MARGIN_STARTUP=1
 # envelope parser. Measured on macOS: 2273 processes in all, 430 a dispatch.
 # #2629: build reads its changed files by the shell, and its trace check makes
 # one git call. Measured on macOS: 2265 processes and 1815 execs in all.
-FORK_BUDGET=$(( 1815 + BUDGET_MARGIN_TOTAL ))
+# json-text (ADR-065 §5, 2026-11-27): build reads each changed file's name and
+# lines from one git diff --numstat -z, not four grep pipelines. Measured on
+# macOS: 2258 processes and 1813 execs in all.
+FORK_BUDGET=$(( 1813 + BUDGET_MARGIN_TOTAL ))
 # PROCESS_BUDGET (ADR-065 §1, amended 2026-10-24): every process bash ran in —
 # the programs above plus each `$( )` subshell, a copy of the whole engine shell
 # that FORK_BUDGET cannot see. Ratchets down only, like FORK_BUDGET. History:
@@ -262,7 +265,8 @@ FORK_BUDGET=$(( 1815 + BUDGET_MARGIN_TOTAL ))
 # #1764: see FORK_BUDGET — 2381 processes, plus the margin.
 # #2584: see FORK_BUDGET — 2325 processes, plus the margin.
 # #2629: see FORK_BUDGET — 2265 processes, plus the margin.
-PROCESS_BUDGET=$(( 2265 + BUDGET_MARGIN_TOTAL ))
+# json-text: see FORK_BUDGET — 2258 processes, plus the margin.
+PROCESS_BUDGET=$(( 2258 + BUDGET_MARGIN_TOTAL ))
 # The run's cost in two parts (ADR-065 §6, #2472). Each budget ratchets down
 # like the totals; each floor is the goal, an estimate, measured again when
 # reached. History: 505 / 298 a dispatch, 12 / 7 a plugin at start-up (#2472 —
