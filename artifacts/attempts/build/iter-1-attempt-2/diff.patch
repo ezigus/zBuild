@@ -1,0 +1,259 @@
+diff --git a/core/claim/claim.sh b/core/claim/claim.sh
+index 2f1bec3f..ffb41bf2 100644
+--- a/core/claim/claim.sh
++++ b/core/claim/claim.sh
+@@ -98,6 +98,13 @@ zbuild_claim_acquire() {
+     if [[ "$reply" =~ \"acquired\"[[:space:]]*:[[:space:]]*false ]]; then
+         _ZBUILD_CLAIM_THEIR_HOLDER="$(jq -r '.holder // empty' <<< "$reply" 2>/dev/null || true)"
+         _ZBUILD_CLAIM_THEIR_HOLDER="${_ZBUILD_CLAIM_THEIR_HOLDER//[[:cntrl:]]/}"
++        # ADR-005 §5 (#2534): a concurrent claim — another run posted its note first;
++        # skip the stale-takeover path entirely (DSRACE-5).
++        if [[ "$reply" =~ \"race_lost\"[[:space:]]*:[[:space:]]*true ]]; then
++            printf 'zbuild_claim_acquire: issue #%s: concurrent claim — %s was first\n' \
++                "$issue" "${_ZBUILD_CLAIM_THEIR_HOLDER:-unknown}" >&2
++            return 1
++        fi
+         # #2589 (ADR-005): a claim this machine's own run left behind (it
+         # crashed, or was killed, before releasing) is cleared, once, and the
+         # claim taken again. Another machine's, or CI's, is never touched.
+diff --git a/docs/adr/ADR-005-claim-coordinator.md b/docs/adr/ADR-005-claim-coordinator.md
+index 0ed7de56..b0d5da59 100644
+--- a/docs/adr/ADR-005-claim-coordinator.md
++++ b/docs/adr/ADR-005-claim-coordinator.md
+@@ -2,7 +2,7 @@
+ 
+ **Status:** Accepted
+ **Date:** 2026-05-24
+-**Amended:** 2026-11-26 (#2616: the coordinator owns a claim's age and its takeover; GitHub's clock; the old comment marked); 2026-11-21 (#1764: the engine claims and releases; one shared label; holder in the run-status comment)
++**Amended:** 2026-11-27 (#2534: concurrent claim detection: arbitration note, first-by-created_at-then-id wins, loser updates note to not-started, race_lost skip); 2026-11-26 (#2616: the coordinator owns a claim's age and its takeover; GitHub's clock; the old comment marked); 2026-11-21 (#1764: the engine claims and releases; one shared label; holder in the run-status comment)
+ 
+ ## Context
+ 
+@@ -99,6 +99,30 @@ The claim is advisory across machines; this machine's admission lock still seria
+ - **§3e Lazy load.** *(Amended 2026-11-26, #2616.)* The coordinator's takeover hook loads its `lib/takeover.sh` only for a
+   cross-machine claim it was refused; a library that is absent or cannot be loaded refuses, saying so.
+ 
++### §5 — Concurrent claim detection (amended 2026-11-27, #2534)
++
++After successfully adding the `zbuild:claimed` label (gh backend only), the claim writes its own
++holder record — a GitHub comment: `"concurrent claim by \`<holder>\`"` — synchronously, before
++re-reading anything. This is the synchronous holder record (RQTIE-3 path 1). The run then re-reads the
++GitHub issue to get fresh state, and reads back all trusted concurrent claim notes to determine the winner.
++
++- **Arbitration.** The run whose note has the earliest `created_at` is the winner (then `id` on a tie).
++  Notes are filtered to those posted at or after `note_created_at − 4 × ZBUILD_STATUS_COMMENT_GH_TIMEOUT`
++  to exclude notes from previous label epochs.
++- **Winner** (`{"acquired": true}`): the run whose note is first. Its note stays as the holder record.
++- **Loser** (`{"acquired": false, "holder": "<winner>", "race_lost": true}`): every other run PATCHes
++  its note body to `"not started — concurrent claim: \`<winner>\` was first"` and returns
++  `race_lost: true`.
++- **Engine.** When `zbuild_claim_acquire` receives `race_lost: true` in a refused reply, it refuses
++  immediately, printing a message that names the concurrent winner as the first claimant, and skips the
++  stale-takeover path entirely (`_ZBUILD_CLAIM_ACQUIRED` is never set; `zbuild_claim_release` does not
++  remove the label).
++- **Local-fs backend** is unaffected: its `flock`-serialised add already returns rc 2 for a duplicate
++  add, so a concurrent claim never reaches this path.
++- **Known limits.** A note post that returns no id (rc 2 in `_ccgl_race_note_post_v`) proceeds without an
++  id: the note cannot be updated if the run loses, but the arbitration result is still correct. A note post
++  that fails entirely (rc 1) removes the label and returns a backend error.
++
+ ### §4 — Finding and calling the coordinator
+ 
+ - The coordinator is the claim-coordinator plugin found under the plugins root
+@@ -132,10 +156,9 @@ list_claims        → stdout JSON: [{"issue": N, "holder": "...", "acquired_at"
+ - `release`: remove the label; on failure, say on stderr to remove it by hand.
+ - Every `gh` call runs under the run-status comment's watchdog (`rsc_gh`,
+   `ZBUILD_STATUS_COMMENT_GH_TIMEOUT`), so a hung `gh` cannot hold up a run's exit.
+-- **Known, not mitigated:** GitHub's label add does not check that the label is absent, so two runs that
+-  read "no label" at the same moment can both add it and both start. #2534 settles that race; until then
+-  nothing here prevents it. (The local-fs test store checks and adds under one lock, so a race on it has
+-  one winner; that says nothing about GitHub.)
++- **Concurrent claims on GitHub** (§5): after adding the label, the run posts a concurrent claim note as
++  its holder record and reads back all such notes; the first note by `created_at` wins. The local-fs test
++  store adds under `flock` and already has one winner; that says nothing about GitHub.
+ 
+ ### Future plugin: `plugins/claim-coordinator/ttl-leases/`
+ 
+@@ -160,7 +183,7 @@ Section L wishlist item. Routes all claim operations through an optional dashboa
+ - A run is never blocked by GitHub being down: the claim degrades to "unclaimed", visibly.
+ 
+ **Bad:**
+-- Two runs claiming at the same moment can both win (#2534).
++- Two runs claiming at the same moment on GitHub: mitigated by §5 (concurrent claim note, first-by-created_at wins).
+ - A run that dies without reaching an exit path leaves the label; until #2533 a person removes it.
+ - A cancelled GitHub Actions job leaves the label too: the runner sends INT, then TERM, then KILL a few
+   seconds later, and the KILL can land while the always-run stages and persist are still running in the exit
+@@ -178,7 +201,7 @@ Section L wishlist item. Routes all claim operations through an optional dashboa
+ | `tests/e2e/claim-race-test.sh` race coverage | Implemented | #320; rewritten in #1764 for the shared label (the local-fs store only) |
+ | The engine claims before the first stage and releases on exit | Implemented | #1764 (`core/claim/claim.sh`, `core/pipeline/runner.sh`) |
+ | Heartbeat and stale takeover | Deferred | #2533 |
+-| Two runs claiming at the same moment | Deferred | #2534 |
++| Two runs claiming at the same moment | Implemented | #2534 (§5: concurrent claim note, first wins) |
+ | TOCTOU window documented in plugin README | Implemented | `plugins/claim-coordinator/github-labels/README.md` |
+ | `plugins/claim-coordinator/ttl-leases/` (no TOCTOU) | Deferred → Phase 1 | KEEPERS.md §L item 10 |
+ | `plugins/claim-coordinator/dashboard/` variant | Deferred → Phase 1 | KEEPERS.md §L item 11 |
+@@ -208,6 +231,12 @@ A claim hook whose reply says `"acquired": true` holds the claim, whatever the h
+ 
+ ## Enforced by
+ 
++- §5 amendment 2026-11-27 (#2534: concurrent claim detection):
++  - §5 note posted before re-read, all trusted notes read back, first by created_at then id wins → `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh` DSRACE-1, DSRACE-2
++  - §5 loser updates note to "not started" → `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh` DSRACE-3
++  - §5 re-read the issue after posting the holder record → `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh` DSRACE-7
++  - §5 race_lost skips the stale-takeover path; _ZBUILD_CLAIM_ACQUIRED not set → `tests/unit/claim-acquire-release-test.sh` DSRACE-4, DSRACE-5
++
+ - §3 amendment 2026-11-26 (#2616: the coordinator owns the takeover; GitHub's clock; the old comment marked) → `tests/unit/claim-takeover-real-test.sh` TR13 (GitHub's clock), TR14 (the old comment marked), TR15 (the hook and its library are the coordinator's), TR16 (any locale, the mark's time UTC), TR17 (claimed again before the mark), TR18 (no takeover hook: refused), TR19 (a mark that fails: the takeover stands), TR20 (claiming again failing is said as such), TR1–TR12 (through the real coordinator)
+ 
+ - §3 amendment 2026-11-24 (#2533: heartbeat interval, staleness threshold, stale takeover, label-added fallback):
+diff --git a/plugins/claim-coordinator/github-labels/plugin.sh b/plugins/claim-coordinator/github-labels/plugin.sh
+index 0d19f155..ee52ba71 100644
+--- a/plugins/claim-coordinator/github-labels/plugin.sh
++++ b/plugins/claim-coordinator/github-labels/plugin.sh
+@@ -152,6 +152,99 @@ _ccgl_refused() {
+         "$issue" "$_CCGL_LABEL" "$issue" "$_CCGL_LABEL" >&2 || true
+ }
+ 
++# ─── Concurrent claim race detection (ADR-005 §5, #2534) ─────────────────────
++# Trusted author filter for jq: the CI bot or a repository owner/member/collaborator.
++_CCGL_TRUSTED='(.user.login == "github-actions[bot]") or ((.author_association // "") | IN("OWNER","MEMBER","COLLABORATOR"))'
++_CCGL_RACE_NOTE_PREFIX='concurrent claim by `'
++_CCGL_RACE_NOTE_AT=0   # created_at epoch from the last _ccgl_race_note_post_v call
++
++# _ccgl_self_holder_v <var> — this run's holder string (CI: the run URL; else run_id/machine/pid)
++_ccgl_self_holder_v() {
++    local -n _ccsh="$1"
++    if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
++        _ccsh="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-unknown}/actions/runs/${GITHUB_RUN_ID:-unknown}"
++    else
++        _ccsh="run_id=${ZBUILD_RUN_ID:-} machine=${ZBUILD_CLAIM_MACHINE_ID:-${HOSTNAME:-unknown}} pid=$$"
++    fi
++}
++
++# _ccgl_race_note_post_v <id-var> <slug> <issue> <holder> — posts
++# "concurrent claim by `<holder>`" (the synchronous holder record). <id-var> gets
++# the comment's id; _CCGL_RACE_NOTE_AT gets its created_at epoch.
++# rc 1: POST failed; rc 2: posted but GitHub's reply held no id.
++_ccgl_race_note_post_v() {
++    local -n _crnpv="$1"; local slug="$2" issue="$3" holder="${4//[[:cntrl:]\`]/}" out
++    _crnpv=""; _CCGL_RACE_NOTE_AT=0
++    _ccgl_gh_lib || return 1
++    local sd="${ZBUILD_STATE_DIR:-${TMPDIR:-/tmp}}"
++    out="$(mktemp "${TMPDIR:-/tmp}/ccgl-rnp.XXXXXX")" || return 1
++    if ! rsc_gh "$sd" "$out" api --repo "$slug" "repos/${slug}/issues/${issue}/comments" \
++            -f "body=${_CCGL_RACE_NOTE_PREFIX}${holder}\`" >/dev/null 2>&1; then
++        rm -f "$out"; return 1
++    fi
++    _crnpv="$(jq -r '.id // empty' "$out" 2>/dev/null || true)"
++    _CCGL_RACE_NOTE_AT="$(jq -r '(.created_at // "1970-01-01T00:00:00Z") | fromdateiso8601' \
++        "$out" 2>/dev/null || echo 0)"
++    [[ "$_CCGL_RACE_NOTE_AT" =~ ^[0-9]+$ ]] || _CCGL_RACE_NOTE_AT=0
++    rm -f "$out"
++    [[ "$_crnpv" =~ ^[0-9]+$ ]] || return 2
++    return 0
++}
++
++# _ccgl_race_note_delete <id> <slug> <issue> — removes this run's note; best-effort.
++_ccgl_race_note_delete() {
++    local id="${1:-}" slug="$2" out
++    [[ "$id" =~ ^[0-9]+$ ]] || return 0
++    _ccgl_gh_lib || return 0
++    local sd="${ZBUILD_STATE_DIR:-${TMPDIR:-/tmp}}"
++    out="$(mktemp "${TMPDIR:-$sd}/ccgl-rnd.XXXXXX")" || return 0
++    rsc_gh "$sd" "$out" api -X DELETE --repo "$slug" "repos/${slug}/issues/comments/${id}" >/dev/null 2>&1 || true
++    rm -f "$out"
++    return 0
++}
++
++# _ccgl_race_note_update <id> <slug> <issue> <winner> — PATCHes this run's note
++# body to "not started — concurrent claim: `<winner>` was first"; best-effort.
++_ccgl_race_note_update() {
++    local id="${1:-}" slug="$2" winner="${4//[[:cntrl:]\`]/}" out
++    [[ "$id" =~ ^[0-9]+$ ]] || return 0
++    _ccgl_gh_lib || return 1
++    local sd="${ZBUILD_STATE_DIR:-${TMPDIR:-/tmp}}" body rc=0
++    body="not started — concurrent claim: \`${winner}\` was first"
++    out="$(mktemp "${TMPDIR:-$sd}/ccgl-rnu.XXXXXX")" || return 1
++    jq -n --arg b "$body" '{body: $b}' > "${out}.json" 2>/dev/null \
++        || { rm -f "$out"; return 1; }
++    rsc_gh "$sd" "$out" api -X PATCH --repo "$slug" "repos/${slug}/issues/comments/${id}" \
++        --input "${out}.json" >/dev/null 2>&1 || rc=1
++    rm -f "$out" "${out}.json"
++    return "$rc"
++}
++
++# _ccgl_race_note_first_v <var> <slug> <issue> <since> — the holder named by the
++# first trusted concurrent claim note with created_at >= <since> (epoch s), ordered
++# by created_at then id. rc 1 when the notes cannot be read; 0 on success (empty
++# var means no matching notes — no concurrent claimants).
++_ccgl_race_note_first_v() {
++    local -n _crnfv="$1"; local slug="$2" issue="$3" since="${4:-0}" out
++    _crnfv=""
++    _ccgl_gh_lib || return 1
++    local sd="${ZBUILD_STATE_DIR:-${TMPDIR:-/tmp}}"
++    out="$(mktemp "${TMPDIR:-$sd}/ccgl-rnf.XXXXXX")" || return 1
++    if ! rsc_gh "$sd" "$out" api --paginate --repo "$slug" \
++            "repos/${slug}/issues/${issue}/comments" 2>/dev/null; then
++        rm -f "$out"; return 1
++    fi
++    _crnfv="$(jq -rs --arg p "${_CCGL_RACE_NOTE_PREFIX}" --argjson s "$since" "
++        [.[][]? | select(${_CCGL_TRUSTED})
++         | select((.body // \"\") | startswith(\$p))
++         | select((try (.created_at | fromdateiso8601) // 0) >= \$s)
++         | {t: (try (.created_at | fromdateiso8601) // 0), id: (.id // 0),
++            holder: (.body[(\$p | length):] | rtrimstr(\"\`\"))}]
++        | sort_by(.t, .id) | first | .holder // empty" "$out" 2>/dev/null || true)"
++    rm -f "$out"
++    return 0
++}
++
+ # ─── Hook: claim <issue_id> ───────────────────────────────────────────────────
+ # stdout: {"acquired": true} | {"acquired": false, "holder": "<holder>"}
+ #         | {"acquired": false, "skipped": "<why>"} (no claim was attempted)
+@@ -186,7 +279,46 @@ claim_coordinator_claim() {
+         printf '{"acquired": false, "reason": "backend_error"}\n'
+         return 1
+     fi
+-    printf '{"acquired": true}\n'
++    # local-fs is serialised with flock: no race possible there.
++    if [[ "${ZBUILD_CLAIM_BACKEND:-gh}" != "gh" ]]; then
++        printf '{"acquired": true}\n'
++        return 0
++    fi
++    # gh backend: concurrent claim race detection (ADR-005 §5, DSRACE-1–3,7).
++    _ccgl_slug || { printf '{"acquired": true}\n'; return 0; }
++    local my_holder="" note_id="" note_rc=0
++    _ccgl_self_holder_v my_holder
++    # Post the concurrent claim note as the synchronous holder record (RQTIE-3 path 1).
++    _ccgl_race_note_post_v note_id "$_CCGL_SLUG" "$issue" "$my_holder" || note_rc=$?
++    if [[ "$note_rc" -eq 1 ]]; then
++        # POST definitively failed: clean up the label and refuse.
++        _ccgl_remove_label "$issue" "$_CCGL_LABEL" || true
++        printf '{"acquired": false, "reason": "backend_error"}\n'
++        return 1
++    fi
++    # Re-read the GitHub issue after the holder record is written (DSRACE-7).
++    _ccgl_read_labels "$issue" || true
++    # Read back concurrent claim notes to determine the winner (DSRACE-1,2).
++    local gt="${ZBUILD_STATUS_COMMENT_GH_TIMEOUT:-30}" since=0 winner="" first_rc=0
++    [[ "$gt" =~ ^[0-9]+$ ]] || gt=30
++    (( _CCGL_RACE_NOTE_AT > 0 )) && since=$(( _CCGL_RACE_NOTE_AT - 4 * gt ))
++    (( since > 0 )) || since=0
++    _ccgl_race_note_first_v winner "$_CCGL_SLUG" "$issue" "$since" || first_rc=$?
++    if [[ "$first_rc" -ne 0 ]]; then
++        # Could not read notes: clean up and refuse (fail closed).
++        _ccgl_race_note_delete "$note_id" "$_CCGL_SLUG" "$issue"
++        _ccgl_remove_label "$issue" "$_CCGL_LABEL" || true
++        printf '{"acquired": false, "reason": "backend_error"}\n'
++        return 1
++    fi
++    if [[ -z "$winner" || "$winner" == "$my_holder" ]]; then
++        # No competing notes found, or this run's note came first (DSRACE-2).
++        printf '{"acquired": true}\n'
++        return 0
++    fi
++    # This run lost (DSRACE-2,3): update the note, return race_lost.
++    _ccgl_race_note_update "$note_id" "$_CCGL_SLUG" "$issue" "$winner" || true
++    jq -nc --arg h "$winner" '{acquired: false, holder: $h, race_lost: true}'
+     return 0
+ }
+ 
