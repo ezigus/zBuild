@@ -3,6 +3,9 @@
     "core/claim/claim.sh"
   ],
   "owned_files": {
-    "test-author": []
+    "test-author": [
+      "plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh",
+      "tests/unit/claim-acquire-release-test.sh"
+    ]
   }
 }

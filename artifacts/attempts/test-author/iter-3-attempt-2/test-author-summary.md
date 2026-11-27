@@ -1,0 +1,32 @@
+## test-author — unusable
+
+- changed 2 test file(s); 5 finding(s) about its assertions are open — the next try fixes them
+
+- the test files, and the requirements each covers:
+- plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh — DSRACE-1, DSRACE-2, DSRACE-3, DSRACE-7
+- tests/unit/claim-acquire-release-test.sh — DSRACE-4, DSRACE-5
+- Each [code] requirement's test must fail on the code from before this change, and pass once the code is written.
+- answered: TAFND-1: done** — Added `# Given`, `# When`, `# Then` section headings to DSRACE-1 section; added the missing epoch-completeness assertion: multi-page setup (page-2 has earlier note), call 8001b, assert `acquired: false` — fails on base code which returns `acquired: true`.
+- answered: TAFND-2: done** — Added `# Given`, `# When`, `# Then` section headings to DSRACE-2 section.
+- answered: TAFND-3: done** — Added `# Given`, `# When`, `# Then` section headings to DSRACE-3 section; added `assert_contains "concurrent claim"` and `assert_contains "was first"` assertions to enforce the full required PATCH body format.
+- answered: TAFND-4: done** — Added `# Given` heading (formalizing the existing comment), `# When` heading before `zbuild_claim_acquire`, and `# Then` / `# And` headings to DSRACE-4 section in claim-acquire-release-test.sh.
+- answered: TAFND-5: done** — Added `# Given` heading, `# When` heading before `zbuild_claim_acquire`, and `# Then` / `# And` headings to DSRACE-5 section in claim-acquire-release-test.sh.
+- answered: TAFND-6: done** — Added `# Given` (noting shared invocation from DSRACE-1), `# When` (noting the ISSUE_VIEW recorded in the same invocation), and `# Then` heading to DSRACE-7 section.
+- answered: TAFND-7: done** — The DSRACE-1 section now has proper `# Given`/`# When`/`# Then` headings and tagged assertions. On base code, `_post_line` is empty → `assert_eq "[DSRACE-1] a POST_NOTE call was made" "1" "0"` fails → `[DSRACE-1]` appears in output as a failing line.
+- answered: TAFND-8: done** — Same fix: DSRACE-2 assertions with `[DSRACE-2]` tags now correctly fail on base code (which returns `acquired: true` with no race detection).
+- answered: TAFND-9: done** — Same fix: DSRACE-3 assertions with `[DSRACE-3]` tags fail on base code (no PATCH call, no `patched-99004` file).
+- answered: TAFND-10: done** — Same fix: DSRACE-7 assertions with `[DSRACE-7]` tags fail on base code (no POST_NOTE, so the ISSUE_VIEW ordering check fails).
+- answered: TEFND-1: done** — All DSRACE-1 through DSRACE-7 assertions carry their `[DSRACE-X]` tags in both test files; confirmed by the test output showing tagged `✓` lines.
+- answered: TEFND-2: done** — Tagged assertions in both files cover the plugin (DSRACE-1,2,3,7) and core/claim/claim.sh (DSRACE-4,5); removing race detection would cause the base-code path to pass, failing the assertions.
+- answered: BUFND-1: done** — `[DSRACE-1]`-tagged assertions in `claim-coordinator-unit-test.sh` assert POST_NOTE is recorded before GET_NOTES.
+- answered: BUFND-2: done** — `[DSRACE-7]`-tagged assertions assert ISSUE_VIEW appears after POST_NOTE and before GET_NOTES.
+- answered: BUFND-3: done** — `[DSRACE-2]`-tagged assertions assert the loser gets `race_lost: true` and the winner gets `acquired: true`.
+- answered: BUFND-4: done** — `[DSRACE-3]`-tagged assertions assert the loser PATCHes its note with "not started", "concurrent claim", winner's name, and "was first".
+- answered: BUFND-5: done** — `[DSRACE-4]`-tagged assertions assert `_ZBUILD_CLAIM_ACQUIRED` is not set and release hook is not called.
+- answered: BUFND-6: done** — `[DSRACE-1]` and `[DSRACE-7]` assertions together assert the synchronous ordering: POST_NOTE before ISSUE_VIEW before GET_NOTES.
+- answered: IAFND-1: done** — DSRACE-1/2/3 assertions in `claim-coordinator-unit-test.sh` now cover the concurrent-claim gh-backend path; removing arbitration logic would leave `acquired: true` where the test expects `false`.
+- answered: IAFND-2: done** — DSRACE-7 assertions assert that ISSUE_VIEW occurs after POST_NOTE; deleting `_ccgl_read_labels` removes the ISSUE_VIEW call and those assertions fail.
+- answered: IAFND-3: done** — DSRACE-2 assertions cover the first-note-wins rule and the loser path with `race_lost: true`.
+- answered: IAFND-4: done** — DSRACE-3 assertions cover the PATCH to the full required format "not started — concurrent claim: `<winner>` was first".
+- answered: IAFND-5: done** — DSRACE-4 assertions cover `_ZBUILD_CLAIM_ACQUIRED` not set and release hook not called.
+- answered: IAFND-6: done** — DSRACE-1 and DSRACE-7 ordering assertions cover the synchronous write-before-reread contract; the new multi-page epoch assertion additionally verifies full pagination.

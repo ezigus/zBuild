@@ -1,0 +1,3 @@
+# authored_by: test-author
+a991f7108009ba7c7b66eed885f27baa5aa47230c6462953470adae97afabdab  plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
+f71a242724d5d09072227ba725a84e75b95e256638b4ab550aca7ea45037e85f  tests/unit/claim-acquire-release-test.sh
