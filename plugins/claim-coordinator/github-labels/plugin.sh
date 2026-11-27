@@ -152,6 +152,99 @@ _ccgl_refused() {
         "$issue" "$_CCGL_LABEL" "$issue" "$_CCGL_LABEL" >&2 || true
 }
 
+# ─── Concurrent claim race detection (ADR-005 §5, #2534) ─────────────────────
+# Trusted author filter for jq: the CI bot or a repository owner/member/collaborator.
+_CCGL_TRUSTED='(.user.login == "github-actions[bot]") or ((.author_association // "") | IN("OWNER","MEMBER","COLLABORATOR"))'
+_CCGL_RACE_NOTE_PREFIX='concurrent claim by `'
+_CCGL_RACE_NOTE_AT=0   # created_at epoch from the last _ccgl_race_note_post_v call
+
+# _ccgl_self_holder_v <var> — this run's holder string (CI: the run URL; else run_id/machine/pid)
+_ccgl_self_holder_v() {
+    local -n _ccsh="$1"
+    if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+        _ccsh="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-unknown}/actions/runs/${GITHUB_RUN_ID:-unknown}"
+    else
+        _ccsh="run_id=${ZBUILD_RUN_ID:-} machine=${ZBUILD_CLAIM_MACHINE_ID:-${HOSTNAME:-unknown}} pid=$$"
+    fi
+}
+
+# _ccgl_race_note_post_v <id-var> <slug> <issue> <holder> — posts
+# "concurrent claim by `<holder>`" (the synchronous holder record). <id-var> gets
+# the comment's id; _CCGL_RACE_NOTE_AT gets its created_at epoch.
+# rc 1: POST failed; rc 2: posted but GitHub's reply held no id.
+_ccgl_race_note_post_v() {
+    local -n _crnpv="$1"; local slug="$2" issue="$3" holder="${4//[[:cntrl:]\`]/}" out
+    _crnpv=""; _CCGL_RACE_NOTE_AT=0
+    _ccgl_gh_lib || return 1
+    local sd="${ZBUILD_STATE_DIR:-${TMPDIR:-/tmp}}"
+    out="$(mktemp "${TMPDIR:-/tmp}/ccgl-rnp.XXXXXX")" || return 1
+    if ! rsc_gh "$sd" "$out" api "repos/${slug}/issues/${issue}/comments" \
+            -f "body=${_CCGL_RACE_NOTE_PREFIX}${holder}\`" >/dev/null 2>&1; then
+        rm -f "$out"; return 1
+    fi
+    _crnpv="$(jq -r '.id // empty' "$out" 2>/dev/null || true)"
+    _CCGL_RACE_NOTE_AT="$(jq -r '(.created_at // "1970-01-01T00:00:00Z") | fromdateiso8601' \
+        "$out" 2>/dev/null || echo 0)"
+    [[ "$_CCGL_RACE_NOTE_AT" =~ ^[0-9]+$ ]] || _CCGL_RACE_NOTE_AT=0
+    rm -f "$out"
+    [[ "$_crnpv" =~ ^[0-9]+$ ]] || return 2
+    return 0
+}
+
+# _ccgl_race_note_delete <id> <slug> <issue> — removes this run's note; best-effort.
+_ccgl_race_note_delete() {
+    local id="${1:-}" slug="$2" out
+    [[ "$id" =~ ^[0-9]+$ ]] || return 0
+    _ccgl_gh_lib || return 0
+    local sd="${ZBUILD_STATE_DIR:-${TMPDIR:-/tmp}}"
+    out="$(mktemp "${TMPDIR:-$sd}/ccgl-rnd.XXXXXX")" || return 0
+    rsc_gh "$sd" "$out" api -X DELETE "repos/${slug}/issues/comments/${id}" >/dev/null 2>&1 || true
+    rm -f "$out"
+    return 0
+}
+
+# _ccgl_race_note_update <id> <slug> <issue> <winner> — PATCHes this run's note
+# body to "not started — concurrent claim: `<winner>` was first"; best-effort.
+_ccgl_race_note_update() {
+    local id="${1:-}" slug="$2" winner="${4//[[:cntrl:]\`]/}" out
+    [[ "$id" =~ ^[0-9]+$ ]] || return 0
+    _ccgl_gh_lib || return 1
+    local sd="${ZBUILD_STATE_DIR:-${TMPDIR:-/tmp}}" body rc=0
+    body="not started — concurrent claim: \`${winner}\` was first"
+    out="$(mktemp "${TMPDIR:-$sd}/ccgl-rnu.XXXXXX")" || return 1
+    jq -n --arg b "$body" '{body: $b}' > "${out}.json" 2>/dev/null \
+        || { rm -f "$out"; return 1; }
+    rsc_gh "$sd" "$out" api -X PATCH "repos/${slug}/issues/comments/${id}" \
+        --input "${out}.json" >/dev/null 2>&1 || rc=1
+    rm -f "$out" "${out}.json"
+    return "$rc"
+}
+
+# _ccgl_race_note_first_v <var> <slug> <issue> <since> — the holder named by the
+# first trusted concurrent claim note with created_at >= <since> (epoch s), ordered
+# by created_at then id. rc 1 when the notes cannot be read; 0 on success (empty
+# var means no matching notes — no concurrent claimants).
+_ccgl_race_note_first_v() {
+    local -n _crnfv="$1"; local slug="$2" issue="$3" since="${4:-0}" out
+    _crnfv=""
+    _ccgl_gh_lib || return 1
+    local sd="${ZBUILD_STATE_DIR:-${TMPDIR:-/tmp}}"
+    out="$(mktemp "${TMPDIR:-$sd}/ccgl-rnf.XXXXXX")" || return 1
+    if ! rsc_gh "$sd" "$out" api --paginate \
+            "repos/${slug}/issues/${issue}/comments" 2>/dev/null; then
+        rm -f "$out"; return 1
+    fi
+    _crnfv="$(jq -rs --arg p "${_CCGL_RACE_NOTE_PREFIX}" --argjson s "$since" "
+        [.[][]? | select(${_CCGL_TRUSTED})
+         | select((.body // \"\") | startswith(\$p))
+         | select((try (.created_at | fromdateiso8601) // 0) >= \$s)
+         | {t: (try (.created_at | fromdateiso8601) // 0), id: (.id // 0),
+            holder: (.body[(\$p | length):] | rtrimstr(\"\`\"))}]
+        | sort_by(.t, .id) | first | .holder // empty" "$out" 2>/dev/null || true)"
+    rm -f "$out"
+    return 0
+}
+
 # ─── Hook: claim <issue_id> ───────────────────────────────────────────────────
 # stdout: {"acquired": true} | {"acquired": false, "holder": "<holder>"}
 #         | {"acquired": false, "skipped": "<why>"} (no claim was attempted)
@@ -186,7 +279,46 @@ claim_coordinator_claim() {
         printf '{"acquired": false, "reason": "backend_error"}\n'
         return 1
     fi
-    printf '{"acquired": true}\n'
+    # local-fs is serialised with flock: no race possible there.
+    if [[ "${ZBUILD_CLAIM_BACKEND:-gh}" != "gh" ]]; then
+        printf '{"acquired": true}\n'
+        return 0
+    fi
+    # gh backend: concurrent claim race detection (ADR-005 §5, DSRACE-1–3,7).
+    _ccgl_slug || { printf '{"acquired": true}\n'; return 0; }
+    local my_holder="" note_id="" note_rc=0
+    _ccgl_self_holder_v my_holder
+    # Post the concurrent claim note as the synchronous holder record (RQTIE-3 path 1).
+    _ccgl_race_note_post_v note_id "$_CCGL_SLUG" "$issue" "$my_holder" || note_rc=$?
+    if [[ "$note_rc" -eq 1 ]]; then
+        # POST definitively failed: clean up the label and refuse.
+        _ccgl_remove_label "$issue" "$_CCGL_LABEL" || true
+        printf '{"acquired": false, "reason": "backend_error"}\n'
+        return 1
+    fi
+    # Re-read the GitHub issue after the holder record is written (DSRACE-7).
+    _ccgl_read_labels "$issue" || true
+    # Read back concurrent claim notes to determine the winner (DSRACE-1,2).
+    local gt="${ZBUILD_STATUS_COMMENT_GH_TIMEOUT:-30}" since=0 winner="" first_rc=0
+    [[ "$gt" =~ ^[0-9]+$ ]] || gt=30
+    (( _CCGL_RACE_NOTE_AT > 0 )) && since=$(( _CCGL_RACE_NOTE_AT - 4 * gt ))
+    (( since > 0 )) || since=0
+    _ccgl_race_note_first_v winner "$_CCGL_SLUG" "$issue" "$since" || first_rc=$?
+    if [[ "$first_rc" -ne 0 ]]; then
+        # Could not read notes: clean up and refuse (fail closed).
+        _ccgl_race_note_delete "$note_id" "$_CCGL_SLUG" "$issue"
+        _ccgl_remove_label "$issue" "$_CCGL_LABEL" || true
+        printf '{"acquired": false, "reason": "backend_error"}\n'
+        return 1
+    fi
+    if [[ -z "$winner" || "$winner" == "$my_holder" ]]; then
+        # No competing notes found, or this run's note came first (DSRACE-2).
+        printf '{"acquired": true}\n'
+        return 0
+    fi
+    # This run lost (DSRACE-2,3): update the note, return race_lost.
+    _ccgl_race_note_update "$note_id" "$_CCGL_SLUG" "$issue" "$winner" || true
+    jq -nc --arg h "$winner" '{acquired: false, holder: $h, race_lost: true}'
     return 0
 }
 

@@ -98,6 +98,13 @@ zbuild_claim_acquire() {
     if [[ "$reply" =~ \"acquired\"[[:space:]]*:[[:space:]]*false ]]; then
         _ZBUILD_CLAIM_THEIR_HOLDER="$(jq -r '.holder // empty' <<< "$reply" 2>/dev/null || true)"
         _ZBUILD_CLAIM_THEIR_HOLDER="${_ZBUILD_CLAIM_THEIR_HOLDER//[[:cntrl:]]/}"
+        # ADR-005 §5 (#2534): a concurrent claim — another run posted its note first;
+        # skip the stale-takeover path entirely (DSRACE-5).
+        if [[ "$reply" =~ \"race_lost\"[[:space:]]*:[[:space:]]*true ]]; then
+            printf 'zbuild_claim_acquire: issue #%s: concurrent claim — %s was first\n' \
+                "$issue" "${_ZBUILD_CLAIM_THEIR_HOLDER:-unknown}" >&2
+            return 1
+        fi
         # #2589 (ADR-005): a claim this machine's own run left behind (it
         # crashed, or was killed, before releasing) is cleared, once, and the
         # claim taken again. Another machine's, or CI's, is never touched.
