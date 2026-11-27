@@ -115,14 +115,9 @@ own-code|tests/unit/test-plugin-result-write-fallback-test.sh|atomic_write() { c
 own-code|tests/unit/test-plugin-result-write-fallback-test.sh|atomic_write() {
 own-code|tests/unit/monitor-hardening-test.sh|route_to_model() {
 own-code|tests/unit/cleanup-worktrees-test.sh|_scan() { (cd "$R" && _cleanup_scan_worktrees "${1:-14}"); }
-own-code|tests/unit/runner-contract-lib-seam-test.sh|declare -F _runner_contract_lib_closure >/dev/null 2>&1 \
-own-code|tests/unit/runner-contract-lib-seam-test.sh|declare -F _runner_snapshot_contract_libs >/dev/null 2>&1 \
-own-code|tests/unit/runner-contract-lib-seam-test.sh|declare -F _runner_design_targets_contract_lib >/dev/null 2>&1 \
 own-code|tests/unit/hydrate-stage-test.sh|_artifact_persist_put_back() {
 own-code|tests/unit/hydrate-stage-test.sh|_artifact_persist_put_back() {
 own-code|tests/unit/hydrate-stage-test.sh|_artifact_persist_restore() {
-own-code|tests/unit/timeout-cmd-test.sh|declare -F _runner_contract_lib_closure >/dev/null 2>&1 \
-own-code|tests/unit/timeout-cmd-test.sh|declare -F _runner_snapshot_contract_libs >/dev/null 2>&1 \
 own-code|tests/unit/stage-io-cycle-kind-test.sh|template_stage_io_dests()      { printf ''; }
 own-code|tests/unit/stage-io-cycle-kind-test.sh|template_stage_io_tail_lines() { printf ''; }
 own-code|tests/unit/stage-io-cycle-kind-test.sh|template_stage_io_redact()     { printf ''; }
@@ -481,9 +476,6 @@ own-code|tests/unit/judge-quotes-test.sh|route_to_model() { zb_test_lens_check_a
 own-code|tests/unit/judge-quotes-test.sh|route_to_model() { zb_test_lens_check_answer "$2" && return 0;
 own-code|tests/unit/judge-quotes-test.sh|resolve_tier() { printf 'T2'; }
 own-code|tests/unit/judge-quotes-test.sh|route_to_model() { zb_test_lens_check_answer "$2" && return 0;
-own-code|tests/unit/runner-engine-provenance-test.sh|declare -F _runner_engine_sha >/dev/null 2>&1 || _runner_engine_sha() { return 1; }
-own-code|tests/unit/runner-engine-provenance-test.sh|declare -F _runner_engine_branch >/dev/null 2>&1 || _runner_engine_branch() { return 1; }
-own-code|tests/unit/runner-engine-provenance-test.sh|declare -F _runner_report_engine_drift >/dev/null 2>&1 || _runner_report_engine_drift() { return 1; }
 own-code|tests/unit/scripts-lib-run-captured-command-test.sh|template_stage_io_dests() {
 own-code|tests/unit/design-one-call-keeps-last-good-test.sh|apply_scope_redaction() { cp "$1" "$2"; return 0; }
 own-code|tests/unit/design-one-call-keeps-last-good-test.sh|route_to_model() { _model_call "$2"; }
