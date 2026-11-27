@@ -70,12 +70,23 @@ zb_md_fence_v() {
 
 # zb_ansi_strip_v <var> <text> — <text> with its terminal escapes taken out:
 # ESC [ … a letter or ~ (colour, cursor), and ESC with one character after it.
+# One pass, ESC to ESC, in the shell up to _ZB_ANSI_SHELL_MAX bytes; past it,
+# one sed (the digest's precedent, ADR-065 §5): a long run of escapes must not
+# cost a pass each.
+_ZB_ANSI_SHELL_MAX=256
 zb_ansi_strip_v() {
-    local LC_ALL=C _zma="$2" _zma_csi=$'\e''\[[0-9;?]*[a-zA-Z~]' _zma_one=$'\e''.'
-    if [[ "$_zma" == *$'\e'* ]]; then
-        while [[ "$_zma" =~ $_zma_csi ]]; do _zma="${_zma/"${BASH_REMATCH[0]}"/}"; done
-        while [[ "$_zma" =~ $_zma_one ]]; do _zma="${_zma/"${BASH_REMATCH[0]}"/}"; done
-        _zma="${_zma//$'\e'/}"
+    local LC_ALL=C _zma_r="$2" _zma_o="" _zma_csi='^\[[0-9;?]*[a-zA-Z~]'
+    if [[ "$_zma_r" != *$'\e'* ]]; then printf -v "$1" '%s' "$_zma_r"; return 0; fi
+    if (( ${#_zma_r} > _ZB_ANSI_SHELL_MAX )); then
+        # A trailing x keeps the text's own trailing newlines past $( ); the
+        # here-string's own newline goes with it.
+        _zma_o="$(sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g; s/\x1b.//g' <<< "$_zma_r"; printf x)"
+        _zma_o="${_zma_o%x}"; printf -v "$1" '%s' "${_zma_o%$'\n'}"
+        return 0
     fi
-    printf -v "$1" '%s' "$_zma"
+    while [[ "$_zma_r" == *$'\e'* ]]; do
+        _zma_o+="${_zma_r%%$'\e'*}"; _zma_r="${_zma_r#*$'\e'}"
+        if [[ "$_zma_r" =~ $_zma_csi ]]; then _zma_r="${_zma_r:${#BASH_REMATCH[0]}}"; else _zma_r="${_zma_r:1}"; fi
+    done
+    printf -v "$1" '%s' "$_zma_o$_zma_r"
 }
