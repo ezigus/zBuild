@@ -296,7 +296,7 @@ _ag_fail_load() {
     printf 'verdict=fail\nreason=%s\n' "$reason" \
         | atomic_write "$(dirname "$result_file")/acceptance-summary.txt" || true
     eb_emit_event "acceptance.gate.load_failed" "stage=acceptance-gate" "missing=$problems"
-    eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=fail"
+    eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "outcome=broken" "reason=$reason"
 }
 
 # _ag_write_result <result_file> <outcome> <reason> <fields-json> — the gate's
@@ -326,7 +326,7 @@ _ag_noop_precondition_unmet() {
     printf 'verdict=pass\nreason=precondition_unmet\nprecondition=%s\n' "$pc" \
         | atomic_write "${_summary_dir}/acceptance-summary.txt" || true
     eb_emit_event "acceptance.gate.skipped" "stage=acceptance-gate" "reason=precondition_unmet" "precondition=$pc"
-    eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=pass"
+    eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "outcome=pass" "reason=precondition_unmet"
 }
 
 # _ag_emit_operator_summary <stage_id> <verdict_line>... — surface the concise
