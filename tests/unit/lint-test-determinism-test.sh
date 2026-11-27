@@ -209,6 +209,7 @@ _ok_own "a spy through _orig_<f>" 'engine_step() { printf x >> "$L"; _orig_engin
 _ok_own "a spy through a prefixed _orig_ copy" 'engine_step() { _N=1; _m12_orig_engine_step "$@"; }'
 _ok_own "a spy through a short _real copy" 'engine_step() { printf x >> "$L"; _es_real "$@"; }'
 _ok_own "a spy that calls its copy in a test (if, while: where the lint reads any command)" 'engine_step() { if _orig_engine_step "$@"; then :; fi; }'
+_ok_own "a spy that sets a variable after calling its copy" 'engine_step() { _orig_engine_step "$@"; x=1; }'
 _ok_own "a test-local helper marked as one" '_check() { :; }   # determinism-ok: test-local helper'
 _ok_own "a define-if-missing guard" 'declare -F engine_step >/dev/null || engine_step() { :; }'
 _ok_own "a guard that silences declare's output and errors (the repo's form)" 'declare -F engine_step >/dev/null 2>&1 || engine_step() { :; }'
