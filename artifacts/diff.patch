@@ -257,3 +257,339 @@ index 0d19f155..ee52ba71 100644
      return 0
  }
  
+diff --git a/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh b/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
+index 77a95159..13d7e3d4 100755
+--- a/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
++++ b/plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
+@@ -115,6 +115,241 @@ set +e; reply="$(claim_coordinator_claim 7007 2>/dev/null)"; rc=$?; set -e
+ assert_eq "a hung gh → backend error rc 1" "1" "$rc"
+ assert_eq "…and nothing was claimed" "" "$(cat "$GHS/labels")"
+ 
++# ── Concurrent claim race detection (DSRACE-1, DSRACE-2, DSRACE-3, DSRACE-7) ──
++# These tests require the gh backend and a custom gh mock that tracks the
++# sequence of API calls so the test can verify order and content.
++#
++# Mock protocol: each call appends to $GHS/log. $GHS/call-sequence records one
++# token per call so the test can assert ordering. The mock handles:
++#   POST to …/comments              → returns $GHS/post-reply.json
++#   GET  --paginate …/comments      → returns all files in $GHS/notes-pages/
++#   issue view                      → returns current labels ($GHS/labels)
++#   issue edit --add-label          → adds label
++#   issue edit --remove-label       → removes label
++#   api -X PATCH …/comments/<id>    → records the PATCH body in $GHS/patched-<id>
++#   api -X DELETE …/comments/<id>   → records the DELETE
++#
++# Holder is made predictable by setting GITHUB_ACTIONS=true with known CI vars
++# so _ccgl_self_holder_v returns a fixed URL instead of a PID-dependent string.
++
++export ZBUILD_CLAIM_BACKEND="gh"
++export ZBUILD_STATUS_COMMENT_GH_TIMEOUT=5 GITHUB_REPOSITORY="testowner/testrepo"
++# Fixed holder for all DSRACE tests: a predictable CI URL.
++export GITHUB_ACTIONS=true GITHUB_SERVER_URL=https://github.com
++export GITHUB_RUN_ID=dsrace-test-run
++_RACE_HOLDER="https://github.com/testowner/testrepo/actions/runs/dsrace-test-run"
++
++_race_gh_reset() {
++    rm -rf "$GHS"
++    mkdir -p "$GHS/notes-pages"
++    : > "$GHS/labels"
++    : > "$GHS/log"
++    : > "$GHS/call-sequence"
++    : > "$GHS/repo-label"
++    cat > "$TEST_TEMP_DIR/bin/gh" <<'RACEMOCK'
++#!/usr/bin/env bash
++s="__GHS__"
++printf '%s\n' "$*" >> "$s/log"
++# Determine call type and record it for sequence assertions
++_meth=""; _prev=""
++for a in "$@"; do
++    [[ "$_prev" == "-X" ]] && _meth="$a"
++    _prev="$a"
++done
++case "$1:$2:${_meth}" in
++    issue:view:)       printf 'ISSUE_VIEW\n'  >> "$s/call-sequence" ;;
++    issue:edit:)
++        case "$4" in
++            --add-label)    printf 'ADD_LABEL\n'    >> "$s/call-sequence" ;;
++            --remove-label) printf 'REMOVE_LABEL\n' >> "$s/call-sequence" ;;
++            *)              printf 'ISSUE_EDIT\n'   >> "$s/call-sequence" ;;
++        esac ;;
++    label:create:)     printf 'LABEL_CREATE\n' >> "$s/call-sequence" ;;
++    api:--paginate:)   printf 'GET_NOTES\n'    >> "$s/call-sequence" ;;
++    api:*:PATCH|api:--repo:PATCH) printf 'PATCH\n'  >> "$s/call-sequence" ;;
++    api:*:DELETE|api:--repo:DELETE) printf 'DELETE\n' >> "$s/call-sequence" ;;
++    api:--repo:)
++        # Detect POST to …/comments vs other api calls
++        _url=""
++        for a in "$@"; do _url="$a"; done
++        # POST to .../issues/<n>/comments ends with "/comments" or has -f body=
++        _is_post=0
++        for a in "$@"; do [[ "$a" == -f ]] && _is_post=1; done
++        [[ "$_is_post" -eq 1 ]] && printf 'POST_NOTE\n' >> "$s/call-sequence" \
++                                 || printf 'API_OTHER\n' >> "$s/call-sequence" ;;
++    *) printf 'OTHER\n' >> "$s/call-sequence" ;;
++esac
++
++# Route by operation
++case "${_meth}" in
++    DELETE)
++        # Extract id from the URL path: …/comments/<id>
++        _id=""; _prev2=""
++        for a in "$@"; do
++            [[ "$a" == */comments/* ]] && { _id="${a##*/comments/}"; _id="${_id%%/*}"; }
++            _prev2="$a"
++        done
++        : > "$s/deleted-${_id:-0}"; exit 0 ;;
++    PATCH)
++        # Extract id from URL path and --input file
++        _id=""; _inf=""; _prev2=""
++        for a in "$@"; do
++            [[ "$a" == */comments/* ]] && { _id="${a##*/comments/}"; _id="${_id%%/*}"; }
++            [[ "$_prev2" == "--input" ]] && _inf="$a"
++            _prev2="$a"
++        done
++        [[ -n "$_inf" && -f "$_inf" ]] && cp "$_inf" "$s/patched-${_id:-0}"
++        exit 0 ;;
++esac
++
++case "$1:$2" in
++    api:--paginate)
++        for f in "$s"/notes-pages/*.json; do [[ -e "$f" ]] && cat "$f"; done; exit 0 ;;
++    api:--repo)
++        # POST to .../comments (has -f body=)
++        for a in "$@"; do
++            if [[ "$a" == -f ]]; then
++                cat "$s/post-reply.json" 2>/dev/null \
++                    || printf '{"id":99001,"created_at":"2026-01-01T00:00:00Z","body":"","user":{"login":"github-actions[bot]"}}\n'
++                exit 0
++            fi
++        done
++        # Fallback api call
++        exit 0 ;;
++    issue:view) cat "$s/labels"; exit 0 ;;
++    issue:edit)
++        label="${5:-}"
++        if [[ "$4" == "--add-label" ]]; then
++            [[ ! -e "$s/repo-label" ]] \
++                && { printf "could not add label: '%s' not found\n" "$label" >&2; exit 1; }
++            /usr/bin/grep -Fxq "$label" "$s/labels" || printf '%s\n' "$label" >> "$s/labels"
++            exit 0
++        fi
++        if [[ "$4" == "--remove-label" ]]; then
++            /usr/bin/grep -Fxv "$label" "$s/labels" > "$s/labels.new" || true
++            mv "$s/labels.new" "$s/labels"; exit 0
++        fi
++        exit 1 ;;
++    label:create) : > "$s/repo-label"; exit 0 ;;
++esac
++exit 0
++RACEMOCK
++    sed -i "s|__GHS__|$GHS|g" "$TEST_TEMP_DIR/bin/gh"
++    chmod +x "$TEST_TEMP_DIR/bin/gh"
++    # Reset the plugin's cached slug so the new GITHUB_REPOSITORY takes effect
++    _CCGL_SLUG="" _ZBUILD_CLAIM_GH_LABELS_LOADED="" \
++        source "$REPO_ROOT/plugins/claim-coordinator/github-labels/plugin.sh"
++}
++
++# ─── DSRACE-1: post note then read notes — note is posted BEFORE read-back ───
++print_test_section "gh race: concurrent claim note is posted before read-back [DSRACE-1]"
++# Given
++_race_gh_reset
++printf '{"id":99001,"created_at":"2026-01-01T00:00:00Z","body":"concurrent claim by `%s`","user":{"login":"github-actions[bot]"}}\n' \
++    "$_RACE_HOLDER" > "$GHS/post-reply.json"
++printf '[{"id":99001,"created_at":"2026-01-01T00:00:00Z","body":"concurrent claim by `%s`","user":{"login":"github-actions[bot]"},"author_association":"OWNER"}]\n' \
++    "$_RACE_HOLDER" > "$GHS/notes-pages/page-1.json"
++# When
++set +e; reply="$(claim_coordinator_claim 8001 2>/dev/null)"; set -e
++# Then: note is posted synchronously before the read-back
++_post_line="$(/usr/bin/grep -n "^POST_NOTE$" "$GHS/call-sequence" | /usr/bin/head -1 | cut -d: -f1)"
++_get_line="$(/usr/bin/grep -n "^GET_NOTES$" "$GHS/call-sequence" | /usr/bin/head -1 | cut -d: -f1)"
++assert_eq "[DSRACE-1] a POST_NOTE call was made (synchronous holder record)" "1" \
++    "$( [[ -n "$_post_line" ]] && echo 1 || echo 0 )" # [DSRACE-1]
++assert_eq "[DSRACE-1] a GET_NOTES call was made (read-back of concurrent notes)" "1" \
++    "$( [[ -n "$_get_line" ]] && echo 1 || echo 0 )" # [DSRACE-1]
++assert_eq "[DSRACE-1] POST_NOTE appears before GET_NOTES in call sequence" "1" \
++    "$( [[ -n "$_post_line" && -n "$_get_line" && "$_post_line" -lt "$_get_line" ]] && echo 1 || echo 0 )" # [DSRACE-1]
++assert_contains "[DSRACE-1] the POST body includes the concurrent-claim prefix" \
++    "$(cat "$GHS/log")" "concurrent claim by" # [DSRACE-1]
++
++# ─── DSRACE-7: issue is re-read AFTER the note is posted, BEFORE arbitration ─
++print_test_section "gh race: issue re-read after note post, before arbitration [DSRACE-7]"
++# Given: the concurrent claim note was posted synchronously in the When above
++#        (claim_coordinator_claim 8001); the same call-sequence is reused here
++# When: the claim read the GitHub issue's current state — recorded as ISSUE_VIEW
++#       in the call-sequence during the same invocation as the note post above
++# Then: fresh issue data is obtained from GitHub after the synchronous holder record was written
++_post_line="$(/usr/bin/grep -n "^POST_NOTE$" "$GHS/call-sequence" | /usr/bin/head -1 | cut -d: -f1)"
++# Look for the LAST ISSUE_VIEW (the re-read that follows the POST, not the initial label check)
++_view_line="$(/usr/bin/grep -n "^ISSUE_VIEW$" "$GHS/call-sequence" | /usr/bin/tail -1 | cut -d: -f1)"
++_get_line="$(/usr/bin/grep -n "^GET_NOTES$" "$GHS/call-sequence" | /usr/bin/head -1 | cut -d: -f1)"
++assert_eq "[DSRACE-7] an ISSUE_VIEW (re-read) call was made" "1" \
++    "$( [[ -n "$_view_line" ]] && echo 1 || echo 0 )" # [DSRACE-7]
++assert_eq "[DSRACE-7] the ISSUE_VIEW comes after POST_NOTE" "1" \
++    "$( [[ -n "$_post_line" && -n "$_view_line" && "$_view_line" -gt "$_post_line" ]] && echo 1 || echo 0 )" # [DSRACE-7]
++assert_eq "[DSRACE-7] the ISSUE_VIEW comes before GET_NOTES (re-read before arbitration)" "1" \
++    "$( [[ -n "$_view_line" && -n "$_get_line" && "$_view_line" -lt "$_get_line" ]] && echo 1 || echo 0 )" # [DSRACE-7]
++
++# ─── DSRACE-1 (And): all epoch notes across pages are considered ──────────────
++# Given: two pages of notes — the earlier note is on page 2 (a later-arriving run
++#        sees its own note on page 1, but the first claimant's note is on page 2)
++_race_gh_reset
++printf '{"id":99201,"created_at":"2026-01-01T00:00:01Z","body":"","user":{"login":"github-actions[bot]"}}\n' \
++    > "$GHS/post-reply.json"
++printf '[{"id":99201,"created_at":"2026-01-01T00:00:01Z","body":"concurrent claim by `%s`","user":{"login":"github-actions[bot]"},"author_association":"OWNER"}]\n' \
++    "$_RACE_HOLDER" > "$GHS/notes-pages/page-1.json"
++printf '[{"id":88001,"created_at":"2026-01-01T00:00:00Z","body":"concurrent claim by `page2-winner`","user":{"login":"github-actions[bot]"},"author_association":"OWNER"}]\n' \
++    > "$GHS/notes-pages/page-2.json"
++# When
++set +e; _r1b="$(claim_coordinator_claim 8001b 2>/dev/null)"; set -e
++# Then: all pages were read — the earlier note on page 2 is identified as winner
++assert_eq "[DSRACE-1] all concurrent claim notes from the current label epoch are returned (loser when earlier note is on page 2)" "false" \
++    "$(jq -r '.acquired' <<< "$_r1b" 2>/dev/null || echo unparsed)" # [DSRACE-1]
++
++# ─── DSRACE-2: loser returns race_lost: true; winner returns acquired: true ──
++print_test_section "gh race: winner gets acquired:true, loser gets race_lost:true [DSRACE-2]"
++# Given: two concurrent notes exist — winner's note (id 99001) has the earliest created_at
++_race_gh_reset
++printf '{"id":99002,"created_at":"2026-01-01T00:00:01Z","body":"","user":{"login":"github-actions[bot]"}}\n' \
++    > "$GHS/post-reply.json"
++printf '[{"id":99001,"created_at":"2026-01-01T00:00:00Z","body":"concurrent claim by `winner-run`","user":{"login":"github-actions[bot]"},"author_association":"OWNER"},{"id":99002,"created_at":"2026-01-01T00:00:01Z","body":"concurrent claim by `%s`","user":{"login":"github-actions[bot]"},"author_association":"OWNER"}]\n' \
++    "$_RACE_HOLDER" > "$GHS/notes-pages/page-1.json"
++# When: the loser compares notes and finds it was not first
++set +e; reply="$(claim_coordinator_claim 8002 2>/dev/null)"; set -e
++# Then: the first note by created_at wins
++assert_eq "[DSRACE-2] loser reply: acquired is false" "false" \
++    "$(jq -r .acquired <<< "$reply" 2>/dev/null || echo unparsed)" # [DSRACE-2]
++assert_eq "[DSRACE-2] loser reply: race_lost is true" "true" \
++    "$(jq -r '.race_lost // empty' <<< "$reply" 2>/dev/null || echo missing)" # [DSRACE-2]
++assert_eq "[DSRACE-2] loser reply: holder names the concurrent winner" "winner-run" \
++    "$(jq -r '.holder // empty' <<< "$reply" 2>/dev/null || echo missing)" # [DSRACE-2]
++
++# Given: only this run's note is present — it came first (sole claimant)
++_race_gh_reset
++printf '{"id":99003,"created_at":"2026-01-01T00:00:00Z","body":"","user":{"login":"github-actions[bot]"}}\n' \
++    > "$GHS/post-reply.json"
++printf '[{"id":99003,"created_at":"2026-01-01T00:00:00Z","body":"concurrent claim by `%s`","user":{"login":"github-actions[bot]"},"author_association":"OWNER"}]\n' \
++    "$_RACE_HOLDER" > "$GHS/notes-pages/page-1.json"
++# When: the winner compares notes and finds it was first
++set +e; reply="$(claim_coordinator_claim 8003 2>/dev/null)"; set -e
++# Then: the run whose note is first returns acquired: true
++assert_eq "[DSRACE-2] winner (sole claimant) reply: acquired is true" "true" \
++    "$(jq -r .acquired <<< "$reply" 2>/dev/null || echo unparsed)" # [DSRACE-2]
++
++# ─── DSRACE-3: losing run PATCHes its note to "not started" ──────────────────
++print_test_section "gh race: loser PATCHes note body to 'not started' [DSRACE-3]"
++# Given: this run's note (id 99004) has a later created_at than winner's note (id 99001)
++_race_gh_reset
++printf '{"id":99004,"created_at":"2026-01-01T00:00:01Z","body":"","user":{"login":"github-actions[bot]"}}\n' \
++    > "$GHS/post-reply.json"
++printf '[{"id":99001,"created_at":"2026-01-01T00:00:00Z","body":"concurrent claim by `winner-run`","user":{"login":"github-actions[bot]"},"author_association":"OWNER"},{"id":99004,"created_at":"2026-01-01T00:00:01Z","body":"concurrent claim by `%s`","user":{"login":"github-actions[bot]"},"author_association":"OWNER"}]\n' \
++    "$_RACE_HOLDER" > "$GHS/notes-pages/page-1.json"
++# When: the run determines it has lost the race
++set +e; claim_coordinator_claim 8004 2>/dev/null; set -e
++# Then: the run PATCHes its note body to "not started — concurrent claim: `<winner>` was first"
++assert_eq "[DSRACE-3] the losing run made a PATCH call on its own note (id 99004)" "1" \
++    "$( [[ -f "$GHS/patched-99004" ]] && echo 1 || echo 0 )" # [DSRACE-3]
++_patch_body="$(jq -r .body "$GHS/patched-99004" 2>/dev/null || echo "")"
++assert_contains "[DSRACE-3] the PATCH body says 'not started'" \
++    "$_patch_body" "not started" # [DSRACE-3]
++assert_contains "[DSRACE-3] the PATCH body says 'concurrent claim'" \
++    "$_patch_body" "concurrent claim" # [DSRACE-3]
++assert_contains "[DSRACE-3] the PATCH body names the winner" \
++    "$_patch_body" "winner-run" # [DSRACE-3]
++assert_contains "[DSRACE-3] the PATCH body says 'was first'" \
++    "$_patch_body" "was first" # [DSRACE-3]
++
+ cleanup_test_env
+ print_test_results
+ exit $((FAIL > 0))
+diff --git a/tests/unit/claim-acquire-release-test.sh b/tests/unit/claim-acquire-release-test.sh
+index 811ae7af..20c44161 100644
+--- a/tests/unit/claim-acquire-release-test.sh
++++ b/tests/unit/claim-acquire-release-test.sh
+@@ -169,6 +169,85 @@ set +e; zbuild_claim_release 2>/dev/null; rc=$?; set -e
+ assert_eq "a failed release never fails the caller" "0" "$rc"
+ assert_contains "…and is an event" "$(_event pipeline.claim.release_failed)" '"issue":"9009"'
+ 
++# ─── DSRACE-4,5: race_lost: true in the coordinator reply ─────────────────────
++# The coordinator returns {"acquired": false, "holder": "<winner>", "race_lost": true}.
++# zbuild_claim_acquire must:
++#   DSRACE-5: refuse immediately (rc 1), skip stale-takeover, name winner on stderr
++#   DSRACE-4: NOT set _ZBUILD_CLAIM_ACQUIRED; zbuild_claim_release must NOT call release
++
++# _stub_with_takeover <root> <claim_reply> — like _stub but also registers a
++# takeover hook that logs calls and returns a successful takeover JSON. Used to
++# exercise the base code path where race_lost is not detected and takeover runs.
++_stub_with_takeover() {
++    local root="$1" dir="$1/claim-coordinator/stub"
++    mkdir -p "$dir"
++    printf '%s\n' "$2" > "$dir/reply"
++    cat > "$dir/manifest.yaml" <<EOF
++id: claim-coordinator-stub
++name: Stub claim coordinator
++kind: claim-coordinator
++version: 0.1.0
++hooks:
++  claim: stub_claim
++  release: stub_release
++  heartbeat: stub_heartbeat
++  list_claims: stub_list
++  takeover: stub_takeover
++provides:
++  role: claim-coordinator
++  alias: stub
++EOF
++    cat > "$dir/plugin.sh" <<EOF
++stub_claim()    { printf 'claim %s\n'    "\$1" >> "$CALLS"; cat "$dir/reply"; return 0; }
++stub_release()  { printf 'release %s\n' "\$1" >> "$CALLS"; return 0; }
++stub_heartbeat(){ return 0; }
++stub_list()     { printf '[]\n'; }
++stub_takeover() {
++    printf 'takeover %s\n' "\$1" >> "$CALLS"
++    printf '{"taken_over":true,"claimed":true,"age_s":999}'
++}
++EOF
++    export ZBUILD_PLUGINS_ROOT="$root"
++    : > "$CALLS"; : > "$ZBUILD_EVENTS_JSONL"
++    _ZBUILD_CLAIM_ACQUIRED=""
++}
++
++print_test_section "race_lost: true — refused immediately, stale-takeover skipped [DSRACE-5]"
++# Given: coordinator returns race_lost:true naming a concurrent winner; takeover
++#        hook is registered and would succeed if called (on base code the takeover
++#        path fires; on new code the race_lost early-return fires first)
++_stub_with_takeover "$TEST_TEMP_DIR/p-race5" \
++    '{"acquired": false, "holder": "https://github.com/o/r/actions/runs/42", "race_lost": true}'
++# When
++set +e; zbuild_claim_acquire 9050 "$STATE" 2>"$TEST_TEMP_DIR/race5.err"; _r5_rc=$?; set -e
++assert_eq "[DSRACE-5] race_lost reply → rc 1 (immediate refusal)" "1" "$_r5_rc" # [DSRACE-5]
++# Then: the stale-takeover hook is not called
++_takeover_calls=0
++grep -q '^takeover' "$CALLS" 2>/dev/null && _takeover_calls=1 || true
++assert_eq "[DSRACE-5] stale-takeover hook was NOT called" "0" "$_takeover_calls" # [DSRACE-5]
++# And: stderr names the concurrent winner as the first claimant
++assert_contains "[DSRACE-5] stderr names the concurrent winner" \
++    "$(cat "$TEST_TEMP_DIR/race5.err")" "https://github.com/o/r/actions/runs/42" # [DSRACE-5]
++assert_contains "[DSRACE-5] stderr says 'concurrent claim'" \
++    "$(cat "$TEST_TEMP_DIR/race5.err")" "concurrent claim" # [DSRACE-5]
++
++print_test_section "race_lost: true — _ZBUILD_CLAIM_ACQUIRED not set, release skips label removal [DSRACE-4]"
++# Given: coordinator returns race_lost:true; takeover hook is registered and would
++#        succeed if called (on base code takeover sets _ZBUILD_CLAIM_ACQUIRED and
++#        calls release; on new code the race_lost early-return fires before that)
++_stub_with_takeover "$TEST_TEMP_DIR/p-race4" \
++    '{"acquired": false, "holder": "https://github.com/o/r/actions/runs/77", "race_lost": true}'
++# When
++set +e; zbuild_claim_acquire 9051 "$STATE" 2>/dev/null; set -e
++# Then: _ZBUILD_CLAIM_ACQUIRED is not set
++assert_eq "[DSRACE-4] _ZBUILD_CLAIM_ACQUIRED is not set after race_lost" "" \
++    "$_ZBUILD_CLAIM_ACQUIRED" # [DSRACE-4]
++# And: zbuild_claim_release does not call the release hook
++: > "$CALLS"
++zbuild_claim_release 2>/dev/null
++assert_eq "[DSRACE-4] zbuild_claim_release did NOT call the release hook (no claim held)" "" \
++    "$(cat "$CALLS")" # [DSRACE-4]
++
+ cleanup_test_env
+ print_test_results
+ exit $((FAIL > 0))

@@ -242,6 +242,11 @@ Outside assumptions:
 - The concurrent claim note format (`"concurrent claim by \`"`) is distinct from takeover
   notes (`"took over a stale claim from \`"`) — no interference
 
+### ACCEPTANCE TESTS (you MUST make these pass)
+These tests were written before your code. Make them pass by changing code only. Each requirement below is checked by the assertion labelled with its tag (for SPEC-1 of this issue: [SPEC-1]).
+- plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
+- tests/unit/claim-acquire-release-test.sh
+
 What each SPEC requires:
 - [DSRACE-1] After successfully adding the zbuild:claimed label (gh backend), the claim posts a concurrent claim note with the run's holder, then reads back all trusted concurrent claim notes to detect concurrent claimants — Given: the zbuild:claimed label was just successfully added via the gh backend — When: the claim posts a "concurrent claim by `<holder>`" note and reads back all trusted concurrent claim notes since the note's own created_at minus the detection window — Then: the note is posted synchronously before the read-back — And: all concurrent claim notes from the current label epoch are returned
 - [DSRACE-2] Only the run whose concurrent claim note is first (by created_at, then id) returns {"acquired": true}; all others return {"acquired": false} — Given: two or more concurrent claim notes exist for the same issue within the detection window — When: each run compares the notes and identifies the first — Then: the run whose note has the earliest created_at returns {"acquired": true} — And: all other runs return {"acquired": false, "holder": "<winner_holder>", "race_lost": true}
@@ -274,7 +279,7 @@ Your change is done when the test for every requirement below passes.
 The latest output of every stage that has run, as far as it is about what
 your job takes (ask, tests, change and code-findings), with where to find it. Use what your job needs.
 
-Files this issue's work has changed so far: core/claim/claim.sh, docs/adr/ADR-005-claim-coordinator.md, plugins/claim-coordinator/github-labels/plugin.sh
+Files this issue's work has changed so far: core/claim/claim.sh, docs/adr/ADR-005-claim-coordinator.md, plugins/claim-coordinator/github-labels/plugin.sh, plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh, tests/unit/claim-acquire-release-test.sh
 
 ### intake (verdict: pass)
 Outputs:
@@ -302,23 +307,38 @@ Outputs:
 - design: /home/runner/work/_temp/zbuild-state/artifacts/design.md
 - work_steps: /home/runner/work/_temp/zbuild-state/artifacts/design-steps.json
 
-### test-author (verdict: fail)
+### test-author (verdict: pass)
 Outputs:
 - test_author_summary: /home/runner/work/_temp/zbuild-state/artifacts/test-author-summary.md
 
 Summary:
-## test-author — timed_out
+## test-author — pass
 
-- the author did not finish (router_timeout) — what it wrote is kept for the next attempt
+- tests for DSRACE-1, DSRACE-2, DSRACE-3, DSRACE-4, DSRACE-5, DSRACE-6, DSRACE-7
 
-- not answered: TEFND-1
-- not answered: TEFND-2
-- not answered: IAFND-1
-- not answered: IAFND-2
-- not answered: IAFND-3
-- not answered: IAFND-4
-- not answered: IAFND-5
-- not answered: IAFND-6
+- the test files, and the requirements each covers:
+- plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh — DSRACE-1, DSRACE-2, DSRACE-3, DSRACE-7
+- tests/unit/claim-acquire-release-test.sh — DSRACE-4, DSRACE-5
+- Each [code] requirement's test must fail on the code from before this change, and pass once the code is written.
+- answered: TAFND-11: done — Reorganized DSRACE-5 section headings in `tests/unit/claim-acquire-release-test.sh`: removed `# Then: rc 1 (immediate refusal)` (kept the rc=1 assertion bare after `# When`); changed `# And: stale-takeover hook was NOT called` to `# Then: the stale-takeover hook is not called`; kept `# And: stderr names the concurrent winner as the first claimant`. This matches the SPEC's Then/And ordering as required.
+- answered: TAFND-7: done — `[DSRACE-1]`-tagged assertions were added in round 2; they assert POST_NOTE was recorded (fails on base code where no POST_NOTE call is made), so a tagged `[DSRACE-1]` line now appears in the failing output on base code.
+- answered: TAFND-8: done — `[DSRACE-2]`-tagged assertions were added in round 2; they assert `acquired` is false and `race_lost` is true (fails on base code which returns `acquired: true`), so tagged `[DSRACE-2]` lines now fail on base code.
+- answered: TAFND-9: done — `[DSRACE-3]`-tagged assertions were added in round 2; they assert the `patched-99004` file exists (fails on base code which makes no PATCH call), so tagged `[DSRACE-3]` lines now fail on base code.
+- answered: TAFND-10: done — `[DSRACE-7]`-tagged assertions were added in round 2; they assert ISSUE_VIEW appears after POST_NOTE (fails on base code which makes no POST_NOTE), so tagged `[DSRACE-7]` lines now fail on base code.
+- answered: BUFND-1: done — `[DSRACE-1]`-tagged assertions in `claim-coordinator-unit-test.sh` assert POST_NOTE is recorded before GET_NOTES in the call sequence.
+- answered: BUFND-2: done — `[DSRACE-7]`-tagged assertions assert ISSUE_VIEW appears after POST_NOTE and before GET_NOTES.
+- answered: BUFND-3: done — `[DSRACE-2]`-tagged assertions assert the loser gets `race_lost: true` and `acquired: false`, and the sole winner gets `acquired: true`.
+- answered: BUFND-4: done — `[DSRACE-3]`-tagged assertions assert the loser PATCHes its note with "not started", "concurrent claim", winner's name, and "was first".
+- answered: BUFND-5: done — `[DSRACE-4]`-tagged assertions assert `_ZBUILD_CLAIM_ACQUIRED` is not set and the release hook is not called.
+- answered: BUFND-6: done — `[DSRACE-1]` and `[DSRACE-7]` assertions together assert synchronous ordering: POST_NOTE before ISSUE_VIEW before GET_NOTES.
+- answered: TEFND-1: done — All six SPECs (DSRACE-1 through DSRACE-5 and DSRACE-7) now have tagged assertions in the named test files; each assertion carries its `[DSRACE-X]` tag on the line.
+- answered: TEFND-2: done — Tagged assertions cover the plugin (DSRACE-1,2,3,7) and core/claim/claim.sh (DSRACE-4,5); removing the race detection would leave the base-code path returning `acquired: true` and not calling PATCH/POST, causing the tagged assertions to fail.
+- answered: IAFND-1: done — DSRACE-1,2,3 assertions in `claim-coordinator-unit-test.sh` cover the gh-backend concurrent-claim path; removing arbitration logic breaks those assertions.
+- answered: IAFND-2: done — DSRACE-7 assertions assert ISSUE_VIEW occurs after POST_NOTE; deleting `_ccgl_read_labels` removes the ISSUE_VIEW call and those assertions fail.
+- answered: IAFND-3: done — DSRACE-2 assertions cover the first-note-wins rule and the loser path with `race_lost: true`.
+- answered: IAFND-4: done — DSRACE-3 assertions cover the PATCH body with the full required format "not started — concurrent claim: `<winner>` was first".
+- answered: IAFND-5: done — DSRACE-4 assertions cover `_ZBUILD_CLAIM_ACQUIRED` not set and release hook not called.
+- answered: IAFND-6: done — DSRACE-1 and DSRACE-7 ordering assertions cover the synchronous write-before-reread contract.
 
 ### build (verdict: pass) — your own
 Outputs:
@@ -329,10 +349,15 @@ Outputs:
 Summary:
 ## build — pass
 
-- changed core/claim/claim.sh, docs/adr/ADR-005-claim-coordinator.md, plugins/claim-coordinator/github-labels/plugin.sh (+180 / -12)
+- changed no file
 
-- over 2 pass(es), 2 iteration(s)
-- no finding was open for it
+- over 1 pass(es), 1 iteration(s)
+- answered: IAFND-1: not mine — test-author must add `[DSRACE-1]`-tagged assertion to `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh`: the negctl check requires a test line tagged `[DSRACE-1]` asserting that the concurrent claim note is posted before reading back notes (gh backend). The code does this; the test file has no such tag.
+- answered: IAFND-2: not mine — test-author must add `[DSRACE-7]`-tagged assertion to `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh`: the negctl check requires a test line tagged `[DSRACE-7]` asserting that `_ccgl_read_labels` is called after the synchronous note post. The code does this; no test file carries that tag.
+- answered: IAFND-3: not mine — test-author must add `[DSRACE-2]`-tagged assertion to `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh`: the negctl check requires a test line tagged `[DSRACE-2]` asserting that the first note by `created_at` wins and the loser returns `race_lost: true`. The code does this; no test file carries that tag.
+- answered: IAFND-4: not mine — test-author must add `[DSRACE-3]`-tagged assertion to `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh`: the negctl check requires a test line tagged `[DSRACE-3]` asserting that the loser PATCHes its note to "not started — concurrent claim: `<winner>` was first". The code does this; no test file carries that tag.
+- answered: IAFND-5: not mine — test-author must add `[DSRACE-4]`-tagged assertion to `tests/unit/claim-acquire-release-test.sh`: the negctl check requires a test line tagged `[DSRACE-4]` asserting that `_ZBUILD_CLAIM_ACQUIRED` is not set when `race_lost: true` is received. The code does this; no test file carries that tag.
+- answered: IAFND-6: not mine — test-author must add `[DSRACE-1]` and `[DSRACE-7]`-tagged assertions to `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh`: the negctl check requires those tags to assert the synchronous ordering (note posted before re-read). The code does this; no test file carries those tags.
 - step 1: done — plugins/claim-coordinator/github-labels/plugin.sh | if ! rsc_gh "$sd" "$out" api --repo "$slug" "repos/${slug}/issues/${issue}/comments" \
 - step 2: done — core/claim/claim.sh | if [[ "$reply" =~ \"race_lost\"[[:space:]]*:[[:space:]]*true ]]; then
 - step 3: done — docs/adr/ADR-005-claim-coordinator.md | ### §5 — Concurrent claim detection (amended 2026-11-27, #2534)
@@ -340,19 +365,19 @@ Summary:
 Your notes so far (where they disagree with a list or a result elsewhere in this prompt, the list or the result is right):
 # Build notes — issue #2534 (concurrent-claim race detection)
 
-## Status: COMPLETE
+## Status: COMPLETE (code done; tests need test-author)
 
 ## What was done
 
-All three files were modified across this and the previous pass:
+All three files were modified across earlier passes:
 
 ### plugins/claim-coordinator/github-labels/plugin.sh
 - Added `_CCGL_TRUSTED`, `_CCGL_RACE_NOTE_PREFIX`, `_CCGL_RACE_NOTE_AT` constants
 - Added `_ccgl_self_holder_v`: computes this run's holder string
-- Added `_ccgl_race_note_post_v`: posts concurrent claim note, captures id and created_at; now includes `--repo "$slug"` in api call
-- Added `_ccgl_race_note_delete`: best-effort DELETE of race note by id; now includes `--repo "$slug"` in api call
-- Added `_ccgl_race_note_update`: PATCHes race note to "not started" message; now includes `--repo "$slug"` in api call
-- Added `_ccgl_race_note_first_v`: reads back all trusted concurrent claim notes, returns holder of the first; now includes `--paginate --repo "$slug"` in api call
+- Added `_ccgl_race_note_post_v`: posts concurrent claim note, captures id and created_at
+- Added `_ccgl_race_note_delete`: best-effort DELETE of race note by id
+- Added `_ccgl_race_note_update`: PATCHes race note to "not started" message
+- Added `_ccgl_race_note_first_v`: reads back all trusted concurrent claim notes, returns holder of the first
 - Extended `claim_coordinator_claim`: after successful label add on gh backend, posts note, re-reads issue, reads back notes, returns `race_lost: true` for losers
 
 ### core/claim/claim.sh
@@ -363,13 +388,20 @@ All three files were modified across this and the previous pass:
 - Updated header amendment line, Implementation Notes table, Enforced by section
 
 ## Test results
-- `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh`: ALL 36 PASS
-- `tests/unit/claim-acquire-release-test.sh`: ALL 36 PASS
-- `tests/e2e/claim-race-test.sh`: ALL 7 PASS
+- Full suite: 986/986 PASS
 - `shellcheck plugins/claim-coordinator/github-labels/plugin.sh`: CLEAN
 
-## Note on DSRACE-specific tests
-The design says "its test is already written" for DSRACE-1 through DSRACE-7. The test-author stage timed out and did not write those tests. No DSRACE-specific test cases exist in the test files. The ADR-005 Enforced by section references them (in claim-coordinator-unit-test.sh and claim-acquire-release-test.sh) but they haven't been added yet. The implementation is correct per all DSRACE requirements; the specific test cases need to be added by a future test-author pass.
+## Open issue: missing DSRACE-tagged test assertions
+The issue-acceptance negctl check requires [DSRACE-N]-tagged assertions in test files:
+- DSRACE-1, DSRACE-2, DSRACE-3, DSRACE-7 → `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh`
+- DSRACE-4, DSRACE-5 → `tests/unit/claim-acquire-release-test.sh`
+
+The test-author stage timed out and never wrote those tagged assertions. I cannot change test files. Test-author must add them.
+
+The ADR-005 Enforced by section already names the correct test file for each DSRACE tag.
+
+## Findings disposition
+- IAFND-1 through IAFND-6: not mine — test-author must add [DSRACE-N] assertions to test files
 
 ### test (verdict: fail)
 Outputs:
@@ -390,6 +422,8 @@ Findings:
 - IAFND-6 (opened by issue-acceptance): The issue requires this and the change does not meet it: RQTIE-3: `_ccgl_race_note_post_v` is called synchronously before `_ccgl_read_labels`, satisfying the requirement in code, but no test asserts the ordering (DSRACE-1 or DSRACE-7). Swapping or removing the synchronous write leaves all tests green. — plugins/claim-coordinator/github-labels/plugin.sh | _ccgl_race_note_post_v note_id "$_CCGL_SLUG" "$issue" "$my_holder" || note_rc=$? — ACCEPTED IF: Either the claim writes its holder record itself, synchronously, before it re-reads, or the tie-break uses something that exists at claim time
 
 ## What you must not do
+
+The acceptance testfiles listed above are read-only for this stage, as is every file in the test folders: a change to them is put back. They are the contract you implement against, written before your implementation existed. When an assertion fails, fix your code. If it fails the same way with your change set aside, the test is wrong: answer as "When a test is wrong" says, and do not edit it. You MUST NOT weaken, delete, retag or re-author any assertion.
 
 ### The files you may change
 You may change any file outside the test folders (tests/*, plugins/*/*/tests/*), and none inside them. Every file in the test folders — a test, a fixture, a test helper — belongs to the stage that writes the tests: a change you make there is put back.
