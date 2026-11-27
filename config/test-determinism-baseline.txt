@@ -85,3 +85,605 @@ clock|plugins/tool/test/tests/test-test.sh|T_START="$(date +%s)"
 clock|plugins/tool/test/tests/test-test.sh|T_END="$(date +%s)"
 clock|plugins/tool/orch-ruflo-hive/tests/orch-ruflo-hive-test.sh|t_start="$(date +%s)"
 clock|plugins/tool/orch-ruflo-hive/tests/orch-ruflo-hive-test.sh|t_end="$(date +%s)"
+# own-code (#2630): tests that replaced our own functions before the rule; this list only shrinks.
+own-code|tests/unit/layout-writer-test.sh|resolve_template_file() { echo "$REPO_ROOT/tests/fixtures/templates/two-cycles.yaml"; }
+own-code|tests/unit/layout-writer-test.sh|cycle_orchestrator_run() { _CYCLE_LAST_TERMINATED_REASON="converged"; _CYCLE_LAST_OUTCOME="converged"; _CYCLE_LAST_ITERATIONS=1; return 0; }
+own-code|tests/unit/layout-writer-test.sh|_find_plugin_for_stage() { echo "$REPO_ROOT/plugins/agent/build"; }
+own-code|tests/unit/layout-writer-test.sh|runner_read_stage_verdict() { echo "pass"; }
+own-code|tests/unit/layout-writer-test.sh|runner_read_stage_reason() { echo ""; }
+own-code|tests/unit/layout-writer-test.sh|zbuild_claim_acquire() { return 0; }
+own-code|tests/unit/layout-writer-test.sh|plugin_hook_call() { return 0; }
+own-code|tests/unit/cycle-history-multi-exit-test.sh|cycle_dispatch_stage() {
+own-code|tests/unit/design-prior-gate-feedback-test.sh|apply_scope_redaction() { cp "$1" "$2"; return 0; }
+own-code|tests/unit/design-prior-gate-feedback-test.sh|atomic_write() { local dest="$1"; cat - > "$dest"; }
+own-code|tests/unit/design-prior-gate-feedback-test.sh|_route_loop_close_final_banner() { return 0; }
+own-code|tests/unit/design-writes-steps-test.sh|apply_scope_redaction() { cp "$1" "$2"; return 0; }
+own-code|tests/unit/limits-test.sh|_route_loop_close_final_banner() { return 0; }
+own-code|tests/unit/design-behaviour-not-tests-test.sh|apply_scope_redaction() { cp "$1" "$2"; return 0; }
+own-code|tests/unit/test-plugin-result-write-fallback-test.sh|atomic_write() { cat > /dev/null; return 1; }
+own-code|tests/unit/test-plugin-result-write-fallback-test.sh|atomic_write() {
+own-code|tests/unit/run-status-comment-quiet-test.sh|rsc_comment_patch() { [[ -f "$FAILING" ]] && return 1; _real_rsc_comment_patch "$@"; }
+own-code|tests/unit/cleanup-worktrees-test.sh|_scan() { (cd "$R" && _cleanup_scan_worktrees "${1:-14}"); }
+own-code|tests/unit/runner-contract-lib-seam-test.sh|declare -F _runner_contract_lib_closure >/dev/null 2>&1 \
+own-code|tests/unit/runner-contract-lib-seam-test.sh|declare -F _runner_snapshot_contract_libs >/dev/null 2>&1 \
+own-code|tests/unit/runner-contract-lib-seam-test.sh|declare -F _runner_design_targets_contract_lib >/dev/null 2>&1 \
+own-code|tests/unit/hydrate-stage-test.sh|_artifact_persist_put_back() {
+own-code|tests/unit/hydrate-stage-test.sh|_artifact_persist_put_back() {
+own-code|tests/unit/hydrate-stage-test.sh|_artifact_persist_restore() {
+own-code|tests/unit/timeout-cmd-test.sh|declare -F _runner_contract_lib_closure >/dev/null 2>&1 \
+own-code|tests/unit/timeout-cmd-test.sh|declare -F _runner_snapshot_contract_libs >/dev/null 2>&1 \
+own-code|tests/unit/stage-io-cycle-kind-test.sh|template_stage_io_dests()      { printf ''; }
+own-code|tests/unit/stage-io-cycle-kind-test.sh|template_stage_io_tail_lines() { printf ''; }
+own-code|tests/unit/stage-io-cycle-kind-test.sh|template_stage_io_redact()     { printf ''; }
+own-code|tests/unit/build-acceptance-charter-test.sh|_route_loop_close_final_banner() { return 0; }
+own-code|tests/unit/build-acceptance-charter-test.sh|apply_scope_redaction() {
+own-code|tests/unit/build-false-completion-guard-test.sh|_route_loop_close_final_banner() { return 0; }
+own-code|tests/unit/build-false-completion-guard-test.sh|apply_scope_redaction() { local in="$1" out="$2"; [[ -f "$in" ]] && cp "$in" "$out"; return 0; }
+own-code|tests/unit/design-names-no-files-test.sh|_route_resolve_max_turns() { printf '9'; }
+own-code|tests/unit/design-names-no-files-test.sh|_route_resolve_timeout()   { printf '60'; }
+own-code|tests/unit/design-names-no-files-test.sh|apply_scope_redaction() { cp "$1" "$2"; }
+own-code|tests/unit/design-names-no-files-test.sh|atomic_write() { cat - > "$1"; }
+own-code|tests/unit/test-author-before-run-test.sh|acceptance_list_testfiles() { printf '../outside-test.sh\n'; }
+own-code|tests/unit/test-author-before-run-test.sh|acceptance_list_testfiles_for_spec() { printf '../outside-test.sh\n'; }
+own-code|tests/unit/test-author-before-run-test.sh|_wl="$( acceptance_list_testfiles() { printf '../outside-test.sh\ntests/a-test.sh\n'; }
+own-code|tests/unit/test-author-before-run-test.sh|acceptance_list_spec_ids() { :; }
+own-code|tests/unit/judge-kept-code-test.sh|resolve_tier() { printf 'T2'; }
+own-code|tests/unit/build-prompt-framing-test.sh|apply_scope_redaction() {
+own-code|tests/unit/tier-resolve-test.sh|template_stage_router_tier() {
+own-code|tests/unit/pr-delivery-v2-result-test.sh|stage_signal_begin() {
+own-code|tests/unit/pr-delivery-v2-result-test.sh|stage_signal_end() { return 0; }
+own-code|tests/unit/pr-delivery-v2-result-test.sh|stage_signal_begin() { local _cb="$1"; stage_signal_end() { return 0; }; "$_cb" interrupted signal_interrupt || true; return 0; }
+own-code|tests/unit/router-manifest-budget-test.sh|template_stage_router_timeout()   { printf '111\n'; }
+own-code|tests/unit/router-manifest-budget-test.sh|template_stage_router_max_turns() { printf '12\n'; }
+own-code|tests/unit/router-manifest-budget-test.sh|eb_emit_event() { printf '%s\n' "$*" >> "$_EV_LOG"; }
+own-code|tests/unit/teardown-purge-scratch-test.sh|emit_event() { :; }
+own-code|tests/unit/cycle-orchestrator-capability-flags-test.sh|cycle_dispatch_stage() {
+own-code|tests/unit/cycle-orchestrator-capability-flags-test.sh|cycle_dispatch_stage() {
+own-code|tests/unit/cycle-orchestrator-capability-flags-test.sh|cycle_dispatch_stage() {
+own-code|tests/unit/design-stable-ids-test.sh|_check() {   # <acceptance lines...> — runs the checks; $V = violations, $P = plain words
+own-code|tests/unit/cleanup-new-reclaimers-test.sh|_cleanup_is_active_run() { [[ "$1" == "oldrun" ]]; }
+own-code|tests/unit/cleanup-new-reclaimers-test.sh|_cleanup_issue_state() { case "$1" in 100) printf 'open';; 200) printf 'closed';; \
+own-code|tests/unit/cleanup-new-reclaimers-test.sh|_cleanup_issue_closed_age_days() { [[ "$1" == "200" ]] && printf '30'; }
+own-code|tests/unit/engine-stage-reports-test.sh|_runner_contract_lib_closure() { printf 'x.sh\n'; }
+own-code|tests/unit/engine-stage-reports-test.sh|( zbuild_has_flock() { return 1; }; _ZB_REPORT_LOCK_TRIES=1 _runner_record_report "$S9" m1 '{"owned_files":["a.sh"]}' )
+own-code|tests/unit/core-output-stage-io-visual-test.sh|template_stage_io_dests()      { printf '%s\n' "$_MOCK_DESTS"; }
+own-code|tests/unit/core-output-stage-io-visual-test.sh|template_stage_io_tail_lines() { printf ''; }
+own-code|tests/unit/core-output-stage-io-visual-test.sh|template_stage_io_redact()     { printf ''; }
+own-code|tests/unit/core-pipeline-cycle-stall-break-test.sh|_cycle_tree_fingerprint() { printf 'x\n' >> "$_FP_COUNTER"; printf 'fp-%s' "$(wc -l < "$_FP_COUNTER" | tr -d ' ')"; }
+own-code|tests/unit/pr-open-detached-head-test.sh|( cd "$REPO" && zbuild_keep_head_on_branch() { ZBUILD_HEAD_OUTCOME="error"; return 2; }
+own-code|tests/unit/pr-open-detached-head-test.sh|( cd "$REPO" && zbuild_keep_head_on_branch() { ZBUILD_HEAD_OUTCOME="error"; return 2; }
+own-code|tests/unit/checks-see-source-test.sh|resolve_tier() { printf 'T2'; }
+own-code|tests/unit/checks-see-source-test.sh|apply_scope_redaction() { cp "$1" "$2"; }
+own-code|tests/unit/checks-see-source-test.sh|_route_loop_close_final_banner() { return 0; }
+own-code|tests/unit/design-timeout-exhaustion-halt-1261-test.sh|cycle_dispatch_stage() {
+own-code|tests/unit/route-banner-cycle-context-test.sh|cycle_dispatch_stage() {
+own-code|tests/unit/route-banner-cycle-context-test.sh|_cycle_install_traps() { :; }
+own-code|tests/unit/core-output-stage-io-test.sh|template_stage_io_dests() {
+own-code|tests/unit/core-output-stage-io-test.sh|template_stage_io_tail_lines() { printf '%s' "$_MOCK_TAIL"; }
+own-code|tests/unit/core-output-stage-io-test.sh|template_stage_io_redact() { printf '%s' "$_MOCK_REDACT"; }
+own-code|tests/unit/core-output-stage-io-test.sh|apply_scope_redaction() { return 1; }
+own-code|tests/unit/core-output-stage-io-render-test.sh|template_stage_io_tail_lines() { printf ''; }
+own-code|tests/unit/core-output-stage-io-render-test.sh|template_stage_io_redact() { printf ''; }
+own-code|tests/unit/test-author-checks-own-output-test.sh|_router_rc_classify() { printf -v "$2" '%s' error; printf -v "$3" '%s' router_rate_limited; }
+own-code|tests/unit/test-author-checks-own-output-test.sh|zb_answers_finish() {
+own-code|tests/unit/stage-housekeeping-cost-test.sh|_runner_now_ms() { printf '1792937616000'; }
+own-code|tests/unit/discovery-cold-lookup-test.sh|_discover_plugins_walk() { printf 'walk\n' >> "$WALKS"; _orig_discover_plugins_walk "$@"; }
+own-code|tests/unit/discovery-cold-lookup-test.sh|_discover_plugins_walk() { printf 'walk\n' >> "$WALKS"; return 3; }
+own-code|tests/unit/discovery-cold-lookup-test.sh|_discover_plugins_walk() { printf 'walk\n' >> "$WALKS"; _orig_discover_plugins_walk "$@"; }
+own-code|tests/unit/runner-stage-dispatch-eb-emit-guard-test.sh|resolve_template_file() { echo "$REPO_ROOT/tests/fixtures/templates/two-cycles.yaml"; }
+own-code|tests/unit/runner-stage-dispatch-eb-emit-guard-test.sh|eb_emit_event() {
+own-code|tests/unit/runner-stage-dispatch-eb-emit-guard-test.sh|_find_plugin_for_stage() { echo "$REPO_ROOT/plugins/agent/build"; }
+own-code|tests/unit/runner-stage-dispatch-eb-emit-guard-test.sh|runner_read_stage_verdict() { echo "request_changes"; }
+own-code|tests/unit/runner-stage-dispatch-eb-emit-guard-test.sh|runner_read_stage_reason() { echo ""; }
+own-code|tests/unit/runner-stage-dispatch-eb-emit-guard-test.sh|zbuild_claim_acquire() { return 0; }
+own-code|tests/unit/runner-stage-dispatch-eb-emit-guard-test.sh|plugin_hook_call() {
+own-code|tests/unit/ids-one-rule-test.sh|_route_loop_close_final_banner() { return 0; }
+own-code|tests/unit/review-lens-report-merge-base-bundle-test.sh|apply_scope_redaction() { cp "$1" "$2"; return 0; }
+own-code|tests/unit/init-state-write-check-test.sh|emit_event() {
+own-code|tests/unit/init-state-write-check-test.sh|atomic_write() { cat > /dev/null; return 1; }
+own-code|tests/unit/design-prompt-scope-charter-test.sh|apply_scope_redaction() { cp "$1" "$2"; return 0; }
+own-code|tests/unit/design-prompt-scope-charter-test.sh|atomic_write() { local dest="$1"; cat - > "$dest"; }
+own-code|tests/unit/design-prompt-scope-charter-test.sh|_route_loop_close_final_banner() { return 0; }
+own-code|tests/unit/design-prior-hypothesis-test.sh|apply_scope_redaction() { cp "$1" "$2"; return 0; }
+own-code|tests/unit/design-prior-hypothesis-test.sh|_route_loop_close_final_banner() { return 0; }
+own-code|tests/unit/design-steps-code-only-test.sh|apply_scope_redaction() { cp "$1" "$2"; return 0; }
+own-code|tests/unit/design-steps-code-only-test.sh|_route_loop_close_final_banner() { return 0; }
+own-code|tests/unit/design-steps-code-only-test.sh|apply_scope_redaction() { [[ -f "$1" ]] && cp "$1" "$2"; return 0; }
+own-code|tests/unit/design-steps-code-only-test.sh|resolve_tier() { printf 'T2'; }
+own-code|tests/unit/test-author-test.sh|resolve_tier() { printf 'T2'; }
+own-code|tests/unit/test-author-test.sh|_route_resolve_max_turns() { printf '45'; }
+own-code|tests/unit/test-author-test.sh|_route_resolve_timeout() { printf '600'; }
+own-code|tests/unit/cycle-g3-maxturns-escalation-test.sh|cycle_dispatch_stage() {
+own-code|tests/unit/template-resolvability-preflight-test.sh|template_stage_roles() { [[ "$1" == "spec8test" ]] && printf '%s\n' "ghost_role"; }
+own-code|tests/unit/design-checks-own-output-test.sh|apply_scope_redaction() { cp "$1" "$2"; return 0; }
+own-code|tests/unit/design-checks-own-output-test.sh|_router_rc_classify() { printf -v "$2" '%s' error; printf -v "$3" '%s' router_rate_limited; }
+own-code|tests/unit/design-checks-own-output-test.sh|_router_rc_classify() { printf -v "$2" '%s' error; printf -v "$3" '%s' router_rate_limited; }
+own-code|tests/unit/call-tools-test.sh|stage_prompt_compose_text() { printf '%s' "$2"; }
+own-code|tests/unit/map-strategy-test.sh|orch_spawn()    { _spy_log "orch_spawn"    "$1"; mkdir -p "${TMPDIR:-/tmp}/zbuild-pool-$1/results" "${TMPDIR:-/tmp}/zbuild-pool-$1/pids"; return 0; }
+own-code|tests/unit/map-strategy-test.sh|orch_dispatch() { _spy_log "orch_dispatch" "$1"; local wu="${2:-}"; [[ -f "$wu" ]] && bash "$wu" >/dev/null 2>&1 || true; printf 'slot-001\n'; return 0; }
+own-code|tests/unit/map-strategy-test.sh|orch_collect()  { _spy_log "orch_collect"  "$1"; return 0; }
+own-code|tests/unit/map-strategy-test.sh|orch_shutdown() { _spy_log "orch_shutdown" "$1"; rm -rf "${TMPDIR:-/tmp}/zbuild-pool-$1" 2>/dev/null || true; return 0; }
+own-code|tests/unit/map-strategy-test.sh|resolve_plugin_for_role() { echo "$MAP_PLUGIN_DIR"; }
+own-code|tests/unit/map-strategy-test.sh|_strategy_make_work_unit() {
+own-code|tests/unit/map-strategy-test.sh|orch_spawn()    { _spec8_orch_spawn "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_dispatch() { _spec8_orch_dispatch "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_collect()  { _spec8_orch_collect "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_shutdown() { _spec8_orch_shutdown "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_spawn()    { orch_spawn_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_dispatch() { orch_dispatch_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_collect()  { orch_collect_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_shutdown() { orch_shutdown_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_spawn()    { _spec9_orch_spawn "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_dispatch() { _spec9_orch_dispatch "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_collect()  { _spec9_orch_collect "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_shutdown() { _spec9_orch_shutdown "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_spawn()    { orch_spawn_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_dispatch() { orch_dispatch_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_collect()  { orch_collect_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_shutdown() { orch_shutdown_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_spawn()    { _spec9b_orch_spawn "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_dispatch() { _spec9b_orch_dispatch "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_collect()  { _spec9b_orch_collect "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_shutdown() { _spec9b_orch_shutdown "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_spawn()    { orch_spawn_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_dispatch() { orch_dispatch_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_collect()  { orch_collect_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_shutdown() { orch_shutdown_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_spawn()    { _spec11_orch_spawn "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_dispatch() { _spec11_orch_dispatch "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_collect()  { _spec11_orch_collect "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_shutdown() { _spec11_orch_shutdown "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_spawn()    { orch_spawn_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_dispatch() { orch_dispatch_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_collect()  { orch_collect_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_shutdown() { orch_shutdown_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_spawn()    { _spec12_orch_spawn "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_dispatch() { _spec12_orch_dispatch "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_collect()  { _spec12_orch_collect "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_shutdown() { _spec12_orch_shutdown "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_spawn()    { orch_spawn_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_dispatch() { orch_dispatch_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_collect()  { orch_collect_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_shutdown() { orch_shutdown_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_spawn()    { _spec13_orch_spawn "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_dispatch() { _spec13_orch_dispatch "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_collect()  { _spec13_orch_collect "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_shutdown() { _spec13_orch_shutdown "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_spawn()    { orch_spawn_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_dispatch() { orch_dispatch_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_collect()  { orch_collect_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_shutdown() { orch_shutdown_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_spawn()    { _spec14_orch_spawn "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_dispatch() { _spec14_orch_dispatch "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_collect()  { _spec14_orch_collect "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_shutdown() { _spec14_orch_shutdown "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_spawn()    { orch_spawn_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_dispatch() { orch_dispatch_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_collect()  { orch_collect_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_shutdown() { orch_shutdown_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_spawn()    { _spec15_orch_spawn "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_dispatch() { _spec15_orch_dispatch "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_collect()  { _spec15_orch_collect "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_shutdown() { _spec15_orch_shutdown "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_spawn()    { orch_spawn_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_dispatch() { orch_dispatch_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_collect()  { orch_collect_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_shutdown() { orch_shutdown_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_spawn()    { _spec16_orch_spawn "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_dispatch() { _spec16_orch_dispatch "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_collect()  { _spec16_orch_collect "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_shutdown() { _spec16_orch_shutdown "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_spawn()    { orch_spawn_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_dispatch() { orch_dispatch_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_collect()  { orch_collect_orig "$@"; }
+own-code|tests/unit/map-strategy-test.sh|orch_shutdown() { orch_shutdown_orig "$@"; }
+own-code|tests/unit/test-author-supersedes-test.sh|_ta_commit_testfiles() { return 0; }
+own-code|tests/unit/design-steps-serve-specs-test.sh|apply_scope_redaction() { cp "$1" "$2"; return 0; }
+own-code|tests/unit/lens-task-test.sh|resolve_tier() { printf 'T2'; }
+own-code|tests/unit/lens-task-test.sh|stage_prompt_compose_parts() { return 1; }
+own-code|tests/unit/issue-terms-test.sh|_route_loop_close_final_banner() { return 0; }
+own-code|tests/unit/build-lib-source-wiring-test.sh|emit_event() { return 0; }
+own-code|tests/unit/core-output-destinations-test.sh|atomic_write() { cat >/dev/null; return 1; }
+own-code|tests/unit/core-output-destinations-test.sh|atomic_write() { cat >/dev/null; return 1; }
+own-code|tests/unit/issue-acceptance-test.sh|resolve_tier() { printf 'T2'; }
+own-code|tests/unit/issue-acceptance-test.sh|zb_answers_finish() {
+own-code|tests/unit/test-helpers-skip-guard-test.sh|strip_ansi() {
+own-code|tests/unit/no-guard-paths-test.sh|_scan() {
+own-code|tests/unit/persona-agent-delivery-test.sh|provider_anthropic_persona_args() { return 1; }
+own-code|tests/unit/persona-agent-delivery-test.sh|apply_scope_redaction() {
+own-code|tests/unit/build-diff-cumulative-test.sh|_route_loop_close_final_banner() { return 0; }
+own-code|tests/unit/build-diff-cumulative-test.sh|apply_scope_redaction() {
+own-code|tests/unit/judge-change-list-test.sh|resolve_tier() { printf 'T2'; }
+own-code|tests/unit/judge-change-list-test.sh|stage_prompt_compose_parts() { printf '%s' "${@: -1}"; }
+own-code|tests/unit/build-design-decisions-test.sh|_route_loop_close_final_banner() { return 0; }
+own-code|tests/unit/build-design-decisions-test.sh|apply_scope_redaction() { local in="$1" out="$2"; [[ -f "$in" ]] && cp "$in" "$out"; return 0; }
+own-code|tests/unit/outside-assumptions-test.sh|apply_scope_redaction() { cp "$1" "$2"; }
+own-code|tests/unit/outside-assumptions-test.sh|atomic_write() { cat - > "$1"; }
+own-code|tests/unit/no-line-numbers-test.sh|_check() {   # <design.md content> — sets V (violations) and FB (what design reads)
+own-code|tests/unit/run-status-comment-render-test.sh|apply_scope_redaction() { printf 'REDACTED-BODY' > "$2"; return 0; }
+own-code|tests/unit/run-status-comment-render-test.sh|apply_scope_redaction() { return 1; }
+own-code|tests/unit/runner-startup-preflight-test.sh|_runner_validate_startup_preflight() { _spec5_called=$((_spec5_called + 1)); return 0; }
+own-code|tests/unit/engine-combines-loop-test.sh|cycle_dispatch_stage() {
+own-code|tests/unit/core-pipeline-cycle-orchestrator-run-test.sh|cycle_dispatch_stage() {
+own-code|tests/unit/core-pipeline-cycle-orchestrator-run-test.sh|cycle_dispatch_stage() {
+own-code|tests/unit/core-pipeline-cycle-orchestrator-run-test.sh|cycle_dispatch_stage() {
+own-code|tests/unit/core-pipeline-cycle-orchestrator-run-test.sh|_cycle_apply_feedback() { return 1; }
+own-code|tests/unit/core-pipeline-cycle-orchestrator-run-test.sh|cycle_dispatch_stage() { _CYCLE_DISPATCH_VERDICT="pass"; _CYCLE_DISPATCH_STATUS="complete"; return 0; }
+own-code|tests/unit/plugin-route-source-guard-test.sh|_scan() {
+own-code|tests/unit/issue-acceptance-status-test.sh|resolve_tier() { printf 'T2'; }
+own-code|tests/unit/write-boundary-allow-and-guards-test.sh|emit_event() { _WB_EVENTS+=("$*"); }
+own-code|tests/unit/judge-kept-test.sh|resolve_tier() { printf 'T2'; }
+own-code|tests/unit/design-unclear-judged-test.sh|_route_resolve_max_turns() { printf '9'; }
+own-code|tests/unit/design-unclear-judged-test.sh|_route_resolve_timeout()   { printf '60'; }
+own-code|tests/unit/design-unclear-judged-test.sh|apply_scope_redaction() { cp "$1" "$2"; }
+own-code|tests/unit/design-unclear-judged-test.sh|atomic_write() { cat - > "$1"; }
+own-code|tests/unit/resume-default-test.sh|emit_event() { :; }
+own-code|tests/unit/resume-default-test.sh|_artifact_persist_has_identity() { return 0; }
+own-code|tests/unit/resume-default-test.sh|_hydrate_fetch() { echo fetch >> "$_calls"; return 0; }
+own-code|tests/unit/resume-default-test.sh|_artifact_persist_restore() { echo restore >> "$_calls"; _ARTIFACT_PERSIST_LAST_STATUS=empty; return 0; }
+own-code|tests/unit/resume-default-test.sh|_artifact_persist_adopt_remote() { echo adopt >> "$_calls"; return 0; }
+own-code|tests/unit/resume-default-test.sh|apply_scope_redaction() { cp "$1" "$2"; return 0; }
+own-code|tests/unit/resume-default-test.sh|emit_event() { printf '%s\n' "$1" >> "$DESIGN_EVENTS"; return 0; }
+own-code|tests/unit/run-constant-lookups-cost-test.sh|template_stage_time_limits_load() {
+own-code|tests/unit/route-loop-unit-test.sh|template_stage_io_dests() {
+own-code|tests/unit/route-loop-unit-test.sh|template_stage_io_tail_lines() { printf ''; }
+own-code|tests/unit/route-loop-unit-test.sh|template_stage_io_redact()     { printf ''; }
+own-code|tests/unit/cycle-g2-cross-iter-timeout-test.sh|cycle_dispatch_stage() {
+own-code|tests/unit/stage-resolution-parity-test.sh|template_stage_roles() { [[ "$1" == "build" ]] && printf '%s\n' "ghost_role_spec5_xyz"; }
+own-code|tests/unit/plugin-lifecycle-event-balance-test.sh|emit_event() {
+own-code|tests/unit/plugin-lifecycle-event-balance-test.sh|verify_plugin_for_source() { return 0; }
+own-code|tests/unit/plugin-lifecycle-event-balance-test.sh|scan_plugin_outputs() { return 0; }
+own-code|tests/unit/plugin-lifecycle-event-balance-test.sh|scan_plugin_outputs() { return 1; }
+own-code|tests/unit/plugin-lifecycle-event-balance-test.sh|scan_plugin_outputs() { return 0; }
+own-code|tests/unit/plugin-lifecycle-event-balance-test.sh|write_boundary_mark() { return 0; }
+own-code|tests/unit/plugin-lifecycle-event-balance-test.sh|write_boundary_check() { return 1; }
+own-code|tests/unit/engine-combines-map-test.sh|orch_spawn()    { return 0; }
+own-code|tests/unit/engine-combines-map-test.sh|orch_dispatch() {
+own-code|tests/unit/engine-combines-map-test.sh|orch_collect()  { printf '%s\n' "$*" > "$COLLECT_ARGS"; return 0; }
+own-code|tests/unit/engine-combines-map-test.sh|orch_shutdown() { return 0; }
+own-code|tests/unit/engine-combines-map-test.sh|resolve_plugin_for_role() { echo "$PLUGINS_ROOT/agent/review-lens"; }
+own-code|tests/unit/engine-combines-map-test.sh|orch_dispatch() {
+own-code|tests/unit/engine-combines-map-test.sh|orch_dispatch() {
+own-code|tests/unit/engine-combines-map-test.sh|orch_dispatch() {
+own-code|tests/unit/engine-combines-map-test.sh|orch_dispatch() {
+own-code|tests/unit/engine-combines-map-test.sh|orch_dispatch() {
+own-code|tests/unit/engine-combines-map-test.sh|orch_collect() { printf '%s\n' "$*" > "$COLLECT_ARGS"; _ORCH_COLLECT_OUTCOME="timed_out"; return 1; }
+own-code|tests/unit/engine-combines-map-test.sh|orch_collect() { printf '%s\n' "$*" > "$COLLECT_ARGS"; _ORCH_COLLECT_OUTCOME="passed"; return 0; }
+own-code|tests/unit/engine-combines-map-test.sh|orch_dispatch() {
+own-code|tests/unit/test-author-loop-test.sh|_route_check_budget() { return 1; }
+own-code|tests/unit/stage-dispatch-cost-test.sh|emit_event() { :; }
+own-code|tests/unit/build-timeout-scope-violation-preserves-inscope-test.sh|_route_loop_close_final_banner() { return 0; }
+own-code|tests/unit/build-timeout-scope-violation-preserves-inscope-test.sh|apply_scope_redaction() {
+own-code|tests/unit/design-all-checks-test.sh|_route_loop_close_final_banner() { return 0; }
+own-code|tests/unit/write-boundary-window-test.sh|emit_event() { _WB_EVENTS+=("$*"); }
+own-code|tests/unit/write-boundary-degraded-test.sh|emit_event() { _WB_EVENTS+=("$*"); }
+own-code|tests/unit/requirements-list-test.sh|apply_scope_redaction() { cp "$1" "$2"; return 0; }
+own-code|tests/unit/requirements-list-test.sh|resolve_tier() { printf 'T2'; }
+own-code|tests/unit/build-acceptance-spec-feedback-test.sh|_route_loop_close_final_banner() { return 0; }
+own-code|tests/unit/build-acceptance-spec-feedback-test.sh|apply_scope_redaction() { local in="$1" out="$2"; [[ -f "$in" ]] && cp "$in" "$out"; return 0; }
+own-code|tests/unit/discover-plugins-memo-test.sh|validate_manifest() { printf 'x\n' >> "$_WALKS"; _orig_validate_manifest "$@"; }
+own-code|tests/unit/core-pipeline-cycle-final-gate-test.sh|cycle_dispatch_stage() {
+own-code|tests/unit/design-call-timeout-test.sh|apply_scope_redaction() { cp "$1" "$2"; return 0; }
+own-code|tests/unit/design-call-timeout-test.sh|atomic_write()          { local dest="$1"; cat - > "$dest.tmp" && mv -f "$dest.tmp" "$dest"; }
+own-code|tests/unit/stage-io-persona-banner-test.sh|template_stage_io_dests()      { printf '%s\n' "$_MOCK_DESTS"; }
+own-code|tests/unit/stage-io-persona-banner-test.sh|template_stage_io_tail_lines() { printf ''; }
+own-code|tests/unit/stage-io-persona-banner-test.sh|template_stage_io_redact()     { printf ''; }
+own-code|tests/unit/runner-map-parallel-stage-envelope-test.sh|_set_pipeline_status()           { :; }
+own-code|tests/unit/runner-map-parallel-stage-envelope-test.sh|_zbuild_state_set_stage_verdict() { :; }
+own-code|tests/unit/runner-map-parallel-stage-envelope-test.sh|eb_emit_event()                  { :; }
+own-code|tests/unit/runner-map-parallel-stage-envelope-test.sh|_render_pipeline_end()           { :; }
+own-code|tests/unit/runner-map-parallel-stage-envelope-test.sh|error()                          { :; }
+own-code|tests/unit/runner-map-parallel-stage-envelope-test.sh|_runner_stage_stop_word_v()      { :; }
+own-code|tests/unit/runner-map-parallel-stage-envelope-test.sh|_update_stage_status()           { [[ "$3" == complete ]] && touch "$_spec4_marker"; return 0; }
+own-code|tests/unit/runner-map-parallel-stage-envelope-test.sh|_set_pipeline_status()           { :; }
+own-code|tests/unit/runner-map-parallel-stage-envelope-test.sh|_zbuild_state_set_stage_verdict() { printf 'verdict %s\n' "$3" >> "$_spec4_log"; }
+own-code|tests/unit/runner-map-parallel-stage-envelope-test.sh|eb_emit_event()                  { :; }
+own-code|tests/unit/runner-map-parallel-stage-envelope-test.sh|_render_pipeline_end()           { :; }
+own-code|tests/unit/runner-map-parallel-stage-envelope-test.sh|error()                          { printf 'error %s\n' "$*" >> "$_spec4_log"; }
+own-code|tests/unit/runner-map-parallel-stage-envelope-test.sh|_runner_stage_stop_word_v()      { local -n _sw="$1"; _sw="stage_stopped:$2:$3"; }
+own-code|tests/unit/runner-map-parallel-stage-envelope-test.sh|_update_stage_status()           { printf 'status %s\n' "$3" >> "$_spec4_log"; }
+own-code|tests/unit/runner-map-parallel-stage-envelope-test.sh|template_stage_blocking()        { printf '%s' "$_spec4_blocking"; }
+own-code|tests/unit/output-check-memo-test.sh|eb_emit_event() { printf '%s\n' "$*" >> "$ZBUILD_EVENTS_JSONL"; }
+own-code|tests/unit/design-refines-newest-try-test.sh|apply_scope_redaction() { cp "$1" "$2"; return 0; }
+own-code|tests/unit/numbered-findings-test.sh|apply_scope_redaction() { cp "$1" "$2"; return 0; }
+own-code|tests/unit/judge-quotes-test.sh|resolve_tier() { printf 'T2'; }
+own-code|tests/unit/runner-engine-provenance-test.sh|declare -F _runner_engine_sha >/dev/null 2>&1 || _runner_engine_sha() { return 1; }
+own-code|tests/unit/runner-engine-provenance-test.sh|declare -F _runner_engine_branch >/dev/null 2>&1 || _runner_engine_branch() { return 1; }
+own-code|tests/unit/runner-engine-provenance-test.sh|declare -F _runner_report_engine_drift >/dev/null 2>&1 || _runner_report_engine_drift() { return 1; }
+own-code|tests/unit/scripts-lib-run-captured-command-test.sh|template_stage_io_dests() {
+own-code|tests/unit/design-one-call-keeps-last-good-test.sh|apply_scope_redaction() { cp "$1" "$2"; return 0; }
+own-code|tests/unit/test-slow-file-check-test.sh|acceptance_gate_run() { stage_result_write "$ZBUILD_ARTIFACT_DIR/acceptance-gate-result.json" pass ok; }
+own-code|tests/unit/judge-events-test.sh|resolve_tier() { printf 'T2'; }
+own-code|tests/unit/prompt-contract-every-stage-test.sh|_route_loop_close_final_banner() { :; }
+own-code|tests/unit/prompt-contract-every-stage-test.sh|resolve_tier() { printf 'T2'; }
+own-code|tests/unit/prompt-contract-every-stage-test.sh|resolve_tier() { printf 'T2'; }
+own-code|tests/unit/prompt-contract-every-stage-test.sh|_check() {
+own-code|tests/unit/dispatch-work-cost-test.sh|_check() {   # <fn> <want> <got> <label>
+own-code|tests/unit/dispatch-work-cost-test.sh|eb_emit_event() { :; }
+own-code|tests/unit/monitor-v2-result-test.sh|_route_resolve_max_turns() { printf '%s' "$_S89_TURNS_SENTINEL"; }
+own-code|tests/unit/monitor-v2-result-test.sh|_route_resolve_timeout()   { printf '%s' "$_S89_TIMEOUT_SENTINEL"; }
+own-code|tests/unit/monitor-v2-result-test.sh|router_reason_disposition() {
+own-code|tests/unit/monitor-v2-result-test.sh|router_reason_disposition() {
+own-code|tests/unit/monitor-v2-result-test.sh|template_stage_router_timeout()   { printf '111'; }
+own-code|tests/unit/monitor-v2-result-test.sh|template_stage_router_max_turns() { printf '12'; }
+own-code|tests/unit/issue-scoped-spec-tags-test.sh|_ta_emit() { :; }
+own-code|tests/unit/unit-name-test.sh|orch_spawn()    { mkdir -p "${TMPDIR:-/tmp}/zbuild-pool-$1/results" "${TMPDIR:-/tmp}/zbuild-pool-$1/pids"; return 0; }
+own-code|tests/unit/unit-name-test.sh|orch_dispatch() { printf '%s\n' "$2" >> "$DISPATCHED"; printf 'slot-001\n'; return 0; }
+own-code|tests/unit/unit-name-test.sh|orch_collect()  { return 0; }
+own-code|tests/unit/unit-name-test.sh|orch_shutdown() { return 0; }
+own-code|tests/unit/unit-name-test.sh|resolve_plugin_for_role() { printf '%s\n' "$P"; }
+own-code|tests/unit/unit-name-test.sh|orch_dispatch() { printf '%s\n' "$2" >> "$DISPATCHED"; bash "$2" >/dev/null 2>&1 || true; printf 'slot-001\n'; return 0; }
+own-code|tests/unit/write-boundary-sweep-test.sh|emit_event() { _WB_EVENTS+=("$*"); }
+own-code|tests/unit/stage-io-seq-label-test.sh|template_stage_io_dests()      { printf '%s\n' "$_MOCK_DESTS"; }
+own-code|tests/unit/stage-io-seq-label-test.sh|template_stage_io_tail_lines() { printf ''; }
+own-code|tests/unit/stage-io-seq-label-test.sh|template_stage_io_redact()     { printf ''; }
+own-code|tests/unit/clock-dirname-cost-test.sh|_cycle_emit() { :; }
+own-code|tests/unit/convergence-timeouts-never-fatal-1208-test.sh|cycle_dispatch_stage() {
+own-code|tests/unit/convergence-timeouts-never-fatal-1208-test.sh|cycle_dispatch_stage() {
+own-code|tests/unit/intake-missing-quote-test.sh|_ireq_issue_norm_v() { _M12_N=$(( _M12_N + 1 )); _m12_orig__ireq_issue_norm_v "$@"; }
+own-code|tests/unit/prior-work-reuse-contract-test.sh|( cd "$_R6" && emit_event() { :; } && ZBUILD_ISSUE_NUMBER="$_ZB_ID2" ZBUILD_STATE_DIR="$_S6" \
+own-code|tests/unit/design-stage-ids-test.sh|apply_scope_redaction() { cp "$1" "$2"; return 0; }
+own-code|tests/unit/design-stage-ids-test.sh|zb_answers_finish() {
+own-code|tests/unit/core-output-stage-io-banner-divider-test.sh|template_stage_io_dests()      { printf '%s\n' "$_MOCK_DESTS"; }
+own-code|tests/unit/core-output-stage-io-banner-divider-test.sh|template_stage_io_tail_lines() { printf ''; }
+own-code|tests/unit/core-output-stage-io-banner-divider-test.sh|template_stage_io_redact()     { printf ''; }
+own-code|tests/unit/design-one-form-test.sh|_route_loop_close_final_banner() { return 0; }
+own-code|tests/unit/stage-io-cycle-kind-goldens-test.sh|template_stage_io_dests()      { printf ''; }
+own-code|tests/unit/stage-io-cycle-kind-goldens-test.sh|template_stage_io_tail_lines() { printf ''; }
+own-code|tests/unit/stage-io-cycle-kind-goldens-test.sh|template_stage_io_redact()     { printf ''; }
+own-code|tests/unit/core-pipeline-strategy-test.sh|orch_spawn()    { _spy_log "orch_spawn"    "$1"; mkdir -p "${TMPDIR:-/tmp}/zbuild-pool-$1/results" "${TMPDIR:-/tmp}/zbuild-pool-$1/pids"; return 0; }
+own-code|tests/unit/core-pipeline-strategy-test.sh|orch_dispatch() { _spy_log "orch_dispatch" "$1"; local wu="${2:-}"; [[ -f "$wu" ]] && bash "$wu" >/dev/null 2>&1 || true; printf 'slot-001\n'; return 0; }
+own-code|tests/unit/core-pipeline-strategy-test.sh|orch_collect()  { _spy_log "orch_collect"  "$1"; return 0; }
+own-code|tests/unit/core-pipeline-strategy-test.sh|orch_shutdown() { _spy_log "orch_shutdown" "$1"; rm -rf "${TMPDIR:-/tmp}/zbuild-pool-$1" 2>/dev/null || true; return 0; }
+own-code|tests/unit/core-pipeline-strategy-test.sh|resolve_plugin_for_role() { echo "$FANOUT_PLUGIN_DIR"; }
+own-code|tests/unit/core-pipeline-strategy-test.sh|orch_dispatch() {
+own-code|tests/unit/core-pipeline-strategy-test.sh|orch_collect() {
+own-code|tests/unit/own-check-retry-test.sh|runner_read_stage_disposition_v() { printf -v "$1" '%s' unusable; }
+own-code|tests/unit/design-wiring-guidance-test.sh|_route_resolve_max_turns() { printf '99'; }
+own-code|tests/unit/design-wiring-guidance-test.sh|_route_resolve_timeout()   { printf '777'; }
+own-code|tests/unit/design-wiring-guidance-test.sh|apply_scope_redaction() { cp "$1" "$2"; return 0; }
+own-code|tests/unit/design-wiring-guidance-test.sh|atomic_write() { local dest="$1"; cat - > "$dest"; }
+own-code|tests/unit/issue-acceptance-unasked-test.sh|resolve_tier() { printf 'T2'; }
+own-code|tests/unit/stage-prompt-contract-test.sh|_sp_repo_intent_and_rules() { printf 'PARTIAL-F4\n'; return 1; }
+own-code|tests/unit/llm-agent-framework-test.sh|emit_event() { return 0; }
+own-code|tests/unit/run-limit-precedence-test.sh|template_max_run_s() { printf ''; }
+own-code|tests/unit/run-limit-precedence-test.sh|template_max_run_s() { printf ''; }
+own-code|tests/unit/run-limit-precedence-test.sh|template_max_run_s() { printf '7200'; }
+own-code|tests/unit/run-limit-precedence-test.sh|template_max_run_s() { printf '1800'; }
+own-code|tests/unit/run-limit-precedence-test.sh|template_max_run_s() { printf 'not-a-number'; }
+own-code|tests/unit/run-limit-precedence-test.sh|template_max_run_s() { printf '0'; }
+own-code|tests/unit/run-limit-precedence-test.sh|template_max_run_s() { printf -- '-5'; }
+own-code|tests/unit/run-limit-precedence-test.sh|template_max_run_s() { printf ''; }
+own-code|tests/unit/run-limit-precedence-test.sh|template_max_run_s() { printf ''; }
+own-code|tests/unit/runner-cycle-rc-action-mapping-test.sh|resolve_template_file() { echo "$REPO_ROOT/tests/fixtures/templates/two-cycles.yaml"; }
+own-code|tests/unit/runner-cycle-rc-action-mapping-test.sh|_find_plugin_for_stage() { echo "$REPO_ROOT/plugins/agent/build"; }
+own-code|tests/unit/runner-cycle-rc-action-mapping-test.sh|runner_read_stage_verdict() { echo "request_changes"; }
+own-code|tests/unit/runner-cycle-rc-action-mapping-test.sh|runner_read_stage_reason() { echo ""; }
+own-code|tests/unit/runner-cycle-rc-action-mapping-test.sh|zbuild_claim_acquire() { return 0; }
+own-code|tests/unit/runner-cycle-rc-action-mapping-test.sh|plugin_hook_call() {
+own-code|tests/unit/build-checks-own-output-test.sh|_build_stage_run_inner() {
+own-code|tests/unit/issue-acceptance-per-item-test.sh|resolve_tier() { printf 'T2'; }
+own-code|tests/unit/judge-feedback-test.sh|apply_scope_redaction() { cp "$1" "$2"; return 0; }
+own-code|tests/unit/cycle-g2-timeout-abandon-test.sh|cycle_dispatch_stage() {
+own-code|tests/unit/checks-held-to-findings-test.sh|resolve_tier() { printf 'T2'; }
+own-code|tests/unit/yaml-get-cache-test.sh|_yaml_get_uncached() { printf 'x\n' >> "$_PARSE_LOG"; _yg_real "$@"; }
+own-code|tests/unit/plugin-build-prompt-render-test.sh|apply_scope_redaction() {
+own-code|tests/unit/call-hook-test.sh|judge_base_dir_v() { local -n _b="$1"; _b="$BASE"; }
+own-code|tests/unit/call-hook-test.sh|stage_prompt_compose_parts() { printf '%s' "${@: -1}"; }
+own-code|tests/unit/checks-accepted-if-test.sh|resolve_tier() { printf 'T2'; }
+own-code|tests/unit/stage-io-large-capture-test.sh|template_stage_io_dests()      { printf 'file\n'; }
+own-code|tests/unit/stage-io-large-capture-test.sh|template_stage_io_tail_lines() { printf ''; }
+own-code|tests/unit/stage-io-large-capture-test.sh|template_stage_io_redact()     { printf ''; }
+own-code|tests/unit/finding-topics-test.sh|resolve_tier() { printf 'T2'; }
+own-code|tests/unit/stage-latest-output-test.sh|cycle_dispatch_stage() {
+own-code|tests/unit/shell-work-cost-test.sh|_inputs_stage_manifest() { printf 'x\n' >> "$_W3"; _ism_real "$@"; }
+own-code|tests/unit/test-result-reason-contract-test.sh|atomic_write() { cat > /dev/null; return 1; }
+own-code|tests/unit/core-output-stage-io-banner-goldens-test.sh|template_stage_io_dests()      { printf 'stdout\n'; }
+own-code|tests/unit/core-output-stage-io-banner-goldens-test.sh|template_stage_io_tail_lines() { printf ''; }
+own-code|tests/unit/core-output-stage-io-banner-goldens-test.sh|template_stage_io_redact()     { printf ''; }
+own-code|tests/unit/design-stage-banner-content-test.sh|stage_io_begin() { _STAGE_IO_LAST_SEQ=7; return 0; }
+own-code|tests/unit/design-stage-banner-content-test.sh|stage_io_end() {
+own-code|tests/unit/design-stage-banner-content-test.sh|apply_scope_redaction() { cp "$1" "$2"; return 0; }
+own-code|tests/unit/design-stage-banner-content-test.sh|atomic_write() { local dest="$1"; cat - > "$dest"; }
+own-code|tests/unit/design-unclear-review-test.sh|_route_resolve_max_turns() { printf '9'; }
+own-code|tests/unit/design-unclear-review-test.sh|_route_resolve_timeout()   { printf '60'; }
+own-code|tests/unit/design-unclear-review-test.sh|apply_scope_redaction() { cp "$1" "$2"; }
+own-code|tests/unit/design-unclear-review-test.sh|atomic_write() { cat - > "$1"; }
+own-code|tests/unit/leaf-dispatch-verdict-resolution-parity-test.sh|template_stage_roles() {
+own-code|tests/unit/leaf-dispatch-verdict-resolution-parity-test.sh|resolve_plugin_for_role() {
+own-code|tests/unit/issue-acceptance-unclear-test.sh|resolve_tier() { printf 'T2'; }
+own-code|tests/unit/build-round-summary-test.sh|_route_loop_close_final_banner() { return 0; }
+own-code|tests/unit/build-round-summary-test.sh|apply_scope_redaction() {
+own-code|tests/unit/design-v2-result-contract-test.sh|apply_scope_redaction() { cp "$1" "$2"; return 0; }
+own-code|tests/unit/design-v2-result-contract-test.sh|atomic_write() {
+own-code|tests/unit/file-mode-kept-on-replace-test.sh|_ta_emit() { :; }
+own-code|tests/unit/design-writes-as-it-goes-test.sh|apply_scope_redaction() { cp "$1" "$2"; return 0; }
+own-code|tests/unit/design-stray-file-recovery-test.sh|apply_scope_redaction() {
+own-code|tests/unit/design-stray-file-recovery-test.sh|atomic_write() {
+own-code|tests/unit/design-check-instead-test.sh|_route_loop_close_final_banner() { return 0; }
+own-code|tests/unit/core-output-stage-io-split-test.sh|template_stage_io_dests() {
+own-code|tests/unit/core-output-stage-io-split-test.sh|template_stage_io_tail_lines() { printf ''; }
+own-code|tests/unit/core-output-stage-io-split-test.sh|template_stage_io_redact() { printf ''; }
+own-code|tests/unit/core-output-stage-io-split-test.sh|template_stage_io_dests() { printf 'file\n'; }
+own-code|tests/unit/core-output-stage-io-split-test.sh|template_stage_io_tail_lines() { printf ''; }
+own-code|tests/unit/core-output-stage-io-split-test.sh|template_stage_io_redact() { printf ''; }
+own-code|tests/unit/design-acceptance-block-test.sh|apply_scope_redaction() { cp "$1" "$2"; return 0; }
+own-code|tests/unit/design-acceptance-block-test.sh|atomic_write()          { local dest="$1"; cat - > "$dest"; }
+own-code|tests/unit/core-pipeline-runner-stage-timestamps-test.sh|_runner_now_ms() { printf ''; }
+own-code|tests/integration/cycle-orchestrator-sigint-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/cycle-orchestrator-sigint-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/cycle-orchestrator-sigint-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/cycle-orchestrator-sigint-test.sh|_runner_signal_trap() { touch "$_RUNNER_M"; exit 1; }
+own-code|tests/integration/build-empty-diff-done-sentinel-test.sh|_route_loop_close_final_banner() { return 0; }
+own-code|tests/integration/build-empty-diff-done-sentinel-test.sh|apply_scope_redaction() { local in="$1" out="$2"; [[ -f "$in" ]] && cp "$in" "$out"; return 0; }
+own-code|tests/integration/cycle-member-unfinished-no-convergence-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/stage-errors-log-per-dispatch-test.sh|emit_event() { :; }
+own-code|tests/integration/stage-errors-log-per-dispatch-test.sh|verify_plugin_for_source() { return 0; }
+own-code|tests/integration/stage-errors-log-per-dispatch-test.sh|scan_plugin_outputs() { return 0; }
+own-code|tests/integration/cycle-abort-when-no-match-converges-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/cycle-abort-when-no-match-converges-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/llm-cli-fail-fast-test.sh|emit_event() { return 0; }
+own-code|tests/integration/build-test-cycle-fallthrough-to-review-test.sh|_find_plugin_for_stage() { echo "$REPO_ROOT/plugins/agent/build"; }
+own-code|tests/integration/build-test-cycle-fallthrough-to-review-test.sh|runner_read_stage_reason() { echo ""; }
+own-code|tests/integration/build-test-cycle-fallthrough-to-review-test.sh|zbuild_claim_acquire() { return 0; }
+own-code|tests/integration/acceptance-gate-test.sh|( cd "$repo" && source "$REPO_ROOT/plugins/tool/test/plugin.sh" \
+own-code|tests/integration/write-boundary-dispatch-test.sh|emit_event() { _DISP_EVENTS+=("$*"); }
+own-code|tests/integration/write-boundary-dispatch-test.sh|verify_plugin_for_source() { return 0; }
+own-code|tests/integration/write-boundary-dispatch-test.sh|scan_plugin_outputs() { return 0; }
+own-code|tests/integration/write-boundary-dispatch-test.sh|scan_plugin_outputs() { return 0; }
+own-code|tests/integration/write-boundary-dispatch-test.sh|scan_plugin_outputs() { return 0; }
+own-code|tests/integration/resume-loop-state-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/resume-loop-state-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/resume-loop-state-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/resume-loop-state-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/resume-loop-state-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/resume-loop-state-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/resume-loop-state-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/cycle-max-iter-export-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/simple-yaml-build-test-convergence-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/design-build-decisions-flow-test.sh|_route_loop_close_final_banner() { return 0; }
+own-code|tests/integration/design-build-decisions-flow-test.sh|apply_scope_redaction() { local in="$1" out="$2"; [[ -f "$in" ]] && cp "$in" "$out"; return 0; }
+own-code|tests/integration/from-stage-in-cycle-test.sh|resolve_template_file() { echo "$_FIXTURE_TPL"; }
+own-code|tests/integration/parallel-orchestrator-test.sh|parallel_dispatch_stage() {
+own-code|tests/integration/parallel-orchestrator-test.sh|parallel_dispatch_stage() {
+own-code|tests/integration/parallel-orchestrator-test.sh|parallel_dispatch_stage() {
+own-code|tests/integration/parallel-orchestrator-test.sh|parallel_dispatch_stage() {
+own-code|tests/integration/parallel-orchestrator-test.sh|parallel_dispatch_stage() {
+own-code|tests/integration/parallel-orchestrator-test.sh|parallel_member_complete_hook() {
+own-code|tests/integration/core-pipeline-cycle-blocked-integration-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/review-lenses-output-test.sh|parallel_dispatch_stage() {
+own-code|tests/integration/review-lenses-output-test.sh|parallel_member_complete_hook() {
+own-code|tests/integration/cycle-predicate-event-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/cycle-predicate-event-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/cycle-predicate-event-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/cycle-parallel-member-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/cycle-parallel-member-test.sh|parallel_dispatch_stage() {
+own-code|tests/integration/template-constructs-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/template-constructs-test.sh|parallel_dispatch_stage() {
+own-code|tests/integration/state-corruption-failclosed-b-test.sh|zbuild_has_flock() { return 1; }
+own-code|tests/integration/state-corruption-failclosed-b-test.sh|zbuild_has_flock() { command -v flock >/dev/null 2>&1; }
+own-code|tests/integration/cycle-multi-exit-when-e2e-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/cycle-multi-exit-when-e2e-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/cycle-multi-exit-when-e2e-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/cycle-multi-exit-when-e2e-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/cycle-multi-exit-when-e2e-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/artifacts-write-ownership-test.sh|emit_event() { :; }
+own-code|tests/integration/artifacts-write-ownership-test.sh|verify_plugin_for_source() { return 0; }
+own-code|tests/integration/artifacts-write-ownership-test.sh|scan_plugin_outputs() { return 0; }
+own-code|tests/integration/cleanup-release-test.sh|resolve_stage_plugin() { echo "$_spec1_plugin"; }
+own-code|tests/integration/cleanup-release-test.sh|resolve_stage_plugin() { echo "$_spec2_plugin"; }
+own-code|tests/integration/cleanup-release-test.sh|resolve_stage_plugin() { echo "$_spec4_plugin"; }
+own-code|tests/integration/cleanup-release-test.sh|resolve_stage_plugin() { echo "$_spec5_plugin"; }
+own-code|tests/integration/cleanup-release-test.sh|resolve_stage_plugin() { echo "$_spec6_plugin"; }
+own-code|tests/integration/cycle-no-committed-changes-fail-fast-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/cycle-no-committed-changes-fail-fast-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/stop-run-on-fail-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/stop-run-on-fail-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/cycle-orchestrator-nested-cycle-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/cycle-blocked-real-artifact-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/cycle-member-ends-round-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/full-pipeline-cycle-seq-3level-test.sh|resolve_template_file() { echo "$_FIXTURE_TPL"; }
+own-code|tests/integration/cycle-map-member-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/cycle-map-member-test.sh|map_group_run() {
+own-code|tests/integration/zbuild-clean-purge-not-in-run-test.sh|resolve_stage_plugin() { echo "$_spec4_plugin"; }
+own-code|tests/integration/zbuild-clean-purge-not-in-run-test.sh|resolve_stage_plugin() { echo "$_spec6_plugin"; }
+own-code|tests/integration/write-boundary-ownership-test.sh|emit_event() { _EV+=("$*"); }
+own-code|tests/integration/write-boundary-ownership-test.sh|verify_plugin_for_source() { return 0; }
+own-code|tests/integration/write-boundary-ownership-test.sh|scan_plugin_outputs() { return 0; }
+own-code|tests/integration/cycle-stage-seq-labels-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/test-plugin-tmpdir-cleanup-test.sh|emit_event() { :; }
+own-code|tests/integration/cycle-inner-iter-resets-per-outer-iter-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/cycle-exit-when-success-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/build-test-cycle-targeted-rerun-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/stage-scratch-dispatch-test.sh|emit_event() { :; }
+own-code|tests/integration/stage-scratch-dispatch-test.sh|verify_plugin_for_source() { return 0; }
+own-code|tests/integration/stage-scratch-dispatch-test.sh|scan_plugin_outputs() { return 0; }
+own-code|tests/integration/cycle-member-dispatch-events-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/cycle-member-dispatch-events-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/cycle-member-dispatch-events-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/cycle-nested-outer-converges-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/orch-timeout-applies-test.sh|resolve_plugin_for_role() { printf '%s\n' "$_SPEC1_PLUGIN_DIR"; return 0; }
+own-code|tests/integration/orch-timeout-applies-test.sh|orch_collect() {
+own-code|tests/integration/orch-timeout-applies-test.sh|orch_spawn()    { return 0; }
+own-code|tests/integration/orch-timeout-applies-test.sh|orch_dispatch() { printf 'slot-%s\n' "$$"; return 0; }
+own-code|tests/integration/orch-timeout-applies-test.sh|orch_shutdown() { return 0; }
+own-code|tests/integration/orch-timeout-applies-test.sh|orch_collect() {
+own-code|tests/integration/test-checks-own-run-test.sh|acceptance_gate_run() { stage_result_write "$ZBUILD_ARTIFACT_DIR/acceptance-gate-result.json" fail $'line one\nline two'; }
+own-code|tests/integration/runner-cycle-on-max-halt-test.sh|_find_plugin_for_stage() { echo "$REPO_ROOT/plugins/agent/build"; }
+own-code|tests/integration/runner-cycle-on-max-halt-test.sh|runner_read_stage_verdict() { echo "pass"; }
+own-code|tests/integration/runner-cycle-on-max-halt-test.sh|zbuild_claim_acquire() { return 0; }
+own-code|tests/integration/cycle-velocity-plateau-early-exit-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/build-commit-msg-multi-inner-iter-test.sh|_route_loop_close_final_banner() { return 0; }
+own-code|tests/integration/build-commit-msg-multi-inner-iter-test.sh|apply_scope_redaction() {
+own-code|tests/integration/map-review-lenses-dispatch-test.sh|orch_spawn()    { mkdir -p "${TMPDIR:-/tmp}/zbuild-map-pool-$1/results" "${TMPDIR:-/tmp}/zbuild-map-pool-$1/pids"; return 0; }
+own-code|tests/integration/map-review-lenses-dispatch-test.sh|orch_dispatch() {
+own-code|tests/integration/map-review-lenses-dispatch-test.sh|orch_collect()  { return 0; }
+own-code|tests/integration/map-review-lenses-dispatch-test.sh|orch_shutdown() { rm -rf "${TMPDIR:-/tmp}/zbuild-map-pool-$1" 2>/dev/null || true; return 0; }
+own-code|tests/integration/map-review-lenses-dispatch-test.sh|resolve_plugin_for_role() { echo "$PLUGINS_ROOT/agent/review-lens"; }
+own-code|tests/integration/cycle-seq-deep-nesting-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/cycle-iter-visual-spacing-test.sh|cycle_iter_begin_hook() {
+own-code|tests/integration/cycle-iter-visual-spacing-test.sh|cycle_iter_complete_hook() {
+own-code|tests/integration/cycle-iter-visual-spacing-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/test-author-out-of-tries-goes-on-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/llm-agent-renderer-interop-test.sh|emit_event() { return 0; }
+own-code|tests/integration/stage-io-gh-comment-ansi-strip-test.sh|template_stage_io_dests()      { printf 'file\nstdout\ngh_comment\n'; }
+own-code|tests/integration/stage-io-gh-comment-ansi-strip-test.sh|template_stage_io_tail_lines() { printf ''; }
+own-code|tests/integration/stage-io-gh-comment-ansi-strip-test.sh|template_stage_io_redact()     { printf 'false'; }
+own-code|tests/integration/teardown-pgroup-kill-test.sh|emit_event() { :; }
+own-code|tests/integration/cycle-orchestrator-abort-when-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/core-pipeline-cycle-orchestrator-test.sh|cycle_dispatch_stage() {
+own-code|tests/integration/core-pipeline-cycle-orchestrator-test.sh|cycle_iter_begin_hook() {
+own-code|tests/integration/core-pipeline-cycle-orchestrator-test.sh|cycle_iter_complete_hook() {
+own-code|tests/integration/core-pipeline-cycle-orchestrator-test.sh|cycle_exit_hook() {
+own-code|tests/integration/write-boundary-revert-test.sh|emit_event() { _EV+=("$*"); }
+own-code|tests/integration/write-boundary-revert-test.sh|verify_plugin_for_source() { return 0; }
+own-code|tests/integration/write-boundary-revert-test.sh|scan_plugin_outputs() { return 0; }
+own-code|tests/integration/acceptance-gate-quiet-test.sh|template_stage_io_dests() {
+own-code|tests/integration/acceptance-gate-quiet-test.sh|template_stage_io_dests() {
+own-code|tests/integration/build-test-cycle-multi-iter-test.sh|_route_loop_close_final_banner() { return 0; }
+own-code|tests/integration/build-test-cycle-multi-iter-test.sh|apply_scope_redaction() {
+own-code|tests/lib/cycle-stall-break-fixture.sh|cycle_dispatch_stage() {
+own-code|tests/lib/cycle-report-stub.sh|cycle_dispatch_stage() {
+own-code|tests/lib/nested-loop-rounds-fixture.sh|cycle_dispatch_stage() {
+own-code|tests/e2e/parity-local-vs-ci-test.sh|_sha256() {
+own-code|plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh|_ccgl_read_holder() { printf 'run "x" \\ tab\there\x01bell'; }
+own-code|plugins/agent/validate/tests/validate-deploy-target-unit-test.sh|emit_event() { return 0; }
+own-code|plugins/agent/validate/tests/validate-deploy-target-unit-test.sh|health_check_run() { printf '%s\n' "${ZBUILD_HEALTH_CHECK_URL:-<none>}" >> "$_PROBES"; printf 'HTTP/1.1 200 OK\n'; return 0; }
+own-code|plugins/agent/validate/tests/validate-test.sh|emit_event() { return 0; }
+own-code|plugins/agent/validate/tests/validate-test.sh|apply_scope_redaction() {
+own-code|plugins/agent/validate/tests/validate-test.sh|health_check_run() {
+own-code|plugins/agent/validate/tests/validate-close-unit-test.sh|emit_event() { return 0; }
+own-code|plugins/agent/validate/tests/validate-close-unit-test.sh|health_check_run() { printf 'x\n' >> "$_HC_CALLS_F"; printf '%s\n' "$_MOCK_HC_OUT"; return "$_MOCK_HC_RC"; }
+own-code|plugins/agent/issue-check/tests/issue-check-test.sh|resolve_tier() { printf 'T2'; }
+own-code|plugins/agent/deploy/tests/deploy-release-interface-test.sh|emit_event() { printf '%s\n' "$*" >> "$_r6ev"; }
+own-code|plugins/agent/deploy/tests/deploy-release-interface-test.sh|emit_event() { printf '%s\n' "$*" >> "$_r7bev"; }
+own-code|plugins/agent/deploy/tests/deploy-test-lib.sh|emit_event() { return 0; }
+own-code|plugins/agent/deploy/tests/deploy-test-lib.sh|apply_scope_redaction() {
+own-code|plugins/agent/intake/tests/intake-result-test.sh|template_stage_router_timeout() { printf '%s\n' "$_s14_tpl_val"; }
+own-code|plugins/agent/intake/tests/intake-result-test.sh|atomic_write() {
+own-code|plugins/agent/intake/tests/intake-result-test.sh|atomic_write() {
+own-code|plugins/agent/build/tests/build-step-handoff-test.sh|apply_scope_redaction() { cp "$1" "$2"; }
+own-code|plugins/agent/build/tests/build-step-handoff-test.sh|_route_loop_close_final_banner() { return 0; }
+own-code|plugins/agent/build/tests/build-test-is-wrong-run-test.sh|apply_scope_redaction() { cp "$1" "$2"; emit_event "redaction.applied" "input=$1" "output=$2" \
+own-code|plugins/agent/build/tests/build-step-specs-test.sh|apply_scope_redaction() { cp "$1" "$2"; }
+own-code|plugins/agent/build/tests/build-step-specs-test.sh|_route_loop_close_final_banner() { return 0; }
+own-code|plugins/agent/build/tests/build-step-parts-test.sh|apply_scope_redaction() { cp "$1" "$2"; return 0; }
+own-code|plugins/agent/build/tests/build-step-parts-test.sh|apply_scope_redaction() { cp "$1" "$2"; }
+own-code|plugins/agent/build/tests/build-step-parts-test.sh|_route_loop_close_final_banner() { return 0; }
+own-code|plugins/agent/build/tests/build-step-answers-test.sh|apply_scope_redaction() { cp "$1" "$2"; }
+own-code|plugins/agent/build/tests/build-step-answers-test.sh|_route_loop_close_final_banner() { return 0; }
+own-code|plugins/agent/build/tests/build-test.sh|apply_scope_redaction() {
+own-code|plugins/agent/build/tests/build-step-stands-test.sh|apply_scope_redaction() { cp "$1" "$2"; }
+own-code|plugins/agent/build/tests/build-step-stands-test.sh|_route_loop_close_final_banner() { return 0; }
+own-code|plugins/agent/review-lens/tests/review-lens-v2-budget-test.sh|atomic_write() { printf '%s\n' "$1" >> "$_aw_log"; _orig_atomic_write "$@"; }
+own-code|plugins/agent/review-lens/tests/review-lens-v2-budget-test.sh|template_stage_router_max_turns() { printf '99'; return 0; }
+own-code|plugins/agent/review-lens/tests/review-lens-v2-budget-test.sh|_route_resolve_timeout() { printf '300'; }
+own-code|plugins/agent/review-lens/tests/review-lens-v2-result-test.sh|_route_resolve_max_turns() { printf '12'; }
+own-code|plugins/tool/test/tests/test-test.sh|template_stage_io_dests() {
+own-code|plugins/tool/test/tests/test-test.sh|template_stage_io_tail_lines() { printf '5'; }
+own-code|plugins/tool/test/tests/test-test.sh|template_stage_io_redact() { printf ''; }
+own-code|plugins/tool/teardown/tests/teardown-schema-test.sh|resolve_stage_plugin() { echo "$_spec1_plugin"; }
+own-code|plugins/tool/teardown/tests/teardown-schema-test.sh|resolve_stage_plugin() {
+own-code|plugins/tool/teardown/tests/teardown-schema-test.sh|resolve_stage_plugin() {
+own-code|plugins/tool/teardown/tests/teardown-schema-test.sh|resolve_stage_plugin() { echo "$_spec5_plugin"; }
+own-code|plugins/tool/health-check/tests/health-check-test.sh|emit_event() { return 0; }

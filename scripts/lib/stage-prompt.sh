@@ -142,10 +142,10 @@ _sp_repo_intent_and_rules() {
     printf '\n### Rules\n'
     rules="$(load_repo_rules "$repo_root" 2>/dev/null | _sp_strip_comments)"
     if [[ -n "${rules//[[:space:]]/}" ]]; then
-        printf 'These are this repository'\''s rules (.zbuild/prompts/rules.md). Work that\nbreaks one is wrong, whoever wrote it.\n\n%s\n' "$(printf '%s\n' "$rules" | _sp_demote)"
+        printf 'These are this repository'\''s rules, from its .zbuild/rules.md. Work that\nbreaks one is wrong, whoever wrote it.\n\n%s\n' "$(printf '%s\n' "$rules" | _sp_demote)"
     else
         rules="$(_sp_strip_comments 2>/dev/null < "$_ZB_SP_DEFAULT_RULES" || true)"
-        printf 'This repository has no .zbuild/prompts/rules.md, so these are zBuild'\''s\ndefault rules. Work that breaks one is wrong, whoever wrote it.\n\n%s\n' "$(printf '%s\n' "$rules" | _sp_demote)"
+        printf 'This repository has no .zbuild/rules.md, so these are zBuild'\''s default\nrules. Work that breaks one is wrong, whoever wrote it.\n\n%s\n' "$(printf '%s\n' "$rules" | _sp_demote)"
     fi
 }
 

@@ -16,6 +16,13 @@
 #               something took (#2525: on #1805 run 43093018140 a busy machine
 #               turned a 15 s bound into 16 s). Check what shows the thing
 #               happened — an outcome, an event, a marker — not how long it took.
+#   own-code    (#2630) a definition of a function our own code defines — under
+#               core/, scripts/, or plugins/ outside a plugin's tests/ — which
+#               replaces it with a fake: the test then tests the fake. An
+#               outside service is faked at our own wrapper around it, listed in
+#               config/test-fake-wrappers.txt (the model call, GitHub); those
+#               may be redefined. A definition in a heredoc (a fake plugin
+#               written to disk) is not one.
 #   sleep-kill  a `sleep` followed, within three commands, by a `kill`: a
 #               signal timed by a clock. Wait for a marker the process writes
 #               at the point under test, with a timeout, then signal. A poll
@@ -60,7 +67,19 @@ marks="$(/usr/bin/grep -HnE '#[[:space:]]*determinism-ok:' "${files[@]}" 2>/dev/
 mocks="$(/usr/bin/grep -HoE "mock_(gh|claude|curl|wget)\b|mock_binary[[:space:]]+[\"']?(gh|claude|curl|wget)[\"']?([[:space:]]|$)|install_envelope_mock_claude|>[[:space:]]*[\"']?[^[:space:]\"']*/(gh|claude|curl|wget)[\"']?([[:space:]]|$)" \
     "${files[@]}" 2>/dev/null || true)"
 
-# One stream into awk: the marks (M), the mocks (K), then the code (C).
+# #2630: the functions our own code defines, and the wrappers around outside
+# services a test may fake. One grep over the production files.
+prod=()
+while IFS= read -r -d '' f; do prod+=("${f#./}"); done < <(
+    { for d in core scripts plugins; do [[ -d "$d" ]] && find "./$d" -name '*.sh' -not -path '*/tests/*' -not -path '*/legacy-DoNotUse/*' -print0; done; } 2>/dev/null || true)
+own=""
+(( ${#prod[@]} > 0 )) && own="$(/usr/bin/grep -hoE '^[[:space:]]*(function[[:space:]]+)?[A-Za-z_][A-Za-z0-9_:.-]*[[:space:]]*\(\)' "${prod[@]}" 2>/dev/null \
+    | sed -E 's/^[[:space:]]*(function[[:space:]]+)?//; s/[[:space:]]*\(\)$//' | sort -u || true)"
+allow=""
+[[ -f "$ROOT/config/test-fake-wrappers.txt" ]] && allow="$(/usr/bin/grep -vE '^[[:space:]]*(#|$)' "$ROOT/config/test-fake-wrappers.txt" || true)"
+
+# One stream into awk: the marks (M), the mocks (K), our functions (F), the
+# allowed wrappers (A), then the code (C).
 findings="$(awk '
 BEGIN { P = "(^|[;&|(`!{]|[$][(]|(then|do|else|command|exec|if|while|until|time|xargs|env)[ \t])[ \t]*" }
 function at(c, w) { return match(c, P w "([ \t;|&)]|$)") }
@@ -71,6 +90,8 @@ tag == "M" {
     reason = r; sub(/.*determinism-ok:[ \t]*/, "", reason)
     mark[f ":" l] = (reason ~ /[^ \t]/) ? "ok" : "bare"; next
 }
+tag == "F" { ownf[$0] = 1; next }
+tag == "A" { allowf[$0] = 1; next }
 tag == "K" {
     f = $0; sub(/:.*/, "", f); t = substr($0, length(f) + 2)
     if (t ~ /install_envelope_mock_claude/) { mocked[f, "claude"] = 1; next }
@@ -88,6 +109,18 @@ tag == "K" {
         abs = (s ~ /^\//); cmd = s; sub(/.*\//, "", cmd); sub(/[^a-z].*/, "", cmd)
         if (abs) bad(f, l, "remote|calls " cmd " by its path, past any mock")
         else if (!mocked[f, cmd]) bad(f, l, "remote|calls " cmd " with no mock in the file")
+    }
+    if (mark[f ":" l] != "ok") {
+        d = c
+        while (match(d, /(^|[;&|(!{ \t])(function[ \t]+)?[A-Za-z_][A-Za-z0-9_:.-]*[ \t]*[(][)]/)) {
+            n = substr(d, RSTART, RLENGTH); d = substr(d, RSTART + RLENGTH)
+            sub(/^[;&|(!{ \t]/, "", n); sub(/^function[ \t]+/, "", n); sub(/[ \t]*[(][)]$/, "", n)
+            if (ownf[n] && !allowf[n]) { bad(f, l, "own-code|replaces " n ", which our own code defines, with a fake"); break }
+        }
+        if (match(c, /(^|[;&|(!{ \t])function[ \t]+[A-Za-z_][A-Za-z0-9_:.-]*[ \t]*[{]/)) {
+            n = substr(c, RSTART, RLENGTH); sub(/^.*function[ \t]+/, "", n); sub(/[ \t]*[{]$/, "", n)
+            if (ownf[n] && !allowf[n]) bad(f, l, "own-code|replaces " n ", which our own code defines, with a fake")
+        }
     }
     if (mark[f ":" l] != "ok" && c ~ /([$][{]?SECONDS([^A-Za-z0-9_]|$)|[(][(]([^)]*[^A-Za-z0-9_)])?SECONDS([^A-Za-z0-9_]|$)|date([ \t]+-[A-Za-z]+)*[ \t]+["'"'"']?[+]%s)/) bad(f, l, "clock|reads the clock to time something")
     loop = (c ~ /(^|[;&| \t])done([ \t;|&)]|$)/)
@@ -109,6 +142,8 @@ tag == "K" {
 }' < <(
     [[ -n "$marks" ]] && sed 's/^/M /' <<< "$marks"
     [[ -n "$mocks" ]] && sed 's/^/K /' <<< "$mocks"
+    [[ -n "$own" ]] && sed 's/^/F /' <<< "$own"
+    [[ -n "$allow" ]] && sed 's/^/A /' <<< "$allow"
     zb_shell_code_named "${files[@]}" | sed 's/^/C /'))"
 
 # Each finding is keyed by its kind, file and line text, so the baseline does

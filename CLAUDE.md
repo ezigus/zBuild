@@ -17,6 +17,10 @@ zBuild's architecture and migration plan live in:
 
 ## Behavioral rules
 
+The repository's rules, which every zbuild stage is also given (one source, `.zbuild/rules.md`):
+
+@.zbuild/rules.md
+
 - Do what has been asked; nothing more, nothing less.
 - ALWAYS read a file before editing it.
 - NEVER create files unless necessary for the task.

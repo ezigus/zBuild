@@ -1,0 +1,10 @@
+# Our own wrappers around outside services (ADR-012, amended by #2630). A test
+# may replace one of these with a fake: it is where the outside service — a
+# model, GitHub — meets our code. Any other function our code defines is never
+# faked in a test (scripts/lib/lint-test-determinism.sh, kind own-code).
+# The model call (core/router/route.sh).
+route_to_model
+route_to_model_loop
+route_to_model_cli
+# GitHub, as the run-status comment reaches it (scripts/lib/run-status-comment.sh).
+rsc_gh

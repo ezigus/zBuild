@@ -130,7 +130,8 @@ ${_RL_UNCLEAR_RULES:-}
 
 A problem you suspect but cannot confirm is not left out: write it as a
 SUSPICION, with what would confirm it, and judge the rest of the change. It
-reaches the stage that can answer it as a question, and sends nothing back:
+sends the change round once, to the stage its fix: names, which runs what would
+confirm it and answers whether it holds:
   SUSPICION
   quote: <file> | <the line it is about>
   suspicion: <what you suspect can go wrong>

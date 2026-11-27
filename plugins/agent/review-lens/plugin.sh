@@ -121,6 +121,17 @@ _review_lens_run_inner() {
     # Redaction of the assembled prompt is the router's, by construction (ADR-043).
     local lens="$1" evidence="$3" out="$4"
     local artifact_dir="${5:-$(dirname "$out")}"
+    # #2630 (ADR-040): a suspicion sends the change round once. What this lens
+    # routed earlier in this run (written after the run started) says which it
+    # sent already: read by the shell, first — a try clears its outputs by topic.
+    _RL_PRIOR_SENT=""
+    local _rl_one _rl_pf _rl_mark="${ZBUILD_RUN_START_MARKER:-${artifact_dir%/*}/runtime/run-start}"
+    if [[ -e "$_rl_mark" ]]; then
+        for _rl_pf in "${out%.json}-code-result.json" "${out%.json}-test-result.json" "${out%.json}-design-result.json"; do
+            [[ -s "$_rl_pf" && ! "$_rl_mark" -nt "$_rl_pf" ]] || continue
+            _rl_one=""; IFS= read -r -d '' _rl_one < "$_rl_pf" || true; _RL_PRIOR_SENT+="$_rl_one"
+        done
+    fi
 
     if [[ -z "$lens" || -z "$out" ]]; then
         error "_review_lens_run_inner: requires <lens> <scope_manifest> <evidence> <out>"
@@ -398,12 +409,13 @@ _review_lens_run_inner() {
     # #2574 (ADR-068 §5): each routed finding's id, from the lens's own code.
     local _rl_code="" _rl_reg="{}"; _rl_finding_code_v _rl_code "$lens"
     zb_findings_reg_v _rl_reg "$artifact_dir" "$_rl_code" || _rl_code=""
+    local _rl_sent="${_RL_PRIOR_SENT:-}"
     # #2599 (ADR-071 §1): a finding about a file in the test folders is the
     # tests' to fix, whatever fix word the lens gave it — only test-author may
     # change those files (#2532 run 45231040380: three went to build, which
     # answered "not mine", round after round).
     local _rl_tre="[]"; zb_test_path_regexes_json_v _rl_tre "${ZBUILD_REPO_ROOT:-$PWD}"
-    _rl_route="$(printf '%s' "$normalized" | jq -r --arg on " $_rl_fail_on " --arg n "$lens" --argjson c "${_ZBUILD_CONTRACT_V3:-3}" --argjson q "${_RL_UQ_NEWQ:-[]}" --argjson tre "$_rl_tre" \
+    _rl_route="$(printf '%s' "$normalized" | jq -r --arg on " $_rl_fail_on " --arg n "$lens" --arg prior "$_rl_sent" --argjson c "${_ZBUILD_CONTRACT_V3:-3}" --argjson q "${_RL_UQ_NEWQ:-[]}" --argjson tre "$_rl_tre" \
         --arg reg "$_rl_reg" --arg code "$_rl_code" "$_ZB_FINDING_IDS_JQ"'
         # #2598: a finding that could not be checked always blocks: a lens never
         # passes on what it could not check.
@@ -411,8 +423,12 @@ _review_lens_run_inner() {
         # #2506 (ADR-072 §3): shown with its quote, never a line — lines move.
         def line: (if (.unchecked // "") != "" then "this finding could not be checked (\(.unchecked | gsub("[\r\n]+"; " "))): " else "" end) + "\($n) lens, \(.severity): \(.message) (\(.file)\(if (.quote | tostring) != "" then ": \"\(.quote | tostring | gsub("[\r\n]+"; " "))\"" else "" end); happens when: \(.trigger // "" | tostring | gsub("[\r\n]+"; " ")); fix: \(.fix); ACCEPTED IF: \(.accepted_if // "" | tostring | gsub("[\r\n]+"; " ")))"
             + (if ((.also_at // []) | length) > 0 then "; the same kind of problem also at: " + ([.also_at[] | gsub("[\r\n]+"; " ")] | join("; ")) else "" end);
-        # #2584: a suspicion reaches its stage as a question, blocking nothing.
-        def asked: {text: "The \($n) lens suspects, and could not confirm: \(.suspicion | gsub("[\r\n]+"; " ")) (\(.file)\(if .quote != "" then ": \"\(.quote | gsub("[\r\n]+"; " "))\"" else "" end)); what would confirm it: \(.confirm_by | gsub("[\r\n]+"; " ")). A question: say whether it holds, and why.", blocking: false, area: .file};
+        # #2584, #2630 (ADR-040): a suspicion reaches the stage its fix word names,
+        # which can run commands, to run what would confirm it. The first time it
+        # blocks — the change goes round once; sent already in this run, it
+        # blocks nothing, and a person sees it.
+        def asked: ("The \($n) lens suspects, and could not confirm: \(.suspicion | gsub("[\r\n]+"; " ")) (\(.file)\(if .quote != "" then ": \"\(.quote | gsub("[\r\n]+"; " "))\"" else "" end)); what would confirm it: \(.confirm_by | gsub("[\r\n]+"; " ")). Run what would confirm it: answer done when it holds and you fixed it, or wrong with what you ran and what it showed.") as $t
+            | {text: $t, blocking: ($prior | contains($t | tojson | .[1:-1]) | not), area: .file};
         # #2574 (R3): its area — the file it is about — is the item it is kept under.
         def routed: {text: line, blocking: at_fail_on, area: (.file // "unknown" | tostring)};
         # One routed result (#2433): fail with a numbered finding per item when
@@ -430,7 +446,7 @@ _review_lens_run_inner() {
         | (.suspected // []) as $susp
         # The score and how many findings: read here, by no jq of their own (ADR-065 §5).
         | "score\t\(.score // 0)", "count\t\(.findings | length)",
-          "outcome\t" + (if ($issue | length) > 0 then "misconfigured" elif ([$sent[] | select(at_fail_on)] | length) > 0 then "fail" else "pass" end),
+          "outcome\t" + (if ($issue | length) > 0 then "misconfigured" elif ([$sent[] | select(at_fail_on)] | length) > 0 or ([$susp[] | select(.fix | IN("code", "test", "design")) | asked | select(.blocking)] | length) > 0 then "fail" else "pass" end),
           "issue\t" + (($issue[0].message // "") | tostring | gsub("[\r\n\t]+"; " ")),
           # #2569 (ADR-071 §1): the fix: word of a finding is its topic,
           # <fix>-findings, and names its output, lens-<id>-<fix>-result.json:

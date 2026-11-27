@@ -49,15 +49,16 @@ load_prompt_override() {
 
 # load_repo_rules [repo_root]
 #   The target repo's rules for every stage that declares `prompt.repo_rules`
-#   (scripts/lib/stage-prompt.sh): <repo_root>/.zbuild/prompts/rules.md, under the
-#   same containment and size rules as an override. Empty when absent.
+#   (scripts/lib/stage-prompt.sh): <repo_root>/.zbuild/rules.md, beside its
+#   vision.md (#2630, ADR-067 §8), under the same containment and size rules as
+#   an override. Empty when absent.
 load_repo_rules() {
     local repo_root="${1:-${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}}"
-    _po_load_repo_file ".zbuild/prompts/rules.md" "$repo_root"
+    _po_load_repo_file ".zbuild/rules.md" "$repo_root"
 }
 
 # _po_load_repo_file <rel> <repo_root> — the one reader for every file under a
-# target repo's .zbuild/prompts/: string floor, symlink and hardlink
+# target repo's .zbuild/ (its prompts/ and, #2630, its rules.md): string floor, symlink and hardlink
 # containment, size cap. Always rc 0; empty on any refusal.
 _po_load_repo_file() {
     local rel="$1" repo_root="$2"
@@ -69,14 +70,14 @@ _po_load_repo_file() {
     [[ -f "$override_file" && -s "$override_file" ]] || return 0
 
     # Symlink containment: the override's REAL path must sit strictly under the
-    # target repo's real .zbuild/prompts/. Bare `realpath` only (no GNU-only
+    # target repo's real .zbuild/. Bare `realpath` only (no GNU-only
     # -m/-e flags) so BSD and GNU agree. Canonicalizing both sides catches a
     # design-overrides.md symlinked out (→ /etc/passwd) AND a prompts/ dir that
     # is itself a symlink out — neither is caught by the string floor above.
     local real_root real_file expected_dir
     real_root="$(realpath "$repo_root" 2>/dev/null)" || return 0
     real_file="$(realpath "$override_file" 2>/dev/null)" || return 0
-    expected_dir="$real_root/.zbuild/prompts"
+    expected_dir="$real_root/.zbuild"
     case "$real_file" in
         "$expected_dir"/*) : ;;
         *) return 0 ;;
