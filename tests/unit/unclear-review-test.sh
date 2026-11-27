@@ -99,8 +99,11 @@ declare -a IN=(); zb_unclear_results_in_v IN "${R3%/*}"
 assert_eq "[UR3] a result with only retired questions is found" "1" "${#IN[@]}"
 _m=""; zb_unclear_markdown_v _m "" "$R3"
 assert_contains "[UR3] the reports say what was retired" "$_m" "**Questions intake retired**"
-assert_contains "[UR3] ...answered, with its WHY and QUOTE" "$_m" '- RQ-1: answered — the Terms say — "the comment ADR-064 already posts"'
-assert_contains "[UR3] ...not needed, with its WHY" "$_m" '- RQ-2: not needed — R2 is "gone"'
+# _shown <markdown> — what GitHub shows: CommonMark's backslash escapes read
+# as the character, the zero-width spaces that stop a mention or a link gone.
+_shown() { local s="${1//$'\xe2\x80\x8b'/}"; perl -pe 's/\\([!-\/:-@\[-`{-~])/$1/g' <<< "$s"; }
+assert_contains "[UR3] ...answered, with its WHY and QUOTE" "$(_shown "$_m")" '- RQ-1: answered — the Terms say — "the comment ADR-064 already posts"'
+assert_contains "[UR3] ...not needed, with its WHY" "$(_shown "$_m")" '- RQ-2: not needed — R2 is "gone"'
 R3b="$TEST_TEMP_DIR/r3b/lens-result.json"; mkdir -p "${R3b%/*}"
 printf '{"data":{"unclear_dropped":[{"question":"q","quote":"","why":"w {x}","verdict":"not needed","id":"RQ-7","n":1}]}}\n' > "$R3b"
 BK=(); _has zb_unclear_dropped_lines_v && zb_unclear_dropped_lines_v BK "$R3b"
@@ -125,7 +128,7 @@ R5="$TEST_TEMP_DIR/r5/lens-result.json"; mkdir -p "${R5%/*}"
 _j5="[]"; zb_unclear_result_json_v _j5 EV
 stage_result_write "$R5" pass "judged" "$(jq -nc --argjson u "$_j5" '{unclear: $u}')"
 _m5=""; zb_unclear_markdown_v _m5 "" "$R5"
-assert_contains "fixture: the question is shown" "$_m5" "RQ-5"
+assert_contains "fixture: the question is shown" "$(_shown "$_m5")" "RQ-5"
 assert_not_contains "[UR5] no live @mention" "$_m5" "@octocat"
 assert_not_contains "[UR5] no live issue link" "$_m5" "#123"
 assert_contains "[UR5] backticks escaped" "$_m5" 'a \`code\`'
@@ -172,11 +175,11 @@ printf '{"data":{"unclear":["UNCLEAR RQ-82 | \\"notes\\" | a or b | ASSUMED: a"]
 touch "$P8/runtime/run-start"; touch -r "$P8/runtime/run-start" "$P8/artifacts/intake-result.json"
 jq -n --arg a "$P8/artifacts/intake-result.json" --arg b "$P8/artifacts/notes.json" '{inputs:{intake_result:$a, notes:$b}}' > "$P8/inputs.json"
 _p8=""; _p8="$(state_dir="$P8" ZBUILD_STAGE_INPUTS="$P8/inputs.json" _pr_open_questions)"
-assert_not_contains "[UR8] a result from before this run's start is not shown" "$_p8" "RQ-81"
-assert_not_contains "[UR8] a file that is no stage result is not read" "$_p8" "RQ-82"
+assert_not_contains "[UR8] a result from before this run's start is not shown" "$(_shown "$_p8")" "RQ-81"
+assert_not_contains "[UR8] a file that is no stage result is not read" "$(_shown "$_p8")" "RQ-82"
 touch "$P8/artifacts/intake-result.json"
 _p8="$(state_dir="$P8" ZBUILD_STAGE_INPUTS="$P8/inputs.json" _pr_open_questions)"
-assert_contains "[UR8] this run's result is shown" "$_p8" "RQ-81"
+assert_contains "[UR8] this run's result is shown" "$(_shown "$_p8")" "RQ-81"
 
 cleanup_test_env
 print_test_results

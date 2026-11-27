@@ -911,10 +911,9 @@ _stage_io_banner_use_color() {
 # is hot-ish and forks add up). Used by the banner padder to compute right-
 # alignment math against the *visible* length, not the ANSI-laden raw length.
 _stage_io_visible_len() {
-    local LC_ALL=C
-    local s="$1"
-    # Strip CSI: ESC [ <params> <final>; then bare ESC <char>.
-    s="$(printf '%s' "$s" | sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g; s/\x1b.//g')"
+    local LC_ALL=C s
+    # The terminal's escapes out (scripts/lib/md-text.sh, loaded with the event bus).
+    zb_ansi_strip_v s "$1"
     printf '%s' "${#s}"
 }
 

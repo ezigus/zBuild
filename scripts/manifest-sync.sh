@@ -26,6 +26,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # shellcheck source=lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
+# shellcheck source=lib/md-text.sh
+source "$REPO_ROOT/scripts/lib/md-text.sh"
 # shellcheck source=lib/gh-automation.sh
 source "$REPO_ROOT/scripts/lib/gh-automation.sh"
 
@@ -215,7 +217,7 @@ fi
 PR_BODY_FILE="${RUNNER_TEMP}/manifest-sync-pr-body.md"
 
 # Escape pipe characters and strip newlines in table cell content.
-_escape_cell() { printf '%s' "$1" | tr -d '\n\r' | sed 's/|/\\|/g'; }
+_escape_cell() { local c; zb_md_cell_v c "$1"; printf '%s' "$c"; }
 
 # Build PR body with actual drift details; placeholders replaced by workflow
 {

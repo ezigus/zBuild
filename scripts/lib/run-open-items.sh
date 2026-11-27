@@ -126,6 +126,17 @@ open_items_questions_v() {
     zb_unclear_markdown_v "$1" "$2/artifacts/design.md" ${_oiq_r[@]+"${_oiq_r[@]}"}
 }
 
+# open_items_questions_text <state_dir> — the questions section for a terminal
+# (the end-of-run banner): the model's words as they are, not escaped for
+# markdown. Nothing when there is none.
+open_items_questions_text() {
+    local -a _oqt_r=(); local _oqt
+    zb_unclear_results_in_v _oqt_r "$1/artifacts" "$1/runtime/run-start"
+    zb_unclear_text_v _oqt "$1/artifacts/design.md" ${_oqt_r[@]+"${_oqt_r[@]}"}
+    [[ -n "$_oqt" ]] && printf '%s\n' "$_oqt"
+    return 0
+}
+
 # open_items_markdown <state_dir> — the list, or nothing when no item is open.
 open_items_markdown() {
     local items; items="$(open_items_json "$1")"

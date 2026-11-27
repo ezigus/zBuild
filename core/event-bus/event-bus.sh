@@ -20,6 +20,8 @@ _ZBUILD_ROOT_FOR_EVENTS="$(cd "$_ZBUILD_EVENT_BUS_DIR/../.." && pwd)"
 source "$_ZBUILD_ROOT_FOR_EVENTS/scripts/lib/compat.sh"
 # shellcheck source=../../scripts/lib/json-text.sh
 source "$_ZBUILD_ROOT_FOR_EVENTS/scripts/lib/json-text.sh"
+# shellcheck source=../../scripts/lib/md-text.sh
+source "$_ZBUILD_ROOT_FOR_EVENTS/scripts/lib/md-text.sh"
 # The known-type set (#1717): engine config + every manifest's provides.events.
 # shellcheck source=known-types.sh
 source "$_ZBUILD_EVENT_BUS_DIR/known-types.sh"
@@ -77,20 +79,11 @@ _eb_known_type() {
 # LC_ALL=C so sed processes raw bytes without aborting on non-UTF-8 sequences (issue #830).
 # No ESC byte → nothing to strip, and no fork: this runs for every value of every
 # event, and a sed per call was the single largest exec site in a run (ADR-065).
-_eb_strip_ansi() {
-    [[ "$1" == *$'\x1b'* ]] || { printf '%s' "$1"; return 0; }
-    printf '%s' "$1" | LC_ALL=C sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g; s/\x1b.//g'
-}
+_eb_strip_ansi() { local _ebs; zb_ansi_strip_v _ebs "$1"; printf '%s' "$_ebs"; }
 
-# _eb_strip_ansi_v <var> <value>: the same, into <var>, with no subshell when
-# the value holds no ESC (#1806 — the envelope and every field took one each).
-_eb_strip_ansi_v() {
-    if [[ "$2" == *$'\x1b'* ]]; then
-        printf -v "$1" '%s' "$(_eb_strip_ansi "$2")"
-    else
-        printf -v "$1" '%s' "$2"
-    fi
-}
+# _eb_strip_ansi_v <var> <value>: the same, into <var>, by the shell
+# (scripts/lib/md-text.sh): no subshell and no sed, ESC or not.
+_eb_strip_ansi_v() { zb_ansi_strip_v "$1" "$2"; }
 
 # _eb_now_iso_v <var>: UTC, with milliseconds, from the shell's own clock (#1806).
 # No `date` process, and no reading of ZBUILD_PLATFORM: that variable carries the

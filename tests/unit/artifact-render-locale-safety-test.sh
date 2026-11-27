@@ -75,15 +75,10 @@ assert_eq "T3: inline escape under hostile caller LC_ALL → rc=0" \
 assert_eq "T3: block escape under hostile caller LC_ALL → rc=0" \
     "0" "$rc_h_block"
 
-# ─── T4: source-line guard — both sites carry LC_ALL=C prefix ──────────────
-TARGET="$REPO_ROOT/scripts/lib/artifact-render.sh"
-hits=$(grep -cE 'LC_ALL=C[[:space:]]+sed[[:space:]]+-E' "$TARGET" 2>/dev/null) || hits=0
-if [[ "$hits" -ge 2 ]]; then
-    assert_pass "T4: source carries LC_ALL=C on both escape helpers (hits=$hits)"
-else
-    assert_fail "T4: expected ≥2 LC_ALL=C sed sites in artifact-render.sh" \
-        "got: $hits"
-fi
+# ─── T4: no program to trip on a byte — the helpers run in the shell ───────
+# (md-text.sh; the old LC_ALL=C sed is gone, and with it the failure #830 hit.)
+_t4="$(PATH=/nonexistent; _artifact_md_escape_inline $'a\xff\e[31mb`c'; printf '|'; _artifact_md_escape_block $'x\xfe\e[0my'; printf '|'; _artifact_pick_fence '````')"
+assert_eq "T4: with no command on PATH, both helpers and the fence still work" $'a\xffb\\`c|x\xfey|`````' "$_t4"
 
 cleanup_test_env
 print_test_results
