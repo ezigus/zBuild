@@ -46,6 +46,8 @@
 #                or the takeover said: one taken by another run in between is
 #                refused, unmarked
 #   TR18 [change] a coordinator with no takeover hook refuses, saying so
+#   (review of #2631) the clock moves a second at every reading: no case holds
+#                only because two readings fell in the same second
 #   TR19 [change] a mark that cannot be made is said, and the takeover stands
 #   TR20 [change] (PR review) claiming again failing on the store is said as
 #                such, not as another run's claim
@@ -119,7 +121,19 @@ case "$args" in
 esac
 GH
 chmod +x "$F/bin/gh"
-export FAKE_DIR="$F" PATH="$F/bin:$PATH"
+# The clock (review of #2631): one second passes at every reading of now, so
+# no assertion can hold only because two readings fell in the same second
+# (ADR-012). A date to format (-d, -r) is real date's job.
+FAKE_REAL_DATE="$(command -v date)"; FAKE_GNU_DATE=0; "$FAKE_REAL_DATE" --version >/dev/null 2>&1 && FAKE_GNU_DATE=1
+printf '1800000000\n' > "$F/clock"
+cat > "$F/bin/date" <<'DT'
+#!/usr/bin/env bash
+for a in "$@"; do case "$a" in -d|-d*|--date*|-r|-j|-f) exec "$FAKE_REAL_DATE" "$@" ;; esac; done
+n=$(( $(cat "$FAKE_DIR/clock") + 1 )); printf '%s\n' "$n" > "$FAKE_DIR/clock"
+if [[ "$FAKE_GNU_DATE" == 1 ]]; then exec "$FAKE_REAL_DATE" -d "@$n" "$@"; else exec "$FAKE_REAL_DATE" -r "$n" "$@"; fi
+DT
+chmod +x "$F/bin/date"
+export FAKE_DIR="$F" FAKE_REAL_DATE FAKE_GNU_DATE PATH="$F/bin:$PATH"
 printf '%s' "$THEIRS" > "$F/holder"
 
 # The real coordinator (#2616): its labels in the local store, the label on
@@ -131,7 +145,9 @@ rm -rf "$CR/claim-coordinator/github-labels/tests"
 export ZBUILD_CLAIM_BACKEND=local-fs ZBUILD_CLAIM_STORE="$TEST_TEMP_DIR/store"
 export ZBUILD_PLUGINS_ROOT="$CR"
 
-_iso_ago() { local e=$(( $(date +%s) - $1 )); date -u -d "@$e" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$e" +%Y-%m-%dT%H:%M:%SZ; }  # determinism-ok: builds a test timestamp relative to now, measures nothing
+# A case's times are all from one reading of the clock, _T0 (set by _fresh).
+_iso_ago() { local e=$(( _T0 - $1 )); date -u -d "@$e" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$e" +%Y-%m-%dT%H:%M:%SZ; }  # determinism-ok: builds a test timestamp relative to the case's moment, measures nothing
+_gh_now() { local e=$(( _T0 - $1 )); LC_ALL=C date -u -d "@$e" '+%a, %d %b %Y %H:%M:%S GMT' 2>/dev/null || LC_ALL=C date -u -r "$e" '+%a, %d %b %Y %H:%M:%S GMT'; }  # determinism-ok: the fake's clock, a timestamp
 _note() {   # <created seconds ago> <by> [login] — another run's takeover note
     jq -cn --arg b "took over a stale claim from \`$THEIRS\` — by \`$2\`" --arg t "$(_iso_ago "$1")" --arg l "${3:-github-actions[bot]}" \
         '{id:50, user:{login:$l}, author_association:(if $l == "github-actions[bot]" then "" else "NONE" end), body:$b, created_at:$t, updated_at:$t}' >> "$F/notes"
@@ -140,7 +156,9 @@ _fresh() { rm -f "$F/notes" "$F/rel-rc" "$F/gh.log" "$F/deleted" "$F/label" "$F/
            chmod -R u+w "$ZBUILD_CLAIM_STORE" 2>/dev/null; rm -rf "$ZBUILD_CLAIM_STORE"; mkdir -p "$ZBUILD_CLAIM_STORE/9"
            printf 'zbuild:claimed\n' > "$ZBUILD_CLAIM_STORE/9/labels.txt"
            printf '<!-- zbuild-run-status run_id=old -->\n<!-- zbuild-holder: %s -->\n' "$THEIRS" > "$ZBUILD_CLAIM_STORE/9/run-status-comment.txt"
-           : > "$ZBUILD_EVENTS_JSONL"; _ZBUILD_CLAIM_ACQUIRED=""; unset _ZBUILD_CLAIM_RETRIED; }
+           : > "$ZBUILD_EVENTS_JSONL"; _ZBUILD_CLAIM_ACQUIRED=""; unset _ZBUILD_CLAIM_RETRIED
+           # The case's moment, read once; GitHub's clock is at it unless a case moves it.
+           _T0="$(date +%s)"; _gh_now 0 > "$F/gh-now"; }  # determinism-ok: the fake clock's one reading for the case, measures nothing
 # A release that fails: the store cannot be written.
 _release_fails() { chmod a-w "$ZBUILD_CLAIM_STORE/9"; }
 _acq() { _RC=0; zbuild_claim_acquire 9 "$STATE" > "$F/out" 2>&1 || _RC=$?; _OUT="$(cat "$F/out")"; chmod -R u+w "$ZBUILD_CLAIM_STORE" 2>/dev/null; }
@@ -255,7 +273,6 @@ _rn="$(awk '/zbuild_claim_acquire "\$\{_runner_issue:-\}"/{p=1} p{print} p&&/zbu
 assert_contains "[TR10] the runner says it after the claim" "$_rn" 'zbuild_claim_heartbeat_say "$_RUNNER_STATUS_COMMENT_PID"'
 
 print_test_section "TR13: now is GitHub's"
-_gh_now() { local e=$(( $(date +%s) - $1 )); LC_ALL=C date -u -d "@$e" '+%a, %d %b %Y %H:%M:%S GMT' 2>/dev/null || LC_ALL=C date -u -r "$e" '+%a, %d %b %Y %H:%M:%S GMT'; }  # determinism-ok: the fake's clock, a timestamp
 _fresh; _iso_ago 4000 > "$F/hb"; _gh_now 3940 > "$F/gh-now"
 _acq
 assert_eq "[TR13] stale by this machine's clock, 60 s old by GitHub's → refused" "1" "$_RC"
