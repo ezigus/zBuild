@@ -1,6 +1,6 @@
 # ADR-003: Models as Data
 
-**Status:** Accepted; amended 2026-11-09 (#2507: the provider turns zbuild's tool words into its own; a subagent runs on its call's model)
+**Status:** Accepted; amended 2026-11-27 (#2639: CI installs the latest CLI; each call names the CLI version that ran it); amended 2026-11-09 (#2507: the provider turns zbuild's tool words into its own; a subagent runs on its call's model)
 **Date:** 2026-05-24
 
 ## Context
@@ -232,7 +232,18 @@ Adding a provider is one module file plus a `models.json` entry.
 2. **anthropic:** `read-files` → `Read,Grep,Glob`; `edit-files` → `Edit,Write`; `run-commands` → `Bash`; `read-git` → `Bash`, allowed only `Bash(git diff *)`, `Bash(git log *)`, `Bash(git show *)` and `Bash(git status *)` (the call's hook refuses any other command); `web-search` → `WebSearch,WebFetch`; `subagents` → `Task`; `todo-list` → `TodoWrite`; always `--strict-mcp-config`. `mcp` is refused: no manifest names the servers a call may use yet.
 3. **A subagent runs on its call's model.** The call's hook (`core/router/tool-hook.sh`) refuses a subagent request that names a model, and tells the model to ask again without one.
 
+## Amendment 2026-11-27 (#2639) — the CLI is installed at its latest; each call names the version that ran it
+
+**Context.** Decision 3 says the family alias gives every run the latest model, but the CLI decides what the alias means, and CI installed it fixed at 2.1.183 (#1001, for a reproducible CI). There `sonnet` meant Sonnet 4.6, two Sonnet versions behind: #2534 run 45997137687 ran test-author on Sonnet 4.6 while a current CLI reads `sonnet` as Sonnet 5.5.
+
+**Decision.**
+
+1. **Every workflow installs the CLI without a version**, so decision 3 holds in CI as it does on a laptop.
+2. **What ran each call is in the run's own events**, in place of the pin's reproducibility: `model.outcome` names the model that answered (`model_used`, decision 4) and the CLI's version (`cli_version`), which the CLI's step stream states on its init line. The router reads it in the pass that already finds the call's envelope, so it costs no process. A call whose stream has no init line (a stub, an older CLI) records it empty.
+
 ## Enforced by
+
+- Amendment 2026-11-27 (#2639: the latest CLI; each call's CLI version) → `tests/unit/ci-claude-code-latest-test.sh` [#2639/SPEC-1] (no workflow fixes the version); `tests/unit/router-provider-modules-test.sh` [#2639/SPEC-1] (a call's and a loop call's `model.outcome` carry `cli_version` beside `model_used`; empty with no init line)
 
 - Amendment 2026-11-09 (#2507: tool words translated by the provider; a subagent on its call's model) → `tests/unit/call-tools-test.sh` C2 (each word's flags, `--strict-mcp-config`, an unknown word and `mcp` refused with the reason), C5 (an unsupported word refuses the run at start); `tests/unit/call-hook-test.sh` G3 (a subagent naming a model is refused)
 - Amendment 2026-09-26 (provider modules) → `tests/unit/router-provider-modules-test.sh` SPEC-1–SPEC-9; `tests/integration/router-loop-emits-model-events-test.sh`
