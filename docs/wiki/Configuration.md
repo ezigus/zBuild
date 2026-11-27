@@ -61,7 +61,7 @@ Some of zBuild's stages are AI agents that write files into your repository — 
 - Never call the network from a test; use the `fake_http` fixture.
 ```
 
-zbuild reads it from `.zbuild/rules.md`, beside `.zbuild/vision.md`, and every stage's prompt holds its whole text, naming the file it came from. If your repository has no `.zbuild/rules.md`, the run's status comment says so, and every stage gets zBuild's short default rule set instead (follow the repository's existing style and contributor docs, pass its own linters and tests, never write secrets). Your file replaces the defaults rather than adding to them, so copy any default you want to keep.
+zbuild reads it from `.zbuild/rules.md`, beside `.zbuild/vision.md`, and every stage's prompt holds its whole text, naming the file it came from. If your repository has no `.zbuild/rules.md`, or an empty one, the run's status comment says so, and every stage gets zBuild's short default rule set instead (follow the repository's existing style and contributor docs, pass its own linters and tests, never write secrets). Your file replaces the defaults rather than adding to them, so copy any default you want to keep.
 
 Every stage gets the rules, from the engine, as part of its From the repo block (ADR-067 §8).
 

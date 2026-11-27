@@ -105,7 +105,7 @@ On #1805 run 42556446368 every stage prompt was read against what its model then
 ## Amendment 2026-11-26 (#2630) — §8: the repository's rules are `.zbuild/rules.md`
 
 - **A repository's rules live in `.zbuild/rules.md`, beside `.zbuild/vision.md`** (`load_repo_rules`, `scripts/lib/prompt-overrides.sh`: exactly that file, never one linked or hard-linked out of the repository; a stage's guidance stays under `.zbuild/prompts/`). `.zbuild/prompts/rules.md` is no longer read. Every stage's From the repo block holds their whole text and names the file: "These are this repository's rules, from its .zbuild/rules.md." With none: "This repository has no .zbuild/rules.md, so these are zBuild's default rules." (`scripts/lib/stage-prompt.sh`).
-- **A run on a repository with no `.zbuild/rules.md` says so on its status comment** (`rsc_render_header`, `scripts/lib/run-status-render.sh`). The docs say zbuild reads it (`docs/wiki/Configuration.md`).
+- **A run on a repository with no rules in `.zbuild/rules.md` (no file, or an empty one) says so on its status comment** (`rsc_render_header`, `scripts/lib/run-status-render.sh`). The docs say zbuild reads it (`docs/wiki/Configuration.md`).
 - **zBuild's own `.zbuild/rules.md` holds the rules its CLAUDE.md states** — the spec wins and issues cite an ADR section, every ADR statement has a test in Enforced by, test first, deterministic tests with fakes at our own wrapper and no clock waits, files under 500 lines, budgets only go down, bash style, no SIGPIPE-prone pipes, models as data, never edit legacy-DoNotUse — and CLAUDE.md includes it (`@.zbuild/rules.md`), so there is one source.
 
 ## Enforced by

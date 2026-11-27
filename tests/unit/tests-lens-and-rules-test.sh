@@ -22,7 +22,8 @@
 # R3 [change] zBuild's own .zbuild/rules.md holds the rules its CLAUDE.md
 #             states, and CLAUDE.md includes it
 # R4 [change] the docs say zbuild reads .zbuild/rules.md
-# R5 [change] a run on a repository with no .zbuild/rules.md says so on the
+# R5 [change] a run on a repository with no rules in .zbuild/rules.md (none, or
+#             an empty file) says so on the
 #             status comment it posts, started as the runner starts it (with
 #             --repo-root, no ZBUILD_REPO_ROOT); one with the file says nothing
 set -uo pipefail
@@ -181,7 +182,10 @@ _r5() {   # <repo> — the body the runner's --once posts for <repo>
 _b_none="$(_r5 "$RR")"
 assert_contains "[R5] (fixture) a body was posted" "$_b_none" "zbuild run"
 assert_contains "[R5] no .zbuild/rules.md: the posted comment says so" "$_b_none" \
-    "This repository has no \`.zbuild/rules.md\`: every stage was given zBuild's default rules."
+    "This repository has no rules in \`.zbuild/rules.md\`: every stage was given zBuild's default rules."
+: > "$RR/.zbuild/rules.md"
+assert_contains "[R5] an empty one: said in the same words, never that the file is missing" "$(_r5 "$RR")" \
+    "This repository has no rules in \`.zbuild/rules.md\`: every stage was given zBuild's default rules."
 printf -- '- a rule\n' > "$RR/.zbuild/rules.md"
 _lacks "[R5] ...with the file, nothing is said" "$(_r5 "$RR")" "rules.md"
 
