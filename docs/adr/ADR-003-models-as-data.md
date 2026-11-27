@@ -243,7 +243,7 @@ Adding a provider is one module file plus a `models.json` entry.
 
 ## Enforced by
 
-- Amendment 2026-11-27 (#2639: the latest CLI; each call's CLI version) → `tests/unit/ci-claude-code-latest-test.sh` [#2639/SPEC-1] (no workflow fixes the version); `tests/unit/router-provider-modules-test.sh` [#2639/SPEC-1] (a call's and a loop call's `model.outcome` carry `cli_version` beside `model_used`; empty with no init line)
+- Amendment 2026-11-27 (#2639: the latest CLI; each call's CLI version) → `tests/unit/ci-claude-code-latest-test.sh` [#2639/SPEC-1] (no workflow fixes the version, in a .yml or .yaml file, on any line or a continued one); `tests/unit/router-provider-modules-test.sh` [#2639/SPEC-1] (a call's and a loop call's `model.outcome` carry `cli_version` beside `model_used`; empty with no init line)
 
 - Amendment 2026-11-09 (#2507: tool words translated by the provider; a subagent on its call's model) → `tests/unit/call-tools-test.sh` C2 (each word's flags, `--strict-mcp-config`, an unknown word and `mcp` refused with the reason), C5 (an unsupported word refuses the run at start); `tests/unit/call-hook-test.sh` G3 (a subagent naming a model is refused)
 - Amendment 2026-09-26 (provider modules) → `tests/unit/router-provider-modules-test.sh` SPEC-1–SPEC-9; `tests/integration/router-loop-emits-model-events-test.sh`

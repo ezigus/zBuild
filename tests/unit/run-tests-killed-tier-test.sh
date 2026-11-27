@@ -119,9 +119,11 @@ if [[ ! -e "$_ZB_SIG_MARKER" ]]; then
     _sig_rc="not started"
 else
     kill -TERM "$_sig_pid" 2>/dev/null
-    wait_for_exit "$_sig_pid" 600 0.05 || _sig_rc=$?
+    # 10 s, well short of the slow test's 30 s: a runner that ignores the signal
+    # is still running when the limit passes, rather than finishing on its own.
+    wait_for_exit "$_sig_pid" 200 0.05 || _sig_rc=$?
     [[ "$_sig_rc" == 124 ]] && assert_fail "[SPEC-3] the runner ends on SIGTERM" \
-        "the runner ignored SIGTERM: still running 30 s later, killed"
+        "the runner ignored SIGTERM: still running 10 s later, killed"
 fi
 _SIG_ERR="$(cat "$TEST_TEMP_DIR/sig.err" 2>/dev/null)"
 

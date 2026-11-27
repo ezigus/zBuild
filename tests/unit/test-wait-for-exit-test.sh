@@ -41,23 +41,34 @@ print_test_section "a process that ends on the signal"
 _m="$TEST_TEMP_DIR/term.started"
 bash -c 'touch "$1"; while :; do sleep 0.2; done' _ "$_m" &
 _p=$!
-started "$_m"
-kill -TERM "$_p" 2>/dev/null
-_rc=0; wait_for_exit "$_p" 200 0.05 || _rc=$?
-assert_eq "[#2639/SPEC-3] 128 + SIGTERM comes back" "143" "$_rc"
+if started "$_m"; then
+    kill -TERM "$_p" 2>/dev/null
+    _rc=0; wait_for_exit "$_p" 200 0.05 || _rc=$?
+    assert_eq "[#2639/SPEC-3] 128 + SIGTERM comes back" "143" "$_rc"
+else
+    zb_test_kill_tree "$_p"; assert_fail "[#2639/SPEC-3] the fixture started" "no start marker"
+fi
 
-print_test_section "a process that ignores the signal"
-_m="$TEST_TEMP_DIR/ignore.started"
-bash -c 'trap "" TERM; touch "$1"; while :; do sleep 0.2; done' _ "$_m" &
+print_test_section "a process that ignores the signal, with a child that outlives it"
+# The child ignores TERM too and runs until killed, and names itself in a file:
+# only killing the whole tree, not just the parent, leaves nothing behind.
+_m="$TEST_TEMP_DIR/ignore.started" _cf="$TEST_TEMP_DIR/ignore.child"
+bash -c 'trap "" TERM
+         bash -c "trap \"\" TERM; echo \$\$ > \"\$1\"; while :; do sleep 0.2; done" _ "$2" &
+         while [[ ! -s "$2" ]]; do sleep 0.05; done
+         touch "$1"; while :; do sleep 0.2; done' _ "$_m" "$_cf" &
 _p=$!
-started "$_m"
-_tree="$_p $(pgrep -P "$_p" 2>/dev/null | tr '\n' ' ')"
-kill -TERM "$_p" 2>/dev/null
-_rc=0; wait_for_exit "$_p" 40 0.05 || _rc=$?
-assert_eq "[#2639/SPEC-3] 124 comes back once the limit passes" "124" "$_rc"
-_left=0
-for _q in $_tree; do kill -0 "$_q" 2>/dev/null && _left=$((_left + 1)); done
-assert_eq "[#2639/SPEC-3] it and everything under it are gone" "0" "$_left"
+if started "$_m"; then
+    _child="$(cat "$_cf")"
+    kill -TERM "$_p" 2>/dev/null
+    _rc=0; wait_for_exit "$_p" 40 0.05 || _rc=$?
+    assert_eq "[#2639/SPEC-3] 124 comes back once the limit passes" "124" "$_rc"
+    _gone() { kill -0 "$1" 2>/dev/null && echo alive || echo gone; }
+    assert_eq "[#2639/SPEC-3] the process is gone" "gone" "$(_gone "$_p")"
+    assert_eq "[#2639/SPEC-3] …and so is its child, which ignored the signal too" "gone" "$(_gone "$_child")"
+else
+    zb_test_kill_tree "$_p"; assert_fail "[#2639/SPEC-3] the fixture started" "no start marker"
+fi
 
 cleanup_test_env
 print_test_results

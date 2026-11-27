@@ -156,10 +156,18 @@ for _src in "$REPO_ROOT/.zbuild/rules.md" "$LENSES/tests.md"; do
         "a *mock* answers with replies written by hand"
     assert_contains "[#2639/SPEC-4] ${_src#"$REPO_ROOT"/}: a fake keeps what is written to it" "$_x" \
         "a *fake* is a working stand-in that keeps what is written to it"
-    _lacks "[#2639/SPEC-4] ${_src#"$REPO_ROOT"/}: \"faked\" no longer stands for every stand-in" "$_x" "is faked at"
+    # "fake" is a noun now, the defined stand-in: no text uses it as the verb for
+    # any replacement ("faked", "faking", "fakes"), as the old text did.
+    _verbs="$(grep -oiwE 'fak(ed|ing|es)' <<< "$_x" | tr '\n' ' ' || true)"
+    assert_eq "[#2639/SPEC-4] ${_src#"$REPO_ROOT"/}: \"fake\" is never the verb for any stand-in" "" "$_verbs"
 done
 assert_contains "[#2639/SPEC-4] the rules: what our own code writes is written by it, into a fake" "$_zr" \
-    "When code reads back, from an outside service, something our own code wrote there, the test uses a fake and lets our code write it, never a mock reply that holds what the test's author assumed our code writes."
+    "When code reads back, from any outside service (GitHub, the network, a model, any external program), something our own code wrote there, the test uses a fake and lets our code write it, never a mock reply that holds what the test's author assumed our code writes."
+_a12="$(_flat "$(cat "$REPO_ROOT/docs/adr/ADR-012-test-tiering-and-ci-gating.md")")"
+assert_contains "[#2639/SPEC-4] ADR-012 defines both words" "$_a12" \
+    "a *mock*, which answers with replies written by hand, or a *fake*, a working stand-in that keeps what is written to it"
+assert_contains "[#2639/SPEC-4] ADR-012 states the rule" "$_a12" \
+    "Data our own code writes to an outside service is written, in a test, by that code, into a fake."
 assert_contains "[#2639/SPEC-4] the tests lens looks for such a mock" "$_t" \
     "a mock of an outside service (the network, GitHub, a model, any external program) whose reply, written by hand, holds something the project's own code writes there"
 assert_contains "[#2639/SPEC-4] ...and our own wrapper's stand-in is no finding, except that mock" "$_t" \
