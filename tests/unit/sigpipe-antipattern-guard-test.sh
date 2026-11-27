@@ -44,12 +44,12 @@ _sh_files() {
         -o -type f -name '*.sh' -print 2>/dev/null | sort
 }
 
-# _scan <regex> <marker|-> <file>... — each line of the files that matches,
+# _sg_scan <regex> <marker|-> <file>... — each line of the files that matches,
 # `<file>:<line>:<text>`, except a comment line and, when <marker> is given, a
 # line with `# <marker>: <reason>` on it or within the 8 lines above it (a line
 # ending in `\` cannot take a trailing comment, so the marker sits before it).
 # A marker with no reason excuses nothing: the reason is the point.
-_scan() {
+_sg_scan() {
     local re="$1" mark="$2" _hit _hf _rest _hl _from
     shift 2
     (( $# )) || return 0
@@ -68,7 +68,7 @@ _scan() {
     )
 }
 
-_report() {   # _report <label> <offenders> <how to convert>
+_sg_report() {   # _sg_report <label> <offenders> <how to convert>
     if [[ -z "$2" ]]; then
         assert_pass "$1"
     else
@@ -112,7 +112,7 @@ assert_eq "[#2639/SPEC-2] a regex's (a|head|b)          -> NOT an offender" "no"
 
 # ─── #2639: the files scanned are every .sh file the rule covers ─────────────
 # The tree checks below use _sh_files on the repository; this fixture is what
-# _sh_files and _scan do with each kind of place and marker.
+# _sh_files and _sg_scan do with each kind of place and marker.
 print_test_section "[#2639] the scan covers every .sh file the rule covers"
 _HS="$(mktemp -d "${TMPDIR:-/tmp}/sigpipe-scope.XXXXXX")" || exit 1
 mkdir -p "${_HS:?}/plugins/p/tests" "${_HS:?}/tests/lib" "${_HS:?}/legacy-DoNotUse" "${_HS:?}/node_modules/m"
@@ -126,8 +126,8 @@ printf '%s\n' '# sigpipe-ok: reads a short list' "$_off" > "${_HS:?}/tests/lib/o
 printf '%s\n' '# sigpipe-ok' "$_off" > "${_HS:?}/tests/lib/bare.sh"
 printf '%s\n' "if echo \"\$v\" $P grep -q x; then :; fi" > "${_HS:?}/tests/lib/q.sh"
 mapfile -t _hs_files < <(_sh_files "$_HS")
-_hs_out="$(_scan "$_HD_RE" sigpipe-ok "${_hs_files[@]}")"
-_hs_q="$(_scan "$_sp_re" - "${_hs_files[@]}")"
+_hs_out="$(_sg_scan "$_HD_RE" sigpipe-ok "${_hs_files[@]}")"
+_hs_q="$(_sg_scan "$_sp_re" - "${_hs_files[@]}")"
 _hs_has() { grep -qF -- "$2" <<< "$1" && echo yes || echo no; }
 assert_eq "[#2639/SPEC-2] a .sh file at the root is scanned" "yes" "$(_hs_has "$_hs_out" "/install.sh:1:")"
 assert_eq "[#2639/SPEC-2] a -test.sh file is scanned" "yes" "$(_hs_has "$_hs_out" "/p-test.sh:1:")"
@@ -151,10 +151,10 @@ assert_eq "[#2639/SPEC-2] the root's install.sh is among them" "yes" "$(_hs_has 
 # found 286 more in test files, once the scan reached them. A site where the
 # pipe is genuinely safe carries `# sigpipe-ok: <reason>`; a pipe into grep -q
 # takes no marker.
-_report "[#1015 #1260] no pipe into grep -q in any .sh file" \
-    "$(_scan "$_sp_re" - "${_FILES[@]}")" "convert to: grep -q PATTERN <<< \"\$var\""
-_report "[#1886] every head reading a pipe is converted or justified, in any .sh file (#2639: tests included)" \
-    "$(_scan "$_HD_RE" sigpipe-ok "${_FILES[@]}")" "convert, or add '# sigpipe-ok: <reason>'"
+_sg_report "[#1015 #1260] no pipe into grep -q in any .sh file" \
+    "$(_sg_scan "$_sp_re" - "${_FILES[@]}")" "convert to: grep -q PATTERN <<< \"\$var\""
+_sg_report "[#1886] every head reading a pipe is converted or justified, in any .sh file (#2639: tests included)" \
+    "$(_sg_scan "$_HD_RE" sigpipe-ok "${_FILES[@]}")" "convert, or add '# sigpipe-ok: <reason>'"
 
 print_test_results
 exit $((FAIL > 0))
