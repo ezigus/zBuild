@@ -287,6 +287,18 @@ assert_contains "[BS25] not mine to the untraced file reaches design" \
     "$(jq -r '[.data.findings[]?.text] | join("\n")' "$AD/build-design-result.json" 2>/dev/null)" "core/claim/claim.sh"
 assert_eq "[BS25] ...the try fails and the round ends, so design runs" "fail" "$(_outcome)"
 git -C "$R" reset -q --hard "$_bs24_head" >/dev/null 2>&1 || true
+# The finding's text is read back from build's own result as it was written
+# (audit on #2635): a name holding a tab and a backslash before n reaches
+# design named byte for byte.
+_bs25n="core/claim/odd"$'\t'"name\\n.sh"
+printf 'x\n' > "$R/$_bs25n"
+_run bs25 "$DONE1_OK"$'\n'"$DONE2"$'\nLOOP_COMPLETE'
+_uid="$(jq -r --arg n "$_bs25n" '[.data.findings[]? | select(.text | startswith($n + " traces to no design step")) | .id][0] // ""' "$AD/build-summary.json" 2>/dev/null)"
+assert_eq "[BS25] (fixture) the odd name is an untraced file" "1" "$([[ -n "$_uid" ]] && echo 1 || echo 0)"
+_run bs25 "$DONE1_OK"$'\n'"$DONE2"$'\n'"ANSWER $_uid: not mine — design must add a step whose areas hold it"$'\nLOOP_COMPLETE' reuse
+assert_contains "[BS25] not mine to a file whose name holds a tab and a backslash before n reaches design, named byte for byte" \
+    "$(jq -r '[.data.findings[]?.text] | join("\n")' "$AD/build-design-result.json" 2>/dev/null)" "$_bs25n"
+rm -f "$R/$_bs25n"; git -C "$R" reset -q --hard "$_bs24_head" >/dev/null 2>&1 || true
 
 # ── BS8: a judge that cannot be used ─────────────────────────────────────────
 print_test_section "BS8: a judge reply that cannot be used"
@@ -374,6 +386,7 @@ git -C "$R" reset -q --hard >/dev/null 2>&1
 printf 't\n' > "$R/tab"$'\t'"x.sh"; git -C "$R" add -A >/dev/null 2>&1; git -C "$R" commit -qm "a tab in a name" >/dev/null 2>&1
 printf 'u\nv\n' >> "$R/tab"$'\t'"x.sh"; printf 'w\n' > "$R/plain.sh"
 assert_eq "[BS26] a name holding a tab, and a second file: counted with their lines" "2 plain.sh +3 -1" "$(_bs26 tab)"
+assert_eq "[BS26] ...each named whole" "plain.sh|tab"$'\t'"x.sh" "$(jq -r '.files_changed | join("|")' "$TEST_TEMP_DIR/bs26-tab/build-summary.json" 2>/dev/null)"
 git -C "$R" reset -q --hard >/dev/null 2>&1
 # A tab at either end of a name is kept (bash review): the record is never split on it.
 printf 'e\n' > "$R/"$'\t'"lead.txt"; printf 'f\n' > "$R/trail.txt"$'\t'

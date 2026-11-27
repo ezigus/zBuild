@@ -32,12 +32,13 @@ _S=(
     $'a\tb\nc\rd'
     $'bell\x07 back\b feed\f'
     $'low \x01\x02\x1f and DEL \x7f'
+    $'only DEL \x7f'
     'café — 日本 😀'
     'two b/w.sh'
     ''
 )
 _N=("plain" "quote and backslash" "backslash before n" "tab, newline, CR" "\\b \\f and a bell"
-    "control bytes and DEL" "non-ASCII" "a slash" "empty")
+    "control bytes and DEL" "DEL on its own" "non-ASCII" "a slash" "empty")
 
 print_test_section "J1: a string is written as jq writes it"
 for _i in "${!_S[@]}"; do
