@@ -40,9 +40,9 @@ judge_keep_baseline_v() {
     if declare -F _wb_repo_snapshot >/dev/null 2>&1; then
         while IFS=$'\t' read -r p v; do
             [[ -n "$p" ]] || continue
-            _judge_json_str_v pj "$p"; _judge_json_str_v vj "$v"; files+="${files:+,}$pj:$vj"
+            zb_json_str_v pj "$p"; zb_json_str_v vj "$v"; files+="${files:+,}$pj:$vj"
         done < <(_wb_repo_snapshot "$repo" keep 2>/dev/null)
     fi
-    _judge_json_str_v l "$head"
+    zb_json_str_v l "$head"
     _jkb="{\"head\":$l,\"files\":{$files}}"
 }

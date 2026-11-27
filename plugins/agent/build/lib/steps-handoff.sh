@@ -46,7 +46,7 @@ _build_steps_keep_carried() {
     local f="$1/build-tests-result.json" line body="" j
     line="$(_build_test_wrong "ANSWER $2")"; [[ -n "$line" ]] || return 0
     [[ -s "$f" ]] && { IFS= read -r -d '' body < "$f" || true; }
-    _judge_json_str_v j "$line"
+    zb_json_str_v j "$line"
     [[ "$body" == *"$j"* ]] && return 0
     if [[ -n "$body" ]]; then stage_findings_add "$f" "[{\"text\":$j}]" "${_BUILD_FCODE:-}" || true
     else stage_result_write "$f" fail "build says 1 test(s) are wrong and cannot pass" \

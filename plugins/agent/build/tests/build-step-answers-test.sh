@@ -357,6 +357,24 @@ AD="$TEST_TEMP_DIR/bs26b"; mkdir -p "$AD"
 _build_stage_run_inner "" "" "$AD/diff.patch" "$AD/build-summary.json" "$AD" >/dev/null 2>&1 || true
 assert_eq "[BS26] a name with a space, even one holding \" b/\": one file, named whole" "1 two b/w.sh" "$(jq -r '"\(.files_changed | length) \(.files_changed[0])"' "$AD/build-summary.json" 2>/dev/null)"
 git -C "$R" checkout -q -- . >/dev/null 2>&1
+# Follow-up to #2631: names come from git as they are (-z), never read back
+# from its quoted headers; a rename either way is one file, its new name.
+_bs26() {   # <case> — run build; print "<count> <first name> +<added> -<removed>"
+    AD="$TEST_TEMP_DIR/bs26-$1"; mkdir -p "$AD"
+    _build_stage_run_inner "" "" "$AD/diff.patch" "$AD/build-summary.json" "$AD" >/dev/null 2>&1 || true
+    jq -r '"\(.files_changed | length) \(.files_changed[0]) +\(.lines_added) -\(.lines_removed)"' "$AD/build-summary.json" 2>/dev/null
+}
+git -C "$R" mv "caf$(printf '\303\251').sh" back.sh >/dev/null 2>&1; printf 'z\n' >> "$R/back.sh"
+assert_eq "[BS26] a non-ASCII name renamed to a plain one: one file, its new name" "1 back.sh +1 -0" "$(_bs26 ren1)"
+git -C "$R" reset -q --hard >/dev/null 2>&1
+printf 'p\n' > "$R/plain.sh"; git -C "$R" add -A >/dev/null 2>&1; git -C "$R" commit -qm "a plain name" >/dev/null 2>&1
+git -C "$R" mv plain.sh "n$(printf '\303\251').sh" >/dev/null 2>&1
+assert_eq "[BS26] a plain name renamed to a non-ASCII one: one file, its new name" "1 n$(printf '\303\251').sh +0 -0" "$(_bs26 ren2)"
+git -C "$R" reset -q --hard >/dev/null 2>&1
+printf 't\n' > "$R/tab"$'\t'"x.sh"; git -C "$R" add -A >/dev/null 2>&1; git -C "$R" commit -qm "a tab in a name" >/dev/null 2>&1
+printf 'u\nv\n' >> "$R/tab"$'\t'"x.sh"; printf 'w\n' > "$R/plain.sh"
+assert_eq "[BS26] a name holding a tab, and a second file: counted with their lines" "2 plain.sh +3 -1" "$(_bs26 tab)"
+git -C "$R" reset -q --hard >/dev/null 2>&1
 
 # BS21 (#2609): a block answer is read, its words in a note.
 # BS22 (#2609): every mis-copied form of a quote is read (the table).

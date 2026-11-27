@@ -50,6 +50,8 @@
 
 [[ -n "${_ZBUILD_PERMISSIONS_LOADED:-}" ]] && return 0
 _ZBUILD_PERMISSIONS_LOADED=1
+# shellcheck source=../../scripts/lib/json-text.sh
+source "${BASH_SOURCE[0]%/*}/../../scripts/lib/json-text.sh"
 
 # _zbuild_build_permissions_settings
 # Writes ${ZBUILD_STAGE_SCRATCH:-$(zbuild_engine_tmpdir)}/claude-settings.json and
@@ -101,15 +103,6 @@ _zbuild_tool_hook_cmd_v() {
     printf -v _tuh '%s %q %q' "$_tuh" "$deadline" "$notes"
 }
 
-# _zbuild_json_str_v <var> <text> — <text> as a JSON string, by the shell.
-_zbuild_json_str_v() {
-    local -n _zjs="$1"; local LC_ALL=C _zjs_s="$2"
-    _zjs_s="${_zjs_s//\\/\\\\}"; _zjs_s="${_zjs_s//\"/\\\"}"
-    _zjs_s="${_zjs_s//$'\n'/\\n}"; _zjs_s="${_zjs_s//$'\r'/\\r}"; _zjs_s="${_zjs_s//$'\t'/\\t}"
-    _zjs_s="${_zjs_s//[$'\001'-$'\010'$'\013'$'\014'$'\016'-$'\037']/ }"
-    _zjs="\"$_zjs_s\""
-}
-
 _zbuild_build_permissions_settings() {
     local _secs="${1:-}" _scratch_dir
     if [[ -n "${ZBUILD_STAGE_SCRATCH:-}" ]]; then
@@ -153,7 +146,7 @@ _zbuild_build_permissions_settings() {
         while IFS= read -r _r; do
             [[ -n "$_r" ]] || continue
             [[ "$_r" == /* ]] && _r="/$_r"
-            _zbuild_json_str_v _j "Edit($_r)"; _rules+="${_rules:+,}$_j"
+            zb_json_str_v _j "Edit($_r)"; _rules+="${_rules:+,}$_j"
         done <<< "$ZBUILD_PERMISSION_DENY_EDIT"
     fi
     # #2379: no stage reads or edits a private path (the engine's list plus the
@@ -164,12 +157,12 @@ _zbuild_build_permissions_settings() {
     private_paths_deny_rules_v _priv "$_repo_root"
     while IFS= read -r _r; do
         [[ -n "$_r" ]] || continue
-        _zbuild_json_str_v _j "$_r"; _rules+="${_rules:+,}$_j"
+        zb_json_str_v _j "$_r"; _rules+="${_rules:+,}$_j"
     done <<< "$_priv"
     local _hook_cmd; _zbuild_tool_hook_cmd_v _hook_cmd "$_secs"
     _json="{\"permissions\":{\"deny\":[$_rules]}"
     if [[ -n "$_hook_cmd" ]]; then
-        _zbuild_json_str_v _j "$_hook_cmd"
+        zb_json_str_v _j "$_hook_cmd"
         _json+=",\"hooks\":{\"PreToolUse\":[{\"matcher\":\"*\",\"hooks\":[{\"type\":\"command\",\"command\":$_j}]}]}"
     fi
     _json+="}"

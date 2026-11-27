@@ -18,6 +18,8 @@ _ZBUILD_ROOT_FOR_EVENTS="$(cd "$_ZBUILD_EVENT_BUS_DIR/../.." && pwd)"
 
 # shellcheck source=../../scripts/lib/compat.sh
 source "$_ZBUILD_ROOT_FOR_EVENTS/scripts/lib/compat.sh"
+# shellcheck source=../../scripts/lib/json-text.sh
+source "$_ZBUILD_ROOT_FOR_EVENTS/scripts/lib/json-text.sh"
 # The known-type set (#1717): engine config + every manifest's provides.events.
 # shellcheck source=known-types.sh
 source "$_ZBUILD_EVENT_BUS_DIR/known-types.sh"
@@ -99,25 +101,6 @@ _eb_now_iso_v() {
     _s="${_er%[.,]*}"; _f="${_er#*[.,]}000"
     TZ=UTC0 printf -v _iso '%(%Y-%m-%dT%H:%M:%S)T' "$_s"
     printf -v "$1" '%s.%sZ' "$_iso" "${_f:0:3}"
-}
-
-# _eb_json_str_v <var> <value>: <value> as a JSON string, spelled as jq spells
-# it (ADR-065 §5). Plain ASCII only — the caller sends anything else to jq.
-_eb_json_str_v() {
-    local LC_ALL=C _s="$2" _c _e
-    local -i _i
-    _s="${_s//\\/\\\\}"; _s="${_s//\"/\\\"}"
-    if [[ "$_s" == *[$'\x01'-$'\x1f'$'\x7f']* ]]; then
-        _s="${_s//$'\n'/\\n}"; _s="${_s//$'\t'/\\t}"; _s="${_s//$'\r'/\\r}"
-        _s="${_s//$'\b'/\\b}"; _s="${_s//$'\f'/\\f}"
-        for _i in {1..31} 127; do
-            printf -v _c '%02x' "$_i"; printf -v _c "\\x$_c"
-            [[ "$_s" == *"$_c"* ]] || continue
-            printf -v _e '\\u%04x' "$_i"
-            _s="${_s//"$_c"/"$_e"}"
-        done
-    fi
-    printf -v "$1" '"%s"' "$_s"
 }
 
 # _eb_ascii <string>: true when every byte is below 0x80. A class, not a byte
@@ -226,17 +209,17 @@ eb_emit_event() {
         for (( _x = 0; _x < _n; _x++ )); do
             [[ -n "${_done["${_keys[_x]}"]:-}" ]] && continue
             _done["${_keys[_x]}"]=1
-            _eb_json_str_v _j "${_keys[_x]}"; _data+="${_data:+,}$_j:"
-            _eb_json_str_v _j "${_vals[_last["${_keys[_x]}"]]}"; _data+="$_j"
+            zb_json_str_v _j "${_keys[_x]}"; _data+="${_data:+,}$_j:"
+            zb_json_str_v _j "${_vals[_last["${_keys[_x]}"]]}"; _data+="$_j"
         done
         event_json="{\"ts\":\"$ts\""
-        _eb_json_str_v _j "$run_id"; event_json+=",\"run_id\":$_j,\"issue\":$(( 10#$issue ))"
-        _eb_json_str_v _j "$type";   event_json+=",\"type\":$_j"
-        _eb_json_str_v _j "$plugin"; event_json+=",\"plugin\":$_j"
-        _eb_json_str_v _j "$kind";   event_json+=",\"kind\":$_j,\"data\":{$_data},\"schema_version\":1"
-        if [[ -n "$stage" ]]; then _eb_json_str_v _j "$stage"; event_json+=",\"stage\":$_j"; fi
+        zb_json_str_v _j "$run_id"; event_json+=",\"run_id\":$_j,\"issue\":$(( 10#$issue ))"
+        zb_json_str_v _j "$type";   event_json+=",\"type\":$_j"
+        zb_json_str_v _j "$plugin"; event_json+=",\"plugin\":$_j"
+        zb_json_str_v _j "$kind";   event_json+=",\"kind\":$_j,\"data\":{$_data},\"schema_version\":1"
+        if [[ -n "$stage" ]]; then zb_json_str_v _j "$stage"; event_json+=",\"stage\":$_j"; fi
         [[ -n "$seq" ]] && event_json+=",\"seq\":\"$seq\""
-        if [[ -n "$unit" ]]; then _eb_json_str_v _j "$unit"; event_json+=",\"unit\":$_j"; fi
+        if [[ -n "$unit" ]]; then zb_json_str_v _j "$unit"; event_json+=",\"unit\":$_j"; fi
         event_json+="}"
     fi
     [[ -n "$event_json" ]] || event_json="$(jq -cn \
