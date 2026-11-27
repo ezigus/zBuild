@@ -207,6 +207,7 @@ assert_contains "[R5] a linked .zbuild with a rules.md: the comment says it was 
 rm -f "$TEST_TEMP_DIR/shared-zb/rules.md"
 assert_contains "[R5] a linked .zbuild with none: the comment says it has no rules" "$(_r5 "$RR2")" \
     "This repository has no rules in \`.zbuild/rules.md\`: every stage was given zBuild's default rules."
+_lacks "[R5] ...never that it is a link" "$(_r5 "$RR2")" "is a link"
 
 print_test_results
 exit $((FAIL > 0))

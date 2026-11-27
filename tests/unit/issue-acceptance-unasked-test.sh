@@ -90,6 +90,10 @@ _lacks "[U1] ...the form asks no accepted if" "$_p" "accepted if: <the change wi
 _u1s="$(tr '.' '\n' <<< "$_p" | grep -iF unasked | grep -iF 'accepted if' || true)"
 if [[ -n "$_u1s" ]]; then assert_fail "[U1] ...no sentence asks an UNASKED for an ACCEPTED IF" "$_u1s"
 else assert_pass "[U1] ...no sentence asks an UNASKED for an ACCEPTED IF"; fi
+# ...nor any sentence of the reverse question, whether or not it says UNASKED.
+_rv="${_p#*Then answer the reverse question}"; _rv="${_rv%%UNASKED: none*}"
+assert_contains "[U1] (the reverse question is found)" "$_rv" "Each part you name here"
+_lacks "[U1] the reverse question asks no accepted if" "${_rv,,}" "accepted if"
 assert_contains "[U1] it says each part it names is taken out of the change" "$_p" "Each part you name here is taken out of the change."
 assert_contains "[U1] ...and that words of the issue that could ask for it make it a question, not this" "$_p" \
     "When words of the ISSUE could be read as asking for it, it is not one of these: write an UNCLEAR line that quotes them."
