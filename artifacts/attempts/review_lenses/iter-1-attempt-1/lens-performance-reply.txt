@@ -1,0 +1,12 @@
+--- reply 1 ---
+SCORE: 8
+
+FINDING
+severity: medium
+category: network
+fix: code
+introduced: yes
+quote: plugins/claim-coordinator/github-labels/plugin.sh | if ! rsc_gh "$sd" "$out" api --paginate --repo "$slug" \
+message: All comment pages for the issue are fetched without a server-side time filter; for issues with long comment histories the number of API round-trips and the volume of data written to disk grow linearly with the total comment count.
+trigger: Every gh-backend claim attempt calls `_ccgl_race_note_first_v`; the `--paginate` flag causes rsc_gh to fetch every page of issue comments, then jq discards everything older than `since` client-side. An issue with 150 comments forces 5+ round-trips; `since` is computed but never passed to the API.
+accepted if: only comments potentially within the race-detection window are fetched from GitHub — comments older than the window are excluded at the server before pagination begins.

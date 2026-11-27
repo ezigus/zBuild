@@ -1,0 +1,13 @@
+--- reply 1 ---
+SCORE: 8
+
+FINDING
+severity: medium
+category: coverage
+fix: test
+introduced: yes
+quote: plugins/claim-coordinator/github-labels/plugin.sh | _ccgl_race_note_post_v note_id "$_CCGL_SLUG" "$issue" "$my_holder" || note_rc=$?
+message: When `_ccgl_race_note_post_v` returns rc 2 (POST succeeded but GitHub's reply carried no numeric id), `note_id` remains empty; in the loser path `_ccgl_race_note_update` immediately returns 0 because `[[ "$id" =~ ^[0-9]+$ ]]` fails, so DSRACE-3's requirement (the loser PATCHes its note body to "not started — concurrent claim: `<winner>` was first") is silently not met.
+trigger: GitHub's comment-create response arrives without an "id" field (malformed reply, rate-limit truncation, or a future API change) while two runs claim at once; the note exists on GitHub and participates in arbitration, but the loser leaves it unupdated, violating DSRACE-3.
+accepted if: when the note was posted (rc 0 or rc 2 from _ccgl_race_note_post_v) but no numeric id is known and the run loses the race, DSRACE-3 is either satisfied by an alternative update path, or the design explicitly accepts the gap and the test for DSRACE-3 covers the rc-2 case.
+also at: plugins/claim-coordinator/github-labels/plugin.sh | _ccgl_race_note_delete "$note_id" "$_CCGL_SLUG" "$issue"

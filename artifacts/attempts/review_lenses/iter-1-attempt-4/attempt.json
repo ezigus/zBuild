@@ -1,0 +1,19 @@
+{
+  "stage": "review_lenses",
+  "cycle_iter": 1,
+  "attempt": 4,
+  "rc": "0",
+  "generated_at": "2026-11-27T15:51:30Z",
+  "files": 6,
+  "outputs": {
+    "lens-tests.json": "changed",
+    "lens-tests-summary.md": "changed",
+    "lens-tests-code-result.json": "changed",
+    "lens-tests-test-result.json": "changed",
+    "lens-tests-design-result.json": "changed",
+    "lens-tests-reply.txt": "changed",
+    "__notes__": "absent",
+    "__cutoff__": "absent"
+  },
+  "progress": true
+}

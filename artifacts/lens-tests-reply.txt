@@ -1,0 +1,12 @@
+--- reply 1 ---
+SCORE: 7
+
+FINDING
+severity: medium
+category: coverage
+fix: test
+introduced: yes
+quote: plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh | assert_eq "[DSRACE-1] all concurrent claim notes from the current label epoch are returned (loser when earlier note is on page 2)" "false" \
+trigger: Every test fixture places both notes at `2026-01-01T00:00:00Z` or `..00:01Z`, well inside the `_CCGL_RACE_NOTE_AT - 4 * gt` window (a 20-second lookback for `gt=5`). The `select((try (.created_at | fromdateiso8601) // 0) >= \$s)` filter in `_ccgl_race_note_first_v` would return the same result whether `since` is the computed epoch-relative value or zero; a broken implementation that hardcodes `since=0` passes every DSRACE-1 assertion. DSRACE-1 requires "all concurrent claim notes from the current label epoch are returned" — the boundary behavior (a note whose `created_at` is before the detection window is excluded) is not checked by any fixture.
+message: No test fixture places a concurrent claim note outside the detection window, so a `since` filter that is always zero (or otherwise ignores the epoch boundary) passes all DSRACE-1 assertions.
+accepted if: a test fixture exists in which a concurrent claim note whose `created_at` is older than `_CCGL_RACE_NOTE_AT - 4 * ZBUILD_STATUS_COMMENT_GH_TIMEOUT` seconds is present in the notes list, and the assertions confirm that note is excluded from arbitration (the run is not counted as a loser because of a note from a prior claim cycle)
