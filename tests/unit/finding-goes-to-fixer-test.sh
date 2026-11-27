@@ -145,8 +145,8 @@ _R7="$TEST_TEMP_DIR/repo7"; mkdir -p "$_R7/tests/unit" "$_R7/lib"
 printf 'assert_eq "UNASKED-TEST shown as code" x y\n' > "$_R7/tests/unit/r-test.sh"
 printf 'UNASKED_CODE=1\n' > "$_R7/lib/r.sh"
 bad=() _IA_UNASKED=() _IA_QUOTED=() _IA_ANSWERS=()
-_ia_parse_unasked 'it changes an old test | WHY: nobody asks | ACCEPTED IF: it is accepted | QUOTE: tests/unit/r-test.sh | assert_eq "UNASKED-TEST shown as code" x y' "$_R7"
-_ia_parse_unasked 'it adds a flag | WHY: nobody asks | ACCEPTED IF: it is accepted | QUOTE: lib/r.sh | UNASKED_CODE=1' "$_R7"
+_ia_parse_unasked 'it changes an old test | WHY: nobody asks | ACCEPTED IF: the change without it | QUOTE: tests/unit/r-test.sh | assert_eq "UNASKED-TEST shown as code" x y' "$_R7"
+_ia_parse_unasked 'it adds a flag | WHY: nobody asks | ACCEPTED IF: the change without it | QUOTE: lib/r.sh | UNASKED_CODE=1' "$_R7"
 _ia_write "$ART" fail "2 parts no requirement asks for" '[]' '[]' '' "$(_ia_json_list "${_IA_UNASKED[@]}")"
 _update_stage_status "$STATE/pipeline-state.json" issue-acceptance complete
 TA7="$(_pw test-author)"
