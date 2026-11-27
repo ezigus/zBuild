@@ -1,5 +1,8 @@
 {
   "wiring_files": [
     "core/claim/claim.sh"
-  ]
+  ],
+  "owned_files": {
+    "test-author": []
+  }
 }
