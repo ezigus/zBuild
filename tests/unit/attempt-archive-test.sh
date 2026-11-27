@@ -83,7 +83,7 @@ printf '{"verdict":"pass","files_changed_count":0,"lines_added":0}\n' > "$ART/aa
 printf 'changed 0 file(s)\n' > "$ART/aa-summary.md"
 ZBUILD_CYCLE_ITER=2 attempt_archive_outputs "$PROOT/tool/aa-stage" "$STATE/pipeline-state.json" "aa-stage" >/dev/null 2>&1
 
-_a1="$(find "$ART/attempts" -name 'aa-result.json' 2>/dev/null | sort | head -1)"
+_a1="$(find "$ART/attempts" -name 'aa-result.json' 2>/dev/null | sort | sed -n 1p)"
 _a2="$(find "$ART/attempts" -name 'aa-result.json' 2>/dev/null | sort | tail -1)"
 assert_eq "[SPEC-1] two dispatches leave two archived copies" "2" \
     "$(find "$ART/attempts" -name 'aa-result.json' 2>/dev/null | grep -c . || true)"

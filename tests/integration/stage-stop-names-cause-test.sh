@@ -127,7 +127,7 @@ pr_run() {
 }
 PLUG
 }
-_aborted() { jq -r 'select(.type=="pipeline.aborted") | .data.reason' "$EVENTS_JSONL" 2>/dev/null | head -1; }
+_aborted() { jq -r 'select(.type=="pipeline.aborted") | .data.reason' "$EVENTS_JSONL" 2>/dev/null | sed -n 1p; }
 _ended() { jq -r 'select(.type=="pipeline.end") | .data.reason // empty' "$EVENTS_JSONL" 2>/dev/null | tail -1; }
 _state_reason() { jq -r '.reason // empty' "$STATE_DIR/pipeline-state.json" 2>/dev/null || true; }
 _lacks() { if [[ "$2" == *"$3"* ]]; then assert_fail "$1" "it has: $3"; else assert_pass "$1"; fi; }

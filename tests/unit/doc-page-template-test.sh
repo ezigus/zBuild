@@ -31,7 +31,7 @@ assert_contains "[SPEC-4] REFERENCE slot present (manifest/registry fields)" "$T
 assert_contains "[SPEC-5] ADVANCED slot present"                            "$TMPL" "SLOT: ADVANCED"
 
 # ── SPEC-6: slots in progressive-disclosure order ────────────────────────────
-_slot_line() { grep -n "SLOT: $1" "$TEMPLATE" | head -1 | cut -d: -f1; }
+_slot_line() { grep -n "SLOT: $1" "$TEMPLATE" | sed -n 1p | cut -d: -f1; }
 n_new="$(_slot_line NEWCOMER_OPENING)"; n_use="$(_slot_line HOW_TO_USE)"
 n_ref="$(_slot_line REFERENCE)";        n_adv="$(_slot_line ADVANCED)"
 order=0

@@ -123,7 +123,7 @@ while IFS=$'\t' read -r stage role rt rmt elems; do
         cli_t="$(awk 'p { print; exit } $0 == "--max-turns" { p = 1 }' <<< "$argv")"
         cli_s="$(jq -r 'select(.type == "model.route" or .event == "model.route") | (.timeout_s // .data.timeout_s // empty)' "$st/events/events.jsonl" 2>/dev/null | tail -n 1)"
         assert_eq "[CL1] $name: the CLI's limits are the configured ones" "$want_s ${want_t}" "$cli_s ${cli_t:-0}"
-        budget="$(tr -s '[:space:]' ' ' < "$LIMITS_OUT.prompt" | grep -o 'each model call has [^.]*\.' | head -n 1)"
+        budget="$(tr -s '[:space:]' ' ' < "$LIMITS_OUT.prompt" | grep -o 'each model call has [^.]*\.' | sed -n 1p)"
         if [[ "$want_t" -gt 0 ]]; then said="each model call has $want_s seconds and $want_t turns."
         else said="each model call has $want_s seconds, with no limit on turns."; fi
         assert_eq "[CL2] $name: the prompt's budget line says them" "$said" "$budget"
@@ -176,7 +176,7 @@ _loop_run "--max-turns-per-call 7" a
 argv="$(cat "$LIMITS_OUT.argv" 2>/dev/null)"
 assert_eq "[CL5] the loop's CLI gets the stage's 7 turns" "7" "$(awk 'p { print; exit } $0 == "--max-turns" { p = 1 }' <<< "$argv")"
 assert_eq "[CL5] ...the prompt's budget line says them" "each model call has 900 seconds and 7 turns." \
-    "$(tr -s '[:space:]' ' ' < "$LIMITS_OUT.prompt" 2>/dev/null | grep -o 'each model call has [^.]*\.' | head -n 1)"
+    "$(tr -s '[:space:]' ' ' < "$LIMITS_OUT.prompt" 2>/dev/null | grep -o 'each model call has [^.]*\.' | sed -n 1p)"
 hook="$(cat "$LIMITS_OUT.hook" 2>/dev/null)"; eval "set -- $hook"; args=("$@"); n=${#args[@]}
 warn=""; if (( n >= 4 )); then args[n-2]=1; warn="$(printf '{"tool_name":"Bash","tool_input":{"command":"ls"}}' | "${args[@]}" | jq -r '.hookSpecificOutput.permissionDecisionReason // ""')"; fi
 assert_contains "[CL5] ...and so does the time-up warning" "$warn" "It was given 900 seconds and 7 turns."

@@ -277,7 +277,7 @@ F_OUT="$STAGE_ARTIFACTS/test-results.json"
 # parent-untouched assertions pass hollowly, #913).
 NESTED_LOG="$TEST_TEMP_DIR/f-nested-runner.log"
 NESTED_STATE_COPY="$TEST_TEMP_DIR/f-nested-state.json"
-F_CMD="ZBUILD_PLUGINS_ROOT='$PLUGINS_ROOT' ZBUILD_EVENT_SCHEMA='$REPO_ROOT/config/event-schema.json' ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn ZBUILD_VISION_GATE=off ZBUILD_RUN_ID='nested-suite' bash '$RUNNER' --issue "$_ZB_ID" --no-resume --template runner-state-dir-minimal > '$NESTED_LOG' 2>&1 || true; _nsroot=\"\$(dirname \"\$ZBUILD_STATE_ROOT\")\"; _ns=\"\$(find \"\$_nsroot\" -path '*/issues/*/runs/nested-suite/pipeline-state.json' -print 2>/dev/null | sort | head -1)\"; [ -n \"\$_ns\" ] || _ns=\"\$(find \"\$_nsroot\" -path '*/runs/nested-suite/pipeline-state.json' -print 2>/dev/null | sort | head -1)\"; cp \"\$_ns\" '$NESTED_STATE_COPY' 2>/dev/null || true; echo suite-ok"
+F_CMD="ZBUILD_PLUGINS_ROOT='$PLUGINS_ROOT' ZBUILD_EVENT_SCHEMA='$REPO_ROOT/config/event-schema.json' ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn ZBUILD_VISION_GATE=off ZBUILD_RUN_ID='nested-suite' bash '$RUNNER' --issue "$_ZB_ID" --no-resume --template runner-state-dir-minimal > '$NESTED_LOG' 2>&1 || true; _nsroot=\"\$(dirname \"\$ZBUILD_STATE_ROOT\")\"; _ns=\"\$(find \"\$_nsroot\" -path '*/issues/*/runs/nested-suite/pipeline-state.json' -print 2>/dev/null | sort | sed -n 1p)\"; [ -n \"\$_ns\" ] || _ns=\"\$(find \"\$_nsroot\" -path '*/runs/nested-suite/pipeline-state.json' -print 2>/dev/null | sort | sed -n 1p)\"; cp \"\$_ns\" '$NESTED_STATE_COPY' 2>/dev/null || true; echo suite-ok"
 
 set +e
 # #1268: _test_run_inner is a shell FUNCTION — invoke it in a subshell with
@@ -331,7 +331,7 @@ if [[ -f "$NESTED_STATE_COPY" ]]; then
             printf '  DIAGNOSTIC: nested runner log (tail):\n' >&2
             tail -30 "$NESTED_LOG" 2>/dev/null | sed 's/^/    /' >&2 || true
             printf '  DIAGNOSTIC: copied state: %s\n' \
-                "$(tr -d '\n' < "$NESTED_STATE_COPY" 2>/dev/null | head -c 400)" >&2
+                "$(zb_test_clip 400 "$(tr -d '\n' < "$NESTED_STATE_COPY" 2>/dev/null)")" >&2
             assert_fail "[SPEC-7] nested run used the fixture roster" \
                 "stage_statuses keys=$ns_stages (expected the intake→build fixture, not the built-in fallback)" ;;
     esac

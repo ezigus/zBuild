@@ -137,8 +137,8 @@ assert_eq "[PI1] RQCNFG-1 is not met: fail" "fail" "$OUT"
 _keys="$(jq -r 'keys | join(" ")' "$A/issue-acceptance-judged.json" 2>/dev/null)"
 assert_contains "[PI1] a verdict is kept for RQFLAG-1" "$_keys" "RQFLAG-1"
 assert_contains "[PI1] ...and one for RQCNFG-1" "$_keys" "RQCNFG-1"
-FID="$(jq -r '.data.findings[] | select(.text | contains("RQCNFG-1")) | .id' "$A/issue-acceptance-result.json" 2>/dev/null | head -n 1)"
-FTXT="$(jq -r '.data.findings[] | select(.text | contains("RQCNFG-1")) | .text' "$A/issue-acceptance-result.json" 2>/dev/null | head -n 1)"
+FID="$(jq -r '.data.findings[] | select(.text | contains("RQCNFG-1")) | .id' "$A/issue-acceptance-result.json" 2>/dev/null | sed -n 1p)"
+FTXT="$(jq -r '.data.findings[] | select(.text | contains("RQCNFG-1")) | .text' "$A/issue-acceptance-result.json" 2>/dev/null | sed -n 1p)"
 assert_eq "[PI1] RQCNFG-1's finding has an id" "IAFND-" "${FID%%[0-9]*}"
 
 print_test_section "PI2: a file the refusal quoted changes"
@@ -195,7 +195,7 @@ CNFG='UNMET: [fix-code] RQCNFG-1 | WHY: a missing config file is skipped | ACCEP
 printf '%s\n' 'diff --git a/p.sh b/p.sh' '+flag=1' '+flag_parsed=1' > "$IN/diff.patch"
 _ia
 assert_eq "[PI7] setup: RQCNFG-1 refused" "fail" "$OUT"
-FID="$(jq -r '.data.findings[] | select(.text | contains("RQCNFG-1")) | .id' "$A/issue-acceptance-result.json" | head -n 1)"
+FID="$(jq -r '.data.findings[] | select(.text | contains("RQCNFG-1")) | .id' "$A/issue-acceptance-result.json" | sed -n 1p)"
 stage_dispatch_mark "$S/pipeline-state.json" test-author
 touch -t 202001010000 "$(stage_dispatch_mark_path "$S" test-author)"
 # Build's answer, by build's own writers: its build-tests output and its summary.
@@ -281,7 +281,7 @@ print_test_section "PI12: an answer to a finding no item holds"
 rm -f "$A/issue-acceptance-judged.json" "$A"/issue-acceptance-judged-hand*; FLAG="MET: RQFLAG-1"; CNFG="$REFUSE"
 _ia
 assert_eq "[PI12] setup: RQCNFG-1 refused" "fail" "$OUT"
-FID="$(jq -r '.data.findings[] | select(.text | contains("RQCNFG-1")) | .id' "$A/issue-acceptance-result.json" | head -n 1)"
+FID="$(jq -r '.data.findings[] | select(.text | contains("RQCNFG-1")) | .id' "$A/issue-acceptance-result.json" | sed -n 1p)"
 # Intake now reads the issue as one requirement: RQCNFG-1 is no item.
 (
     # shellcheck source=../../plugins/agent/intake/plugin.sh
@@ -360,19 +360,19 @@ rm -f "$A/issue-acceptance-judged.json" "$A"/issue-acceptance-judged-hand* "$A/b
 FLAG="MET: RQFLAG-1"; CNFG="$REFUSE"; OPENS=""
 _ia
 assert_eq "[PI15] setup: RQCNFG-1 refused" "fail" "$OUT"
-FID="$(jq -r '.data.findings[] | select(.text | contains("RQCNFG-1")) | .id' "$A/issue-acceptance-result.json" | head -n 1)"
+FID="$(jq -r '.data.findings[] | select(.text | contains("RQCNFG-1")) | .id' "$A/issue-acceptance-result.json" | sed -n 1p)"
 CNFG="MET: RQCNFG-1"
 stage_result_write "$A/test-author-result.json" pass "authored" \
     "$(jq -nc --arg a "$FID: wrong — the missing-file case is a theoretical concern" '{answers: [$a]}')" >/dev/null
 _ia
 assert_eq "[PI15] a wrong quoting no line: RQCNFG-1 is not judged again (no call)" "0" "$CALLS"
 assert_eq "[PI15] ...its UNMET stands: the round fails" "fail" "$OUT"
-_ft="$(jq -r '.data.findings[] | select(.text | contains("RQCNFG-1")) | .text' "$A/issue-acceptance-result.json" | head -n 1)"
+_ft="$(jq -r '.data.findings[] | select(.text | contains("RQCNFG-1")) | .text' "$A/issue-acceptance-result.json" | sed -n 1p)"
 assert_contains "[PI15] ...the finding carries the owner's answer" "$_ft" "the missing-file case is a theoretical concern"
 assert_contains "[PI15] ...and says a plain wrong does not close it" "$_ft" "a wrong that quotes no line does not close it"
 # PI18 (#2590): the note does not change the finding's id — the owner sees the
 # same finding, answered, not a new one.
-_FID2="$(jq -r '.data.findings[] | select(.text | contains("RQCNFG-1")) | .id' "$A/issue-acceptance-result.json" | head -n 1)"
+_FID2="$(jq -r '.data.findings[] | select(.text | contains("RQCNFG-1")) | .id' "$A/issue-acceptance-result.json" | sed -n 1p)"
 assert_eq "[PI18] the finding keeps its id when the note is added" "$FID" "$_FID2"
 stage_result_write "$A/test-author-result.json" pass "authored" \
     "$(jq -nc --arg a "$FID: wrong — the file is refused: p.sh | flag=1" '{answers: [$a]}')" >/dev/null
@@ -384,7 +384,7 @@ assert_eq "[PI16] ...and the judge's MET stands" "pass" "$OUT"
 for _pq in '`p.sh` | `flag=1`' '**p.sh** | flag=1' 'Makefile | flag=1' 'p.sh:12 | flag=1'; do
     rm -f "$A/issue-acceptance-judged.json" "$A"/issue-acceptance-judged-hand*
     CNFG="$REFUSE"; rm -f "$A/test-author-result.json"; _ia
-    FID="$(jq -r '.data.findings[] | select(.text | contains("RQCNFG-1")) | .id' "$A/issue-acceptance-result.json" | head -n 1)"
+    FID="$(jq -r '.data.findings[] | select(.text | contains("RQCNFG-1")) | .id' "$A/issue-acceptance-result.json" | sed -n 1p)"
     CNFG="MET: RQCNFG-1"
     stage_result_write "$A/test-author-result.json" pass "authored" \
         "$(jq -nc --arg a "$FID: wrong — the file is refused: $_pq" '{answers: [$a]}')" >/dev/null

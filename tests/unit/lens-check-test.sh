@@ -207,8 +207,8 @@ YAML
   : > "$CALLS"; rm -f "$ART"/lens-red-team*.json "$ART"/*judged*.json
   export ZBUILD_MAP_ELEMENT=red-team ZBUILD_REVIEW_LENS_ID=red-team ZBUILD_PLUGIN_DIR="$PLUGIN_DIR"
   cd "$G" && _review_lens_run_inner red-team "" "$ART/diff.patch" "$ART/lens-red-team.json" "$ART" ) >/dev/null 2>&1
-assert_eq "[K6] the lens's own call runs as its element's persona" "lens main red-team" "$(grep '^lens ' "$CALLS" | head -1)"
-assert_eq "[K6] the check call runs as quality-assurance" "check check quality-assurance" "$(grep '^check ' "$CALLS" | head -1)"
+assert_eq "[K6] the lens's own call runs as its element's persona" "lens main red-team" "$(grep '^lens ' "$CALLS" | sed -n 1p)"
+assert_eq "[K6] the check call runs as quality-assurance" "check check quality-assurance" "$(grep '^check ' "$CALLS" | sed -n 1p)"
 
 # ── K7 ───────────────────────────────────────────────────────────────────────
 print_test_section "K7: the check keeps no answer (#2584)"

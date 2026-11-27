@@ -34,8 +34,8 @@ else
     assert_fail "T1: description text missing" "captured: $(head -5 "$OUT1")"
 fi
 # Description line MUST come before the trailer (operator scan order).
-desc_line=$(grep -n 'Iterate until verdict pass' "$OUT1" | head -1 | cut -d: -f1)
-trail_line=$(grep -n 'max_iterations=' "$OUT1" | head -1 | cut -d: -f1)
+desc_line=$(grep -n 'Iterate until verdict pass' "$OUT1" | sed -n 1p | cut -d: -f1)
+trail_line=$(grep -n 'max_iterations=' "$OUT1" | sed -n 1p | cut -d: -f1)
 if [[ -n "$desc_line" ]] && [[ -n "$trail_line" ]] && [[ "$desc_line" -lt "$trail_line" ]]; then
     assert_pass "T1: description line precedes (max_iterations=…) trailer"
 else
@@ -70,7 +70,7 @@ if cmp -s "$OUT2" "$OUT3"; then
     assert_pass "T3: 3-arg call byte-identical to 4-arg-with-empty"
 else
     assert_fail "T3: 3-arg call differs from 4-arg-with-empty" \
-        "diff: $(diff "$OUT2" "$OUT3" | head -5)"
+        "diff: $(diff "$OUT2" "$OUT3" | sed -n 1,5p)"
 fi
 
 # ─── T3b: with-description has 6 newlines (one more for DIM desc line) ────

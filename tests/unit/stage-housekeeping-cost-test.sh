@@ -127,7 +127,7 @@ assert_eq "[K8] …and prints date -u's answer" "$_want" "$_t2"
 print_test_section "K9: persona_find_dir"
 # shellcheck source=../../scripts/lib/persona-resolve.sh
 source "$REPO_ROOT/scripts/lib/persona-resolve.sh"
-_pid="$(command ls "$REPO_ROOT/plugins/persona" | head -1)"
+_pid="$(command ls "$REPO_ROOT/plugins/persona" | sed -n 1p)"
 : > "$CALLS"; _wrap
 _pd="$(ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins" persona_find_dir "$_pid" 2>/dev/null)"
 _unwrap

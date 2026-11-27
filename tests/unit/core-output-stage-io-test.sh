@@ -135,7 +135,7 @@ assert_json_key "T9 metadata.model_id == mymodel" "$t9_json" ".metadata.model_id
 rm -rf "$ZBUILD_STATE_DIR/artifacts/stage-io"
 capture_stage_io --stage plan --kind llm --input "i" --output "o" >/dev/null 2>&1
 assert_event_emitted "T10 stage.io.captured event emitted" "$ZBUILD_EVENTS_JSONL" "stage.io.captured"
-t10_evt="$(jq -c --arg t "stage.io.captured" 'select(.type==$t)' "$ZBUILD_EVENTS_JSONL" | head -1)"
+t10_evt="$(jq -c --arg t "stage.io.captured" 'select(.type==$t)' "$ZBUILD_EVENTS_JSONL" | sed -n 1p)"
 # payload is flattened — check that key fields appear in event JSON
 assert_contains "T10 event has stage" "$t10_evt" "plan"
 assert_contains "T10 event has kind=llm" "$t10_evt" "llm"
@@ -295,7 +295,7 @@ out36b="$(_stage_io_to_stdout "$rec36b" 2>/dev/null)"
 assert_contains "T36b decoded command starts with bare 'gh'" "$out36b" "$ gh issue view 291"
 # Critical: NO $'...' wrapper should appear in human-readable output.
 if grep -qF "$'" <<< "$out36b"; then
-    assert_fail "T36b decoded command must NOT contain ANSI-C \$'...' wrapper" "got: $(echo "$out36b" | grep -F "$'" | head -1)"
+    assert_fail "T36b decoded command must NOT contain ANSI-C \$'...' wrapper" "got: $(echo "$out36b" | grep -F "$'" | sed -n 1p)"
 else
     assert_pass "T36b decoded command must NOT contain ANSI-C \$'...' wrapper"
 fi
@@ -687,7 +687,7 @@ else
     assert_pass "T49 comment dropped on redaction failure"
 fi
 assert_event_emitted "T49 stage.io.error redaction_failed emitted" "$ZBUILD_EVENTS_JSONL" "stage.io.error"
-t49_evt="$(jq -c --arg t "stage.io.error" 'select(.type==$t)' "$ZBUILD_EVENTS_JSONL" | head -1)"
+t49_evt="$(jq -c --arg t "stage.io.error" 'select(.type==$t)' "$ZBUILD_EVENTS_JSONL" | sed -n 1p)"
 assert_contains "T49 event has redaction_failed reason" "$t49_evt" "redaction_failed"
 # Restore real apply_scope_redaction from the saved declare -f snapshot.
 unset -f apply_scope_redaction
@@ -711,7 +711,7 @@ set -e
 PATH="$saved_path"
 assert_eq "T50 gh failure returns 0" "0" "$rc50"
 assert_event_emitted "T50 stage.io.error gh_comment_post_failed emitted" "$ZBUILD_EVENTS_JSONL" "stage.io.error"
-t50_evt="$(jq -c --arg t "stage.io.error" 'select(.type==$t)' "$ZBUILD_EVENTS_JSONL" | head -1)"
+t50_evt="$(jq -c --arg t "stage.io.error" 'select(.type==$t)' "$ZBUILD_EVENTS_JSONL" | sed -n 1p)"
 assert_contains "T50 event has gh_comment_post_failed reason" "$t50_evt" "gh_comment_post_failed"
 
 # ─── T51: stdout destination must NOT pollute caller's stdout (fix for the

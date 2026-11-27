@@ -102,35 +102,66 @@ assert_eq "[#1884] grep without -q             -> NOT an offender" \
 # line itself or within the 8 lines above it (a line ending in `\` cannot take a
 # trailing comment, so the marker sits before the statement). Requiring a stated
 # reason is the point: a NEW `| head` cannot be added without saying why.
+# #2639: `.zbuild/rules.md` says "in any `.sh` file, test files included", and
+# the scan skipped every -test.sh file, looked nowhere under tests/, and missed
+# a head called by its path: on #2534 three lenses found `| /usr/bin/head -1`
+# in a test file the guard had passed. It now scans every .sh file the rule
+# covers, and a head by any path, or with no option.
+_HD_RE='(^|[^|])\|[[:space:]]*([^[:space:]|;&()]*/)?head([[:space:]]|$|[;)&])'
+_hd_check() { grep -qE "$_HD_RE" <<< "$1" && echo yes || echo no; }
+
+print_test_section "[#2639] the head detector catches a head by any path, and nothing else"
+assert_eq "[#2639/SPEC-2] cmd | head -1                -> offender" "yes" "$(_hd_check 'x="$(grep a f | head -1)"')"
+assert_eq "[#2639/SPEC-2] cmd | /usr/bin/head -1       -> offender" "yes" "$(_hd_check 'x="$(grep a f | /usr/bin/head -1)"')"
+assert_eq "[#2639/SPEC-2] cmd | head, no option        -> offender" "yes" "$(_hd_check 'printf "%s" "$v" | head')"
+assert_eq "[#2639/SPEC-2] cmd | head -c 9              -> offender" "yes" "$(_hd_check 'x=$(printf "%s" "$v" | head -c 9)')"
+assert_eq "[#2639/SPEC-2] cmd || head -1 file          -> NOT an offender" "no" "$(_hd_check 'grep a f || head -1 g')"
+assert_eq "[#2639/SPEC-2] head -1 file                 -> NOT an offender" "no" "$(_hd_check 'x=$(head -1 "$f")')"
+assert_eq "[#2639/SPEC-2] cmd | headers                -> NOT an offender" "no" "$(_hd_check 'cmd | headers -x')"
+assert_eq "[#2639/SPEC-2] cmd | sed -n 1p              -> NOT an offender" "no" "$(_hd_check 'x="$(grep a f | sed -n 1p)"')"
+assert_eq "[#2639/SPEC-2] a regex's (a|head|b)         -> NOT an offender" "no" "$(_hd_check '[[ "$p" =~ \.(bak|head|tmp)$ ]]')"
+
+# _head_scan <root>... — each unjustified '| head' under the roots, in any .sh
+# file: not a comment line, not this guard (it holds the pattern as text), and
+# no `# sigpipe-ok: <reason>` on the line or within the 8 lines above it (a line
+# ending in `\` cannot take a trailing comment, so the marker sits before it).
+_head_scan() {
+    local _hit _hf _rest _hl _from
+    while IFS= read -r _hit; do
+        [[ -z "$_hit" ]] && continue
+        _hf="${_hit%%:*}"; _rest="${_hit#*:}"; _hl="${_rest%%:*}"
+        _from=$(( _hl > 8 ? _hl - 8 : 1 ))
+        grep -q 'sigpipe-ok' <<< "$(sed -n "${_from},${_hl}p" "$_hf" 2>/dev/null)" && continue
+        printf '%s\n' "$_hit"
+    done < <(
+        grep -rnE "$_HD_RE" "$@" --include='*.sh' 2>/dev/null \
+        | { grep -v -e "/legacy-DoNotUse/" -e '/sigpipe-antipattern-guard-test.sh:' || true; } \
+        | { grep -vE '^[^:]*:[0-9]+:[[:space:]]*#' || true; } \
+        | sort -u
+    )
+}
+
+print_test_section "[#2639] the scan covers every .sh file the rule covers"
+_HS="$(mktemp -d "${TMPDIR:-/tmp}/sigpipe-scope.XXXXXX")" || exit 1
+mkdir -p "${_HS:?}/plugins/p/tests" "${_HS:?}/tests/lib"
+printf 'x="$(grep a f | head -1)"\n' > "${_HS:?}/plugins/p/tests/p-test.sh"
+printf 'y="$(grep a f | /usr/bin/head -n 2)"\n' > "${_HS:?}/tests/lib/h.sh"
+printf '# sigpipe-ok: reads a short list\nz="$(grep a f | head -1)"\n' > "${_HS:?}/tests/lib/ok.sh"
+_hs_out="$(_head_scan "${_HS:?}/plugins" "${_HS:?}/tests")"
+assert_contains "[#2639/SPEC-2] a -test.sh file is scanned" "$_hs_out" "p-test.sh:1:"
+assert_contains "[#2639/SPEC-2] a file under tests/ is scanned, and a head by its path found" "$_hs_out" "h.sh:1:"
+_lacks_ok=yes; grep -q 'ok.sh' <<< "$_hs_out" && _lacks_ok=no
+assert_eq "[#2639/SPEC-2] a marked line is not an offender" "yes" "$_lacks_ok"
+rm -rf "${_HS:?}"
+
 print_test_section "[#1886] every '| head' is converted or justified"
-
-_head_offenders=""
-while IFS= read -r _hit; do
-    [[ -z "$_hit" ]] && continue
-    _hf="${_hit%%:*}"; _rest="${_hit#*:}"; _hl="${_rest%%:*}"
-    # marker on the line itself, or on any of the 8 lines above it
-    _from=$(( _hl > 8 ? _hl - 8 : 1 ))
-    if sed -n "${_from},${_hl}p" "$_hf" 2>/dev/null | grep -q 'sigpipe-ok'; then
-        continue
-    fi
-    _head_offenders+="$_hit"$'\n'
-done < <(
-    grep -rnE '(^|[^|])\|[[:space:]]*head[[:space:]]+-' \
-        "$REPO_ROOT/scripts" "$REPO_ROOT/core" "$REPO_ROOT/plugins" \
-        --include='*.sh' 2>/dev/null \
-    | { grep -v "^$REPO_ROOT/legacy-DoNotUse/" || true; } \
-    | { grep -v -- '-test.sh:' || true; } \
-    | { grep -vE '^[^:]*:[0-9]+:[[:space:]]*#' || true; } \
-    | sort -u
-)
-
-_head_offenders="${_head_offenders%$'\n'}"
+_head_offenders="$(_head_scan "$REPO_ROOT/scripts" "$REPO_ROOT/core" "$REPO_ROOT/plugins" "$REPO_ROOT/tests")"
 if [[ -z "$_head_offenders" ]]; then
-    assert_pass "[#1886] no unjustified '| head' in scripts/, core/ or plugins/"
+    assert_pass "[#1886] no unjustified '| head' in any .sh file (#2639: tests included)"
 else
     echo "  unjustified '| head' (convert, or add '# sigpipe-ok: <reason>'):" >&2
     head -15 <<< "$_head_offenders" >&2
-    assert_fail "[#1886] no unjustified '| head' in scripts/, core/ or plugins/" \
+    assert_fail "[#1886] no unjustified '| head' in any .sh file (#2639: tests included)" \
         "found $(grep -cE '.' <<< "$_head_offenders") occurrence(s)"
 fi
 

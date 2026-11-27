@@ -101,9 +101,9 @@ assert_event_emitted "I3: cycle.blocked emitted" "$ZBUILD_EVENTS_JSONL" "cycle.b
 assert_event_emitted "I3: cycle.complete emitted" "$ZBUILD_EVENTS_JSONL" "cycle.complete"
 # Check ordering: cycle.iteration.complete before cycle.blocked before cycle.complete(reason=blocked)
 order_ok=1
-ic_line="$(grep -n '"type":"cycle.iteration.complete"' "$ZBUILD_EVENTS_JSONL" | head -1 | cut -d: -f1)"
-bl_line="$(grep -n '"type":"cycle.blocked"' "$ZBUILD_EVENTS_JSONL" | head -1 | cut -d: -f1)"
-co_line="$(grep -n '"type":"cycle.complete".*"reason":"blocked"' "$ZBUILD_EVENTS_JSONL" | head -1 | cut -d: -f1)"
+ic_line="$(grep -n '"type":"cycle.iteration.complete"' "$ZBUILD_EVENTS_JSONL" | sed -n 1p | cut -d: -f1)"
+bl_line="$(grep -n '"type":"cycle.blocked"' "$ZBUILD_EVENTS_JSONL" | sed -n 1p | cut -d: -f1)"
+co_line="$(grep -n '"type":"cycle.complete".*"reason":"blocked"' "$ZBUILD_EVENTS_JSONL" | sed -n 1p | cut -d: -f1)"
 [[ -n "$ic_line" && -n "$bl_line" && -n "$co_line" ]] || order_ok=0
 if [[ $order_ok -eq 1 ]]; then
     [[ "$ic_line" -lt "$bl_line" && "$bl_line" -lt "$co_line" ]] || order_ok=0
@@ -114,7 +114,7 @@ else
     assert_fail "I3: event order" "ic=$ic_line bl=$bl_line co=$co_line"
 fi
 # cycle.blocked carries stage + verdict context
-blocked_evt="$(grep '"type":"cycle.blocked"' "$ZBUILD_EVENTS_JSONL" | head -1)"
+blocked_evt="$(grep '"type":"cycle.blocked"' "$ZBUILD_EVENTS_JSONL" | sed -n 1p)"
 assert_contains "I3: cycle.blocked stage=test" "$blocked_evt" '"stage":"test"'
 assert_contains "I3: cycle.blocked verdict=error" "$blocked_evt" '"verdict":"error"'
 

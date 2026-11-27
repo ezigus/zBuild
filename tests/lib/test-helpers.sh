@@ -1155,6 +1155,11 @@ zb_test_kill_tree() {
     return 0
 }
 
+# zb_test_clip <n> <text> — the first <n> characters of <text>, for a failure
+# message. `… | head -c <n>` exits before its writer finishes, and the writer
+# takes SIGPIPE (#2639: no `| head` in any .sh file).
+zb_test_clip() { printf '%s' "${2:0:$1}"; }
+
 # wait_for_exit <pid> [max_iters=600] [interval=0.05] — waits for a process a
 # test started (and usually signalled), with a limit (#2639): its exit status
 # once it is gone; 124 once the limit passes, when it and everything under it

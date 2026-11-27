@@ -294,7 +294,7 @@ print_test_section "T1 [SPEC-4]: terminal acceptance failure (inert_wiring) halt
 export ZBUILD_TEST_GATE_FAILURE="inert_wiring:config/x.yaml"
 _run_pipeline t1
 
-end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | head -1)"
+end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 # [SPEC-4]
 assert_eq "T1 [SPEC-4]: pipeline.end status=failed on terminal acceptance failure" "failed" "$end_status"
 
@@ -309,7 +309,7 @@ term_evt="$(jq -c 'select(.type=="cycle.member.terminal_failure")' \
 # The event must name the acceptance-gate member (plugin-agnostic engine, but the
 # member id is carried in data).
 term_member="$(jq -r 'select(.type=="cycle.member.terminal_failure") | .data.member' \
-    "$EVENTS_JSONL" 2>/dev/null | head -1)"
+    "$EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 assert_eq "T1 [SPEC-4]: terminal_failure event names the failing member (test, #2372)" "test" "$term_member"
 
 # The cycle status written to durable state must NOT be complete.
@@ -328,7 +328,7 @@ print_test_section "T2 [SPEC-2]: untagged_spec-only acceptance failure does NOT 
 export ZBUILD_TEST_GATE_FAILURE="untagged_spec:SPEC-1"
 _run_pipeline t2
 
-end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | head -1)"
+end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 rounds="$(jq -c 'select(.type=="cycle.iteration.complete" and .data.cycle_id=="build_test_cycle")' \
     "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 assert_gt "T2 [SPEC-2]: build_test_cycle goes round again (more than one round)" "$rounds" "1"
@@ -349,7 +349,7 @@ print_test_section "T3 [SPEC-5]: infra negctl_error:timeout does NOT halt (statu
 export ZBUILD_TEST_GATE_FAILURE="negctl_error:timeout:SPEC-1"
 _run_pipeline t3
 
-end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | head -1)"
+end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 assert_eq "T3 [SPEC-5]: pipeline.end status=success on negctl_error:timeout (infra non-terminal)" "success" "$end_status"
 
 term_evt="$(jq -c 'select(.type=="cycle.member.terminal_failure")' \

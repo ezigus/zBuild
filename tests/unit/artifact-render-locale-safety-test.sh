@@ -38,7 +38,7 @@ else
 fi
 if grep -q $'\x1b' 2>/dev/null <<< "$OUT_INLINE"; then
     assert_fail "T1: inline escape left ANSI sequence intact" \
-        "got bytes: $(printf '%s' "$OUT_INLINE" | od -c | head -2)"
+        "got bytes: $(printf '%s' "$OUT_INLINE" | od -c | sed -n 1,2p)"
 else
     assert_pass "T1: ANSI stripped from inline output"
 fi

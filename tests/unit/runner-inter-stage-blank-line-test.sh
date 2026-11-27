@@ -86,15 +86,15 @@ divider_count="$(printf '%s\n' "$log" | grep -c '━━' || true)"
 if [[ "$divider_count" -ge 2 ]]; then
     assert_pass "two stage dividers rendered (count=$divider_count)"
 else
-    assert_fail "two stage dividers rendered" "count=$divider_count log=$(printf '%s' "$log" | head -c 200)"
+    assert_fail "two stage dividers rendered" "count=$divider_count log=${log:0:200}"
 fi
 
 # ─── Assertion 2: ≥3 blank lines strictly between divider lines.
 #     Previous behavior produced 2 (divider trailing \n + #523 \n). The new
 #     dispatcher-side leading \n bumps this to ≥3. We allow ≥3 so the test
 #     is robust against terminal widths and color variations.
-plan_lineno="$(printf '%s\n' "$log" | grep -n 'plan' | head -1 | cut -d: -f1)"
-build_lineno="$(printf '%s\n' "$log" | grep -n 'build' | head -1 | cut -d: -f1)"
+plan_lineno="$(printf '%s\n' "$log" | grep -n 'plan' | sed -n 1p | cut -d: -f1)"
+build_lineno="$(printf '%s\n' "$log" | grep -n 'build' | sed -n 1p | cut -d: -f1)"
 
 if [[ -z "$plan_lineno" || -z "$build_lineno" ]]; then
     assert_fail "plan + build divider lines both present" \

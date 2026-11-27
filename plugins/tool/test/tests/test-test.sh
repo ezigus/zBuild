@@ -323,8 +323,8 @@ set -e
 T_END="$(date +%s)"
 T_DELTA=$(( T_END - T_START ))
 banner10="$(cat "$BANNER_10")"
-input_line_10="$(printf '%s\n' "$banner10" | grep -n 'seq=.* input' | head -1 | cut -d: -f1 || true)"
-output_line_10="$(printf '%s\n' "$banner10" | grep -n 'seq=.* output' | head -1 | cut -d: -f1 || true)"
+input_line_10="$(printf '%s\n' "$banner10" | grep -n 'seq=.* input' | sed -n 1p | cut -d: -f1 || true)"
+output_line_10="$(printf '%s\n' "$banner10" | grep -n 'seq=.* output' | sed -n 1p | cut -d: -f1 || true)"
 [[ -n "$input_line_10"  ]] && assert_pass "input banner found in stream"  || assert_fail "input banner found in stream" "no 'seq=* input' line"
 [[ -n "$output_line_10" ]] && assert_pass "output banner found in stream" || assert_fail "output banner found in stream" "no 'seq=* output' line"
 if [[ -n "$input_line_10" && -n "$output_line_10" && "$input_line_10" -lt "$output_line_10" ]]; then
@@ -808,7 +808,7 @@ _test_emit_failures_summary "$_spec13_sum" "fail" "1" "1" "$_spec13_raw" "40"
 assert_contains "[#2124] the ✗ line is in the summary" "$(cat "$_spec13_sum" 2>/dev/null)" "[SPEC-3] router-fatal path writes OUTPUT_R7"
 assert_contains "[#2124] its detail line follows it" "$(cat "$_spec13_sum" 2>/dev/null)" "got: OUTPUT_R7 missing"
 assert_contains "[#2124] the tier's FAIL marker names the file" "$(cat "$_spec13_sum" 2>/dev/null)" "integration: FAIL plugins/agent/security-lens/tests/security-lens-test.sh"
-_spec13_first="$(grep -n 'router-fatal\|nested replay noise' "$_spec13_sum" 2>/dev/null | head -1)"
+_spec13_first="$(grep -n 'router-fatal\|nested replay noise' "$_spec13_sum" 2>/dev/null | sed -n 1p)"
 assert_contains "[#2124] the ✗ line precedes the noise" "$_spec13_first" "router-fatal"
 
 # ─── #2138: the REASON a file died reaches the summary ────────────────────────

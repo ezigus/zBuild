@@ -64,7 +64,7 @@ print_test_section "N1-N2: a lens finding about a test file"
     echo "N1|$(cat "$A/lens-n1-test-result.json" 2>/dev/null | tr -d '\n')"
     echo "N2|$(cat "$A/lens-n1-code-result.json" 2>/dev/null | tr -d '\n')"
 ) > "$TEST_TEMP_DIR/n12.out" 2>/dev/null
-_l() { grep "^$1|" "$TEST_TEMP_DIR/$2" | head -1 | cut -d'|' -f2-; }
+_l() { grep "^$1|" "$TEST_TEMP_DIR/$2" | sed -n 1p | cut -d'|' -f2-; }
 assert_contains "[N1] the test file's finding goes to test-author" "$(_l N1 n12.out)" "TEST-FILE-FINDING"
 _n2="$(_l N2 n12.out)"
 assert_contains "[N2] the code file's goes to build" "$_n2" "CODE-FILE-FINDING"

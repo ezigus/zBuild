@@ -156,7 +156,7 @@ fi
 # only the shape it was written against, which is the failure this whole family of
 # tests keeps producing. `|| true` because a no-match must reach the assertion
 # below and be reported, not kill the file under `set -e`.
-_win_s="$(/usr/bin/grep -oE '^reap_window_s=[0-9]+' "$_RFA" | head -1 | cut -d= -f2 || true)"
+_win_s="$(/usr/bin/grep -oE '^reap_window_s=[0-9]+' "$_RFA" | sed -n 1p | cut -d= -f2 || true)"
 _win=""
 [[ -n "$_win_s" ]] && _win=$(( _win_s * 1000000000 ))
 if [[ -n "$_win" && "$_win" -ge 10000000000 ]]; then

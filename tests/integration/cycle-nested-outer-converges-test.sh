@@ -149,7 +149,7 @@ assert_eq "T3: cycle.iteration.complete fired for build_review_cycle (the gap do
 outer_complete=$(jq -c 'select(.type=="cycle.complete" and .data.cycle_id=="build_review_cycle")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
 assert_eq "T4: cycle.complete fired for build_review_cycle" "1" "$outer_complete"
 
-outer_reason=$(jq -r 'select(.type=="cycle.complete" and .data.cycle_id=="build_review_cycle") | .data.reason' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+outer_reason=$(jq -r 'select(.type=="cycle.complete" and .data.cycle_id=="build_review_cycle") | .data.reason' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "T5: cycle.complete reason=converged (not aborted/max_iterations)" "converged" "$outer_reason"
 
 # T6: inner cycle ALSO emitted both events (was working pre-fix; regression
@@ -170,10 +170,10 @@ print_test_section "19-C-1 instrumentation: predicate-event diagnostic"
 outer_predicate=$(jq -c 'select(.type=="cycle.predicate.evaluated" and .data.cycle_id=="build_review_cycle" and .data.kind=="exit_when")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
 assert_eq "T8: cycle.predicate.evaluated fires for build_review_cycle exit_when (19-C-1 instrumentation)" "1" "$outer_predicate"
 
-outer_predicate_match=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.cycle_id=="build_review_cycle" and .data.kind=="exit_when") | .data.match' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+outer_predicate_match=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.cycle_id=="build_review_cycle" and .data.kind=="exit_when") | .data.match' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "T9: predicate match=true (verdict_raw=approve reached the outer predicate)" "true" "$outer_predicate_match"
 
-outer_predicate_actual=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.cycle_id=="build_review_cycle" and .data.kind=="exit_when") | .data.actual' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+outer_predicate_actual=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.cycle_id=="build_review_cycle" and .data.kind=="exit_when") | .data.actual' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "T10: predicate actual=approve (RAW verdict propagated, not classified)" "approve" "$outer_predicate_actual"
 
 print_test_section "terminated_reason and iteration count"

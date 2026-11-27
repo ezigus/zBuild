@@ -360,7 +360,7 @@ fi
 if grep -qiE "composite|phase.1|deferred|not.implemented" <<< "$composite_out"; then
     assert_pass "composite: output contains deferral message"
 else
-    assert_fail "composite: output contains deferral message" "output: $(echo "$composite_out" | head -5)"
+    assert_fail "composite: output contains deferral message" "output: $(echo "$composite_out" | sed -n 1,5p)"
 fi
 
 # ─── Cleanup ──────────────────────────────────────────────────────────────────

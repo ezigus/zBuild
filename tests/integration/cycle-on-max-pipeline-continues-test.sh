@@ -319,7 +319,7 @@ assert_eq "T1.4: pipeline.end emitted exactly once" "1" "$end_count"
 # follow-up (generalize the rescue to the template's terminal-stage verdict, or
 # drop it). The #766 mechanic under test (unconverged on_max=continue → NO
 # pipeline.abort, runner CONTINUES past the cycle) is fully proven by T1.1–T2.1; T2.2 is pr's requires: (#2611).
-end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | head -1)"
+end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 assert_eq "T1.5 (#979): pipeline.end status=failed (no review.json rescue under simple.yaml; see coupling note)" "failed" "$end_status"
 
 print_test_section "T2: build ran; the runner reached pr, which requires every stage before it (#2611)"
@@ -335,7 +335,7 @@ build_run_count="$(jq -c 'select(.type=="plugin.run.start" and .data.plugin=="bu
 # the run ends there, naming it.
 pr_run_count="$(jq -c 'select(.type=="plugin.run.start" and .data.plugin=="pr")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "T2.2: pr is not run on a loop that did not pass" "0" "$pr_run_count"
-end_reason="$(jq -r 'select(.type=="pipeline.end") | .data.reason // empty' "$EVENTS_JSONL" 2>/dev/null | head -1)"
+end_reason="$(jq -r 'select(.type=="pipeline.end") | .data.reason // empty' "$EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 assert_contains "T2.2: the run ends at pr, naming the loop it requires" "$end_reason" "stage_stopped:pr:it requires"
 assert_contains "T2.2: ...delivery_loop among them" "$end_reason" "delivery_loop"
 
