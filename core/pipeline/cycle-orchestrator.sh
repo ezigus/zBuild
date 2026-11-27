@@ -1650,9 +1650,13 @@ _cycle_iter_dispatch() {
             # rounds decides whether this outer round may carry on past it.
             local _inner_on_max_var="_TPL_CYCLE_ON_MAX_${s//-/_}"
             local _inner_on_max="${!_inner_on_max_var:-continue}"
+            # #2640: this outer round's passed members, and the member it held
+            # back (none yet) — the inner loop keeps its own rounds' records.
+            local _outer_passed="$_CYCLE_ROUND_PASSED" _outer_not_run="${_CYCLE_ITER_NOT_RUN:-}"
             _CYCLE_NEST_DEPTH=$(( ${_CYCLE_NEST_DEPTH:-0} + 1 ))
             cycle_orchestrator_run "$s" "$state_dir" "$state_file"
             rc=$?
+            _CYCLE_ROUND_PASSED="$_outer_passed"; _CYCLE_ITER_NOT_RUN="$_outer_not_run"
             local _inner_outcome="${_CYCLE_LAST_OUTCOME:-}" _inner_halt="${_CYCLE_LAST_MEMBER_HALT:-}"
             # #2543: whether the inner loop's last round was ended for an
             # earlier member; this outer round has ended no round yet.

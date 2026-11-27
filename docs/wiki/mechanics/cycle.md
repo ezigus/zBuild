@@ -65,6 +65,7 @@ The `design_verify_cycle` (design → design-gate) and `build_test_cycle` (build
 | `feedback` | list | Wires an output from one member to an input of another across iterations |
 | `feedback[].required` | bool | If `true`, a missing artifact is a cycle config error |
 | `blocking` | bool (per member) | If `true`, a member failure halts the cycle immediately (ADR-013) |
+| `requires` | flow list (per member) | Earlier members of the loop that must have passed in this round; an unmet one ends the round, and the next starts from the top (ADR-068 §3) |
 | `plateau_window` | int | Iterations of unchanged score before plateau exit; default 3 |
 | `divergence_window` | int | Consecutive regressions before divergence exit; default 2 |
 

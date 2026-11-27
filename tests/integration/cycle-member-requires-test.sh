@@ -12,6 +12,7 @@
 #                run, the engine says why, and the next round starts at the top
 # [#2640/SPEC-1] a loop out of rounds with the member never run ends saying so
 # [#2640/SPEC-1] the status comment's row for it says why it did not run
+# [#2640/SPEC-1] a loop inside the loop leaves the outer round's record as it was
 # [#2640/SPEC-1] simple.yaml gives build requires: [test-author]
 set -uo pipefail
 
@@ -100,66 +101,161 @@ assert_contains "[#2640/SPEC-1] ...saying which" "$(cat "$TEST_TEMP_DIR/load.err
 _tpl "requires: [intake]"
 _load; assert_eq "[#2640/SPEC-1] a member requiring a stage outside its loop refuses the template" "1" "$?"
 
-# ── running the loop ─────────────────────────────────────────────────────────
-LOG="$TEST_TEMP_DIR/dispatch.log"
-# WRITER: one word a round — pass or fail.
-# shellcheck disable=SC2329  # called by the orchestrator
-cycle_dispatch_stage() {
-    local stage="$1" iter="$2" w
-    printf '%s|iter=%s\n' "$stage" "$iter" >> "$LOG"
-    _CYCLE_DISPATCH_VERDICT="pass"; _CYCLE_DISPATCH_STATUS="complete"; _CYCLE_DISPATCH_REPORT="{}"
-    [[ "$stage" == writer ]] || return 0
-    w="$(cut -d, -f"$iter" <<< "$WRITER")"
-    [[ "$w" == fail ]] && { _CYCLE_DISPATCH_VERDICT="fail"; return 1; }
-    return 0
+# ── running the loop, through the real runner ────────────────────────────────
+# The runner dispatches real stage plugins — stubs for every role (the simple
+# roster) — so the orchestrator, the runner's dispatch and the status rows are
+# all the engine's own. test-author fails in the rounds TA_FAILS names.
+_ZB_REPO="$(zb_test_repo cycle-member-requires)"
+_ZB_GOAL="$(zb_test_goal cycle-member-requires)"
+PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
+RSTATE="$TEST_TEMP_DIR/run-state"
+EVENTS_JSONL="$TEST_TEMP_DIR/run-events/events.jsonl"
+mkdir -p "$RSTATE" "$TEST_TEMP_DIR/run-events"
+_run_env() {
+    ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" ZBUILD_STATE_DIR="$RSTATE" \
+    ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/run-events" ZBUILD_EVENTS_JSONL="$EVENTS_JSONL" \
+    ZBUILD_CYCLES_ENABLED=1 ZBUILD_CONTRACT_VALIDATOR=warn \
+    ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json" ZB_STUB_ROOT="$REPO_ROOT" "$@"
 }
-_run() {
-    : > "$LOG"; : > "$ZBUILD_EVENTS_JSONL"
-    local sf="$ZBUILD_STATE_DIR/pipeline-state.json"
-    rm -f "$sf" "$sf.bak" "$sf.lock"
-    jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$sf"
-    _load || { echo "load_template failed" >&2; return 99; }
-    _CYCLE_LAST_TERMINATED_REASON=""
-    cycle_orchestrator_run build_loop "$ZBUILD_STATE_DIR" "$sf" >/dev/null 2>&1
-    RUN_RC=$?
+export ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT"
+# shellcheck source=../lib/simple-run-stubs.sh
+source "$REPO_ROOT/tests/lib/simple-run-stubs.sh"
+simple_stubs_roster
+mock_plugin_factory "test-author" agent 0 "" "test_author" >/dev/null
+cat > "$PLUGINS_ROOT/agent/test-author/plugin.sh" <<'PLUG'
+test_author_run() {
+    local art; art="$(dirname "$2")/artifacts"; mkdir -p "$art"
+    source "$STAGE_RESULT_LIB"
+    if [[ " ${TA_FAILS:-} " == *" ${ZBUILD_CYCLE_ITER:-0} "* ]]; then
+        stage_result_write "$art/test-author-result.json" fail "no tests written this round"
+        return 1
+    fi
+    stage_result_write "$art/test-author-result.json" pass "tests written"
 }
-_count() { grep -c "^$1|" "$LOG" || true; }
-_ran() { grep -c "^$1|iter=$2$" "$LOG" || true; }
+PLUG
+mkdir -p "$_ZB_REPO/.zbuild/templates"
+cat > "$_ZB_REPO/.zbuild/templates/req-loop.yaml" <<'TPL'
+id: req-loop
+extends: simple
+flow:
+  - req_loop
+always_run: []
+req_loop:
+  type: cycle
+  description: Design, write the tests, then build
+  flow:
+    - design
+    - test-author
+    - build
+  exit_when:
+    all:
+      - { stage: design, field: verdict, op: eq, value: pass }
+      - { stage: test-author, field: verdict, op: eq, value: pass }
+      - { stage: build, field: verdict, op: eq, value: pass }
+  stop_run_on_fail: [design]
+  max_iterations: 3
+  on_max: halt
+design:
+  gate: auto
+  roles: [designer]
+test-author:
+  gate: auto
+  roles: [test_author]
+build:
+  gate: auto
+  roles: [builder]
+  requires: [test-author]
+TPL
+( cd "$_ZB_REPO" && git add .zbuild && git commit -qm "req-loop template" ) >/dev/null 2>&1
+export _ZB_TEMPLATE=req-loop
+_go() { : > "$EVENTS_JSONL"; rm -rf "${RSTATE:?}"; mkdir -p "$RSTATE"; _run_env _run_pipeline; }
+# _ran <member> <round> — dispatches of <member> in <round>, from the engine's events.
+_ran() { jq -r --arg m "$1" --arg i "$2" 'select(.type == "cycle.member.dispatch.start" and .data.member == $m and .data.iter == $i) | 1' "$EVENTS_JSONL" 2>/dev/null | grep -c . || true; }
+_count() { jq -r --arg m "$1" 'select(.type == "cycle.member.dispatch.start" and .data.member == $m) | 1' "$EVENTS_JSONL" 2>/dev/null | grep -c . || true; }
 
 print_test_section "a member whose requirement did not pass this round"
-_tpl "requires: [writer]"
-WRITER=fail,pass _run
-assert_eq "[#2640/SPEC-1] build does not run in the round the writer failed" "0" "$(_ran build 1)"
-assert_eq "[#2640/SPEC-1] ...nor does anything after it" "0" "$(_ran check 1)"
-assert_eq "[#2640/SPEC-1] the next round starts at the top: design runs again" "2" "$(_count design)"
-assert_eq "[#2640/SPEC-1] ...and build runs in it, once the writer passed" "1" "$(_ran build 2)"
-assert_eq "[#2640/SPEC-1] the run goes on and converges" "0" "$RUN_RC"
-_nr="$(grep '"cycle.member.not_run"' "$ZBUILD_EVENTS_JSONL" || true)"
+TA_FAILS="1" _go
+assert_eq "[#2640/SPEC-1] build does not run in the round test-author failed" "0" "$(_ran build 1)"
+assert_eq "[#2640/SPEC-1] the next round starts at the top: design runs again" "1" "$(_ran design 2)"
+assert_eq "[#2640/SPEC-1] ...and build runs in it, once test-author passed" "1" "$(_ran build 2)"
+assert_eq "[#2640/SPEC-1] the run goes on and passes" "0" "$_RUNNER_RC"
+_nr="$(grep '"cycle.member.not_run"' "$EVENTS_JSONL" || true)"
 assert_contains "[#2640/SPEC-1] the engine says which member did not run" "$_nr" '"stage":"build"'
-assert_contains "[#2640/SPEC-1] ...and which requirement did not pass" "$_nr" '"requires":"writer"'
+assert_contains "[#2640/SPEC-1] ...and which requirement did not pass" "$_nr" '"requires":"test-author"'
 
 print_test_section "the status comment's row"
-_rows="$(rsc_rows_json "$ZBUILD_EVENTS_JSONL")"
+_rows="$(rsc_rows_json "$EVENTS_JSONL")"
 _row="$(jq -c '[.order[] as $k | .rows[$k] | select(.kind == "not_run")] | first // empty' <<< "$_rows")"
-_line="$(rsc_render_row "$ZBUILD_STATE_DIR" "${_row:-{\}}")"
+_line="$(rsc_render_row "$RSTATE" "${_row:-{\}}")"
 assert_contains "[#2640/SPEC-1] the row names the member" "$_line" " build**"
-assert_contains "[#2640/SPEC-1] ...and why it did not run" "$_line" "not run — writer did not pass"
+assert_contains "[#2640/SPEC-1] ...and why it did not run" "$_line" "not run — test-author did not pass"
 
 print_test_section "a requirement that never passes"
-WRITER=fail,fail,fail _run
+TA_FAILS="1 2 3" _go
 assert_eq "[#2640/SPEC-1] the loop runs its 3 rounds" "3" "$(_count design)"
 assert_eq "[#2640/SPEC-1] ...build never runs" "0" "$(_count build)"
-assert_eq "[#2640/SPEC-1] ...and the run ends failed" "1" "$RUN_RC"
-assert_eq "[#2640/SPEC-1] ...saying build never ran because the writer did not pass" \
-    "not_run:build:writer" "$_CYCLE_LAST_TERMINATED_REASON"
-assert_eq "[#2640/SPEC-1] ...in words" "ran out of rounds: build never ran — writer did not pass" \
-    "$(run_end_words "not_run:build:writer")"
+assert_eq "[#2640/SPEC-1] ...and the run ends failed" "1" "$([[ $_RUNNER_RC -ne 0 ]] && echo 1 || echo 0)"
+assert_contains "[#2640/SPEC-1] ...saying build never ran because test-author did not pass" \
+    "$(jq -r 'select(.type == "cycle.complete") | .data.reason' "$EVENTS_JSONL" 2>/dev/null)" "not_run:build:test-author"
+assert_eq "[#2640/SPEC-1] ...in words" "ran out of rounds: build never ran — test-author did not pass" \
+    "$(run_end_words "not_run:build:test-author")"
 
 print_test_section "a requirement that passes"
-WRITER=pass _run
+TA_FAILS="" _go
 assert_eq "[#2640/SPEC-1] build runs in round 1" "1" "$(_ran build 1)"
 assert_eq "[#2640/SPEC-1] ...and no member is said not to have run" "0" \
-    "$(grep -c '"cycle.member.not_run"' "$ZBUILD_EVENTS_JSONL" || true)"
+    "$(grep -c '"cycle.member.not_run"' "$EVENTS_JSONL" || true)"
+
+print_test_section "a loop inside the loop"
+# The outer round's members that passed are kept while a loop inside it runs:
+# build requires design, which ran before the inner loop (bash review on #2640).
+cat > "$_ZB_REPO/.zbuild/templates/req-nested.yaml" <<'TPL'
+id: req-nested
+extends: simple
+flow:
+  - outer_loop
+always_run: []
+outer_loop:
+  type: cycle
+  description: Design, an inner loop, then build
+  flow:
+    - design
+    - inner_loop
+    - build
+  exit_when:
+    all:
+      - { stage: design, field: verdict, op: eq, value: pass }
+      - { stage: inner_loop, field: verdict, op: eq, value: pass }
+      - { stage: build, field: verdict, op: eq, value: pass }
+  stop_run_on_fail: [design]
+  max_iterations: 1
+  on_max: halt
+inner_loop:
+  type: cycle
+  description: Write the tests
+  flow:
+    - test-author
+  exit_when:
+    all:
+      - { stage: test-author, field: verdict, op: eq, value: pass }
+  max_iterations: 1
+  on_max: halt
+design:
+  gate: auto
+  roles: [designer]
+test-author:
+  gate: auto
+  roles: [test_author]
+build:
+  gate: auto
+  roles: [builder]
+  requires: [design]
+TPL
+( cd "$_ZB_REPO" && git add .zbuild && git commit -qm "req-nested template" ) >/dev/null 2>&1
+_ZB_TEMPLATE=req-nested TA_FAILS="" _go
+assert_eq "[#2640/SPEC-1] a member after an inner loop that requires one before it runs" "1" "$(_ran build 1)"
+assert_eq "[#2640/SPEC-1] ...and no member is said not to have run" "0" \
+    "$(grep -c '"cycle.member.not_run"' "$EVENTS_JSONL" || true)"
 
 print_test_section "zBuild's templates"
 # simple.yaml's build loop has test-author; deployed.yaml's has none (design,
