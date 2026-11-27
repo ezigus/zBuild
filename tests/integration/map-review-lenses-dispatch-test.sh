@@ -3,7 +3,7 @@
 #
 # SPEC-1: template loads and review_lenses emits a "map:review_lenses" dispatch unit;
 #         the `as:` env-target resolves to ZBUILD_REVIEW_LENS_ID.
-# SPEC-2: _strategy_run_map dispatches exactly 6 work units (one per element).
+# SPEC-2: _strategy_run_map dispatches exactly 7 work units (one per element; #2630 adds the tests lens).
 # SPEC-3: each work unit bakes a DISTINCT ZBUILD_MAP_ELEMENT value AND the
 #         template-named ZBUILD_REVIEW_LENS_ID (via `as:`) — six elements
 #         security/performance/red-team/correctness/scope/sre.
@@ -60,8 +60,8 @@ assert_contains "[SPEC-1] review_lenses is a member of delivery_loop (#2433)" \
 assert_eq "[SPEC-1] review_lenses is a map member" "map" "${_TPL_STAGE_TYPE_review_lenses:-}"
 
 assert_eq "[SPEC-1] _TPL_MAP_OVER_review_lenses == lenses" "lenses" "${_TPL_MAP_OVER_review_lenses:-MISSING}"
-assert_eq "[SPEC-1] _TPL_MAP_ELEMENTS_review_lenses has 6 elements" \
-    "security,performance,red-team,correctness,scope,sre" \
+assert_eq "[SPEC-1] _TPL_MAP_ELEMENTS_review_lenses has 7 elements" \
+    "security,performance,red-team,correctness,tests,scope,sre" \
     "${_TPL_MAP_ELEMENTS_review_lenses:-MISSING}"
 assert_eq "[SPEC-1] _TPL_MAP_ROLES_review_lenses == review_lens" "review_lens" "${_TPL_MAP_ROLES_review_lenses:-MISSING}"
 assert_eq "[SPEC-1] _TPL_MAP_AS_review_lenses == ZBUILD_REVIEW_LENS_ID (as: env-target)" \
@@ -121,7 +121,7 @@ fi
 # Count dispatched work units.
 _dispatch_count=0
 _dispatch_count=$(/usr/bin/grep -c "^elem=" "$WU_ENV_LOG" 2>/dev/null) || _dispatch_count=0
-assert_eq "[SPEC-2] exactly 6 work units dispatched" "6" "$_dispatch_count"
+assert_eq "[SPEC-2] exactly 7 work units dispatched" "7" "$_dispatch_count"
 
 # Each element must appear exactly once.
 _expected_elements=("security" "performance" "red-team" "correctness" "scope" "sre")
@@ -136,7 +136,7 @@ done
 
 # All work units must have platform=generic (not hijacked by element name).
 _generic_count=$(/usr/bin/grep -c "plat=\[generic\]" "$WU_ENV_LOG" 2>/dev/null) || _generic_count=0
-assert_eq "[SPEC-5] all 6 work units have platform=generic" "6" "$_generic_count"
+assert_eq "[SPEC-5] all 7 work units have platform=generic" "7" "$_generic_count"
 
 # ─── SPEC-4: ZBUILD_MAP_ELEMENT readable inside the work unit ────────────────
 print_test_section "SPEC-4: ZBUILD_MAP_ELEMENT is baked and readable in the work unit"

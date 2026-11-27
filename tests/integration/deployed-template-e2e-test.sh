@@ -114,7 +114,7 @@ assert_eq "[ADR-068 §3] deployed.yaml ends the run when the build loop does not
 # CHANGE: at merge-base deployed.yaml's review_lenses elements list did not
 # include 'sre' — this assertion fails there and passes at HEAD.
 assert_eq "[SPEC-10] deployed.yaml review_lenses elements include 'sre'" \
-    "security,performance,red-team,correctness,scope,sre" \
+    "security,performance,red-team,correctness,tests,scope,sre" \
     "${_TPL_MAP_ELEMENTS_review_lenses:-}"
 
 # ─── SPEC-2: _TPL_STAGES includes deploy, validate, monitor after pr ──────────
