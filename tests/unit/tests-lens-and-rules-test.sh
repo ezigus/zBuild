@@ -50,10 +50,10 @@ _lacks "[L1] ...not an Enforced by entry" "$_c" "Enforced by entry"
 # ── L2 ───────────────────────────────────────────────────────────────────────
 print_test_section "L2: the tests lens"
 _t="$(_flat "$(cat "$LENSES/tests.md" 2>/dev/null)")"
-assert_contains "[L2] an outside service is faked only at our wrapper around it, never our own code" "$_t" \
-    "a test that replaces the project's own code with a fake, rather than faking an outside service at the project's own wrapper around it"
+assert_contains "[L2] an outside service is replaced only at our wrapper around it, never our own code" "$_t" \
+    "a test that replaces the project's own code with a stand-in, rather than replacing an outside service at the project's own wrapper around it"
 assert_contains "[L2] ...nor reaches a real service instead of a stand-in" "$_t" "a test that reaches a real service (the network, GitHub, a model) instead of a stand-in"
-assert_contains "[L2] ...and reaching one is graded, as a fake of our own code is" "$_t" "medium: a test that fakes the project's own code, reaches a real service,"
+assert_contains "[L2] ...and reaching one is graded, as replacing our own code is" "$_t" "medium: a test that replaces the project's own code, mocks a reply that holds what the project's own code writes, reaches a real service,"
 assert_contains "[L2] ...nothing waits on a clock" "$_t" "a test that waits on a clock"
 assert_contains "[L2] ...each test proves the path it claims" "$_t" "a test that does not prove the path it claims"
 assert_contains "[L2] ...it fails on the old code for the right reason" "$_t" "a test that would not fail on the code from before the change, or would fail there for another reason"
@@ -119,7 +119,7 @@ _lacks "[R1b] zBuild's default rules name no old path" "$(cat "$REPO_ROOT/config
 # ── R3 ───────────────────────────────────────────────────────────────────────
 print_test_section "R3: zBuild's own rules file"
 _zr="$(_flat "$(cat "$REPO_ROOT/.zbuild/rules.md" 2>/dev/null)")"
-for _w in "A remote service is faked at the project's own wrapper around it, never the project's own code" \
+for _w in "A remote service is replaced at the project's own wrapper around it, never the project's own code" \
           "Never wait on a clock in a test" \
           "Write the test first" \
           "If the code drifts from the spec, the spec wins" \
@@ -143,6 +143,27 @@ done < "$REPO_ROOT/.zbuild/rules.md"
 assert_eq "[R3] ...and repeats none of its rules: one source" "" "$_dup"
 if [[ -e "$REPO_ROOT/.zbuild/prompts/rules.md" ]]; then assert_fail "[R3] the old file is gone" "$REPO_ROOT/.zbuild/prompts/rules.md"
 else assert_pass "[R3] the old file is gone"; fi
+
+# ── #2639 SPEC-4 ─────────────────────────────────────────────────────────────
+# Mock and fake mean different things (#2639). On #2534 every race test handed
+# back the other run's claim note as a hand-written reply, which hid that a
+# finished run's note still wins a later run's claim: data our own code writes
+# to an outside service is written, in a test, by that code, into a fake.
+print_test_section "#2639 SPEC-4: mock and fake, and data our own code writes"
+for _src in "$REPO_ROOT/.zbuild/rules.md" "$LENSES/tests.md"; do
+    _x="$(_flat "$(cat "$_src" 2>/dev/null)")"
+    assert_contains "[#2639/SPEC-4] ${_src#"$REPO_ROOT"/}: a mock is replies written by hand" "$_x" \
+        "a *mock* answers with replies written by hand"
+    assert_contains "[#2639/SPEC-4] ${_src#"$REPO_ROOT"/}: a fake keeps what is written to it" "$_x" \
+        "a *fake* is a working stand-in that keeps what is written to it"
+    _lacks "[#2639/SPEC-4] ${_src#"$REPO_ROOT"/}: \"faked\" no longer stands for every stand-in" "$_x" "is faked at"
+done
+assert_contains "[#2639/SPEC-4] the rules: what our own code writes is written by it, into a fake" "$_zr" \
+    "When code reads back, from an outside service, something our own code wrote there, the test uses a fake and lets our code write it, never a mock reply that holds what the test's author assumed our code writes."
+assert_contains "[#2639/SPEC-4] the tests lens looks for such a mock" "$_t" \
+    "a mock of an outside service (the network, GitHub, a model, any external program) whose reply, written by hand, holds something the project's own code writes there"
+assert_contains "[#2639/SPEC-4] ...and our own wrapper's stand-in is no finding, except that mock" "$_t" \
+    "a mock or a fake of the project's own wrapper around an outside service (the model call, GitHub): that is where an outside service is replaced, unless the mock's reply holds what the project's own code writes there"
 
 # ── R4 ───────────────────────────────────────────────────────────────────────
 print_test_section "R4: the docs"
