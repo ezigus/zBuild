@@ -1,0 +1,12 @@
+--- reply 1 ---
+UNCLEAR R1: answered
+why: The design decision (confirmed by the design stage) chose Reading B — the concurrent claim note the loser itself just posted is the loser's only comment; it is PATCHed to "not started" by DSRACE-3 before the loser returns. The loser exits before runner.sh starts its run-status comment, so no run-status comment is created.
+quote: not started — concurrent claim: `<winner>` was first
+
+SCORE: 10
+--- reply 2 ---
+UNCLEAR R1: answered
+why: The design decision (confirmed by the DSRACE-3 requirement and its test) chose Reading B — the loser PATCHes the concurrent claim note it posted as its holder record to "not started — concurrent claim: `<winner>` was first"; the loser exits before runner.sh starts any run-status comment, so the concurrent claim note is its only comment.
+quote: not started — concurrent claim: `<winner>` was first
+
+SCORE: 10

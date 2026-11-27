@@ -1,5 +1,5 @@
-## review-lens-scope — fail
+## review-lens-scope — skip
 
-- found: medium: The DSRACE-1 and DSRACE-7 test sections pipe into `/usr/bin/head -1` under `set -euo pipefail`, violating the explicit rule "never pipe into a bare head, in any .sh file, test files included"; the SIGPIPE guard does not catch it because it excludes `-test.sh` files from the `| head` scan and its regex matches `head` as a bare word, not `/usr/bin/head`. (plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh)
+- the reply could not be used, even when asked again (it is not in the asked form: a line SCORE: <0-10>, then each finding as FINDING and its fields, one per line, as the OUTPUT CONTRACT says — no JSON), so this lens reviewed nothing
 
-- score: 8
+No findings were produced. Absence here is not evidence of a clean change. Every reply it gave is in lens-scope-reply.txt.

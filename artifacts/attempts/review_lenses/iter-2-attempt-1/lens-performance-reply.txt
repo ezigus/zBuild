@@ -1,0 +1,12 @@
+--- reply 1 ---
+SCORE: 9
+
+FINDING
+severity: low
+category: redundant-work
+fix: code
+introduced: yes
+quote: plugins/claim-coordinator/github-labels/plugin.sh | _CCGL_RACE_NOTE_MY_ID="$(jq -rs --arg p "${_CCGL_RACE_NOTE_PREFIX}" \
+message: When my_holder is provided — which is always the case in the call from claim_coordinator_claim — _ccgl_race_note_first_v runs jq twice on the same temp file: once to find the winner, once to find this run's note id; a single jq invocation could return both values.
+trigger: Every gh-backend claim that enters race detection calls _ccgl_race_note_first_v with my_holder set; the second jq process starts and iterates the same filtered comment list on every such call.
+accepted if: a single gh-backend claim attempt that enters race detection calls jq no more than once against the fetched comment data to obtain both the race winner and this run's own note id

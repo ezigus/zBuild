@@ -1,0 +1,1 @@
+{"schema_version":1,"name":"correctness","score":10,"findings":[],"suspected":[],"sent_suspicions":["plugins/claim-coordinator/github-labels/plugin.sh|(( _CCGL_RACE_NOTE_AT > 0 )) && since=$(( _CCGL_RACE_NOTE_AT - 4 * gt ))"],"result_contract":3,"outcome":"pass","reason":"the correctness lens found no medium or high or critical problem the change introduced that fails it"}
