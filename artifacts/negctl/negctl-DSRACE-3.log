@@ -1,0 +1,151 @@
+### DSRACE-3 baseline plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
+
+[38;2;0;212;255m[1m  plugin: claim-coordinator/github-labels — claim and release[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mlocal-fs store[0m
+  [38;2;74;222;128m✓[0m claim → rc 0
+  [38;2;74;222;128m✓[0m claim → acquired true
+  [38;2;74;222;128m✓[0m the label is exactly zbuild:claimed, with no machine name
+claim-coordinator: issue #42 carries the zbuild:claimed label: another run is working on it. If that run is gone, remove the label: gh issue edit 42 --remove-label zbuild:claimed
+  [38;2;74;222;128m✓[0m a second claim on a claimed issue → acquired false
+  [38;2;74;222;128m✓[0m release → rc 0
+  [38;2;74;222;128m✓[0m release removes zbuild:claimed
+  [38;2;74;222;128m✓[0m list_claims → [] after release
+  [38;2;74;222;128m✓[0m heartbeat → rc 0
+
+  [38;2;0;212;255mgh: claim adds the shared label[0m
+  [38;2;74;222;128m✓[0m claim → rc 0
+  [38;2;74;222;128m✓[0m claim → acquired true
+  [38;2;74;222;128m✓[0m the issue now carries exactly zbuild:claimed
+  [38;2;74;222;128m✓[0m every gh call names the repository
+
+  [38;2;0;212;255mgh: an add GitHub applied but whose answer was lost is a claim[0m
+  [38;2;74;222;128m✓[0m claim → rc 0
+  [38;2;74;222;128m✓[0m …acquired true: the label this run added is this run's to release
+
+  [38;2;0;212;255mgh: a repository with no zbuild:claimed label gets one, once[0m
+  [38;2;74;222;128m✓[0m claim → rc 0 once the label is created
+  [38;2;74;222;128m✓[0m claim → acquired true
+  [38;2;74;222;128m✓[0m the label is created with --force (idempotent)
+  [38;2;74;222;128m✓[0m the add is tried twice: before and after the label exists
+  [38;2;74;222;128m✓[0m the issue carries zbuild:claimed
+  [38;2;74;222;128m✓[0m …label create names the repository too
+
+  [38;2;0;212;255mgh: a claimed issue — the reply is valid JSON whatever the holder holds[0m
+claim-coordinator: issue #7003 carries the zbuild:claimed label: another run is working on it. If that run is gone, remove the label: gh issue edit 7003 --remove-label zbuild:claimed
+  [38;2;74;222;128m✓[0m claim → rc 0
+  [38;2;74;222;128m✓[0m the reply parses as JSON
+  [38;2;74;222;128m✓[0m …acquired false
+  [38;2;74;222;128m✓[0m …and the holder comes through as written
+  [38;2;74;222;128m✓[0m no label is added to a claimed issue
+  [38;2;74;222;128m✓[0m the refusal says how to clear a claim whose run is gone
+
+  [38;2;0;212;255mgh: NO_GITHUB=true — no claim, no gh call[0m
+  [38;2;74;222;128m✓[0m claim → rc 0
+  [38;2;74;222;128m✓[0m …the reply says the claim was skipped
+  [38;2;74;222;128m✓[0m …and gh was never called
+
+  [38;2;0;212;255mgh: release[0m
+  [38;2;74;222;128m✓[0m release → rc 0
+  [38;2;74;222;128m✓[0m release removes only zbuild:claimed
+  [38;2;74;222;128m✓[0m …naming the repository
+  [38;2;74;222;128m✓[0m a failed removal → non-zero rc
+  [38;2;74;222;128m✓[0m …and says to remove the label by hand
+
+  [38;2;0;212;255mgh: a gh that hangs is stopped by the watchdog[0m
+  [38;2;74;222;128m✓[0m a hung gh → backend error rc 1
+  [38;2;74;222;128m✓[0m …and nothing was claimed
+
+  [38;2;0;212;255mgh race: concurrent claim note is posted before read-back [DSRACE-1][0m
+### DSRACE-3 head plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
+
+[38;2;0;212;255m[1m  plugin: claim-coordinator/github-labels — claim and release[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mlocal-fs store[0m
+  [38;2;74;222;128m✓[0m claim → rc 0
+  [38;2;74;222;128m✓[0m claim → acquired true
+  [38;2;74;222;128m✓[0m the label is exactly zbuild:claimed, with no machine name
+claim-coordinator: issue #42 carries the zbuild:claimed label: another run is working on it. If that run is gone, remove the label: gh issue edit 42 --remove-label zbuild:claimed
+  [38;2;74;222;128m✓[0m a second claim on a claimed issue → acquired false
+  [38;2;74;222;128m✓[0m release → rc 0
+  [38;2;74;222;128m✓[0m release removes zbuild:claimed
+  [38;2;74;222;128m✓[0m list_claims → [] after release
+  [38;2;74;222;128m✓[0m heartbeat → rc 0
+
+  [38;2;0;212;255mgh: claim adds the shared label[0m
+  [38;2;74;222;128m✓[0m claim → rc 0
+  [38;2;74;222;128m✓[0m claim → acquired true
+  [38;2;74;222;128m✓[0m the issue now carries exactly zbuild:claimed
+  [38;2;74;222;128m✓[0m every gh call names the repository
+
+  [38;2;0;212;255mgh: an add GitHub applied but whose answer was lost is a claim[0m
+  [38;2;74;222;128m✓[0m claim → rc 0
+  [38;2;74;222;128m✓[0m …acquired true: the label this run added is this run's to release
+
+  [38;2;0;212;255mgh: a repository with no zbuild:claimed label gets one, once[0m
+  [38;2;74;222;128m✓[0m claim → rc 0 once the label is created
+  [38;2;74;222;128m✓[0m claim → acquired true
+  [38;2;74;222;128m✓[0m the label is created with --force (idempotent)
+  [38;2;74;222;128m✓[0m the add is tried twice: before and after the label exists
+  [38;2;74;222;128m✓[0m the issue carries zbuild:claimed
+  [38;2;74;222;128m✓[0m …label create names the repository too
+
+  [38;2;0;212;255mgh: a claimed issue — the reply is valid JSON whatever the holder holds[0m
+claim-coordinator: issue #7003 carries the zbuild:claimed label: another run is working on it. If that run is gone, remove the label: gh issue edit 7003 --remove-label zbuild:claimed
+  [38;2;74;222;128m✓[0m claim → rc 0
+  [38;2;74;222;128m✓[0m the reply parses as JSON
+  [38;2;74;222;128m✓[0m …acquired false
+  [38;2;74;222;128m✓[0m …and the holder comes through as written
+  [38;2;74;222;128m✓[0m no label is added to a claimed issue
+  [38;2;74;222;128m✓[0m the refusal says how to clear a claim whose run is gone
+
+  [38;2;0;212;255mgh: NO_GITHUB=true — no claim, no gh call[0m
+  [38;2;74;222;128m✓[0m claim → rc 0
+  [38;2;74;222;128m✓[0m …the reply says the claim was skipped
+  [38;2;74;222;128m✓[0m …and gh was never called
+
+  [38;2;0;212;255mgh: release[0m
+  [38;2;74;222;128m✓[0m release → rc 0
+  [38;2;74;222;128m✓[0m release removes only zbuild:claimed
+  [38;2;74;222;128m✓[0m …naming the repository
+  [38;2;74;222;128m✓[0m a failed removal → non-zero rc
+  [38;2;74;222;128m✓[0m …and says to remove the label by hand
+
+  [38;2;0;212;255mgh: a gh that hangs is stopped by the watchdog[0m
+  [38;2;74;222;128m✓[0m a hung gh → backend error rc 1
+  [38;2;74;222;128m✓[0m …and nothing was claimed
+
+  [38;2;0;212;255mgh race: concurrent claim note is posted before read-back [DSRACE-1][0m
+  [38;2;74;222;128m✓[0m [DSRACE-1] a POST_NOTE call was made (synchronous holder record)
+  [38;2;74;222;128m✓[0m [DSRACE-1] a GET_NOTES call was made (read-back of concurrent notes)
+  [38;2;74;222;128m✓[0m [DSRACE-1] POST_NOTE appears before GET_NOTES in call sequence
+  [38;2;74;222;128m✓[0m [DSRACE-1] the POST body includes the concurrent-claim prefix
+
+  [38;2;0;212;255mgh race: issue re-read after note post, before arbitration [DSRACE-7][0m
+  [38;2;74;222;128m✓[0m [DSRACE-7] an ISSUE_VIEW (re-read) call was made
+  [38;2;74;222;128m✓[0m [DSRACE-7] the ISSUE_VIEW comes after POST_NOTE
+  [38;2;74;222;128m✓[0m [DSRACE-7] the ISSUE_VIEW comes before GET_NOTES (re-read before arbitration)
+  [38;2;74;222;128m✓[0m [DSRACE-1] all concurrent claim notes from the current label epoch are returned (loser when earlier note is on page 2)
+
+  [38;2;0;212;255mgh race: winner gets acquired:true, loser gets race_lost:true [DSRACE-2][0m
+  [38;2;74;222;128m✓[0m [DSRACE-2] loser reply: acquired is false
+  [38;2;74;222;128m✓[0m [DSRACE-2] loser reply: race_lost is true
+  [38;2;74;222;128m✓[0m [DSRACE-2] loser reply: holder names the concurrent winner
+  [38;2;74;222;128m✓[0m [DSRACE-2] winner (sole claimant) reply: acquired is true
+
+  [38;2;0;212;255mgh race: loser PATCHes note body to 'not started' [DSRACE-3][0m
+{"acquired":false,"holder":"winner-run","race_lost":true}
+  [38;2;74;222;128m✓[0m [DSRACE-3] the losing run made a PATCH call on its own note (id 99004)
+  [38;2;74;222;128m✓[0m [DSRACE-3] the PATCH body says 'not started'
+  [38;2;74;222;128m✓[0m [DSRACE-3] the PATCH body says 'concurrent claim'
+  [38;2;74;222;128m✓[0m [DSRACE-3] the PATCH body names the winner
+  [38;2;74;222;128m✓[0m [DSRACE-3] the PATCH body says 'was first'
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 53 tests passed[0m
+

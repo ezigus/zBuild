@@ -1,1 +1,0 @@
-{"data":{"findings":[{"n":1,"text":"DSRACE-1/DSRACE-2/DSRACE-3/DSRACE-4/DSRACE-5/DSRACE-7: no assertion in the test files carries its tag — add one labelled with it","id":"TEFND-1"},{"n":2,"text":"core/claim/claim.sh/plugins/claim-coordinator/github-labels/plugin.sh: no test file carries a requirement's tag, so putting it back could not be checked","id":"TEFND-2"}]}}

@@ -1,1 +1,70 @@
-{"test_output":"\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 669/669 passed (5 skipped)\nintegration: 280/280 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 986/986 passed (5 skipped)","run_mode":"full","exit_code":0,"data":{"exit_code":0,"passed":986,"failed":0,"test_output":"\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 669/669 passed (5 skipped)\nintegration: 280/280 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 986/986 passed (5 skipped)","diff_applied":false,"test_cmd":"npm test","run_mode":"full","timing":{"tiers":{"lint":209660,"e2e":170173,"golden":7200,"unit":484669,"integration":412637},"slowest_files":[{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.1p74TF/tests/e2e/fork-budget-test.sh","ms":162154},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.1p74TF/tests/integration/core-pipeline-runner-test.sh","ms":64127},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.1p74TF/tests/integration/cycle-acceptance-terminal-failure-test.sh","ms":43761},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.1p74TF/tests/e2e/parity-local-vs-ci-test.sh","ms":41496},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.1p74TF/tests/integration/stop-run-on-fail-test.sh","ms":41342},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.1p74TF/tests/integration/run-timed-out-test.sh","ms":41287},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.1p74TF/tests/integration/leaf-verdict-halts-test.sh","ms":40601},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.1p74TF/tests/unit/run-status-comment-pages-test.sh","ms":39178},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.1p74TF/tests/integration/cycle-on-max-pipeline-continues-test.sh","ms":37505},{"file":"/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.1p74TF/tests/integration/runner-release-exit-paths-test.sh","ms":37117}]},"tree_sha":"17db4010a73b63e497c4bd40be326334ff8c48fd","findings":[]},"result_contract":3,"outcome":"fail","reason":"986 of 986 tests passed; the acceptance check failed: the acceptance check failed — DSRACE-1/DSRACE-2/DSRACE-3/DSRACE-4/DSRACE-5/DSRACE-7: no assertion in the test files carries its tag — add one labelled with it; core/claim/claim.sh/plugins/claim-coordinator/github-labels/plugin.sh: no test file carries a requirement's tag, so putting it back could not be checked"}
+{
+  "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 669/669 passed (5 skipped)\nintegration: 280/280 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 986/986 passed (5 skipped)",
+  "run_mode": "full",
+  "exit_code": 0,
+  "data": {
+    "exit_code": 0,
+    "passed": 986,
+    "failed": 0,
+    "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 669/669 passed (5 skipped)\nintegration: 280/280 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 986/986 passed (5 skipped)",
+    "diff_applied": false,
+    "test_cmd": "npm test",
+    "run_mode": "full",
+    "timing": {
+      "tiers": {
+        "lint": 212607,
+        "e2e": 171025,
+        "golden": 7161,
+        "unit": 483668,
+        "integration": 413986
+      },
+      "slowest_files": [
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.VQK0ry/tests/e2e/fork-budget-test.sh",
+          "ms": 162515
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.VQK0ry/tests/integration/core-pipeline-runner-test.sh",
+          "ms": 63922
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.VQK0ry/tests/integration/cycle-acceptance-terminal-failure-test.sh",
+          "ms": 44656
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.VQK0ry/tests/integration/stop-run-on-fail-test.sh",
+          "ms": 41876
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.VQK0ry/tests/e2e/parity-local-vs-ci-test.sh",
+          "ms": 41238
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.VQK0ry/tests/integration/run-timed-out-test.sh",
+          "ms": 41191
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.VQK0ry/tests/integration/leaf-verdict-halts-test.sh",
+          "ms": 40764
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.VQK0ry/tests/unit/run-status-comment-pages-test.sh",
+          "ms": 39135
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.VQK0ry/tests/integration/runner-release-exit-paths-test.sh",
+          "ms": 37127
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.VQK0ry/tests/integration/cycle-on-max-pipeline-continues-test.sh",
+          "ms": 36858
+        }
+      ]
+    },
+    "tree_sha": "4bb3bf4def7d6e30b37479800afe2cf8cf48aaff",
+    "findings": []
+  },
+  "result_contract": 3,
+  "outcome": "pass",
+  "reason": "986 of 986 tests passed"
+}

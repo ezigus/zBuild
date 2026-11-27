@@ -1,0 +1,161 @@
+### DSRACE-5 baseline tests/unit/claim-acquire-release-test.sh
+
+[38;2;0;212;255m[1m  core/claim: claim and release through the coordinator (ADR-005)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255ma run with no issue makes no claim[0m
+  [38;2;74;222;128m✓[0m no issue → rc 0
+  [38;2;74;222;128m✓[0m issue 0 → rc 0
+  [38;2;74;222;128m✓[0m …and the coordinator is never called
+
+  [38;2;0;212;255mthe coordinator is looked up under the plugins root only[0m
+  [38;2;74;222;128m✓[0m no coordinator under the root → rc 0 (the run goes on)
+  [38;2;74;222;128m✓[0m …the engine's own github-labels plugin is not used instead (no gh call)
+  [38;2;74;222;128m✓[0m …and the skip is an event
+
+  [38;2;0;212;255mclaimed: the run has it, and says who it is[0m
+  [38;2;74;222;128m✓[0m acquired → rc 0
+  [38;2;74;222;128m✓[0m the claim hook was called once with the issue
+  [38;2;74;222;128m✓[0m the claim hook's events carry no stage (the issue is not one)
+  [38;2;74;222;128m✓[0m pipeline.claim.acquired names the holder: run id and machine
+  [38;2;74;222;128m✓[0m in CI the holder is the CI run's URL
+
+  [38;2;0;212;255mrefused: another run holds it[0m
+  [38;2;74;222;128m✓[0m refused → rc 1
+  [38;2;74;222;128m✓[0m the holder is kept with every control character taken out
+  [38;2;74;222;128m✓[0m no claim is recorded as this run's
+
+  [38;2;0;212;255man answer the engine cannot read is a refusal (a label may be there)[0m
+  [38;2;74;222;128m✓[0m unreadable reply → rc 1
+
+  [38;2;0;212;255mthe coordinator fails or skips: the run goes on, and says so[0m
+  [38;2;74;222;128m✓[0m hook rc 1 → rc 0
+  [38;2;74;222;128m✓[0m …pipeline.claim.skipped is emitted
+  [38;2;74;222;128m✓[0m skipped reply → rc 0
+  [38;2;74;222;128m✓[0m …pipeline.claim.skipped carries the coordinator's reason
+
+  [38;2;0;212;255mthe hook said it acquired, then ended badly: the claim is held (#2586 R6)[0m
+  [38;2;74;222;128m✓[0m an acquired reply with a bad status → the claim is held
+  [38;2;74;222;128m✓[0m …and released at the end
+
+  [38;2;0;212;255ma stale claim this machine left is cleared at start (#2589)[0m
+  [38;2;74;222;128m✓[0m [S1] this machine's dead run held it: cleared, then claimed
+  [38;2;74;222;128m✓[0m [S1] ...claim, release, claim
+  [38;2;74;222;128m✓[0m [S1] ...and says so
+  [38;2;74;222;128m✓[0m [S2] another machine's claim is left: refused
+  [38;2;74;222;128m✓[0m [S2] ...one claim, no release
+  [38;2;74;222;128m✓[0m [S3] this machine's run still alive (its pid answers): refused
+  [38;2;74;222;128m✓[0m [S3] ...one claim, no release
+  [38;2;74;222;128m✓[0m [S4] this run's own claim (a resume): held, not refused
+  [38;2;74;222;128m✓[0m [S4] ...held as this run's
+  [38;2;74;222;128m✓[0m [S4] ...one claim, no release
+
+  [38;2;0;212;255mrelease[0m
+  [38;2;74;222;128m✓[0m no claim held → the release hook is not called
+  [38;2;74;222;128m✓[0m a held claim is released once, on its issue
+  [38;2;74;222;128m✓[0m …its events carry no stage, not even the one the run was in
+  [38;2;74;222;128m✓[0m a failed release never fails the caller
+  [38;2;74;222;128m✓[0m …and is an event
+
+  [38;2;0;212;255mrace_lost: true — refused immediately, stale-takeover skipped [DSRACE-5][0m
+  [38;2;248;113;113m✗[0m [DSRACE-5] race_lost reply → rc 1 (immediate refusal)
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [DSRACE-5] stale-takeover hook was NOT called
+    [2mexpected: 0, got: 1[0m
+  [38;2;248;113;113m✗[0m [DSRACE-5] stderr names the concurrent winner
+    [2moutput missing: https://github.com/o/r/actions/runs/42[0m
+  [38;2;248;113;113m✗[0m [DSRACE-5] stderr says 'concurrent claim'
+    [2moutput missing: concurrent claim[0m
+
+  [38;2;0;212;255mrace_lost: true — _ZBUILD_CLAIM_ACQUIRED not set, release skips label removal [DSRACE-4][0m
+  [38;2;248;113;113m✗[0m [DSRACE-4] _ZBUILD_CLAIM_ACQUIRED is not set after race_lost
+    [2mexpected: , got: 9051[0m
+  [38;2;248;113;113m✗[0m [DSRACE-4] zbuild_claim_release did NOT call the release hook (no claim held)
+    [2mexpected: , got: release 9051[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m6 of 42 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [DSRACE-5] race_lost reply → rc 1 (immediate refusal)
+  [38;2;248;113;113m✗[0m [DSRACE-5] stale-takeover hook was NOT called
+  [38;2;248;113;113m✗[0m [DSRACE-5] stderr names the concurrent winner
+  [38;2;248;113;113m✗[0m [DSRACE-5] stderr says 'concurrent claim'
+  [38;2;248;113;113m✗[0m [DSRACE-4] _ZBUILD_CLAIM_ACQUIRED is not set after race_lost
+  [38;2;248;113;113m✗[0m [DSRACE-4] zbuild_claim_release did NOT call the release hook (no claim held)
+
+### DSRACE-5 head tests/unit/claim-acquire-release-test.sh
+
+[38;2;0;212;255m[1m  core/claim: claim and release through the coordinator (ADR-005)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255ma run with no issue makes no claim[0m
+  [38;2;74;222;128m✓[0m no issue → rc 0
+  [38;2;74;222;128m✓[0m issue 0 → rc 0
+  [38;2;74;222;128m✓[0m …and the coordinator is never called
+
+  [38;2;0;212;255mthe coordinator is looked up under the plugins root only[0m
+  [38;2;74;222;128m✓[0m no coordinator under the root → rc 0 (the run goes on)
+  [38;2;74;222;128m✓[0m …the engine's own github-labels plugin is not used instead (no gh call)
+  [38;2;74;222;128m✓[0m …and the skip is an event
+
+  [38;2;0;212;255mclaimed: the run has it, and says who it is[0m
+  [38;2;74;222;128m✓[0m acquired → rc 0
+  [38;2;74;222;128m✓[0m the claim hook was called once with the issue
+  [38;2;74;222;128m✓[0m the claim hook's events carry no stage (the issue is not one)
+  [38;2;74;222;128m✓[0m pipeline.claim.acquired names the holder: run id and machine
+  [38;2;74;222;128m✓[0m in CI the holder is the CI run's URL
+
+  [38;2;0;212;255mrefused: another run holds it[0m
+  [38;2;74;222;128m✓[0m refused → rc 1
+  [38;2;74;222;128m✓[0m the holder is kept with every control character taken out
+  [38;2;74;222;128m✓[0m no claim is recorded as this run's
+
+  [38;2;0;212;255man answer the engine cannot read is a refusal (a label may be there)[0m
+  [38;2;74;222;128m✓[0m unreadable reply → rc 1
+
+  [38;2;0;212;255mthe coordinator fails or skips: the run goes on, and says so[0m
+  [38;2;74;222;128m✓[0m hook rc 1 → rc 0
+  [38;2;74;222;128m✓[0m …pipeline.claim.skipped is emitted
+  [38;2;74;222;128m✓[0m skipped reply → rc 0
+  [38;2;74;222;128m✓[0m …pipeline.claim.skipped carries the coordinator's reason
+
+  [38;2;0;212;255mthe hook said it acquired, then ended badly: the claim is held (#2586 R6)[0m
+  [38;2;74;222;128m✓[0m an acquired reply with a bad status → the claim is held
+  [38;2;74;222;128m✓[0m …and released at the end
+
+  [38;2;0;212;255ma stale claim this machine left is cleared at start (#2589)[0m
+  [38;2;74;222;128m✓[0m [S1] this machine's dead run held it: cleared, then claimed
+  [38;2;74;222;128m✓[0m [S1] ...claim, release, claim
+  [38;2;74;222;128m✓[0m [S1] ...and says so
+  [38;2;74;222;128m✓[0m [S2] another machine's claim is left: refused
+  [38;2;74;222;128m✓[0m [S2] ...one claim, no release
+  [38;2;74;222;128m✓[0m [S3] this machine's run still alive (its pid answers): refused
+  [38;2;74;222;128m✓[0m [S3] ...one claim, no release
+  [38;2;74;222;128m✓[0m [S4] this run's own claim (a resume): held, not refused
+  [38;2;74;222;128m✓[0m [S4] ...held as this run's
+  [38;2;74;222;128m✓[0m [S4] ...one claim, no release
+
+  [38;2;0;212;255mrelease[0m
+  [38;2;74;222;128m✓[0m no claim held → the release hook is not called
+  [38;2;74;222;128m✓[0m a held claim is released once, on its issue
+  [38;2;74;222;128m✓[0m …its events carry no stage, not even the one the run was in
+  [38;2;74;222;128m✓[0m a failed release never fails the caller
+  [38;2;74;222;128m✓[0m …and is an event
+
+  [38;2;0;212;255mrace_lost: true — refused immediately, stale-takeover skipped [DSRACE-5][0m
+  [38;2;74;222;128m✓[0m [DSRACE-5] race_lost reply → rc 1 (immediate refusal)
+  [38;2;74;222;128m✓[0m [DSRACE-5] stale-takeover hook was NOT called
+  [38;2;74;222;128m✓[0m [DSRACE-5] stderr names the concurrent winner
+  [38;2;74;222;128m✓[0m [DSRACE-5] stderr says 'concurrent claim'
+
+  [38;2;0;212;255mrace_lost: true — _ZBUILD_CLAIM_ACQUIRED not set, release skips label removal [DSRACE-4][0m
+  [38;2;74;222;128m✓[0m [DSRACE-4] _ZBUILD_CLAIM_ACQUIRED is not set after race_lost
+  [38;2;74;222;128m✓[0m [DSRACE-4] zbuild_claim_release did NOT call the release hook (no claim held)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 42 tests passed[0m
+
