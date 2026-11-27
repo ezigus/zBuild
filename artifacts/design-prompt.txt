@@ -109,7 +109,7 @@ Your job: write the design — the change's decisions and its acceptance contrac
 Choose the smallest design that does what the requirements need, and follow the
 patterns the code already follows rather than adding a one-off.
 
-The working copy holds your last try, which was rejected: Previous work says why. It is YOUR LATEST DESIGN (below): refine it and fix what Previous work names. No design has passed yet.
+The working copy already holds YOUR LATEST DESIGN (below). Change only what needs to change.
 
 Previous work may hold findings from later stages. A finding is yours only if changing the design would fix it: its acceptance contract. Answer each of those in the design. Leave the others — a bug in the code, a test that does not run, a lint failure — and do not investigate them. In a Findings section of the design, list every finding: what you changed for it, or why you left it. You do not debug code or work out why a test fails.
 
@@ -137,7 +137,7 @@ The design document MUST include:
    starting with a letter, that say what it is about, a dash, and a number —
    DSLOOP-1 for a SPEC about loop state. The id is also the tag its test
    carries, [DSLOOP-1]:
-   - The highest number each code has had, removed ones counted, and in the repository's tests: DSADR 3, DSBUD 1, DSCLA 23, DSCLM 9, DSDEL 1, DSEND 1, DSEVNT 6, DSFRSH 1, DSFSTG 9, DSHBT 18, DSLOOP 1, DSPLAT 2, DSPRB 6, DSWORK 9. A new SPEC with one of these codes takes the next number; a new code starts at 1.
+   - The highest number each code has had, removed ones counted, and in the repository's tests: DSADR 3, DSBUD 1, DSCLA 23, DSCLM 9, DSDEL 1, DSEND 1, DSEVNT 6, DSFRSH 1, DSFSTG 9, DSHBT 18, DSLOOP 1, DSPLAT 2, DSPRB 6, DSRACE 7, DSWORK 9. A new SPEC with one of these codes takes the next number; a new code starts at 1.
    - A SPEC you keep keeps its id.
    - REMOVED: only for a SPEC in the last design that passed — one you drop
      gets a line `REMOVED: <id> — <why>`, kept in every later design. An id
@@ -295,22 +295,26 @@ Every claim it makes about the repository — an ADR it relies on, a file it lis
 
 GitHub's label API has no check-and-set: two runs can both read "no claim" and both add
 `zbuild:claimed`, each getting a success reply. After adding the label (gh backend only),
-the coordinator posts a concurrent claim note — `"concurrent claim by \`<holder>\`"` — then
-reads back all trusted such notes. The note is the synchronous holder record (RQTIE-3 path
-1). The run whose note is first by GitHub's `created_at` (then `id` on a tie) is the winner;
-it deletes its note and returns `{"acquired": true}`. Every other run marks its note "not
-started — concurrent claim: `<winner>` was first" and returns
+the coordinator posts a concurrent claim note — `"concurrent claim by \`<holder>\`"` —
+then re-reads the GitHub issue itself (its labels or state), then reads back all trusted
+concurrent claim notes. The note is the synchronous holder record (RQTIE-3 path 1). The
+run whose note is first by GitHub's `created_at` (then `id` on a tie) is the winner; it
+returns `{"acquired": true}`. Every other run marks its note "not started — concurrent
+claim: `<winner>` was first" and returns
 `{"acquired": false, "holder": "<winner>", "race_lost": true}`. The engine receives
 `race_lost: true` and refuses immediately, skipping the stale-takeover path that would
 otherwise trigger for any cross-machine refusal. ADR-005 gains §5 to document all of this.
+
+Why the stale-takeover path cannot set `_ZBUILD_CLAIM_ACQUIRED` for a race-lost response:
+in `zbuild_claim_acquire`, the new `race_lost: true` branch (DSRACE-5) returns 1 before
+the code reaches `_zbuild_claim_takeover`, so the takeover's `_ZBUILD_CLAIM_ACQUIRED="$issue"`
+assignment is never reached. DSRACE-4 is [code] because that guarantee requires DSRACE-5 to
+be in place; without it, the existing takeover path can and does set `_ZBUILD_CLAIM_ACQUIRED`.
 
 Reviewed alternatives: GitHub's `labeled` events are not usable as the tie-break — GitHub
 does not create a second `labeled` event when the label is already there, so the events
 give no information about concurrent adders. The local-fs test backend is unaffected; its
 `flock`-serialised add already returns rc 2 for a duplicate add.
-
-RQLBL-1 is [done]: `zbuild_claim_release` is a no-op when `_ZBUILD_CLAIM_ACQUIRED` is
-unset, and a refused claim never sets it.
 
 Outside assumptions:
 - `rsc_gh` and `jq` are available in the coordinator (already used throughout `plugin.sh`)
@@ -318,25 +322,23 @@ Outside assumptions:
 - The concurrent claim note format (`"concurrent claim by \`"`) is distinct from takeover
   notes (`"took over a stale claim from \`"`) — no interference
 
-UNCLEAR RQCMT-1 | "marks its progress comment as not started" | (1) the run-status comment (ADR-064) is marked "not started"; (2) the concurrent claim note posted for arbitration is marked "not started" | ASSUMED: (2) the concurrent claim note is the run's progress comment for this claim attempt — the sidecar never creates a run-status comment for a refused run (it waits for `pipeline.start`, which never comes), so the arbitration note is the only GitHub comment the loser posts.
-
 ```steps
-- 1 Add `_ccgl_self_holder_v`, `_ccgl_race_note_post_v`, `_ccgl_race_note_delete`, `_ccgl_race_note_update`, `_ccgl_race_note_first_v` to plugin.sh; extend `claim_coordinator_claim` to invoke them after a successful label add (gh backend only), returning `race_lost: true` for the loser | areas: plugins/claim-coordinator/github-labels/plugin.sh | serves: DSRACE-1, DSRACE-2, DSRACE-3
-- 2 In `zbuild_claim_acquire`, detect `race_lost: true` in the refused reply and refuse immediately (skip stale-takeover, print concurrent-winner message) | areas: core/claim/claim.sh | serves: DSRACE-5
+- 1 Add `_ccgl_self_holder_v`, `_ccgl_race_note_post_v`, `_ccgl_race_note_delete`, `_ccgl_race_note_update`, `_ccgl_race_note_first_v` to plugin.sh; extend `claim_coordinator_claim` to: post the concurrent claim note, re-read the GitHub issue, then read back concurrent claim notes, returning `race_lost: true` for the loser (gh backend only) | areas: plugins/claim-coordinator/github-labels/plugin.sh | serves: DSRACE-1, DSRACE-2, DSRACE-3, DSRACE-7
+- 2 In `zbuild_claim_acquire`, detect `race_lost: true` in the refused reply and refuse immediately (skip stale-takeover, print concurrent-winner message) | areas: core/claim/claim.sh | serves: DSRACE-4, DSRACE-5
 - 3 Amend ADR-005: add §5 (concurrent claim detection: arbitration note, first-by-created_at-then-id wins, loser updates note to not-started, `race_lost` skip); extend `Enforced by` | areas: docs/adr/ADR-005-claim-coordinator.md | serves: DSRACE-6
 ```
 
 ```acceptance
-DSRACE-1[code]: After successfully adding the zbuild:claimed label (gh backend), the claim posts a concurrent claim note with the run's holder, then reads back all trusted concurrent claim notes to detect concurrent claimants covers: RQTIE-1, RQREB-1, RQTIE-3
+DSRACE-1[code]: After successfully adding the zbuild:claimed label (gh backend), the claim posts a concurrent claim note with the run's holder, then reads back all trusted concurrent claim notes to detect concurrent claimants covers: RQTIE-1, RQTIE-3
   Given: the zbuild:claimed label was just successfully added via the gh backend
-  When: the claim posts a "concurrent claim by `<holder>`" note and reads back all trusted notes since the note's own created_at minus the detection window
+  When: the claim posts a "concurrent claim by `<holder>`" note and reads back all trusted concurrent claim notes since the note's own created_at minus the detection window
   Then: the note is posted synchronously before the read-back
   And: all concurrent claim notes from the current label epoch are returned
 
 DSRACE-2[code]: Only the run whose concurrent claim note is first (by created_at, then id) returns {"acquired": true}; all others return {"acquired": false} covers: RQTIE-2, RQTIE-1
   Given: two or more concurrent claim notes exist for the same issue within the detection window
   When: each run compares the notes and identifies the first
-  Then: the run whose note has the earliest created_at returns {"acquired": true} and deletes its note
+  Then: the run whose note has the earliest created_at returns {"acquired": true}
   And: all other runs return {"acquired": false, "holder": "<winner_holder>", "race_lost": true}
 
 DSRACE-3[code]: The losing run updates its concurrent claim note body to "not started" covers: RQCMT-1
@@ -344,10 +346,11 @@ DSRACE-3[code]: The losing run updates its concurrent claim note body to "not st
   When: the run determines it has lost the race
   Then: the run PATCHes its note body to "not started — concurrent claim: `<winner>` was first"
 
-DSRACE-4[done]: A run whose claim_coordinator_claim returns {"acquired": false} never removes the zbuild:claimed label covers: RQLBL-1
-  evidence: core/claim/claim.sh | [[ -n "$issue" ]] || return 0
-  When: claim_coordinator_claim returns {"acquired": false, ...}
-  Then: _ZBUILD_CLAIM_ACQUIRED is never set, zbuild_claim_release is a no-op, and the label is not removed
+DSRACE-4[code]: When zbuild_claim_acquire receives {"acquired": false, "race_lost": true} from the coordinator, _ZBUILD_CLAIM_ACQUIRED is not set and zbuild_claim_release does not remove the zbuild:claimed label covers: RQLBL-1
+  Given: claim_coordinator_claim returns {"acquired": false, "race_lost": true}
+  When: zbuild_claim_acquire processes the response
+  Then: _ZBUILD_CLAIM_ACQUIRED is not set
+  And: zbuild_claim_release does not remove the zbuild:claimed label
 
 DSRACE-5[code]: A coordinator response with race_lost: true causes zbuild_claim_acquire to refuse immediately without entering the stale-takeover path, printing a message that names the concurrent winner covers: RQTIE-1
   Given: claim_coordinator_claim returns {"acquired": false, "holder": "<winner>", "race_lost": true}
@@ -357,11 +360,13 @@ DSRACE-5[code]: A coordinator response with race_lost: true causes zbuild_claim_
 
 DSRACE-6[doc]: ADR-005 §5 tells a reader: after adding the label (gh backend), a note is posted as the holder record, the first note by created_at then id wins, the loser marks its note "not started", and race_lost: true in the refused response skips the stale-takeover path covers: RQADR-1
 
+DSRACE-7[code]: After posting the concurrent claim note (the synchronous holder record, gh backend), the claim reads back the GitHub issue's current state before proceeding with arbitration covers: RQREB-1
+  Given: the zbuild:claimed label was added and the concurrent claim note was posted synchronously
+  When: the claim reads the GitHub issue's current labels or state
+  Then: fresh issue data is obtained from GitHub after the synchronous holder record was written
+
 WIRING: core/claim/claim.sh
 ```
-
-These [code] and [done] SPECs of YOUR LATEST DESIGN are still written on one line. Each one you keep is rewritten with its parts on the lines under it — Given, When, Then, And, Cleanup:
-- DSRACE-4
 
 Refine YOUR LATEST DESIGN.
 
@@ -396,38 +401,61 @@ Summary:
 - RQADR-1: Amend ADR-005: the first claim wins a tie, and how "first" is decided
 - RQTIE-3: Either the claim writes its holder record itself, synchronously, before it re-reads, or the tie-break uses something that exists at claim time (for example when the label was added).
 
-### design (verdict: unusable) — your own
+### design (verdict: pass) — your own
 Outputs:
-- design_draft: /home/runner/work/_temp/zbuild-state/artifacts/design-draft.md
+- design: /home/runner/work/_temp/zbuild-state/artifacts/design.md
 - design_result: /home/runner/work/_temp/zbuild-state/artifacts/design-verdict.json
 - design_summary: /home/runner/work/_temp/zbuild-state/artifacts/design-summary.md
-
-Findings:
-- DSFND-1 (opened by design): RQREB-1 is not covered: DSRACE-1 covers concurrent-claim detection by reading back GitHub comments (notes), not by fetching the GitHub issue itself; "reads back all trusted concurrent claim notes" and "re-reads the issue" are different operations, and no SPEC demands that the issue's metadata or labels are read after adding the label — After adding the label, a run re-reads the issue [FIX IN DESIGN: ACCEPTED IF: a SPEC demands that after successfully adding the label, the claim reads back the GitHub issue itself (its data — labels, state, or metadata — not only comments or notes), and the read occurs after the synchronous holder record is written]
-- DSFND-2 (opened by design): UNCLEAR RQCMT-1: the issue now answers it: the issue says the standard progress comment does not exist at claim time — it is started in the background after `pipeline.start`, which never fires for a refused run — so at claim time the arbitration note is the only GitHub comment the loser posts; "marks its progress comment as not started" therefore refers to that note — Today the progress comment is started in the background, after the issue lock (zbuild_issue_lock_acquire, core/pipeline/runner.sh) and pipeline.start, so at claim time a run has no comment of its own to compare [FIX IN DESIGN: ACCEPTED IF: the UNCLEAR RQCMT-1 line is gone, and the work follows the issue's words where they differ from its assumption]
-- DSFND-3 (opened by design): DSRACE-2: 1 part to fix
-    DSRACE-2[code]: Only the run whose concurrent claim note is first (by created_at, then id) returns {"acquired": true}; all others return {"acquired": false} covers: RQTIE-2, RQTIE-1
-      Given: two or more concurrent claim notes exist for the same issue within the detection window
-      When: each run compares the notes and identifies the first
-      Then: the run whose note has the earliest created_at returns {"acquired": true} and deletes its note [FIX IN DESIGN: the issue requires the first-claiming run to proceed; it says nothing about the winner deleting its arbitration note — ACCEPTED IF: the Then must state only that the winning run returns {"acquired": true}, without committing to any note-deletion step the issue does not ask for]
-      And: all other runs return {"acquired": false, "holder": "<winner_holder>", "race_lost": true}
-- DSFND-4 (opened by design): DSRACE-4: 1 part to fix
-    DSRACE-4[done]: A run whose claim_coordinator_claim returns {"acquired": false} never removes the zbuild:claimed label covers: RQLBL-1 evidence: core/claim/claim.sh | [[ -n "$issue" ]] || return 0 [FIX IN DESIGN: when `claim_coordinator_claim` returns `{"acquired": false}`, the existing code calls `_zbuild_claim_takeover` for any cross-machine holder (lines 119–123 of `zbuild_claim_acquire`); inside `_zbuild_claim_takeover`, if the takeover hook returns `taken_over: true, claimed: true`, the code sets `_ZBUILD_CLAIM_ACQUIRED="$issue"` (line 197 of `_zbuild_claim_takeover`), after which `zbuild_claim_release` will remove the label — so `_ZBUILD_CLAIM_ACQUIRED` is NOT guaranteed never-set after `acquired: false` in the existing code; that guarantee requires DSRACE-5's `race_lost: true` skip to be in place first: core/claim/claim.sh | _ZBUILD_CLAIM_ACQUIRED="$issue" — it is [code], not [done] — ACCEPTED IF: DSRACE-4 must be [code], conditioned on DSRACE-5, with evidence showing the stale-takeover path is unreachable for a race-lost response]
-      When: claim_coordinator_claim returns {"acquired": false, ...}
-      Then: _ZBUILD_CLAIM_ACQUIRED is never set, zbuild_claim_release is a no-op, and the label is not removed
+- work_steps: /home/runner/work/_temp/zbuild-state/artifacts/design-steps.json
 
 Summary:
-## design — fail
+## design — pass
 
-- the design fails 4 check(s)
+- 7 SPEC(s): DSRACE-1, DSRACE-2, DSRACE-3, DSRACE-4, DSRACE-5, DSRACE-6, DSRACE-7
 
-The findings are in design's result. This try is kept as the working copy for the next run; design.md is unchanged.
-- no finding was open for it
+- DSRACE-1 (covers RQTIE-1, RQTIE-3): After successfully adding the zbuild:claimed label (gh backend), the claim posts a concurrent claim note with the run's holder, then reads back all trusted concurrent claim notes to detect concurrent claimants
+- DSRACE-2 (covers RQTIE-2, RQTIE-1): Only the run whose concurrent claim note is first (by created_at, then id) returns {"acquired": true}; all others return {"acquired": false}
+- DSRACE-3 (covers RQCMT-1): The losing run updates its concurrent claim note body to "not started"
+- DSRACE-4 (covers RQLBL-1): When zbuild_claim_acquire receives {"acquired": false, "race_lost": true} from the coordinator, _ZBUILD_CLAIM_ACQUIRED is not set and zbuild_claim_release does not remove the zbuild:claimed label
+- DSRACE-5 (covers RQTIE-1): A coordinator response with race_lost: true causes zbuild_claim_acquire to refuse immediately without entering the stale-takeover path, printing a message that names the concurrent winner
+- DSRACE-6 (covers RQADR-1): ADR-005 §5 tells a reader: after adding the label (gh backend), a note is posted as the holder record, the first note by created_at then id wins, the loser marks its note "not started", and race_lost: true in the refused response skips the stale-takeover path
+- DSRACE-7 (covers RQREB-1): After posting the concurrent claim note (the synchronous holder record, gh backend), the claim reads back the GitHub issue's current state before proceeding with arbitration
+- answered: DSFND-1:** done — Added DSRACE-7[code] covering RQREB-1. After posting the concurrent claim note (the synchronous holder record), `claim_coordinator_claim` in `plugin.sh` reads back the GitHub issue's current labels or state before proceeding with arbitration. Removed RQREB-1 from DSRACE-1's covers (reading back notes is not the same as reading the issue itself). Added DSRACE-7 to step 1's serves.
+- answered: DSFND-2:** done — Removed the UNCLEAR RQCMT-1 line. The finding confirms the assumption was correct: the sidecar never creates a run-status comment for a refused run (it waits for `pipeline.start`, which never fires), so the arbitration note is the only GitHub comment the loser posts. The design now follows the issue's words directly.
+- answered: DSFND-3:** done — Removed "and deletes its note" from DSRACE-2's Then clause. The Then now states only that the winning run returns `{"acquired": true}`. Note deletion is kept as a step 1 implementation detail (the `_ccgl_race_note_delete` helper remains in the list) but the SPEC no longer commits to it.
+- answered: DSFND-4:** done — Changed DSRACE-4 from [done] to [code] with proper Given/When/Then. Added it to step 2's serves alongside DSRACE-5. The Decision section now explains why the guarantee requires DSRACE-5 first: `_zbuild_claim_takeover` can reach `_ZBUILD_CLAIM_ACQUIRED="$issue"` on the existing code path; the new `race_lost: true` branch returns before that path is entered, making the takeover assignment unreachable for a race-lost response.
 
 Your notes so far (where they disagree with a list or a result elsewhere in this prompt, the list or the result is right):
 # Design notes — issue #2534: concurrent-claim race
 
-## Status: design written
+## Status: design revised (round 2)
+
+## Changes made in this round
+
+**DSFND-1 (RQREB-1 not covered):** Added DSRACE-7[code]. After posting the concurrent claim
+note (the synchronous holder record), `claim_coordinator_claim` in plugin.sh re-reads the
+GitHub issue's current labels or state before proceeding with arbitration. This covers RQREB-1
+("After adding the label, a run re-reads the issue"). Removed RQREB-1 from DSRACE-1's covers;
+it now lives only in DSRACE-7. Added DSRACE-7 to step 1's serves.
+
+**DSFND-2 (UNCLEAR RQCMT-1):** Removed the UNCLEAR line. The finding confirms the assumption
+was correct (the arbitration note is the only GitHub comment a refused run posts; the sidecar
+doesn't start a run-status comment for a refused run). The design now follows the issue's
+intent directly without an UNCLEAR caveat.
+
+**DSFND-3 (DSRACE-2 Then mentions note deletion):** Removed "and deletes its note" from
+DSRACE-2's Then clause. The issue (RQTIE-2) only requires the first-claiming run to proceed;
+it doesn't require note deletion. The implementation may still delete the winner's note as
+cleanup (kept in step 1's helper list), but the SPEC doesn't commit to it.
+
+**DSFND-4 (DSRACE-4 must be [code]):** Changed DSRACE-4 from [done] to [code] with proper
+Given/When/Then. Added it to step 2's serves. The guarantee that the label is not removed
+requires DSRACE-5 to be in place first (the `race_lost: true` skip in `zbuild_claim_acquire`
+returns before `_zbuild_claim_takeover` is called, preventing `_ZBUILD_CLAIM_ACQUIRED="$issue"`
+from ever running on that path). Without the new code, the old takeover path can and does set
+`_ZBUILD_CLAIM_ACQUIRED`. The Decision section now explains this explicitly.
+
+Also removed the "RQLBL-1 is [done]" paragraph from Decision.
 
 ## What I found
 
@@ -437,48 +465,40 @@ check-and-set). Both `claim_coordinator_claim` calls return `{"acquired": true}`
 both runs proceed. That is RQTIE-1's bug.
 
 **Key files:**
-- `plugins/claim-coordinator/github-labels/plugin.sh` — the coordinator; `claim_coordinator_claim` is the hook
-- `core/claim/claim.sh` — engine side; `zbuild_claim_acquire` calls `plugin_hook_call` → `claim_coordinator_claim`
-- `plugins/claim-coordinator/github-labels/lib/takeover.sh` — stale takeover; similar note-based arbitration
+- `plugins/claim-coordinator/github-labels/plugin.sh` — the coordinator; `claim_coordinator_claim` is the hook (255 lines, +~100 = ~355, OK)
+- `core/claim/claim.sh` — engine side; `zbuild_claim_acquire` calls `plugin_hook_call` → `claim_coordinator_claim` (221 lines, +~15 = ~236, OK)
+- `plugins/claim-coordinator/github-labels/lib/takeover.sh` — stale takeover; similar note-based arbitration pattern
 - `docs/adr/ADR-005-claim-coordinator.md` — the spec; §2 "Known, not mitigated: GitHub's label add..." names #2534
 
 **Local-fs backend:** Already safe. `_ccgl_add_label` for local-fs is under `flock` and returns rc 2 if the label
 is already there. No change needed.
 
 **RQTIE-3 options:**
-1. Write holder record synchronously before re-reading → note-based approach
+1. Write holder record synchronously before re-reading → note-based approach (chosen)
 2. Use something that exists at claim time (label events) → NOT viable: GitHub does NOT create a second
    `labeled` event when the label is already there, so we can't distinguish concurrent adders from events.
 
-**Decision:** Note-based arbitration (same pattern as stale takeover):
+**Decision: Note-based arbitration (same pattern as stale takeover):**
 - After adding the label (gh backend only), post `"concurrent claim by \`<holder>\`"`
-- Read back all trusted concurrent claim notes since `note.created_at - 4*GH_TIMEOUT`
+- Re-read the GitHub issue itself (labels/state) — RQREB-1
+- Read back all trusted concurrent claim notes since `note.created_at - detection window`
 - First note by `created_at`, then `id` wins
-- Winner: deletes note, proceeds
+- Winner: returns `{"acquired": true}` (may also delete its note as cleanup)
 - Loser: updates note to "not started — …", returns `{"acquired": false, "holder": "...", "race_lost": true}`
 
-**Engine change needed:**
-Without a `race_lost` field, the engine would see `{"acquired": false, "holder": "<winner>"}` for a CI or other-machine winner, and enter the stale-takeover path (`_zbuild_claim_takeover`). The takeover would fail (claim is fresh, age << stale_s) but print misleading stderr ("not stale yet") and waste 2-3 API calls. Adding `race_lost: true` lets the engine skip that path and print a correct message.
-
-**RQLBL-1 is [done]:** `zbuild_claim_release` does nothing when `_ZBUILD_CLAIM_ACQUIRED` is empty, which it
-always is for a refused claim. Evidence: line 152 in `core/claim/claim.sh`.
-
-**Files changed:**
-1. `plugins/claim-coordinator/github-labels/plugin.sh` — new helper functions + extend `claim_coordinator_claim`
-2. `core/claim/claim.sh` — handle `race_lost: true` (skip stale-takeover, correct message)
-3. `docs/adr/ADR-005-claim-coordinator.md` — amend with §5 + Enforced by
-
-**File sizes after change:**
-- plugin.sh: 255 + ~100 = ~355 lines (OK)
-- claim.sh: 220 + ~15 = ~235 lines (OK)
-- ADR-005: 275 + ~25 = ~300 lines (OK)
+**Why DSRACE-4 is [code]:** Without DSRACE-5, `zbuild_claim_acquire` enters `_zbuild_claim_takeover`
+for any cross-machine refused claim. `_zbuild_claim_takeover` can call `_ZBUILD_CLAIM_ACQUIRED="$issue"`
+(inside `_zbuild_claim_takeover` in claim.sh) if the takeover hook returns `claimed: true`. Therefore the
+guarantee that `_ZBUILD_CLAIM_ACQUIRED` is never set after a race-lost refusal requires DSRACE-5's new
+code path to be in place. DSRACE-4's test must mock the coordinator to return `race_lost: true` and verify
+`_ZBUILD_CLAIM_ACQUIRED` stays empty — this test fails on old code and passes after the change.
 
 **WIRING:** `core/claim/claim.sh` — it calls `plugin_hook_call` → `claim_coordinator_claim`, and now also
-handles `race_lost` from the response. If reverted, DSRACE-5's test (stale-takeover not entered) would fail.
+handles `race_lost` from the response. If reverted, DSRACE-4 and DSRACE-5 tests would fail.
 
-**No supersedes:** Existing test assertions remain correct (single-run claim still returns acquired=true;
-the local-fs race test is unchanged). The gh-backend unit tests in `claim-coordinator-unit-test.sh` will
-need mock updates for the new API calls, but their assertions are still correct.
+**No supersedes:** Existing test assertions remain correct. The gh-backend unit tests in
+`claim-coordinator-unit-test.sh` will need mock updates for new API calls, but their
+assertions about existing behavior are still correct.
 
 ## What you must not do
 
