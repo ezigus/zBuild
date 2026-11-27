@@ -15,6 +15,8 @@
 # [#2640/SPEC-1] a loop inside the loop leaves the outer round's record as it was
 # [#2640/SPEC-1] "this round": a pass in an earlier round does not count
 # [#2640/SPEC-1] a member of a parallel group may not require anything
+# [#2640/SPEC-1] a member reused from the last round, or taken from the saved
+#                state, counts as passed this round when it passed
 # [#2640/SPEC-2] a try the engine does not run again says so on its row, and a
 #                try it runs again does not
 # [#2640/SPEC-1] simple.yaml gives build requires: [test-author]
@@ -340,6 +342,92 @@ _ZB_TEMPLATE=req-nested TA_FAILS="" _go
 assert_eq "[#2640/SPEC-1] a member after an inner loop that requires one before it runs" "1" "$(_ran build 1)"
 assert_eq "[#2640/SPEC-1] ...and no member is said not to have run" "0" \
     "$(grep -c '"cycle.member.not_run"' "$EVENTS_JSONL" || true)"
+
+print_test_section "a member reused from the last round"
+# Round 2: build changed nothing on the tree round 1 verified, so lint is reused
+# (its pass), and check — which requires lint — runs. check fails in round 1 and
+# is iteration-aware, so it is never reused itself.
+mock_plugin_factory "lint" agent 0 "" "linter" >/dev/null
+mock_plugin_factory "check" agent 0 "" "checker" >/dev/null
+printf 'capabilities:\n  iteration_aware: true\n' >> "$PLUGINS_ROOT/agent/check/manifest.yaml"
+cat > "$PLUGINS_ROOT/agent/check/plugin.sh" <<'PLUG'
+check_run() {
+    local art; art="$(dirname "$2")/artifacts"; mkdir -p "$art"
+    source "$STAGE_RESULT_LIB"
+    if [[ "${ZBUILD_CYCLE_ITER:-0}" == 1 ]]; then stage_result_write "$art/check-result.json" fail "not yet"; return 1; fi
+    stage_result_write "$art/check-result.json" pass "checked"
+}
+PLUG
+cat > "$PLUGINS_ROOT/agent/build/plugin.sh" <<'PLUG'
+build_run() {
+    local art; art="$(dirname "$2")/artifacts"; mkdir -p "$art"
+    source "$STAGE_RESULT_LIB"
+    if [[ "${ZBUILD_CYCLE_ITER:-0}" -ge 2 ]]; then
+        stage_result_write "$art/build-result.json" pass "nothing to change" '{"build_kind":"empty_diff"}'
+        return 0
+    fi
+    stage_result_write "$art/build-result.json" pass "built"
+}
+PLUG
+cat > "$_ZB_REPO/.zbuild/templates/req-reuse.yaml" <<'TPL'
+id: req-reuse
+extends: simple
+flow:
+  - reuse_loop
+always_run: []
+reuse_loop:
+  type: cycle
+  description: Design, build, lint, then a check that needs lint
+  flow:
+    - design
+    - build
+    - lint
+    - check
+  exit_when:
+    all:
+      - { stage: design, field: verdict, op: eq, value: pass }
+      - { stage: build, field: verdict, op: eq, value: pass }
+      - { stage: lint, field: verdict, op: eq, value: pass }
+      - { stage: check, field: verdict, op: eq, value: pass }
+  stop_run_on_fail: [design]
+  max_iterations: 2
+  on_max: halt
+design:
+  gate: auto
+  roles: [designer]
+build:
+  gate: auto
+  roles: [builder]
+lint:
+  gate: auto
+  roles: [linter]
+check:
+  gate: auto
+  roles: [checker]
+  requires: [lint]
+TPL
+( cd "$_ZB_REPO" && git add .zbuild && git commit -qm "req-reuse template" ) >/dev/null 2>&1
+_ZB_TEMPLATE=req-reuse _go
+assert_eq "[#2640/SPEC-1] round 2 reuses lint's pass" "1" \
+    "$(jq -r 'select(.type == "cycle.iteration.reused" and .data.member == "lint") | 1' "$EVENTS_JSONL" 2>/dev/null | grep -c . || true)"
+assert_eq "[#2640/SPEC-1] ...and check, which requires lint, runs in round 2" "1" "$(_ran check 2)"
+assert_eq "[#2640/SPEC-1] ...with no member said not to have run" "0" \
+    "$(grep -c '"cycle.member.not_run"' "$EVENTS_JSONL" || true)"
+
+print_test_section "a member taken from the saved state"
+# A resumed round takes the members before where it starts from the run's state
+# (as --from-stage and a resume do); one saved as passed counts this round.
+SF="$TEST_TEMP_DIR/from-state.json"
+jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$SF"
+_TPL_STAGES=(); _TPL_CYCLES=(); _tpl "requires: [writer]"; _load
+_cycle_state_write_member_atomic "$SF" writer complete pass
+blob="{}"; _CYCLE_ROUND_PASSED=" "; _cycle_member_from_state writer "$SF"
+_u=""; _cycle_requires_unmet_v _u build
+assert_eq "[#2640/SPEC-1] a member saved as passed meets what requires it" "" "$_u"
+_cycle_state_write_member_atomic "$SF" writer complete fail
+blob="{}"; _CYCLE_ROUND_PASSED=" "; _cycle_member_from_state writer "$SF"
+_u=""; _cycle_requires_unmet_v _u build
+assert_eq "[#2640/SPEC-1] ...one saved as failed does not" "writer" "$_u"
 
 print_test_section "zBuild's templates"
 # simple.yaml's build loop has test-author; deployed.yaml's has none (design,

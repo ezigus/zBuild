@@ -259,6 +259,12 @@ test_author_run "test-author" "$_S/pipeline-state.json" >/dev/null 2>&1 || true
 assert_eq "[SPEC-11][change] the partial testfile is committed for the next attempt" "" "$(git -C "$_R" status --porcelain -- tests/acc-test.sh 2>/dev/null)"
 assert_eq "[SPEC-11][guard] …and the result still says the call did not finish" "timed_out" "$(_res '.outcome')"
 assert_contains "[#2640/SPEC-2] …and says on its row how many test files it kept" "$(cat "$_A/test-author-summary.md" 2>/dev/null)" "kept 1 test file it wrote"
+_setup s11b
+route_to_model() { _ta_judge "$2" && return 0; printf '%s' "$2" > "$_TA_PROMPT"
+    printf 'assert_eq "[SPEC-1] partial" "1" "$n"\n' >> "$ZBUILD_REPO_ROOT/tests/acc-test.sh"
+    printf 'assert_eq "[SPEC-1] more" "1" "$n"\n' > "$ZBUILD_REPO_ROOT/tests/acc2-test.sh"; return 124; }
+test_author_run "test-author" "$_S/pipeline-state.json" >/dev/null 2>&1 || true
+assert_contains "[#2640/SPEC-2] …two files it wrote are counted as two" "$(cat "$_A/test-author-summary.md" 2>/dev/null)" "kept 2 test files it wrote"
 
 print_test_section "SPEC-12: the prompt tells the author to continue earlier work"
 _setup s12
