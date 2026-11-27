@@ -22,7 +22,7 @@
 # R3 [change] zBuild's own .zbuild/rules.md holds the rules its CLAUDE.md
 #             states, and CLAUDE.md includes it
 # R4 [change] the docs say zbuild reads .zbuild/rules.md
-# R5 [change] a run on a repository with no rules in .zbuild/rules.md (none, or
+# R5 [change] a run on a repository with no rules in .zbuild/rules.md (none, a link, or
 #             an empty file) says so on the
 #             status comment it posts, started as the runner starts it (with
 #             --repo-root, no ZBUILD_REPO_ROOT); one with the file says nothing
@@ -188,6 +188,15 @@ assert_contains "[R5] an empty one: said in the same words, never that the file 
     "This repository has no rules in \`.zbuild/rules.md\`: every stage was given zBuild's default rules."
 printf -- '- a rule\n' > "$RR/.zbuild/rules.md"
 _lacks "[R5] ...with the file, nothing is said" "$(_r5 "$RR")" "rules.md"
+# A link is not followed (load_repo_rules: the file must be .zbuild/rules.md
+# itself), so the stages got no rules: said so, never silence.
+mkdir -p "$RR/docs"; printf -- '- a shared rule\n' > "$RR/docs/rules.md"; rm -f "$RR/.zbuild/rules.md"
+ln -s ../docs/rules.md "$RR/.zbuild/rules.md"
+# shellcheck source=../../scripts/lib/prompt-overrides.sh
+assert_eq "[R5] (fixture) the stages are given no rules from a linked rules.md" "" "$(source "$REPO_ROOT/scripts/lib/prompt-overrides.sh"; load_repo_rules "$RR")"
+assert_contains "[R5] a linked rules.md: the posted comment says it was not read" "$(_r5 "$RR")" \
+    "This repository's \`.zbuild/rules.md\` is a link, which zBuild does not follow: every stage was given zBuild's default rules."
+rm -f "$RR/.zbuild/rules.md"; printf -- '- a rule\n' > "$RR/.zbuild/rules.md"
 
 print_test_results
 exit $((FAIL > 0))
