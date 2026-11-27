@@ -1,0 +1,11 @@
+## issue-acceptance — pass
+
+- judged the change against the issue: every requirement is met
+
+- every requirement the issue states is met by the change
+- answered: IAFND-1: done — DSRACE-1 and DSRACE-2 tagged assertions in `claim-coordinator-unit-test.sh` assert POST_NOTE is recorded and that the loser receives `acquired: false, race_lost: true`; removing the arbitration block turns the loser path into `{"acquired": true}`, breaking those assertions. The answer holds.
+- answered: IAFND-2: done — DSRACE-7 tagged assertions assert ISSUE_VIEW comes after POST_NOTE and before GET_NOTES; deleting `_ccgl_read_labels` removes the ISSUE_VIEW call and those assertions fail. The answer holds.
+- answered: IAFND-3: done — DSRACE-2 tagged assertions assert the loser gets `acquired: false, race_lost: true` and the winner gets `acquired: true`. The answer holds.
+- answered: IAFND-4: done — DSRACE-3 tagged assertions assert the PATCH body contains "not started", "concurrent claim", the winner's name, and "was first". The answer holds.
+- answered: IAFND-5: done — DSRACE-4 tagged assertions assert `_ZBUILD_CLAIM_ACQUIRED` is empty after a `race_lost: true` response and that `zbuild_claim_release` makes no release call. The answer holds.
+- answered: IAFND-6: done — DSRACE-1 and DSRACE-7 ordering assertions together enforce POST_NOTE before ISSUE_VIEW before GET_NOTES; both swapping and removing the synchronous write break them. The answer holds.
