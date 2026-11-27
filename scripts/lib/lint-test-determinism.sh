@@ -101,12 +101,13 @@ function guarded(before, n) {
     gsub(/[0-9]*>&[0-9-]+/, "", before); gsub(/&>>?/, ">", before)
     return match(before, "declare[ \t]+-F[ \t]+" lit(n) "([ \t]+[^|&;]*)?[ \t]*[|][|][ \t]*$")
 }
-# A copy is called where the lint reads any command (P), not read as ${…}.
+# A copy is called where the lint reads any command (P): not read as ${…} or
+# in (( … )), nor set (a name followed by =, += or [ is a variable).
 function spybody(after, n,   id, p) {
     p = ""
     while (match(after, /[A-Za-z_][A-Za-z0-9_]*/)) {
         id = substr(after, RSTART, RLENGTH); p = p substr(after, 1, RSTART - 1); after = substr(after, RSTART + RLENGTH)
-        if (id != n && id ~ /(^|_)(orig|real)(_|$)/ && p !~ /[$][{]$/ && match(p, P "$")) return 1
+        if (id != n && id ~ /(^|_)(orig|real)(_|$)/ && p !~ /[$][{]$/ && p !~ /[(][(][^)]*$/ && after !~ /^([+]?=|[[])/ && match(p, P "$")) return 1
         p = p id
     }
     return 0

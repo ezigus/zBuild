@@ -193,6 +193,10 @@ _no_own "a body that only holds orig/real inside a longer word is no spy" 'engin
 _no_own "a body that reads a variable named _real_ is no spy" 'engine_step() { _t=$_real_tier; }'
 _no_own "...nor one that reads \${_orig_...}" 'engine_step() { _t=${_orig_tier:-x}; }'
 _no_own "a body that names the copy as an argument does not call it" 'engine_step() { echo _orig_engine_step; }'
+_no_own "a body that sets a variable named _orig_ does not call it" 'engine_step() { _orig_rc=0; return 0; }'
+_no_own "...nor one that counts in a _real_ variable" 'engine_step() { _real_calls=$((_real_calls + 1)); return 0; }'
+_no_own "...nor one that adds to an array named _orig_" 'engine_step() { _orig_seen+=(x); _orig_map[k]=1; return 0; }'
+_no_own "...nor a variable set after the definition, on its line" 'engine_step() { return 0; }; engine_step_orig=1'
 _no_own "a guard for another function whose name a . would match" 'declare -F myxstep >/dev/null || my.step() { :; }'
 
 print_test_section "T13: what a test may define"
