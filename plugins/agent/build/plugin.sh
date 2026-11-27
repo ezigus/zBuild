@@ -344,7 +344,11 @@ _build_stage_run_inner() {
         # as it is (-z: never quoted, so no name is read back from a header); a
         # rename is its new name. Four counting processes are gone with it.
         local _bcf_a _bcf_r _bcf_p _bcf_l _bcf_j=""
-        while IFS=$'\t' read -r -d '' _bcf_a _bcf_r _bcf_p; do
+        # The record whole, then its two counts split off: a name is never
+        # split on a tab, so one at either end of it stays.
+        while IFS= read -r -d '' _bcf_p; do
+            _bcf_a="${_bcf_p%%$'\t'*}"; _bcf_p="${_bcf_p#*$'\t'}"
+            _bcf_r="${_bcf_p%%$'\t'*}"; _bcf_p="${_bcf_p#*$'\t'}"
             # A rename's line holds no name: the old one, then the new, follow.
             [[ -z "$_bcf_p" ]] && { IFS= read -r -d '' _bcf_p; IFS= read -r -d '' _bcf_p; }
             [[ -n "$_bcf_p" ]] || continue
