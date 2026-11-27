@@ -240,7 +240,8 @@ print_test_section "H6: issue-acceptance is held to its finding"
 _h6="$(cat "$TEST_TEMP_DIR/ia-prompt.txt" 2>/dev/null)"
 assert_contains "[H6] build's done answer has it judge again" "$(cat "$TEST_TEMP_DIR/h6.log")" "calls=1 outcome=pass"
 assert_contains "[H6] ...shown its earlier findings" "$_h6" "$HELD"
-assert_contains "[H6] ...its finding, with its ACCEPTED IF" "$_h6" "ACCEPTED IF: the change without dropping the rule that --from-stage needs --resume"
+# ADR-075 §3 (amended 2026-11-27): an UNASKED finding carries its one outcome.
+assert_contains "[H6] ...its finding, with its ACCEPTED IF" "$_h6" "ACCEPTED IF: the change without it"
 assert_contains "[H6] ...and build's answer" "$_h6" "answered: done — the rule is back"
 
 # ── H7: build's step check ───────────────────────────────────────────────────

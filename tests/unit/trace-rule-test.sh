@@ -25,9 +25,12 @@
 # T5 [change] §3 intake's check names a listed item the issue does not state
 # T6 [change] §3 test-author's unasked check: the rule, and the shared finding
 # T7 [change] §3 issue-acceptance's reverse question: the rule — a file a test
-#             needs is no longer asked for by that — and its accepted if is the
-#             change without it, or a requirement that asks for it
+#             needs is no longer asked for by that — and each part it names
+#             is taken out (amended 2026-11-27)
 # T8 [change] §3 the scope lens judges by the rule
+# T9 [change] §3 issue-acceptance's reader: a part nothing asks for is taken
+#             with the engine's ACCEPTED IF, the change without it, whatever
+#             the check wrote, and with none is not asked again
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -250,8 +253,8 @@ _t7s="$(tr '.' '\n' <<< "$_rev" | grep -iE "test" | grep -iE "\b(needs?|needed|r
 if [[ -n "$_t7s" ]]; then
     assert_fail "[T7] ...no sentence says what a test needs is asked for" "$_t7s"
 else assert_pass "[T7] ...no sentence says what a test needs is asked for"; fi
-assert_contains "[T7] its accepted if is the change without it, or a requirement asking for it" "$_ap" \
-    "accepted if: <the change without it, or the requirement that would ask for it — nothing else>"
+assert_contains "[T7] each part it names is taken out: its one outcome" "$_ap" \
+    "Each part you name here is taken out of the change."
 
 # ── T8 ───────────────────────────────────────────────────────────────────────
 print_test_section "T8: the scope lens"
@@ -269,33 +272,27 @@ assert_contains "[T8] the scope lens judges by the rule" "$_ch" "Everything here
 _lacks "[T8] ...its job names no placeholder" "$_ch" "@TRACE_RULE@"
 
 # ── T9 ───────────────────────────────────────────────────────────────────────
-print_test_section "T9: issue-acceptance holds a part nothing asks for to the rule"
+print_test_section "T9: a part nothing asks for is taken out"
 _IA_REPO="$TEST_TEMP_DIR/t9"; mkdir -p "$_IA_REPO/scripts/lib"; printf 'if [[ $in_block -eq 1 ]]; then\n' > "$_IA_REPO/scripts/lib/acceptance-block.sh"
-# The reply as the model writes it, joined as the stage joins it.
+# ADR-075 §3 (amended 2026-11-27): an UNASKED part has one outcome, the change
+# without it; its ACCEPTED IF is the engine's words, never a condition the
+# check makes up. The reply as the model writes it, joined as the stage joins it.
 _t9r=""; zb_reply_join_v _t9r "UNASKED: acceptance-block.sh refuses an unclosed block
 why: no requirement asks for it
 accepted if: the file stays under 500 lines
 quote: scripts/lib/acceptance-block.sh | if [[ \$in_block -eq 1 ]]; then"
-_ia_parse "$_t9r" "" "the issue" "$_IA_REPO" "" "unasked" >/dev/null 2>&1
+_IA_PROBLEM=""; _ia_parse "$_t9r" "" "the issue" "$_IA_REPO" "" "unasked" >/dev/null 2>&1
 _un="$(printf '%s\n' "${_IA_UNASKED[@]+"${_IA_UNASKED[@]}"}")"
-assert_eq "[T9] a part nothing asks for, accepted on a condition about how it is done, is not taken" "" "$_un"
-assert_contains "[T9] ...the answer is refused, to be asked again, saying why" "${_IA_PROBLEM:-}" \
-    "its ACCEPTED IF must be the change without it, or a requirement that asks for it"
+assert_contains "[T9] a part nothing asks for is taken, to be taken out: the change without it" "$_un" "ACCEPTED IF: the change without it"
+_lacks "[T9] ...never on a condition the check made up" "$_un" "500 lines"
+assert_eq "[T9] ...and the answer is not refused" "" "${_IA_PROBLEM:-}"
 _t9r=""; zb_reply_join_v _t9r "UNASKED: acceptance-block.sh refuses an unclosed block
 why: no requirement asks for it
-accepted if: the change without the unclosed-block check
-quote: scripts/lib/acceptance-block.sh | if [[ \$in_block -eq 1 ]]; then"
-_ia_parse "$_t9r" "" "the issue" "$_IA_REPO" "" "unasked" >/dev/null 2>&1
-assert_contains "[T9] one accepted without it is taken, in the check's own words" \
-    "$(printf '%s\n' "${_IA_UNASKED[@]+"${_IA_UNASKED[@]}"}")" "ACCEPTED IF: the change without the unclosed-block check"
-_t9r=""; zb_reply_join_v _t9r "UNASKED: acceptance-block.sh refuses an unclosed block
-why: no requirement asks for it
-accepted if: RQGATE-1, the requirement that asks for the check
 quote: scripts/lib/acceptance-block.sh | if [[ \$in_block -eq 1 ]]; then"
 _IA_PROBLEM=""; _ia_parse "$_t9r" "" "the issue" "$_IA_REPO" "" "unasked" >/dev/null 2>&1
-assert_contains "[T9] one accepted with a requirement that asks for it is taken" \
-    "$(printf '%s\n' "${_IA_UNASKED[@]+"${_IA_UNASKED[@]}"}")" "ACCEPTED IF: RQGATE-1, the requirement that asks for the check"
-assert_eq "[T9] ...and is not refused" "" "${_IA_PROBLEM:-}"
+assert_contains "[T9] one with no accepted if is taken the same way" \
+    "$(printf '%s\n' "${_IA_UNASKED[@]+"${_IA_UNASKED[@]}"}")" "ACCEPTED IF: the change without it"
+assert_eq "[T9] ...and is not asked again" "" "${_IA_PROBLEM:-}"
 
 print_test_results
 exit $((FAIL > 0))
