@@ -33,7 +33,8 @@ source "$REPO_ROOT/scripts/lib/gh-automation.sh"
 
 MODE="report"
 MANIFEST="$REPO_ROOT/.github/issues/keepers-manifest.yaml"
-ORPHAN_PRS_LOG="$REPO_ROOT/.github/issues/orphan-prs.md"
+# The log --apply appends orphan PRs to; a test gives its own (MANIFEST_SYNC_ORPHAN_PRS_LOG).
+ORPHAN_PRS_LOG="${MANIFEST_SYNC_ORPHAN_PRS_LOG:-$REPO_ROOT/.github/issues/orphan-prs.md}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -172,7 +173,9 @@ fi
 # 3. Merged PRs without referenced issues
 #    Find PRs that don't mention "Closes #" / "Fixes #" / "Resolves #"
 declare -a ORPHAN_PRS=()
-while IFS=$'\t' read -r pr_num pr_title pr_body; do
+# Each PR as it is, NUL-separated (a body holds newlines); the 30-PR window is
+# jq's, so a record is never cut by a line count (audit on #2638).
+while IFS= read -r -d '' pr_num && IFS= read -r -d '' pr_title && IFS= read -r -d '' pr_body; do
     if [[ -z "$pr_body" || "$pr_body" == "null" ]]; then
         pr_body=""
     fi
@@ -180,9 +183,9 @@ while IFS=$'\t' read -r pr_num pr_title pr_body; do
         if gha_is_already_scanned "$pr_num" "$ORPHAN_PRS_LOG"; then
             continue
         fi
-        ORPHAN_PRS+=("$pr_num|$pr_title")
+        ORPHAN_PRS+=("$pr_num|${pr_title//$'\n'/ }")
     fi
-done < <(jq -r '.[] | select(.mergedAt != null) | [.number, .title, .body] | @tsv' "$TMP/live-prs.json" | head -30)  # sigpipe-ok: process substitution; rc never inspected
+done < <(jq -j '[.[] | select(.mergedAt != null)] | .[:30][] | "\(.number)\u0000\(.title)\u0000\(.body // "")\u0000"' "$TMP/live-prs.json")
 
 if [[ ${#ORPHAN_PRS[@]} -gt 0 ]]; then
     DRIFT_FOUND=1

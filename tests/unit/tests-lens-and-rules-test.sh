@@ -97,7 +97,7 @@ while IFS= read -r _rl; do
     grep -qF -- "$(_flat "$_rl")" <<< "$_pz" || _miss+="$_rl"$'\n'
 done < "$REPO_ROOT/.zbuild/rules.md"
 assert_eq "[R2] every rule of zBuild's own file is in the prompt" "" "$_miss"
-rm -f "$RR/.zbuild/rules.md"
+rm -f "${RR:?}/.zbuild/rules.md"
 _p0="$(_flat "$(_sp_repo_intent_and_rules "$RR" 2>/dev/null)")"
 assert_contains "[R2] with none, it says so" "$_p0" "This repository has no .zbuild/rules.md, so these are zBuild's default rules."
 _lacks "[R2] ...and the old place is not read" "$_p0" "RULE-OLD"
@@ -107,13 +107,13 @@ print_test_section "R1b: the rules file stays in the repository"
 OUTSIDE="$TEST_TEMP_DIR/outside-secret.txt"; printf 'SECRET-OUTSIDE\n' > "$OUTSIDE"
 ln -s "$OUTSIDE" "$RR/.zbuild/rules.md"
 assert_eq "[R1b] a rules.md that links out of the repository is not read" "" "$(load_repo_rules "$RR" 2>/dev/null)"
-rm -f "$RR/.zbuild/rules.md"; ln "$OUTSIDE" "$RR/.zbuild/rules.md"
+rm -f "${RR:?}/.zbuild/rules.md"; ln "$OUTSIDE" "$RR/.zbuild/rules.md"
 assert_eq "[R1b] ...nor one hard-linked to a file elsewhere" "" "$(load_repo_rules "$RR" 2>/dev/null)"
-rm -f "$RR/.zbuild/rules.md"
+rm -f "${RR:?}/.zbuild/rules.md"
 printf 'VISION-TEXT\n' > "$RR/.zbuild/vision.md"; ln -s ../vision.md "$RR/.zbuild/prompts/design-overrides.md"
 assert_eq "[R1b] a stage's guidance links only within .zbuild/prompts/: one to vision.md is refused" "" \
     "$(load_prompt_override design "$RR" 2>/dev/null)"
-rm -f "$RR/.zbuild/prompts/design-overrides.md"
+rm -f "${RR:?}/.zbuild/prompts/design-overrides.md"
 _lacks "[R1b] zBuild's default rules name no old path" "$(cat "$REPO_ROOT/config/prompts/default-rules.md")" ".zbuild/prompts/rules.md"
 
 # ── R3 ───────────────────────────────────────────────────────────────────────
@@ -167,7 +167,7 @@ exit 1
 MOCK
 chmod +x "$TEST_TEMP_DIR/bin/gh"; export PATH="$TEST_TEMP_DIR/bin:$PATH"; unset NO_GITHUB
 _r5() {   # <repo> — the body the runner's --once posts for <repo>
-    local sd="$TEST_TEMP_DIR/r5-state"; rm -rf "$sd" "$GH_BODIES/body.txt"; mkdir -p "$sd"
+    local sd="$TEST_TEMP_DIR/r5-state"; rm -rf "${sd:?}" "${GH_BODIES:?}/body.txt"; mkdir -p "$sd"
     # The run's first event, as the engine writes it.
     ( export ZBUILD_EVENTS_DIR="$sd" ZBUILD_EVENTS_JSONL="$sd/events.jsonl" ZBUILD_RUN_ID=r-2630 ZBUILD_ISSUE=90000042 \
           ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
@@ -190,13 +190,13 @@ printf -- '- a rule\n' > "$RR/.zbuild/rules.md"
 _lacks "[R5] ...with the file, nothing is said" "$(_r5 "$RR")" "rules.md"
 # A link is not followed (load_repo_rules: the file must be .zbuild/rules.md
 # itself), so the stages got no rules: said so, never silence.
-mkdir -p "$RR/docs"; printf -- '- a shared rule\n' > "$RR/docs/rules.md"; rm -f "$RR/.zbuild/rules.md"
+mkdir -p "$RR/docs"; printf -- '- a shared rule\n' > "$RR/docs/rules.md"; rm -f "${RR:?}/.zbuild/rules.md"
 ln -s ../docs/rules.md "$RR/.zbuild/rules.md"
 # shellcheck source=../../scripts/lib/prompt-overrides.sh
 assert_eq "[R5] (fixture) the stages are given no rules from a linked rules.md" "" "$(source "$REPO_ROOT/scripts/lib/prompt-overrides.sh"; load_repo_rules "$RR")"
 assert_contains "[R5] a linked rules.md: the posted comment says it was not read" "$(_r5 "$RR")" \
     "This repository's \`.zbuild/rules.md\` is a link, which zBuild does not follow: every stage was given zBuild's default rules."
-rm -f "$RR/.zbuild/rules.md"; printf -- '- a rule\n' > "$RR/.zbuild/rules.md"
+rm -f "${RR:?}/.zbuild/rules.md"; printf -- '- a rule\n' > "$RR/.zbuild/rules.md"
 # The same for a .zbuild that is a link: with a rules.md there, it is not read
 # (the file must be .zbuild/rules.md itself); with none, it has no rules.
 RR2="$TEST_TEMP_DIR/r5-linked"; mkdir -p "$RR2" "$TEST_TEMP_DIR/shared-zb"; git -C "$RR2" init -q
@@ -204,7 +204,7 @@ printf -- '- a shared rule\n' > "$TEST_TEMP_DIR/shared-zb/rules.md"; ln -s "$TES
 assert_eq "[R5] (fixture) the stages are given no rules from a linked .zbuild" "" "$(source "$REPO_ROOT/scripts/lib/prompt-overrides.sh"; load_repo_rules "$RR2")"
 assert_contains "[R5] a linked .zbuild with a rules.md: the comment says it was not read" "$(_r5 "$RR2")" \
     "This repository's \`.zbuild/rules.md\` is a link, which zBuild does not follow: every stage was given zBuild's default rules."
-rm -f "$TEST_TEMP_DIR/shared-zb/rules.md"
+rm -f "${TEST_TEMP_DIR:?}/shared-zb/rules.md"
 assert_contains "[R5] a linked .zbuild with none: the comment says it has no rules" "$(_r5 "$RR2")" \
     "This repository has no rules in \`.zbuild/rules.md\`: every stage was given zBuild's default rules."
 _lacks "[R5] ...never that it is a link" "$(_r5 "$RR2")" "is a link"
