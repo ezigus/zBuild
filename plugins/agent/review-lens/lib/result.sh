@@ -43,7 +43,9 @@ _review_lens_write_result() {
         --arg n "$_name" \
         --arg pn "$notes" \
         --argjson u "${_RL_UQ_JSON:-[]}" \
+        --argjson ss "${_RL_PRIOR_SENT:-[]}" \
         '{schema_version:1, name:$n, score:0, findings:[]}
+         + (if ($ss | length) > 0 then {sent_suspicions: $ss} else {} end)
          + (if $pn != "" or ($u | length) > 0 then {data:((if $pn != "" then {partial_notes:$pn} else {} end)
              + (if ($u | length) > 0 then {unclear:$u} else {} end))} else {} end)' > "$_tmp" 2>/dev/null \
         && stage_result_add "$_tmp" "$outcome" "$reason" 2>/dev/null \

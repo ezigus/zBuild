@@ -1,6 +1,6 @@
 # ADR-012 — Test Tiering and CI Gating
 
-**Status:** Accepted; amended 2026-11-26 (#2615: a test never reads the real checkout; a lint test never runs its lint over the real tree); amended 2026-11-08 (tests are deterministic); amended 2026-11-11 (#2525: a test reads no clock to see how long something took); amended 2026-11-09 (#2510: a test signals only the processes it started)  ; amended 2026-11-14 (#2541: the suite sweeps the temp folders its tests left)
+**Status:** Accepted; amended 2026-11-26 (#2630: a test never fakes our own code); amended 2026-11-26 (#2615: a test never reads the real checkout; a lint test never runs its lint over the real tree); amended 2026-11-08 (tests are deterministic); amended 2026-11-11 (#2525: a test reads no clock to see how long something took); amended 2026-11-09 (#2510: a test signals only the processes it started)  ; amended 2026-11-14 (#2541: the suite sweeps the temp folders its tests left)
 **Date:** 2026-05-25  
 **Deciders:** zbuild core team  
 
@@ -199,7 +199,16 @@ A test that watches a file for a partial state reads its size with one `stat`, n
 - **A test never runs a lint over the real tree.** `npm run lint` runs every lint over the tree, once; a lint test runs its lint on its own fixtures and checks that `npm run lint` runs it. Twenty-six lines in lint tests and others also ran a lint over the checkout, paying for it on every suite run (lint-test-engine-state: 9 of 9.5 s). `scripts/lib/lint-test-real-tree.sh` (in `npm run lint`) refuses it.
 - **A check runs the smallest pipeline that shows it.** The stop-reason checks run one loop and pr, not the whole simple template (46 s → 14.5 s locally).
 
+## Amendment 2026-11-26 (#2630) — a test never fakes our own code
+
+On #1722 run 45872552515 a test replaced the project's own `acceptance_negctl_check` with a stub, and nothing said so: the test then tested the stub.
+
+- **A test that redefines a function our own code defines** — under `core/`, `scripts/`, or `plugins/` outside a plugin's `tests/` — **fails the lint** (`scripts/lib/lint-test-determinism.sh`, kind `own-code`). An outside service is faked at our innermost wrapper around it, below everything of ours that must run (redaction, ADR-043); those wrappers are listed in `config/test-fake-wrappers.txt` (`_route_call_claude`, `_route_call_gh_read`, `_gh_get_form`, `run_gh`, `rsc_gh`, `_hydrate_fetch`, `_ccgl_gh`) and may be redefined — not a function that holds our own logic around the call (the health check, reading the claim holder): fake `curl` or `_ccgl_gh` under it. Faking the model call above redaction (`route_to_model` and its kin) is not on the list: those fakes are baselined debt, and a new test fakes the claude binary (`install_envelope_mock_claude`). Not a fake either: a definition in a heredoc (a fake plugin written to disk), a spy whose body, on its line, calls a copy of the original (a name with orig or real as a part: `<f>_orig`, `_orig_<f>`, `_real_<f>`, `_m12_orig_<f>`, `_yg_real`), a define-if-missing guard right before the definition (`declare -F <f> [redirs] || <f>() {…}` — not `&&`, not on another command), and a line marked `# determinism-ok: <reason>` — a test-local helper whose name only collides with a private production one is marked `# determinism-ok: test-local helper`, or stays in the baseline. A spy whose body is on the lines below its definition stays in the baseline.
+- **Findings from before the rule are in `config/test-determinism-baseline.txt`** (`own-code|<file>|<line>`), which only shrinks, as for the lint's other kinds.
+
 ## Enforced by
+
+- Amendment 2026-11-26 (#2630: a test never fakes our own code) → `tests/unit/lint-test-determinism-test.sh` T12 (core/, scripts/, a plugin), T12 (also: a guard joined by &&, a guard on another command, an _orig name outside the body, route_to_model — refused), T13 (an innermost wrapper in either form, a function no production file defines, a test helper, a heredoc, spies through each form of copy, a define-if-missing guard, a marked test-local helper), T14 (the baseline only shrinks)
 
 - Amendment 2026-11-26 (#2615: sealed off from the checkout) → `tests/unit/lint-test-real-tree-test.sh` RT1–RT3; `plugins/agent/review-lens/tests/review-lens-whole-inputs-test.sh` W8; `tests/unit/lens-unclear-test.sh` LU9; `tests/unit/lint-disposition-words-test.sh` SPEC-4 (a lint's count is shown non-vacuous on a fixture); `tests/integration/stage-stop-names-cause-test.sh` S1–S7 (on one loop and pr)
 

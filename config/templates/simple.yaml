@@ -299,6 +299,9 @@ review_lenses:
     - id: red-team
       persona: red-team
     - id: correctness
+      persona: developer
+    # #2630 (ADR-040): what the change's tests prove has a lens of its own.
+    - id: tests
       persona: test-strategist
     - id: scope
       persona: product-owner
@@ -306,10 +309,10 @@ review_lenses:
       persona: sre
   roles: [review_lens]
   as: ZBUILD_REVIEW_LENS_ID
-  # All six at once, each call bounded like build's: on #1801 and #1944
+  # Every lens at once (seven, #2630), each call bounded like build's: on #1801 and #1944
   # (2026-10-28) five of six lenses were stopped by a 300 s call limit while
   # still reading. The stage limit holds the one round with room to spare.
-  max_parallel: 6
+  max_parallel: 7
   on_member_error: continue
   aggregate: advisory
   timeout_s: 1200

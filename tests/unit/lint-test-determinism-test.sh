@@ -19,6 +19,17 @@
 #   T9  the baseline: a listed finding passes, a new finding fails, a listed
 #       finding that is gone fails (the list only shrinks)
 #   T10 the real tree passes, and `npm run lint` runs the lint
+#   T12 (#2630, ADR-012) a test that redefines a function our own code defines
+#       (under core/, plugins/ outside its tests, or scripts/) fails, naming the
+#       file, the line and the function — a fake of our own code tests the fake
+#   T13 ...and passes: our innermost wrapper around an outside service on the
+#       allowed list (config/test-fake-wrappers.txt), in either form of a
+#       definition; a function no production file defines; a definition in a
+#       heredoc (a fake plugin written to disk); a spy that calls the original
+#       (`<f>_orig "$@"`, `_real_<f>`); a define-if-missing guard (`declare -F
+#       f || f() {…}`); and a line marked `# determinism-ok: <reason>`. A
+#       definition after another command on its line is still read.
+#   T14 the baseline holds such findings from before the rule, and only shrinks
 #   T11 a test that reads the clock to see how long something took ($SECONDS,
 #       date +%s) fails; a mention in a comment or string does not (#2525: on
 #       #1805 run 43093018140 a busy machine made a 15 s bound 16 s)
@@ -144,6 +155,60 @@ assert_contains "[T11] ...saying why" "$(_lint "$U" '_t0=$SECONDS')" "reads the 
 assert_eq "[T11] date +%s fails" "rc=1" "$(_rc "$U" 'start="$(date +%s)"')"
 assert_eq "[T11] a comment that mentions SECONDS passes" "rc=0" "$(_rc "$U" '# the old test read $SECONDS here')"
 assert_eq "[T11] a line marked determinism-ok passes" "rc=0" "$(_rc "$U" '_t0=$SECONDS  # determinism-ok: a run id, not a timing')"
+
+# _lint_own <test body> [baseline] — a tree with our own code (core/, scripts/,
+# a plugin), the allowed wrappers, and one test file; `rc=<rc>` then the output.
+_lint_own() {
+    local root; root="$(mktemp -d "$TEST_TEMP_DIR/own.XXXXXX")"
+    mkdir -p "$root/core/x" "$root/scripts/lib" "$root/plugins/agent/p/lib" "$root/plugins/agent/p/tests" "$root/tests/unit" "$root/config"
+    printf 'engine_step() {\n    :\n}\n' > "$root/core/x/x.sh"
+    printf 'route_to_model() { :; }\nhelper_join() { :; }\n_route_call_claude() { :; }\n_check() { :; }\n' > "$root/scripts/lib/y.sh"
+    printf 'p_run() { :; }\n' > "$root/plugins/agent/p/lib/p.sh"
+    printf 'test_only_helper() { :; }\n' > "$root/plugins/agent/p/tests/helpers.sh"
+    printf '%s\n' '# Our innermost wrappers around outside services: a test may fake these.' _route_call_claude > "$root/config/test-fake-wrappers.txt"
+    printf '#!/usr/bin/env bash\n%s\n' "$1" > "$root/tests/unit/own-test.sh"
+    [[ -n "${2:-}" ]] && printf '%s\n' "$2" > "$root/config/test-determinism-baseline.txt"
+    local out rc=0
+    out="$(bash "$LINT" "$root" 2>&1)" || rc=$?
+    printf 'rc=%s\n%s\n' "$rc" "$out"
+}
+
+print_test_section "T12: a test that fakes our own code fails"
+_t12="$(_lint_own 'engine_step() { return 0; }')"
+assert_eq "[T12] a function core/ defines, redefined in a test, fails" "rc=1" "${_t12%%$'\n'*}"
+assert_contains "[T12] ...naming the file and line" "$_t12" "tests/unit/own-test.sh:2"
+assert_contains "[T12] ...and the function" "$_t12" "engine_step"
+assert_eq "[T12] one scripts/ defines" "rc=1" "$(_t="$(_lint_own 'helper_join () { echo x; }')"; printf '%s' "${_t%%$'\n'*}")"
+assert_eq "[T12] one a plugin defines" "rc=1" "$(_t="$(_lint_own 'function p_run { :; }')"; printf '%s' "${_t%%$'\n'*}")"
+assert_eq "[T12] a definition after another command on its line" "rc=1" "$(_t="$(_lint_own 'x=1; engine_step() { :; }')"; printf '%s' "${_t%%$'\n'*}")"
+assert_eq "[T12] a guard joined by && replaces it" "rc=1" "$(_t="$(_lint_own 'declare -F engine_step >/dev/null && engine_step() { :; }')"; printf '%s' "${_t%%$'\n'*}")"
+assert_eq "[T12] a guard on another command is no guard" "rc=1" "$(_t="$(_lint_own 'declare -F engine_step >/dev/null || true; engine_step() { :; }')"; printf '%s' "${_t%%$'\n'*}")"
+assert_eq "[T12] an _orig name outside the body is no spy" "rc=1" "$(_t="$(_lint_own 'engine_step_orig=1; engine_step() { :; }')"; printf '%s' "${_t%%$'\n'*}")"
+assert_eq "[T12] a wrapper that is ours but not on the list (the model call above redaction)" "rc=1" "$(_t="$(_lint_own 'route_to_model() { :; }')"; printf '%s' "${_t%%$'\n'*}")"
+
+print_test_section "T13: what a test may define"
+_ok_own() { local _t; _t="$(_lint_own "$2")"; assert_eq "[T13] $1" "rc=0" "${_t%%$'\n'*}"; }
+_ok_own "our innermost wrapper around an outside service, on the allowed list" '_route_call_claude() { printf "%s" "$REPLY"; }'
+_ok_own "...written with the function keyword" 'function _route_call_claude { :; }'
+_ok_own "a spy that calls the original" 'engine_step() { printf x >> "$LOG"; engine_step_orig "$@"; }'
+_ok_own "a spy that calls the real one" 'helper_join() { _real_helper_join "$@"; }'
+_ok_own "a spy through _orig_<f>" 'engine_step() { printf x >> "$L"; _orig_engine_step "$@"; }'
+_ok_own "a spy through a prefixed _orig_ copy" 'engine_step() { _N=1; _m12_orig_engine_step "$@"; }'
+_ok_own "a spy through a short _real copy" 'engine_step() { printf x >> "$L"; _es_real "$@"; }'
+_ok_own "a test-local helper marked as one" '_check() { :; }   # determinism-ok: test-local helper'
+_ok_own "a define-if-missing guard" 'declare -F engine_step >/dev/null || engine_step() { :; }'
+_ok_own "a function no production file defines" 'my_case() { :; }'
+_ok_own "a test helper a plugin's tests define" 'test_only_helper() { :; }'
+_ok_own "a definition in a heredoc (a fake plugin written to disk)" "cat > \"\$d/plugin.sh\" <<'PL'
+p_run() { :; }
+PL"
+_ok_own "a line marked with a reason" 'engine_step() { :; }   # determinism-ok: the hook under test is the caller'
+
+print_test_section "T14: the baseline"
+assert_eq "[T14] a listed finding passes" "rc=0" \
+    "$(_t="$(_lint_own 'engine_step() { return 0; }' 'own-code|tests/unit/own-test.sh|engine_step() { return 0; }')"; printf '%s' "${_t%%$'\n'*}")"
+assert_eq "[T14] a listed finding that is gone fails" "rc=1" \
+    "$(_t="$(_lint_own 'true' 'own-code|tests/unit/own-test.sh|engine_step() { return 0; }')"; printf '%s' "${_t%%$'\n'*}")"
 
 print_test_section "T10: the real tree"
 assert_contains "[T10] npm run lint runs it" \

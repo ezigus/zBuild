@@ -44,7 +44,7 @@ unset ZBUILD_SCOPE_MANIFEST ZBUILD_STAGE_INPUTS ZBUILD_STAGE_BLOCKS 2>/dev/null 
 TGT="$TEST_TEMP_DIR/target"
 mkdir -p "$TGT/.zbuild/prompts"
 printf '## Intent\nROUTER-MUST-NOT-ADD-THIS-INTENT\n' > "$TGT/.zbuild/vision.md"
-printf 'ROUTER-MUST-NOT-ADD-THIS-RULE\n' > "$TGT/.zbuild/prompts/rules.md"
+printf 'ROUTER-MUST-NOT-ADD-THIS-RULE\n' > "$TGT/.zbuild/rules.md"
 export ZBUILD_REPO_ROOT="$TGT"
 
 # A dispatched agent stage that declares a notes file and repository rules —

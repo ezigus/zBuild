@@ -141,7 +141,7 @@ while IFS=$'\t' read -r stage role rt rmt elems; do
 done < <(yq -o=json "$TPL" | jq -r 'to_entries[] | select(.value | type == "object" and has("roles"))
     | [.key, .value.roles[0], (.value.router.timeout_s // "" | tostring), (.value.router.max_turns // "" | tostring),
        ([.value.elements[]?.id] | join(" "))] | @tsv')
-assert_eq "[CL1] fixture: every model-calling stage and lens was dispatched (6 stages, 6 lenses; #2614 adds issue-check)" "12" "$_n"
+assert_eq "[CL1] fixture: every model-calling stage and lens was dispatched (6 stages, 7 lenses; #2614 adds issue-check, #2630 the tests lens)" "13" "$_n"
 
 print_test_section "CL5: a stage's own turn limit is the record's"
 # shellcheck disable=SC2016  # the probe's code, expanded when it runs

@@ -468,6 +468,9 @@ rsc_main() {
     [[ -n "$issue" ]] || issue="${ZBUILD_ISSUE:-}"
     [[ -n "$run_id" ]] || run_id="${ZBUILD_RUN_ID:-}"
     [[ -n "$slug" ]] || slug="$(zbuild_repo_slug "${repo_root:-$PWD}" 2>/dev/null || true)"
+    # #2630 (ADR-067 §8): the renderer says when the repository has no rules
+    # file; the runner starts this loop before it enters the worktree.
+    [[ -n "$repo_root" ]] && export ZBUILD_RSC_REPO_ROOT="$repo_root"
     if [[ -z "$slug" || ! "$issue" =~ ^[1-9][0-9]*$ || ! "$run_id" =~ ^[A-Za-z0-9_.-]+$ ]]; then
         rsc_log "$state_dir" "cannot post: slug='${slug}' issue='${issue}' run_id='${run_id}'"
         return 0
