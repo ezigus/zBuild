@@ -28,6 +28,9 @@
 #              a re-ask answered worse leaves the first report
 # LU8 [change] a carried question the lens retires is recorded in its result,
 #              data.unclear_dropped, with its WHY and QUOTE
+# [#2640/SPEC-3] an answer in the block form the lens is asked for counts; one
+#              whose quote is not in the issue leaves the question open and
+#              costs the review nothing
 # LU9 [change] (#2615, ADR-012) the lens never reads the checkout the suite
 #             runs from: it reads the test's own repository
 set -uo pipefail
@@ -66,6 +69,8 @@ route_to_model() { zb_test_lens_check_answer "$2" && return 0
     printf '%s' "$2" > "$_RQ/prompt-$n.txt"
     r="$(sed -n "${n}p" "$_RQ/replies")"
     [[ "$r" == RC=* ]] && return "${r#RC=}"
+    # A reply as the model writes it, its line breaks as \n (#2640).
+    [[ "$r" == RAW:* ]] && { printf '%b' "${r#RAW:}"; return 0; }
     zb_test_lens_lines "$r"
 }
 _calls() { cat "$_RQ/n"; }
@@ -189,6 +194,22 @@ assert_eq "[LU8] ...with how it was retired" "answered" "$(_res '.data.unclear_d
 assert_eq "[LU8] ...its WHY" "the issue says to exit" "$(_res '.data.unclear_dropped[0].why')"
 assert_eq "[LU8] ...its QUOTE" "exit with an error" "$(_res '.data.unclear_dropped[0].quote')"
 assert_eq "[LU8] ...and the question it retired, as carried" "$QL" "$(_res '.data.unclear_dropped[0].question')"
+
+print_test_section "#2640: an answer in the block form the lens is asked for"
+rm -f "$out" "${out%.json}-judged.json"
+_reset "$(_rep "\"unclear\":[\"$Q\"]")"; _lens
+rm -f "${out%.json}-judged.json"
+_reset 'RAW:UNCLEAR RQCNFG-1: answered\nwhy: the issue says to exit\nquote: exit with an error\n\nSCORE: 10'; _lens
+assert_eq "[#2640/SPEC-3] a block-form answer is read: a pass" "pass" "$(_res .outcome)"
+assert_eq "[#2640/SPEC-3] ...on the first answer" "1" "$(_calls)"
+assert_eq "[#2640/SPEC-3] ...and the answered question is dropped" "" "$(_res '(.data.unclear // [])[]')"
+rm -f "$out" "${out%.json}-judged.json"
+_reset "$(_rep "\"unclear\":[\"$Q\"]")"; _lens
+rm -f "${out%.json}-judged.json"
+_BLK='RAW:UNCLEAR RQCNFG-1: answered\nwhy: the design chose to exit\nquote: the design says exit at once\n\nSCORE: 10'
+_reset "$_BLK" "$_BLK"; _lens
+assert_eq "[#2640/SPEC-3] a block whose quote is not in the issue: the review is kept" "pass" "$(_res .outcome)"
+assert_eq "[#2640/SPEC-3] ...and the question kept open" "$QL" "$(_res '(.data.unclear // [])[]')"
 
 print_test_section "LU9: the checkout is never read (#2615)"
 assert_eq "[LU9] no git or grep call ran in the checkout the suite runs from" "" "$(zb_test_repo_spy_hits "$_SPY_LOG" "$REPO_ROOT")"
