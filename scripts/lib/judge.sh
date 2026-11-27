@@ -302,15 +302,6 @@ judge_kept_put() {
     return 0
 }
 
-# _judge_json_str_v <var> <text> — <text> as a JSON string, by the shell.
-_judge_json_str_v() {
-    local -n _jjs="$1"; local LC_ALL=C _jjs_s="$2"
-    _jjs_s="${_jjs_s//\\/\\\\}"; _jjs_s="${_jjs_s//\"/\\\"}"
-    _jjs_s="${_jjs_s//$'\n'/\\n}"; _jjs_s="${_jjs_s//$'\r'/\\r}"; _jjs_s="${_jjs_s//$'\t'/\\t}"
-    _jjs_s="${_jjs_s//[$'\001'-$'\010'$'\013'$'\014'$'\016'-$'\037']/ }"
-    _jjs="\"$_jjs_s\""
-}
-
 # judge_kept_put_one <kept_file> <key> <fp> <payload> [file]... — like
 # judge_kept_put for a check that keeps one answer: the file holds only it, and
 # the shell writes it (ADR-065 §5: no program on every judging call). It saves
@@ -322,9 +313,9 @@ judge_kept_put_one() {
     _JUDGE_HASH_WRITE=1 _judge_hashes_v _jpo_hs "$@"
     local _jpo_k _jpo_v _jpo_files="" _jpo_j
     for _jpo_k in "${!_jpo_hs[@]}"; do
-        _judge_json_str_v _jpo_j "$_jpo_k"; _jpo_files+="${_jpo_files:+,}$_jpo_j:\"${_jpo_hs[$_jpo_k]}\""
+        zb_json_str_v _jpo_j "$_jpo_k"; _jpo_files+="${_jpo_files:+,}$_jpo_j:\"${_jpo_hs[$_jpo_k]}\""
     done
-    _judge_json_str_v _jpo_k "$_jpo_key"; _judge_json_str_v _jpo_v "$_jpo_p"; _judge_json_str_v _jpo_j "$_jpo_fp"
+    zb_json_str_v _jpo_k "$_jpo_key"; zb_json_str_v _jpo_v "$_jpo_p"; zb_json_str_v _jpo_j "$_jpo_fp"
     _judge_kept_write "$_jpo_kf" "{$_jpo_k:{\"fp\":$_jpo_j,\"payload\":$_jpo_v,\"files\":{$_jpo_files}}}"
     _judge_check_name_v _jpo_j "$_jpo_kf"
     _judge_emit judge.kept.saved "check=$_jpo_j" "item=$_jpo_key"
@@ -456,11 +447,11 @@ judge_kept_put_all() {
         while IFS= read -r _jpa_f; do
             [[ -n "$_jpa_f" && -z "${_jpa_seen[$_jpa_f]+x}" ]] || continue
             _jpa_seen["$_jpa_f"]=1
-            _judge_json_str_v _jpa_j "$_jpa_f"; _jpa_files+="${_jpa_files:+,}$_jpa_j:\"${_jpa_hs[$_jpa_f]:-absent}\""
+            zb_json_str_v _jpa_j "$_jpa_f"; _jpa_files+="${_jpa_files:+,}$_jpa_j:\"${_jpa_hs[$_jpa_f]:-absent}\""
         done <<< "${_jpa_d[$_jpa_k]:-}"
-        _judge_json_str_v _jpa_j "$_jpa_k"; _judge_json_str_v _jpa_v "${_jpa_p[$_jpa_k]}"; _judge_json_str_v _jpa_x "${_jpa_fp[$_jpa_k]:-}"
-        _jpa_t=""; [[ -n "${_jpa_tx[$_jpa_k]:-}" ]] && { _judge_json_str_v _jpa_t "${_jpa_tx[$_jpa_k]}"; _jpa_t=",\"text\":$_jpa_t"; }
-        [[ -n "${_jpa_ans[$_jpa_k]:-}" ]] && { _judge_json_str_v _jpa_a "${_jpa_ans[$_jpa_k]}"; _jpa_t+=",\"answer\":$_jpa_a"; }
+        zb_json_str_v _jpa_j "$_jpa_k"; zb_json_str_v _jpa_v "${_jpa_p[$_jpa_k]}"; zb_json_str_v _jpa_x "${_jpa_fp[$_jpa_k]:-}"
+        _jpa_t=""; [[ -n "${_jpa_tx[$_jpa_k]:-}" ]] && { zb_json_str_v _jpa_t "${_jpa_tx[$_jpa_k]}"; _jpa_t=",\"text\":$_jpa_t"; }
+        [[ -n "${_jpa_ans[$_jpa_k]:-}" ]] && { zb_json_str_v _jpa_a "${_jpa_ans[$_jpa_k]}"; _jpa_t+=",\"answer\":$_jpa_a"; }
         _jpa_new+="${_jpa_new:+,}$_jpa_j:{\"fp\":$_jpa_x,\"payload\":$_jpa_v,\"files\":{$_jpa_files}$_jpa_t${_JUDGE_KEEP_BASE:+,\"base\":$_JUDGE_KEEP_BASE}${_jpa_c[$_jpa_k]:+,\"carry\":true}}"
     done
     if [[ -s "$_jpa_kf" ]]; then

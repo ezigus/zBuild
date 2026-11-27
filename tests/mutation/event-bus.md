@@ -11,7 +11,7 @@ import pathlib
 p = pathlib.Path("core/event-bus/event-bus.sh")
 src = p.read_text()
 new = src.replace(
-    '''        _eb_json_str_v _j "$type";   event_json+=",\\"type\\":$_j"\n''',
+    '''        zb_json_str_v _j "$type";   event_json+=",\\"type\\":$_j"\n''',
     "",
     1,
 )

@@ -31,7 +31,8 @@
 #             same grace (#2517)
 # G8 [change] a refusal is valid JSON whatever the command holds (a tab, a
 #             carriage return); a web guard that cannot read what a secret looks
-#             like refuses, never allows (review on #2512)
+#             like refuses, never allows (review on #2512); a hook that cannot
+#             load its library (scripts/lib/json-text.sh) refuses every tool
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -221,9 +222,17 @@ print_test_section "G8: a refusal is valid JSON; the web guard fails closed"
 _g8="$(_ask Bash "$(_cmd $'git push\torigin\r main')" --git-only 0 '')"
 assert_eq "[G8] a refusal of a command holding a tab and a CR is valid JSON" "deny" \
     "$(jq -r '.hookSpecificOutput.permissionDecision' <<< "$_g8" 2>/dev/null || echo invalid)"
-_G8D="$TEST_TEMP_DIR/g8/core/router"; mkdir -p "$_G8D"; cp "$HOOK" "$_G8D/tool-hook.sh"
+# The hook and the one library it loads, and nothing else of the tree.
+_G8D="$TEST_TEMP_DIR/g8/core/router"; mkdir -p "$_G8D" "$TEST_TEMP_DIR/g8/scripts/lib"; cp "$HOOK" "$_G8D/tool-hook.sh"
+cp "$REPO_ROOT/scripts/lib/json-text.sh" "$TEST_TEMP_DIR/g8/scripts/lib/"
 _g8w="$(jq -cn '{tool_name:"WebSearch", tool_input:{query:"bash nameref"}}' | bash "$_G8D/tool-hook.sh" 0 '')"
 assert_eq "[G8] a web search with no secret definitions to check against is refused" "deny" "$(_dec "$_g8w")"
+assert_contains "[G8] ...for that reason" "$(jq -r '.hookSpecificOutput.permissionDecisionReason' <<< "$_g8w" 2>/dev/null)" "secret"
+# A hook that cannot load its library refuses every tool: a guard fails closed.
+_G8N="$TEST_TEMP_DIR/g8n/core/router"; mkdir -p "$_G8N"; cp "$HOOK" "$_G8N/tool-hook.sh"
+_g8n="$(jq -cn '{tool_name:"Read", tool_input:{file_path:"/dev/null"}}' | bash "$_G8N/tool-hook.sh" 0 '')"
+assert_eq "[G8] a hook that cannot load its library refuses even a read" "deny" "$(_dec "$_g8n")"
+assert_contains "[G8] ...saying so" "$(jq -r '.hookSpecificOutput.permissionDecisionReason' <<< "$_g8n" 2>/dev/null)" "could not load"
 
 print_test_section "G9: the kill comes a grace after the limit"
 # A stand-in timeout program on PATH records the limit it is given, then runs

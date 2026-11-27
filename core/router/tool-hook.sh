@@ -64,13 +64,16 @@ done
 deadline="${1:-0}" notes="${2:-}"
 input=""; IFS= read -r -d '' input || true
 
+# The one JSON string writer (scripts/lib/json-text.sh). A hook that cannot load
+# it refuses every tool: a guard fails closed.
+# shellcheck source=../../scripts/lib/json-text.sh
+source "${BASH_SOURCE[0]%/*}/../../scripts/lib/json-text.sh" 2>/dev/null || {
+    printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Refused: the tool hook could not load its library, so no tool may run."}}'
+    exit 0
+}
 _deny() {
-    local r="$1"
-    local LC_ALL=C
-    r="${r//\\/\\\\}"; r="${r//\"/\\\"}"
-    r="${r//$'\n'/\\n}"; r="${r//$'\r'/\\r}"; r="${r//$'\t'/\\t}"
-    r="${r//[$'\001'-$'\010'$'\013'$'\014'$'\016'-$'\037']/ }"
-    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$r"
+    local r; zb_json_str_v r "$1"
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":%s}}\n' "$r"
     exit 0
 }
 

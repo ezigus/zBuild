@@ -6,6 +6,8 @@
 # Sourced by unclear.sh; no set -euo pipefail. Nothing here forks.
 [[ -n "${_ZBUILD_UNCLEAR_REPORT_LOADED:-}" ]] && return 0
 _ZBUILD_UNCLEAR_REPORT_LOADED=1
+# shellcheck source=./json-text.sh
+source "${BASH_SOURCE[0]%/*}/json-text.sh"
 
 # zb_unclear_result_json_v <var> <array_name> [note_var] — the lines of
 # <array_name> as a JSON array of strings, for a stage's result: data.unclear;
@@ -22,12 +24,9 @@ zb_unclear_result_json_v() {
     _zrj="[$_zrj_o]"
 }
 
-# _zb_unclear_json_str_v <var> <text> — <text> as a JSON string, quoted;
-# control characters become spaces.
-_zb_unclear_json_str_v() {
-    local -n _zjs="$1"; local _zjs_t="${2//[[:cntrl:]]/ }"
-    _zjs_t="${_zjs_t//\\/\\\\}"; _zjs="\"${_zjs_t//\"/\\\"}\""
-}
+# _zb_unclear_json_str_v <var> <text> — <text> as a JSON string, quoted, on
+# one line: control characters become spaces.
+_zb_unclear_json_str_v() { zb_json_str_v "$1" "${2//[[:cntrl:]]/ }"; }
 
 # zb_unclear_dropped_json_v <var> <dropped_array_name> [carried] — the
 # questions a check retired, for a stage's result: data.unclear_dropped, so no
@@ -69,13 +68,13 @@ _zb_unclear_read_v() {
 }
 
 # zb_unclear_result_lines_v <array_var> <result_json> — the lines of the
-# result's "unclear" array, with no fork: a
-# JSON string's escapes \" and \\ read back, any other escape a space. Bounded
+# result's "unclear" array, with no fork: each string read back
+# (zb_json_unescape_v) on one line. Bounded
 # (#2571 review): at most _ZB_UNCLEAR_READ_MAX lines of _ZB_UNCLEAR_LINE_MAX
 # characters, read from a window after the key, never the rest copied per line.
 zb_unclear_result_lines_v() {
     local -n _zrl="$1"; local _zrl_t="" _zrl_s _zrl_n=0 _zrl_re='"unclear"[[:space:]]*:[[:space:]]*\['
-    local _zrl_str='^[[:space:],]*"(([^"\\]|\\.)*)"'
+    local _zrl_str='^[[:space:],]*"'"$ZB_JSON_STR_RE"'"'
     _zrl=()
     _zb_unclear_read_v _zrl_t "${2:-}" || return 0
     [[ "$_zrl_t" =~ $_zrl_re ]] || return 0
@@ -89,13 +88,11 @@ zb_unclear_result_lines_v() {
     return 0
 }
 
-# _zb_unclear_unesc_v <var> <json_string_body> — read back: \" and \\ and \/,
-# any other escape a space; at most _ZB_UNCLEAR_LINE_MAX characters.
+# _zb_unclear_unesc_v <var> <json_string_body> — read back on one line: a
+# control character a space; at most _ZB_UNCLEAR_LINE_MAX characters.
 _zb_unclear_unesc_v() {
-    local -n _zue_o="$1"; local _zue_s="$2"
-    _zue_s="${_zue_s//\\\\/$'\x01'}"; _zue_s="${_zue_s//\\\"/\"}"; _zue_s="${_zue_s//\\\//\/}"
-    _zue_s="${_zue_s//\\u[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]/ }"; _zue_s="${_zue_s//\\[bfnrt]/ }"
-    _zue_s="${_zue_s//$'\x01'/\\}"
+    local -n _zue_o="$1"; local _zue_s
+    zb_json_unescape_v _zue_s "$2"; _zue_s="${_zue_s//[[:cntrl:]]/ }"
     _zue_o="${_zue_s:0:_ZB_UNCLEAR_LINE_MAX}"
 }
 
@@ -105,7 +102,7 @@ _zb_unclear_unesc_v() {
 # is; the objects' keys in any order, a field that is not a string left empty.
 zb_unclear_dropped_lines_v() {
     local -n _zdl="$1"; local _zdl_t="" _zdl_n=0 _zdl_v _zdl_re='"unclear_dropped"[[:space:]]*:[[:space:]]*\['
-    local _zdl_kv='^[[:space:],]*"([A-Za-z_]+)"[[:space:]]*:[[:space:]]*("(([^"\\]|\\.)*)"|null|true|false|-?[0-9][0-9.eE+-]*)'
+    local _zdl_kv='^[[:space:],]*"([A-Za-z_]+)"[[:space:]]*:[[:space:]]*("'"$ZB_JSON_STR_RE"'"|null|true|false|-?[0-9][0-9.eE+-]*)'
     local -A _zdl_o=()
     _zdl=()
     _zb_unclear_read_v _zdl_t "${2:-}" || return 0
@@ -229,7 +226,7 @@ zb_unclear_markdown_v() {
 # zb_unclear_dropped_lines_v is.
 zb_unclear_suspected_lines_v() {
     local -n _zsl="$1"; local _zsl_t="" _zsl_n=0 _zsl_v _zsl_re='"suspected"[[:space:]]*:[[:space:]]*\['
-    local _zsl_kv='^[[:space:],]*"([A-Za-z_]+)"[[:space:]]*:[[:space:]]*("(([^"\\]|\\.)*)"|null|true|false|-?[0-9][0-9.eE+-]*)'
+    local _zsl_kv='^[[:space:],]*"([A-Za-z_]+)"[[:space:]]*:[[:space:]]*("'"$ZB_JSON_STR_RE"'"|null|true|false|-?[0-9][0-9.eE+-]*)'
     local -A _zsl_o=()
     _zsl=()
     _zb_unclear_read_v _zsl_t "${2:-}" || return 0
