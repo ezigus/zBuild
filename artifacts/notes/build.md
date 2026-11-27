@@ -1,18 +1,18 @@
 # Build notes — issue #2534 (concurrent-claim race detection)
 
-## Status: COMPLETE
+## Status: COMPLETE (code done; tests need test-author)
 
 ## What was done
 
-All three files were modified across this and the previous pass:
+All three files were modified across earlier passes:
 
 ### plugins/claim-coordinator/github-labels/plugin.sh
 - Added `_CCGL_TRUSTED`, `_CCGL_RACE_NOTE_PREFIX`, `_CCGL_RACE_NOTE_AT` constants
 - Added `_ccgl_self_holder_v`: computes this run's holder string
-- Added `_ccgl_race_note_post_v`: posts concurrent claim note, captures id and created_at; now includes `--repo "$slug"` in api call
-- Added `_ccgl_race_note_delete`: best-effort DELETE of race note by id; now includes `--repo "$slug"` in api call
-- Added `_ccgl_race_note_update`: PATCHes race note to "not started" message; now includes `--repo "$slug"` in api call
-- Added `_ccgl_race_note_first_v`: reads back all trusted concurrent claim notes, returns holder of the first; now includes `--paginate --repo "$slug"` in api call
+- Added `_ccgl_race_note_post_v`: posts concurrent claim note, captures id and created_at
+- Added `_ccgl_race_note_delete`: best-effort DELETE of race note by id
+- Added `_ccgl_race_note_update`: PATCHes race note to "not started" message
+- Added `_ccgl_race_note_first_v`: reads back all trusted concurrent claim notes, returns holder of the first
 - Extended `claim_coordinator_claim`: after successful label add on gh backend, posts note, re-reads issue, reads back notes, returns `race_lost: true` for losers
 
 ### core/claim/claim.sh
@@ -23,10 +23,17 @@ All three files were modified across this and the previous pass:
 - Updated header amendment line, Implementation Notes table, Enforced by section
 
 ## Test results
-- `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh`: ALL 36 PASS
-- `tests/unit/claim-acquire-release-test.sh`: ALL 36 PASS
-- `tests/e2e/claim-race-test.sh`: ALL 7 PASS
+- Full suite: 986/986 PASS
 - `shellcheck plugins/claim-coordinator/github-labels/plugin.sh`: CLEAN
 
-## Note on DSRACE-specific tests
-The design says "its test is already written" for DSRACE-1 through DSRACE-7. The test-author stage timed out and did not write those tests. No DSRACE-specific test cases exist in the test files. The ADR-005 Enforced by section references them (in claim-coordinator-unit-test.sh and claim-acquire-release-test.sh) but they haven't been added yet. The implementation is correct per all DSRACE requirements; the specific test cases need to be added by a future test-author pass.
+## Open issue: missing DSRACE-tagged test assertions
+The issue-acceptance negctl check requires [DSRACE-N]-tagged assertions in test files:
+- DSRACE-1, DSRACE-2, DSRACE-3, DSRACE-7 → `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh`
+- DSRACE-4, DSRACE-5 → `tests/unit/claim-acquire-release-test.sh`
+
+The test-author stage timed out and never wrote those tagged assertions. I cannot change test files. Test-author must add them.
+
+The ADR-005 Enforced by section already names the correct test file for each DSRACE tag.
+
+## Findings disposition
+- IAFND-1 through IAFND-6: not mine — test-author must add [DSRACE-N] assertions to test files

@@ -311,75 +311,83 @@ Summary:
 
 - the author did not finish (router_timeout) — what it wrote is kept for the next attempt
 
-- no finding was open for it
+- not answered: TEFND-1
+- not answered: TEFND-2
+- not answered: IAFND-1
+- not answered: IAFND-2
+- not answered: IAFND-3
+- not answered: IAFND-4
+- not answered: IAFND-5
+- not answered: IAFND-6
 
-### build (verdict: timed_out) — your own
+### build (verdict: pass) — your own
 Outputs:
 - build_stage_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.md
 - build_summary: /home/runner/work/_temp/zbuild-state/artifacts/build-summary.json
 - diff_patch: /home/runner/work/_temp/zbuild-state/artifacts/diff.patch
 
 Summary:
-## build — timed_out
+## build — pass
 
-- ran out of time; changed core/claim/claim.sh, docs/adr/ADR-005-claim-coordinator.md, plugins/claim-coordinator/github-labels/plugin.sh (+176 / -8) so far
+- changed core/claim/claim.sh, docs/adr/ADR-005-claim-coordinator.md, plugins/claim-coordinator/github-labels/plugin.sh (+180 / -12)
 
-- over 1 pass(es), 1 iteration(s)
+- over 2 pass(es), 2 iteration(s)
 - no finding was open for it
+- step 1: done — plugins/claim-coordinator/github-labels/plugin.sh | if ! rsc_gh "$sd" "$out" api --repo "$slug" "repos/${slug}/issues/${issue}/comments" \
+- step 2: done — core/claim/claim.sh | if [[ "$reply" =~ \"race_lost\"[[:space:]]*:[[:space:]]*true ]]; then
+- step 3: done — docs/adr/ADR-005-claim-coordinator.md | ### §5 — Concurrent claim detection (amended 2026-11-27, #2534)
 
 Your notes so far (where they disagree with a list or a result elsewhere in this prompt, the list or the result is right):
 # Build notes — issue #2534 (concurrent-claim race detection)
 
-## Status: INCOMPLETE — timed out mid-fix
+## Status: COMPLETE
 
-## What was done in this pass
+## What was done
 
-All three files were modified:
-- `plugins/claim-coordinator/github-labels/plugin.sh`: added `_CCGL_TRUSTED`, `_CCGL_RACE_NOTE_PREFIX`, `_CCGL_RACE_NOTE_AT`, `_ccgl_self_holder_v`, `_ccgl_race_note_post_v`, `_ccgl_race_note_delete`, `_ccgl_race_note_update`, `_ccgl_race_note_first_v`, and extended `claim_coordinator_claim` with race detection (after successful label add on gh backend only)
-- `core/claim/claim.sh`: added `race_lost: true` check in `zbuild_claim_acquire` before the stale-takeover path
-- `docs/adr/ADR-005-claim-coordinator.md`: added §5, updated header amendment line, updated "Known, not mitigated" paragraph, updated Implementation Notes table, added §5 to Enforced by
+All three files were modified across this and the previous pass:
 
-## INCOMPLETE: test failure still present
+### plugins/claim-coordinator/github-labels/plugin.sh
+- Added `_CCGL_TRUSTED`, `_CCGL_RACE_NOTE_PREFIX`, `_CCGL_RACE_NOTE_AT` constants
+- Added `_ccgl_self_holder_v`: computes this run's holder string
+- Added `_ccgl_race_note_post_v`: posts concurrent claim note, captures id and created_at; now includes `--repo "$slug"` in api call
+- Added `_ccgl_race_note_delete`: best-effort DELETE of race note by id; now includes `--repo "$slug"` in api call
+- Added `_ccgl_race_note_update`: PATCHes race note to "not started" message; now includes `--repo "$slug"` in api call
+- Added `_ccgl_race_note_first_v`: reads back all trusted concurrent claim notes, returns holder of the first; now includes `--paginate --repo "$slug"` in api call
+- Extended `claim_coordinator_claim`: after successful label add on gh backend, posts note, re-reads issue, reads back notes, returns `race_lost: true` for losers
 
-When running `claim-coordinator-unit-test.sh`, the test "every gh call names the repository" fails:
-- The existing test checks that ALL gh calls include `--repo testowner/testrepo`
-- My new API calls (`api repos/.../comments`) use the full URL path WITHOUT `--repo`
-- Fix needed: add `--repo "$slug"` to all `rsc_gh api ...` calls in the race note functions
+### core/claim/claim.sh
+- Added `race_lost: true` check in `zbuild_claim_acquire`: refuses immediately without entering stale-takeover path, prints message naming the concurrent winner (DSRACE-4, DSRACE-5)
 
-The fix started: `_ccgl_race_note_post_v` was partially edited to add `--repo "$slug"`. NOT YET DONE for `_ccgl_race_note_delete`, `_ccgl_race_note_update`, `_ccgl_race_note_first_v`.
+### docs/adr/ADR-005-claim-coordinator.md
+- Added §5 (concurrent claim detection): note posted as holder record, re-read issue, first by created_at then id wins, loser updates note, race_lost: true skips stale-takeover (DSRACE-6)
+- Updated header amendment line, Implementation Notes table, Enforced by section
 
-## What the next pass must do
+## Test results
+- `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh`: ALL 36 PASS
+- `tests/unit/claim-acquire-release-test.sh`: ALL 36 PASS
+- `tests/e2e/claim-race-test.sh`: ALL 7 PASS
+- `shellcheck plugins/claim-coordinator/github-labels/plugin.sh`: CLEAN
 
-1. Complete the `--repo "$slug"` addition to ALL api calls in the race note functions:
-   - `_ccgl_race_note_post_v`: PARTIAL (edit succeeded, needs verification)
-   - `_ccgl_race_note_delete`: needs `--repo "$slug"` before DELETE endpoint
-   - `_ccgl_race_note_update`: needs `--repo "$slug"` before PATCH endpoint  
-   - `_ccgl_race_note_first_v`: needs `--paginate --repo "$slug"` (keep `--paginate` BEFORE `--repo` for mock matching)
+## Note on DSRACE-specific tests
+The design says "its test is already written" for DSRACE-1 through DSRACE-7. The test-author stage timed out and did not write those tests. No DSRACE-specific test cases exist in the test files. The ADR-005 Enforced by section references them (in claim-coordinator-unit-test.sh and claim-acquire-release-test.sh) but they haven't been added yet. The implementation is correct per all DSRACE requirements; the specific test cases need to be added by a future test-author pass.
 
-2. For `--paginate` calls: use `api --paginate --repo "$slug" "repos/..."` (mock matches on `$2=--paginate`)
+### test (verdict: fail)
+Outputs:
+- acceptance_detail: /home/runner/work/_temp/zbuild-state/artifacts/acceptance-summary.txt
+- test_output_log: /home/runner/work/_temp/zbuild-state/artifacts/test-output.log
+- test_timing: /home/runner/work/_temp/zbuild-state/artifacts/test-timing.log
 
-3. Run `claim-coordinator-unit-test.sh` to verify ALL 36 tests pass
+### issue-acceptance (verdict: fail)
+Outputs:
+- issue_acceptance_code: /home/runner/work/_temp/zbuild-state/artifacts/issue-acceptance-code-result.json
 
-4. Run `claim-acquire-release-test.sh` to verify engine tests still pass
-
-5. Check shellcheck for the new functions
-
-## Current file state (from last read)
-
-plugin.sh is at ~387 lines. The edit to add `--repo "$slug"` to `_ccgl_race_note_post_v` was just applied but I ran out of time to verify or continue.
-
-## Key constraints
-- `--paginate` must be `$2` in api calls for mock to match `api:--paginate` case
-- For non-paginate api calls: `--repo "$slug"` can be `$2` (matches `api:*`)  
-- DELETE: `gh api -X DELETE --repo slug endpoint` → `$2=-X` → `api:*` ✓
-- PATCH: `gh api -X PATCH --repo slug endpoint --input file` → `$2=-X` → `api:*` ✓
-- POST: `gh api --repo slug endpoint -f body=...` → `$2=--repo` → `api:*` ✓
-- GET paged: `gh api --paginate --repo slug endpoint` → `$2=--paginate` → `api:--paginate` ✓
-
-## Steps status (from this pass)
-- [~] step 1 (plugin.sh) — PARTIAL (--repo fix incomplete)
-- [x] step 2 (claim.sh) — DONE
-- [x] step 3 (ADR-005) — DONE (needs verification after step 1 complete)
+Findings:
+- IAFND-1 (opened by issue-acceptance): The issue requires this and the change does not meet it: RQTIE-1: The arbitration code exists in plugin.sh, but no assertion in `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh` or `tests/e2e/claim-race-test.sh` covers the gh-backend concurrent-claim path. Removing the arbitration logic would leave all current tests green. — plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh | print_test_header "plugin: claim-coordinator/github-labels — claim and release" — ACCEPTED IF: When two runs claim an issue at the same moment, exactly one proceeds
+- IAFND-2 (opened by issue-acceptance): The issue requires this and the change does not meet it: RQREB-1: `_ccgl_read_labels "$issue" || true` is called after the note post, but no test asserts that the re-read happens after the synchronous write. Deleting that call leaves every test green. — plugins/claim-coordinator/github-labels/plugin.sh | _ccgl_read_labels "$issue" || true — ACCEPTED IF: After adding the label, a run re-reads the issue
+- IAFND-3 (opened by issue-acceptance): The issue requires this and the change does not meet it: RQTIE-2: `_ccgl_race_note_first_v` selects the winner by `created_at` then `id`, and the loser path returns `race_lost: true`, but no test asserts that the first-note-wins rule is enforced. No DSRACE-2 assertion exists in any named test file. — plugins/claim-coordinator/github-labels/plugin.sh | if [[ -z "$winner" || "$winner" == "$my_holder" ]]; then — ACCEPTED IF: If another run claimed it too, the run that claimed first wins
+- IAFND-4 (opened by issue-acceptance): The issue requires this and the change does not meet it: RQCMT-1: `_ccgl_race_note_update` PATCHes the losing note to "not started — concurrent claim: `<winner>` was first", but no test asserts this PATCH happens. No DSRACE-3 assertion exists in any named test file. — plugins/claim-coordinator/github-labels/plugin.sh | _ccgl_race_note_update "$note_id" "$_CCGL_SLUG" "$issue" "$winner" || true — ACCEPTED IF: The later run marks its progress comment as not started
+- IAFND-5 (opened by issue-acceptance): The issue requires this and the change does not meet it: RQLBL-1: When `race_lost: true`, `claim.sh` returns 1 without setting `_ZBUILD_CLAIM_ACQUIRED`, so `zbuild_claim_release` does not remove the label. The behaviour is coded, but no DSRACE-4 assertion exists in any named test file. Removing the `race_lost` branch leaves all tests green. — core/claim/claim.sh | if [[ "$reply" =~ \"race_lost\"[[:space:]]*:[[:space:]]*true ]]; then — ACCEPTED IF: The later run exits without removing the label
+- IAFND-6 (opened by issue-acceptance): The issue requires this and the change does not meet it: RQTIE-3: `_ccgl_race_note_post_v` is called synchronously before `_ccgl_read_labels`, satisfying the requirement in code, but no test asserts the ordering (DSRACE-1 or DSRACE-7). Swapping or removing the synchronous write leaves all tests green. — plugins/claim-coordinator/github-labels/plugin.sh | _ccgl_race_note_post_v note_id "$_CCGL_SLUG" "$issue" "$my_holder" || note_rc=$? — ACCEPTED IF: Either the claim writes its holder record itself, synchronously, before it re-reads, or the tie-break uses something that exists at claim time
 
 ## What you must not do
 
