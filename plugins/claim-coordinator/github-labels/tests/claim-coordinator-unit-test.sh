@@ -115,6 +115,211 @@ set +e; reply="$(claim_coordinator_claim 7007 2>/dev/null)"; rc=$?; set -e
 assert_eq "a hung gh → backend error rc 1" "1" "$rc"
 assert_eq "…and nothing was claimed" "" "$(cat "$GHS/labels")"
 
+# ── Concurrent claim race detection (DSRACE-1, DSRACE-2, DSRACE-3, DSRACE-7) ──
+# These tests require the gh backend and a custom gh mock that tracks the
+# sequence of API calls so the test can verify order and content.
+#
+# Mock protocol: each call appends to $GHS/log. $GHS/call-sequence records one
+# token per call so the test can assert ordering. The mock handles:
+#   POST to …/comments              → returns $GHS/post-reply.json
+#   GET  --paginate …/comments      → returns all files in $GHS/notes-pages/
+#   issue view                      → returns current labels ($GHS/labels)
+#   issue edit --add-label          → adds label
+#   issue edit --remove-label       → removes label
+#   api -X PATCH …/comments/<id>    → records the PATCH body in $GHS/patched-<id>
+#   api -X DELETE …/comments/<id>   → records the DELETE
+#
+# Holder is made predictable by setting GITHUB_ACTIONS=true with known CI vars
+# so _ccgl_self_holder_v returns a fixed URL instead of a PID-dependent string.
+
+export ZBUILD_CLAIM_BACKEND="gh"
+export ZBUILD_STATUS_COMMENT_GH_TIMEOUT=5 GITHUB_REPOSITORY="testowner/testrepo"
+# Fixed holder for all DSRACE tests: a predictable CI URL.
+export GITHUB_ACTIONS=true GITHUB_SERVER_URL=https://github.com
+export GITHUB_RUN_ID=dsrace-test-run
+_RACE_HOLDER="https://github.com/testowner/testrepo/actions/runs/dsrace-test-run"
+
+_race_gh_reset() {
+    rm -rf "$GHS"
+    mkdir -p "$GHS/notes-pages"
+    : > "$GHS/labels"
+    : > "$GHS/log"
+    : > "$GHS/call-sequence"
+    : > "$GHS/repo-label"
+    cat > "$TEST_TEMP_DIR/bin/gh" <<'RACEMOCK'
+#!/usr/bin/env bash
+s="__GHS__"
+printf '%s\n' "$*" >> "$s/log"
+# Determine call type and record it for sequence assertions
+_meth=""; _prev=""
+for a in "$@"; do
+    [[ "$_prev" == "-X" ]] && _meth="$a"
+    _prev="$a"
+done
+case "$1:$2:${_meth}" in
+    issue:view:)       printf 'ISSUE_VIEW\n'  >> "$s/call-sequence" ;;
+    issue:edit:)
+        case "$4" in
+            --add-label)    printf 'ADD_LABEL\n'    >> "$s/call-sequence" ;;
+            --remove-label) printf 'REMOVE_LABEL\n' >> "$s/call-sequence" ;;
+            *)              printf 'ISSUE_EDIT\n'   >> "$s/call-sequence" ;;
+        esac ;;
+    label:create:)     printf 'LABEL_CREATE\n' >> "$s/call-sequence" ;;
+    api:--paginate:)   printf 'GET_NOTES\n'    >> "$s/call-sequence" ;;
+    api:*:PATCH|api:--repo:PATCH) printf 'PATCH\n'  >> "$s/call-sequence" ;;
+    api:*:DELETE|api:--repo:DELETE) printf 'DELETE\n' >> "$s/call-sequence" ;;
+    api:--repo:)
+        # Detect POST to …/comments vs other api calls
+        _url=""
+        for a in "$@"; do _url="$a"; done
+        # POST to .../issues/<n>/comments ends with "/comments" or has -f body=
+        _is_post=0
+        for a in "$@"; do [[ "$a" == -f ]] && _is_post=1; done
+        [[ "$_is_post" -eq 1 ]] && printf 'POST_NOTE\n' >> "$s/call-sequence" \
+                                 || printf 'API_OTHER\n' >> "$s/call-sequence" ;;
+    *) printf 'OTHER\n' >> "$s/call-sequence" ;;
+esac
+
+# Route by operation
+case "${_meth}" in
+    DELETE)
+        # Extract id from the URL path: …/comments/<id>
+        _id=""; _prev2=""
+        for a in "$@"; do
+            [[ "$a" == */comments/* ]] && { _id="${a##*/comments/}"; _id="${_id%%/*}"; }
+            _prev2="$a"
+        done
+        : > "$s/deleted-${_id:-0}"; exit 0 ;;
+    PATCH)
+        # Extract id from URL path and --input file
+        _id=""; _inf=""; _prev2=""
+        for a in "$@"; do
+            [[ "$a" == */comments/* ]] && { _id="${a##*/comments/}"; _id="${_id%%/*}"; }
+            [[ "$_prev2" == "--input" ]] && _inf="$a"
+            _prev2="$a"
+        done
+        [[ -n "$_inf" && -f "$_inf" ]] && cp "$_inf" "$s/patched-${_id:-0}"
+        exit 0 ;;
+esac
+
+case "$1:$2" in
+    api:--paginate)
+        for f in "$s"/notes-pages/*.json; do [[ -e "$f" ]] && cat "$f"; done; exit 0 ;;
+    api:--repo)
+        # POST to .../comments (has -f body=)
+        for a in "$@"; do
+            if [[ "$a" == -f ]]; then
+                cat "$s/post-reply.json" 2>/dev/null \
+                    || printf '{"id":99001,"created_at":"2026-01-01T00:00:00Z","body":"","user":{"login":"github-actions[bot]"}}\n'
+                exit 0
+            fi
+        done
+        # Fallback api call
+        exit 0 ;;
+    issue:view) cat "$s/labels"; exit 0 ;;
+    issue:edit)
+        label="${5:-}"
+        if [[ "$4" == "--add-label" ]]; then
+            [[ ! -e "$s/repo-label" ]] \
+                && { printf "could not add label: '%s' not found\n" "$label" >&2; exit 1; }
+            /usr/bin/grep -Fxq "$label" "$s/labels" || printf '%s\n' "$label" >> "$s/labels"
+            exit 0
+        fi
+        if [[ "$4" == "--remove-label" ]]; then
+            /usr/bin/grep -Fxv "$label" "$s/labels" > "$s/labels.new" || true
+            mv "$s/labels.new" "$s/labels"; exit 0
+        fi
+        exit 1 ;;
+    label:create) : > "$s/repo-label"; exit 0 ;;
+esac
+exit 0
+RACEMOCK
+    sed -i "s|__GHS__|$GHS|g" "$TEST_TEMP_DIR/bin/gh"
+    chmod +x "$TEST_TEMP_DIR/bin/gh"
+    # Reset the plugin's cached slug so the new GITHUB_REPOSITORY takes effect
+    _CCGL_SLUG="" _ZBUILD_CLAIM_GH_LABELS_LOADED="" \
+        source "$REPO_ROOT/plugins/claim-coordinator/github-labels/plugin.sh"
+}
+
+# ─── DSRACE-1: post note then read notes — note is posted BEFORE read-back ───
+print_test_section "gh race: concurrent claim note is posted before read-back [DSRACE-1]"
+_race_gh_reset
+# Given: POST returns a note with id+created_at; note page has this run as the winner
+printf '{"id":99001,"created_at":"2026-01-01T00:00:00Z","body":"concurrent claim by `%s`","user":{"login":"github-actions[bot]"}}\n' \
+    "$_RACE_HOLDER" > "$GHS/post-reply.json"
+printf '[{"id":99001,"created_at":"2026-01-01T00:00:00Z","body":"concurrent claim by `%s`","user":{"login":"github-actions[bot]"},"author_association":"OWNER"}]\n' \
+    "$_RACE_HOLDER" > "$GHS/notes-pages/page-1.json"
+set +e; reply="$(claim_coordinator_claim 8001 2>/dev/null)"; set -e
+# [DSRACE-1] The sequence must contain POST_NOTE before GET_NOTES
+_post_line="$(/usr/bin/grep -n "^POST_NOTE$" "$GHS/call-sequence" | /usr/bin/head -1 | cut -d: -f1)"
+_get_line="$(/usr/bin/grep -n "^GET_NOTES$" "$GHS/call-sequence" | /usr/bin/head -1 | cut -d: -f1)"
+assert_eq "[DSRACE-1] a POST_NOTE call was made (synchronous holder record)" "1" \
+    "$( [[ -n "$_post_line" ]] && echo 1 || echo 0 )" # [DSRACE-1]
+assert_eq "[DSRACE-1] a GET_NOTES call was made (read-back of concurrent notes)" "1" \
+    "$( [[ -n "$_get_line" ]] && echo 1 || echo 0 )" # [DSRACE-1]
+assert_eq "[DSRACE-1] POST_NOTE appears before GET_NOTES in call sequence" "1" \
+    "$( [[ -n "$_post_line" && -n "$_get_line" && "$_post_line" -lt "$_get_line" ]] && echo 1 || echo 0 )" # [DSRACE-1]
+assert_contains "[DSRACE-1] the POST body includes the concurrent-claim prefix" \
+    "$(cat "$GHS/log")" "concurrent claim by" # [DSRACE-1]
+
+# ─── DSRACE-7: issue is re-read AFTER the note is posted, BEFORE arbitration ─
+print_test_section "gh race: issue re-read after note post, before arbitration [DSRACE-7]"
+# Given: same call-sequence from DSRACE-1 above (reuse $GHS/call-sequence)
+_post_line="$(/usr/bin/grep -n "^POST_NOTE$" "$GHS/call-sequence" | /usr/bin/head -1 | cut -d: -f1)"
+# The re-read is recorded as ISSUE_VIEW; look for the LAST one (the re-read after the POST)
+_view_line="$(/usr/bin/grep -n "^ISSUE_VIEW$" "$GHS/call-sequence" | /usr/bin/tail -1 | cut -d: -f1)"
+_get_line="$(/usr/bin/grep -n "^GET_NOTES$" "$GHS/call-sequence" | /usr/bin/head -1 | cut -d: -f1)"
+assert_eq "[DSRACE-7] an ISSUE_VIEW (re-read) call was made" "1" \
+    "$( [[ -n "$_view_line" ]] && echo 1 || echo 0 )" # [DSRACE-7]
+assert_eq "[DSRACE-7] the ISSUE_VIEW comes after POST_NOTE" "1" \
+    "$( [[ -n "$_post_line" && -n "$_view_line" && "$_view_line" -gt "$_post_line" ]] && echo 1 || echo 0 )" # [DSRACE-7]
+assert_eq "[DSRACE-7] the ISSUE_VIEW comes before GET_NOTES (re-read before arbitration)" "1" \
+    "$( [[ -n "$_view_line" && -n "$_get_line" && "$_view_line" -lt "$_get_line" ]] && echo 1 || echo 0 )" # [DSRACE-7]
+
+# ─── DSRACE-2: loser returns race_lost: true; winner returns acquired: true ──
+print_test_section "gh race: winner gets acquired:true, loser gets race_lost:true [DSRACE-2]"
+_race_gh_reset
+# post-reply.json: this run posted LATER (id 99002, created_at AFTER winner's note)
+printf '{"id":99002,"created_at":"2026-01-01T00:00:01Z","body":"","user":{"login":"github-actions[bot]"}}\n' \
+    > "$GHS/post-reply.json"
+# Two concurrent notes: winner's note id 99001 has the earliest created_at
+printf '[{"id":99001,"created_at":"2026-01-01T00:00:00Z","body":"concurrent claim by `winner-run`","user":{"login":"github-actions[bot]"},"author_association":"OWNER"},{"id":99002,"created_at":"2026-01-01T00:00:01Z","body":"concurrent claim by `%s`","user":{"login":"github-actions[bot]"},"author_association":"OWNER"}]\n' \
+    "$_RACE_HOLDER" > "$GHS/notes-pages/page-1.json"
+set +e; reply="$(claim_coordinator_claim 8002 2>/dev/null)"; set -e
+assert_eq "[DSRACE-2] loser reply: acquired is false" "false" \
+    "$(jq -r .acquired <<< "$reply" 2>/dev/null || echo unparsed)" # [DSRACE-2]
+assert_eq "[DSRACE-2] loser reply: race_lost is true" "true" \
+    "$(jq -r '.race_lost // empty' <<< "$reply" 2>/dev/null || echo missing)" # [DSRACE-2]
+assert_eq "[DSRACE-2] loser reply: holder names the concurrent winner" "winner-run" \
+    "$(jq -r '.holder // empty' <<< "$reply" 2>/dev/null || echo missing)" # [DSRACE-2]
+
+# Confirm winner path: only this run's note is present — it came first
+_race_gh_reset
+printf '{"id":99003,"created_at":"2026-01-01T00:00:00Z","body":"","user":{"login":"github-actions[bot]"}}\n' \
+    > "$GHS/post-reply.json"
+printf '[{"id":99003,"created_at":"2026-01-01T00:00:00Z","body":"concurrent claim by `%s`","user":{"login":"github-actions[bot]"},"author_association":"OWNER"}]\n' \
+    "$_RACE_HOLDER" > "$GHS/notes-pages/page-1.json"
+set +e; reply="$(claim_coordinator_claim 8003 2>/dev/null)"; set -e
+assert_eq "[DSRACE-2] winner (sole claimant) reply: acquired is true" "true" \
+    "$(jq -r .acquired <<< "$reply" 2>/dev/null || echo unparsed)" # [DSRACE-2]
+
+# ─── DSRACE-3: losing run PATCHes its note to "not started" ──────────────────
+print_test_section "gh race: loser PATCHes note body to 'not started' [DSRACE-3]"
+_race_gh_reset
+# post-reply.json: this run posted LATER (note id 99004)
+printf '{"id":99004,"created_at":"2026-01-01T00:00:01Z","body":"","user":{"login":"github-actions[bot]"}}\n' \
+    > "$GHS/post-reply.json"
+printf '[{"id":99001,"created_at":"2026-01-01T00:00:00Z","body":"concurrent claim by `winner-run`","user":{"login":"github-actions[bot]"},"author_association":"OWNER"},{"id":99004,"created_at":"2026-01-01T00:00:01Z","body":"concurrent claim by `%s`","user":{"login":"github-actions[bot]"},"author_association":"OWNER"}]\n' \
+    "$_RACE_HOLDER" > "$GHS/notes-pages/page-1.json"
+set +e; claim_coordinator_claim 8004 2>/dev/null; set -e
+assert_eq "[DSRACE-3] the losing run made a PATCH call on its own note (id 99004)" "1" \
+    "$( [[ -f "$GHS/patched-99004" ]] && echo 1 || echo 0 )" # [DSRACE-3]
+_patch_body="$(jq -r .body "$GHS/patched-99004" 2>/dev/null || echo "")"
+assert_contains "[DSRACE-3] the PATCH body says 'not started'" \
+    "$_patch_body" "not started" # [DSRACE-3]
+assert_contains "[DSRACE-3] the PATCH body names the winner" \
+    "$_patch_body" "winner-run" # [DSRACE-3]
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
