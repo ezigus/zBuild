@@ -17,8 +17,8 @@ source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/trace.sh"
 # caller's violations SPEC_COVERS_NOTHING <spec> and SPEC_COVERS_UNKNOWN <spec>
 # <id>. A list with no requirement or limit asks nothing.
 _dck_specs_trace() {
-    local listed=" " k id t spec covers c
-    while IFS=$'\x1f' read -r k id t; do
+    local listed=" " k id spec covers c
+    while IFS=$'\x1f' read -r k id _; do
         [[ ( "$k" == A || "$k" == L ) && -n "$id" ]] && listed+="$id "
     done <<< "$1"
     [[ "$listed" != " " ]] || return 0

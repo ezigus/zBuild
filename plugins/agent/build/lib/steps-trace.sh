@@ -26,7 +26,7 @@ _build_trace_check() {
     (( ${#_BUILD_STEP_DESC[@]} > 0 )) || return 0
     for a in ${_BUILD_ANSWERS[@]+"${_BUILD_ANSWERS[@]}"}; do
         zb_answer_kind_v kind "$a"
-        [[ "$kind" == done ]] && named+=" ${a#*:} "
+        [[ "$kind" == "done" ]] && named+=" ${a#*:} "
     done
     while IFS= read -r f; do
         [[ -n "$f" ]] || continue
