@@ -12,56 +12,56 @@
     "run_mode": "full",
     "timing": {
       "tiers": {
-        "lint": 212607,
-        "e2e": 171025,
-        "golden": 7161,
-        "unit": 483668,
-        "integration": 413986
+        "lint": 209883,
+        "e2e": 172283,
+        "golden": 7379,
+        "unit": 486849,
+        "integration": 418975
       },
       "slowest_files": [
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.VQK0ry/tests/e2e/fork-budget-test.sh",
-          "ms": 162515
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.2IsIWv/tests/e2e/fork-budget-test.sh",
+          "ms": 164049
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.VQK0ry/tests/integration/core-pipeline-runner-test.sh",
-          "ms": 63922
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.2IsIWv/tests/integration/core-pipeline-runner-test.sh",
+          "ms": 65953
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.VQK0ry/tests/integration/cycle-acceptance-terminal-failure-test.sh",
-          "ms": 44656
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.2IsIWv/tests/integration/cycle-acceptance-terminal-failure-test.sh",
+          "ms": 45685
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.VQK0ry/tests/integration/stop-run-on-fail-test.sh",
-          "ms": 41876
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.2IsIWv/tests/integration/stop-run-on-fail-test.sh",
+          "ms": 42388
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.VQK0ry/tests/e2e/parity-local-vs-ci-test.sh",
-          "ms": 41238
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.2IsIWv/tests/e2e/parity-local-vs-ci-test.sh",
+          "ms": 42019
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.VQK0ry/tests/integration/run-timed-out-test.sh",
-          "ms": 41191
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.2IsIWv/tests/integration/leaf-verdict-halts-test.sh",
+          "ms": 41871
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.VQK0ry/tests/integration/leaf-verdict-halts-test.sh",
-          "ms": 40764
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.2IsIWv/tests/integration/run-timed-out-test.sh",
+          "ms": 41845
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.VQK0ry/tests/unit/run-status-comment-pages-test.sh",
-          "ms": 39135
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.2IsIWv/tests/unit/run-status-comment-pages-test.sh",
+          "ms": 39109
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.VQK0ry/tests/integration/runner-release-exit-paths-test.sh",
-          "ms": 37127
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.2IsIWv/tests/integration/runner-release-exit-paths-test.sh",
+          "ms": 37503
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.VQK0ry/tests/integration/cycle-on-max-pipeline-continues-test.sh",
-          "ms": 36858
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.2IsIWv/tests/integration/cycle-on-max-pipeline-continues-test.sh",
+          "ms": 37227
         }
       ]
     },
-    "tree_sha": "4bb3bf4def7d6e30b37479800afe2cf8cf48aaff",
+    "tree_sha": "9417896966737c134061f19967dc99c238c34978",
     "findings": []
   },
   "result_contract": 3,

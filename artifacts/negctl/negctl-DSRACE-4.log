@@ -67,6 +67,8 @@
     [2moutput missing: https://github.com/o/r/actions/runs/42[0m
   [38;2;248;113;113m✗[0m [DSRACE-5] stderr says 'concurrent claim'
     [2moutput missing: concurrent claim[0m
+  [38;2;248;113;113m✗[0m [DSRACE-5] stderr names the winner as the first claimant
+    [2moutput missing: first[0m
 
   [38;2;0;212;255mrace_lost: true — _ZBUILD_CLAIM_ACQUIRED not set, release skips label removal [DSRACE-4][0m
   [38;2;248;113;113m✗[0m [DSRACE-4] _ZBUILD_CLAIM_ACQUIRED is not set after race_lost
@@ -76,12 +78,13 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m6 of 42 tests failed[0m
+  [38;2;248;113;113m[1m7 of 43 tests failed[0m
 
   [38;2;248;113;113m✗[0m [DSRACE-5] race_lost reply → rc 1 (immediate refusal)
   [38;2;248;113;113m✗[0m [DSRACE-5] stale-takeover hook was NOT called
   [38;2;248;113;113m✗[0m [DSRACE-5] stderr names the concurrent winner
   [38;2;248;113;113m✗[0m [DSRACE-5] stderr says 'concurrent claim'
+  [38;2;248;113;113m✗[0m [DSRACE-5] stderr names the winner as the first claimant
   [38;2;248;113;113m✗[0m [DSRACE-4] _ZBUILD_CLAIM_ACQUIRED is not set after race_lost
   [38;2;248;113;113m✗[0m [DSRACE-4] zbuild_claim_release did NOT call the release hook (no claim held)
 
@@ -150,6 +153,7 @@
   [38;2;74;222;128m✓[0m [DSRACE-5] stale-takeover hook was NOT called
   [38;2;74;222;128m✓[0m [DSRACE-5] stderr names the concurrent winner
   [38;2;74;222;128m✓[0m [DSRACE-5] stderr says 'concurrent claim'
+  [38;2;74;222;128m✓[0m [DSRACE-5] stderr names the winner as the first claimant
 
   [38;2;0;212;255mrace_lost: true — _ZBUILD_CLAIM_ACQUIRED not set, release skips label removal [DSRACE-4][0m
   [38;2;74;222;128m✓[0m [DSRACE-4] _ZBUILD_CLAIM_ACQUIRED is not set after race_lost
@@ -157,5 +161,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 42 tests passed[0m
+  [38;2;74;222;128m[1mAll 43 tests passed[0m
 

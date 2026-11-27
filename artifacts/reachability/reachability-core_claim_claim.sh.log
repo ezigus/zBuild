@@ -65,10 +65,12 @@ claim-coordinator: issue #7003 carries the zbuild:claimed label: another run is 
   [38;2;74;222;128m✓[0m [DSRACE-1] the POST body includes the concurrent-claim prefix
 
   [38;2;0;212;255mgh race: issue re-read after note post, before arbitration [DSRACE-7][0m
-  [38;2;74;222;128m✓[0m [DSRACE-7] an ISSUE_VIEW (re-read) call was made
+  [38;2;74;222;128m✓[0m [DSRACE-7] POST_NOTE was recorded (synchronous holder record written)
   [38;2;74;222;128m✓[0m [DSRACE-7] the ISSUE_VIEW comes after POST_NOTE
   [38;2;74;222;128m✓[0m [DSRACE-7] the ISSUE_VIEW comes before GET_NOTES (re-read before arbitration)
   [38;2;74;222;128m✓[0m [DSRACE-1] all concurrent claim notes from the current label epoch are returned (loser when earlier note is on page 2)
+  [38;2;74;222;128m✓[0m [DSRACE-1] GET_NOTES was called (epoch-boundary test)
+  [38;2;74;222;128m✓[0m [DSRACE-1] note outside detection window excluded: sole current claimant wins
 
   [38;2;0;212;255mgh race: winner gets acquired:true, loser gets race_lost:true [DSRACE-2][0m
   [38;2;74;222;128m✓[0m [DSRACE-2] loser reply: acquired is false
@@ -86,7 +88,7 @@ claim-coordinator: issue #7003 carries the zbuild:claimed label: another run is 
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 53 tests passed[0m
+  [38;2;74;222;128m[1mAll 55 tests passed[0m
 
 ### core/claim/claim.sh head plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
 
@@ -155,10 +157,12 @@ claim-coordinator: issue #7003 carries the zbuild:claimed label: another run is 
   [38;2;74;222;128m✓[0m [DSRACE-1] the POST body includes the concurrent-claim prefix
 
   [38;2;0;212;255mgh race: issue re-read after note post, before arbitration [DSRACE-7][0m
-  [38;2;74;222;128m✓[0m [DSRACE-7] an ISSUE_VIEW (re-read) call was made
+  [38;2;74;222;128m✓[0m [DSRACE-7] POST_NOTE was recorded (synchronous holder record written)
   [38;2;74;222;128m✓[0m [DSRACE-7] the ISSUE_VIEW comes after POST_NOTE
   [38;2;74;222;128m✓[0m [DSRACE-7] the ISSUE_VIEW comes before GET_NOTES (re-read before arbitration)
   [38;2;74;222;128m✓[0m [DSRACE-1] all concurrent claim notes from the current label epoch are returned (loser when earlier note is on page 2)
+  [38;2;74;222;128m✓[0m [DSRACE-1] GET_NOTES was called (epoch-boundary test)
+  [38;2;74;222;128m✓[0m [DSRACE-1] note outside detection window excluded: sole current claimant wins
 
   [38;2;0;212;255mgh race: winner gets acquired:true, loser gets race_lost:true [DSRACE-2][0m
   [38;2;74;222;128m✓[0m [DSRACE-2] loser reply: acquired is false
@@ -176,7 +180,7 @@ claim-coordinator: issue #7003 carries the zbuild:claimed label: another run is 
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 53 tests passed[0m
+  [38;2;74;222;128m[1mAll 55 tests passed[0m
 
 ### core/claim/claim.sh reverted tests/unit/claim-acquire-release-test.sh
 
@@ -247,6 +251,8 @@ claim-coordinator: issue #7003 carries the zbuild:claimed label: another run is 
     [2moutput missing: https://github.com/o/r/actions/runs/42[0m
   [38;2;248;113;113m✗[0m [DSRACE-5] stderr says 'concurrent claim'
     [2moutput missing: concurrent claim[0m
+  [38;2;248;113;113m✗[0m [DSRACE-5] stderr names the winner as the first claimant
+    [2moutput missing: first[0m
 
   [38;2;0;212;255mrace_lost: true — _ZBUILD_CLAIM_ACQUIRED not set, release skips label removal [DSRACE-4][0m
   [38;2;248;113;113m✗[0m [DSRACE-4] _ZBUILD_CLAIM_ACQUIRED is not set after race_lost
@@ -256,12 +262,13 @@ claim-coordinator: issue #7003 carries the zbuild:claimed label: another run is 
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m6 of 42 tests failed[0m
+  [38;2;248;113;113m[1m7 of 43 tests failed[0m
 
   [38;2;248;113;113m✗[0m [DSRACE-5] race_lost reply → rc 1 (immediate refusal)
   [38;2;248;113;113m✗[0m [DSRACE-5] stale-takeover hook was NOT called
   [38;2;248;113;113m✗[0m [DSRACE-5] stderr names the concurrent winner
   [38;2;248;113;113m✗[0m [DSRACE-5] stderr says 'concurrent claim'
+  [38;2;248;113;113m✗[0m [DSRACE-5] stderr names the winner as the first claimant
   [38;2;248;113;113m✗[0m [DSRACE-4] _ZBUILD_CLAIM_ACQUIRED is not set after race_lost
   [38;2;248;113;113m✗[0m [DSRACE-4] zbuild_claim_release did NOT call the release hook (no claim held)
 
@@ -330,6 +337,7 @@ claim-coordinator: issue #7003 carries the zbuild:claimed label: another run is 
   [38;2;74;222;128m✓[0m [DSRACE-5] stale-takeover hook was NOT called
   [38;2;74;222;128m✓[0m [DSRACE-5] stderr names the concurrent winner
   [38;2;74;222;128m✓[0m [DSRACE-5] stderr says 'concurrent claim'
+  [38;2;74;222;128m✓[0m [DSRACE-5] stderr names the winner as the first claimant
 
   [38;2;0;212;255mrace_lost: true — _ZBUILD_CLAIM_ACQUIRED not set, release skips label removal [DSRACE-4][0m
   [38;2;74;222;128m✓[0m [DSRACE-4] _ZBUILD_CLAIM_ACQUIRED is not set after race_lost
@@ -337,5 +345,5 @@ claim-coordinator: issue #7003 carries the zbuild:claimed label: another run is 
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 42 tests passed[0m
+  [38;2;74;222;128m[1mAll 43 tests passed[0m
 

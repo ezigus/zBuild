@@ -59,6 +59,72 @@ claim-coordinator: issue #7003 carries the zbuild:claimed label: another run is 
   [38;2;74;222;128m✓[0m …and nothing was claimed
 
   [38;2;0;212;255mgh race: concurrent claim note is posted before read-back [DSRACE-1][0m
+  [38;2;248;113;113m✗[0m [DSRACE-1] a POST_NOTE call was made (synchronous holder record)
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [DSRACE-1] a GET_NOTES call was made (read-back of concurrent notes)
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [DSRACE-1] POST_NOTE appears before GET_NOTES in call sequence
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [DSRACE-1] the POST body includes the concurrent-claim prefix
+    [2moutput missing: concurrent claim by[0m
+
+  [38;2;0;212;255mgh race: issue re-read after note post, before arbitration [DSRACE-7][0m
+  [38;2;248;113;113m✗[0m [DSRACE-7] POST_NOTE was recorded (synchronous holder record written)
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [DSRACE-7] the ISSUE_VIEW comes after POST_NOTE
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [DSRACE-7] the ISSUE_VIEW comes before GET_NOTES (re-read before arbitration)
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [DSRACE-1] all concurrent claim notes from the current label epoch are returned (loser when earlier note is on page 2)
+    [2mexpected: false, got: true[0m
+  [38;2;248;113;113m✗[0m [DSRACE-1] GET_NOTES was called (epoch-boundary test)
+    [2mexpected: 1, got: 0[0m
+  [38;2;74;222;128m✓[0m [DSRACE-1] note outside detection window excluded: sole current claimant wins
+
+  [38;2;0;212;255mgh race: winner gets acquired:true, loser gets race_lost:true [DSRACE-2][0m
+  [38;2;248;113;113m✗[0m [DSRACE-2] loser reply: acquired is false
+    [2mexpected: false, got: true[0m
+  [38;2;248;113;113m✗[0m [DSRACE-2] loser reply: race_lost is true
+    [2mexpected: true, got: [0m
+  [38;2;248;113;113m✗[0m [DSRACE-2] loser reply: holder names the concurrent winner
+    [2mexpected: winner-run, got: [0m
+  [38;2;74;222;128m✓[0m [DSRACE-2] winner (sole claimant) reply: acquired is true
+
+  [38;2;0;212;255mgh race: loser PATCHes note body to 'not started' [DSRACE-3][0m
+{"acquired": true}
+  [38;2;248;113;113m✗[0m [DSRACE-3] the losing run made a PATCH call on its own note (id 99004)
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [DSRACE-3] the PATCH body says 'not started'
+    [2moutput missing: not started[0m
+  [38;2;248;113;113m✗[0m [DSRACE-3] the PATCH body says 'concurrent claim'
+    [2moutput missing: concurrent claim[0m
+  [38;2;248;113;113m✗[0m [DSRACE-3] the PATCH body names the winner
+    [2moutput missing: winner-run[0m
+  [38;2;248;113;113m✗[0m [DSRACE-3] the PATCH body says 'was first'
+    [2moutput missing: was first[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m17 of 55 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [DSRACE-1] a POST_NOTE call was made (synchronous holder record)
+  [38;2;248;113;113m✗[0m [DSRACE-1] a GET_NOTES call was made (read-back of concurrent notes)
+  [38;2;248;113;113m✗[0m [DSRACE-1] POST_NOTE appears before GET_NOTES in call sequence
+  [38;2;248;113;113m✗[0m [DSRACE-1] the POST body includes the concurrent-claim prefix
+  [38;2;248;113;113m✗[0m [DSRACE-7] POST_NOTE was recorded (synchronous holder record written)
+  [38;2;248;113;113m✗[0m [DSRACE-7] the ISSUE_VIEW comes after POST_NOTE
+  [38;2;248;113;113m✗[0m [DSRACE-7] the ISSUE_VIEW comes before GET_NOTES (re-read before arbitration)
+  [38;2;248;113;113m✗[0m [DSRACE-1] all concurrent claim notes from the current label epoch are returned (loser when earlier note is on page 2)
+  [38;2;248;113;113m✗[0m [DSRACE-1] GET_NOTES was called (epoch-boundary test)
+  [38;2;248;113;113m✗[0m [DSRACE-2] loser reply: acquired is false
+  [38;2;248;113;113m✗[0m [DSRACE-2] loser reply: race_lost is true
+  [38;2;248;113;113m✗[0m [DSRACE-2] loser reply: holder names the concurrent winner
+  [38;2;248;113;113m✗[0m [DSRACE-3] the losing run made a PATCH call on its own note (id 99004)
+  [38;2;248;113;113m✗[0m [DSRACE-3] the PATCH body says 'not started'
+  [38;2;248;113;113m✗[0m [DSRACE-3] the PATCH body says 'concurrent claim'
+  [38;2;248;113;113m✗[0m [DSRACE-3] the PATCH body names the winner
+  [38;2;248;113;113m✗[0m [DSRACE-3] the PATCH body says 'was first'
+
 ### DSRACE-1 head plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh
 
 [38;2;0;212;255m[1m  plugin: claim-coordinator/github-labels — claim and release[0m
@@ -126,10 +192,12 @@ claim-coordinator: issue #7003 carries the zbuild:claimed label: another run is 
   [38;2;74;222;128m✓[0m [DSRACE-1] the POST body includes the concurrent-claim prefix
 
   [38;2;0;212;255mgh race: issue re-read after note post, before arbitration [DSRACE-7][0m
-  [38;2;74;222;128m✓[0m [DSRACE-7] an ISSUE_VIEW (re-read) call was made
+  [38;2;74;222;128m✓[0m [DSRACE-7] POST_NOTE was recorded (synchronous holder record written)
   [38;2;74;222;128m✓[0m [DSRACE-7] the ISSUE_VIEW comes after POST_NOTE
   [38;2;74;222;128m✓[0m [DSRACE-7] the ISSUE_VIEW comes before GET_NOTES (re-read before arbitration)
   [38;2;74;222;128m✓[0m [DSRACE-1] all concurrent claim notes from the current label epoch are returned (loser when earlier note is on page 2)
+  [38;2;74;222;128m✓[0m [DSRACE-1] GET_NOTES was called (epoch-boundary test)
+  [38;2;74;222;128m✓[0m [DSRACE-1] note outside detection window excluded: sole current claimant wins
 
   [38;2;0;212;255mgh race: winner gets acquired:true, loser gets race_lost:true [DSRACE-2][0m
   [38;2;74;222;128m✓[0m [DSRACE-2] loser reply: acquired is false
@@ -147,5 +215,5 @@ claim-coordinator: issue #7003 carries the zbuild:claimed label: another run is 
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 53 tests passed[0m
+  [38;2;74;222;128m[1mAll 55 tests passed[0m
 
