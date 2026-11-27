@@ -15,7 +15,8 @@
 # Scope = ALL tiers (#1260): unit, integration (`tests/integration/`, `tests/e2e/`) and
 # every `*-test.sh` under `plugins/` + `core/`. The SIGPIPE bites integration CI too
 # (#1259 review-test.sh:442 "Broken pipe"), so the policy now spans every tier. The guard
-# still RUNS in the unit tier; it merely SCANS everything.
+# still RUNS in the unit tier; it merely SCANS everything. The `| head` check below scans
+# every .sh file under scripts/, core/, plugins/ and tests/ (#2639).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -96,7 +97,8 @@ assert_eq "[#1884] grep without -q             -> NOT an offender" \
 # ─── #1886: `| head` is the same class, and was not covered ──────────────────
 # grep -q was one shape. Any reader that exits before its writer finishes has
 # the same hazard, and `| head -N` had 45 production instances — one of them in
-# the test-result parser, on the path that decides a stage verdict.
+# the test-result parser, on the path that decides a stage verdict. #2639 found
+# 286 more in test files, once the scan reached them.
 #
 # Sites where the pipe is genuinely safe carry `# sigpipe-ok: <reason>`, on the
 # line itself or within the 8 lines above it (a line ending in `\` cannot take a
@@ -107,7 +109,7 @@ assert_eq "[#1884] grep without -q             -> NOT an offender" \
 # a head called by its path: on #2534 three lenses found `| /usr/bin/head -1`
 # in a test file the guard had passed. It now scans every .sh file the rule
 # covers, and a head by any path, or with no option.
-_HD_RE='(^|[^|])\|[[:space:]]*([^[:space:]|;&()]*/)?head([[:space:]]|$|[;)&])'
+_HD_RE='(^|[^|])\|&?[[:space:]]*((command|env)[[:space:]]+)?([^[:space:]|;&()]*/)?head([[:space:]]|$|[;)&])'
 _hd_check() { grep -qE "$_HD_RE" <<< "$1" && echo yes || echo no; }
 
 print_test_section "[#2639] the head detector catches a head by any path, and nothing else"
@@ -115,6 +117,9 @@ assert_eq "[#2639/SPEC-2] cmd | head -1                -> offender" "yes" "$(_hd
 assert_eq "[#2639/SPEC-2] cmd | /usr/bin/head -1       -> offender" "yes" "$(_hd_check 'x="$(grep a f | /usr/bin/head -1)"')"
 assert_eq "[#2639/SPEC-2] cmd | head, no option        -> offender" "yes" "$(_hd_check 'printf "%s" "$v" | head')"
 assert_eq "[#2639/SPEC-2] cmd | head -c 9              -> offender" "yes" "$(_hd_check 'x=$(printf "%s" "$v" | head -c 9)')"
+assert_eq "[#2639/SPEC-2] cmd |& head -1               -> offender" "yes" "$(_hd_check 'x=$(cmd |& head -1)')"
+assert_eq "[#2639/SPEC-2] cmd | command head -1        -> offender" "yes" "$(_hd_check 'x=$(cmd | command head -1)')"
+assert_eq "[#2639/SPEC-2] cmd | env head -1            -> offender" "yes" "$(_hd_check 'x=$(cmd | env head -1)')"
 assert_eq "[#2639/SPEC-2] cmd || head -1 file          -> NOT an offender" "no" "$(_hd_check 'grep a f || head -1 g')"
 assert_eq "[#2639/SPEC-2] head -1 file                 -> NOT an offender" "no" "$(_hd_check 'x=$(head -1 "$f")')"
 assert_eq "[#2639/SPEC-2] cmd | headers                -> NOT an offender" "no" "$(_hd_check 'cmd | headers -x')"

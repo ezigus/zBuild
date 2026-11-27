@@ -1164,7 +1164,8 @@ zb_test_clip() { printf '%s' "${2:0:$1}"; }
 # test started (and usually signalled), with a limit (#2639): its exit status
 # once it is gone; 124 once the limit passes, when it and everything under it
 # are killed. A bare `wait` on a process that ignores its signal hangs the test
-# until CI kills the job, with nothing saying why.
+# until CI kills the job, with nothing saying why. Call it from the shell that
+# started the process: `wait` knows only its own children (127 for any other).
 wait_for_exit() {
     local pid="$1" max_iters="${2:-600}" interval="${3:-0.05}" i rc=0
     for (( i = 0; i < max_iters; i++ )); do
