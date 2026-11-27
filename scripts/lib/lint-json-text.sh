@@ -32,7 +32,7 @@ while IFS= read -r -d '' f; do files+=("${f#./}"); done < <(
 
 hits="$( { /usr/bin/grep -HnF -e '//\"/\\\"' -e '//\\\"/\"' -e '(([^"\\]|\\.)*)' "${files[@]}" 2>/dev/null   # json-text-ok: the patterns this lint looks for
            /usr/bin/grep -HnE '\\+u%0?4x' "${files[@]}" 2>/dev/null
-           /usr/bin/grep -HnE '\|[[:space:]]*@tsv' "${files[@]}" 2>/dev/null; } | sort -u || true)"
+           /usr/bin/grep -HnF '@tsv' "${files[@]}" 2>/dev/null; } | sort -u || true)"   # json-text-ok: the pattern this lint looks for
 bad=0
 while IFS= read -r h; do
     [[ -n "$h" ]] || continue
@@ -43,8 +43,8 @@ while IFS= read -r h; do
         [[ "${BASH_REMATCH[1]}" =~ [^[:space:]] ]] && continue
         printf '%s:%s: a json-text-ok mark needs its reason\n' "$f" "$l"; bad=1; continue
     fi
-    if [[ "$c" == *@tsv* ]]; then
-        printf '%s:%s: a tab-separated jq read (@tsv): read it NUL-separated — jq -j with a NUL after each field, then IFS= read -r -d '"''"' each: %s\n' "$f" "$l" "$t"; bad=1; continue
+    if [[ "$c" == *@tsv* ]]; then   # json-text-ok: the pattern this lint looks for
+        printf '%s:%s: a tab-separated jq read (@tsv): read it NUL-separated — jq -j with a NUL after each field, then IFS= read -r -d '"''"' each: %s\n' "$f" "$l" "$t"; bad=1; continue   # json-text-ok: its message
     fi
     printf '%s:%s: a JSON string written or read by hand: %s\n' "$f" "$l" "$t"; bad=1
 done <<< "$hits"

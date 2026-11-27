@@ -222,16 +222,24 @@ assert_json_key "[SPEC-5] mutation-gate reads test_results from ZBUILD_STAGE_INP
 # ─── #2640: an empty field stays empty, and the next one stays in its place ──
 # Read as tab-separated, `measured<TAB><TAB>60` gave the score the floor's value
 # and left the floor empty, so the gate fell back to the default floor.
+# The blocks are written by the test stage's own writer (framework-result.sh),
+# under data as a v2 result carries them: a score or pct it has none of is null.
+# shellcheck source=../../scripts/lib/framework-result.sh
+source "$REPO_ROOT/scripts/lib/framework-result.sh"
 W="$(_mkwork mutation-no-score)"
-_seed_results "$W" '{mutation:{status:"measured", floor:"60"}}'
+jq -n --argjson m "$(_fr_emit_mutation measured "" 60)" '{result_contract:3, outcome:"pass", reason:"ran", data:{mutation:$m}}' \
+    > "$W/artifacts/test-results.json"
 mutation_gate_run "mutation-gate" "$W/state.json" >/dev/null 2>&1
 assert_json_key "[#2640/SPEC-4] mutation: no score reads as no score" "$(cat "$W/artifacts/mutation-result.json")" '.data.score' ""
 assert_json_key "[#2640/SPEC-4] ...and the recorded floor stays the floor" "$(cat "$W/artifacts/mutation-result.json")" '.data.floor' "60"
+assert_contains "[#2640/SPEC-4] ...which its reason names" "$(jq -r '.reason' "$W/artifacts/mutation-result.json")" "floor 60"
 W="$(_mkwork coverage-no-pct)"
-_seed_results "$W" '{coverage:{status:"measured", floor:"50"}}'
+jq -n --argjson c "$(_fr_emit_coverage measured "" 50)" '{result_contract:3, outcome:"pass", reason:"ran", data:{coverage:$c}}' \
+    > "$W/artifacts/test-results.json"
 coverage_gate_run "coverage-gate" "$W/state.json" >/dev/null 2>&1
 assert_json_key "[#2640/SPEC-4] coverage: no pct reads as no pct" "$(cat "$W/artifacts/coverage-result.json")" '.data.pct' ""
 assert_json_key "[#2640/SPEC-4] ...and the recorded floor stays the floor" "$(cat "$W/artifacts/coverage-result.json")" '.data.floor' "50"
+assert_contains "[#2640/SPEC-4] ...which its reason names" "$(jq -r '.reason' "$W/artifacts/coverage-result.json")" "50"
 
 # ─── Results ─────────────────────────────────────────────────────────────────
 
