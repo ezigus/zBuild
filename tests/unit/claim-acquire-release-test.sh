@@ -213,31 +213,34 @@ EOF
 }
 
 print_test_section "race_lost: true — refused immediately, stale-takeover skipped [DSRACE-5]"
-# Given: the stub returns a race_lost reply naming a winner; takeover is registered
-# and would succeed if called — on base code (no race_lost guard) the takeover path
-# is entered; on new code the race_lost early-return fires first.
+# Given: coordinator returns race_lost:true naming a concurrent winner; takeover
+#        hook is registered and would succeed if called (on base code the takeover
+#        path fires; on new code the race_lost early-return fires first)
 _stub_with_takeover "$TEST_TEMP_DIR/p-race5" \
     '{"acquired": false, "holder": "https://github.com/o/r/actions/runs/42", "race_lost": true}'
+# When
 set +e; zbuild_claim_acquire 9050 "$STATE" 2>"$TEST_TEMP_DIR/race5.err"; _r5_rc=$?; set -e
+# Then: rc 1 (immediate refusal)
 assert_eq "[DSRACE-5] race_lost reply → rc 1 (immediate refusal)" "1" "$_r5_rc" # [DSRACE-5]
-# On new code: takeover hook is never called (the race_lost branch returns before it)
-# On base code: takeover hook IS called (entering the stale-takeover path)
+# And: stale-takeover hook was NOT called
 _takeover_calls=0
 grep -q '^takeover' "$CALLS" 2>/dev/null && _takeover_calls=1 || true
 assert_eq "[DSRACE-5] stale-takeover hook was NOT called" "0" "$_takeover_calls" # [DSRACE-5]
+# And: stderr names the concurrent winner as the first claimant
 assert_contains "[DSRACE-5] stderr names the concurrent winner" \
     "$(cat "$TEST_TEMP_DIR/race5.err")" "https://github.com/o/r/actions/runs/42" # [DSRACE-5]
 assert_contains "[DSRACE-5] stderr says 'concurrent claim'" \
     "$(cat "$TEST_TEMP_DIR/race5.err")" "concurrent claim" # [DSRACE-5]
 
 print_test_section "race_lost: true — _ZBUILD_CLAIM_ACQUIRED not set, release skips label removal [DSRACE-4]"
-# Given: same race_lost reply with a succeeding takeover hook. On base code the
-# takeover sets _ZBUILD_CLAIM_ACQUIRED and release calls the hook; on new code
-# neither happens because the race_lost early-return fires.
+# Given: coordinator returns race_lost:true; takeover hook is registered and would
+#        succeed if called (on base code takeover sets _ZBUILD_CLAIM_ACQUIRED and
+#        calls release; on new code the race_lost early-return fires before that)
 _stub_with_takeover "$TEST_TEMP_DIR/p-race4" \
     '{"acquired": false, "holder": "https://github.com/o/r/actions/runs/77", "race_lost": true}'
+# When
 set +e; zbuild_claim_acquire 9051 "$STATE" 2>/dev/null; set -e
-# Then: on new code, _ZBUILD_CLAIM_ACQUIRED is not set
+# Then: _ZBUILD_CLAIM_ACQUIRED is not set
 assert_eq "[DSRACE-4] _ZBUILD_CLAIM_ACQUIRED is not set after race_lost" "" \
     "$_ZBUILD_CLAIM_ACQUIRED" # [DSRACE-4]
 # And: zbuild_claim_release does not call the release hook

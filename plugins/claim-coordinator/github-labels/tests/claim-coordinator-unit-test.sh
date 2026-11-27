@@ -243,14 +243,15 @@ RACEMOCK
 
 # ─── DSRACE-1: post note then read notes — note is posted BEFORE read-back ───
 print_test_section "gh race: concurrent claim note is posted before read-back [DSRACE-1]"
+# Given
 _race_gh_reset
-# Given: POST returns a note with id+created_at; note page has this run as the winner
 printf '{"id":99001,"created_at":"2026-01-01T00:00:00Z","body":"concurrent claim by `%s`","user":{"login":"github-actions[bot]"}}\n' \
     "$_RACE_HOLDER" > "$GHS/post-reply.json"
 printf '[{"id":99001,"created_at":"2026-01-01T00:00:00Z","body":"concurrent claim by `%s`","user":{"login":"github-actions[bot]"},"author_association":"OWNER"}]\n' \
     "$_RACE_HOLDER" > "$GHS/notes-pages/page-1.json"
+# When
 set +e; reply="$(claim_coordinator_claim 8001 2>/dev/null)"; set -e
-# [DSRACE-1] The sequence must contain POST_NOTE before GET_NOTES
+# Then: note is posted synchronously before the read-back
 _post_line="$(/usr/bin/grep -n "^POST_NOTE$" "$GHS/call-sequence" | /usr/bin/head -1 | cut -d: -f1)"
 _get_line="$(/usr/bin/grep -n "^GET_NOTES$" "$GHS/call-sequence" | /usr/bin/head -1 | cut -d: -f1)"
 assert_eq "[DSRACE-1] a POST_NOTE call was made (synchronous holder record)" "1" \
@@ -264,9 +265,13 @@ assert_contains "[DSRACE-1] the POST body includes the concurrent-claim prefix" 
 
 # ─── DSRACE-7: issue is re-read AFTER the note is posted, BEFORE arbitration ─
 print_test_section "gh race: issue re-read after note post, before arbitration [DSRACE-7]"
-# Given: same call-sequence from DSRACE-1 above (reuse $GHS/call-sequence)
+# Given: the concurrent claim note was posted synchronously in the When above
+#        (claim_coordinator_claim 8001); the same call-sequence is reused here
+# When: the claim read the GitHub issue's current state — recorded as ISSUE_VIEW
+#       in the call-sequence during the same invocation as the note post above
+# Then: fresh issue data is obtained from GitHub after the synchronous holder record was written
 _post_line="$(/usr/bin/grep -n "^POST_NOTE$" "$GHS/call-sequence" | /usr/bin/head -1 | cut -d: -f1)"
-# The re-read is recorded as ISSUE_VIEW; look for the LAST one (the re-read after the POST)
+# Look for the LAST ISSUE_VIEW (the re-read that follows the POST, not the initial label check)
 _view_line="$(/usr/bin/grep -n "^ISSUE_VIEW$" "$GHS/call-sequence" | /usr/bin/tail -1 | cut -d: -f1)"
 _get_line="$(/usr/bin/grep -n "^GET_NOTES$" "$GHS/call-sequence" | /usr/bin/head -1 | cut -d: -f1)"
 assert_eq "[DSRACE-7] an ISSUE_VIEW (re-read) call was made" "1" \
@@ -276,16 +281,33 @@ assert_eq "[DSRACE-7] the ISSUE_VIEW comes after POST_NOTE" "1" \
 assert_eq "[DSRACE-7] the ISSUE_VIEW comes before GET_NOTES (re-read before arbitration)" "1" \
     "$( [[ -n "$_view_line" && -n "$_get_line" && "$_view_line" -lt "$_get_line" ]] && echo 1 || echo 0 )" # [DSRACE-7]
 
+# ─── DSRACE-1 (And): all epoch notes across pages are considered ──────────────
+# Given: two pages of notes — the earlier note is on page 2 (a later-arriving run
+#        sees its own note on page 1, but the first claimant's note is on page 2)
+_race_gh_reset
+printf '{"id":99201,"created_at":"2026-01-01T00:00:01Z","body":"","user":{"login":"github-actions[bot]"}}\n' \
+    > "$GHS/post-reply.json"
+printf '[{"id":99201,"created_at":"2026-01-01T00:00:01Z","body":"concurrent claim by `%s`","user":{"login":"github-actions[bot]"},"author_association":"OWNER"}]\n' \
+    "$_RACE_HOLDER" > "$GHS/notes-pages/page-1.json"
+printf '[{"id":88001,"created_at":"2026-01-01T00:00:00Z","body":"concurrent claim by `page2-winner`","user":{"login":"github-actions[bot]"},"author_association":"OWNER"}]\n' \
+    > "$GHS/notes-pages/page-2.json"
+# When
+set +e; _r1b="$(claim_coordinator_claim 8001b 2>/dev/null)"; set -e
+# Then: all pages were read — the earlier note on page 2 is identified as winner
+assert_eq "[DSRACE-1] all concurrent claim notes from the current label epoch are returned (loser when earlier note is on page 2)" "false" \
+    "$(jq -r '.acquired' <<< "$_r1b" 2>/dev/null || echo unparsed)" # [DSRACE-1]
+
 # ─── DSRACE-2: loser returns race_lost: true; winner returns acquired: true ──
 print_test_section "gh race: winner gets acquired:true, loser gets race_lost:true [DSRACE-2]"
+# Given: two concurrent notes exist — winner's note (id 99001) has the earliest created_at
 _race_gh_reset
-# post-reply.json: this run posted LATER (id 99002, created_at AFTER winner's note)
 printf '{"id":99002,"created_at":"2026-01-01T00:00:01Z","body":"","user":{"login":"github-actions[bot]"}}\n' \
     > "$GHS/post-reply.json"
-# Two concurrent notes: winner's note id 99001 has the earliest created_at
 printf '[{"id":99001,"created_at":"2026-01-01T00:00:00Z","body":"concurrent claim by `winner-run`","user":{"login":"github-actions[bot]"},"author_association":"OWNER"},{"id":99002,"created_at":"2026-01-01T00:00:01Z","body":"concurrent claim by `%s`","user":{"login":"github-actions[bot]"},"author_association":"OWNER"}]\n' \
     "$_RACE_HOLDER" > "$GHS/notes-pages/page-1.json"
+# When: the loser compares notes and finds it was not first
 set +e; reply="$(claim_coordinator_claim 8002 2>/dev/null)"; set -e
+# Then: the first note by created_at wins
 assert_eq "[DSRACE-2] loser reply: acquired is false" "false" \
     "$(jq -r .acquired <<< "$reply" 2>/dev/null || echo unparsed)" # [DSRACE-2]
 assert_eq "[DSRACE-2] loser reply: race_lost is true" "true" \
@@ -293,32 +315,40 @@ assert_eq "[DSRACE-2] loser reply: race_lost is true" "true" \
 assert_eq "[DSRACE-2] loser reply: holder names the concurrent winner" "winner-run" \
     "$(jq -r '.holder // empty' <<< "$reply" 2>/dev/null || echo missing)" # [DSRACE-2]
 
-# Confirm winner path: only this run's note is present — it came first
+# Given: only this run's note is present — it came first (sole claimant)
 _race_gh_reset
 printf '{"id":99003,"created_at":"2026-01-01T00:00:00Z","body":"","user":{"login":"github-actions[bot]"}}\n' \
     > "$GHS/post-reply.json"
 printf '[{"id":99003,"created_at":"2026-01-01T00:00:00Z","body":"concurrent claim by `%s`","user":{"login":"github-actions[bot]"},"author_association":"OWNER"}]\n' \
     "$_RACE_HOLDER" > "$GHS/notes-pages/page-1.json"
+# When: the winner compares notes and finds it was first
 set +e; reply="$(claim_coordinator_claim 8003 2>/dev/null)"; set -e
+# Then: the run whose note is first returns acquired: true
 assert_eq "[DSRACE-2] winner (sole claimant) reply: acquired is true" "true" \
     "$(jq -r .acquired <<< "$reply" 2>/dev/null || echo unparsed)" # [DSRACE-2]
 
 # ─── DSRACE-3: losing run PATCHes its note to "not started" ──────────────────
 print_test_section "gh race: loser PATCHes note body to 'not started' [DSRACE-3]"
+# Given: this run's note (id 99004) has a later created_at than winner's note (id 99001)
 _race_gh_reset
-# post-reply.json: this run posted LATER (note id 99004)
 printf '{"id":99004,"created_at":"2026-01-01T00:00:01Z","body":"","user":{"login":"github-actions[bot]"}}\n' \
     > "$GHS/post-reply.json"
 printf '[{"id":99001,"created_at":"2026-01-01T00:00:00Z","body":"concurrent claim by `winner-run`","user":{"login":"github-actions[bot]"},"author_association":"OWNER"},{"id":99004,"created_at":"2026-01-01T00:00:01Z","body":"concurrent claim by `%s`","user":{"login":"github-actions[bot]"},"author_association":"OWNER"}]\n' \
     "$_RACE_HOLDER" > "$GHS/notes-pages/page-1.json"
+# When: the run determines it has lost the race
 set +e; claim_coordinator_claim 8004 2>/dev/null; set -e
+# Then: the run PATCHes its note body to "not started — concurrent claim: `<winner>` was first"
 assert_eq "[DSRACE-3] the losing run made a PATCH call on its own note (id 99004)" "1" \
     "$( [[ -f "$GHS/patched-99004" ]] && echo 1 || echo 0 )" # [DSRACE-3]
 _patch_body="$(jq -r .body "$GHS/patched-99004" 2>/dev/null || echo "")"
 assert_contains "[DSRACE-3] the PATCH body says 'not started'" \
     "$_patch_body" "not started" # [DSRACE-3]
+assert_contains "[DSRACE-3] the PATCH body says 'concurrent claim'" \
+    "$_patch_body" "concurrent claim" # [DSRACE-3]
 assert_contains "[DSRACE-3] the PATCH body names the winner" \
     "$_patch_body" "winner-run" # [DSRACE-3]
+assert_contains "[DSRACE-3] the PATCH body says 'was first'" \
+    "$_patch_body" "was first" # [DSRACE-3]
 
 cleanup_test_env
 print_test_results
