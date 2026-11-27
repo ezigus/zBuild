@@ -1,0 +1,1 @@
+{"result_contract":3,"outcome":"timed_out","reason":"the author did not finish (router_timeout) — what it wrote is kept for the next attempt","data":{"specs_covered":6,"owned_files":[],"testfiles":{},"findings_shown":8,"unanswered":["TEFND-1","TEFND-2","IAFND-1","IAFND-2","IAFND-3","IAFND-4","IAFND-5","IAFND-6"]}}
