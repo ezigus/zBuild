@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "run_id": "20261127121554-2522",
+  "stage": "intake",
+  "kind": "command",
+  "seq": 1,
+  "input": "gh issue view 2534 --json title\\,body\\,comments",
+  "output": "{\"body\":\"## Decision\\n\\nWhen two runs claim an issue at the same moment, exactly one proceeds. Part 3 of 3: depends on #1764 (the shared label) and #2533 (heartbeat and staleness).\\n\\n- After adding the label, a run re-reads the issue. If another run claimed it too, the **run that claimed first wins**. The later run marks its progress comment as not started and exits without removing the label.\\n- Today the progress comment is started in the background, after the issue lock (`zbuild_issue_lock_acquire`, `core/pipeline/runner.sh`) and `pipeline.start`, so at claim time a run has no comment of its own to compare. Either the claim writes its holder record itself, synchronously, before it re-reads, or the tie-break uses something that exists at claim time (for example when the label was added).\\n\\n## What is wrong today\\n\\n- Adding a label is not exclusive: two runs that read the issue at the same moment both see no label, both add it, and both proceed.\\n\\n## ADR\\n\\n- **Amend ADR-005**: the first claim wins a tie, and how \\\"first\\\" is decided. ADR-005 is in `config/adr-enforcement-baseline.txt`, so the amendment names its enforcing tests inline.\\n\\n## Required behavior\\n\\nWrite it as a test first and watch it fail. Use a stubbed `gh` and never touch the real repo.\\n\\n- **R1.** Two runs claim at once. Only the run that claimed first proceeds; the other exits without removing the label, and its progress comment says it did not start.\\n\\n## Scope\\n\\n- **Code:** `plugins/claim-coordinator/github-labels/plugin.sh`, `core/pipeline/runner.sh`.\\n- **ADR:** `docs/adr/ADR-005-claim-coordinator.md`.\\n- **Tests:** `tests/e2e/claim-race-test.sh`, `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh`.\\n\",\"comments\":[{\"id\":\"IC_kwDOSmjmcc8AAAABrjp4yw\",\"author\":{\"login\":\"github-actions\"},\"authorAssociation\":\"CONTRIBUTOR\",\"body\":\"<!-- zbuild-run-status run_id=20261127121554-2522 -->\\n<!-- zbuild-holder: https://github.com/ezigus/zBuild/actions/runs/45997137687 -->\\nstill running — 2026-11-27T12:15:58Z — now: hydrate\\n### zbuild run `20261127121554-2522` · issue #2534 · **running**\\nengine `587d352` (`main`) · started 7:15 AM ET · ceiling 1:00 PM ET (5h 44m left) · updated 7:15 AM ET · [run log](https://github.com/ezigus/zBuild/actions/runs/45997137687)\\ncurrent: **1 hydrate**\\n\\n**7:15 AM ET → running** · **1 hydrate**\\n\\n\",\"createdAt\":\"2026-11-27T12:15:58Z\",\"includesCreatedEdit\":false,\"isMinimized\":false,\"minimizedReason\":\"\",\"reactionGroups\":[],\"url\":\"https://github.com/ezigus/zBuild/issues/2534#issuecomment-7218034891\",\"viewerDidAuthor\":true}],\"title\":\"claim tie-break — when two runs claim an issue at once, the first claim wins (ADR-005, part 3 of #1764)\"}",
+  "exit_code": 0,
+  "duration_ms": 291,
+  "metadata": {
+    "pwd": "/home/runner/.zbuild/repos/ezigus/zBuild/issues/2534/worktree"
+  },
+  "ts": "2026-11-27T12:16:00Z"
+}
