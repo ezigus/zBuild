@@ -78,12 +78,17 @@ _out() { jq -r '[.data.findings[]?.text] | join(" || ")' "$_A/issue-acceptance-$
 _mf_topic() { awk -v id="$1" '$0 ~ "- id: " id "$" {f=1; next} f && /^  - id:/ {f=0} f && /topic:/ {print $2; exit}' "$PLUGIN_DIR/manifest.yaml"; }
 _run() { : > "$_IA_PROMPT"; : > "$_IA_CALLS"; issue_acceptance_run "issue-acceptance" "$_S/pipeline-state.json" >/dev/null 2>&1; }
 
+_lacks() { if [[ "$2" == *"$3"* ]]; then assert_fail "$1" "it has: $3"; else assert_pass "$1"; fi; }
 print_test_section "U1: the prompt asks the reverse question"
 _p="$(tr -s '[:space:]' ' ' <<< "$(_ia_prompt "ISSUE-TEXT" "SPEC-TEXT" "DIFF-TEXT" "pass")")"
 assert_contains "[U1] the composer built a real prompt" "$_p" "ISSUE-TEXT"
 assert_contains "[U1] it asks for each part of the change no requirement asks for" \
     "$_p" "each part of the DIFF that no requirement asks for"
-assert_contains_lines "[U1] it says how to answer it" "$_p" $'UNASKED: <what the change does>\nwhy: <why no requirement asks for it>\naccepted if: <the change without it, or the requirement that would ask for it — nothing else>\nquote: <file> | <one line of the code that does it>'
+assert_contains_lines "[U1] it says how to answer it: no condition to write, the part is taken out" "$_p" $'UNASKED: <what the change does>\nwhy: <why no requirement asks for it>\nquote: <file> | <one line of the code that does it>'
+_lacks "[U1] ...the form asks no accepted if" "$_p" "accepted if: <the change without it"
+assert_contains "[U1] it says each part it names is taken out of the change" "$_p" "Each part you name here is taken out of the change."
+assert_contains "[U1] ...and that words of the issue that could ask for it make it a question, not this" "$_p" \
+    "When words of the ISSUE could be read as asking for it, it is not one of these: write an UNCLEAR line that quotes them."
 assert_contains "[U1] it says how to say there is none" "$_p" "UNASKED: none"
 
 print_test_section "U2: an unasked part is a finding for build"

@@ -11,11 +11,10 @@ _ZBUILD_IA_PARSE_LOADED=1
 # shellcheck source=../../../../scripts/lib/unclear.sh
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/unclear.sh"
 
-# What an UNASKED with no ACCEPTED IF is told (#2569, ADR-072 §3). An UNMET,
-# UNSURE or BROKEN with none is judged against its requirement or limit, whose
-# own words are its ACCEPTED IF (review on #2569); an UNASKED part has no line
-# of its own, so the check writes what would be accepted.
-_IA_NO_ACC="has no ACCEPTED IF — say what would be accepted: the change without it, or the requirement that would ask for it"
+# An UNASKED part's ACCEPTED IF (ADR-075 §3, amended 2026-11-27): its one
+# outcome, written by the engine. An UNMET, UNSURE or BROKEN with none is judged
+# against its requirement or limit, whose own words are its ACCEPTED IF.
+_IA_UNASKED_ACC="the change without it"
 
 # _ia_fields <rest> — a line's WHY, ACCEPTED IF and QUOTE, into the caller's
 # why, acc and quote (judge_reply_field_v).
@@ -172,19 +171,16 @@ _ia_parse_unasked() {
     (( _ncm )) && shopt -u nocasematch
     _ia_fields "$rest"
     if [[ -z "$quote" ]]; then bad+=("UNASKED $part has no QUOTE"); return 0; fi
-    [[ -n "$acc" ]] || { bad+=("UNASKED $part $_IA_NO_ACC"); return 0; }
     # No own words: the quote is the code that does it, in a file.
     judge_quote_check_v w "$quote" "" "$repo" || { bad+=("UNASKED $part: its quote $w"); return 0; }
     judge_quote_path_v qp "$quote" "$repo"; [[ -n "$qp" ]] && _IA_QUOTED+=("$qp")
     # #2523: a part in a test file is the tests' to fix, not the code's.
     local mark=""; [[ -n "$qp" ]] && zb_is_test_path "$qp" "$repo" && mark="[fix-test] "
-    # #2629 (ADR-075 §3): a part nothing asks for is accepted only without it,
-    # or with a requirement that asks for it — never on a condition about how
-    # it is done. The check writes it (ADR-072); one that says otherwise is not
-    # an answer, and is asked again, saying why.
-    local _acc_l="${acc,,}" _acc_re='(without|take[s]?( it| them| this| that)? out|taken out|remov|revert|undo|restor|back out|no longer|requirement)'
-    [[ "$_acc_l" =~ $_acc_re ]] || { bad+=("UNASKED $part: its ACCEPTED IF must be the change without it, or a requirement that asks for it — not a condition about how it is done (it said: $acc)"); return 0; }
-    _IA_UNASKED+=("$mark$part: ${why:-no requirement asks for it} — $quote — ACCEPTED IF: $acc")
+    # #2629 (ADR-075 §3, amended 2026-11-27): a part nothing asks for has one
+    # outcome, the change without it — words of the issue that could ask for it
+    # are an UNCLEAR line instead. Its ACCEPTED IF is the engine's, as a limit's
+    # line is for BROKEN (ADR-072 §3): what the check wrote there is not used.
+    _IA_UNASKED+=("$mark$part: ${why:-no requirement asks for it} — $quote — ACCEPTED IF: $_IA_UNASKED_ACC")
 }
 
 # _ia_unclear_carried_load <result_json> — the questions issue-acceptance's last

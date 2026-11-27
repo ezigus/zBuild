@@ -84,10 +84,11 @@ Write one answer for each part nothing asks for:
 
 UNASKED: <what the change does>
 why: <why no requirement asks for it>
-accepted if: <the change without it, or the requirement that would ask for it — nothing else>
 quote: <file> | <one line of the code that does it>
 
-Its QUOTE is the code that does it. When every part of the DIFF is asked for,
+Its QUOTE is the code that does it. Each part you name here is taken out of the
+change. When words of the ISSUE could be read as asking for it, it is not one of
+these: write an UNCLEAR line that quotes them. When every part of the DIFF is asked for,
 write one line: UNASKED: none
 REV
         _rev_q="${_rev_q/@TRACE@/$_trace}"

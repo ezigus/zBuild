@@ -27,8 +27,8 @@
 #             judged against that part's own line, which is used: not asked
 #             again; a sections line, whose ACCEPTED IF the check writes, is
 # A6 [change] issue-acceptance: the same, for UNMET and UNSURE (the
-#             requirement is the line); UNASKED, whose ACCEPTED IF the check
-#             writes, is asked again without one
+#             requirement is the line); UNASKED's is its one outcome, the
+#             change without it, in the engine's words (ADR-075 §3)
 # A7 [change] build's step check: the same, for a `does not` (the step is the
 #             line); (review) a reply with a good line for one step and none
 #             for another keeps the good one: only the other is unread
@@ -211,14 +211,17 @@ _i() { /usr/bin/grep "^$1|" "$TEST_TEMP_DIR/ia.out"; }
 _lacks "[A6] an UNMET with no ACCEPTED IF is used" "$(_i A6a)" "A6a|unusable|"
 assert_contains "[A6] ...judged against the requirement it names" "$(_i A6a)" "ACCEPTED IF: --from-stage starts the run at that stage"
 _lacks "[A6] ...and not asked again" "$(_i A6a)" "has no ACCEPTED IF"
-assert_contains "[A6] an UNASKED with no ACCEPTED IF cannot be used" "$(_i A6d)" "A6d|unusable|"
-assert_contains "[A6] ...the re-ask says so" "$(_i A6d)" "UNASKED it drops the rule has no ACCEPTED IF"
+# ADR-075 §3 (amended 2026-11-27): an UNASKED part's one outcome is the change
+# without it, so its ACCEPTED IF is the engine's, as a limit's line is.
+_lacks "[A6] an UNASKED with no ACCEPTED IF is used" "$(_i A6d)" "A6d|unusable|"
+assert_contains "[A6] ...taken out: the change without it" "$(_i A6d)" "ACCEPTED IF: the change without it"
+_lacks "[A6] ...and not asked again" "$(_i A6d)" "has no ACCEPTED IF"
 assert_contains "[A6] an unmet finding carries the check's ACCEPTED IF" "$(_i A6b)" "ACCEPTED IF: a run given --from-stage starts at that stage"
 _lacks "[A6] ...and not the engine's advice" "$(_i A6b)" "a change that meets this requirement in full"
 assert_contains "[A6] an unsure finding carries it" "$(_i A6c)" "ACCEPTED IF: a test that runs --from-stage and sees the first stage skipped"
 _lacks "[A6] ...and not the engine's advice" "$(_i A6c)" "a test that fails when this requirement is not met, or the code"
-assert_contains "[A6] an unasked finding carries it" "$(_i A6c)" "ACCEPTED IF: the change without dropping the rule that --from-stage needs --resume"
-_lacks "[A6] ...and not the engine's advice" "$(_i A6c)" "the change without this part, or a requirement that asks for it"
+assert_contains "[A6] an unasked finding carries its one outcome, in the engine's words" "$(_i A6c)" "ACCEPTED IF: the change without it"
+_lacks "[A6] ...not a condition the check wrote" "$(_i A6c)" "ACCEPTED IF: the change without dropping the rule"
 assert_contains "[A6] the check is told ACCEPTED IF names the requirement" "$(_i A6b)" "$JUDGED: the requirement"
 
 # ── A7: build's step check ───────────────────────────────────────────────────
