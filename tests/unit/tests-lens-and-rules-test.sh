@@ -197,6 +197,16 @@ assert_eq "[R5] (fixture) the stages are given no rules from a linked rules.md" 
 assert_contains "[R5] a linked rules.md: the posted comment says it was not read" "$(_r5 "$RR")" \
     "This repository's \`.zbuild/rules.md\` is a link, which zBuild does not follow: every stage was given zBuild's default rules."
 rm -f "$RR/.zbuild/rules.md"; printf -- '- a rule\n' > "$RR/.zbuild/rules.md"
+# The same for a .zbuild that is a link: with a rules.md there, it is not read
+# (the file must be .zbuild/rules.md itself); with none, it has no rules.
+RR2="$TEST_TEMP_DIR/r5-linked"; mkdir -p "$RR2" "$TEST_TEMP_DIR/shared-zb"; git -C "$RR2" init -q
+printf -- '- a shared rule\n' > "$TEST_TEMP_DIR/shared-zb/rules.md"; ln -s "$TEST_TEMP_DIR/shared-zb" "$RR2/.zbuild"
+assert_eq "[R5] (fixture) the stages are given no rules from a linked .zbuild" "" "$(source "$REPO_ROOT/scripts/lib/prompt-overrides.sh"; load_repo_rules "$RR2")"
+assert_contains "[R5] a linked .zbuild with a rules.md: the comment says it was not read" "$(_r5 "$RR2")" \
+    "This repository's \`.zbuild/rules.md\` is a link, which zBuild does not follow: every stage was given zBuild's default rules."
+rm -f "$TEST_TEMP_DIR/shared-zb/rules.md"
+assert_contains "[R5] a linked .zbuild with none: the comment says it has no rules" "$(_r5 "$RR2")" \
+    "This repository has no rules in \`.zbuild/rules.md\`: every stage was given zBuild's default rules."
 
 print_test_results
 exit $((FAIL > 0))

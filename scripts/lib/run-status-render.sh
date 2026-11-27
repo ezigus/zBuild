@@ -378,10 +378,10 @@ rsc_render_header() {
     # every stage was given zBuild's defaults. Read by the shell, no process.
     local _rsc_rr="${ZBUILD_RSC_REPO_ROOT:-${ZBUILD_REPO_ROOT:-}}"
     if [[ -n "$_rsc_rr" && -d "$_rsc_rr" ]]; then
-        if [[ -L "$_rsc_rr/.zbuild" || -L "$_rsc_rr/.zbuild/rules.md" ]]; then
-            printf '%s\n' "This repository's \`.zbuild/rules.md\` is a link, which zBuild does not follow: every stage was given zBuild's default rules."
-        elif [[ ! -s "$_rsc_rr/.zbuild/rules.md" ]]; then
+        if [[ ! -s "$_rsc_rr/.zbuild/rules.md" ]]; then
             printf '%s\n' "This repository has no rules in \`.zbuild/rules.md\`: every stage was given zBuild's default rules."
+        elif [[ -L "$_rsc_rr/.zbuild" || -L "$_rsc_rr/.zbuild/rules.md" ]]; then
+            printf '%s\n' "This repository's \`.zbuild/rules.md\` is a link, which zBuild does not follow: every stage was given zBuild's default rules."
         fi
     fi
     case "$status" in

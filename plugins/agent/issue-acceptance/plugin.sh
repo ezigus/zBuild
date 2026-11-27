@@ -117,8 +117,7 @@ accepted if: <the requirement, in its own words>
 quote: <quote>
 
 ACCEPTED IF names the line you judge against: the requirement or the limit, in
-its own words, so the finding says what would be accepted. An UNASKED line with
-no ACCEPTED IF cannot be used.
+its own words, so the finding says what would be accepted.
 
 When none are listed under ISSUE REQUIREMENTS, write one of these lines for
 each requirement the ISSUE states, naming it in a few words where the id would

@@ -86,6 +86,10 @@ assert_contains "[U1] it asks for each part of the change no requirement asks fo
     "$_p" "each part of the DIFF that no requirement asks for"
 assert_contains_lines "[U1] it says how to answer it: no condition to write, the part is taken out" "$_p" $'UNASKED: <what the change does>\nwhy: <why no requirement asks for it>\nquote: <file> | <one line of the code that does it>'
 _lacks "[U1] ...the form asks no accepted if" "$_p" "accepted if: <the change without it"
+# No sentence anywhere in the prompt asks an UNASKED for an ACCEPTED IF (audit on #2634).
+_u1s="$(tr '.' '\n' <<< "$_p" | grep -iF unasked | grep -iF 'accepted if' || true)"
+if [[ -n "$_u1s" ]]; then assert_fail "[U1] ...no sentence asks an UNASKED for an ACCEPTED IF" "$_u1s"
+else assert_pass "[U1] ...no sentence asks an UNASKED for an ACCEPTED IF"; fi
 assert_contains "[U1] it says each part it names is taken out of the change" "$_p" "Each part you name here is taken out of the change."
 assert_contains "[U1] ...and that words of the issue that could ask for it make it a question, not this" "$_p" \
     "When words of the ISSUE could be read as asking for it, it is not one of these: write an UNCLEAR line that quotes them."
