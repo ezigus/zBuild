@@ -8,5 +8,5 @@ Where these problems come from: the test files the change adds or changes, set b
 
 Severity, by example:
 - high: a test that passes whatever the code does, for a requirement the issue names;
-- medium: a test that fakes the project's own code, waits on a clock, proves another path than it claims, or would not fail on the code from before the change;
+- medium: a test that fakes the project's own code, reaches a real service, waits on a clock, proves another path than it claims, or would not fail on the code from before the change;
 - low: an example input no caller passes, where a realistic one would test the same thing.

@@ -52,6 +52,7 @@ _t="$(_flat "$(cat "$LENSES/tests.md" 2>/dev/null)")"
 assert_contains "[L2] an outside service is faked only at our wrapper around it, never our own code" "$_t" \
     "a test that replaces the project's own code with a fake, rather than faking an outside service at the project's own wrapper around it"
 assert_contains "[L2] ...nor reaches a real service instead of a stand-in" "$_t" "a test that reaches a real service (the network, GitHub, a model) instead of a stand-in"
+assert_contains "[L2] ...and reaching one is graded, as a fake of our own code is" "$_t" "medium: a test that fakes the project's own code, reaches a real service,"
 assert_contains "[L2] ...nothing waits on a clock" "$_t" "a test that waits on a clock"
 assert_contains "[L2] ...each test proves the path it claims" "$_t" "a test that does not prove the path it claims"
 assert_contains "[L2] ...it fails on the old code for the right reason" "$_t" "a test that would not fail on the code from before the change, or would fail there for another reason"
