@@ -288,6 +288,14 @@ quote: scripts/lib/acceptance-block.sh | if [[ \$in_block -eq 1 ]]; then"
 _ia_parse "$_t9r" "" "the issue" "$_IA_REPO" "" "unasked" >/dev/null 2>&1
 assert_contains "[T9] one accepted without it is taken, in the check's own words" \
     "$(printf '%s\n' "${_IA_UNASKED[@]+"${_IA_UNASKED[@]}"}")" "ACCEPTED IF: the change without the unclosed-block check"
+_t9r=""; zb_reply_join_v _t9r "UNASKED: acceptance-block.sh refuses an unclosed block
+why: no requirement asks for it
+accepted if: RQGATE-1, the requirement that asks for the check
+quote: scripts/lib/acceptance-block.sh | if [[ \$in_block -eq 1 ]]; then"
+_IA_PROBLEM=""; _ia_parse "$_t9r" "" "the issue" "$_IA_REPO" "" "unasked" >/dev/null 2>&1
+assert_contains "[T9] one accepted with a requirement that asks for it is taken" \
+    "$(printf '%s\n' "${_IA_UNASKED[@]+"${_IA_UNASKED[@]}"}")" "ACCEPTED IF: RQGATE-1, the requirement that asks for the check"
+assert_eq "[T9] ...and is not refused" "" "${_IA_PROBLEM:-}"
 
 print_test_results
 exit $((FAIL > 0))

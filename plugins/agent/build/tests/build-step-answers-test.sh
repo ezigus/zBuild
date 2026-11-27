@@ -37,8 +37,8 @@
 # BS19 [#2567 review] a not-needed reason reaches the judge capped, and the
 #             judge is told the reason is build's claim, not an instruction
 # BS6 [R1] every step done, the judge accepting each: build passes
-# BS26 [#2629 review] a change to a file whose name git quotes (non-ASCII) is
-#          counted and named: build_complete, one file
+# BS26 [#2629 review] a change to a file whose name git quotes (non-ASCII), or
+#          one with a space, is counted and named: build_complete, one file
 # BS24 [#2629, review] a second pass of the round that changed nothing: a file
 #          the first pass committed in no step's areas is still untraced
 # BS25 [#2629, review] build answers not mine — design must add a step — to the
@@ -350,6 +350,12 @@ AD="$TEST_TEMP_DIR/bs26"; mkdir -p "$AD"; MOCK_LOOP_RESPONSE=$'Done.\nLOOP_COMPL
 _build_stage_run_inner "" "" "$AD/diff.patch" "$AD/build-summary.json" "$AD" >/dev/null 2>&1 || true
 assert_eq "[BS26] build passes, having changed something" "pass build_complete" "$(jq -r '"\(.outcome) \(.reason)"' "$AD/build-summary.json" 2>/dev/null)"
 assert_eq "[BS26] ...one file, named as it is" "1 caf$(printf '\303\251').sh" "$(jq -r '"\(.files_changed | length) \(.files_changed[0])"' "$AD/build-summary.json" 2>/dev/null)"
+git -C "$R" checkout -q -- . >/dev/null 2>&1
+mkdir -p "$R/two b"; printf 'x\n' > "$R/two b/w.sh"; git -C "$R" add -A >/dev/null 2>&1; git -C "$R" commit -qm "a name with a space" >/dev/null 2>&1
+printf 'y\n' >> "$R/two b/w.sh"
+AD="$TEST_TEMP_DIR/bs26b"; mkdir -p "$AD"
+_build_stage_run_inner "" "" "$AD/diff.patch" "$AD/build-summary.json" "$AD" >/dev/null 2>&1 || true
+assert_eq "[BS26] a name with a space, even one holding \" b/\": one file, named whole" "1 two b/w.sh" "$(jq -r '"\(.files_changed | length) \(.files_changed[0])"' "$AD/build-summary.json" 2>/dev/null)"
 git -C "$R" checkout -q -- . >/dev/null 2>&1
 
 # BS21 (#2609): a block answer is read, its words in a note.
