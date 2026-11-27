@@ -252,8 +252,10 @@ printf '[{"id":99001,"created_at":"2026-01-01T00:00:00Z","body":"concurrent clai
 # When
 set +e; reply="$(claim_coordinator_claim 8001 2>/dev/null)"; set -e
 # Then: note is posted synchronously before the read-back
-_post_line="$(/usr/bin/grep -n "^POST_NOTE$" "$GHS/call-sequence" | /usr/bin/head -1 | cut -d: -f1)"
-_get_line="$(/usr/bin/grep -n "^GET_NOTES$" "$GHS/call-sequence" | /usr/bin/head -1 | cut -d: -f1)"
+_all_post="$(/usr/bin/grep -n "^POST_NOTE$" "$GHS/call-sequence" || true)"
+_post_line="${_all_post%$'\n'*}"; _post_line="${_post_line%%:*}"
+_all_get="$(/usr/bin/grep -n "^GET_NOTES$" "$GHS/call-sequence" || true)"
+_get_line="${_all_get%$'\n'*}"; _get_line="${_get_line%%:*}"
 assert_eq "[DSRACE-1] a POST_NOTE call was made (synchronous holder record)" "1" \
     "$( [[ -n "$_post_line" ]] && echo 1 || echo 0 )" # [DSRACE-1]
 assert_eq "[DSRACE-1] a GET_NOTES call was made (read-back of concurrent notes)" "1" \
@@ -265,21 +267,27 @@ assert_contains "[DSRACE-1] the POST body includes the concurrent-claim prefix" 
 
 # ─── DSRACE-7: issue is re-read AFTER the note is posted, BEFORE arbitration ─
 print_test_section "gh race: issue re-read after note post, before arbitration [DSRACE-7]"
-# Given: the concurrent claim note was posted synchronously in the When above
-#        (claim_coordinator_claim 8001); the same call-sequence is reused here
-# When: the claim read the GitHub issue's current state — recorded as ISSUE_VIEW
-#       in the call-sequence during the same invocation as the note post above
+# Given: the zbuild:claimed label was added and the concurrent claim note was posted synchronously
+_race_gh_reset
+printf '{"id":99701,"created_at":"2026-01-01T00:00:00Z","body":"","user":{"login":"github-actions[bot]"}}\n' \
+    > "$GHS/post-reply.json"
+printf '[{"id":99701,"created_at":"2026-01-01T00:00:00Z","body":"concurrent claim by `%s`","user":{"login":"github-actions[bot]"},"author_association":"OWNER"}]\n' \
+    "$_RACE_HOLDER" > "$GHS/notes-pages/page-1.json"
+# When: the claim reads the GitHub issue's current state
+set +e; _r7="$(claim_coordinator_claim 8007 2>/dev/null)"; set -e
 # Then: fresh issue data is obtained from GitHub after the synchronous holder record was written
-_post_line="$(/usr/bin/grep -n "^POST_NOTE$" "$GHS/call-sequence" | /usr/bin/head -1 | cut -d: -f1)"
-# Look for the LAST ISSUE_VIEW (the re-read that follows the POST, not the initial label check)
-_view_line="$(/usr/bin/grep -n "^ISSUE_VIEW$" "$GHS/call-sequence" | /usr/bin/tail -1 | cut -d: -f1)"
-_get_line="$(/usr/bin/grep -n "^GET_NOTES$" "$GHS/call-sequence" | /usr/bin/head -1 | cut -d: -f1)"
-assert_eq "[DSRACE-7] an ISSUE_VIEW (re-read) call was made" "1" \
-    "$( [[ -n "$_view_line" ]] && echo 1 || echo 0 )" # [DSRACE-7]
+_all_post7="$(/usr/bin/grep -n "^POST_NOTE$" "$GHS/call-sequence" || true)"
+_post7="${_all_post7%$'\n'*}"; _post7="${_post7%%:*}"
+# Look for the LAST ISSUE_VIEW (the re-read that follows POST_NOTE, not the initial label check)
+_view7="$(/usr/bin/grep -n "^ISSUE_VIEW$" "$GHS/call-sequence" | /usr/bin/tail -1 | cut -d: -f1)"
+_all_get7="$(/usr/bin/grep -n "^GET_NOTES$" "$GHS/call-sequence" || true)"
+_get7="${_all_get7%$'\n'*}"; _get7="${_get7%%:*}"
+assert_eq "[DSRACE-7] POST_NOTE was recorded (synchronous holder record written)" "1" \
+    "$( [[ -n "$_post7" ]] && echo 1 || echo 0 )" # [DSRACE-7]
 assert_eq "[DSRACE-7] the ISSUE_VIEW comes after POST_NOTE" "1" \
-    "$( [[ -n "$_post_line" && -n "$_view_line" && "$_view_line" -gt "$_post_line" ]] && echo 1 || echo 0 )" # [DSRACE-7]
+    "$( [[ -n "$_post7" && -n "$_view7" && "$_view7" -gt "$_post7" ]] && echo 1 || echo 0 )" # [DSRACE-7]
 assert_eq "[DSRACE-7] the ISSUE_VIEW comes before GET_NOTES (re-read before arbitration)" "1" \
-    "$( [[ -n "$_view_line" && -n "$_get_line" && "$_view_line" -lt "$_get_line" ]] && echo 1 || echo 0 )" # [DSRACE-7]
+    "$( [[ -n "$_view7" && -n "$_get7" && "$_view7" -lt "$_get7" ]] && echo 1 || echo 0 )" # [DSRACE-7]
 
 # ─── DSRACE-1 (And): all epoch notes across pages are considered ──────────────
 # Given: two pages of notes — the earlier note is on page 2 (a later-arriving run
@@ -296,6 +304,30 @@ set +e; _r1b="$(claim_coordinator_claim 8001b 2>/dev/null)"; set -e
 # Then: all pages were read — the earlier note on page 2 is identified as winner
 assert_eq "[DSRACE-1] all concurrent claim notes from the current label epoch are returned (loser when earlier note is on page 2)" "false" \
     "$(jq -r '.acquired' <<< "$_r1b" 2>/dev/null || echo unparsed)" # [DSRACE-1]
+
+# ─── DSRACE-1 (And): epoch boundary — note outside detection window excluded ──
+# Given: a stale concurrent claim note from a prior label epoch (created_at = T-60s,
+#        well outside the 20-second window) is present alongside this run's current
+#        note. ZBUILD_STATUS_COMMENT_GH_TIMEOUT=5 → window = 4*5 = 20 seconds.
+#        This run's post-reply.json has created_at "2026-01-01T00:01:00Z" (T).
+#        The stale note's created_at is "2026-01-01T00:00:00Z" (T-60s, OUTSIDE window).
+#        If the epoch filter is broken (since=0), the stale note is included and wins
+#        by id (88000 < 99100), making this run a loser. With a correct filter the
+#        stale note is excluded and this run is the sole current claimant.
+_race_gh_reset
+printf '{"id":99100,"created_at":"2026-01-01T00:01:00Z","body":"","user":{"login":"github-actions[bot]"}}\n' \
+    > "$GHS/post-reply.json"
+printf '[{"id":88000,"created_at":"2026-01-01T00:00:00Z","body":"concurrent claim by `old-stale-run`","user":{"login":"github-actions[bot]"},"author_association":"OWNER"},{"id":99100,"created_at":"2026-01-01T00:01:00Z","body":"concurrent claim by `%s`","user":{"login":"github-actions[bot]"},"author_association":"OWNER"}]\n' \
+    "$_RACE_HOLDER" > "$GHS/notes-pages/page-1.json"
+# When
+set +e; _r1e="$(claim_coordinator_claim 8001e 2>/dev/null)"; set -e
+# Then: stale note outside the detection window is excluded; this run wins
+_all_get_e="$(/usr/bin/grep -n "^GET_NOTES$" "$GHS/call-sequence" || true)"
+_get_e="${_all_get_e%$'\n'*}"; _get_e="${_get_e%%:*}"
+assert_eq "[DSRACE-1] GET_NOTES was called (epoch-boundary test)" "1" \
+    "$( [[ -n "$_get_e" ]] && echo 1 || echo 0 )" # [DSRACE-1]
+assert_eq "[DSRACE-1] note outside detection window excluded: sole current claimant wins" "true" \
+    "$(jq -r '.acquired' <<< "$_r1e" 2>/dev/null || echo unparsed)" # [DSRACE-1]
 
 # ─── DSRACE-2: loser returns race_lost: true; winner returns acquired: true ──
 print_test_section "gh race: winner gets acquired:true, loser gets race_lost:true [DSRACE-2]"

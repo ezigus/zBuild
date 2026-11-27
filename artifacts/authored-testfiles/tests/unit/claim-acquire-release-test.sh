@@ -230,6 +230,8 @@ assert_contains "[DSRACE-5] stderr names the concurrent winner" \
     "$(cat "$TEST_TEMP_DIR/race5.err")" "https://github.com/o/r/actions/runs/42" # [DSRACE-5]
 assert_contains "[DSRACE-5] stderr says 'concurrent claim'" \
     "$(cat "$TEST_TEMP_DIR/race5.err")" "concurrent claim" # [DSRACE-5]
+assert_contains "[DSRACE-5] stderr names the winner as the first claimant" \
+    "$(cat "$TEST_TEMP_DIR/race5.err")" "first" # [DSRACE-5]
 
 print_test_section "race_lost: true — _ZBUILD_CLAIM_ACQUIRED not set, release skips label removal [DSRACE-4]"
 # Given: coordinator returns race_lost:true; takeover hook is registered and would
