@@ -6,6 +6,8 @@
 # before n into a space — so a hand-written one fails here:
 #   a \u00XX escape built by printf, a quote escaped for JSON or read back by
 #   replacement (${s//\"/\\\"}, ${s//\\\"/\"}), the string-body regex.
+# A jq `@tsv` read fails too (#2640): its escapes are never read back, and an
+# empty field shifts the ones after it; read NUL-separated instead.
 # Scans core/, scripts/ and plugins/ (not a plugin's tests/, not tests/, not
 # legacy-DoNotUse/). A comment is not code. A line that must stay — a quote
 # escaped for something that is not JSON — is marked
@@ -29,7 +31,8 @@ while IFS= read -r -d '' f; do files+=("${f#./}"); done < <(
 (( ${#files[@]} > 0 )) || exit 0
 
 hits="$( { /usr/bin/grep -HnF -e '//\"/\\\"' -e '//\\\"/\"' -e '(([^"\\]|\\.)*)' "${files[@]}" 2>/dev/null   # json-text-ok: the patterns this lint looks for
-           /usr/bin/grep -HnE '\\+u%0?4x' "${files[@]}" 2>/dev/null; } | sort -u || true)"
+           /usr/bin/grep -HnE '\\+u%0?4x' "${files[@]}" 2>/dev/null
+           /usr/bin/grep -HnE '\|[[:space:]]*@tsv' "${files[@]}" 2>/dev/null; } | sort -u || true)"
 bad=0
 while IFS= read -r h; do
     [[ -n "$h" ]] || continue
@@ -39,6 +42,9 @@ while IFS= read -r h; do
     if [[ "$c" =~ \#[[:space:]]*json-text-ok:(.*)$ ]]; then
         [[ "${BASH_REMATCH[1]}" =~ [^[:space:]] ]] && continue
         printf '%s:%s: a json-text-ok mark needs its reason\n' "$f" "$l"; bad=1; continue
+    fi
+    if [[ "$c" == *@tsv* ]]; then
+        printf '%s:%s: a tab-separated jq read (@tsv): read it NUL-separated — jq -j with a NUL after each field, then IFS= read -r -d '"''"' each: %s\n' "$f" "$l" "$t"; bad=1; continue
     fi
     printf '%s:%s: a JSON string written or read by hand: %s\n' "$f" "$l" "$t"; bad=1
 done <<< "$hits"

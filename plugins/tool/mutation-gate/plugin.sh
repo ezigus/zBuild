@@ -66,13 +66,14 @@ mutation_gate_run() {
     # Read status, score, floor in one jq pass. Absent file / block → all empty.
     # Try v2 path (.data.mutation) first; fall back to v1 top-level (.mutation)
     # for fixtures / older result files that predate the data block.
+    # #2640: NUL-separated, so an empty field stays empty and the next one stays
+    # in its place (tab-separated, `measured<TAB><TAB>60` read the floor as the score).
     local status="" score="" floor=""
     if [[ -f "$results_json" ]]; then
-        local _parsed
-        _parsed="$(jq -r '(.data.mutation // .mutation) as $m |
-            [($m.status // ""), ($m.score // ""), ($m.floor // "")] | @tsv' \
-            "$results_json" 2>/dev/null || echo)"
-        IFS=$'\t' read -r status score floor <<< "$_parsed"
+        { IFS= read -r -d '' status && IFS= read -r -d '' score && IFS= read -r -d '' floor; } \
+            < <(jq -j '(.data.mutation // .mutation) as $m
+                       | "\($m.status // "")\u0000\($m.score // "")\u0000\($m.floor // "")\u0000"' \
+                   "$results_json" 2>/dev/null) || true
     fi
 
     # Floor preference: recorded integer floor wins; otherwise the env default.
