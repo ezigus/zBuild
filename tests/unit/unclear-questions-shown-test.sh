@@ -166,6 +166,7 @@ jq -n --arg d "$S/artifacts/design.md" '{inputs:{design:$d}}' > "$TEST_TEMP_DIR/
 _pq=""
 declare -F _pr_open_questions >/dev/null 2>&1 && _pq="$(ZBUILD_STAGE_INPUTS="$TEST_TEMP_DIR/inputs.json" _pr_open_questions)"
 assert_contains "[Q4] pr-open finds the design's questions" "$(_shown "$_pq")" "- R-4: Is the flag"
+assert_contains "[Q4] ...escaped for GitHub, as pr-open fills the description" "$_pq" "R\\-4"
 
 print_test_section "Q8: every stage's questions"
 # shellcheck source=../../scripts/lib/stage-result.sh

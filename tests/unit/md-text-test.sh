@@ -85,6 +85,8 @@ _got=""; zb_ansi_strip_v _got "$_big"$'\e[1m!\n\n'
 assert_eq "[M4] a string past the shell's limit: every kind of escape out" "$(( ${#_big} / 19 * 2 + 3 ))" "${#_got}"
 assert_eq "[M4] ...nothing but the text left" "" "${_got//[xy!$'\n']/}"
 assert_eq "[M4] ...its own trailing newlines kept" $'!\n\n' "${_got: -3}"
+_got=""; zb_ansi_strip_v _got $'a\e[200~b\e[201~c'
+assert_eq "[M4] a short string's escapes that end in ~ (pasted-text markers) are out" "abc" "$_got"
 _got=""; zb_ansi_strip_v _got $'\e[\e[1m31m'
 assert_eq "[M4] an escape inside an unfinished one: read as sed reads it" "31m" "$_got"
 

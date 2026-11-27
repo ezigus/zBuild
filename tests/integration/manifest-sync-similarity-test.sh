@@ -139,13 +139,38 @@ fi
 rm -f "$_ms5_ref"
 
 # ─── MS6 (audit on #2638): a title in a table cell keeps the table a table ──
-# Its | escaped (scripts/lib/md-text.sh zb_md_cell_v). A backslash or a newline
-# in a title never reaches the cell: the script reads titles through jq's @tsv,
-# which writes them as \\ and \n and is not read back (a follow-up).
+# Its | escaped, its backslash once, a newline as a space (zb_md_cell_v): the
+# titles are read from jq NUL-separated, as they are, never through @tsv.
 export MOCK_ISSUE_LIST_JSON="$TEST_TEMP_DIR/ms6-issues.json"
-jq -n '[{number:300, title:"a|b c", state:"OPEN", closedAt:null, labels:[]}]' > "$MOCK_ISSUE_LIST_JSON"
+jq -n '[{number:300, title:"a|b c", state:"OPEN", closedAt:null, labels:[]},
+        {number:301, title:"C:\\dir", state:"OPEN", closedAt:null, labels:[]},
+        {number:302, title:"two\nlines", state:"OPEN", closedAt:null, labels:[]}]' > "$MOCK_ISSUE_LIST_JSON"
 rm -f "$PR_BODY_PATH"
 bash "$REPO_ROOT/scripts/manifest-sync.sh" --apply --manifest "$TEST_MANIFEST" >/dev/null 2>&1 || true
-assert_contains "MS6: a title holding | stays one cell" "$(cat "$PR_BODY_PATH" 2>/dev/null)" '| #300 | OPEN | a\|b c |'
+_ms6="$(cat "$PR_BODY_PATH" 2>/dev/null)"
+assert_contains "MS6: a title holding | stays one cell" "$_ms6" '| #300 | OPEN | a\|b c |'
+assert_contains "MS6: a backslash is escaped once, so GitHub shows one" "$_ms6" '| #301 | OPEN | C:\\dir |'
+assert_contains "MS6: a newline is a space" "$_ms6" '| #302 | OPEN | two lines |'
+
+# ─── MS7 (audit on #2638): a title is matched as it is ────────────────────
+# A manifest entry and the live issue with the same title holding a backslash
+# are one issue, not an orphan.
+MS7_MANIFEST="$TEST_TEMP_DIR/ms7-manifest.yaml"
+cat > "$MS7_MANIFEST" <<'EOF'
+labels: []
+milestones: []
+issues:
+  - id: windows-path
+    title: 'C:\dir is read'
+    milestone: ""
+    labels: []
+    state: open
+    body: ""
+EOF
+jq -n '[{number:310, title:"C:\\dir is read", state:"OPEN", closedAt:null, labels:[]}]' > "$MOCK_ISSUE_LIST_JSON"
+_ms7_rc=0; _ms7="$(bash "$REPO_ROOT/scripts/manifest-sync.sh" --report --manifest "$MS7_MANIFEST" 2>&1)" || _ms7_rc=$?
+assert_eq "MS7: (fixture) the report runs" "0" "$_ms7_rc"
+if [[ "$_ms7" == *"#310"* ]]; then assert_fail "MS7: a title holding a backslash matches its manifest entry, so it is no orphan" "$_ms7"
+else assert_pass "MS7: a title holding a backslash matches its manifest entry, so it is no orphan"; fi
 
 print_test_results
