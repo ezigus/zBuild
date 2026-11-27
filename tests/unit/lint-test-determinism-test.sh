@@ -162,7 +162,7 @@ _lint_own() {
     local root; root="$(mktemp -d "$TEST_TEMP_DIR/own.XXXXXX")"
     mkdir -p "$root/core/x" "$root/scripts/lib" "$root/plugins/agent/p/lib" "$root/plugins/agent/p/tests" "$root/tests/unit" "$root/config"
     printf 'engine_step() {\n    :\n}\n' > "$root/core/x/x.sh"
-    printf 'route_to_model() { :; }\nhelper_join() { :; }\n_route_call_claude() { :; }\n_check() { :; }\n' > "$root/scripts/lib/y.sh"
+    printf 'route_to_model() { :; }\nhelper_join() { :; }\n_route_call_claude() { :; }\n_check() { :; }\nmy.step() { :; }\n' > "$root/scripts/lib/y.sh"
     printf 'p_run() { :; }\n' > "$root/plugins/agent/p/lib/p.sh"
     printf 'test_only_helper() { :; }\n' > "$root/plugins/agent/p/tests/helpers.sh"
     printf '%s\n' '# Our innermost wrappers around outside services: a test may fake these.' _route_call_claude > "$root/config/test-fake-wrappers.txt"
@@ -185,6 +185,14 @@ assert_eq "[T12] a guard joined by && replaces it" "rc=1" "$(_t="$(_lint_own 'de
 assert_eq "[T12] a guard on another command is no guard" "rc=1" "$(_t="$(_lint_own 'declare -F engine_step >/dev/null || true; engine_step() { :; }')"; printf '%s' "${_t%%$'\n'*}")"
 assert_eq "[T12] an _orig name outside the body is no spy" "rc=1" "$(_t="$(_lint_own 'engine_step_orig=1; engine_step() { :; }')"; printf '%s' "${_t%%$'\n'*}")"
 assert_eq "[T12] a wrapper that is ours but not on the list (the model call above redaction)" "rc=1" "$(_t="$(_lint_own 'route_to_model() { :; }')"; printf '%s' "${_t%%$'\n'*}")"
+_no_own() { local _t; _t="$(_lint_own "$2")"; assert_eq "[T12] $1" "rc=1" "${_t%%$'\n'*}"; }
+# Follow-ups on #2632: a guard's redirections, a spy's call, a name read as text.
+_no_own "a guard joined by && after its redirections" 'declare -F engine_step >/dev/null 2>&1 && engine_step() { :; }'
+_no_own "a guard with redirections on another command" 'declare -F engine_step >/dev/null 2>&1 || true; engine_step() { :; }'
+_no_own "a body that only holds orig/real inside a longer word is no spy" 'engine_step() { echo realistic; _original_step; }'
+_no_own "a body that reads a variable named _real_ is no spy" 'engine_step() { _t=$_real_tier; }'
+_no_own "...nor one that reads \${_orig_...}" 'engine_step() { _t=${_orig_tier:-x}; }'
+_no_own "a guard for another function whose name a . would match" 'declare -F myxstep >/dev/null || my.step() { :; }'
 
 print_test_section "T13: what a test may define"
 _ok_own() { local _t; _t="$(_lint_own "$2")"; assert_eq "[T13] $1" "rc=0" "${_t%%$'\n'*}"; }
@@ -197,6 +205,9 @@ _ok_own "a spy through a prefixed _orig_ copy" 'engine_step() { _N=1; _m12_orig_
 _ok_own "a spy through a short _real copy" 'engine_step() { printf x >> "$L"; _es_real "$@"; }'
 _ok_own "a test-local helper marked as one" '_check() { :; }   # determinism-ok: test-local helper'
 _ok_own "a define-if-missing guard" 'declare -F engine_step >/dev/null || engine_step() { :; }'
+_ok_own "a guard that silences declare's output and errors (the repo's form)" 'declare -F engine_step >/dev/null 2>&1 || engine_step() { :; }'
+_ok_own "...or both at once" 'declare -F engine_step &>/dev/null || engine_step() { :; }'
+_ok_own "a guard for a name with a ." 'declare -F my.step >/dev/null || my.step() { :; }'
 _ok_own "a function no production file defines" 'my_case() { :; }'
 _ok_own "a test helper a plugin's tests define" 'test_only_helper() { :; }'
 _ok_own "a definition in a heredoc (a fake plugin written to disk)" "cat > \"\$d/plugin.sh\" <<'PL'

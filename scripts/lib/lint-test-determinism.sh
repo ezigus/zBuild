@@ -91,13 +91,20 @@ function at(c, w) { return match(c, P w "([ \t;|&)]|$)") }
 function bad(f, l, why) { printf "%s|%s|%s\n", f, l, why }
 # #2630: not a fake — a define-if-missing guard, `declare -F <f> [redirs] ||`
 # right before the definition; or a spy, whose body (the rest of the line after
-# the definition) calls a copy of the original: a name with orig or real as a
-# part of it (<f>_orig, _orig_<f>, _real_<f>, _m12_orig_<f>, _yg_real). A spy
-# whose body is on the lines below stays in the baseline.
-function guarded(before, n) { return match(before, "declare[ \t]+-F[ \t]+" n "([ \t]+[^|&;]*)?[ \t]*[|][|][ \t]*$") }
-function spybody(after, n,   id) {
+# the definition) calls a copy of the original: a command named with orig or
+# real as a part of it (<f>_orig, _orig_<f>, _real_<f>, _m12_orig_<f>, _yg_real).
+# A spy whose body is on the lines below stays in the baseline.
+# A name is read as text: of the characters the name in a definition may hold
+# ([A-Za-z0-9_:.-]) only . means something in a pattern.
+function lit(n) { gsub(/[.]/, "[.]", n); return n }
+function guarded(before, n) {
+    gsub(/[0-9]*>&[0-9-]+/, "", before); gsub(/&>>?/, ">", before)
+    return match(before, "declare[ \t]+-F[ \t]+" lit(n) "([ \t]+[^|&;]*)?[ \t]*[|][|][ \t]*$")
+}
+function spybody(after, n,   id, p) {
     while (match(after, /[A-Za-z_][A-Za-z0-9_]*/)) {
-        id = substr(after, RSTART, RLENGTH); after = substr(after, RSTART + RLENGTH)
+        id = substr(after, RSTART, RLENGTH); p = substr(after, 1, RSTART - 1); after = substr(after, RSTART + RLENGTH)
+        if (p ~ /[$][{]$/ || p !~ /(^|[;&|({!]|[$][(]|(then|do|else|command|exec)[ \t])[ \t]*$/) continue
         if (id != n && id ~ /(^|_)(orig|real)(_|$)/) return 1
     }
     return 0
