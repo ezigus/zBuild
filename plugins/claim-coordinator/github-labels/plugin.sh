@@ -178,7 +178,7 @@ _ccgl_race_note_post_v() {
     _ccgl_gh_lib || return 1
     local sd="${ZBUILD_STATE_DIR:-${TMPDIR:-/tmp}}"
     out="$(mktemp "${TMPDIR:-/tmp}/ccgl-rnp.XXXXXX")" || return 1
-    if ! rsc_gh "$sd" "$out" api "repos/${slug}/issues/${issue}/comments" \
+    if ! rsc_gh "$sd" "$out" api --repo "$slug" "repos/${slug}/issues/${issue}/comments" \
             -f "body=${_CCGL_RACE_NOTE_PREFIX}${holder}\`" >/dev/null 2>&1; then
         rm -f "$out"; return 1
     fi
@@ -198,7 +198,7 @@ _ccgl_race_note_delete() {
     _ccgl_gh_lib || return 0
     local sd="${ZBUILD_STATE_DIR:-${TMPDIR:-/tmp}}"
     out="$(mktemp "${TMPDIR:-$sd}/ccgl-rnd.XXXXXX")" || return 0
-    rsc_gh "$sd" "$out" api -X DELETE "repos/${slug}/issues/comments/${id}" >/dev/null 2>&1 || true
+    rsc_gh "$sd" "$out" api -X DELETE --repo "$slug" "repos/${slug}/issues/comments/${id}" >/dev/null 2>&1 || true
     rm -f "$out"
     return 0
 }
@@ -214,7 +214,7 @@ _ccgl_race_note_update() {
     out="$(mktemp "${TMPDIR:-$sd}/ccgl-rnu.XXXXXX")" || return 1
     jq -n --arg b "$body" '{body: $b}' > "${out}.json" 2>/dev/null \
         || { rm -f "$out"; return 1; }
-    rsc_gh "$sd" "$out" api -X PATCH "repos/${slug}/issues/comments/${id}" \
+    rsc_gh "$sd" "$out" api -X PATCH --repo "$slug" "repos/${slug}/issues/comments/${id}" \
         --input "${out}.json" >/dev/null 2>&1 || rc=1
     rm -f "$out" "${out}.json"
     return "$rc"
@@ -230,7 +230,7 @@ _ccgl_race_note_first_v() {
     _ccgl_gh_lib || return 1
     local sd="${ZBUILD_STATE_DIR:-${TMPDIR:-/tmp}}"
     out="$(mktemp "${TMPDIR:-$sd}/ccgl-rnf.XXXXXX")" || return 1
-    if ! rsc_gh "$sd" "$out" api --paginate \
+    if ! rsc_gh "$sd" "$out" api --paginate --repo "$slug" \
             "repos/${slug}/issues/${issue}/comments" 2>/dev/null; then
         rm -f "$out"; return 1
     fi
