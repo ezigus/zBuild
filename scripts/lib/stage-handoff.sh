@@ -21,11 +21,13 @@ source "${BASH_SOURCE[0]%/*}/item-ids.sh"
 #     marked `handoff: true`, whose topic says which stage reads it, and the
 #     result ends the round (ends_round, ADR-068 §3), as an untestable SPEC does;
 #   done — nothing was changed for it: a finding back to the stage, in its own
-#     result.
+#     result. #2627 (ADR-068 §6): unless an earlier try of this run of the
+#     stage changed something ([earlier] 1) — what the stage did counts, in
+#     any try — when the done stands.
 # A stage with no handoff output hands nothing on. Fail-open: bookkeeping never
 # fails a stage.
 stage_handoff_unchanged() {
-    local plugin_dir="$1" stage="$2" state_file="$3"
+    local plugin_dir="$1" stage="$2" state_file="$3" earlier="${4:-0}"
     [[ -n "$stage" && "$state_file" == */* && -s "$plugin_dir/manifest.yaml" ]] || return 0
     declare -F _attempt_manifest_facts_v >/dev/null 2>&1 || return 0
     local sd="${state_file%/*}" ad facts k v xb="" hraw="" res="" body=""
@@ -66,7 +68,7 @@ stage_handoff_unchanged() {
         f=""; [[ "$lbl" == "$stage" ]] && f="$res"
         [[ "$key" == *" finding "* ]] || { n=0; [[ "$body" == *"\"id\":\"$key\""* ]] && f="$res"; }
         case "$kind" in
-            done) back=$((back + 1)) ;;
+            done) [[ "$earlier" == 1 ]] && continue; back=$((back + 1)) ;;
             wrong|"not mine") [[ -n "$hraw" && -n "$f" ]] || continue; on=$((on + 1)) ;;
             *) continue ;;
         esac

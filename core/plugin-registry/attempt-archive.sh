@@ -212,9 +212,11 @@ attempt_outputs_fingerprint_v() {
 # [before] is attempt_outputs_fingerprint taken before the run hook (#2186).
 # Leaves whether this attempt changed its work in _ATTEMPT_LAST_PROGRESS
 # (true|false; empty when there was nothing to compare): the engine's retry
-# reads it in the same shell (stage_retry_next, #2439).
+# reads it in the same shell (stage_retry_next, #2439). #2627: whether it
+# changed its work itself — its files, not only new findings about them — in
+# _ATTEMPT_LAST_WORK_CHANGED (true|false|empty), what a done answer counts.
 attempt_archive_outputs() {
-    _ATTEMPT_LAST_PROGRESS=""
+    _ATTEMPT_LAST_PROGRESS=""; _ATTEMPT_LAST_WORK_CHANGED=""
     local plugin_dir="${1:-}" state_file="${2:-}" stage="${3:-}" rc="${4:-}" before="${5:-}"
     [[ -n "$plugin_dir" && -n "$stage" ]] || return 0
     declare -F _registry_resolve_output_path >/dev/null 2>&1 || return 0
@@ -310,6 +312,7 @@ attempt_archive_outputs() {
             _outputs+=("$_name" "$_state")
         done <<< "$_after"
     fi
+    _ATTEMPT_LAST_WORK_CHANGED="$_progress"
     # #2460: a try that changed no file but whose result names a problem with
     # its own work its last try did not — build said done with its test still
     # red, a check found something new — left its next try something to act
