@@ -178,6 +178,10 @@ _ia_parse_unasked() {
     judge_quote_path_v qp "$quote" "$repo"; [[ -n "$qp" ]] && _IA_QUOTED+=("$qp")
     # #2523: a part in a test file is the tests' to fix, not the code's.
     local mark=""; [[ -n "$qp" ]] && zb_is_test_path "$qp" "$repo" && mark="[fix-test] "
+    # #2629 (ADR-075 §3): a part nothing asks for is accepted only without it,
+    # or with a requirement that asks for it — never on a condition about how
+    # it is done, whatever the reply said.
+    acc="the change without it, or a requirement that asks for it"
     _IA_UNASKED+=("$mark$part: ${why:-no requirement asks for it} — $quote — ACCEPTED IF: $acc")
 }
 

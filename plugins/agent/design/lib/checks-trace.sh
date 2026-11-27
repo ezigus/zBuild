@@ -25,7 +25,9 @@ _dck_specs_trace() {
     while IFS=$'\x1f' read -r spec covers; do
         [[ -n "$spec" ]] || continue
         if [[ -z "${covers// }" ]]; then violations+=("SPEC_COVERS_NOTHING $spec"); continue; fi
-        for c in $covers; do
+        # read -a splits without pathname expansion: an id is never a pattern.
+        local -a ids=(); read -ra ids <<< "$covers"
+        for c in ${ids[@]+"${ids[@]}"}; do
             [[ "$listed" == *" $c "* ]] || violations+=("SPEC_COVERS_UNKNOWN $spec $c")
         done
     done <<< "$2"

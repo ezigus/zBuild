@@ -65,28 +65,74 @@ print_test_section "T2: build's round traces to its steps and its answers"
 source "$REPO_ROOT/scripts/lib/stage-answers.sh"
 # shellcheck source=../../scripts/lib/test-paths.sh
 source "$REPO_ROOT/scripts/lib/test-paths.sh"
+# shellcheck source=../../plugins/agent/build/lib/steps-specs.sh
+source "$REPO_ROOT/plugins/agent/build/lib/steps-specs.sh"
 # shellcheck source=../../plugins/agent/build/lib/steps-trace.sh
 source "$REPO_ROOT/plugins/agent/build/lib/steps-trace.sh" 2>/dev/null
-_BUILD_STEP_DESC=("emit outcome and reason" "amend the ADR")
-_BUILD_STEP_AREAS=("plugins/tool/test/lib/acceptance-check.sh plugins/tool/test/lib/acceptance-reason.sh" "docs/adr/")
-_t2() {   # <files> — _BUILD_STEP_FINDINGS joined
-    _BUILD_STEP_FINDINGS=()
-    _build_trace_check "$1" "$REPO_ROOT" 2>/dev/null
+# The steps as design writes them (its own writer, not by hand).
+TR="$TEST_TEMP_DIR/t2-repo"; mkdir -p "$TR"
+_t2_steps() {   # <steps block lines> — loads them as build does
+    printf '# D\n\n```steps\n%s\n```\n' "$1" > "$TEST_TEMP_DIR/t2-design.md"
+    ( source "$REPO_ROOT/plugins/agent/design/plugin.sh" >/dev/null 2>&1
+      _design_write_steps "$TEST_TEMP_DIR/t2-design.md" "$TEST_TEMP_DIR/t2-steps.json" ) >/dev/null 2>&1
+    _build_steps_load "$(cat "$TEST_TEMP_DIR/t2-steps.json" 2>/dev/null)"
+}
+# The findings build is shown, as Previous work lists them, and its reply.
+SHOWN=$'- TEFND-3 (opened by test): tests/unit/design-checks-test.sh fails: ✗ [G1] the violation names it\n- BUFND-7 (opened by build): scripts/lib/old.sh traces to no design step and no finding you answered done — take it out'
+_t2() {   # <files> <reply> — the findings, one a line
+    _BUILD_STEP_FINDINGS=() _BUILD_STEP_WAITING=() _BUILD_ANSWERS=()
+    zb_answers_finish _BUILD_ANSWERS "$SHOWN" "$2"
+    _build_trace_check "$1" "$TR" 2>/dev/null
     printf '%s\n' "${_BUILD_STEP_FINDINGS[@]+"${_BUILD_STEP_FINDINGS[@]}"}"
 }
-_BUILD_ANSWERS=()
-_r="$(_t2 $'plugins/tool/test/lib/acceptance-check.sh\nscripts/lib/acceptance-block.sh\ndocs/adr/ADR-040.md')"
-assert_contains "[T2] a file in no step's areas is a finding naming it" "$_r" "scripts/lib/acceptance-block.sh traces to no design step"
+_t2_steps '- emit outcome and reason | areas: plugins/tool/test/lib/acceptance-check.sh | serves: DSEVNT-1
+- amend the ADR | areas: docs/adr/ | serves: DSADR-4'
+F=scripts/lib/acceptance-block.sh
+_r="$(_t2 $'plugins/tool/test/lib/acceptance-check.sh\nscripts/lib/acceptance-block.sh\ndocs/adr/ADR-040.md' "")"
+assert_contains "[T2] a file in no step's areas is a finding naming it" "$_r" "$F traces to no design step"
 assert_contains "[T2] ...saying take it out, or not mine to design" "$_r" "take it out, or, when it must stay, answer not mine: design"
 assert_eq "[T2] ...one finding: the files in a step's areas are none" "1" "$(grep -c 'traces to no' <<< "$_r")"
-_BUILD_ANSWERS=("TEFND-3: done — scripts/lib/acceptance-block.sh | [[ \$in_block -eq 1 ]] && return 1")
-assert_eq "[T2] a file a done answer to a finding names is none" "" "$(_t2 'scripts/lib/acceptance-block.sh')"
-_BUILD_ANSWERS=("TEFND-3: wrong — scripts/lib/acceptance-block.sh is fine")
-assert_contains "[T2] a wrong answer naming it does not count" "$(_t2 'scripts/lib/acceptance-block.sh')" "traces to no design step"
-_BUILD_ANSWERS=()
-assert_eq "[T2] a file in the test folders is none (build may not change them)" "" "$(_t2 'tests/unit/x-test.sh')"
+assert_eq "[T2] a done answer to a finding build was given, naming the file in its slot, traces it" "" \
+    "$(_t2 "$F" "ANSWER TEFND-3: done — $F | [[ \$in_block -eq 1 ]] && return 1 — an unclosed block is malformed")"
+assert_contains "[T2] ...not one to a finding build was never given" \
+    "$(_t2 "$F" "ANSWER TEFND-99: done — $F | x — y")" "$F traces to no design step"
+assert_contains "[T2] ...not one that names the file only in its words" \
+    "$(_t2 "$F" "ANSWER TEFND-3: done — fixed the parser in $F so the block reads")" "$F traces to no design step"
+assert_contains "[T2] ...not one whose slot names another file" \
+    "$(_t2 "$F" "ANSWER TEFND-3: done — scripts/lib/other.sh | x — y")" "$F traces to no design step"
+assert_contains "[T2] ...not one whose slot only contains the path" \
+    "$(_t2 "$F" "ANSWER TEFND-3: done — $F.bak | x — y")" "$F traces to no design step"
+assert_contains "[T2] ...not one to build's own untraced finding" \
+    "$(_t2 "scripts/lib/old.sh" "ANSWER BUFND-7: done — scripts/lib/old.sh | x — kept it")" "scripts/lib/old.sh traces to no design step"
+assert_contains "[T2] ...and a wrong answer does not count" \
+    "$(_t2 "$F" "ANSWER TEFND-3: wrong — $F | x — fine")" "$F traces to no design step"
+_t2 "scripts/lib/old.sh" "ANSWER BUFND-7: not mine — design must add a step whose areas hold scripts/lib/old.sh" > "$TEST_TEMP_DIR/t2w"
+_r="$(cat "$TEST_TEMP_DIR/t2w")"
+assert_eq "[T2] not mine to design on an untraced file: no finding blocks the try" "" "$_r"
+assert_contains "[T2] ...it waits for design, and the round ends" "${_BUILD_STEP_WAITING[*]:-}" "scripts/lib/old.sh"
+assert_eq "[T2] a file in the test folders is none (build may not change them)" "" "$(_t2 'tests/unit/x-test.sh' "")"
+_t2_steps '- a | areas: ./scripts/lib/ | serves: DSEVNT-1
+- b | areas: `config/x.json` | serves: DSEVNT-1'
+assert_eq "[T2] an area written ./dir/ holds the files under it" "" "$(_t2 "$F" "")"
+assert_eq "[T2] ...one in backticks holds its file" "" "$(_t2 "config/x.json" "")"
 _BUILD_STEP_DESC=(); _BUILD_STEP_AREAS=()
-assert_eq "[T2] a plan with no steps is not checked" "" "$(_t2 'scripts/lib/acceptance-block.sh')"
+assert_eq "[T2] a plan with no steps is not checked" "" "$(_t2 "$F" "")"
+
+# ── T2b ──────────────────────────────────────────────────────────────────────
+print_test_section "T2b: the files build's round changed"
+G="$TEST_TEMP_DIR/t2b"; mkdir -p "$G"
+( cd "$G" && git init -q -b main && git config user.email t@t && git config user.name t
+  mkdir -p lib && printf 'a\n' > lib/old.sh && printf 'b\n' > lib/gone.sh && printf 'c\n' > keep.sh
+  git add -A && git commit -qm base ) >/dev/null 2>&1
+_base="$(git -C "$G" rev-parse HEAD)"
+( cd "$G" && printf 'x\n' >> keep.sh && git commit -qam "Build earlier pass" -m "Zbuild-Stage: build"
+  git mv lib/old.sh lib/new.sh && git rm -q lib/gone.sh && printf 'n\n' > "lib/with space.sh" && git add -N "lib/with space.sh" ) >/dev/null 2>&1
+_fl=""; _build_trace_files_v _fl "$G" "$_base" 2>/dev/null
+assert_contains "[T2b] an earlier pass's commit is in the round" "$_fl" "keep.sh"
+assert_contains "[T2b] a moved file is its new path" "$_fl" "lib/new.sh"
+_lacks "[T2b] ...not its old one" "$_fl" "lib/old.sh"
+assert_contains "[T2b] a removed file is in it" "$_fl" "lib/gone.sh"
+assert_contains "[T2b] a name with a space is read whole" "$_fl" "lib/with space.sh"
 
 # ── T3 ───────────────────────────────────────────────────────────────────────
 print_test_section "T3: build's prompt"
@@ -112,12 +158,24 @@ _t4() {   # <name> <covers-for-WORK-1> <covers-for-WORK-2> [no-req]
         "DSWORK-1[code]: the gate fails on a missing file$2" "  When: it runs" "  Then: it fails" \
         "DSWORK-2[code]: the gate names the file$3" "  When: it runs" "  Then: it names it" \
         'WIRING: none' '```' > "$_a/design.md"
-    [[ "${4:-}" == no-req ]] || printf '%s\n' '{"schema_version":1,"source":"model","requirements":[' \
-        '{"id":"RQGATE-1","text":"fail on a missing file"},{"id":"LMSHAP-1","text":"Do not emit shape events","limit":true}]}' > "$_a/requirements.json"
+    [[ "${4:-}" == no-req ]] || cp "$T4_REQ" "$_a/requirements.json"
     _design_checks "$_a/design.md" "$_ROOT" "$_a/requirements.json"
     _VIOL="$(printf '%s\n' "${_DESIGN_VIOLATIONS[@]+"${_DESIGN_VIOLATIONS[@]}"}")"
     local _v; _FB="$(for _v in "${_DESIGN_VIOLATIONS[@]+"${_DESIGN_VIOLATIONS[@]}"}"; do _dck_plain "$_v"; printf '\n'; done)"
 }
+# The list intake's own writer makes, with only the model faked.
+T4_REQ="$TEST_TEMP_DIR/t4-requirements.json"
+( export ZBUILD_REPO_ROOT="$TEST_TEMP_DIR"
+  # shellcheck source=../../plugins/agent/intake/plugin.sh
+  source "$REPO_ROOT/plugins/agent/intake/plugin.sh" >/dev/null 2>&1
+  route_to_model() {
+      if [[ "$2" == *"Your job: check a list of requirements"* ]]; then printf 'MISSING: none\n'
+      else printf 'REQUIREMENT: RQGATE-1 Fail on a missing file.\nLIMIT: LMSHAP-1 Do not emit shape events.\n'; fi
+  }
+  _j=""; _intake_requirements_json_v _j '{"title":"Gate","body":"Fail on a missing file.\n\nDo not emit shape events."}' \
+      && printf '%s\n' "$_j" > "$T4_REQ" ) >/dev/null 2>&1
+assert_eq "[T4] (fixture) intake's writer listed the requirement and the limit" "RQGATE-1 LMSHAP-1" \
+    "$(jq -r '[.requirements[].id] | join(" ")' "$T4_REQ" 2>/dev/null)"
 _t4 none " covers: RQGATE-1" ""
 assert_contains "[T4] a SPEC that covers nothing is refused" "$_VIOL" "SPEC_COVERS_NOTHING DSWORK-2"
 assert_contains "[T4] ...in the rule's words" "$_FB" "DSWORK-2, which covers no requirement, traces to no requirement intake listed — take it out"
@@ -126,6 +184,16 @@ assert_contains "[T4] a SPEC covering an id intake did not list is refused" "$_V
 assert_contains "[T4] ...saying so" "$_FB" "DSWORK-2 covers RQNAME-1, which is not a requirement or limit intake listed"
 _t4 listed " covers: RQGATE-1" " covers: RQGATE-1"
 _lacks "[T4] SPECs covering a listed requirement are not refused" "$_VIOL" "SPEC_COVERS_"
+_t4 limit " covers: RQGATE-1" " covers: LMSHAP-1"
+_lacks "[T4] a SPEC covering a limit is not refused as untraced" "$_VIOL" "SPEC_COVERS_"
+assert_contains "[T4] ...it is refused as covering a limit (ADR-069, LIMIT_COVERED)" "$_VIOL" "LIMIT_COVERED DSWORK-2 LMSHAP-1"
+_t4 prefix " covers: RQGATE-1" " covers: GATE-1"
+assert_contains "[T4] an id without intake's prefix is not one intake listed" "$_VIOL" "SPEC_COVERS_UNKNOWN DSWORK-2 GATE-1"
+# A file whose name the pattern would match, where the check runs.
+: > "$TEST_TEMP_DIR/RQGATE-1x"; cd "$TEST_TEMP_DIR" || exit 1
+_t4 glob " covers: RQGATE-1" " covers: RQGATE-*"
+cd - >/dev/null || exit 1
+assert_contains "[T4] a covers id is read as written, never a file pattern" "$_VIOL" "SPEC_COVERS_UNKNOWN DSWORK-2 RQGATE-*"
 _t4 nolist "" "" no-req
 _lacks "[T4] with no requirements list nothing is asked" "$_VIOL" "SPEC_COVERS_"
 
@@ -156,7 +224,12 @@ print_test_section "T7: issue-acceptance's reverse question"
 source "$REPO_ROOT/plugins/agent/issue-acceptance/plugin.sh" >/dev/null 2>&1
 _ap="$(_flat "$(_ia_prompt "ISSUE-TEXT" "SPEC-TEXT" "DIFF-TEXT" "pass")")"
 assert_contains "[T7] the reverse question gives the rule" "$_ap" "Everything here must trace to a requirement of the issue."
-_lacks "[T7] ...a file a test needs is no longer asked for by that test's requirement" "$_ap" "a file that test needs, are asked for by that requirement"
+_rev="${_ap#*Then answer the reverse question}"; _rev="${_rev%%UNASKED: <what*}"
+# A sentence that says what a test needs is asked for — not the rule's own,
+# which says it is asked for only when a requirement asks for it.
+if tr '.' '\n' <<< "$_rev" | grep -iE "test.*need|need.*test" | grep -iE "asked for" | grep -viqE "only when|neither"; then
+    assert_fail "[T7] ...no sentence says what a test needs is asked for" "$_rev"
+else assert_pass "[T7] ...no sentence says what a test needs is asked for"; fi
 assert_contains "[T7] its accepted if is the change without it, or a requirement asking for it" "$_ap" \
     "accepted if: <the change without it, or the requirement that would ask for it — nothing else>"
 
@@ -165,10 +238,29 @@ print_test_section "T8: the scope lens"
 # shellcheck source=../../plugins/agent/review-lens/lib/charters.sh
 source "$REPO_ROOT/plugins/agent/review-lens/lib/charters.sh" >/dev/null 2>&1
 _sc="$(_flat "$(cat "$REPO_ROOT/plugins/agent/review-lens/lenses/scope.md")")"
-_lacks "[T8] a file a test needs is not exempt" "$_sc" "a test for something the issue asks for, and a file that test needs"
+_nf="$(awk '/^Not a finding:/{f=1;next} f&&/^$/{exit} f' "$REPO_ROOT/plugins/agent/review-lens/lenses/scope.md")"
+if grep -qiE "test.*need" <<< "$_nf"; then assert_fail "[T8] nothing under Not a finding exempts what a test needs" "$_nf"
+else assert_pass "[T8] nothing under Not a finding exempts what a test needs"; fi
 _ch="$(_flat "$(_rl_build_lens_prompt scope "DIFF-TEXT" 2>/dev/null)")"
+assert_contains "[T8] scope's own sentence on it reaches the built prompt" "$_ch" \
+    "A file the change edits because a test needs it is not in scope for that reason"
 assert_contains "[T8] the scope lens judges by the rule" "$_ch" "Everything here must trace to a requirement of the issue."
 _lacks "[T8] ...its job names no placeholder" "$_ch" "@TRACE_RULE@"
+
+# ── T9 ───────────────────────────────────────────────────────────────────────
+print_test_section "T9: issue-acceptance holds a part nothing asks for to the rule"
+_IA_REPO="$TEST_TEMP_DIR/t9"; mkdir -p "$_IA_REPO/scripts/lib"; printf 'if [[ $in_block -eq 1 ]]; then\n' > "$_IA_REPO/scripts/lib/acceptance-block.sh"
+# The reply as the model writes it, joined as the stage joins it.
+_t9r=""; zb_reply_join_v _t9r "UNASKED: acceptance-block.sh refuses an unclosed block
+why: no requirement asks for it
+accepted if: the file stays under 500 lines
+quote: scripts/lib/acceptance-block.sh | if [[ \$in_block -eq 1 ]]; then"
+_ia_parse "$_t9r" "" "the issue" "$_IA_REPO" "" "unasked" >/dev/null 2>&1
+_un="$(printf '%s\n' "${_IA_UNASKED[@]+"${_IA_UNASKED[@]}"}")"
+assert_contains "[T9] a part nothing asks for is kept as unasked" "$_un" "acceptance-block.sh refuses an unclosed block"
+assert_contains "[T9] ...accepted only without it, or with a requirement that asks for it" "$_un" \
+    "ACCEPTED IF: the change without it, or a requirement that asks for it"
+_lacks "[T9] ...never on a condition about how it is done" "$_un" "500 lines"
 
 print_test_results
 exit $((FAIL > 0))

@@ -131,7 +131,7 @@ The design document MUST include:
    acceptance block (serves: ${_DCK_ID_PREFIX}LOOP-1, ${_DCK_ID_PREFIX}LOOP-2) — the step's check is shown them, and a step's answer must not break any of them.
    A step says where and how; it points to the SPECs it serves with serves: and does not restate what they require — a step that rewords one can lose part of it.
    A step is code work only: it names no file or folder in the test folders. No step's work is writing or changing a test.
-   A step over more than one file is split into numbered parts, 1.1, 1.2, each naming one file: \`- 1.1 <what> | areas: <file> | serves: <ids>\`.
+   A step over more than one file is split into numbered parts, 1.1, 1.2, each naming one file: \`- 1.1 <what> | areas: <file> | serves: <ids>\`. An area is a file's path from the repository root, or a folder's ending in /: never a pattern, and nothing around it. Every file build changes must lie in a step's areas.
    When the issue asks for a test, the requirement is the behaviour that test proves: write that behaviour as the SPEC,
    [done] when the code already does it. Your SPECs say what the tests must prove; the test author writes them.
 

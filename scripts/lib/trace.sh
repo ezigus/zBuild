@@ -19,15 +19,36 @@ _ZBUILD_TRACE_LOADED=1
 # zb_trace_covered <path> <areas> — rc 0 when <path> is one of the
 # space-separated <areas>, or lies under one that is a folder; any path when
 # there is no area. A path that climbs out (..) or starts at / lies in none.
+# An area or path is read as written less its marks: backticks or quotes around
+# it, a leading ./ (review on #2629); `.` is the whole repository. An area is a
+# path, or a folder ending in / — never a pattern.
 zb_trace_covered() {
     local p="$1" a
+    zb_trace_path_v p "$p"
     [[ "$p" == /* || "$p" == .. || "$p" == ../* || "$p" == */../* || "$p" == */.. ]] && return 1
     [[ -n "$2" ]] || return 0
     local -a areas=(); read -ra areas <<< "$2"   # no pathname expansion: an area is no glob
     for a in ${areas[@]+"${areas[@]}"}; do
+        zb_trace_path_v a "$a"
+        [[ "$a" == "." || "$a" == "" ]] && return 0
         [[ "$p" == "$a" || "$p" == "${a%/}/"* ]] && return 0
     done
     return 1
+}
+
+# zb_trace_path_v <var> <path> — <path> without the marks around it and a
+# leading ./ (or ./ alone: `.`).
+zb_trace_path_v() {
+    local -n _ztp="$1"; local _p="$2"
+    while :; do
+        case "$_p" in
+            \`*\`|\"*\"|\'*\') _p="${_p:1:${#_p}-2}" ;;
+            ./?*) _p="${_p#./}" ;;
+            ./) _p="." ;;
+            *) break ;;
+        esac
+    done
+    _ztp="$_p"
 }
 
 # zb_trace_rule_v <var> <what was handed> <who adds to it> — the rule a check

@@ -256,7 +256,7 @@ _build_write_build_summary() {
         # to a finding answered done.
         local _sum_n_steps=${#_BUILD_STEP_FINDINGS[@]} _sum_files=""
         if [[ "$_BUILD_STEP_RC" -ne 130 && -z "$_BUILD_STEP_DISP" ]]; then
-            _build_json_strings_v _sum_files "${files_changed_json:-[]}"
+            if (( ${#_BUILD_STEP_DESC[@]} > 0 )); then _build_trace_files_v _sum_files "${repo_root:-}" "${_BUILD_ROUND_BASE:-HEAD}"; fi
             _build_trace_check "$_sum_files" "${repo_root:-}"
         fi
         if [[ "$_BUILD_STEP_RC" -eq 130 ]]; then build_verdict="interrupted"; build_reason="sigint"
