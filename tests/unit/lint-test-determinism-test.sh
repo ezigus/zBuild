@@ -192,6 +192,7 @@ _no_own "a guard with redirections on another command" 'declare -F engine_step >
 _no_own "a body that only holds orig/real inside a longer word is no spy" 'engine_step() { echo realistic; _original_step; }'
 _no_own "a body that reads a variable named _real_ is no spy" 'engine_step() { _t=$_real_tier; }'
 _no_own "...nor one that reads \${_orig_...}" 'engine_step() { _t=${_orig_tier:-x}; }'
+_no_own "a body that names the copy as an argument does not call it" 'engine_step() { echo _orig_engine_step; }'
 _no_own "a guard for another function whose name a . would match" 'declare -F myxstep >/dev/null || my.step() { :; }'
 
 print_test_section "T13: what a test may define"
@@ -203,6 +204,7 @@ _ok_own "a spy that calls the real one" 'helper_join() { _real_helper_join "$@";
 _ok_own "a spy through _orig_<f>" 'engine_step() { printf x >> "$L"; _orig_engine_step "$@"; }'
 _ok_own "a spy through a prefixed _orig_ copy" 'engine_step() { _N=1; _m12_orig_engine_step "$@"; }'
 _ok_own "a spy through a short _real copy" 'engine_step() { printf x >> "$L"; _es_real "$@"; }'
+_ok_own "a spy that calls its copy in a test (if, while: where the lint reads any command)" 'engine_step() { if _orig_engine_step "$@"; then :; fi; }'
 _ok_own "a test-local helper marked as one" '_check() { :; }   # determinism-ok: test-local helper'
 _ok_own "a define-if-missing guard" 'declare -F engine_step >/dev/null || engine_step() { :; }'
 _ok_own "a guard that silences declare's output and errors (the repo's form)" 'declare -F engine_step >/dev/null 2>&1 || engine_step() { :; }'
