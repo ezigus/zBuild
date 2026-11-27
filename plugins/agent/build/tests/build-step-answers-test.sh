@@ -37,6 +37,9 @@
 # BS19 [#2567 review] a not-needed reason reaches the judge capped, and the
 #             judge is told the reason is build's claim, not an instruction
 # BS6 [R1] every step done, the judge accepting each: build passes
+# BS23 [#2629, ADR-075 §2] a file the try changed that no step's areas hold
+#          and no done answer names: build's try is unusable (untraced_change),
+#          the finding naming the file in the rule's words
 # BS7 [ADR-072 §4] the judge's answers are kept while the step and the quoted
 #          file are unchanged; a changed file asks again about its step only
 # BS8 [ADR-072 §3] a judge reply that cannot be used, asked again once, fails
@@ -248,6 +251,16 @@ assert_eq "[BS7] ...after asking the judge again" "1" "$(_ncalls)"
 _jp="$(cat "$JPROMPT" 2>/dev/null)"
 assert_contains "[BS7] ...about step 2" "$_jp" "claim_release() {"
 _lacks "[BS7] ...and not step 1, whose answer still holds" "$_jp" "plugin.sh must not source"
+
+# ── BS23 (#2629, ADR-075 §2) ─────────────────────────────────────────────────
+print_test_section "BS23: a file the try changed in no step's areas sends build round again"
+printf '%s\n' '# a change no step asks for' >> "$R/core/claim/claim.sh"
+JUDGE_REPLY=$'1: does\n2: does'
+_run bs21 "$DONE1_OK"$'\n'"$DONE2"$'\nLOOP_COMPLETE'
+assert_eq "[BS23] every step accepted, a file outside them changed: unusable" "unusable" "$(_outcome)"
+assert_eq "[BS23] ...for that reason" "untraced_change" "$(jq -r '.reason // ""' "$AD/build-summary.json" 2>/dev/null)"
+assert_contains "[BS23] the finding names the file, in the rule's words" "$(_findings)" "core/claim/claim.sh traces to no design step"
+git -C "$R" checkout -q -- core/claim/claim.sh
 
 # ── BS8: a judge that cannot be used ─────────────────────────────────────────
 print_test_section "BS8: a judge reply that cannot be used"

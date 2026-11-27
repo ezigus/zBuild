@@ -83,7 +83,7 @@ _p="$(tr -s '[:space:]' ' ' <<< "$(_ia_prompt "ISSUE-TEXT" "SPEC-TEXT" "DIFF-TEX
 assert_contains "[U1] the composer built a real prompt" "$_p" "ISSUE-TEXT"
 assert_contains "[U1] it asks for each part of the change no requirement asks for" \
     "$_p" "each part of the DIFF that no requirement asks for"
-assert_contains_lines "[U1] it says how to answer it" "$_p" $'UNASKED: <what the change does>\nwhy: <why no requirement asks for it>\naccepted if: <the change without it, or the requirement that would ask for it>\nquote: <file> | <one line of the code that does it>'
+assert_contains_lines "[U1] it says how to answer it" "$_p" $'UNASKED: <what the change does>\nwhy: <why no requirement asks for it>\naccepted if: <the change without it, or the requirement that would ask for it — nothing else>\nquote: <file> | <one line of the code that does it>'
 assert_contains "[U1] it says how to say there is none" "$_p" "UNASKED: none"
 
 print_test_section "U2: an unasked part is a finding for build"

@@ -245,13 +245,25 @@ _build_write_build_summary() {
     # #2565 (ADR-071, ADR-072 §3): a finished try answers every design step; a
     # step refused or unanswered makes it unusable, and build goes round again.
     _BUILD_STEP_FINDINGS=() _BUILD_STEP_LINES=() _BUILD_STEP_NOTE="" _BUILD_STEP_DISP=""
+    # The answers — this try's and those an earlier try's result carries — read
+    # once: the summary keeps them and the trace check reads them (#2629).
+    local _sum_answers_json="[]" _sum_afj="{}"
+    _build_answers_json_v _sum_answers_json _sum_afj
     if [[ "$build_verdict" == pass ]]; then
         # shellcheck disable=SC2154  # repo_root, artifact_dir, tier from caller scope
         _build_steps_check "${_ROUTE_LOOP_LAST_RESPONSE:-}" "${repo_root:-}" "${artifact_dir:-}" "${tier:-T2}"
+        # #2629 (ADR-075 §2): every file the round changed traces to a step or
+        # to a finding answered done.
+        local _sum_n_steps=${#_BUILD_STEP_FINDINGS[@]} _sum_files=""
+        if [[ "$_BUILD_STEP_RC" -ne 130 && -z "$_BUILD_STEP_DISP" ]]; then
+            _build_json_strings_v _sum_files "${files_changed_json:-[]}"
+            _build_trace_check "$_sum_files" "${repo_root:-}"
+        fi
         if [[ "$_BUILD_STEP_RC" -eq 130 ]]; then build_verdict="interrupted"; build_reason="sigint"
         # ADR-072 §3: a judging call that could not run is no pass.
         elif [[ -n "$_BUILD_STEP_DISP" ]]; then build_verdict="$_BUILD_STEP_DISP"; build_reason="design_steps_check_failed"
-        elif [[ ${#_BUILD_STEP_FINDINGS[@]} -gt 0 ]]; then build_verdict="unusable"; build_reason="design_steps_not_done"
+        elif [[ $_sum_n_steps -gt 0 ]]; then build_verdict="unusable"; build_reason="design_steps_not_done"
+        elif [[ ${#_BUILD_STEP_FINDINGS[@]} -gt 0 ]]; then build_verdict="unusable"; build_reason="untraced_change"
         # #2574 (ADR-072 §5): a step handed to another stage is open — no pass —
         # and nothing more build can do this round: the round ends, so the
         # stage it was handed to runs.
@@ -275,8 +287,6 @@ _build_write_build_summary() {
     [[ -n "${_BUILD_STEP_WAITING[*]:-}" ]] && printf -v _sum_step_w '%s\n' "${_BUILD_STEP_WAITING[@]}"
     # shellcheck disable=SC2154  # output_summary_json from the caller's scope
     zb_findings_reg_v _sum_reg "${output_summary_json%/*}" "$_sum_code" || _sum_code=""
-    local _sum_answers_json="[]" _sum_afj="{}"
-    _build_answers_json_v _sum_answers_json _sum_afj
     local _sum_issue="${issue:-0}"
     [[ "$_sum_issue" =~ ^[0-9]+$ ]] || _sum_issue=0
 

@@ -74,6 +74,8 @@ source "$_BUILD_DIR/lib/summary.sh"
 source "$_BUILD_DIR/lib/round.sh"
 # shellcheck source=lib/steps.sh
 source "$_BUILD_DIR/lib/steps.sh"
+# shellcheck source=lib/steps-trace.sh
+source "$_BUILD_DIR/lib/steps-trace.sh"
 # #2364: earlier work is found by what it contains, never by which stage made it.
 # shellcheck source=../../../scripts/lib/earlier-output.sh
 source "$_BUILD_ROOT/scripts/lib/earlier-output.sh"

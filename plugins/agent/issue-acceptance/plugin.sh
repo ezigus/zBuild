@@ -22,6 +22,8 @@ _IA_ROOT="$_ZBUILD_PLUGIN_ROOT"
 source "$_IA_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/router/route.sh
 source "$_IA_ROOT/core/router/route.sh"
+# shellcheck source=../../../scripts/lib/trace.sh
+source "$_IA_ROOT/scripts/lib/trace.sh"
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
 source "$_IA_ROOT/scripts/lib/acceptance-block.sh" 2>/dev/null || true
 # shellcheck source=../../../scripts/lib/test-paths.sh
@@ -73,20 +75,22 @@ _ia_issue_is_placeholder() {
 _ia_prompt() {
     local _rev_q="" _kept=""
     if [[ "${9:-1}" != 0 ]]; then
+        # #2629 (ADR-075 §3): the rule every check of a change is given.
+        local _trace=""; zb_trace_rule_v _trace "a requirement of the issue" "the issue"
         IFS= read -r -d '' _rev_q <<'REV' || true
 Then answer the reverse question: each part of the DIFF that no requirement asks
-for — not the ISSUE, not ISSUE REQUIREMENTS, not REQUIREMENTS. A test for a
-requirement, and a file that test needs, are asked for by that requirement.
+for — not the ISSUE, not ISSUE REQUIREMENTS, not REQUIREMENTS. @TRACE@
 Write one answer for each part nothing asks for:
 
 UNASKED: <what the change does>
 why: <why no requirement asks for it>
-accepted if: <the change without it, or the requirement that would ask for it>
+accepted if: <the change without it, or the requirement that would ask for it — nothing else>
 quote: <file> | <one line of the code that does it>
 
 Its QUOTE is the code that does it. When every part of the DIFF is asked for,
 write one line: UNASKED: none
 REV
+        _rev_q="${_rev_q/@TRACE@/$_trace}"
     fi
     [[ -n "${10:-}" ]] && _kept=$'\n'"ALREADY JUDGED — each keeps the verdict it was given; write no line for them:"$'\n'"${10}"$'\n'
     cat <<EOF
