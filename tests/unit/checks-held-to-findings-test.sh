@@ -240,7 +240,7 @@ print_test_section "H6: issue-acceptance is held to its finding"
 _h6="$(cat "$TEST_TEMP_DIR/ia-prompt.txt" 2>/dev/null)"
 assert_contains "[H6] build's done answer has it judge again" "$(cat "$TEST_TEMP_DIR/h6.log")" "calls=1 outcome=pass"
 assert_contains "[H6] ...shown its earlier findings" "$_h6" "$HELD"
-assert_contains "[H6] ...its finding, with its ACCEPTED IF" "$_h6" "ACCEPTED IF: the change keeps the rule that --from-stage needs --resume"
+assert_contains "[H6] ...its finding, with its ACCEPTED IF (#2629: an unasked part's is the rule's)" "$_h6" "ACCEPTED IF: the change without it, or a requirement that asks for it"
 assert_contains "[H6] ...and build's answer" "$_h6" "answered: done — the rule is back"
 
 # ── H7: build's step check ───────────────────────────────────────────────────

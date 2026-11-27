@@ -227,7 +227,8 @@ assert_contains "[T7] the reverse question gives the rule" "$_ap" "Everything he
 _rev="${_ap#*Then answer the reverse question}"; _rev="${_rev%%UNASKED: <what*}"
 # A sentence that says what a test needs is asked for — not the rule's own,
 # which says it is asked for only when a requirement asks for it.
-if tr '.' '\n' <<< "$_rev" | grep -iE "test.*need|need.*test" | grep -iE "asked for" | grep -viqE "only when|neither"; then
+_t7s="$(tr '.' '\n' <<< "$_rev" | grep -iE "test.*need|need.*test" | grep -iE "asked for" | grep -viE "only when|neither" || true)"
+if [[ -n "$_t7s" ]]; then
     assert_fail "[T7] ...no sentence says what a test needs is asked for" "$_rev"
 else assert_pass "[T7] ...no sentence says what a test needs is asked for"; fi
 assert_contains "[T7] its accepted if is the change without it, or a requirement asking for it" "$_ap" \

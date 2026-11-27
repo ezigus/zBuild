@@ -217,7 +217,9 @@ assert_contains "[A6] an unmet finding carries the check's ACCEPTED IF" "$(_i A6
 _lacks "[A6] ...and not the engine's advice" "$(_i A6b)" "a change that meets this requirement in full"
 assert_contains "[A6] an unsure finding carries it" "$(_i A6c)" "ACCEPTED IF: a test that runs --from-stage and sees the first stage skipped"
 _lacks "[A6] ...and not the engine's advice" "$(_i A6c)" "a test that fails when this requirement is not met, or the code"
-assert_contains "[A6] an unasked finding carries it" "$(_i A6c)" "ACCEPTED IF: the change keeps the rule that --from-stage needs --resume"
+# #2629 (ADR-075 §3): an unasked part is accepted only without it, or with a
+# requirement that asks for it — the reader writes that, whatever the reply said.
+assert_contains "[A6] an unasked finding carries the one ACCEPTED IF a part nothing asks for has" "$(_i A6c)" "ACCEPTED IF: the change without it, or a requirement that asks for it"
 _lacks "[A6] ...and not the engine's advice" "$(_i A6c)" "the change without this part, or a requirement that asks for it"
 assert_contains "[A6] the check is told ACCEPTED IF names the requirement" "$(_i A6b)" "$JUDGED: the requirement"
 
