@@ -30,6 +30,13 @@ Outside assumptions:
 - GitHub's comment `created_at` and `id` are ordered and stable (standard API guarantee)
 - The concurrent claim note format (`"concurrent claim by \`"`) is distinct from takeover
   notes (`"took over a stale claim from \`"`) — no interference
+- GitHub's REST API for issue comments does not guarantee instantaneous cross-connection
+  visibility: a comment posted by one client may not be visible to another client within a
+  sub-second propagation window. The protocol handles this via ordered arbitration: each
+  note's `created_at` and `id` are assigned by GitHub at POST time and are stable; once
+  both notes are visible, every competing run deterministically converges on the same winner.
+  The read-back window is set wide enough to cover normal GitHub replication latency. This
+  propagation characteristic is noted in ADR-005 §5.
 
 ```steps
 - 1 Add `_ccgl_self_holder_v`, `_ccgl_race_note_post_v`, `_ccgl_race_note_delete`, `_ccgl_race_note_update`, `_ccgl_race_note_first_v` to plugin.sh; extend `claim_coordinator_claim` to: post the concurrent claim note, re-read the GitHub issue, then read back concurrent claim notes, returning `race_lost: true` for the loser (gh backend only) | areas: plugins/claim-coordinator/github-labels/plugin.sh | serves: DSRACE-1, DSRACE-2, DSRACE-3, DSRACE-7
