@@ -13,6 +13,10 @@
 # [#2640/SPEC-1] a loop out of rounds with the member never run ends saying so
 # [#2640/SPEC-1] the status comment's row for it says why it did not run
 # [#2640/SPEC-1] a loop inside the loop leaves the outer round's record as it was
+# [#2640/SPEC-1] "this round": a pass in an earlier round does not count
+# [#2640/SPEC-1] a member of a parallel group may not require anything
+# [#2640/SPEC-2] a try the engine does not run again says so on its row, and a
+#                try it runs again does not
 # [#2640/SPEC-1] simple.yaml gives build requires: [test-author]
 set -uo pipefail
 
@@ -100,6 +104,30 @@ assert_contains "[#2640/SPEC-1] ...saying which" "$(cat "$TEST_TEMP_DIR/load.err
     "stage 'build' requires 'check', which is not a member its loop runs before it"
 _tpl "requires: [intake]"
 _load; assert_eq "[#2640/SPEC-1] a member requiring a stage outside its loop refuses the template" "1" "$?"
+cat > "$TPL" <<'EOF'
+id: requires-in-group
+name: A group member requires a stage
+defaults:
+  strategy: fanout
+flow:
+  - intake
+  - both
+both:
+  type: parallel
+  flow:
+    - left
+    - right
+  max_parallel: 2
+intake:
+  roles: [intake]
+left:
+  roles: [left]
+  requires: [intake]
+right:
+  roles: [right]
+EOF
+_load; assert_eq "[#2640/SPEC-1] a member of a parallel group requiring a stage refuses the template" "1" "$?"
+assert_contains "[#2640/SPEC-1] ...saying it runs inside a group" "$(cat "$TEST_TEMP_DIR/load.err")" "runs inside a group"
 
 # ── running the loop, through the real runner ────────────────────────────────
 # The runner dispatches real stage plugins — stubs for every role (the simple
@@ -122,15 +150,46 @@ export ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT"
 source "$REPO_ROOT/tests/lib/simple-run-stubs.sh"
 simple_stubs_roster
 mock_plugin_factory "test-author" agent 0 "" "test_author" >/dev/null
+# A work output besides its result: a try that changes it changed something.
+cat >> "$PLUGINS_ROOT/agent/test-author/manifest.yaml" <<'MF'
+  - id: test_author_work
+    path: ${artifact_dir}/test-author-work.txt
+    type: text
+    required: false
+MF
 cat > "$PLUGINS_ROOT/agent/test-author/plugin.sh" <<'PLUG'
 test_author_run() {
     local art; art="$(dirname "$2")/artifacts"; mkdir -p "$art"
     source "$STAGE_RESULT_LIB"
+    # TA_MOVES: the first try is cut off having changed something (its result
+    # names its try), so the engine runs it again; the second passes.
+    if [[ " ${TA_MOVES:-} " == *" ${ZBUILD_CYCLE_ITER:-0} "* && "${ZBUILD_STAGE_TRY:-1}" == 1 ]]; then
+        printf 'try %s\n' "${ZBUILD_STAGE_TRY:-1}" > "$art/test-author-work.txt"
+        stage_result_write "$art/test-author-result.json" timed_out "the author did not finish"
+        return 1
+    fi
+    # TA_SAME: a try cut off that changed nothing, the same every time.
+    if [[ " ${TA_SAME:-} " == *" ${ZBUILD_CYCLE_ITER:-0} "* ]]; then
+        stage_result_write "$art/test-author-result.json" timed_out "the author did not finish"
+        return 1
+    fi
     if [[ " ${TA_FAILS:-} " == *" ${ZBUILD_CYCLE_ITER:-0} "* ]]; then
         stage_result_write "$art/test-author-result.json" fail "no tests written this round"
         return 1
     fi
     stage_result_write "$art/test-author-result.json" pass "tests written"
+}
+PLUG
+mock_plugin_factory "build" agent 0 "" "builder" >/dev/null
+cat > "$PLUGINS_ROOT/agent/build/plugin.sh" <<'PLUG'
+build_run() {
+    local art; art="$(dirname "$2")/artifacts"; mkdir -p "$art"
+    source "$STAGE_RESULT_LIB"
+    if [[ " ${BUILD_FAILS:-} " == *" ${ZBUILD_CYCLE_ITER:-0} "* ]]; then
+        stage_result_write "$art/build-result.json" fail "the build did not pass"
+        return 1
+    fi
+    stage_result_write "$art/build-result.json" pass "built"
 }
 PLUG
 mkdir -p "$_ZB_REPO/.zbuild/templates"
@@ -161,6 +220,7 @@ design:
 test-author:
   gate: auto
   roles: [test_author]
+  retry: 1
 build:
   gate: auto
   roles: [builder]
@@ -189,6 +249,30 @@ _row="$(jq -c '[.order[] as $k | .rows[$k] | select(.kind == "not_run")] | first
 _line="$(rsc_render_row "$RSTATE" "${_row:-{\}}")"
 assert_contains "[#2640/SPEC-1] the row names the member" "$_line" " build**"
 assert_contains "[#2640/SPEC-1] ...and why it did not run" "$_line" "not run — test-author did not pass"
+
+print_test_section "this round, not an earlier one"
+# test-author passes in round 1 and build fails there, so round 2 runs; then
+# test-author fails in round 2. Its round-1 pass does not count for round 2.
+BUILD_FAILS="1" TA_FAILS="2" _go
+assert_eq "[#2640/SPEC-1] build runs in round 1, after test-author passed" "1" "$(_ran build 1)"
+assert_eq "[#2640/SPEC-1] ...and not in round 2, where test-author did not pass" "0" "$(_ran build 2)"
+
+print_test_section "a try the engine does not run again"
+# test-author is cut off in round 1 and its try changed nothing: the engine does
+# not run it again, and its row says so (#2640/SPEC-2), from the engine's own events.
+TA_SAME="1" _go
+_ta_rows="$(rsc_rows_json "$EVENTS_JSONL")"
+_ta_row="$(jq -c '[.order[] as $k | .rows[$k] | select(.stage == "test-author" and (.kind // "") != "not_run")] | first // empty' <<< "$_ta_rows")"
+assert_contains "[#2640/SPEC-2] the try's row says it was not run again, and why" \
+    "$(rsc_render_row "$RSTATE" "${_ta_row:-{\}}")" "not run again: the try changed nothing"
+TA_MOVES="1" _go
+assert_eq "[#2640/SPEC-2] a cut-off try that changed something is run again" "1" \
+    "$(jq -r 'select(.type == "stage.retry" and .data.stage == "test-author") | 1' "$EVENTS_JSONL" 2>/dev/null | grep -c . || true)"
+assert_eq "[#2640/SPEC-2] ...and no refusal is said for it" "" \
+    "$(jq -r 'select(.type == "stage.retry.refused") | .type' "$EVENTS_JSONL" 2>/dev/null)"
+_tm_row="$(jq -c '[.order[] as $k | .rows[$k] | select(.stage == "test-author")] | first // empty' <<< "$(rsc_rows_json "$EVENTS_JSONL")")"
+_tm_line="$(rsc_render_row "$RSTATE" "${_tm_row:-{\}}")"
+assert_eq "[#2640/SPEC-2] ...nor on its row" "no" "$([[ "$_tm_line" == *"not run again"* ]] && echo yes || echo no)"
 
 print_test_section "a requirement that never passes"
 TA_FAILS="1 2 3" _go
