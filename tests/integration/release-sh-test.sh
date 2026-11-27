@@ -211,8 +211,8 @@ assert_contains "T6: prepend keeps [1.0.0] section" "$new_changelog" "## [1.0.0]
 assert_contains "T6: prepend adds [1.0.1.5] section" "$new_changelog" "## [1.0.1.5]"
 assert_contains "T6: Keep-a-Changelog header preserved" "$new_changelog" "Keep a Changelog"
 # New section is ABOVE the old one.
-new_line="$(grep -n '## \[1.0.1.5\]' <<<"$new_changelog" | head -1 | cut -d: -f1)"
-old_line="$(grep -n '## \[1.0.0\]'   <<<"$new_changelog" | head -1 | cut -d: -f1)"
+new_line="$(grep -n '## \[1.0.1.5\]' <<<"$new_changelog" | sed -n 1p | cut -d: -f1)"
+old_line="$(grep -n '## \[1.0.0\]'   <<<"$new_changelog" | sed -n 1p | cut -d: -f1)"
 if [[ -n "$new_line" && -n "$old_line" && "$new_line" -lt "$old_line" ]]; then
     assert_pass "T6: new release section prepended above [1.0.0]"
 else

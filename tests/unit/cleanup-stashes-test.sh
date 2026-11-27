@@ -126,7 +126,7 @@ esac
 
 # ── TC-8: _cleanup_restore_stash refuses non-prefix stash ───────────────────
 # Locate my-feature-wip index
-mw_idx="$(git stash list | grep -n "my-feature-wip" | head -1 | cut -d: -f1)"
+mw_idx="$(git stash list | grep -n "my-feature-wip" | sed -n 1p | cut -d: -f1)"
 mw_idx=$(( mw_idx - 1 ))
 if _cleanup_restore_stash "$mw_idx" 2>/dev/null; then
     assert_fail "restore refuses non-zb-applycheck stash"
@@ -137,7 +137,7 @@ fi
 # ── TC-9: _cleanup_restore_stash pops a zb-applycheck stash ─────────────────
 # Make a fresh applycheck stash (age irrelevant for restore)
 _make_stash "zb-applycheck-fwd-77777" 0
-ac_idx="$(git stash list | grep -n "zb-applycheck-fwd-77777" | head -1 | cut -d: -f1)"
+ac_idx="$(git stash list | grep -n "zb-applycheck-fwd-77777" | sed -n 1p | cut -d: -f1)"
 ac_idx=$(( ac_idx - 1 ))
 if _cleanup_restore_stash "$ac_idx" >/dev/null 2>&1; then
     assert_pass "restore pops zb-applycheck stash"

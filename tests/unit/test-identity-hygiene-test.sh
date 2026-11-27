@@ -57,7 +57,7 @@ print_test_section "[SPEC-2][change] zb_test_repo gives an isolated repo with an
 _R="$(zb_test_repo idrepo)"
 assert_file_exists "[SPEC-2] the throwaway repo exists" "$_R/seed.txt"
 assert_eq "[SPEC-2] and it has an origin to push to" "origin" \
-    "$( cd "$_R" && git remote 2>/dev/null | head -1 )"
+    "$( cd "$_R" && git remote 2>/dev/null | sed -n 1p )"
 assert_eq "[SPEC-2] and it is NOT the real checkout" "different" \
     "$( [[ "$(cd "$_R" && git rev-parse --show-toplevel)" == "$REPO_ROOT" ]] && echo same || echo different )"
 

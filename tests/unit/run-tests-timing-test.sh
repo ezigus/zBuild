@@ -95,7 +95,7 @@ else
 fi
 
 # ms for the sleeping file should be > 0 (≥ ~50ms). Tolerant lower bound (>0).
-_s_ms="$(grep -E '^file [0-9]+ .*s-test\.sh$' "$TF" | awk '{print $2}' | head -1)"
+_s_ms="$(grep -E '^file [0-9]+ .*s-test\.sh$' "$TF" | awk '{print $2}' | sed -n 1p)"
 if [[ "$_s_ms" =~ ^[0-9]+$ && "$_s_ms" -gt 0 ]]; then
   assert_pass "[SPEC-4] sleeping file recorded > 0 ms ($_s_ms)"
 else

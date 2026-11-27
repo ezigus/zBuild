@@ -162,8 +162,8 @@ print_test_section "3. The stage dispatch boundary narrows before reading"
 # the one fact worth keeping is already gone.
 _runner="$REPO_ROOT/core/pipeline/runner.sh"
 # Round 9: both are read into a variable in the dispatching shell (the _v forms).
-_obs_line="$($SYSGREP -n 'dispatch_rc_observation_v _cd_observation "\$_cd_rc"' "$_runner" | head -1 | cut -d: -f1)" || _obs_line=""
-_narrow_line="$($SYSGREP -n 'dispatch_rc_narrow_v _cd_rc "\$_cd_rc"' "$_runner" | head -1 | cut -d: -f1)" || _narrow_line=""
+_obs_line="$($SYSGREP -n 'dispatch_rc_observation_v _cd_observation "\$_cd_rc"' "$_runner" | sed -n 1p | cut -d: -f1)" || _obs_line=""
+_narrow_line="$($SYSGREP -n 'dispatch_rc_narrow_v _cd_rc "\$_cd_rc"' "$_runner" | sed -n 1p | cut -d: -f1)" || _narrow_line=""
 
 if [[ -n "$_obs_line" && -n "$_narrow_line" ]]; then
     assert_pass "[SPEC-3] the cycle dispatch boundary both observes and narrows"
@@ -182,8 +182,8 @@ fi
 # would leave this member's own rate limit invisible to its own classification;
 # not clearing at all would leak an earlier member's marker into this one, and
 # `throttled` retries — one rate limit becoming a retry loop on a real defect.
-_clear_line="$($SYSGREP -n '_router_clear_throttle_marker' "$_runner" | head -1 | cut -d: -f1)"
-_hook_line="$($SYSGREP -n 'plugin_hook_call "\$_cd_plugin_dir" run' "$_runner" | head -1 | cut -d: -f1)"
+_clear_line="$($SYSGREP -n '_router_clear_throttle_marker' "$_runner" | sed -n 1p | cut -d: -f1)"
+_hook_line="$($SYSGREP -n 'plugin_hook_call "\$_cd_plugin_dir" run' "$_runner" | sed -n 1p | cut -d: -f1)"
 if [[ -n "$_clear_line" && -n "$_hook_line" && "$_clear_line" -lt "$_hook_line" ]]; then
     assert_pass "[SPEC-3] the throttle marker is cleared before the dispatch"
 else
@@ -326,8 +326,8 @@ print_test_section "[#1850/SPEC-17] every dispatch boundary checks for an abort 
 # stop the next model call, not be read after it (#1850 review).
 for _fn in cycle_dispatch_stage parallel_dispatch_stage; do
     _body="$(awk -v f="    ${_fn}() {" '$0 == f {p=1} p {print} p && /^    }$/ {exit}' "$_runner")"
-    _hook_ln="$($SYSGREP -n 'plugin_hook_call ' <<< "$_body" | head -1 | cut -d: -f1 || true)"
-    _chk_ln="$($SYSGREP -n '_zbuild_check_abort' <<< "$_body" | head -1 | cut -d: -f1 || true)"
+    _hook_ln="$($SYSGREP -n 'plugin_hook_call ' <<< "$_body" | sed -n 1p | cut -d: -f1 || true)"
+    _chk_ln="$($SYSGREP -n '_zbuild_check_abort' <<< "$_body" | sed -n 1p | cut -d: -f1 || true)"
     if [[ -n "$_hook_ln" && -n "$_chk_ln" && "$_chk_ln" -lt "$_hook_ln" ]]; then
         assert_pass "[SPEC-17] $_fn checks for an abort before plugin_hook_call"
     else

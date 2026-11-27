@@ -150,7 +150,7 @@ DONE_WRONG: none"; _R2=""; _cov
     _R1=$'RQRQST-1: covered\nRQRQST-2: covered\nDSWORK-1: ok\nDSCNFG-1: ok\nSCOPE: scripts/thing.sh: ok\nSCOPE: scripts/telemetry.sh: outside | WHY: the issue asks for no telemetry\n'; _R2=""; _cov
     echo "Q2i|${#_DESIGN_OUTSIDE[@]}|$(_design_coverage_findings)"
 ) > "$TEST_TEMP_DIR/q2.out" 2>"$TEST_TEMP_DIR/q2.err"
-_l() { grep "^$1|" "$TEST_TEMP_DIR/q2.out" | head -1 | cut -d'|' -f2-; }
+_l() { grep "^$1|" "$TEST_TEMP_DIR/q2.out" | sed -n 1p | cut -d'|' -f2-; }
 assert_eq "[Q2] every item answered, none failing: nothing found, judged in one call" "000||1" "$(_l Q2a)"
 assert_eq "[Q2] the prompt carries no window of code" "nosnippet" "$(_l Q2g)"
 assert_eq "[Q2] ...it names the evidence's file" "named" "$(_l Q2g2)"
@@ -206,7 +206,7 @@ print_test_section "Q3: test-author's assertion check"
     _R1=$'DSLOOP-1: ok'; _R2=""; _j
     echo "Q3e|${#_TA_CORR_FINDINGS[@]}|$_TA_CORR_OUTCOME|$(cat "$_N")"
 ) > "$TEST_TEMP_DIR/q3.out" 2>/dev/null
-_l() { grep "^$1|" "$TEST_TEMP_DIR/q3.out" | head -1 | cut -d'|' -f2-; }
+_l() { grep "^$1|" "$TEST_TEMP_DIR/q3.out" | sed -n 1p | cut -d'|' -f2-; }
 assert_contains "[Q3] partial with the requirement's words quoted is a finding" "$(_l Q3a)" "1|DSLOOP-1"
 assert_contains "[Q3] ...in one call" "$(_l Q3a)" "||1"
 assert_eq "[Q3] the check asks for the quote" "asked" "$(_l Q3p)"
@@ -272,7 +272,7 @@ _mk_inputs() {  # <dir> — the issue, its requirements, a design, a diff, a tes
     _R1=$'MET: RQFLAG-1\nMET: RQCNFG-1\nUNMET: none\nUNSURE: omitted'; _R2=""
     echo "Q4e|$(_ia)"
 ) > "$TEST_TEMP_DIR/q4.out" 2>/dev/null
-_l() { grep "^$1|" "$TEST_TEMP_DIR/q4.out" | head -1 | cut -d'|' -f2-; }
+_l() { grep "^$1|" "$TEST_TEMP_DIR/q4.out" | sed -n 1p | cut -d'|' -f2-; }
 assert_eq "[Q4] every requirement met: pass, in one call" "pass|1" "$(_l Q4a)"
 assert_eq "[Q4] the prompt carries no numbered window of code" "nowindow" "$(_l Q4w)"
 assert_eq "[Q4] ...it names the evidence by its file and text" "named" "$(_l Q4w2)"
@@ -317,7 +317,7 @@ print_test_section "Q5: a review lens quotes each finding"
     _R1="$(_f '"return 9"')"; _R2=""
     echo "Q5d|$(_lens)|$(cat "$_N")|$(tr -s '[:space:]' ' ' < "$_P.2" 2>/dev/null)"
 ) > "$TEST_TEMP_DIR/q5.out" 2>/dev/null
-_l() { grep "^$1|" "$TEST_TEMP_DIR/q5.out" | head -1 | cut -d'|' -f2-; }
+_l() { grep "^$1|" "$TEST_TEMP_DIR/q5.out" | sed -n 1p | cut -d'|' -f2-; }
 assert_contains "[Q5] a finding quoting its file's text counts" "$(_l Q5a)" "fail|1|"
 assert_contains "[Q5] ...and keeps its quote" "$(_l Q5a)" 'return 3'
 assert_eq "[Q5] the lens is asked for a quote" "asked" "$(_l Q5p)"

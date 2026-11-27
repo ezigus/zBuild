@@ -55,7 +55,7 @@ P="$(cat "$ARTIFACT_DIR/design-prompt.txt" 2>/dev/null)"
 FLAT="$(tr '\n' ' ' <<< "$P" | tr -s ' ')"
 
 print_test_section "D1: the job, first"
-_own="$(awk '/^## What you own/{f=1;next} f&&/^## /{exit} f' <<< "$P" | sed '/^[[:space:]]*$/d' | head -n1)"
+_own="$(awk '/^## What you own/{f=1;next} f&&/^## /{exit} f' <<< "$P" | sed '/^[[:space:]]*$/d' | sed -n 1p)"
 assert_contains "[D1] What you own opens with the job" "$_own" "Your job: write the design"
 assert_contains "[D1] ...saved as it goes" "$FLAT" "Save it as you go"
 assert_contains "[D1] ...a design on disk counts" "$FLAT" "a design on disk when your time runs out still counts"

@@ -30,7 +30,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
       - name: Install Claude CLI
-        run: npm install -g @anthropic-ai/claude-code@2.1.183
+        # The latest, as the pipeline installs it (#2639).
+        run: npm install -g @anthropic-ai/claude-code
       - name: Run the live check
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

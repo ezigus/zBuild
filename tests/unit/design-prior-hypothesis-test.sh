@@ -101,7 +101,7 @@ for _case in 2 5 5b; do
         assert_pass "[SPEC-3] ($_case) the prompt no longer says 'refine, do not recreate'"
     fi
     if grep -qiE 'earlier in this run|previous attempt|earlier run|SINCE THE PRIOR DESIGN' <<< "$Pc"; then
-        assert_fail "[SPEC-5] ($_case) one wording, with no run label" "$(grep -iE 'earlier in this run|previous attempt|earlier run|SINCE THE PRIOR' <<< "$Pc" | head -2)"
+        assert_fail "[SPEC-5] ($_case) one wording, with no run label" "$(grep -iE 'earlier in this run|previous attempt|earlier run|SINCE THE PRIOR' <<< "$Pc" | sed -n 1,2p)"
     else
         assert_pass "[SPEC-5] ($_case) one wording, with no run label"
     fi

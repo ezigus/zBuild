@@ -102,7 +102,7 @@ for k in $(seq 1 "${n:-0}"); do
 done
 assert_eq "[P4] every part is under 60,000 bytes" "" "$_over"
 assert_eq "[P4] every row is in exactly one part" "400" "$(grep -c -E '· \*\*[0-9]+ s[0-9]+\*\*' <<< "$_all")"
-assert_eq "[P4] ...each once" "" "$(grep -oE '\*\*[0-9]+ s[0-9]+\*\*' <<< "$_all" | sort | uniq -d | head -1)"
+assert_eq "[P4] ...each once" "" "$(grep -oE '\*\*[0-9]+ s[0-9]+\*\*' <<< "$_all" | sort | uniq -d | sed -n 1p)"
 assert_eq "[P4] nothing is omitted" "0" "$(grep -c 'omitted' <<< "$_all" || true)"
 assert_contains "[P5] the newest part has the run's header" "$(cat "$OUT/part-$n.md")" '· **running**'
 assert_contains "[P5] ...and the newest row" "$(cat "$OUT/part-$n.md")" '**400 s400**'

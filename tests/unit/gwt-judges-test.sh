@@ -51,7 +51,7 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export _RUNNER_ENGINE_SHA="engine-a"
 
 _N="$TEST_TEMP_DIR/n"; _P="$TEST_TEMP_DIR/p"
-_l() { grep "^$2|" "$1" | head -1 | cut -d'|' -f2-; }
+_l() { grep "^$2|" "$1" | sed -n 1p | cut -d'|' -f2-; }
 
 print_test_section "J1-J8: design's check"
 (

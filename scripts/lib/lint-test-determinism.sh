@@ -18,7 +18,7 @@
 #               happened — an outcome, an event, a marker — not how long it took.
 #   own-code    (#2630) a definition of a function our own code defines — under
 #               core/, scripts/, or plugins/ outside a plugin's tests/ — which
-#               replaces it with a fake: the test then tests the fake. An
+#               replaces it with a stand-in: the test then tests the stand-in. An
 #               outside service is faked at our own wrapper around it, listed in
 #               config/test-fake-wrappers.txt (the model call, GitHub); those
 #               may be redefined. A definition in a heredoc (a fake plugin
@@ -144,12 +144,12 @@ tag == "K" {
             n = substr(d, RSTART, RLENGTH); bef = pre substr(d, 1, RSTART); aft = substr(d, RSTART + RLENGTH)
             pre = pre substr(d, 1, RSTART + RLENGTH - 1); d = aft
             sub(/^[;&|(!{ \t]/, "", n); sub(/^function[ \t]+/, "", n); sub(/[ \t]*[(][)]$/, "", n)
-            if (ownf[n] && !allowf[n] && !guarded(bef, n) && !spybody(aft, n)) { bad(f, l, "own-code|replaces " n ", which our own code defines, with a fake"); break }
+            if (ownf[n] && !allowf[n] && !guarded(bef, n) && !spybody(aft, n)) { bad(f, l, "own-code|replaces " n ", which our own code defines, with a stand-in"); break }
         }
         if (match(c, /(^|[;&|(!{ \t])function[ \t]+[A-Za-z_][A-Za-z0-9_:.-]*[ \t]*[{]/)) {
             n = substr(c, RSTART, RLENGTH); bef = substr(c, 1, RSTART); aft = substr(c, RSTART + RLENGTH)
             sub(/^.*function[ \t]+/, "", n); sub(/[ \t]*[{]$/, "", n)
-            if (ownf[n] && !allowf[n] && !guarded(bef, n) && !spybody(aft, n)) bad(f, l, "own-code|replaces " n ", which our own code defines, with a fake")
+            if (ownf[n] && !allowf[n] && !guarded(bef, n) && !spybody(aft, n)) bad(f, l, "own-code|replaces " n ", which our own code defines, with a stand-in")
         }
     }
     if (mark[f ":" l] != "ok" && c ~ /([$][{]?SECONDS([^A-Za-z0-9_]|$)|[(][(]([^)]*[^A-Za-z0-9_)])?SECONDS([^A-Za-z0-9_]|$)|date([ \t]+-[A-Za-z]+)*[ \t]+["'"'"']?[+]%s)/) bad(f, l, "clock|reads the clock to time something")

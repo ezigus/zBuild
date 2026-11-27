@@ -63,8 +63,8 @@ else
 fi
 
 # ── SPEC-4: the step must precede the upload, or it collects into nothing ────
-_COLLECT_LINE="$(grep -n "      - name: $_STEP_HEADING" "$WF" | head -1 | cut -d: -f1)"
-_UPLOAD_LINE="$(grep -n '      - name: Upload pipeline artifacts' "$WF" | head -1 | cut -d: -f1)"
+_COLLECT_LINE="$(grep -n "      - name: $_STEP_HEADING" "$WF" | sed -n 1p | cut -d: -f1)"
+_UPLOAD_LINE="$(grep -n '      - name: Upload pipeline artifacts' "$WF" | sed -n 1p | cut -d: -f1)"
 if [[ -n "$_COLLECT_LINE" && -n "$_UPLOAD_LINE" && "$_COLLECT_LINE" -lt "$_UPLOAD_LINE" ]]; then
     assert_pass "[SPEC-4] collect step precedes 'Upload pipeline artifacts'"
 else
@@ -143,7 +143,7 @@ if [[ ! -e "$_S2/claude-transcripts" ]]; then
     assert_pass "[SPEC-2] no plaintext claude-transcripts/ remains in the state dir"
 else
     assert_fail "[SPEC-2] plaintext claude-transcripts/ must not remain beside the bundle" \
-        "$(ls -R "$_S2/claude-transcripts" 2>&1 | head -5)"
+        "$(ls -R "$_S2/claude-transcripts" 2>&1 | sed -n 1,5p)"
 fi
 if [[ -f "$_ENC" ]] && grep -q '"hello"' "$_ENC"; then
     assert_fail "[SPEC-2] bundle must not contain the transcript in the clear" "plaintext found in $_ENC"

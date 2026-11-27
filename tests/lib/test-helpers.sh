@@ -1155,6 +1155,31 @@ zb_test_kill_tree() {
     return 0
 }
 
+# zb_test_clip <n> <text> — the first <n> characters of <text>, for a failure
+# message. `… | head -c <n>` exits before its writer finishes, and the writer
+# takes SIGPIPE (#2639: no `| head` in any .sh file).
+zb_test_clip() { printf '%s' "${2:0:$1}"; }
+
+# wait_for_exit <pid> [max_iters=600] [interval=0.05] — waits for a process a
+# test started (and usually signalled), with a limit (#2639): its exit status
+# once it is gone; 124 once the limit passes, when it and everything under it
+# are killed. A bare `wait` on a process that ignores its signal hangs the test
+# until CI kills the job, with nothing saying why. Call it from the shell that
+# started the process: `wait` knows only its own children (127 for any other).
+wait_for_exit() {
+    local pid="$1" max_iters="${2:-600}" interval="${3:-0.05}" i rc=0
+    for (( i = 0; i < max_iters; i++ )); do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" 2>/dev/null || rc=$?
+            return "$rc"
+        fi
+        sleep "$interval"
+    done
+    zb_test_kill_tree "$pid"
+    wait "$pid" 2>/dev/null || true
+    return 124
+}
+
 # Bounded poll for a grep pattern to appear in an events/state file (#619's
 # "wait-for-event-content" pattern; reused by #887/#1127/#1149). Replaces the
 # anti-pattern of a fixed `sleep N` followed by a single-shot read of an

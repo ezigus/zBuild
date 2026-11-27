@@ -300,7 +300,7 @@ assert_eq "T4b: an ambient ZBUILD_STATE_FILE does not break the explicit-state r
 assert_file_exists "T4b: the explicit dir is still what was used" "$EXPLICIT_B/pipeline-state.json"
 # …and T4's own command clears it too — T4b proves the technique, this pins the
 # line that has to use it.
-_t4_line="$(grep -n 'bash "\$RUNNER" --issue' -B6 "$0" 2>/dev/null | grep 'env -u ZBUILD_STATE_ROOT' | head -1 || true)"
+_t4_line="$(grep -n 'bash "\$RUNNER" --issue' -B6 "$0" 2>/dev/null | grep 'env -u ZBUILD_STATE_ROOT' | sed -n 1p || true)"
 assert_contains "T4b: T4 itself clears the ambient state-file setting" \
     "${_t4_line:-<not found>}" "-u ZBUILD_STATE_FILE"
 

@@ -566,7 +566,7 @@ if [[ -f "$MOCK_EDIT_BODY_DIR/edited-111.md" ]]; then
 fi
 if [[ -z "$captured_body" ]]; then
     # Also try the temp body file from create path
-    captured_body="$(grep -rE "(no match|PR #2300)" "$TEST_TEMP_DIR" 2>/dev/null | head -1 || true)"
+    captured_body="$(grep -rE "(no match|PR #2300)" "$TEST_TEMP_DIR" 2>/dev/null | sed -n 1p || true)"
 fi
 if [[ "$captured_body" == *"no match"* ]]; then
     assert_pass "T23: triage body contains 'no match' annotation"

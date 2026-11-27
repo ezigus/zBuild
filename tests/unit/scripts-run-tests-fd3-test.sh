@@ -39,7 +39,7 @@ chmod +x "$FAKE_TIER/tests/unit/fd3-probe-test.sh"
 # guards stdin with </dev/null).
 out="$(mktemp -t fd3probe.XXXXXX)"
 set +e
-spawn_line="$(grep -E 'bash "\$1"' "$REPO_ROOT/scripts/run-tests.sh" | head -1)"
+spawn_line="$(grep -E 'bash "\$1"' "$REPO_ROOT/scripts/run-tests.sh" | sed -n 1p)"
 set -e
 
 [[ -n "$spawn_line" ]] \

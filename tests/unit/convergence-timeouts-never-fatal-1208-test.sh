@@ -193,7 +193,7 @@ fi
 # [SPEC-5] change assertion: suppression event now carries build_verdict=incomplete
 # (the new raw verdict for disposition=interrupted). Fails at baseline where the
 # event carried build_verdict=did_not_finish.
-_spec5_ev="$(grep '"cycle.build_unfinished.suppressed_convergence"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1 || true)"
+_spec5_ev="$(grep '"cycle.build_unfinished.suppressed_convergence"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p || true)"
 if grep -q '"build_verdict":"incomplete"' <<< "$_spec5_ev" 2>/dev/null; then
     assert_pass "[SPEC-5] suppression event carries build_verdict=incomplete (disposition-based check, #1832)"
 else
@@ -309,7 +309,7 @@ print_test_section "SPEC-8: exercised convergence path is repo-neutral (generic 
 _grep_leak() { grep -nE "$1" "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh" 2>/dev/null; }
 if _grep_leak 'xcodebuild|npm test|run-tests\.sh|\.swift|cargo |pytest' >/dev/null 2>&1; then
     assert_fail "[SPEC-8] orchestrator has NO hardcoded runner/language token" \
-        "$(_grep_leak 'xcodebuild|npm test|run-tests\.sh|\.swift|cargo |pytest' | head -1)"
+        "$(_grep_leak 'xcodebuild|npm test|run-tests\.sh|\.swift|cargo |pytest' | sed -n 1p)"
 else
     assert_pass "[SPEC-8] orchestrator convergence path is repo-neutral (no runner/language hardcode)"
 fi

@@ -100,7 +100,7 @@ if [[ -f "$merged" ]] && grep -q "RealBase" "$merged" 2>/dev/null && grep -q "bu
     assert_pass "[SPEC-2] merged has resolver-root base 'name: RealBase' + overlay 'build' (bogus dir ignored)"
 else
     assert_fail "[SPEC-2] merged file combined resolver-root base + overlay" \
-        "merged=$merged content: $(cat "$merged" 2>/dev/null | tr '\n' '|' | head -c 200)"
+        "merged=$merged content: $(zb_test_clip 200 "$(cat "$merged" 2>/dev/null | tr '\n' '|')")"
 fi
 
 # ─── SPEC-3: the path-pinning resolver tests pass under the full fence env ───

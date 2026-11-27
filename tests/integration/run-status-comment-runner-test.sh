@@ -102,7 +102,7 @@ _run_pipeline
 baseline_rc="$_RUNNER_RC"
 assert_eq "[SPEC-1] exactly one POST for the run" "1" "$(posts)"
 if [[ "$(patches)" -ge 1 ]]; then assert_pass "[SPEC-1] at least one PATCH ($(patches))"; else assert_fail "[SPEC-1] at least one PATCH" "none; log: $(cat "$STATE_DIR/status-comment.log" 2>/dev/null)"; fi
-end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | head -1)"
+end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 assert_contains "[SPEC-1] the final body's header carries the run's end status ($end_status)" "$(last_body)" "**${end_status}**"
 assert_contains "[SPEC-1] the body is marked with the run id" "$(last_body)" 'zbuild-run-status run_id='
 first_row="$(last_body | grep -E '^\*\*' | sed -n 1p)"

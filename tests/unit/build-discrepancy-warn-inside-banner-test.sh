@@ -169,14 +169,14 @@ if [[ "$fd2" == *"stage-io: build"* ]]; then
     assert_pass "fd2 contains build stage-io banner output"
 else
     assert_fail "fd2 contains build stage-io banner output" \
-        "head=$(printf '%s' "$fd2" | head -c 300)"
+        "head=${fd2:0:300}"
 fi
 
 if [[ "$fd2" == *"LLM signaled success but numstat shows 0 files changed"* ]]; then
     assert_pass "fd2 contains discrepancy warn line"
 else
     assert_fail "fd2 contains discrepancy warn line" \
-        "head=$(printf '%s' "$fd2" | head -c 500)"
+        "head=${fd2:0:500}"
 fi
 
 # (1) Core ordering invariant: the warn line MUST come BEFORE the
@@ -185,10 +185,10 @@ fi
 #     "stray stderr line in the inter-stage gap" regression Wave 11B fixes.
 warn_lineno="$(printf '%s\n' "$fd2" \
     | grep -n -F "LLM signaled success but numstat shows 0 files changed" \
-    | head -1 | cut -d: -f1)"
+    | sed -n 1p | cut -d: -f1)"
 end_lineno="$(printf '%s\n' "$fd2" \
     | grep -n -F "── end stage-io: build" \
-    | head -1 | cut -d: -f1)"
+    | sed -n 1p | cut -d: -f1)"
 
 if [[ -n "$warn_lineno" && -n "$end_lineno" && "$warn_lineno" -lt "$end_lineno" ]]; then
     assert_pass "warn appears before close-banner (warn line $warn_lineno < end line $end_lineno)"
@@ -201,7 +201,7 @@ fi
 #     it's strictly between begin and end (not somewhere before begin entirely).
 input_lineno="$(printf '%s\n' "$fd2" \
     | grep -nE "build \[(llm|computed|command)\] seq=[0-9]+ input" \
-    | head -1 | cut -d: -f1)"
+    | sed -n 1p | cut -d: -f1)"
 if [[ -n "$input_lineno" && -n "$warn_lineno" && "$input_lineno" -lt "$warn_lineno" ]]; then
     assert_pass "warn appears after open-banner (input line $input_lineno < warn line $warn_lineno)"
 else

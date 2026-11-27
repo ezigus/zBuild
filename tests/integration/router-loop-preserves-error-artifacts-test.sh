@@ -144,15 +144,15 @@ diag_count="$(jq -c 'select(.type=="router.loop.iter.error.diagnostic")' "$ZBUIL
 assert_eq "T2: router.loop.iter.error.diagnostic emitted" "1" "$diag_count"
 
 # T3: diagnostic event has parsed is_error=true from the stub's JSON.
-diag_is_error="$(jq -r 'select(.type=="router.loop.iter.error.diagnostic") | .data.is_error' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+diag_is_error="$(jq -r 'select(.type=="router.loop.iter.error.diagnostic") | .data.is_error' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 assert_eq "T3: diagnostic event is_error=true (parsed from JSON envelope)" "true" "$diag_is_error"
 
 # T4: diagnostic event has parsed error_text.
-diag_err="$(jq -r 'select(.type=="router.loop.iter.error.diagnostic") | .data.error_text' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+diag_err="$(jq -r 'select(.type=="router.loop.iter.error.diagnostic") | .data.error_text' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 assert_eq "T4: diagnostic event error_text=max_turns_reached" "max_turns_reached" "$diag_err"
 
 # T5: diagnostic event has parsed num_turns.
-diag_turns="$(jq -r 'select(.type=="router.loop.iter.error.diagnostic") | .data.num_turns' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+diag_turns="$(jq -r 'select(.type=="router.loop.iter.error.diagnostic") | .data.num_turns' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 assert_eq "T5: diagnostic event num_turns=25" "25" "$diag_turns"
 
 # T6: preserved JSON artifact exists at predictable path.
@@ -183,7 +183,7 @@ else
 fi
 
 # T10: diagnostic event surfaces the preserved-file paths.
-diag_json_path="$(jq -r 'select(.type=="router.loop.iter.error.diagnostic") | .data.raw_json_path' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+diag_json_path="$(jq -r 'select(.type=="router.loop.iter.error.diagnostic") | .data.raw_json_path' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 assert_eq "T10: diagnostic event raw_json_path matches the preserved file" "$RAW_JSON_PATH" "$diag_json_path"
 
 # T11: loop path also surfaces error_max_turns to driver stderr (#762).

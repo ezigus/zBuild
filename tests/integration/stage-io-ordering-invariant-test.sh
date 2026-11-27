@@ -268,7 +268,7 @@ for row in "${STAGES[@]}"; do
 
     banner="$(cat "$banner_path" 2>/dev/null || echo '')"
     if [[ -z "$banner" ]]; then
-        err_snippet="$(tail -20 "$err_path" 2>/dev/null | tr '\n' ';' | head -c 600)"
+        err_snippet="$(zb_test_clip 600 "$(tail -20 "$err_path" 2>/dev/null | tr '\n' ';')")"
         assert_fail "[$stage_id] banner stream non-empty" \
             "no fd-3 content for stage=$stage_id; driver-err-tail: $err_snippet"
         overall_fail=1
@@ -285,13 +285,13 @@ for row in "${STAGES[@]}"; do
     #      AND that both fall between the input and output banner positions.
     #
     # We assert ordering via grep-by-line-number on the banner stream.
-    input_line="$(printf '%s\n' "$banner" | grep -n 'seq=.* input ══' | head -1 | cut -d: -f1)"
-    output_line="$(printf '%s\n' "$banner" | grep -n 'seq=.* output ' | head -1 | cut -d: -f1)"
+    input_line="$(printf '%s\n' "$banner" | grep -n 'seq=.* input ══' | sed -n 1p | cut -d: -f1)"
+    output_line="$(printf '%s\n' "$banner" | grep -n 'seq=.* output ' | sed -n 1p | cut -d: -f1)"
     if [[ -n "$input_line" && -n "$output_line" && "$input_line" -lt "$output_line" ]]; then
         assert_pass "[$stage_id] input banner precedes output banner"
     else
         assert_fail "[$stage_id] input banner precedes output banner" \
-            "input=$input_line output=$output_line banner-head=$(printf '%s' "$banner" | head -c 400)"
+            "input=$input_line output=$output_line banner-head=${banner:0:400}"
         overall_fail=1
     fi
 

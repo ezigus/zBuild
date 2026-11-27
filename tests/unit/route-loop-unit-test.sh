@@ -213,7 +213,7 @@ assert_eq "R8 1 output banner" "1" "$r8_output_count"
 if grep -qE "══ build \[llm\] seq=1 input ══" <<< "$r8_banner"; then
     assert_pass "R8 input banner seq=1 present"
 else
-    assert_fail "R8 input banner seq=1 present" "missing in: $(printf '%s' "$r8_banner" | head -c 400)"
+    assert_fail "R8 input banner seq=1 present" "missing in: ${r8_banner:0:400}"
 fi
 
 r8_captured="$(jq -c --arg t "stage.io.captured" 'select(.type==$t)' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"

@@ -118,11 +118,11 @@ assert_eq "output plugin exits 0" "0" "$out_rc"
 
 # ─── Assert plugin.result events appear in intake → review-lens → output order ─
 intake_pos="$(grep -n '"plugin.result"' "$EVENTS_JSONL" 2>/dev/null \
-    | grep '"intake"' | head -1 | cut -d: -f1 || echo 0)"
+    | grep '"intake"' | sed -n 1p | cut -d: -f1 || echo 0)"
 sl_pos="$(grep -n '"plugin.result"' "$EVENTS_JSONL" 2>/dev/null \
-    | grep '"review-lens"' | head -1 | cut -d: -f1 || echo 0)"
+    | grep '"review-lens"' | sed -n 1p | cut -d: -f1 || echo 0)"
 output_pos="$(grep -n '"plugin.result"' "$EVENTS_JSONL" 2>/dev/null \
-    | grep '"output-github-comment"' | head -1 | cut -d: -f1 || echo 0)"
+    | grep '"output-github-comment"' | sed -n 1p | cut -d: -f1 || echo 0)"
 
 if [[ -n "$intake_pos" && -n "$sl_pos" && "$intake_pos" -gt 0 && "$sl_pos" -gt 0 ]]; then
     if [[ "$intake_pos" -lt "$sl_pos" ]]; then
