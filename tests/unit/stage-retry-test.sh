@@ -152,6 +152,16 @@ assert_eq "[R3] fail → 1 run (the loop handles a failure, not the retry)" "1" 
 # ── R4 ───────────────────────────────────────────────────────────────────────
 _fresh; SAME=1 OUTCOMES="timed_out" _dispatch twice
 assert_eq "[R4] a try that changed nothing is not run again" "2" "$(_runs twice)"
+# #2640: the engine says it did not run the stage again, and why, so the
+# stage's row can say it (on #2534 nothing said why test-author was not retried).
+_nre="$(jq -c 'select(.type == "stage.retry.refused")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1)"
+assert_contains "[#2640/SPEC-2] a retry refused for no change is said, naming the stage" "$_nre" '"stage":"twice"'
+assert_contains "[#2640/SPEC-2] ...and why" "$_nre" '"reason":"the try changed nothing"'
+if grep -q '"stage.retry.refused"' "$REPO_ROOT/config/event-schema.json"; then
+    assert_pass "[#2640/SPEC-2] stage.retry.refused is a known event"
+else
+    assert_fail "[#2640/SPEC-2] stage.retry.refused is a known event" "not in config/event-schema.json"
+fi
 
 # ── R5 ───────────────────────────────────────────────────────────────────────
 _fresh; OUTCOMES="timed_out" _dispatch huge

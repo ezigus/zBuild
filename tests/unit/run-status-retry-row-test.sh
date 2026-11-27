@@ -91,6 +91,21 @@ _body="$(ZBUILD_STATUS_TZ=UTC rsc_render_body "$EV4" "$TEST_TEMP_DIR" 2>/dev/nul
 assert_contains "[T7] the comment shows try 1 timed out" "$_body" "try 1 of 3 · **timed_out**"
 assert_contains "[T7] ...and try 2 passing" "$_body" "try 2 of 3 · **pass**"
 
+# ── #2640: a try the engine did not run again says so ───────────────────────
+EV8="$TEST_TEMP_DIR/events8.jsonl"
+cat > "$EV8" <<'EOF8'
+{"ts":"2026-11-27T12:49:50.000Z","run_id":"r","issue":2534,"type":"pipeline.start","data":{"run_id":"r","issue":"2534"},"schema_version":1}
+{"ts":"2026-11-27T12:49:50.100Z","run_id":"r","issue":2534,"type":"plugin.run.start","plugin":"test-author","kind":"agent","data":{"plugin":"test-author","kind":"agent"},"schema_version":1,"stage":"test-author","seq":"4.1.1.1.2"}
+{"ts":"2026-11-27T13:09:51.000Z","run_id":"r","issue":2534,"type":"plugin.run.error","plugin":"test-author","kind":"agent","data":{"plugin":"test-author","kind":"agent","rc":"1"},"schema_version":1,"stage":"test-author","seq":"4.1.1.1.2"}
+{"ts":"2026-11-27T13:09:51.500Z","run_id":"r","issue":2534,"type":"stage.retry.refused","data":{"stage":"test-author","outcome":"timed_out","try":"1","reason":"the try changed nothing"},"schema_version":1,"stage":"test-author","seq":"4.1.1.1.2"}
+{"ts":"2026-11-27T13:09:52.000Z","run_id":"r","issue":2534,"type":"cycle.member.dispatch.complete","data":{"member":"test-author","verdict":"timed_out","rc":"1"},"schema_version":1,"stage":"test-author","seq":"4.1.1.1.2"}
+EOF8
+_r8="$(rsc_rows_json "$EV8")"
+_k8="$(jq -r '.order[0]' <<< "$_r8")"
+assert_contains "[#2640/SPEC-2] a try not run again says why, on its row" \
+    "$(rsc_render_row "$TEST_TEMP_DIR" "$(jq -c --arg k "$_k8" '.rows[$k]' <<< "$_r8")")" \
+    "not run again: the try changed nothing"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

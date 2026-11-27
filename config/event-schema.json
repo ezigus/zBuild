@@ -91,6 +91,7 @@
     "cycle.member.dispatch.start",
     "cycle.member.dispatch.complete",
     "stage.retry",
+    "stage.retry.refused",
     "stage.findings.handed_on",
     "stage.finding_ids.write_failed",
     "cycle.member.disposition.halt",

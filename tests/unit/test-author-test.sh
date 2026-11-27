@@ -177,6 +177,12 @@ assert_eq "[SPEC-5][change] and its outcome says how the stage stopped" \
     "timed_out" "$(_res '.outcome')"
 assert_eq "[SPEC-4][guard] rc stays binary on failure" \
     "1" "$([[ "$_rc2" == "0" || "$_rc2" == "1" ]] && echo 1 || echo 0)"
+# #2640: a cut-off try that wrote nothing says so. On #2534 the row and the
+# next round's prompt said "what it wrote is kept" after a try that wrote nothing.
+_ta_sum() { cat "$_A/test-author-summary.md" 2>/dev/null; }
+assert_contains "[#2640/SPEC-2] a cut-off try that wrote nothing says so, on its row" "$(_ta_sum)" "it wrote nothing"
+_ta_kept=no; [[ "$(_ta_sum)" == *"kept"* ]] && _ta_kept=yes
+assert_eq "[#2640/SPEC-2] ...and does not say anything was kept" "no" "$_ta_kept"
 
 # ─── SPEC-6/7 (#2170): the author knows its budget, and the budget fits the job ─
 # #1841: test-author ran under the engine default of 25 tool-call turns (plan and
@@ -252,6 +258,7 @@ if [[ -z "$(git -C "$_R" status --porcelain -- tests/acc-test.sh 2>/dev/null)" ]
 test_author_run "test-author" "$_S/pipeline-state.json" >/dev/null 2>&1 || true
 assert_eq "[SPEC-11][change] the partial testfile is committed for the next attempt" "" "$(git -C "$_R" status --porcelain -- tests/acc-test.sh 2>/dev/null)"
 assert_eq "[SPEC-11][guard] …and the result still says the call did not finish" "timed_out" "$(_res '.outcome')"
+assert_contains "[#2640/SPEC-2] …and says on its row how many test files it kept" "$(cat "$_A/test-author-summary.md" 2>/dev/null)" "kept 1 test file it wrote"
 
 print_test_section "SPEC-12: the prompt tells the author to continue earlier work"
 _setup s12
