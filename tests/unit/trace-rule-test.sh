@@ -25,9 +25,12 @@
 # T5 [change] §3 intake's check names a listed item the issue does not state
 # T6 [change] §3 test-author's unasked check: the rule, and the shared finding
 # T7 [change] §3 issue-acceptance's reverse question: the rule — a file a test
-#             needs is no longer asked for by that — and its accepted if is the
-#             change without it, or a requirement that asks for it
+#             needs is no longer asked for by that — and each part it names
+#             is taken out (amended 2026-11-27)
 # T8 [change] §3 the scope lens judges by the rule
+# T9 [change] §3 issue-acceptance's reader: a part nothing asks for is taken
+#             with the engine's ACCEPTED IF, the change without it, whatever
+#             the check wrote, and with none is not asked again
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
