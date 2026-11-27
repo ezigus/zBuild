@@ -387,7 +387,7 @@ On #2533 run 45403848593 build wrote its own words into each step's quote (`step
 
 ## Amendment 2026-11-26 (#2629) — §3: what only a test needs is not asked for
 
-- **The reverse question's "a test for a requirement, and a file that test needs, are asked for by it" is replaced by ADR-075 §1's rule**: a test is asked for by what it tests, and a helper or fixture it reads is part of it; a change to the code that only a test needs is asked for by nothing, and neither is the test. An UNASKED part's ACCEPTED IF is the change without it, or a requirement that asks for it — the reader holds it to that.
+- **The reverse question's "a test for a requirement, and a file that test needs, are asked for by it" is replaced by ADR-075 §1's rule**: a test is asked for by what it tests, and a helper or fixture it reads is part of it; a change to the code that only a test needs is asked for by nothing, and neither is the test. An UNASKED part's ACCEPTED IF — the check's, as every ACCEPTED IF is — is the change without it, or a requirement that asks for it: the reader refuses any other as a malformed answer, and the check is asked again with why.
 
 ## Enforced by
 

@@ -243,7 +243,9 @@ _ia_write() {
     # #2271 (ADR-068): each unmet acceptance item is a numbered finding. #2304
     # (ADR-069 §7): so is each requirement the judge is not sure of — nothing
     # else checks it. #2330, #2569: each says what would settle it — the
-    # check's own ACCEPTED IF, never advice the engine writes.
+    # check's own ACCEPTED IF, never advice the engine writes. #2629 (ADR-075
+    # §3): an unasked part's is the change without it, or a requirement that
+    # asks for it — the reader refuses any other, and the check is asked again.
     # #2452, #2556, #2569 (ADR-071 §1): a line's [fix-<word>] mark is its topic,
     # <word>-findings — what must change — and sends it to the output of the
     # stages that can fix it, never its text. #2569 (review): an unmet or

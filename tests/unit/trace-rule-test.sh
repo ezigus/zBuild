@@ -52,7 +52,7 @@ assert_eq "[T1] a file elsewhere does not" "no" "$(_cov scripts/lib/acceptance-b
 assert_eq "[T1] a path that climbs out lies in no area" "no" "$(_cov plugins/p/../../etc/x "plugins/p/")"
 _rule=""; zb_trace_rule_v _rule "a requirement" "intake" 2>/dev/null
 assert_contains "[T1] the rule names what was handed" "$_rule" "Everything here must trace to a requirement."
-assert_contains "[T1] ...a change only a test needs is asked for by nothing" "$_rule" "when only the test needs it, the test asks for more than it was given, and neither is asked for"
+assert_contains "[T1] ...a change only a test would pass with is asked for by nothing" "$_rule" "never by a test that would pass with it: such a test asks for more than it was given, and neither is asked for"
 assert_contains "[T1] ...what nothing asks for is taken out, or who adds to it adds it" "$_rule" "What nothing asks for is taken out, or intake adds what asks for it"
 assert_contains "[T1] ...never kept on a condition about how it is done" "$_rule" "never kept on a condition about how it is done"
 _f=""; zb_trace_finding_v _f "your change to x.sh" "design step" "design" 2>/dev/null
@@ -110,11 +110,18 @@ _t2 "scripts/lib/old.sh" "ANSWER BUFND-7: not mine — design must add a step wh
 _r="$(cat "$TEST_TEMP_DIR/t2w")"
 assert_eq "[T2] not mine to design on an untraced file: no finding blocks the try" "" "$_r"
 assert_contains "[T2] ...it waits for design, and the round ends" "${_BUILD_STEP_WAITING[*]:-}" "scripts/lib/old.sh"
+_t2 "scripts/lib/old.sh" "ANSWER BUFND-7: not mine — test-author must change the test" > "$TEST_TEMP_DIR/t2w"
+assert_contains "[T2] not mine naming another stage than design: still a finding" "$(cat "$TEST_TEMP_DIR/t2w")" "scripts/lib/old.sh traces to no design step"
+assert_eq "[T2] ...and nothing waits" "" "${_BUILD_STEP_WAITING[*]:-}"
+assert_eq "[T2] a slot written in backticks traces its file" "" \
+    "$(_t2 "$F" "ANSWER TEFND-3: done — \`$F | [[ \$in_block -eq 1 ]] && return 1\` — an unclosed block is malformed")"
 assert_eq "[T2] a file in the test folders is none (build may not change them)" "" "$(_t2 'tests/unit/x-test.sh' "")"
 _t2_steps '- a | areas: ./scripts/lib/ | serves: DSEVNT-1
 - b | areas: `config/x.json` | serves: DSEVNT-1'
 assert_eq "[T2] an area written ./dir/ holds the files under it" "" "$(_t2 "$F" "")"
 assert_eq "[T2] ...one in backticks holds its file" "" "$(_t2 "config/x.json" "")"
+_t2_steps '- a | areas: . | serves: DSEVNT-1'
+assert_eq "[T2] the area . is the whole repository" "" "$(_t2 "scripts/lib/x.sh" "")"
 _BUILD_STEP_DESC=(); _BUILD_STEP_AREAS=()
 assert_eq "[T2] a plan with no steps is not checked" "" "$(_t2 "$F" "")"
 
@@ -237,9 +244,11 @@ assert_contains "[T7] the reverse question gives the rule" "$_ap" "Everything he
 _rev="${_ap#*Then answer the reverse question}"; _rev="${_rev%%UNASKED: <what*}"
 # A sentence that says what a test needs is asked for — not the rule's own,
 # which says it is asked for only when a requirement asks for it.
-_t7s="$(tr '.' '\n' <<< "$_rev" | grep -iE "test.*need|need.*test" | grep -iE "asked for" | grep -viE "only when|neither" || true)"
+# Meaning, not one word: no sentence lets what a test needs, requires or uses
+# count as asked for.
+_t7s="$(tr '.' '\n' <<< "$_rev" | grep -iE "test" | grep -iE "\b(needs?|needed|requires?|required|uses?|used)\b" | grep -iE "asked for|in scope" || true)"
 if [[ -n "$_t7s" ]]; then
-    assert_fail "[T7] ...no sentence says what a test needs is asked for" "$_rev"
+    assert_fail "[T7] ...no sentence says what a test needs is asked for" "$_t7s"
 else assert_pass "[T7] ...no sentence says what a test needs is asked for"; fi
 assert_contains "[T7] its accepted if is the change without it, or a requirement asking for it" "$_ap" \
     "accepted if: <the change without it, or the requirement that would ask for it — nothing else>"
@@ -250,7 +259,8 @@ print_test_section "T8: the scope lens"
 source "$REPO_ROOT/plugins/agent/review-lens/lib/charters.sh" >/dev/null 2>&1
 _sc="$(_flat "$(cat "$REPO_ROOT/plugins/agent/review-lens/lenses/scope.md")")"
 _nf="$(awk '/^Not a finding:/{f=1;next} f&&/^$/{exit} f' "$REPO_ROOT/plugins/agent/review-lens/lenses/scope.md")"
-if grep -qiE "test.*need" <<< "$_nf"; then assert_fail "[T8] nothing under Not a finding exempts what a test needs" "$_nf"
+_t8s="$(grep -iE "test" <<< "$_nf" | grep -iE "\b(needs?|needed|requires?|required|uses?|used)\b" || true)"
+if [[ -n "$_t8s" ]]; then assert_fail "[T8] nothing under Not a finding exempts what a test needs" "$_nf"
 else assert_pass "[T8] nothing under Not a finding exempts what a test needs"; fi
 _ch="$(_flat "$(_rl_build_lens_prompt scope "DIFF-TEXT" 2>/dev/null)")"
 assert_contains "[T8] scope's own sentence on it reaches the built prompt" "$_ch" \
@@ -268,10 +278,16 @@ accepted if: the file stays under 500 lines
 quote: scripts/lib/acceptance-block.sh | if [[ \$in_block -eq 1 ]]; then"
 _ia_parse "$_t9r" "" "the issue" "$_IA_REPO" "" "unasked" >/dev/null 2>&1
 _un="$(printf '%s\n' "${_IA_UNASKED[@]+"${_IA_UNASKED[@]}"}")"
-assert_contains "[T9] a part nothing asks for is kept as unasked" "$_un" "acceptance-block.sh refuses an unclosed block"
-assert_contains "[T9] ...accepted only without it, or with a requirement that asks for it" "$_un" \
-    "ACCEPTED IF: the change without it, or a requirement that asks for it"
-_lacks "[T9] ...never on a condition about how it is done" "$_un" "500 lines"
+assert_eq "[T9] a part nothing asks for, accepted on a condition about how it is done, is not taken" "" "$_un"
+assert_contains "[T9] ...the answer is refused, to be asked again, saying why" "${_IA_PROBLEM:-}" \
+    "its ACCEPTED IF must be the change without it, or a requirement that asks for it"
+_t9r=""; zb_reply_join_v _t9r "UNASKED: acceptance-block.sh refuses an unclosed block
+why: no requirement asks for it
+accepted if: the change without the unclosed-block check
+quote: scripts/lib/acceptance-block.sh | if [[ \$in_block -eq 1 ]]; then"
+_ia_parse "$_t9r" "" "the issue" "$_IA_REPO" "" "unasked" >/dev/null 2>&1
+assert_contains "[T9] one accepted without it is taken, in the check's own words" \
+    "$(printf '%s\n' "${_IA_UNASKED[@]+"${_IA_UNASKED[@]}"}")" "ACCEPTED IF: the change without the unclosed-block check"
 
 print_test_results
 exit $((FAIL > 0))

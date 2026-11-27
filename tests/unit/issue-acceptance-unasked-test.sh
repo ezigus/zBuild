@@ -88,7 +88,7 @@ assert_contains "[U1] it says how to say there is none" "$_p" "UNASKED: none"
 
 print_test_section "U2: an unasked part is a finding for build"
 _setup u2
-_IA_ANSWER=$'MET: --from-stage starts the run at that stage\nUNASKED: it drops the rule that --from-stage needs --resume | WHY: no requirement asks to drop it | ACCEPTED IF: it is accepted | QUOTE: runner.sh | resume_required=0'
+_IA_ANSWER=$'MET: --from-stage starts the run at that stage\nUNASKED: it drops the rule that --from-stage needs --resume | WHY: no requirement asks to drop it | ACCEPTED IF: the change without dropping it | QUOTE: runner.sh | resume_required=0'
 _run
 assert_eq "[U2] the change does not pass" "fail" "$(_res .outcome)"
 assert_eq "[U2] one finding" "1" "$(_res '.data.findings | length')"
@@ -108,7 +108,7 @@ assert_eq "[U3] no finding" "0" "$(_res '.data.findings | length')"
 
 print_test_section "U4: an unasked part with a quote that is not there is not used"
 _setup u4
-_IA_ANSWER=$'MET: --from-stage starts the run at that stage\nUNASKED: it adds a cache | WHY: nothing asks for one | ACCEPTED IF: it is accepted | QUOTE: runner.sh | cache=1'
+_IA_ANSWER=$'MET: --from-stage starts the run at that stage\nUNASKED: it adds a cache | WHY: nothing asks for one | ACCEPTED IF: the change without the cache | QUOTE: runner.sh | cache=1'
 _run
 assert_eq "[U4] asked again once" "2" "$(grep -c x "$_IA_CALLS")"
 assert_eq "[U4] then unusable" "unusable" "$(_res .outcome)"
@@ -116,7 +116,7 @@ assert_contains "[U4] ...saying which quote" "$(_res .reason)" "cache=1"
 
 print_test_section "U5: an unasked part in a test file is the tests' to fix (#2523)"
 _setup u5
-_IA_ANSWER=$'MET: --from-stage starts the run at that stage\nUNASKED: it changes an old test | WHY: no requirement asks for it | ACCEPTED IF: it is accepted | QUOTE: tests/unit/r-test.sh | assert_eq "[R8] shown as code" x y\nUNASKED: it drops the rule | WHY: no requirement asks to drop it | ACCEPTED IF: it is accepted | QUOTE: runner.sh | resume_required=0'
+_IA_ANSWER=$'MET: --from-stage starts the run at that stage\nUNASKED: it changes an old test | WHY: no requirement asks for it | ACCEPTED IF: the change without the test edit | QUOTE: tests/unit/r-test.sh | assert_eq "[R8] shown as code" x y\nUNASKED: it drops the rule | WHY: no requirement asks to drop it | ACCEPTED IF: the change without dropping it | QUOTE: runner.sh | resume_required=0'
 _run
 assert_eq "[U5] two findings" "2" "$(_res '.data.findings | length')"
 assert_contains "[U5] the one in a test file is in the test output (test-author takes it)" "$(_out test)" "it changes an old test"
@@ -128,7 +128,7 @@ assert_eq "[U5] the manifest gives the code output the topic code-findings" "cod
 
 print_test_section "U6: the answer written as blocks, as the prompt asks (#2609)"
 _setup u6
-_IA_ANSWER=$'MET: --from-stage starts the run at that stage\n\nUNASKED: it changes an old test\nwhy: no requirement asks for it\naccepted if: it is accepted\nquote: tests/unit/r-test.sh | assert_eq "[R8] shown as code" x y\nnote: an old test\n\nUNASKED: it drops the rule that --from-stage needs --resume\nwhy: no requirement asks to drop it\naccepted if: it is accepted\nquote: runner.sh | resume_required=0'
+_IA_ANSWER=$'MET: --from-stage starts the run at that stage\n\nUNASKED: it changes an old test\nwhy: no requirement asks for it\naccepted if: the change without the test edit\nquote: tests/unit/r-test.sh | assert_eq "[R8] shown as code" x y\nnote: an old test\n\nUNASKED: it drops the rule that --from-stage needs --resume\nwhy: no requirement asks to drop it\naccepted if: the change without dropping it\nquote: runner.sh | resume_required=0'
 _run
 assert_eq "[U6] both block answers are read: two findings" "2" "$(_res '.data.findings | length')"
 assert_contains "[U6] ...each with its own words, not the note's" "$(_out code)" "it drops the rule"

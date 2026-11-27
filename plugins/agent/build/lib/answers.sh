@@ -113,9 +113,10 @@ _build_own_finding_text_v() {
     [[ -s "$3/build-summary.json" ]] || return 0
     IFS= read -r -d '' _s < "$3/build-summary.json" || true
     _re='"text":"(([^"\\]|\\.)*)"[^{}]*"id":"'"$2"'"'
-    [[ "$_s" =~ $_re ]] && { _boft="${BASH_REMATCH[1]}"; return 0; }
-    _re='"id":"'"$2"'"[^{}]*"text":"(([^"\\]|\\.)*)"'
-    [[ "$_s" =~ $_re ]] && _boft="${BASH_REMATCH[1]}"
+    [[ "$_s" =~ $_re ]] || { _re='"id":"'"$2"'"[^{}]*"text":"(([^"\\]|\\.)*)"'; [[ "$_s" =~ $_re ]] || return 0; }
+    _boft="${BASH_REMATCH[1]}"
+    # The text as it was written, its JSON escapes read (review on #2629).
+    _boft="${_boft//\\\"/\"}"; _boft="${_boft//\\n/ }"; _boft="${_boft//\\\\/\\}"
     return 0
 }
 

@@ -203,7 +203,7 @@ print_test_section "A6: issue-acceptance"
   _ia_case A6a
   _IA_ANSWER=$'UNMET: [fix-code] --from-stage starts the run at that stage | WHY: the run starts at stage one | ACCEPTED IF: a run given --from-stage starts at that stage | QUOTE: --from-stage starts the run at that stage\nUNASKED: none'
   _ia_case A6b
-  _IA_ANSWER=$'UNSURE: --from-stage starts the run at that stage | WHY: no test runs it | ACCEPTED IF: a test that runs --from-stage and sees the first stage skipped | QUOTE: --from-stage starts the run at that stage\nUNASKED: it drops the rule | WHY: nothing asks to drop it | ACCEPTED IF: the change keeps the rule that --from-stage needs --resume | QUOTE: runner.sh | resume_required=0'
+  _IA_ANSWER=$'UNSURE: --from-stage starts the run at that stage | WHY: no test runs it | ACCEPTED IF: a test that runs --from-stage and sees the first stage skipped | QUOTE: --from-stage starts the run at that stage\nUNASKED: it drops the rule | WHY: nothing asks to drop it | ACCEPTED IF: the change without dropping the rule that --from-stage needs --resume | QUOTE: runner.sh | resume_required=0'
   _ia_case A6c
   _IA_ANSWER=$'MET: --from-stage starts the run at that stage\nUNASKED: it drops the rule | WHY: nothing asks to drop it | QUOTE: runner.sh | resume_required=0'
   _ia_case A6d ) > "$TEST_TEMP_DIR/ia.out" 2>/dev/null
@@ -217,9 +217,7 @@ assert_contains "[A6] an unmet finding carries the check's ACCEPTED IF" "$(_i A6
 _lacks "[A6] ...and not the engine's advice" "$(_i A6b)" "a change that meets this requirement in full"
 assert_contains "[A6] an unsure finding carries it" "$(_i A6c)" "ACCEPTED IF: a test that runs --from-stage and sees the first stage skipped"
 _lacks "[A6] ...and not the engine's advice" "$(_i A6c)" "a test that fails when this requirement is not met, or the code"
-# #2629 (ADR-075 §3): an unasked part is accepted only without it, or with a
-# requirement that asks for it — the reader writes that, whatever the reply said.
-assert_contains "[A6] an unasked finding carries the one ACCEPTED IF a part nothing asks for has" "$(_i A6c)" "ACCEPTED IF: the change without it, or a requirement that asks for it"
+assert_contains "[A6] an unasked finding carries it" "$(_i A6c)" "ACCEPTED IF: the change without dropping the rule that --from-stage needs --resume"
 _lacks "[A6] ...and not the engine's advice" "$(_i A6c)" "the change without this part, or a requirement that asks for it"
 assert_contains "[A6] the check is told ACCEPTED IF names the requirement" "$(_i A6b)" "$JUDGED: the requirement"
 

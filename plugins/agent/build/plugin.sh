@@ -343,12 +343,25 @@ _build_stage_run_inner() {
     # ─── Parse diff stats ────────────────────────────────────────────────────
     local files_changed_json="[]" lines_added=0 lines_removed=0
     if [[ -n "$diff_content" ]]; then
-        # #2629: read by the shell, as `sed 's|^diff --git a/[^ ]* b/||'` read
-        # it — the trace check's one git call is paid for here (ADR-065 §5).
-        local _bcf_l _bcf_r _bcf_j="" _bcf_n=0
+        # #2629: each file's header read by the shell — the trace check's one
+        # git call is paid for here (ADR-065 §5). Its new path: `b/<path>`,
+        # or `"b/<path>"` with git's escapes when git quotes it (a non-ASCII
+        # name under core.quotePath); a name with a space is the header's
+        # second half.
+        local _bcf_l _bcf_r _bcf_h _bcf_j="" _bcf_n=0
         while IFS= read -r _bcf_l; do
-            [[ "$_bcf_l" == "diff --git a/"* ]] || continue
-            _bcf_r="${_bcf_l#diff --git a/}"; _bcf_r="${_bcf_r#"${_bcf_r%% *}" b/}"
+            [[ "$_bcf_l" == "diff --git "* ]] || continue
+            _bcf_r="${_bcf_l#diff --git }"
+            if [[ "$_bcf_r" == *'" "b/'*'"' ]]; then
+                _bcf_r="${_bcf_r##*\" \"b/}"; _bcf_r="${_bcf_r%\"}"; printf -v _bcf_r '%b' "$_bcf_r"
+            elif [[ "$_bcf_r" == 'a/'*' "b/'*'"' ]]; then
+                _bcf_r="${_bcf_r##* \"b/}"; _bcf_r="${_bcf_r%\"}"; printf -v _bcf_r '%b' "$_bcf_r"
+            elif [[ "$_bcf_r" == 'a/'* ]]; then
+                # `a/<p> b/<p>`: <p> is (length - 5) / 2 long.
+                _bcf_h=$(( (${#_bcf_r} - 5) / 2 ))
+                if (( _bcf_h > 0 )) && [[ "${_bcf_r:2+_bcf_h}" == " b/${_bcf_r:2:_bcf_h}" ]]; then _bcf_r="${_bcf_r:2:_bcf_h}"
+                else _bcf_r="${_bcf_r#* b/}"; fi
+            else continue; fi
             _zb_ans_json_str_v _bcf_l "$_bcf_r"; _bcf_j+="${_bcf_j:+,}$_bcf_l"; _bcf_n=$(( _bcf_n + 1 ))
         done <<< "$diff_content"
         (( _bcf_n > 0 )) && files_changed_json="[$_bcf_j]"

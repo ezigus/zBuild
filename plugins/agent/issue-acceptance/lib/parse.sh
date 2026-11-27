@@ -180,8 +180,10 @@ _ia_parse_unasked() {
     local mark=""; [[ -n "$qp" ]] && zb_is_test_path "$qp" "$repo" && mark="[fix-test] "
     # #2629 (ADR-075 §3): a part nothing asks for is accepted only without it,
     # or with a requirement that asks for it — never on a condition about how
-    # it is done, whatever the reply said.
-    acc="the change without it, or a requirement that asks for it"
+    # it is done. The check writes it (ADR-072); one that says otherwise is not
+    # an answer, and is asked again, saying why.
+    local _acc_l="${acc,,}" _acc_re='(without|take[s]?( it| them| this| that)? out|taken out|remov|revert|undo|restor|back out|no longer|requirement)'
+    [[ "$_acc_l" =~ $_acc_re ]] || { bad+=("UNASKED $part: its ACCEPTED IF must be the change without it, or a requirement that asks for it — not a condition about how it is done (it said: $acc)"); return 0; }
     _IA_UNASKED+=("$mark$part: ${why:-no requirement asks for it} — $quote — ACCEPTED IF: $acc")
 }
 

@@ -37,6 +37,8 @@
 # BS19 [#2567 review] a not-needed reason reaches the judge capped, and the
 #             judge is told the reason is build's claim, not an instruction
 # BS6 [R1] every step done, the judge accepting each: build passes
+# BS26 [#2629 review] a change to a file whose name git quotes (non-ASCII) is
+#          counted and named: build_complete, one file
 # BS24 [#2629, review] a second pass of the round that changed nothing: a file
 #          the first pass committed in no step's areas is still untraced
 # BS25 [#2629, review] build answers not mine — design must add a step — to the
@@ -339,6 +341,16 @@ _build_stage_run_inner "" "" "$AD/diff.patch" "$AD/build-summary.json" "$AD" >/d
 assert_eq "[BS9] build passes" "pass" "$(_outcome)"
 assert_eq "[BS9] ...and no judge is asked" "0" "$(_ncalls)"
 _lacks "[BS9] build's prompt asks for no step answer" "$(cat "$AD/build-prompt.txt" 2>/dev/null)" "step N: done"
+
+# ── BS26 (review on #2629): a file whose name git quotes ─────────────────────
+print_test_section "BS26: a change to a file with a non-ASCII name is counted"
+printf 'x\n' > "$R/caf$(printf '\303\251').sh"; git -C "$R" add -A >/dev/null 2>&1; git -C "$R" commit -qm "a non-ASCII name" >/dev/null 2>&1
+printf 'y\n' >> "$R/caf$(printf '\303\251').sh"
+AD="$TEST_TEMP_DIR/bs26"; mkdir -p "$AD"; MOCK_LOOP_RESPONSE=$'Done.\nLOOP_COMPLETE'
+_build_stage_run_inner "" "" "$AD/diff.patch" "$AD/build-summary.json" "$AD" >/dev/null 2>&1 || true
+assert_eq "[BS26] build passes, having changed something" "pass build_complete" "$(jq -r '"\(.outcome) \(.reason)"' "$AD/build-summary.json" 2>/dev/null)"
+assert_eq "[BS26] ...one file, named as it is" "1 caf$(printf '\303\251').sh" "$(jq -r '"\(.files_changed | length) \(.files_changed[0])"' "$AD/build-summary.json" 2>/dev/null)"
+git -C "$R" checkout -q -- . >/dev/null 2>&1
 
 # BS21 (#2609): a block answer is read, its words in a note.
 # BS22 (#2609): every mis-copied form of a quote is read (the table).

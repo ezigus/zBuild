@@ -54,7 +54,7 @@ zb_trace_path_v() {
 # zb_trace_rule_v <var> <what was handed> <who adds to it> — the rule a check
 # of a change is given.
 zb_trace_rule_v() {
-    printf -v "$1" 'Everything here must trace to %s. A test is asked for by what it tests, and a helper or fixture that test reads is part of it. A change to the code that a test needs is asked for only when %s asks for that change itself: when only the test needs it, the test asks for more than it was given, and neither is asked for. What nothing asks for is taken out, or %s adds what asks for it — it is never kept on a condition about how it is done (its size, its place, its form).' "$2" "$2" "$3"
+    printf -v "$1" 'Everything here must trace to %s. A test is asked for by what it tests, and a helper or fixture that test reads is part of it. A change to the code is asked for only by %s itself, never by a test that would pass with it: such a test asks for more than it was given, and neither is asked for. What nothing asks for is taken out, or %s adds what asks for it — it is never kept on a condition about how it is done (its size, its place, its form).' "$2" "$2" "$3"
 }
 
 # zb_trace_list_rule_v <var> <what was handed> <who adds to it> — the rule a

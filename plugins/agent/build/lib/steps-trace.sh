@@ -82,7 +82,8 @@ _build_trace_slot_v() {
     _a="${_a%%|*}"
     while :; do
         _a="${_a#"${_a%%[![:space:]]*}"}"
-        case "$_a" in —*) _a="${_a#—}" ;; –*) _a="${_a#–}" ;; [-:*]*) _a="${_a:1}" ;; *) break ;; esac
+        # A dash, a colon, or the mark that opens a quoted `<file> | <line>`.
+        case "$_a" in —*) _a="${_a#—}" ;; –*) _a="${_a#–}" ;; [-:*\`\"\']*) _a="${_a:1}" ;; *) break ;; esac
     done
     _a="${_a%"${_a##*[![:space:]]}"}"
     zb_trace_path_v _bts "$_a"
