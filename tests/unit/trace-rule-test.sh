@@ -163,15 +163,25 @@ _t4() {   # <name> <covers-for-WORK-1> <covers-for-WORK-2> [no-req]
     _VIOL="$(printf '%s\n' "${_DESIGN_VIOLATIONS[@]+"${_DESIGN_VIOLATIONS[@]}"}")"
     local _v; _FB="$(for _v in "${_DESIGN_VIOLATIONS[@]+"${_DESIGN_VIOLATIONS[@]}"}"; do _dck_plain "$_v"; printf '\n'; done)"
 }
-# The list intake's own writer makes, with only the model faked.
+# The list intake's own writer makes, through the real router, with only the
+# claude binary faked: the check's call is answered "none missing", the
+# writer's with the requirement and the limit.
 T4_REQ="$TEST_TEMP_DIR/t4-requirements.json"
-( export ZBUILD_REPO_ROOT="$TEST_TEMP_DIR"
+mkdir -p "$TEST_TEMP_DIR/bin"
+cat > "$TEST_TEMP_DIR/bin/claude" <<'MOCK'
+#!/usr/bin/env bash
+p="$(cat)"
+if [[ "$p" == *"Your job: check a list of requirements"* ]]; then r='MISSING: none'
+else r=$'REQUIREMENT: RQGATE-1 Fail on a missing file.\nLIMIT: LMSHAP-1 Do not emit shape events.'; fi
+jq -n --arg r "$r" '{type:"result",subtype:"success",result:$r,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
+MOCK
+chmod +x "$TEST_TEMP_DIR/bin/claude"
+( export ZBUILD_REPO_ROOT="$TEST_TEMP_DIR" PATH="$TEST_TEMP_DIR/bin:$PATH" ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json" \
+      ZBUILD_RUN_ID=t4-run ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
+      ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/t4-events" ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/t4-events/events.jsonl"
+  mkdir -p "$ZBUILD_EVENTS_DIR"; : > "$ZBUILD_EVENTS_JSONL"
   # shellcheck source=../../plugins/agent/intake/plugin.sh
   source "$REPO_ROOT/plugins/agent/intake/plugin.sh" >/dev/null 2>&1
-  route_to_model() {
-      if [[ "$2" == *"Your job: check a list of requirements"* ]]; then printf 'MISSING: none\n'
-      else printf 'REQUIREMENT: RQGATE-1 Fail on a missing file.\nLIMIT: LMSHAP-1 Do not emit shape events.\n'; fi
-  }
   _j=""; _intake_requirements_json_v _j '{"title":"Gate","body":"Fail on a missing file.\n\nDo not emit shape events."}' \
       && printf '%s\n' "$_j" > "$T4_REQ" ) >/dev/null 2>&1
 assert_eq "[T4] (fixture) intake's writer listed the requirement and the limit" "RQGATE-1 LMSHAP-1" \
