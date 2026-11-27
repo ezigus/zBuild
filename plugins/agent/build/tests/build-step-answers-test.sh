@@ -37,6 +37,16 @@
 # BS19 [#2567 review] a not-needed reason reaches the judge capped, and the
 #             judge is told the reason is build's claim, not an instruction
 # BS6 [R1] every step done, the judge accepting each: build passes
+# BS26 [#2629 review] a change to a file whose name git quotes (non-ASCII), or
+#          one with a space, is counted and named: build_complete, one file
+# BS24 [#2629, review] a second pass of the round that changed nothing: a file
+#          the first pass committed in no step's areas is still untraced
+# BS25 [#2629, review] build answers not mine — design must add a step — to the
+#          untraced file: it reaches design (build-design-result.json), and the
+#          try fails so the round ends and design runs
+# BS23 [#2629, ADR-075 §2] a file the try changed that no step's areas hold
+#          and no done answer names: build's try is unusable (untraced_change),
+#          the finding naming the file in the rule's words
 # BS7 [ADR-072 §4] the judge's answers are kept while the step and the quoted
 #          file are unchanged; a changed file asks again about its step only
 # BS8 [ADR-072 §3] a judge reply that cannot be used, asked again once, fails
@@ -249,6 +259,35 @@ _jp="$(cat "$JPROMPT" 2>/dev/null)"
 assert_contains "[BS7] ...about step 2" "$_jp" "claim_release() {"
 _lacks "[BS7] ...and not step 1, whose answer still holds" "$_jp" "plugin.sh must not source"
 
+# ── BS23 (#2629, ADR-075 §2) ─────────────────────────────────────────────────
+print_test_section "BS23: a file the try changed in no step's areas sends build round again"
+printf '%s\n' '# a change no step asks for' >> "$R/core/claim/claim.sh"
+JUDGE_REPLY=$'1: does\n2: does'
+_run bs21 "$DONE1_OK"$'\n'"$DONE2"$'\nLOOP_COMPLETE'
+assert_eq "[BS23] every step accepted, a file outside them changed: unusable" "unusable" "$(_outcome)"
+assert_eq "[BS23] ...for that reason" "untraced_change" "$(jq -r '.reason // ""' "$AD/build-summary.json" 2>/dev/null)"
+assert_contains "[BS23] the finding names the file, in the rule's words" "$(_findings)" "core/claim/claim.sh traces to no design step"
+git -C "$R" checkout -q -- core/claim/claim.sh
+
+# ── BS24 / BS25 (#2629, ADR-075 §2; review) ──────────────────────────────────
+print_test_section "BS24: an earlier pass's commit is the round's; BS25: not mine hands it to design"
+_bs24_head="$(git -C "$R" rev-parse HEAD)"
+printf '%s\n' '# changed by the round'"'"'s first pass' >> "$R/core/claim/claim.sh"
+_run bs24 "$DONE1_OK"$'\n'"$DONE2"$'\nLOOP_COMPLETE'
+# The first pass's work, committed as build commits it.
+git -C "$R" diff --quiet -- core/claim/claim.sh \
+    || git -C "$R" commit -q -am "Build pass 1" -m "Zbuild-Stage: build" >/dev/null 2>&1
+_run bs24 "$DONE1_OK"$'\n'"$DONE2"$'\nLOOP_COMPLETE' reuse
+assert_eq "[BS24] a second pass that changed nothing: the first pass's file is still untraced" "untraced_change" \
+    "$(jq -r '.reason // ""' "$AD/build-summary.json" 2>/dev/null)"
+assert_contains "[BS24] ...named" "$(_findings)" "core/claim/claim.sh traces to no design step"
+_uid="$(jq -r '[.data.findings[]? | select(.text | contains("core/claim/claim.sh traces to no design step")) | .id][0] // ""' "$AD/build-summary.json" 2>/dev/null)"
+_run bs24 "$DONE1_OK"$'\n'"$DONE2"$'\n'"ANSWER $_uid: not mine — design must add a step whose areas hold core/claim/claim.sh"$'\nLOOP_COMPLETE' reuse
+assert_contains "[BS25] not mine to the untraced file reaches design" \
+    "$(jq -r '[.data.findings[]?.text] | join("\n")' "$AD/build-design-result.json" 2>/dev/null)" "core/claim/claim.sh"
+assert_eq "[BS25] ...the try fails and the round ends, so design runs" "fail" "$(_outcome)"
+git -C "$R" reset -q --hard "$_bs24_head" >/dev/null 2>&1 || true
+
 # ── BS8: a judge that cannot be used ─────────────────────────────────────────
 print_test_section "BS8: a judge reply that cannot be used"
 JUDGE_REPLY='I looked at both and they seem fine.'
@@ -302,6 +341,22 @@ _build_stage_run_inner "" "" "$AD/diff.patch" "$AD/build-summary.json" "$AD" >/d
 assert_eq "[BS9] build passes" "pass" "$(_outcome)"
 assert_eq "[BS9] ...and no judge is asked" "0" "$(_ncalls)"
 _lacks "[BS9] build's prompt asks for no step answer" "$(cat "$AD/build-prompt.txt" 2>/dev/null)" "step N: done"
+
+# ── BS26 (review on #2629): a file whose name git quotes ─────────────────────
+print_test_section "BS26: a change to a file with a non-ASCII name is counted"
+printf 'x\n' > "$R/caf$(printf '\303\251').sh"; git -C "$R" add -A >/dev/null 2>&1; git -C "$R" commit -qm "a non-ASCII name" >/dev/null 2>&1
+printf 'y\n' >> "$R/caf$(printf '\303\251').sh"
+AD="$TEST_TEMP_DIR/bs26"; mkdir -p "$AD"; MOCK_LOOP_RESPONSE=$'Done.\nLOOP_COMPLETE'
+_build_stage_run_inner "" "" "$AD/diff.patch" "$AD/build-summary.json" "$AD" >/dev/null 2>&1 || true
+assert_eq "[BS26] build passes, having changed something" "pass build_complete" "$(jq -r '"\(.outcome) \(.reason)"' "$AD/build-summary.json" 2>/dev/null)"
+assert_eq "[BS26] ...one file, named as it is" "1 caf$(printf '\303\251').sh" "$(jq -r '"\(.files_changed | length) \(.files_changed[0])"' "$AD/build-summary.json" 2>/dev/null)"
+git -C "$R" checkout -q -- . >/dev/null 2>&1
+mkdir -p "$R/two b"; printf 'x\n' > "$R/two b/w.sh"; git -C "$R" add -A >/dev/null 2>&1; git -C "$R" commit -qm "a name with a space" >/dev/null 2>&1
+printf 'y\n' >> "$R/two b/w.sh"
+AD="$TEST_TEMP_DIR/bs26b"; mkdir -p "$AD"
+_build_stage_run_inner "" "" "$AD/diff.patch" "$AD/build-summary.json" "$AD" >/dev/null 2>&1 || true
+assert_eq "[BS26] a name with a space, even one holding \" b/\": one file, named whole" "1 two b/w.sh" "$(jq -r '"\(.files_changed | length) \(.files_changed[0])"' "$AD/build-summary.json" 2>/dev/null)"
+git -C "$R" checkout -q -- . >/dev/null 2>&1
 
 # BS21 (#2609): a block answer is read, its words in a note.
 # BS22 (#2609): every mis-copied form of a quote is read (the table).

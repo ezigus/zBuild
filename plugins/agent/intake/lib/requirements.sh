@@ -21,6 +21,8 @@ declare -F zb_reply_join_v >/dev/null 2>&1 \
     || source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/reply-units.sh" 2>/dev/null || true
 # shellcheck source=../../../../scripts/lib/item-ids.sh
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/item-ids.sh"
+# shellcheck source=../../../../scripts/lib/trace.sh
+source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/trace.sh"
 # #2477: the engine and fingerprint a kept list is checked against.
 # shellcheck source=../../../../scripts/lib/judge.sh
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/judge.sh"
@@ -104,7 +106,8 @@ EOF
 }
 
 _ireq_check_own() {
-    local _idl="" _idll=""; zb_ids_highest_line_v _idl "${_IREQ_CHECK_IDS:-}" "${_IREQ_CHECK_RM:-}" "$_IREQ_PX" requirement
+    # #2629 (ADR-075 §3): the list traces to the issue, in the rule's words.
+    local _idl="" _idll="" _trace=""; zb_trace_list_rule_v _trace "a sentence of the issue" "the issue"; zb_ids_highest_line_v _idl "${_IREQ_CHECK_IDS:-}" "${_IREQ_CHECK_RM:-}" "$_IREQ_PX" requirement
     zb_ids_highest_line_v _idll "${_IREQ_CHECK_IDS:-}" "${_IREQ_CHECK_RM:-}" "$_IREQ_LX" limit; _idl+=" For limits: $_idll"
     cat <<EOF
 Your job: check a list of requirements against the issue it was taken from.
@@ -143,6 +146,10 @@ work, such as the order to do it in or what not to run it alongside, which no
 change to the code can show is met — gets its own line:
 
 NOT-A-REQUIREMENT: <id> — <why>
+
+A listed item the issue does not state — no sentence of the issue asks for
+it — is not a requirement either: give it that line, its why saying what it
+adds to the issue. $_trace
 
 An item already removed needs no line: it is shown under ALREADY REMOVED, with
 its words and why, and it is not a requirement.

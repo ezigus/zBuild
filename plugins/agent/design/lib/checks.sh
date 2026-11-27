@@ -21,6 +21,8 @@ source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/unclear.sh"
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/outside-assumptions.sh"
 # shellcheck source=../../../../scripts/lib/judge-quotes.sh
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/judge-quotes.sh"
+# shellcheck source=checks-trace.sh
+source "${BASH_SOURCE[0]%/*}/checks-trace.sh"
 # shellcheck source=../../../../scripts/lib/design-steps.sh
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/design-steps.sh"
 _DCK_LIB_DIR="${BASH_SOURCE[0]%/*}/../../../../scripts/lib"
@@ -172,6 +174,7 @@ _dck_parts() {
 # The code stays in the result JSON (other code and tests read it); the feedback
 # file says what to change, in the words design was given.
 _dck_plain() {
+    _dck_trace_plain "$1" && return 0
     local v="$1" rest="${1#* }"
     local id="${rest%% *}" third="${rest#* }"; third="${third%% *}"
     case "$v" in
@@ -237,7 +240,7 @@ _design_checks() {
     local design_md="$1" repo_root="$2" req_json="${3:-}" last="${4:-}" _txt="${5:-}" _iss="${5:-}"
     _DESIGN_VIOLATIONS=()
     local -a violations=()
-    local _covered=" " _base="" _base_done="" _evw="" _req_rows="" _rr_k _rr_id _rr_t
+    local _spec_covers="" _covered=" " _base="" _base_done="" _evw="" _req_rows="" _rr_k _rr_id _rr_t
     # #2550: which SPECs cover each id, so a SPEC that covers a limit is named.
     local -A _DCK_COVERS_OF=()
     # The requirements, read once: "A<US>id<US>text" for each ("L" for a limit,
@@ -289,7 +292,7 @@ _design_checks() {
         done <<< "$_blk"
         for _spec in $_na; do
             _acceptance_spec_line "$_blk" "$_spec" || continue
-            _covered+="${_ACC_SPEC_COVERS//,/ } "
+            _covered+="${_ACC_SPEC_COVERS//,/ } "; _spec_covers+="$_spec"$'\x1f'"${_ACC_SPEC_COVERS//,/ }"$'\n'
             local _cv; for _cv in ${_ACC_SPEC_COVERS//,/ }; do _DCK_COVERS_OF[$_cv]+="$_spec "; done
             # ── C10 PARTS (#2467, ADR-073 §3): a [code] or [done] SPEC is written
             # as Given/When/Then — one action, at least one thing to observe.
@@ -404,6 +407,8 @@ _design_checks() {
             [[ "$_covered" == *" $_rid "* ]] \
                 || violations+=("REQUIREMENT_NOT_COVERED $_rid ($_rtext)")
         done <<< "$_req_rows"
+        # #2629 (ADR-075 §2): and every SPEC traces to what intake listed.
+        _dck_specs_trace "$_req_rows" "$_spec_covers"
     fi
 
     # ── C5 WIRING: section present ("none" ok); each concrete path exists and is no test ─

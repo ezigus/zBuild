@@ -83,7 +83,13 @@ _build_write_handoffs() {
     for a in ${ans[@]+"${ans[@]}"}; do
         why="${a#*:}"; why="${why#"${why%%[![:space:]]*}"}"
         [[ "$why" =~ ^[Nn]ot[[:space:]]+mine ]] || continue
-        [[ -n "$_BUILD_FCODE" && "${a%%:*}" == "$_BUILD_FCODE"-* ]] && continue
+        # Build's own findings are its to fix — except an untraced file (#2629,
+        # ADR-075 §2): design adds the step that asks for it.
+        if [[ -n "$_BUILD_FCODE" && "${a%%:*}" == "$_BUILD_FCODE"-* ]]; then
+            _build_own_finding_text_v t "${a%%:*}" "$art"
+            [[ "$t" == *"${_BUILD_TRACE_OWN:-traces to no design step}"* ]] || continue
+            _ZB_ANS_FINDING["${a%%:*}"]="$t"
+        fi
         why="${why:9}"; why="${why#"${why%%[![:space:]—-]*}"}"
         zb_not_mine_target_v t "$why"
         if [[ "$t" == design || ( -n "$ta" && "${a%%:*}" == "$ta"-* ) ]]; then
@@ -95,6 +101,22 @@ _build_write_handoffs() {
         stage_findings_add "$art/build-design-result.json" \
             "$(printf '%s' "$lines" | jq -Rnc '[inputs | select(length > 0) | {text: .}]')" "$_BUILD_FCODE" || true
     fi
+    return 0
+}
+
+# _build_own_finding_text_v <var> <id> <artifact_dir> — the text of build's own
+# finding <id>, from its latest result, by the shell: the finding a not mine
+# answers, read only when such an answer names one of build's own ids.
+_build_own_finding_text_v() {
+    local -n _boft="$1"; local _s="" _re
+    _boft=""
+    [[ -s "$3/build-summary.json" ]] || return 0
+    IFS= read -r -d '' _s < "$3/build-summary.json" || true
+    _re='"text":"(([^"\\]|\\.)*)"[^{}]*"id":"'"$2"'"'
+    [[ "$_s" =~ $_re ]] || { _re='"id":"'"$2"'"[^{}]*"text":"(([^"\\]|\\.)*)"'; [[ "$_s" =~ $_re ]] || return 0; }
+    _boft="${BASH_REMATCH[1]}"
+    # The text as it was written, its JSON escapes read (review on #2629).
+    _boft="${_boft//\\\"/\"}"; _boft="${_boft//\\n/ }"; _boft="${_boft//\\\\/\\}"
     return 0
 }
 

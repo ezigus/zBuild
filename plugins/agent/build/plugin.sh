@@ -74,6 +74,8 @@ source "$_BUILD_DIR/lib/summary.sh"
 source "$_BUILD_DIR/lib/round.sh"
 # shellcheck source=lib/steps.sh
 source "$_BUILD_DIR/lib/steps.sh"
+# shellcheck source=lib/steps-trace.sh
+source "$_BUILD_DIR/lib/steps-trace.sh"
 # #2364: earlier work is found by what it contains, never by which stage made it.
 # shellcheck source=../../../scripts/lib/earlier-output.sh
 source "$_BUILD_ROOT/scripts/lib/earlier-output.sh"
@@ -341,14 +343,28 @@ _build_stage_run_inner() {
     # ─── Parse diff stats ────────────────────────────────────────────────────
     local files_changed_json="[]" lines_added=0 lines_removed=0
     if [[ -n "$diff_content" ]]; then
-        local changed_files_raw
-        changed_files_raw="$(printf '%s' "$diff_content" \
-            | grep '^diff --git' \
-            | sed 's|^diff --git a/[^ ]* b/||' || true)"
-        if [[ -n "$changed_files_raw" ]]; then
-            files_changed_json="$(printf '%s\n' "$changed_files_raw" \
-                | jq -R . | jq -sc . 2>/dev/null || echo '[]')"
-        fi
+        # #2629: each file's header read by the shell — the trace check's one
+        # git call is paid for here (ADR-065 §5). Its new path: `b/<path>`,
+        # or `"b/<path>"` with git's escapes when git quotes it (a non-ASCII
+        # name under core.quotePath); a name with a space is the header's
+        # second half.
+        local _bcf_l _bcf_r _bcf_h _bcf_j="" _bcf_n=0
+        while IFS= read -r _bcf_l; do
+            [[ "$_bcf_l" == "diff --git "* ]] || continue
+            _bcf_r="${_bcf_l#diff --git }"
+            if [[ "$_bcf_r" == *'" "b/'*'"' ]]; then
+                _bcf_r="${_bcf_r##*\" \"b/}"; _bcf_r="${_bcf_r%\"}"; printf -v _bcf_r '%b' "$_bcf_r"
+            elif [[ "$_bcf_r" == 'a/'*' "b/'*'"' ]]; then
+                _bcf_r="${_bcf_r##* \"b/}"; _bcf_r="${_bcf_r%\"}"; printf -v _bcf_r '%b' "$_bcf_r"
+            elif [[ "$_bcf_r" == 'a/'* ]]; then
+                # `a/<p> b/<p>`: <p> is (length - 5) / 2 long.
+                _bcf_h=$(( (${#_bcf_r} - 5) / 2 ))
+                if (( _bcf_h > 0 )) && [[ "${_bcf_r:2+_bcf_h}" == " b/${_bcf_r:2:_bcf_h}" ]]; then _bcf_r="${_bcf_r:2:_bcf_h}"
+                else _bcf_r="${_bcf_r#* b/}"; fi
+            else continue; fi
+            _zb_ans_json_str_v _bcf_l "$_bcf_r"; _bcf_j+="${_bcf_j:+,}$_bcf_l"; _bcf_n=$(( _bcf_n + 1 ))
+        done <<< "$diff_content"
+        (( _bcf_n > 0 )) && files_changed_json="[$_bcf_j]"
         lines_added="$(printf '%s' "$diff_content" | grep -c '^+' 2>/dev/null || true)"
         lines_removed="$(printf '%s' "$diff_content" | grep -c '^-' 2>/dev/null || true)"
         local header_plus header_minus
@@ -360,7 +376,7 @@ _build_stage_run_inner() {
         [[ $lines_removed -lt 0 ]] && lines_removed=0
     fi
     local files_changed_count
-    files_changed_count="$(printf '%s' "$files_changed_json" | jq 'length' 2>/dev/null || echo 0)"
+    files_changed_count="${_bcf_n:-0}"
     # #2323: the result reports the round — what earlier passes committed too.
     _build_round_widen "$repo_root"
 

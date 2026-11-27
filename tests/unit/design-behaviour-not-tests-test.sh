@@ -48,6 +48,9 @@ printf 'scope: all\n' > "$ST/scope-manifest.md"
 ( export ZBUILD_REPO_ROOT="$D"
   _design_stage_run_inner "$ST/scope-manifest.md" "$AD/design.md" "$AD" ) >/dev/null 2>&1
 _dp="$(_flat "$(cat "$_DP" 2>/dev/null)")"
+# #2629 (ADR-075 §2): build's changed files are traced to the steps' areas by name.
+assert_contains "[BT1] design's prompt: an area is a path or a folder ending in /, never a pattern" "$_dp" \
+    "An area is a file's path from the repository root, or a folder's ending in /: never a pattern, and nothing around it."
 assert_contains "[BT1] design's prompt: a test the issue asks for is the behaviour it proves" "$_dp" \
     "When the issue asks for a test, the requirement is the behaviour that test proves"
 assert_contains "[BT1] ...and no step's work is writing or changing a test" "$_dp" \
