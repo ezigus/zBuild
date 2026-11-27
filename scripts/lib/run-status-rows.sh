@@ -123,6 +123,16 @@ rsc_rows_json() {
                 | .order += [$k]
               else . end
             | .rows[$k].members += [($d.member // "")]
+          elif $t == "cycle.member.not_run" then
+            # #2640 (ADR-068 §3): a member that did not run this round, because
+            # one it requires did not pass; it ends the round.
+            ("not_run:" + ($d.cycle_id // "") + ":" + ($d.iter // "") + ":" + ($d.stage // "")) as $k
+            | if .rows[$k] == null then
+                .rows[$k] = {key:$k, kind:"not_run", seq:(.cardinal + "." + ($d.iter // "")), iter:($d.iter // ""),
+                             stage:($d.stage // ""), started_ts:$e.ts, ended_ts:$e.ts, verdict:"not_run",
+                             reason:($d.requires // "")}
+                | .order += [$k]
+              else . end
           elif $t == "pipeline.aborted" then
             .terminal += {aborted: true, reason: ($d.reason // ""), detail: ($d.detail // ""), status: ($d.status // .terminal.status // "aborted")}
           elif $t == "pipeline.end" then

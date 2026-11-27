@@ -219,6 +219,11 @@ rsc_render_row() {
             "$(_rsc_clock "$started")" "$seq" "$it" "$members" "$from" "$reason"
         return 0
     fi
+    # #2640: a member a requirement held back this round.
+    if [[ "$kind" == "not_run" ]]; then
+        printf '**%s** · **%s %s** · not run — %s did not pass' "$(_rsc_clock "$started")" "$seq" "$stage" "$reason"
+        return 0
+    fi
     # #2480: the round of every loop the row is inside, named when known
     # (`delivery_loop round 2 · build_test_cycle round 1`); a row made before
     # rounds were kept says the innermost, as `iter`: `6.1.3` → 1.
