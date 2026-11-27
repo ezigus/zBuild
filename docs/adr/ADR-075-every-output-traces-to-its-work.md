@@ -27,6 +27,13 @@ On #1722 run 45872552515 build changed `scripts/lib/acceptance-block.sh` — a s
 - Build's done answers to findings name files, so a file changed to fix a failing test traces to that finding.
 - A design whose SPECs name no requirement intake listed no longer passes when a requirements list exists.
 
+## Implementation Notes
+
+- `scripts/lib/trace.sh` holds the rule, its list form, its finding and `zb_trace_covered`; no stage writes its own words for it.
+- build: `_build_trace_check` (`plugins/agent/build/lib/steps-trace.sh`) runs in `_build_write_build_summary` after the step check, over `files_changed_json` read by the shell (`_build_json_strings_v`) and the answers `_build_answers_json_v` reads once — no process added.
+- design: `_dck_specs_trace` (`plugins/agent/design/lib/checks-trace.sh`) runs in C7 of `_design_checks`, its words from `_dck_trace_plain`.
+- The judged checks take the rule from `zb_trace_rule_v` / `zb_trace_list_rule_v`; the scope lens's job names it by `@TRACE_RULE@`, which `_rl_lens_job_v` fills.
+
 ## Enforced by
 
 - §1 → `tests/unit/trace-rule-test.sh` T1 (a path in an area; the rule's words: what was handed, a change only a test needs, taken out or added, never kept on a condition; the finding)
