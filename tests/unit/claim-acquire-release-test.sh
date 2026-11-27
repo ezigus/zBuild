@@ -220,9 +220,8 @@ _stub_with_takeover "$TEST_TEMP_DIR/p-race5" \
     '{"acquired": false, "holder": "https://github.com/o/r/actions/runs/42", "race_lost": true}'
 # When
 set +e; zbuild_claim_acquire 9050 "$STATE" 2>"$TEST_TEMP_DIR/race5.err"; _r5_rc=$?; set -e
-# Then: rc 1 (immediate refusal)
 assert_eq "[DSRACE-5] race_lost reply → rc 1 (immediate refusal)" "1" "$_r5_rc" # [DSRACE-5]
-# And: stale-takeover hook was NOT called
+# Then: the stale-takeover hook is not called
 _takeover_calls=0
 grep -q '^takeover' "$CALLS" 2>/dev/null && _takeover_calls=1 || true
 assert_eq "[DSRACE-5] stale-takeover hook was NOT called" "0" "$_takeover_calls" # [DSRACE-5]
