@@ -63,6 +63,15 @@ else
     assert_pass "T2: ANSI stripped from block output"
 fi
 
+# ─── T2b: the same past the shell's strip limit, in a UTF-8 locale ─────────
+# (audit on #2638: past 256 bytes the strip is one sed, and sed must read raw
+# bytes there too, or BSD sed stops on \xc0\x80 and the text is lost.)
+_t2b_pad="$(printf 'x%.0s' {1..300})"
+_t2b_in="$(printf 'head\xc0\x80\n\x1b[31mred\x1b[0m\n')$_t2b_pad"
+_t2b="$(env -u LC_ALL LANG=en_US.UTF-8 LC_CTYPE=en_US.UTF-8 bash -c 'source "$1"; _artifact_md_escape_block "$2"' _ "$REPO_ROOT/scripts/lib/artifact-render.sh" "$_t2b_in" 2>/dev/null)"
+assert_eq "T2b: a long block with invalid bytes, in a UTF-8 locale: kept whole, its escapes out" \
+    "$(printf 'head\xc0\x80\nred\n')$_t2b_pad" "$_t2b"
+
 # ─── T3: hostile caller locale — both helpers honor per-invocation prefix ──
 set +e
 HOSTILE_INLINE="$(LC_ALL=invalid.bogus _artifact_md_escape_inline "$(printf '\x1b[31mz\x1b[0m')" 2>/dev/null)"
@@ -75,15 +84,10 @@ assert_eq "T3: inline escape under hostile caller LC_ALL → rc=0" \
 assert_eq "T3: block escape under hostile caller LC_ALL → rc=0" \
     "0" "$rc_h_block"
 
-# ─── T4: source-line guard — both sites carry LC_ALL=C prefix ──────────────
-TARGET="$REPO_ROOT/scripts/lib/artifact-render.sh"
-hits=$(grep -cE 'LC_ALL=C[[:space:]]+sed[[:space:]]+-E' "$TARGET" 2>/dev/null) || hits=0
-if [[ "$hits" -ge 2 ]]; then
-    assert_pass "T4: source carries LC_ALL=C on both escape helpers (hits=$hits)"
-else
-    assert_fail "T4: expected ≥2 LC_ALL=C sed sites in artifact-render.sh" \
-        "got: $hits"
-fi
+# ─── T4: no program to trip on a byte — the helpers run in the shell ───────
+# (md-text.sh; the old LC_ALL=C sed is gone, and with it the failure #830 hit.)
+_t4="$(PATH=/nonexistent; _artifact_md_escape_inline $'a\xff\e[31mb`c'; printf '|'; _artifact_md_escape_block $'x\xfe\e[0my'; printf '|'; _artifact_pick_fence '````')"
+assert_eq "T4: with no command on PATH, both helpers and the fence still work" $'a\xffb\\`c|x\xfey|`````' "$_t4"
 
 cleanup_test_env
 print_test_results

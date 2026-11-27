@@ -23,7 +23,7 @@ LINT="$REPO_ROOT/scripts/lib/lint-json-text.sh"
 # _lint <file under root> <line> — the lint over a fresh tree holding one file
 # with that line; `rc=<rc>` then its output.
 _lint() {
-    local root; root="$(mktemp -d "$TEST_TEMP_DIR/root.XXXXXX")"
+    local root; root="$(mktemp -d "$TEST_TEMP_DIR/root.XXXXXX")" || { printf 'no temp folder\n' >&2; exit 1; }
     mkdir -p "$root/${1%/*}"
     printf '#!/usr/bin/env bash\n%s\n' "$2" > "$root/$1"
     local out rc=0

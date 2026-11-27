@@ -24,6 +24,8 @@ _ZBUILD_ARTIFACT_RENDER_LOADED=1
 _ZBUILD_ARTIFACT_RENDER_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null || true; pwd)"
 # shellcheck source=./compat.sh
 source "$_ZBUILD_ARTIFACT_RENDER_DIR/compat.sh"
+# shellcheck source=./md-text.sh
+source "$_ZBUILD_ARTIFACT_RENDER_DIR/md-text.sh"
 
 # Registry — Bash 5 associative array (Bash 5 enforced by compat.sh).
 declare -gA _ARTIFACT_RENDERERS=()
@@ -108,17 +110,12 @@ _artifact_jq_or_passthrough() {
 }
 
 # ─── _artifact_md_escape_inline <s> — single-line user-controlled string ─────
-# Strips ANSI/CSI, collapses CR/LF to single space, escapes backticks so an
-# attacker-controlled title can't break out of our intended block structure.
+# Terminal escapes out, one line, backticks escaped (scripts/lib/md-text.sh), so
+# an attacker- or model-controlled title cannot break out of the block
+# structure; the rest as written, for a model or a banner. By the shell (#830:
+# the bytes are never handed to sed).
 _artifact_md_escape_inline() {
-    local s="$1"
-    # #830: LC_ALL=C so sed treats input as raw bytes; otherwise non-UTF-8
-    # fragments in attacker- or LLM-controlled titles abort with "RE error:
-    # illegal byte sequence" on macOS BSD sed.
-    s="$(printf '%s' "$s" | LC_ALL=C sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g; s/\x1b.//g')"
-    s="${s//$'\r'/ }"
-    s="${s//$'\n'/ }"
-    s="${s//\`/\\\`}"
+    local s; zb_ansi_strip_v s "$1"; zb_md_inline_v s "$s"
     printf '%s' "$s"
 }
 
@@ -133,21 +130,13 @@ _artifact_md_escape_inline() {
 # fixes #776 — fence markers in llm-comment prose now render as ```` ``` ````
 # instead of ```` \\\`\\\` ```` triggers, restoring readable forensic output.
 _artifact_md_escape_block() {
-    local s="$1"
-    # #830: LC_ALL=C — same rationale as _artifact_md_escape_inline.
-    s="$(printf '%s' "$s" | LC_ALL=C sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g; s/\x1b.//g')"
+    local s; zb_ansi_strip_v s "$1"
     printf '%s' "$s"
 }
 
-# ─── _artifact_pick_fence <body> — pick triple or quadruple backtick fence ──
-_artifact_pick_fence() {
-    local body="$1"
-    if grep -qE '`{3,}' <<< "$body"; then
-        printf '%s' '````'
-    else
-        printf '%s' '```'
-    fi
-}
+# ─── _artifact_pick_fence <body> — a fence the body cannot close ───────────
+# One backtick more than the body's longest run, three at least (md-text.sh).
+_artifact_pick_fence() { local f; zb_md_fence_v f "$1"; printf '%s' "$f"; }
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Helper: _artifact_split_prose_json — wraps extract_json_and_surrounding_prose

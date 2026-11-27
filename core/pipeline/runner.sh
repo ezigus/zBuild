@@ -1092,7 +1092,7 @@ _runner_render_open_items() {
         printf 'The run %s.\n' "$(run_end_words "$reason" "$n")"
         [[ -n "$items" ]] && printf '%s\n' "$items"
         # #2508: and the questions design could not settle.
-        local q; q="$(open_items_questions "$sd")" || q=""
+        local q; q="$(open_items_questions_text "$sd")" || q=""
         [[ -n "$q" ]] && printf '\n%s\n' "$q"
     } >&2
 }
