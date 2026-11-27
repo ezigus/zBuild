@@ -74,9 +74,9 @@ _build_trace_check() {
 # `<id>: done — <file> | <line>`: what stands between the word done and the
 # first bar, its marks taken off; empty when there is no bar.
 _build_trace_slot_v() {
-    local -n _bts="$1"; local _a="${2#*:}"
+    local -n _bts="$1"; local _a="${2#*:}" _re='^[[:space:]*_`]*done(.*)$'
     _bts=""
-    [[ "${_a,,}" =~ ^[[:space:]*_\`]*done(.*)$ ]] || return 0
+    [[ "${_a,,}" =~ $_re ]] || return 0
     _a="${_a:${#_a}-${#BASH_REMATCH[1]}}"
     [[ "$_a" == *"|"* ]] || return 0
     _a="${_a%%|*}"

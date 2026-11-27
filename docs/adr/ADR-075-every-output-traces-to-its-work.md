@@ -33,7 +33,7 @@ On #1722 run 45872552515 build changed `scripts/lib/acceptance-block.sh` — a s
 ## Implementation Notes
 
 - `scripts/lib/trace.sh` holds the rule, its list form, its finding and `zb_trace_covered`; no stage writes its own words for it.
-- build: `_build_trace_check` (`plugins/agent/build/lib/steps-trace.sh`) runs in `_build_write_build_summary` after the step check, over `files_changed_json` read by the shell (`_build_json_strings_v`) and the answers `_build_answers_json_v` reads once — no process added.
+- build: `_build_trace_check` (`plugins/agent/build/lib/steps-trace.sh`) runs in `_build_write_build_summary` after the step check, over the round's files from `_build_trace_files_v` (one `git diff -z --name-status -M` against the round's base) and the answers `_build_answers_json_v` reads once; build's changed-file count is read from the diff by the shell, which pays for that git call.
 - design: `_dck_specs_trace` (`plugins/agent/design/lib/checks-trace.sh`) runs in C7 of `_design_checks`, its words from `_dck_trace_plain`.
 - The judged checks take the rule from `zb_trace_rule_v` / `zb_trace_list_rule_v`; the scope lens's job names it by `@TRACE_RULE@`, which `_rl_lens_job_v` fills.
 
