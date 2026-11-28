@@ -1,0 +1,15 @@
+{
+  "stage": "issue-check",
+  "cycle_iter": 0,
+  "attempt": 1,
+  "rc": "0",
+  "generated_at": "2026-11-28T13:24:22Z",
+  "files": 2,
+  "outputs": {
+    "issue-check-result.json": "changed",
+    "issue-check-summary.md": "changed",
+    "__notes__": "absent",
+    "__cutoff__": "absent"
+  },
+  "progress": false
+}
