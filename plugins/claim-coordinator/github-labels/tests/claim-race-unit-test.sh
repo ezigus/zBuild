@@ -45,13 +45,16 @@ GHS="$TEST_TEMP_DIR/gh" ISSUE=8100
 _holder() { printf 'https://github.com/testowner/testrepo/actions/runs/%s' "$1"; }
 _fresh() { rm -rf "$GHS"; claim_gh_mock_install "$GHS"; : > "$GHS/repo-label"; : > "$ZBUILD_EVENTS_JSONL"; }
 _at() { printf '2026-01-01T%s' "$1" > "$GHS/now"; }
-# _run <name> [release] — one run in its own shell: it claims the issue, then
-# with `release` releases what it holds. <name> is its CI run id.
+# _run <name> [release] — one run in its own shell and its own state dir, as a
+# real run has (the claim's reply goes through a file there): it claims the
+# issue, then with `release` releases what it holds. <name> is its CI run id.
 _run() {
     local name="$1"
+    rm -f "$TEST_TEMP_DIR/$name.rc" "$TEST_TEMP_DIR/$name.held"
     (
         export GITHUB_RUN_ID="$name"
-        rc=0; zbuild_claim_acquire "$ISSUE" "$STATE" 2> "$TEST_TEMP_DIR/$name.err" || rc=$?
+        mkdir -p "$STATE/$name"
+        rc=0; zbuild_claim_acquire "$ISSUE" "$STATE/$name" 2> "$TEST_TEMP_DIR/$name.err" || rc=$?
         printf '%s' "$rc" > "$TEST_TEMP_DIR/$name.rc"
         printf '%s' "${_ZBUILD_CLAIM_ACQUIRED:-}" > "$TEST_TEMP_DIR/$name.held"
         [[ "${2:-}" != release ]] || zbuild_claim_release 2>> "$TEST_TEMP_DIR/$name.err"
