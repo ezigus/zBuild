@@ -62,6 +62,8 @@ The claim is advisory across machines; this machine's admission lock still seria
 
 - No coordinator installed, a coordinator that fails, or one that makes no claim (`skipped`, e.g.
   `NO_GITHUB=true`): the run goes on unclaimed and emits `pipeline.claim.skipped` with the reason.
+  The one exception (amended 2026-11-28, #2534): a coordinator that answers it cannot tell whether
+  another run claimed first (`cannot_tell`, §5) refuses the run.
 - An answer the engine cannot read is a refusal: a claim may be there.
 - A release that fails emits `pipeline.claim.release_failed` and never changes the run's exit status; the
   coordinator says on stderr how to clear the claim by hand.
@@ -123,10 +125,15 @@ holder records back is the claim's re-read; it does not read the issue's labels 
   The engine (`zbuild_claim_acquire`) refuses the run at once, naming the winner, and never tries a stale
   takeover for it; the run is refused before it starts (`pipeline.refused.claimed`), so its end words are
   "did not start: another run is working on this issue" (`run_end_reason`, `run_end_words`).
-- **Fail closed.** A record that cannot be posted, records that cannot be read back, or a reply to the
-  post that gives no time takes the claim back: the record (when one was made) and the label are removed,
-  and the coordinator answers a backend error, after which the run goes on unclaimed as for any
-  coordinator failure (§1).
+- **No time: the run does not start.** If GitHub's reply to the post gives no time, which claim was first
+  cannot be told. The claim is taken back (the record, found by the one read when the reply gave no id
+  either, and the label are removed) and the coordinator answers `{"acquired": false, "cannot_tell":
+  "<why>"}`. The engine refuses the run before its first stage (`pipeline.refused.claimed` with `why`);
+  it does not go on unclaimed, and its end words are "did not start: it could not tell whether another
+  run had claimed this issue first".
+- **GitHub unreachable.** A record that cannot be posted, or records that cannot be read back, takes the
+  claim back the same way, and the coordinator answers a backend error: the run goes on unclaimed, as for
+  any coordinator failure (§1).
 - **The local-fs store** checks and adds under one lock, so a race on it has one winner already.
 - **Known limits (accepted).** If each run reads the records back before the other's is visible, both
   proceed. A run that dies without releasing leaves its record: a claim made within the window after it
@@ -244,7 +251,7 @@ A claim hook whose reply says `"acquired": true` holds the claim, whatever the h
 - §5 amendment 2026-11-28 (#2534: two claims at once):
   - §5 the first claim wins; the loser keeps the label, says it did not start and who was first; same second → the lower id → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` [#2534/SPEC-1], [#2534/SPEC-3]
   - §5 the release removes the record → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` [#2534/SPEC-2]
-  - §5 a reply with no time fails closed → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` [#2534/SPEC-4]
+  - §5 a reply with no time takes the claim back and the run does not start (§1's exception) → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` [#2534/SPEC-4]; `tests/integration/claim-refusal-test.sh` [#2534/SPEC-4] (F3, through the runner: no stage, the refusal and the end words say why)
   - §5 the window, its setting and its default → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` [#2534/SPEC-5]
   - §5 no labels re-read; one read of the records, every page, finds the winner and the run's own; the engine refuses a lost race at once, with no takeover (the calls GitHub gets, in order) → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` [#2534/SPEC-6], [#2534/SPEC-7]
   - §5 GitHub's time before the id, whatever order the comments are listed in; exactly one of two runs that both read after both posted proceeds → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` [#2534/SPEC-1], [#2534/SPEC-3] ("both runs read after both posted", "the order GitHub lists the notes in does not decide")

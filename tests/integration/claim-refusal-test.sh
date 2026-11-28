@@ -7,6 +7,8 @@
 #    with the holder, the holder printed as written (no escape is interpreted),
 #    how to clear a claim whose run is gone, and end words that say the run did
 #    not start (#2534)
+# F3 GitHub gives no time for the claim note: no stage, the label and note taken
+#    back, the refusal and the end words say why (#2534 R4)
 # F2 a second run of an issue a run on this machine is working on is refused by
 #    the admission lock, and never calls the coordinator
 set -uo pipefail
@@ -26,6 +28,8 @@ source "$REPO_ROOT/core/event-bus/event-bus.sh"
 source "$REPO_ROOT/scripts/lib/run-status-render.sh"
 # shellcheck source=../../scripts/lib/run-open-items.sh
 source "$REPO_ROOT/scripts/lib/run-open-items.sh"
+# shellcheck source=../lib/claim-gh-mock.sh
+source "$REPO_ROOT/tests/lib/claim-gh-mock.sh"
 
 print_test_header "a claimed issue refuses the run; the admission lock is asked first"
 setup_test_env "claim-refusal"
@@ -64,6 +68,24 @@ assert_eq "[#2534/SPEC-1] the run's end words say it did not start, and why" \
 assert_contains "[#2534/SPEC-1] ...and its completion comment opens with them" \
     "$(run_completion_body failure "" "" "https://github.com/o/r/actions/runs/1" "" "" "$_f1_words")" \
     "**zbuild pipeline did not start: another run is working on this issue.**"
+
+print_test_section "F3 GitHub gives no time for the claim note: the run does not start"
+# The real coordinator on GitHub, which is the fake that keeps what our code
+# posts; its reply to the note has no created_at (#2534 R4).
+claim_fixture_real_coordinator
+GHS="$TEST_TEMP_DIR/gh-f3"; claim_gh_mock_install "$GHS"; : > "$GHS/repo-label"; : > "$GHS/no-created-at"
+STARTED="$TEST_TEMP_DIR/f3-started"; claim_fixture_stage ": > \"$STARTED\""
+ZBUILD_CLAIM_BACKEND=gh GITHUB_REPOSITORY=testowner/testrepo ZBUILD_STATUS_COMMENT=0 \
+    claim_fixture_run f3 --issue 90001813
+assert_eq "[#2534/SPEC-4] the run exits non-zero" "1" "$(( CLAIM_RC != 0 ))"
+assert_file_not_exists "[#2534/SPEC-4] no stage ran" "$STARTED"
+assert_contains "[#2534/SPEC-4] the refusal says why" \
+    "$(jq -c 'select(.type == "pipeline.refused.claimed") | .data' "$(claim_fixture_events f3)" 2>/dev/null)" "GitHub did not say when"
+assert_eq "[#2534/SPEC-4] the label is taken back" "" "$(cat "$GHS/labels")"
+assert_eq "[#2534/SPEC-4] ...and the note" "0" "$(jq 'length' "$GHS/comments.json" 2>/dev/null || echo missing)"
+assert_eq "[#2534/SPEC-4] its end words say it did not start, and why" \
+    "did not start: it could not tell whether another run had claimed this issue first" \
+    "$(run_end_words "$(run_end_reason "$(dirname "$(claim_fixture_events f3)")")" 0)"
 
 print_test_section "F2 the admission lock refuses before the claim"
 unset ZBUILD_NO_ISSUE_LOCK

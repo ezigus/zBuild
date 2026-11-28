@@ -12,6 +12,7 @@ _ZBUILD_CLAIM_SH_LOADED=1
 _ZBUILD_CLAIM_ACQUIRED=""        # the issue this run holds the claim on
 _ZBUILD_COORDINATOR_DIR=""       # the coordinator that gave it
 _ZBUILD_CLAIM_THEIR_HOLDER=""    # who holds the claim that refused this run
+_ZBUILD_CLAIM_REFUSED_WHY=""     # why, when it is not that another run holds it
 
 # ADR-005 §3 (#2533): heartbeat and staleness thresholds.
 : "${ZBUILD_CLAIM_HEARTBEAT_S:=600}"   # seconds between heartbeat flushes
@@ -57,7 +58,7 @@ _zbuild_claim_skipped() {
 # coordinator's answer cannot be read, which may hide a claim that is there.
 zbuild_claim_acquire() {
     local issue="$1" state_dir="$2"
-    _ZBUILD_CLAIM_THEIR_HOLDER=""
+    _ZBUILD_CLAIM_THEIR_HOLDER=""; _ZBUILD_CLAIM_REFUSED_WHY=""
     [[ "$issue" =~ ^[1-9][0-9]*$ ]] || return 0
 
     _zbuild_claim_coordinator_v _ZBUILD_COORDINATOR_DIR
@@ -103,6 +104,12 @@ zbuild_claim_acquire() {
         if [[ "$reply" =~ \"race_lost\"[[:space:]]*:[[:space:]]*true ]]; then
             printf 'zbuild_claim_acquire: issue #%s: concurrent claim — %s was first\n' \
                 "$issue" "${_ZBUILD_CLAIM_THEIR_HOLDER:-unknown}" >&2
+            return 1
+        fi
+        # ADR-005 §5 (#2534 R4): whether another run claimed first cannot be
+        # told. The claim is taken back, and the run does not start.
+        if [[ "$reply" =~ \"cannot_tell\"[[:space:]]*:[[:space:]]*\"([^\"\\]*)\" ]]; then
+            _ZBUILD_CLAIM_REFUSED_WHY="${BASH_REMATCH[1]//[[:cntrl:]]/}"
             return 1
         fi
         # #2589 (ADR-005): a claim this machine's own run left behind (it

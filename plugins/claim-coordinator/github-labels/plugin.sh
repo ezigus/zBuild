@@ -266,8 +266,10 @@ _ccgl_unclaim() {
 }
 
 # ─── Hook: claim <issue_id> ───────────────────────────────────────────────────
-# stdout: {"acquired": true} | {"acquired": false, "holder": "<holder>"}
+# stdout: {"acquired": true} | {"acquired": false, "holder": "<holder>"[, "race_lost": true]}
 #         | {"acquired": false, "skipped": "<why>"} (no claim was attempted)
+#         | {"acquired": false, "cannot_tell": "<why>"} (whether another run claimed
+#           first cannot be told: the run must not start)
 # rc: 0 answered, 1 backend error, 2 usage error.
 claim_coordinator_claim() {
     local issue="$1"
@@ -321,8 +323,9 @@ claim_coordinator_claim() {
         [[ -n "$note_id" ]] || { _ccgl_race_first_v winner first_id mine "$issue" 0 "$holder" && note_id="$mine"; } || true
         _ccgl_race_note_delete "$note_id" "$issue" || true
         _ccgl_unclaim "$issue"
-        printf '{"acquired": false, "reason": "backend_error"}\n'
-        return 1
+        # Not a backend error: the run must not go on unclaimed (#2534 R4).
+        printf '{"acquired": false, "cannot_tell": "GitHub did not say when this run'"'"'s claim note was made"}\n'
+        return 0
     fi
     _ccgl_race_window_s_v window
     since=$(( note_at - window ))

@@ -375,11 +375,11 @@ On #2533 run 45403848593 the engine stopped the run because the test stage chang
 
 ## Amendment 2026-11-28 (#2534) — §4: a run refused for a claim says it did not start
 
-A run whose claim is refused (`pipeline.refused.claimed`: another run holds the issue, or claimed it first at the same moment, ADR-005 §5) ends before `pipeline.start`, so it has no status comment and no `pipeline.end`. Its end reason is `claimed` (`run_end_reason`), and its words are "did not start: another run is working on this issue" (`run_end_words`), which the completion comment opens with. Only that refusal is `claimed`; a run refused by the run cap is not.
+A run whose claim is refused (`pipeline.refused.claimed`: another run holds the issue, or claimed it first at the same moment, ADR-005 §5) ends before `pipeline.start`, so it has no status comment and no `pipeline.end`. Its end reason is `claimed` (`run_end_reason`), and its words are "did not start: another run is working on this issue" (`run_end_words`), which the completion comment opens with. A refusal because the claim could not tell whether another run was first (its event carries `why`) is `claim_unsure`: "did not start: it could not tell whether another run had claimed this issue first". Only these refusals are; a run refused by the run cap is not.
 
 ## Enforced by
 
-- §4 amendment 2026-11-28 (#2534: a refused claim's end words) → `tests/integration/claim-refusal-test.sh` [#2534/SPEC-1] (from the real runner's events, into `run_completion_body`); `tests/unit/run-open-items-test.sh` [#2534/SPEC-1] (the run cap's refusal is not one)
+- §4 amendment 2026-11-28 (#2534: a refused claim's end words) → `tests/integration/claim-refusal-test.sh` [#2534/SPEC-1] (from the real runner's events, into `run_completion_body`), [#2534/SPEC-4] (`claim_unsure`, F3); `tests/unit/run-open-items-test.sh` [#2534/SPEC-1] (the run cap's refusal is not one)
 
 - §4 amendment 2026-11-27 (#2640: a member held back, a try not run again) → `tests/integration/cycle-member-requires-test.sh` [#2640/SPEC-1] (the not-run row, from the engine's own events); `tests/unit/run-status-retry-row-test.sh` [#2640/SPEC-2] (the try's row)
 

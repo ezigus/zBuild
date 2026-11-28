@@ -12,7 +12,7 @@ The default cross-machine claim. The engine calls this plugin's `claim` hook bef
 
 | Hook | Signature | stdout | Exit codes |
 |---|---|---|---|
-| `claim_coordinator_claim` | `claim <issue_id>` | `{"acquired": true}`, `{"acquired": false, "holder": "…"}` (with `"race_lost": true` when another run claimed first at the same moment), or `{"acquired": false, "skipped": "…"}` | 0 answered, 1 backend error, 2 usage error |
+| `claim_coordinator_claim` | `claim <issue_id>` | `{"acquired": true}`, `{"acquired": false, "holder": "…"}` (with `"race_lost": true` when another run claimed first at the same moment), `{"acquired": false, "cannot_tell": "…"}` (GitHub gave no time for the holder record: the run must not start), or `{"acquired": false, "skipped": "…"}` | 0 answered, 1 backend error, 2 usage error |
 | `claim_coordinator_release` | `release <issue_id>` | — | 0 removed, 1 failed (stderr says to remove the label by hand); the run's holder record is removed too |
 | `claim_coordinator_heartbeat` | `heartbeat <issue_id>` | — | 0 always (labels don't expire; staleness is #2533) |
 | `claim_coordinator_list_claims` | `list_claims` | `[{"issue": N, "holder": "...", "acquired_at": null}]` | 0 success, 1 backend error |

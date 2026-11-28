@@ -2536,6 +2536,14 @@ main() {
     trap '_runner_early_exit_trap' EXIT
     trap '_RUNNER_EARLY_SIGNAL=1' INT TERM
     if ! zbuild_claim_acquire "${_runner_issue:-}" "$state_dir"; then
+        if [[ -n "${_ZBUILD_CLAIM_REFUSED_WHY:-}" ]]; then
+            # ADR-005 §5 (#2534 R4): no run holds it, but this one cannot tell.
+            eb_emit_event "pipeline.refused.claimed" \
+                "issue=${_runner_issue:-}" "holder=" "why=$_ZBUILD_CLAIM_REFUSED_WHY" 2>/dev/null || true
+            printf 'zbuild: issue #%s: %s, so whether another run claimed it first cannot be told — the run does not start; run it again\n' \
+                "${_runner_issue:-}" "$_ZBUILD_CLAIM_REFUSED_WHY" >&2
+            return 1
+        fi
         eb_emit_event "pipeline.refused.claimed" \
             "issue=${_runner_issue:-}" "holder=${_ZBUILD_CLAIM_THEIR_HOLDER:-unknown}" \
             2>/dev/null || true

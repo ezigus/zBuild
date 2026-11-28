@@ -152,11 +152,16 @@ assert_eq "...and the second is refused" "1" "$(_rc local-2)"
 print_test_section "GitHub's reply gives no time: the claim fails closed"
 _fresh; : > "$GHS/no-created-at"; _at 00:00:00Z
 _run first
-assert_eq "[#2534/SPEC-4] no claim is held" "" "$(_held first)"
+assert_eq "[#2534/SPEC-4] the run is refused: it does not proceed" "1" "$(_rc first)"
+assert_eq "[#2534/SPEC-4] ...and holds no claim" "" "$(_held first)"
+assert_eq "[#2534/SPEC-4] ...nor goes on unclaimed" "" \
+    "$(jq -c 'select(.type == "pipeline.claim.skipped")' "$ZBUILD_EVENTS_JSONL")"
+assert_contains "[#2534/SPEC-4] ...saying GitHub gave no time for its note" "$(_err first)" "GitHub did not say when"
 assert_eq "[#2534/SPEC-4] the label is removed" "" "$(_labels)"
 assert_eq "[#2534/SPEC-4] the run's note is removed" "0" "$(jq 'length' "$GHS/comments.json")"
-assert_contains "[#2534/SPEC-4] the coordinator's failure is said, as any is (ADR-005 §3)" \
-    "$(jq -c 'select(.type == "pipeline.claim.skipped") | .data' "$ZBUILD_EVENTS_JSONL")" "the claim coordinator failed"
+_fresh; : > "$GHS/no-created-at"; : > "$GHS/no-id"; _at 00:00:00Z
+_run first
+assert_eq "[#2534/SPEC-4] with no id either, the note is found and removed" "0" "$(jq 'length' "$GHS/comments.json")"
 
 print_test_section "a released claim leaves no note to count"
 _fresh; _at 00:00:00Z
