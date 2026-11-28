@@ -185,7 +185,7 @@ mkdir -p "$_S/tests"; printf 'x=1\n' > "$_S/p.sh"; printf 'log_checked=1\n' > "$
 jq -n --arg i "$_in/intake-result.json" --arg d "$_in/design.md" --arg p "$_in/diff.patch" --arg t "$_in/test-results.json" \
     '{inputs: {a: $i, b: $d, c: $p, d: $t}}' > "$_S/stage-inputs.json"
 export ZBUILD_STAGE_INPUTS="$_S/stage-inputs.json" ZBUILD_ARTIFACT_DIR="$_A" ZBUILD_REPO_ROOT="$_S"
-_IA_ANSWER=$'UNMET: [fix-code] resume | WHY: intake still runs on resume | ACCEPTED IF: it is accepted | QUOTE: "resume skips done stages"\nUNMET: [fix-design] the design | WHY: the design never says only on a resume | ACCEPTED IF: it is accepted | QUOTE: "resume skips done stages"\nUNASKED: [fix-test] tests/t.sh | WHY: the test also checks the log | ACCEPTED IF: it is accepted | QUOTE: tests/t.sh | log_checked=1\nUNASKED: p.sh | WHY: it sets x | ACCEPTED IF: it is accepted | QUOTE: p.sh | x=1'
+_IA_ANSWER=$'UNMET: [fix-code] resume | WHY: intake still runs on resume | ACCEPTED IF: it is accepted | QUOTE: "resume skips done stages"\nUNMET: [fix-design] the design | WHY: the design never says only on a resume | ACCEPTED IF: it is accepted | QUOTE: "resume skips done stages"\nUNASKED: [fix-test] tests/t.sh | WHY: the test also checks the log | ACCEPTED IF: the change without it | QUOTE: tests/t.sh | log_checked=1\nUNASKED: p.sh | WHY: it sets x | ACCEPTED IF: the change without it | QUOTE: p.sh | x=1'
 issue_acceptance_run issue-acceptance "$_S/pipeline-state.json" >/dev/null 2>&1
 unset ZBUILD_STAGE_INPUTS
 _txt() { jq -r '[.data.findings[]?.text] | join(" || ")' "$_A/issue-acceptance-$1-result.json" 2>/dev/null; }

@@ -14,7 +14,7 @@ _ZBUILD_TEST_AUTHOR_RESULT_LOADED=1
 # author finished, otherwise how it stopped. A router timeout is not a poor
 # authoring pass, it is no authoring pass at all.
 _ta_write_result() {
-    local dir="$1" o="$2" r="$3" n="${4:-0}" fnd="${5:-[]}" ends="${6:-}"
+    local dir="$1" o="$2" r="$3" n="${4:-0}" fnd="${5:-[]}" ends="${6:-}" note="${7:-}"
     mkdir -p "$dir" 2>/dev/null || true
     # #2189: the author REPORTS the testfiles it owns; the engine denies every
     # other stage edits to them from this report (never from design.md by path).
@@ -81,6 +81,8 @@ _ta_write_result() {
     # for; one that did not pass says why (its findings reach the row).
     local _sum_body="" _sum_head="$r"
     [[ "$o" == pass && -n "$_tf_ids" ]] && _sum_head="tests for ${_tf_ids}"
+    # #2640: what a cut-off try kept, for its row and the next try.
+    [[ -n "$note" ]] && _sum_head+=" — $note"
     if [[ -n "$_tf_lines" ]]; then
         _sum_body="- the test files, and the requirements each covers:${_tf_lines}"
         _sum_body+=$'\n'"- Each [code] requirement's test must fail on the code from before this change, and pass once the code is written."

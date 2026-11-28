@@ -16,6 +16,8 @@ _ZBUILD_REVIEW_LENS_CHARTERS_LOADED=1
 _RL_LENSES_DIR="${BASH_SOURCE[0]%/*}/../lenses"
 # shellcheck source=../../../../scripts/lib/outside-assumptions.sh
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/outside-assumptions.sh"
+# shellcheck source=../../../../scripts/lib/trace.sh
+source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/trace.sh"
 
 # _rl_lens_job_v <var> <lens> — the lens's own job text, read in this shell
 # (ADR-065 §5). rc 1 when the lens has none, or its name is not a plain name:
@@ -27,6 +29,12 @@ _rl_lens_job_v() {
     [[ -s "$_f" ]] || return 1
     IFS= read -r -d '' _rlj < "$_f" || true
     _rlj="${_rlj%$'\n'}"
+    # #2629 (ADR-075 §3): a lens that judges what was asked for names the rule
+    # by its mark, and is given it in the words every stage is given.
+    if [[ "$_rlj" == *@TRACE_RULE@* ]]; then
+        local _rlt=""; zb_trace_rule_v _rlt "a requirement of the issue" "the issue"
+        _rlj="${_rlj//@TRACE_RULE@/$_rlt}"
+    fi
     [[ -n "$_rlj" ]]
 }
 
@@ -122,7 +130,8 @@ ${_RL_UNCLEAR_RULES:-}
 
 A problem you suspect but cannot confirm is not left out: write it as a
 SUSPICION, with what would confirm it, and judge the rest of the change. It
-reaches the stage that can answer it as a question, and sends nothing back:
+sends the change round once, to the stage its fix: names, which runs what would
+confirm it and answers whether it holds:
   SUSPICION
   quote: <file> | <the line it is about>
   suspicion: <what you suspect can go wrong>

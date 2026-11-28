@@ -10,6 +10,8 @@
 _ZBUILD_STAGE_ANSWERS_LOADED=1
 # shellcheck source=reply-units.sh
 source "${BASH_SOURCE[0]%/*}/reply-units.sh"
+# shellcheck source=./json-text.sh
+source "${BASH_SOURCE[0]%/*}/json-text.sh"
 
 # A finding's id, as an answer names it (#2574, ADR-068 §5): a code and a number
 # (item-ids.sh). An answer in the old form names it `<label> finding <n>`,
@@ -125,15 +127,6 @@ _zb_answers_carry() {
     _ZB_ANS_MISSING="$_left"
 }
 
-# _zb_ans_json_str_v <var> <text> — <text> as a JSON string, by the shell.
-_zb_ans_json_str_v() {
-    local -n _zajs="$1"; local LC_ALL=C _zajs_s="$2"
-    _zajs_s="${_zajs_s//\\/\\\\}"; _zajs_s="${_zajs_s//\"/\\\"}"
-    _zajs_s="${_zajs_s//$'\n'/\\n}"; _zajs_s="${_zajs_s//$'\r'/\\r}"; _zajs_s="${_zajs_s//$'\t'/\\t}"
-    _zajs_s="${_zajs_s//[$'\001'-$'\010'$'\013'$'\014'$'\016'-$'\037']/ }"
-    _zajs="\"$_zajs_s\""
-}
-
 # zb_answers_findings_json_v <var> <arr> — the text of each finding an answer
 # of <arr> answers, as the stage was shown it (zb_answers_finish), as a JSON
 # object by id: what a stage keeps beside its answers (data.answer_findings),
@@ -146,7 +139,7 @@ zb_answers_findings_json_v() {
         _zafj_k="${_zafj_x%%:*}"
         [[ -n "${_ZB_ANS_FINDING[$_zafj_k]+x}" && -z "${_zafj_seen[$_zafj_k]+x}" ]] || continue
         _zafj_seen["$_zafj_k"]=1
-        _zb_ans_json_str_v _zafj_j "$_zafj_k"; _zb_ans_json_str_v _zafj_v "${_ZB_ANS_FINDING[$_zafj_k]}"
+        zb_json_str_v _zafj_j "$_zafj_k"; zb_json_str_v _zafj_v "${_ZB_ANS_FINDING[$_zafj_k]}"
         _zafj_out+="${_zafj_out:+,}$_zafj_j:$_zafj_v"
     done
     _zafj="{$_zafj_out}"

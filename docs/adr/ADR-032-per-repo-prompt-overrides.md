@@ -1,6 +1,6 @@
 # ADR-032 — Per-repo prompt overrides (generic engine, operator overlay)
 
-**Status:** Proposed (2026-06-13); amended 2026-10-12 (the repository's rules and its per-stage guidance reach every stage from the engine, under From the repo — ADR-067 §8)
+**Status:** Proposed (2026-06-13); amended 2026-11-26 (#2630: the repository's rules are `.zbuild/rules.md`, beside `vision.md` — ADR-067 §8); amended 2026-10-12 (the repository's rules and its per-stage guidance reach every stage from the engine, under From the repo — ADR-067 §8)
 **Related:** ADR-016 (per-repo template resolution), ADR-004 (redaction chokepoint), ADR-030 (scope model / security floor), ADR-001 (plugin contract), ADR-024 (subprocess env isolation)
 **Issue:** #854 (OV-1); fans out in #855 (OV-2); compiler-layer companion in #856 (OV-3)
 
@@ -58,21 +58,21 @@ Ship **100% target-agnostic** stage prompts, and let an operator augment any age
 **Decision.**
 
 1. **A stage declares it; the engine does it.** A manifest that carries `prompt.repo_rules: true` is given the target repository's rules on every model call. The router injects them in `_route_redact_prompt` — the one funnel every call passes through, before `apply_scope_redaction`, exactly where the stage-checkpoint block goes — so no stage reads the file and none needs to know another exists. A stage that does not declare it gets a byte-identical prompt.
-2. **The repository's rules, else zBuild's defaults.** The engine reads `<target repo>/.zbuild/prompts/rules.md` through the same loader as an override (string floor, symlink and hardlink containment, size cap). When it is absent, empty or refused, it uses `config/prompts/default-rules.md`, a target-agnostic set (follow the repo's idiom and contributor guidance; pass its own linters and guards; no secrets; no new dependencies). The block says which one the model got. `<!-- … -->` notes in either file are for maintainers and are not sent.
+2. **The repository's rules, else zBuild's defaults.** The engine reads `<target repo>/.zbuild/prompts/rules.md` *(amended 2026-11-26, #2630: `<target repo>/.zbuild/rules.md`)* through the same loader as an override (string floor, symlink and hardlink containment, size cap). When it is absent, empty or refused, it uses `config/prompts/default-rules.md`, a target-agnostic set (follow the repo's idiom and contributor guidance; pass its own linters and guards; no secrets; no new dependencies). The block says which one the model got. `<!-- … -->` notes in either file are for maintainers and are not sent.
 3. **Replace, not merge.** A repository's `rules.md` replaces the defaults. A repository that wants them copies the lines it wants — the defaults are short for that reason.
 4. **Who declares it.** Stages that write into the repository need it most. This change declares it on `test-author` only; the other stages are a follow-up. The lens stages do not declare it.
-5. **zBuild dogfoods it.** `.zbuild/prompts/rules.md` in this repository carries the rules its own tests enforce, starting with the SIGPIPE rule #1845 broke.
+5. **zBuild dogfoods it.** `.zbuild/prompts/rules.md` *(amended 2026-11-26, #2630: `.zbuild/rules.md`)* in this repository carries the rules its own tests enforce, starting with the SIGPIPE rule #1845 broke.
 
 **Consequences.** Any stage can have repository rules by one manifest line. A rule stated there is still guidance — the enforcement is the repository's own tests, and the test stage now names the file a failure points at (`about`), which the engine resolves to the stage that owns it (#2180).
 
-**Implementation.** `load_repo_rules` in `scripts/lib/prompt-overrides.sh`, `config/prompts/default-rules.md`, `.zbuild/prompts/rules.md`. (The `prompt.repo_rules` declaration, `scripts/lib/repo-rules.sh` and the router injection are retired by the amendment below.)
+**Implementation.** `load_repo_rules` in `scripts/lib/prompt-overrides.sh`, `config/prompts/default-rules.md`, `.zbuild/prompts/rules.md` *(amended 2026-11-26, #2630: `.zbuild/rules.md`)*. (The `prompt.repo_rules` declaration, `scripts/lib/repo-rules.sh` and the router injection are retired by the amendment below.)
 
 ## Amendment (2026-10-12): every stage, from the engine
 
 **Decision.** The repository's settings reach every stage the same way, from the engine, as part of the
 **From the repo** block every stage receives at dispatch (ADR-067 §8, `scripts/lib/stage-prompt.sh`):
 
-1. **Rules for every stage.** The repository's `.zbuild/prompts/rules.md`, else zBuild's
+1. **Rules for every stage.** The repository's `.zbuild/prompts/rules.md` *(amended 2026-11-26, #2630: `.zbuild/rules.md`)*, else zBuild's
    `config/prompts/default-rules.md` from the install, for every stage — no declaration
    (`prompt.repo_rules` is retired). Any stage can break a repository's rules; a stage that judges
    reads them as what a change must meet.
@@ -88,3 +88,9 @@ Ship **100% target-agnostic** stage prompts, and let an operator augment any age
    whole prompt still passes the redaction chokepoint.
 
 Enforced by: `tests/unit/stage-prompt-contract-test.sh` F1, F2; `tests/unit/prompt-overrides-load-test.sh` (the loader's containment and size cap); `plugins/agent/review-lens/tests/review-lens-context-unit-test.sh` C8.
+
+## Amendment 2026-11-26 (#2630) — the repository's rules are `.zbuild/rules.md`
+
+- **The rules file moves to `.zbuild/rules.md`**, beside `.zbuild/vision.md`; `.zbuild/prompts/rules.md` is no longer read (ADR-067 §8, amended 2026-11-26). The loader reads only that one file for the rules — not one linked or hard-linked out of the repository — and a stage's guidance stays under `.zbuild/prompts/` (`_po_load_repo_file`, `scripts/lib/prompt-overrides.sh`).
+
+Enforced by: `tests/unit/tests-lens-and-rules-test.sh` R1, R1b.

@@ -100,7 +100,7 @@ set -e
 ZBUILD_EVENTS_DIR="$_old_dir"; ZBUILD_EVENTS_JSONL="$_old_jsonl";
 
 _SEEN="$TEST_TEMP_DIR/idf-seen.txt"
-_seen() { grep "^$1=" "$_SEEN" 2>/dev/null | head -1 | cut -d= -f2-; }
+_seen() { grep "^$1=" "$_SEEN" 2>/dev/null | sed -n 1p | cut -d= -f2-; }
 
 assert_eq "[SETUP] fixture dispatch succeeded" "0" "$_dispatch_rc"
 
@@ -109,14 +109,14 @@ assert_eq "[SETUP] fixture dispatch succeeded" "0" "$_dispatch_rc"
 # "kind":"" — event-bus.sh reads ZBUILD_PLUGIN / ZBUILD_PLUGIN_KIND, which
 # nothing in core/, scripts/ or plugins/ assigned. Asserted on the ENVELOPE
 # (top-level), not on .data, which callers populate by hand.
-_env_plugin="$(jq -r 'select(.type=="plugin.run.start") | .plugin' "$_EVENTS" 2>/dev/null | head -1)"
-_env_kind="$(jq -r 'select(.type=="plugin.run.start") | .kind' "$_EVENTS" 2>/dev/null | head -1)"
+_env_plugin="$(jq -r 'select(.type=="plugin.run.start") | .plugin' "$_EVENTS" 2>/dev/null | sed -n 1p)"
+_env_kind="$(jq -r 'select(.type=="plugin.run.start") | .kind' "$_EVENTS" 2>/dev/null | sed -n 1p)"
 assert_eq "[SPEC-1] envelope .plugin is the serving plugin's id" "$_FIX_ID" "$_env_plugin"
 assert_eq "[SPEC-1] envelope .kind is the serving plugin's kind" "agent" "$_env_kind"
 
 # The lifecycle's own start/complete pair fires OUTSIDE the plugin subshell.
 # Both must be stamped, or `local -x` was placed too late in the function.
-_env_complete="$(jq -r 'select(.type=="plugin.run.complete") | .plugin' "$_EVENTS" 2>/dev/null | head -1)"
+_env_complete="$(jq -r 'select(.type=="plugin.run.complete") | .plugin' "$_EVENTS" 2>/dev/null | sed -n 1p)"
 assert_eq "[SPEC-1] envelope .plugin is stamped on plugin.run.complete too" "$_FIX_ID" "$_env_complete"
 
 # ─── SPEC-2: a plugin resolves its own manifest from ZBUILD_PLUGIN_DIR ───────
@@ -190,7 +190,7 @@ set -e
 ZBUILD_EVENTS_JSONL="$_old_jsonl2";
 
 _SEEN2="$TEST_TEMP_DIR/idf2-seen.txt"
-_seen2() { grep "^$1=" "$_SEEN2" 2>/dev/null | head -1 | cut -d= -f2-; }
+_seen2() { grep "^$1=" "$_SEEN2" 2>/dev/null | sed -n 1p | cut -d= -f2-; }
 assert_eq "[SPEC-4] a second dispatch sees its own stage, not the first's" "second_stage" "$(_seen2 stage)"
 assert_eq "[SPEC-4] a second dispatch sees its own plugin id" "identity-fixture-2" "$(_seen2 plugin)"
 assert_eq "[SPEC-4] a second dispatch sees its own kind" "tool" "$(_seen2 kind)"
@@ -258,7 +258,7 @@ set -e
 ZBUILD_EVENTS_JSONL="$_old_jsonl3";
 
 _SEEN3="$TEST_TEMP_DIR/idf3-seen.txt"
-_seen3() { grep "^$1=" "$_SEEN3" 2>/dev/null | head -1 | cut -d= -f2-; }
+_seen3() { grep "^$1=" "$_SEEN3" 2>/dev/null | sed -n 1p | cut -d= -f2-; }
 
 assert_eq "[SPEC-7] generated map work unit ran" "0" "$_wu_rc"
 assert_eq "[SPEC-7] a map member receives the group's stage name" "$_MAP_STAGE" "$(_seen3 stage)"
@@ -266,7 +266,7 @@ assert_eq "[SPEC-7] a map member receives the plugin id" "$_FIX_ID" "$(_seen3 pl
 assert_eq "[SPEC-7] a map member receives the plugin dir" "$_FIX_DIR" "$(_seen3 dir)"
 # The element is what distinguishes the six members; stage alone cannot.
 assert_eq "[SPEC-7] ZBUILD_MAP_ELEMENT still distinguishes members" "security" "$(_seen3 element)"
-_map_env_plugin="$(jq -r 'select(.type=="plugin.run.start") | .plugin' "$_MAP_EVENTS" 2>/dev/null | head -1)"
+_map_env_plugin="$(jq -r 'select(.type=="plugin.run.start") | .plugin' "$_MAP_EVENTS" 2>/dev/null | sed -n 1p)"
 assert_eq "[SPEC-7] a map member's event envelope is stamped" "$_FIX_ID" "$_map_env_plugin"
 
 if [[ "$_saved_plugins_root" != "__UNSET__" ]]; then

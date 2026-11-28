@@ -1218,6 +1218,25 @@ _cycle_member_from_state() {
         '. + {($s): {verdict: $v, status: $st}}' <<< "$blob" 2>/dev/null)" \
         && blob="$_cms_new" \
         || warn "cycle-orchestrator: failed to update verdict blob for skipped member '$1'; cycle predicates (exit_when/abort_when/until) may evaluate incorrectly"
+    _cycle_round_note "$1" "$_cms_v"
+}
+
+# _cycle_round_note <member> <verdict> — #2640: a member that passed this round,
+# for the members that require it (`requires:`, ADR-068 §3). No process.
+_cycle_round_note() {
+    [[ "$2" == pass || "$2" == complete ]] && _CYCLE_ROUND_PASSED+="$1 "
+    return 0
+}
+
+# _cycle_requires_unmet_v <var> <member> — the members <member> requires that
+# have not passed this round, joined by ", "; empty when it requires none, or
+# all of them passed.
+_cycle_requires_unmet_v() {
+    local -n _cru="$1"; local _v="_TPL_STAGE_REQUIRES_${2//-/_}" _n
+    _cru=""
+    for _n in ${!_v:-}; do
+        [[ "$_CYCLE_ROUND_PASSED" == *" $_n "* ]] || _cru+="${_cru:+, }$_n"
+    done
 }
 
 # ─── _cycle_state_write_member_atomic ────────────────────────────────────────
@@ -1347,6 +1366,9 @@ _cycle_iter_dispatch() {
     _CYCLE_STOP_RUN_MEMBER=""; _CYCLE_STOP_RUN_REASON=""
     # #2543 (ADR-068 §3): set when a member ends this round for an earlier one.
     _CYCLE_ITER_ENDED_FOR_EARLIER=0
+    # #2640 (ADR-068 §3): the members that passed this round, and a member that
+    # did not run because one it requires did not (`<member>:<names>`).
+    _CYCLE_ROUND_PASSED=" "; _CYCLE_ITER_NOT_RUN=""
 
     if ! declare -F cycle_dispatch_stage >/dev/null 2>&1; then
         error "cycle_orchestrator: no cycle_dispatch_stage hook registered (F2 wires this)"
@@ -1455,6 +1477,18 @@ _cycle_iter_dispatch() {
             return 1
         fi
         _cyc_pos=$(( _cyc_pos + 1 ))
+        # #2640 (ADR-068 §3): a member runs only when each member it requires
+        # passed in this round. One that did not ends the round, as ends_round
+        # does: this member and the rest do not run, and the loop goes round.
+        local _rq_unmet
+        _cycle_requires_unmet_v _rq_unmet "$s"
+        if [[ -n "$_rq_unmet" ]]; then
+            _CYCLE_ITER_NOT_RUN="$s:$_rq_unmet"
+            _CYCLE_ITER_ENDED_FOR_EARLIER=1
+            _cycle_emit "cycle.member.not_run" "iter=$iter" "stage=$s" \
+                "requires=$_rq_unmet" "reason=$s not run — $_rq_unmet did not pass"
+            break
+        fi
         # Wave 19-D-1 (#731): emit start event BEFORE dispatching this member.
         # Kind is derived from the type discriminator below — compute it now so
         # the start event records it. Same `_TPL_STAGE_TYPE_<safe>` indirection.
@@ -1479,8 +1513,10 @@ _cycle_iter_dispatch() {
             _ru_blob="$(jq -c --arg s "$s" --argjson e "$_ru_entry" '. + {($s): $e}' <<< "$blob" 2>/dev/null)" && blob="$_ru_blob"
             _cycle_emit "cycle.iteration.reused" "iter=$iter" "member=$s" \
                 "from_iter=${_CYCLE_VERIFIED_ITER:-}" "reason=empty_diff"
+            local _ru_v; _ru_v="$(jq -r '.verdict // "pass"' <<< "$_ru_entry")"
             _cycle_state_write_member_atomic "$state_file" "$s" \
-                "$(jq -r '.status // "complete"' <<< "$_ru_entry")" "$(jq -r '.verdict // "pass"' <<< "$_ru_entry")" || true
+                "$(jq -r '.status // "complete"' <<< "$_ru_entry")" "$_ru_v" || true
+            _cycle_round_note "$s" "$_ru_v"
             continue
         fi
         # #1805 (ADR-021): --from-stage <s> inside this cycle. In this round
@@ -1614,9 +1650,13 @@ _cycle_iter_dispatch() {
             # rounds decides whether this outer round may carry on past it.
             local _inner_on_max_var="_TPL_CYCLE_ON_MAX_${s//-/_}"
             local _inner_on_max="${!_inner_on_max_var:-continue}"
+            # #2640: this outer round's passed members, and the member it held
+            # back (none yet) — the inner loop keeps its own rounds' records.
+            local _outer_passed="$_CYCLE_ROUND_PASSED" _outer_not_run="${_CYCLE_ITER_NOT_RUN:-}"
             _CYCLE_NEST_DEPTH=$(( ${_CYCLE_NEST_DEPTH:-0} + 1 ))
             cycle_orchestrator_run "$s" "$state_dir" "$state_file"
             rc=$?
+            _CYCLE_ROUND_PASSED="$_outer_passed"; _CYCLE_ITER_NOT_RUN="$_outer_not_run"
             local _inner_outcome="${_CYCLE_LAST_OUTCOME:-}" _inner_halt="${_CYCLE_LAST_MEMBER_HALT:-}"
             # #2543: whether the inner loop's last round was ended for an
             # earlier member; this outer round has ended no round yet.
@@ -1757,6 +1797,7 @@ _cycle_iter_dispatch() {
             status="$_CYCLE_DISPATCH_STATUS"
             blob="$(jq -c --arg s "$s" --arg v "$verdict" --arg st "$status" \
                 '. + {($s): {verdict:$v, status:$st}}' <<< "$blob" 2>/dev/null)" || blob="{}"
+            _cycle_round_note "$s" "$verdict"
             if [[ $rc -ne 0 ]]; then
                 fail=$(( fail + 1 ))
             fi
@@ -1849,6 +1890,7 @@ _cycle_iter_dispatch() {
             status="$_CYCLE_DISPATCH_STATUS"
             blob="$(jq -c --arg s "$s" --arg v "$verdict" --arg st "$status" \
                 '. + {($s): {verdict:$v, status:$st}}' <<< "$blob" 2>/dev/null)" || blob="{}"
+            _cycle_round_note "$s" "$verdict"
             if [[ $rc -ne 0 ]]; then
                 fail=$(( fail + 1 ))
             fi
@@ -1914,6 +1956,7 @@ _cycle_iter_dispatch() {
             status="$_CYCLE_DISPATCH_STATUS"
             blob="$(jq -c --arg s "$s" --arg v "$verdict" --arg st "$status" \
                 '. + {($s): {verdict:$v, status:$st}}' <<< "$blob" 2>/dev/null)" || blob="{}"
+            _cycle_round_note "$s" "$verdict"
             _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "$verdict" "$status"
             _cycle_state_write_member_atomic "$state_file" "$s" "$_CYCLE_DISPATCH_STATUS" "$_CYCLE_DISPATCH_VERDICT" || true
             if [[ -n "$_mg_stop" ]]; then
@@ -2008,6 +2051,7 @@ _cycle_iter_dispatch() {
             --arg r "${_CYCLE_DISPATCH_REASON:-}" \
             --argjson rp "$(jq -c 'if type == "object" then . else {} end' <<< "${_CYCLE_DISPATCH_REPORT:-{\}}" 2>/dev/null || printf '{}')" \
             '. + {($s): {verdict:$v, status:$st, disposition:$d, kind:$k, reason:$r, report:$rp}}' <<< "$blob" 2>/dev/null)" || blob="{}"
+        _cycle_round_note "$s" "$verdict"
         # #2183: a member reported that it re-checked a finding and it did not
         # reproduce. Captured HERE, right after the dispatch that wrote it: the
         # reuse decision this feeds is at the NEXT iteration, by which time the
@@ -2875,7 +2919,13 @@ _cycle_orchestrator_run_body() {
             # id) — build_test_cycle ALWAYS runs `test`, so it has a signal and is
             # unaffected (scope: design-only for now, #1261); a future verifier-less
             # cycle inherits the same fail-fast.
-            if [[ "$_iter_did_not_finish" -eq 1 && "$_exh_tests_reported" -eq 0 ]]; then
+            # #2640 (ADR-068 §3): the last round ended because a member did not
+            # run — one it requires never passed. Said as that, not as a timeout
+            # or tests that failed: the member never ran at all.
+            if [[ -n "${_CYCLE_ITER_NOT_RUN:-}" ]]; then
+                _CYCLE_LAST_TERMINATED_REASON="not_run:${_CYCLE_ITER_NOT_RUN}"
+                overall_status="max_iterations"; term_outcome="failed"
+            elif [[ "$_iter_did_not_finish" -eq 1 && "$_exh_tests_reported" -eq 0 ]]; then
                 eb_emit_event "cycle.timeout_exhausted" \
                     "cycle_id=$cycle_id" "iter=$iter" \
                     "reason=design_timeout_exhausted" 2>/dev/null || true

@@ -10,8 +10,9 @@
 # blocking: the run ended `out_of_tries:build_test_cycle` in round 1, and design
 # never got the round that would let it.
 #
-# T1 [change] the shipped template: test-author out of tries, build still runs
-#             in that round
+# T1 [change] the shipped template: test-author out of tries does not end the
+#             run — #2640 (ADR-068 §3): build requires test-author, so that
+#             round ends before build (and test), not after them
 # T2 [change] ...and round 2 starts from design
 # T3 [guard]  a design that fails still ends the run (stop_run_on_fail)
 set -uo pipefail
@@ -63,9 +64,10 @@ _ran() { grep -c "^$1|iter=$2$" "$LOG" || true; }
 # ── T1 / T2 ──────────────────────────────────────────────────────────────────
 # Given the shipped template, and a test-author that fails round 1 (out of tries)
 FAILS="test-author@1" _run
-# Then build runs on the tests as they are, and round 2 starts from design
-assert_eq "[T1] build runs in the round test-author ran out of tries" "1" "$(_ran build 1)"
-assert_eq "[T1] ...and so does the test stage" "1" "$(_ran test 1)"
+# Then that round ends before build, and round 2 starts from design. #2640:
+# build requires test-author (before, the round went on with no new tests).
+assert_eq "[T1] build does not run in the round test-author ran out of tries" "0" "$(_ran build 1)"
+assert_eq "[T1] ...nor does the test stage" "0" "$(_ran test 1)"
 assert_eq "[T1] no blocking failure is said" "0" "$(grep -c 'cycle.member.blocking_failure' "$ZBUILD_EVENTS_JSONL" || true)"
 assert_eq "[T2] round 2 starts from design" "1" "$(_ran design 2)"
 assert_eq "[T2] ...and the loop then passes" "0" "$RUN_RC"

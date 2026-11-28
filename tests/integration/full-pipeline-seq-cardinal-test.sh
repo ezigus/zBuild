@@ -99,7 +99,7 @@ assert_eq "pipeline exits 0" "0" "$rc"
 expect_label() {
     local stage="$1" expected="$2"
     local actual
-    actual="$(grep "^stage=$stage " "$LABEL_LOG" | head -1 | sed -n 's/.*label=\(.*\)$/\1/p')"
+    actual="$(grep "^stage=$stage " "$LABEL_LOG" | sed -n 1p | sed -n 's/.*label=\(.*\)$/\1/p')"
     assert_eq "stage=$stage label=$expected" "$expected" "$actual"
 }
 

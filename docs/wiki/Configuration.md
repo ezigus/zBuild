@@ -46,21 +46,22 @@ To customize zBuild for a specific repository, create a `.zbuild/` directory at 
 | Path | What it overrides |
 |---|---|
 | `.zbuild/templates/` | Repo-specific template files (replaces or extends shipped templates; see ADR-016) |
+| `.zbuild/rules.md` | The repository's rules, given to every stage whole (see below; ADR-067 §8) |
 | `.zbuild/prompts/` | Repo-specific prompt overrides (see ADR-032) |
 | `.zbuild/platforms.json` | Platform identity and role-based plugin selection (see ADR-009) |
 
-### Repository rules (`.zbuild/prompts/rules.md`)
+### Repository rules (`.zbuild/rules.md`)
 
 Some of zBuild's stages are AI agents that write files into your repository — test-author, for example, writes your acceptance tests. They write better code when they know your house rules: which lint rules you enforce, which patterns you ban, how your tests are laid out. Put those rules in one Markdown file and every such stage is given them:
 
 ```markdown
-<!-- .zbuild/prompts/rules.md — notes in comments like this one are not sent -->
+<!-- .zbuild/rules.md — notes in comments like this one are not sent -->
 - Python 3.12, formatted with black; every file must pass `ruff check`.
 - Tests live next to the code as `test_<module>.py` and use pytest fixtures, never unittest.
 - Never call the network from a test; use the `fake_http` fixture.
 ```
 
-If your repository has no `rules.md`, every stage gets zBuild's short default rule set instead (follow the repository's existing style and contributor docs, pass its own linters and tests, never write secrets). Your file replaces the defaults rather than adding to them, so copy any default you want to keep.
+zbuild reads it from `.zbuild/rules.md`, beside `.zbuild/vision.md`, and every stage's prompt holds its whole text, naming the file it came from. If your repository has no `.zbuild/rules.md`, an empty one, or one that is a link (zbuild does not follow it: keep the file itself there), the run's status comment says so, and every stage gets zBuild's short default rule set instead (follow the repository's existing style and contributor docs, pass its own linters and tests, never write secrets). Your file replaces the defaults rather than adding to them, so copy any default you want to keep.
 
 Every stage gets the rules, from the engine, as part of its From the repo block (ADR-067 §8).
 

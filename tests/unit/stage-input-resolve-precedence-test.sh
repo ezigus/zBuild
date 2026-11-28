@@ -111,7 +111,7 @@ _dispatch() {
     ZBUILD_STATE_DIR="$STATE" \
         plugin_hook_call "$CONSUMER_DIR" run "pp-consumer" "$STATE/pipeline-state.json"
 }
-_seen() { grep "^$1=" "$TEST_TEMP_DIR/ppc-seen.txt" 2>/dev/null | head -1 | cut -d= -f2-; }
+_seen() { grep "^$1=" "$TEST_TEMP_DIR/ppc-seen.txt" 2>/dev/null | sed -n 1p | cut -d= -f2-; }
 _indexed() { jq -r '.inputs.design_doc // empty' "$STATE/stage-inputs/pp-consumer.json" 2>/dev/null; }
 
 # ─── SPEC-1 / SPEC-2: both present, different — LIVE wins and is READ ───────

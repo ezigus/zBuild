@@ -283,7 +283,7 @@ assert_eq "[#1730/SPEC-3] two ledger rows (the failed iteration was billed)" "2"
 assert_eq "[#1730/SPEC-3] two model.route events" "2" "$(_count model.route)"
 assert_eq "[#1730/SPEC-3] model.outcome count matches ledger rows after a failed iteration" \
     "$(_rows "$LEDGER3")" "$(_count model.outcome)"
-tc3_first="$(jq -r 'select(.type=="model.outcome") | "\(.data.input_tokens)/\(.data.output_tokens)/\(.data.cost_usd)"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+tc3_first="$(jq -r 'select(.type=="model.outcome") | "\(.data.input_tokens)/\(.data.output_tokens)/\(.data.cost_usd)"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 assert_eq "[#1730/SPEC-3] the failed iteration's outcome carries its own tokens and cost" "70/7/0.0007" "$tc3_first"
 
 # ─── TC-4: a timeout after LOOP_COMPLETE still reports the finished call ──────
@@ -324,9 +324,9 @@ for _mode in sync loop; do
     assert_eq "[#1730/SPEC-5] $_mode: call returns 0" "0" "$(cat "$TEST_TEMP_DIR/tc5-$_mode-rc.txt" 2>/dev/null || printf missing)"
     assert_eq "[#1730/SPEC-5] $_mode: one model.route" "1" "$(_count model.route)"
     assert_eq "[#1730/SPEC-5] $_mode: one model.outcome" "1" "$(_count model.outcome)"
-    _prov="$(jq -r 'select(.type=="model.route") | .data.provider' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+    _prov="$(jq -r 'select(.type=="model.route") | .data.provider' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
     assert_eq "[#1730/SPEC-5] $_mode: model.outcome fields" "T2,$_prov,100,20,50,10,0.0012" \
-        "$(jq -r "$_fields" "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+        "$(jq -r "$_fields" "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 done
 
 # ─── Teardown ─────────────────────────────────────────────────────────────────

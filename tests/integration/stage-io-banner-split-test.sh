@@ -94,15 +94,15 @@ banner_content="$(cat "$BANNER_FD3" 2>/dev/null || echo '')"
 
 # (1) Banner contains an input-section header BEFORE the output-section header.
 # #499: I/O banner header dividers switched from ── (U+2500) to ══ (U+2550).
-input_line="$(printf '%s\n' "$banner_content" | grep -n 'seq=1 input ══' | head -1 | cut -d: -f1)"
-output_line="$(printf '%s\n' "$banner_content" | grep -n 'seq=1 output' | head -1 | cut -d: -f1)"
-end_line="$(printf '%s\n' "$banner_content" | grep -n 'end stage-io: plan' | head -1 | cut -d: -f1)"
+input_line="$(printf '%s\n' "$banner_content" | grep -n 'seq=1 input ══' | sed -n 1p | cut -d: -f1)"
+output_line="$(printf '%s\n' "$banner_content" | grep -n 'seq=1 output' | sed -n 1p | cut -d: -f1)"
+end_line="$(printf '%s\n' "$banner_content" | grep -n 'end stage-io: plan' | sed -n 1p | cut -d: -f1)"
 
 if [[ -n "$input_line" && -n "$output_line" && "$input_line" -lt "$output_line" ]]; then
     assert_pass "input-banner emits before output-banner"
 else
     assert_fail "input-banner emits before output-banner" \
-        "input=$input_line output=$output_line; banner=$(printf '%s' "$banner_content" | head -10)"
+        "input=$input_line output=$output_line; banner=$(printf '%s' "$banner_content" | sed -n 1,10p)"
 fi
 
 if [[ -n "$end_line" && "$output_line" -lt "$end_line" ]]; then

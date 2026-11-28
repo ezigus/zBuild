@@ -80,30 +80,30 @@ assert_eq "cycle converges rc=0" "0" "$rc"
 ev_count=$(jq -c 'select(.type=="cycle.predicate.evaluated" and .data.cycle_id=="the_cycle" and .data.kind=="exit_when")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
 assert_eq "exactly one cycle.predicate.evaluated kind=exit_when emitted" "1" "$ev_count"
 
-ev_match=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="exit_when") | .data.match' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+ev_match=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="exit_when") | .data.match' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "exit_when match=true (predicate satisfied)" "true" "$ev_match"
 
-ev_stage=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="exit_when") | .data.stage' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+ev_stage=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="exit_when") | .data.stage' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "exit_when payload stage=review" "review" "$ev_stage"
 
-ev_actual=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="exit_when") | .data.actual' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+ev_actual=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="exit_when") | .data.actual' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "exit_when payload actual=approve" "approve" "$ev_actual"
 
-ev_expected=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="exit_when") | .data.expected' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+ev_expected=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="exit_when") | .data.expected' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "exit_when payload expected=approve" "approve" "$ev_expected"
 
 # Copilot review (#727): pin the full payload contract so a regression that
 # emits the event with a missing field would surface immediately.
-ev_field=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="exit_when") | .data.field' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+ev_field=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="exit_when") | .data.field' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "exit_when payload field=verdict" "verdict" "$ev_field"
 
-ev_op=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="exit_when") | .data.op' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+ev_op=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="exit_when") | .data.op' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "exit_when payload op=eq" "eq" "$ev_op"
 
-ev_iter=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="exit_when") | .data.iter' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+ev_iter=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="exit_when") | .data.iter' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "exit_when payload iter=1 (matched on first iter)" "1" "$ev_iter"
 
-ev_cycle_id=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="exit_when") | .data.cycle_id' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+ev_cycle_id=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="exit_when") | .data.cycle_id' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "exit_when payload cycle_id=the_cycle" "the_cycle" "$ev_cycle_id"
 
 # ── Section 2: abort_when matches first iter ────────────────────────────────
@@ -168,26 +168,26 @@ _zbuild_disarm_abort_sentinel
 aw_count=$(jq -c 'select(.type=="cycle.predicate.evaluated" and .data.kind=="abort_when")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
 assert_eq "exactly one cycle.predicate.evaluated kind=abort_when emitted" "1" "$aw_count"
 
-aw_match=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="abort_when") | .data.match' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+aw_match=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="abort_when") | .data.match' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "abort_when match=true (block matched)" "true" "$aw_match"
 
-aw_actual=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="abort_when") | .data.actual' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+aw_actual=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="abort_when") | .data.actual' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "abort_when payload actual=block" "block" "$aw_actual"
 
-aw_field=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="abort_when") | .data.field' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+aw_field=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="abort_when") | .data.field' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "abort_when payload field=verdict" "verdict" "$aw_field"
 
-aw_op=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="abort_when") | .data.op' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+aw_op=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="abort_when") | .data.op' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "abort_when payload op=eq" "eq" "$aw_op"
 
-aw_expected=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="abort_when") | .data.expected' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+aw_expected=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="abort_when") | .data.expected' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "abort_when payload expected=block" "block" "$aw_expected"
 
-aw_iter=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="abort_when") | .data.iter' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+aw_iter=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="abort_when") | .data.iter' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "abort_when payload iter=1" "1" "$aw_iter"
 
 # Also verify exit_when fired AND matched=false (sanity: predicate ordering — exit_when before abort_when)
-ew2_match=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="exit_when") | .data.match' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+ew2_match=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="exit_when") | .data.match' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "exit_when match=false when verdict!=approve" "false" "$ew2_match"
 
 # ── Section 3: until non-match → match=false ────────────────────────────────
@@ -220,7 +220,7 @@ assert_eq "cycle reaches exhaustion, tests not failing → rc=1, outcome unconve
 nomatch_count=$(jq -c 'select(.type=="cycle.predicate.evaluated" and .data.kind=="exit_when" and .data.match=="false")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
 assert_eq "exit_when match=false fires once per non-matching iter (2 iters)" "2" "$nomatch_count"
 
-nomatch_actual=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="exit_when") | .data.actual' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+nomatch_actual=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="exit_when") | .data.actual' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "exit_when payload actual=request_changes (raw verdict, not classified)" "request_changes" "$nomatch_actual"
 
 print_test_results

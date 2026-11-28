@@ -191,7 +191,7 @@ print_test_section "outer cycle emits expected events"
 outer_iter_complete=$(jq -c 'select(.type=="cycle.iteration.complete" and .data.cycle_id=="build_review_cycle")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
 assert_eq "T11: outer cycle.iteration.complete emitted twice" "2" "$outer_iter_complete"
 
-outer_complete=$(jq -r 'select(.type=="cycle.complete" and .data.cycle_id=="build_review_cycle") | .data.reason' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+outer_complete=$(jq -r 'select(.type=="cycle.complete" and .data.cycle_id=="build_review_cycle") | .data.reason' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "T12: outer cycle.complete reason=converged" "converged" "$outer_complete"
 
 print_test_section "Wave 19-D-1 member.dispatch events span both outer iters"

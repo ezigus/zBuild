@@ -45,10 +45,10 @@ content="$(cat "$out_file")"
 # So: between the two heading lines there are EXACTLY 3 blank lines
 # (1 trailing-of-plan + 1 trailing-blank-of-plan + 1 leading-of-build).
 # After the build heading there are 2 trailing blank lines.
-heading_count="$(printf '%s\n' "$content" | grep -cE '^.*(plan|build).*$' | head -1 || true)"
+heading_count="$(printf '%s\n' "$content" | grep -cE '^.*(plan|build).*$' | sed -n 1p || true)"
 # The lines containing "plan" or "build" labels (the dividers).
 divider_lines="$(printf '%s\n' "$content" | grep -nE '━━ (plan|build) ━━' | cut -d: -f1)"
-plan_line="$(printf '%s\n' "$divider_lines" | head -1)"
+plan_line="$(printf '%s\n' "$divider_lines" | sed -n 1p)"
 build_line="$(printf '%s\n' "$divider_lines" | tail -1)"
 
 if [[ -n "$plan_line" && -n "$build_line" && "$plan_line" -lt "$build_line" ]]; then

@@ -34,7 +34,7 @@ WIKIEOF
 # ─── Helper: parse bundle key ─────────────────────────────────────────────────
 _bundle_get() {
     local bundle="$1" key="$2"
-    printf '%s\n' "$bundle" | grep "^${key}=" | head -1 | sed "s/^${key}=//"
+    printf '%s\n' "$bundle" | grep "^${key}=" | sed -n 1p | sed "s/^${key}=//"
 }
 
 # ─── SPEC-1: plugin-full returns all manifest fields + source + existing page ──
@@ -209,7 +209,7 @@ assert_gt "[SPEC-11] decoded wiki_page is non-empty" "${#decoded11}" "0"
 # ─── SPEC-12: gather works on a REAL mechanic from the live config/mechanics.yaml.
 #     Pick the FIRST entry dynamically so the assertion survives registry edits
 #     (do NOT hardcode a mechanic name — the DOC-B live-coupling lesson). ─────────
-first_mech12="$(doc_gather_mechanic_ids "$REPO_ROOT/config/mechanics.yaml" | head -1)"
+first_mech12="$(doc_gather_mechanic_ids "$REPO_ROOT/config/mechanics.yaml" | sed -n 1p)"
 assert_gt "[SPEC-12] live config/mechanics.yaml has at least one mechanic" \
     "${#first_mech12}" "0"
 bundle12="$(doc_gather_mechanic_bundle "$first_mech12" \

@@ -160,7 +160,7 @@ _test_run_inner "$F_PATCH" "$F_FIXTURE" "$F_OUT" "$SUITE_CMD" >/dev/null 2>&1
 set +e  # keep off — grep below may return 1 on no-match
 
 # ─── SPEC-5: ZBUILD_COST_LEDGER exported under fence in suite env ─────────────
-cost_ledger_seen="$(grep '^COST_LEDGER=' "$ENV_DUMP" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+cost_ledger_seen="$(grep '^COST_LEDGER=' "$ENV_DUMP" 2>/dev/null | sed -n 1p | cut -d= -f2- || true)"
 if [[ -n "$cost_ledger_seen" && "$cost_ledger_seen" != "UNSET" ]]; then
     assert_pass "[SPEC-5] test plugin exports ZBUILD_COST_LEDGER under fence in suite env"
 else
@@ -169,7 +169,7 @@ else
 fi
 
 # ─── SPEC-6: ZBUILD_CACHE_DIR exported under fence in suite env ──────────────
-cache_dir_seen="$(grep '^CACHE_DIR=' "$ENV_DUMP" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+cache_dir_seen="$(grep '^CACHE_DIR=' "$ENV_DUMP" 2>/dev/null | sed -n 1p | cut -d= -f2- || true)"
 if [[ -n "$cache_dir_seen" && "$cache_dir_seen" != "UNSET" ]]; then
     assert_pass "[SPEC-6] test plugin exports ZBUILD_CACHE_DIR under fence in suite env"
 else

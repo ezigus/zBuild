@@ -59,8 +59,8 @@ fi
 # this path, each bounded independently, so the grace must clear 3x the per-hook
 # bound. Evaluated rather than pattern-matched: the grace is an expression, and a
 # guard that only recognised a literal would pass the moment someone wrote one.
-_pinned="$(grep -oE '_SPEC5_STAGE_TIMEOUT=[0-9]+' <<< "$_spec5_block" | head -1 | cut -d= -f2)"
-_expr="$(grep -oE '_SPEC5_KILL_GRACE=\$\(\([^)]*\)\)' <<< "$_spec5_block" | head -1 | sed -E 's/^_SPEC5_KILL_GRACE=\$\(\((.*)\)\)$/\1/')"
+_pinned="$(grep -oE '_SPEC5_STAGE_TIMEOUT=[0-9]+' <<< "$_spec5_block" | sed -n 1p | cut -d= -f2)"
+_expr="$(grep -oE '_SPEC5_KILL_GRACE=\$\(\([^)]*\)\)' <<< "$_spec5_block" | sed -n 1p | sed -E 's/^_SPEC5_KILL_GRACE=\$\(\((.*)\)\)$/\1/')"
 _graceval=""
 if [[ -n "$_pinned" && -n "$_expr" ]]; then
     # Only our own arithmetic reaches here, and only after the two greps above

@@ -78,17 +78,30 @@ _out() { jq -r '[.data.findings[]?.text] | join(" || ")' "$_A/issue-acceptance-$
 _mf_topic() { awk -v id="$1" '$0 ~ "- id: " id "$" {f=1; next} f && /^  - id:/ {f=0} f && /topic:/ {print $2; exit}' "$PLUGIN_DIR/manifest.yaml"; }
 _run() { : > "$_IA_PROMPT"; : > "$_IA_CALLS"; issue_acceptance_run "issue-acceptance" "$_S/pipeline-state.json" >/dev/null 2>&1; }
 
+_lacks() { if [[ "$2" == *"$3"* ]]; then assert_fail "$1" "it has: $3"; else assert_pass "$1"; fi; }
 print_test_section "U1: the prompt asks the reverse question"
 _p="$(tr -s '[:space:]' ' ' <<< "$(_ia_prompt "ISSUE-TEXT" "SPEC-TEXT" "DIFF-TEXT" "pass")")"
 assert_contains "[U1] the composer built a real prompt" "$_p" "ISSUE-TEXT"
 assert_contains "[U1] it asks for each part of the change no requirement asks for" \
     "$_p" "each part of the DIFF that no requirement asks for"
-assert_contains_lines "[U1] it says how to answer it" "$_p" $'UNASKED: <what the change does>\nwhy: <why no requirement asks for it>\naccepted if: <the change without it, or the requirement that would ask for it>\nquote: <file> | <one line of the code that does it>'
+assert_contains_lines "[U1] it says how to answer it: no condition to write, the part is taken out" "$_p" $'UNASKED: <what the change does>\nwhy: <why no requirement asks for it>\nquote: <file> | <one line of the code that does it>'
+_lacks "[U1] ...the form asks no accepted if" "$_p" "accepted if: <the change without it"
+# No sentence anywhere in the prompt asks an UNASKED for an ACCEPTED IF (audit on #2634).
+_u1s="$(tr '.' '\n' <<< "$_p" | grep -iF unasked | grep -iF 'accepted if' || true)"
+if [[ -n "$_u1s" ]]; then assert_fail "[U1] ...no sentence asks an UNASKED for an ACCEPTED IF" "$_u1s"
+else assert_pass "[U1] ...no sentence asks an UNASKED for an ACCEPTED IF"; fi
+# ...nor any sentence of the reverse question, whether or not it says UNASKED.
+_rv="${_p#*Then answer the reverse question}"; _rv="${_rv%%UNASKED: none*}"
+assert_contains "[U1] (the reverse question is found)" "$_rv" "Each part you name here"
+_lacks "[U1] the reverse question asks no accepted if" "${_rv,,}" "accepted if"
+assert_contains "[U1] it says each part it names is taken out of the change" "$_p" "Each part you name here is taken out of the change."
+assert_contains "[U1] ...and that words of the issue that could ask for it make it a question, not this" "$_p" \
+    "When words of the ISSUE could be read as asking for it, it is not one of these: write an UNCLEAR line that quotes them."
 assert_contains "[U1] it says how to say there is none" "$_p" "UNASKED: none"
 
 print_test_section "U2: an unasked part is a finding for build"
 _setup u2
-_IA_ANSWER=$'MET: --from-stage starts the run at that stage\nUNASKED: it drops the rule that --from-stage needs --resume | WHY: no requirement asks to drop it | ACCEPTED IF: it is accepted | QUOTE: runner.sh | resume_required=0'
+_IA_ANSWER=$'MET: --from-stage starts the run at that stage\nUNASKED: it drops the rule that --from-stage needs --resume | WHY: no requirement asks to drop it | ACCEPTED IF: the change without dropping it | QUOTE: runner.sh | resume_required=0'
 _run
 assert_eq "[U2] the change does not pass" "fail" "$(_res .outcome)"
 assert_eq "[U2] one finding" "1" "$(_res '.data.findings | length')"
@@ -108,7 +121,7 @@ assert_eq "[U3] no finding" "0" "$(_res '.data.findings | length')"
 
 print_test_section "U4: an unasked part with a quote that is not there is not used"
 _setup u4
-_IA_ANSWER=$'MET: --from-stage starts the run at that stage\nUNASKED: it adds a cache | WHY: nothing asks for one | ACCEPTED IF: it is accepted | QUOTE: runner.sh | cache=1'
+_IA_ANSWER=$'MET: --from-stage starts the run at that stage\nUNASKED: it adds a cache | WHY: nothing asks for one | ACCEPTED IF: the change without the cache | QUOTE: runner.sh | cache=1'
 _run
 assert_eq "[U4] asked again once" "2" "$(grep -c x "$_IA_CALLS")"
 assert_eq "[U4] then unusable" "unusable" "$(_res .outcome)"
@@ -116,7 +129,7 @@ assert_contains "[U4] ...saying which quote" "$(_res .reason)" "cache=1"
 
 print_test_section "U5: an unasked part in a test file is the tests' to fix (#2523)"
 _setup u5
-_IA_ANSWER=$'MET: --from-stage starts the run at that stage\nUNASKED: it changes an old test | WHY: no requirement asks for it | ACCEPTED IF: it is accepted | QUOTE: tests/unit/r-test.sh | assert_eq "[R8] shown as code" x y\nUNASKED: it drops the rule | WHY: no requirement asks to drop it | ACCEPTED IF: it is accepted | QUOTE: runner.sh | resume_required=0'
+_IA_ANSWER=$'MET: --from-stage starts the run at that stage\nUNASKED: it changes an old test | WHY: no requirement asks for it | ACCEPTED IF: the change without the test edit | QUOTE: tests/unit/r-test.sh | assert_eq "[R8] shown as code" x y\nUNASKED: it drops the rule | WHY: no requirement asks to drop it | ACCEPTED IF: the change without dropping it | QUOTE: runner.sh | resume_required=0'
 _run
 assert_eq "[U5] two findings" "2" "$(_res '.data.findings | length')"
 assert_contains "[U5] the one in a test file is in the test output (test-author takes it)" "$(_out test)" "it changes an old test"
@@ -128,7 +141,7 @@ assert_eq "[U5] the manifest gives the code output the topic code-findings" "cod
 
 print_test_section "U6: the answer written as blocks, as the prompt asks (#2609)"
 _setup u6
-_IA_ANSWER=$'MET: --from-stage starts the run at that stage\n\nUNASKED: it changes an old test\nwhy: no requirement asks for it\naccepted if: it is accepted\nquote: tests/unit/r-test.sh | assert_eq "[R8] shown as code" x y\nnote: an old test\n\nUNASKED: it drops the rule that --from-stage needs --resume\nwhy: no requirement asks to drop it\naccepted if: it is accepted\nquote: runner.sh | resume_required=0'
+_IA_ANSWER=$'MET: --from-stage starts the run at that stage\n\nUNASKED: it changes an old test\nwhy: no requirement asks for it\naccepted if: the change without the test edit\nquote: tests/unit/r-test.sh | assert_eq "[R8] shown as code" x y\nnote: an old test\n\nUNASKED: it drops the rule that --from-stage needs --resume\nwhy: no requirement asks to drop it\naccepted if: the change without dropping it\nquote: runner.sh | resume_required=0'
 _run
 assert_eq "[U6] both block answers are read: two findings" "2" "$(_res '.data.findings | length')"
 assert_contains "[U6] ...each with its own words, not the note's" "$(_out code)" "it drops the rule"

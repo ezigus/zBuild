@@ -17,6 +17,9 @@
 # L8 [change] `Finding 1`, `## FINDING` and `**Finding 2**` open a finding (review on #2598)
 # L9 [change] a field line outside any finding is no answer: it is asked again
 # L10 [change] a wrapped line that looks like a key (`Note: …`) carries on its field
+# [#2640/SPEC-3] an answer to a carried question, in the block form the lens is
+#                asked for (its why: and quote: lines under it), is read as the
+#                other checks read it; a stray field says which line it is
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -111,6 +114,34 @@ J=""; P=""; _rl_reply_problem $'SCORE: 3\nseverity: high\nquote: tests/guard.sh 
 assert_contains "[L9] a field outside any finding is asked again" "$P" "not in the asked form"
 J=""; P=""; _rl_reply_problem $'SCORE: 4\nFINDING\nmessage: the guard misses\nNote: it also misses a third form\ntrigger: t' J P
 assert_eq "[L10] the wrapped line stays in its field" "the guard misses Note: it also misses a third form" "$(jq -r '.findings[0].message' <<< "$J" 2>/dev/null)"
+
+print_test_section "#2640: the answer block, as the lens is asked to write it"
+# #2534 run 45997137687's scope lens, its second reply as written: a clean review
+# (SCORE: 10) that was thrown away, its quote: line read as a field outside any
+# finding, with the reason that it had no SCORE line.
+REP=$(cat <<'REPLY'
+UNCLEAR R1: answered
+why: The design decision (confirmed by the DSRACE-3 requirement and its test) chose Reading B — the loser PATCHes the concurrent claim note it posted as its holder record to "not started — concurrent claim: `<winner>` was first"; the loser exits before runner.sh starts any run-status comment, so the concurrent claim note is its only comment.
+quote: not started — concurrent claim: `<winner>` was first
+
+SCORE: 10
+REPLY
+)
+J=""; P=""; _rl_reply_problem "$REP" J P
+assert_eq "[#2640/SPEC-3] #2534's scope reply is usable" "" "$P"
+assert_eq "[#2640/SPEC-3] ...its score kept" "10" "$(jq -r '.score' <<< "$J" 2>/dev/null)"
+assert_eq "[#2640/SPEC-3] ...and its answer read as one line, as the other checks read it" \
+    'UNCLEAR R1: answered | WHY: The design decision (confirmed by the DSRACE-3 requirement and its test) chose Reading B — the loser PATCHes the concurrent claim note it posted as its holder record to "not started — concurrent claim: `<winner>` was first"; the loser exits before runner.sh starts any run-status comment, so the concurrent claim note is its only comment. | QUOTE: not started — concurrent claim: `<winner>` was first' \
+    "$(jq -r '.unclear_answers[0]' <<< "$J" 2>/dev/null)"
+J=""; P=""; _rl_reply_problem $'SCORE: 9\nUNCLEAR R2: not needed\nwhy: the requirement is gone\n\nUNCLEAR R3: open\nFINDING\nseverity: low\nquote: tests/guard.sh | echo "second line"\nmessage: m' J P
+assert_eq "[#2640/SPEC-3] a not-needed block, an open line and a finding after them" \
+    "UNCLEAR R2: not needed | WHY: the requirement is gone/UNCLEAR R3: open/1" \
+    "$(jq -r '"\(.unclear_answers | join("/"))/\(.findings | length)"' <<< "$J" 2>/dev/null)"
+assert_eq "[#2640/SPEC-3] ...and the finding keeps its own quote" "tests/guard.sh" "$(jq -r '.findings[0].file' <<< "$J" 2>/dev/null)"
+J=""; P=""; _rl_reply_problem $'SCORE: 3\nseverity: high\nmessage: no block' J P
+assert_contains "[#2640/SPEC-3] a stray field is no answer, and the reason names its line" "$P" "severity: high"
+_no_score_claim=yes; [[ "$P" == *"a line SCORE:"* ]] && _no_score_claim=no
+assert_eq "[#2640/SPEC-3] ...not a SCORE line the reply has" "yes" "$_no_score_claim"
 
 cleanup_test_env
 print_test_results

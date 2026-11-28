@@ -104,7 +104,7 @@ print_test_section "1. an output no stage names is accepted"
 
 _out="$(_lint)"
 if grep -qF 'UNCONSUMED' <<< "$_out"; then
-    assert_fail "[SPEC-1] an unconsumed output is not reported" "$(grep UNCONSUMED <<< "$_out" | head -1)"
+    assert_fail "[SPEC-1] an unconsumed output is not reported" "$(grep UNCONSUMED <<< "$_out" | sed -n 1p)"
 else
     assert_pass "[SPEC-1] an unconsumed output is not reported"
 fi

@@ -1,7 +1,7 @@
 # ADR-064 — One live run-status comment per run
 
 **Status:** Proposed (2026-09-18)
-**Amended:** 2026-11-24 (#2607) — a reason the stop line has no words for is shown as written; the end-of-run steps take no stage's row (§4). 2026-11-22 (#2586) — the header of a run that ended says why and names each blocker; the open items are read from every stage's result (§4; see the amendment below).
+**Amended:** 2026-11-27 (#2640) — a member a requirement held back has its own row; a try the engine did not run again says why (§4; see the amendment below). 2026-11-26 (#2627) — a row shows every finding its try wrote, from each of the stage's results (§4). 2026-11-24 (#2607) — a reason the stop line has no words for is shown as written; the end-of-run steps take no stage's row (§4). 2026-11-22 (#2586) — the header of a run that ended says why and names each blocker; the open items are read from every stage's result (§4; see the amendment below).
 **Amended:** 2026-11-06 (#2480) — a row shows what a stage said as text, names the round of every loop it is in, and says each finding once (§4; see the amendment below).
 **Amended:** 2026-10-14 (#2378) — the open items list only results this run wrote. Hydrate restores an earlier run's results with their saved times; one older than this run's start belongs to a stage that did not run this time, and is left out.
 **Amended:** 2026-10-31 (#2439) — each try of a stage the engine runs again has its own row (see the amendment below).
@@ -362,7 +362,23 @@ On #2533 run 45403848593 the engine stopped the run because the test stage chang
 - **A lens summary says each finding once** (`stage_lens_findings_head_v`, `scripts/lib/stage-summary.sh`). One finding is the summary's line, with no list under it. Several are counted on the line by severity — "found 2 findings: 1 high, 1 medium", as the status row says — and the list under it names each. On #2533 run 45644128060 each summary said its first finding twice.
 - **A loop that still has rounds never says it ran out of tries.** A member that stopped the run with its own reason is named with it (`stage_stopped:`, ADR-068 §3, amended 2026-11-25).
 
+## Amendment 2026-11-26 (#2627) — §4: a row shows every finding its try wrote
+
+- **§4: a stage's row reads each of its results, not only its main one.** A try that did not pass shows the findings of its primary output and of each other JSON output its manifest declares that this run of the stage wrote (`stage_result_is_current`, ADR-068 §8) and that did not pass, as `open_items_json` reads a check's result (`rsc_row_findings_v`, `scripts/lib/run-status-text.sh`). A finding's routed copies (outputs by topic) carry no outcome and are not read, so each finding is listed once. A result that does not parse is left out and the rest are read. On #1722 run 45872552515 the test row said "9 findings": the acceptance check's finding, in `acceptance-gate-result.json`, was the tenth.
+
+## Amendment 2026-11-27 (#2640) — §4: a member held back, and a try not run again, say so
+
+§4 keeps one row per stage dispatch. Two things the engine decides without a dispatch now have their row text:
+
+- **A loop member a requirement held back** (`requires:`, ADR-068 §3, amended): `cycle.member.not_run` gives it a row of its own, `**<when>** · **<seq> <member>** · not run — <what it requires> did not pass`.
+- **A try the engine did not run again because it changed nothing** (`stage.retry.refused`, ADR-063, amended): the try's row ends `· not run again: the try changed nothing`.
+
 ## Enforced by
+
+- §4 amendment 2026-11-27 (#2640: a member held back, a try not run again) → `tests/integration/cycle-member-requires-test.sh` [#2640/SPEC-1] (the not-run row, from the engine's own events); `tests/unit/run-status-retry-row-test.sh` [#2640/SPEC-2] (the try's row)
+
+
+- §4 amendment 2026-11-26 (#2627: every finding a try wrote) → `tests/unit/status-row-findings-test.sh` W9 (the suite's and the acceptance check's; a routed copy is not read), W10 (an earlier run's result is not shown), W11 (one that does not parse is left out), W12 (an extra result that passed is not shown)
 
 - §4 amendment 2026-11-25 (#2611: each finding once; a member's own reason) → `tests/unit/stage-summary-says-what-test.sh` S6, S7; `tests/integration/cycle-map-member-test.sh` M5, M6
 

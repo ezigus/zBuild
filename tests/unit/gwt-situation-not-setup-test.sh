@@ -36,7 +36,7 @@ export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 _N="$TEST_TEMP_DIR/n"; _P="$TEST_TEMP_DIR/p"
-_l() { grep "^$2|" "$1" | head -1 | cut -d'|' -f2-; }
+_l() { grep "^$2|" "$1" | sed -n 1p | cut -d'|' -f2-; }
 
 print_test_section "G1: design's prompt"
 _dp="$(tr -s '[:space:]' ' ' < "$REPO_ROOT/plugins/agent/design/lib/run.sh")"

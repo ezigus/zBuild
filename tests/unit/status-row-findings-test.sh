@@ -26,6 +26,19 @@
 # W7 [change] #2480: a try run again because its result held findings shows
 #             as failed, not `unusable` (test-author's own label for "my check
 #             found something", #2460); one with no findings stays unusable
+# W9 [change] a stage that writes its findings to more than one result (the
+#             test stage: the suite's, and the acceptance check's) shows every
+#             finding its try wrote — on #1722 run 45872552515 the test row said
+#             "9 findings" of the 10 it routed, missing the acceptance check's
+#             (ADR-064 §4, amended by #2627); a finding's routed copy (an output
+#             by topic, with no outcome) is not read, so it is listed once
+# W10 [change] a result an earlier run of the stage wrote — the acceptance
+#             check's, from before this try started — is not shown
+#             (stage_result_is_current, ADR-068 §8)
+# W11 [change] (review) a result that does not parse — cut short, being
+#             written — is left out; the stage's other findings are still shown
+# W12 [change] (review) an extra result that passed is not shown, as
+#             open_items_json reads a check's result
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -138,6 +151,71 @@ assert_contains "[W7] a try run again for its findings shows as failed" "$w6" "�
 stage_result_write "$A/noread-result.json" unusable "the reply could not be read"
 stage_summary_write "$A/noread-summary.md" noread unusable "the judge's reply had no line for LOOP-1"
 assert_contains "[W7] …one with no findings stays unusable" "$(rsc_render_row "$S" "$(_row 6 noread unusable)")" "· **unusable** —"
+
+# ── W9 ───────────────────────────────────────────────────────────────────────
+# The test stage's own writers (#1799): the suite's finding routed as test's own
+# check routes it, the acceptance check's as acceptance-check.sh does.
+# shellcheck source=../../scripts/lib/stage-dispatch-mark.sh
+source "$REPO_ROOT/scripts/lib/stage-dispatch-mark.sh"
+# shellcheck source=../../scripts/lib/stage-handoff.sh
+source "$REPO_ROOT/scripts/lib/stage-handoff.sh"
+# The runner's shell, which the status comment's loop runs in, has a stage's
+# manifest and outputs to hand (core/pipeline/runner.sh sources these).
+# shellcheck source=../../core/pipeline/input-resolve.sh
+source "$REPO_ROOT/core/pipeline/input-resolve.sh"
+export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
+_suite() {   # <artifacts> <text> — the suite's failing result, as test writes it
+    local _f; _f="$(printf 'code-findings\t%s\n' "$2" | stage_findings_route_each "$1" test code-findings TEFND)"
+    stage_result_write "$1/test-results.json" fail "1 file fails" "{\"findings\":$_f}"
+}
+_gate() {   # <artifacts> <outcome> <text> — the acceptance check's result, as it writes it
+    local _f; _f="$(printf 'design-findings\t%s\n' "$3" | stage_findings_route_each "$1" acceptance-gate design-findings TEFND)"
+    stage_result_write "$1/acceptance-gate-result.json" "$2" "the acceptance check" "{\"findings\":$_f}"
+}
+_line1() { sed -n 1p <<< "$1" | sed 's/.* — //'; }
+S9="$TEST_TEMP_DIR/state9"; A9="$S9/artifacts"; mkdir -p "$A9"
+stage_dispatch_mark "$S9/pipeline-state.json" test
+_suite "$A9" "tests/unit/a-test.sh fails: ✗ A1 the suite failure"
+_gate "$A9" fail "plugins/x.sh is not changed by this change — name a file the change touches, or write WIRING: none"
+w9="$(rsc_render_row "$S9" "$(_row 4.1.1.1.4 test fail)")"
+assert_eq "[W9] the row counts the suite's and the acceptance check's findings" "what failed: 2 findings" "$(_line1 "$w9")"
+assert_contains "[W9] ...lists the acceptance check's" "$w9" "plugins/x.sh is not changed by this change"
+assert_eq "[W9] ...and the suite's once (its routed copy is not read)" "1" "$(grep -c "A1 the suite failure" <<< "$w9")"
+
+# ── W10 ──────────────────────────────────────────────────────────────────────
+# The acceptance check failed on an earlier run of the stage; this try only
+# the suite ran.
+S10="$TEST_TEMP_DIR/state10"; A10="$S10/artifacts"; mkdir -p "$A10"
+_gate "$A10" fail "OLD-GATE-FINDING from the stage's earlier run"
+touch -t 202001010000 "$A10/acceptance-gate-result.json"
+stage_dispatch_mark "$S10/pipeline-state.json" test
+_suite "$A10" "tests/unit/b-test.sh fails: ✗ B1 this try's failure"
+w10="$(rsc_render_row "$S10" "$(_row 4.1.1.2.4 test fail)")"
+assert_contains "[W10] this try's finding is shown" "$w10" "B1 this try's failure"
+if grep -qF "OLD-GATE-FINDING" <<< "$w10"; then assert_fail "[W10] the earlier run's result is not shown" "$w10"
+else assert_pass "[W10] the earlier run's result is not shown"; fi
+
+# ── W11 ──────────────────────────────────────────────────────────────────────
+S11="$TEST_TEMP_DIR/state11"; A11="$S11/artifacts"; mkdir -p "$A11"
+stage_dispatch_mark "$S11/pipeline-state.json" test
+_suite "$A11" "tests/unit/c-test.sh fails: ✗ C1 the suite failure"
+_gate "$A11" fail "GATE-C1 the acceptance check's finding"
+# A third declared output, cut short while it was being written.
+printf '%s' '{"result_contract":3,"outcome":"fail","reason":"x","data":{"findings":[{"n":1,"text":"cut sh' > "$A11/acceptance-gate-test-result.json"
+w11="$(rsc_render_row "$S11" "$(_row 4.1.1.1.4 test fail)")"
+assert_eq "[W11] a result cut short is left out; the other two are read" "what failed: 2 findings" "$(_line1 "$w11")"
+assert_contains "[W11] ...the acceptance check's finding is shown" "$w11" "GATE-C1 the acceptance check's finding"
+assert_contains "[W11] ...and the suite's" "$w11" "C1 the suite failure"
+
+# ── W12 ──────────────────────────────────────────────────────────────────────
+S12="$TEST_TEMP_DIR/state12"; A12="$S12/artifacts"; mkdir -p "$A12"
+stage_dispatch_mark "$S12/pipeline-state.json" test
+_suite "$A12" "tests/unit/d-test.sh fails: ✗ D1 the suite failure"
+_gate "$A12" pass "ADVISORY-NOTE the acceptance check passed with"
+w12="$(rsc_render_row "$S12" "$(_row 4.1.1.1.4 test fail)")"
+assert_contains "[W12] the stage's failing finding is shown" "$w12" "D1 the suite failure"
+if grep -qF "ADVISORY-NOTE" <<< "$w12"; then assert_fail "[W12] an extra result that passed is not shown" "$w12"
+else assert_pass "[W12] an extra result that passed is not shown"; fi
 
 print_test_results
 exit $((FAIL > 0))

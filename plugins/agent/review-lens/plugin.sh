@@ -63,6 +63,8 @@ source "$_RL_ROOT/core/plugin-registry/registry.sh"
 # shellcheck source=lib/charters.sh
 source "$_RL_DIR/lib/charters.sh"
 # The code its findings' ids take.
+# shellcheck source=lib/suspicions.sh
+source "$_RL_DIR/lib/suspicions.sh"
 # shellcheck source=lib/codes.sh
 source "$_RL_DIR/lib/codes.sh"
 # shellcheck source=lib/check.sh
@@ -121,6 +123,7 @@ _review_lens_run_inner() {
     # Redaction of the assembled prompt is the router's, by construction (ADR-043).
     local lens="$1" evidence="$3" out="$4"
     local artifact_dir="${5:-$(dirname "$out")}"
+    _RL_PRIOR_SENT="[]"; _rl_suspicions_sent_v _RL_PRIOR_SENT "$out"   # #2630: lib/suspicions.sh
 
     if [[ -z "$lens" || -z "$out" ]]; then
         error "_review_lens_run_inner: requires <lens> <scope_manifest> <evidence> <out>"
@@ -398,12 +401,13 @@ _review_lens_run_inner() {
     # #2574 (ADR-068 §5): each routed finding's id, from the lens's own code.
     local _rl_code="" _rl_reg="{}"; _rl_finding_code_v _rl_code "$lens"
     zb_findings_reg_v _rl_reg "$artifact_dir" "$_rl_code" || _rl_code=""
+    local _rl_sent="${_RL_PRIOR_SENT:-[]}" _rl_sent_now="[]"
     # #2599 (ADR-071 §1): a finding about a file in the test folders is the
     # tests' to fix, whatever fix word the lens gave it — only test-author may
     # change those files (#2532 run 45231040380: three went to build, which
     # answered "not mine", round after round).
     local _rl_tre="[]"; zb_test_path_regexes_json_v _rl_tre "${ZBUILD_REPO_ROOT:-$PWD}"
-    _rl_route="$(printf '%s' "$normalized" | jq -r --arg on " $_rl_fail_on " --arg n "$lens" --argjson c "${_ZBUILD_CONTRACT_V3:-3}" --argjson q "${_RL_UQ_NEWQ:-[]}" --argjson tre "$_rl_tre" \
+    _rl_route="$(printf '%s' "$normalized" | jq -r --arg on " $_rl_fail_on " --arg n "$lens" --argjson prior "$_rl_sent" --argjson c "${_ZBUILD_CONTRACT_V3:-3}" --argjson q "${_RL_UQ_NEWQ:-[]}" --argjson tre "$_rl_tre" \
         --arg reg "$_rl_reg" --arg code "$_rl_code" "$_ZB_FINDING_IDS_JQ"'
         # #2598: a finding that could not be checked always blocks: a lens never
         # passes on what it could not check.
@@ -411,8 +415,10 @@ _review_lens_run_inner() {
         # #2506 (ADR-072 §3): shown with its quote, never a line — lines move.
         def line: (if (.unchecked // "") != "" then "this finding could not be checked (\(.unchecked | gsub("[\r\n]+"; " "))): " else "" end) + "\($n) lens, \(.severity): \(.message) (\(.file)\(if (.quote | tostring) != "" then ": \"\(.quote | tostring | gsub("[\r\n]+"; " "))\"" else "" end); happens when: \(.trigger // "" | tostring | gsub("[\r\n]+"; " ")); fix: \(.fix); ACCEPTED IF: \(.accepted_if // "" | tostring | gsub("[\r\n]+"; " ")))"
             + (if ((.also_at // []) | length) > 0 then "; the same kind of problem also at: " + ([.also_at[] | gsub("[\r\n]+"; " ")] | join("; ")) else "" end);
-        # #2584: a suspicion reaches its stage as a question, blocking nothing.
-        def asked: {text: "The \($n) lens suspects, and could not confirm: \(.suspicion | gsub("[\r\n]+"; " ")) (\(.file)\(if .quote != "" then ": \"\(.quote | gsub("[\r\n]+"; " "))\"" else "" end)); what would confirm it: \(.confirm_by | gsub("[\r\n]+"; " ")). A question: say whether it holds, and why.", blocking: false, area: .file};
+        # #2584, #2630: a suspicion goes to the stage its fix word names, to run what
+        # would confirm it; it blocks once a run (lib/suspicions.sh).
+        def asked: ("The \($n) lens suspects, and could not confirm: \(.suspicion | gsub("[\r\n]+"; " ")) (\(.file)\(if .quote != "" then ": \"\(.quote | gsub("[\r\n]+"; " "))\"" else "" end)); what would confirm it: \(.confirm_by | gsub("[\r\n]+"; " ")). Run what would confirm it: answer done when it holds and you fixed it, or wrong with what you ran and what it showed.") as $t
+            | {text: $t, blocking: ((.file + "|" + .quote) as $k | $prior | index([$k]) | not), area: .file};
         # #2574 (R3): its area — the file it is about — is the item it is kept under.
         def routed: {text: line, blocking: at_fail_on, area: (.file // "unknown" | tostring)};
         # One routed result (#2433): fail with a numbered finding per item when
@@ -430,7 +436,8 @@ _review_lens_run_inner() {
         | (.suspected // []) as $susp
         # The score and how many findings: read here, by no jq of their own (ADR-065 §5).
         | "score\t\(.score // 0)", "count\t\(.findings | length)",
-          "outcome\t" + (if ($issue | length) > 0 then "misconfigured" elif ([$sent[] | select(at_fail_on)] | length) > 0 then "fail" else "pass" end),
+          "sent\t" + (($prior + [$susp[] | .file + "|" + .quote]) | unique | tojson),
+          "outcome\t" + (if ($issue | length) > 0 then "misconfigured" elif ([$sent[] | select(at_fail_on)] | length) > 0 or ([$susp[] | select(.fix | IN("code", "test", "design")) | asked | select(.blocking)] | length) > 0 then "fail" else "pass" end),
           "issue\t" + (($issue[0].message // "") | tostring | gsub("[\r\n\t]+"; " ")),
           # #2569 (ADR-071 §1): the fix: word of a finding is its topic,
           # <fix>-findings, and names its output, lens-<id>-<fix>-result.json:
@@ -451,6 +458,7 @@ _review_lens_run_inner() {
         case "$_rl_k" in
             outcome) _rl_outcome="$_rl_v" ;;
             score) score="$_rl_v" ;;
+            sent) _rl_sent_now="$_rl_v" ;;
             count) findings_count="$_rl_v" ;;
             issue) _rl_issue="$_rl_v" ;;
             code|test|design) atomic_write "${out%.json}-${_rl_k}-result.json" <<< "$_rl_v" ;;
@@ -463,6 +471,7 @@ _review_lens_run_inner() {
     [[ "$_rl_outcome" == fail ]] && _rl_reason="the ${lens} lens found a ${_rl_fail_on// / or } problem the change introduced"
     [[ "$_rl_outcome" == misconfigured ]] && _rl_reason="the ${lens} lens found that the issue itself is wrong: $_rl_issue"
     [[ "$_rl_outcome" == broken ]] && _rl_reason="the ${lens} lens's findings could not be sent on to the stages that fix them"
+    _rl_suspicions_keep_v normalized "$normalized" "$_rl_sent_now"
     printf '%s' "$normalized" | atomic_write "$out" \
         && stage_result_add "$out" "$_rl_outcome" "$_rl_reason"
     local _rl_head _rl_body

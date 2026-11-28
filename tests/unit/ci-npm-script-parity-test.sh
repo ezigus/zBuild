@@ -38,7 +38,7 @@ PKG="$REPO_ROOT/package.json"
 # files", or the comparison below passes vacuously at the moment it stops working.
 _extract_find_args() {
     grep -oE "find [^|]*-name '\*\.sh'[^|]*" "$1" 2>/dev/null \
-        | head -1 | sed -e 's/^find //' -e 's/-print0.*$//' -e 's/[[:space:]]*$//'
+        | sed -n 1p | sed -e 's/^find //' -e 's/-print0.*$//' -e 's/[[:space:]]*$//'
 }
 
 _npm_args="$(_extract_find_args "$PKG")"
@@ -129,7 +129,7 @@ else
 fi
 
 # ─── SPEC-4: parallel batches, and a failing batch fails the step ───────────
-_npm_xargs="$(grep -oE "xargs -0 [^&]*shellcheck [^&]*" "$PKG" | head -1 | sed 's/[[:space:]]*$//')"
+_npm_xargs="$(grep -oE "xargs -0 [^&]*shellcheck [^&]*" "$PKG" | sed -n 1p | sed 's/[[:space:]]*$//')"
 assert_contains "[SPEC-4] npm's shellcheck runs in parallel (xargs -P)" "$_npm_xargs" " -P "
 # The batches themselves need shellcheck; a runner without it (macOS CI) is an
 # honest SKIP here — rc 127 would pass the defect check for the wrong reason.

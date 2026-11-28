@@ -196,12 +196,12 @@ if [[ -f "$A3_EVENTS_JSONL" ]]; then
     # #1906: the event used to carry .data.artifact_type. The field is retired,
     # so the event names the expected PATH instead — the fact an operator can act on.
     violated_path="$(grep '"plugin.contract.violated"' "$A3_EVENTS_JSONL" 2>/dev/null \
-        | jq -r '.data.expected_path // empty' 2>/dev/null | head -1 || true)"
+        | jq -r '.data.expected_path // empty' 2>/dev/null | sed -n 1p || true)"
     assert_contains "plugin.contract.violated event names the expected artifact path" \
         "$violated_path" "intake-findings.json"
 
     violation_reason="$(grep '"plugin.contract.violated"' "$A3_EVENTS_JSONL" 2>/dev/null \
-        | jq -r '.data.reason // empty' 2>/dev/null | head -1 || true)"
+        | jq -r '.data.reason // empty' 2>/dev/null | sed -n 1p || true)"
     assert_eq "plugin.contract.violated event carries reason=artifact_missing_or_empty" \
         "artifact_missing_or_empty" "$violation_reason"
 fi

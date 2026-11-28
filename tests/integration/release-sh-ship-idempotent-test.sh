@@ -210,9 +210,9 @@ else
         "ORDER_LOG: $(cat "$ORDER_LOG" 2>/dev/null || echo '<empty>')"
 fi
 
-_pch_line="$(grep -n 'pr-checks' "$ORDER_LOG" 2>/dev/null | head -1 | cut -d: -f1 || true)"
-_pm_line="$(grep -n 'pr-merge' "$ORDER_LOG" 2>/dev/null | head -1 | cut -d: -f1 || true)"
-_ta_line="$(grep -n 'tag-a' "$ORDER_LOG" 2>/dev/null | head -1 | cut -d: -f1 || true)"
+_pch_line="$(grep -n 'pr-checks' "$ORDER_LOG" 2>/dev/null | sed -n 1p | cut -d: -f1 || true)"
+_pm_line="$(grep -n 'pr-merge' "$ORDER_LOG" 2>/dev/null | sed -n 1p | cut -d: -f1 || true)"
+_ta_line="$(grep -n 'tag-a' "$ORDER_LOG" 2>/dev/null | sed -n 1p | cut -d: -f1 || true)"
 if [[ -n "$_pch_line" && -n "$_pm_line" && -n "$_ta_line" \
       && "$_pch_line" -lt "$_pm_line" && "$_pm_line" -lt "$_ta_line" ]]; then
     assert_pass "[SPEC-13] pr-checks → pr-merge → tag-a in order on PR-exists resume"
@@ -394,8 +394,8 @@ spec22_rc=0
 spec22_out="$(bash "$REPO_ROOT/scripts/release.sh" --ship --milestone "Initiative 1.1" 2>&1)" \
     || spec22_rc=$?
 
-_cd_line="$(grep -n 'checkout-discard' "$ORDER_LOG" 2>/dev/null | head -1 | cut -d: -f1 || true)"
-_cm_line="$(grep -n 'checkout-main' "$ORDER_LOG" 2>/dev/null | head -1 | cut -d: -f1 || true)"
+_cd_line="$(grep -n 'checkout-discard' "$ORDER_LOG" 2>/dev/null | sed -n 1p | cut -d: -f1 || true)"
+_cm_line="$(grep -n 'checkout-main' "$ORDER_LOG" 2>/dev/null | sed -n 1p | cut -d: -f1 || true)"
 if [[ "$spec22_rc" -eq 0 && -n "$_cd_line" && -n "$_cm_line" && "$_cd_line" -lt "$_cm_line" ]]; then
     assert_pass "[SPEC-22] resume-from-main discards redundant CHANGELOG/VERSION stamps before checkout main"
 else

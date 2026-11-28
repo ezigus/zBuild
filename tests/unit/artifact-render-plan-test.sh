@@ -50,10 +50,10 @@ out="$(render_plan_md "$inj")"
 # Backticks in title must be escaped so user can't open a fence.
 assert_contains "P5 title backticks escaped" "$out" '\`backtick\`'
 # Newlines collapsed to spaces (single-line heading invariant).
-if grep -qF "newline" <<< "$(printf '%s' "$out" | head -1)"; then
+if grep -qF "newline" <<< "$(printf '%s' "$out" | sed -n 1p)"; then
     assert_pass "P5 newline collapsed onto heading line"
 else
-    assert_fail "P5 newline collapsed onto heading line" "got: $(printf '%s' "$out" | head -1)"
+    assert_fail "P5 newline collapsed onto heading line" "got: $(printf '%s' "$out" | sed -n 1p)"
 fi
 
 # ─── P6: steps with files render as backticked, comma-joined list ────────────

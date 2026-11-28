@@ -13,7 +13,10 @@
 #   message: / trigger: / accepted if:
 #   SUSPICION                       quote: / suspicion: / confirm by: / fix:
 #   UNCLEAR <id> | …                a question (the shared form)
-#   UNCLEAR <id>: <answer>          an answer to a carried question
+#   UNCLEAR <id>: <answer>          an answer to a carried question, its why:
+#                                   and quote: lines under it (#2640), read
+#                                   into the one line the other checks read:
+#                                   `UNCLEAR <id>: <answer> | WHY: … | QUOTE: …`
 # A line with no key carries on the field above it, up to a blank line. A list mark, bold or a
 # backtick around a key is set aside. Read into the object the rest of the lens
 # reads: {score, findings[], unclear[], unclear_answers[]}.
@@ -46,21 +49,30 @@ def put($k; $v):
         if $k == "quote" then .unclear[-1] += ($v | fq) else .unclear[-1][$k] = $v end
     else . end | .last = $k;
 split("\n") | map(sub("\r$"; "") | bare)
-| reduce .[] as $l ({score: null, findings: [], unclear: [], unclear_answers: [], kind: null, last: null, stray: false};
-    if ($l | test("^[[:space:]]*$")) then .last = null
+| reduce .[] as $l ({score: null, findings: [], unclear: [], unclear_answers: [], kind: null, last: null, stray: false, stray_line: null};
+    if ($l | test("^[[:space:]]*$")) then .last = null | (if .kind == "a" then .kind = null else . end)
     elif ($l | test("^FINDING([[:space:]]+#?[0-9]+)?[[:space:]]*:?[[:space:]]*$"; "i")) then .kind = "f" | .last = null | .findings += [{also_at: []}]
     elif ($l | test("^SUSPICION([[:space:]]+#?[0-9]+)?[[:space:]]*:?[[:space:]]*$"; "i")) then .kind = "s" | .last = null | .unclear += [{}]
     elif ($l | test("^UNCLEAR[[:space:]]+[^[:space:]|:]+[[:space:]]*\\|")) then .kind = null | .unclear += [$l]
-    elif ($l | test("^UNCLEAR[[:space:]]+[^[:space:]|:]+[[:space:]]*:")) then .kind = null | .unclear_answers += [$l]
+    elif ($l | test("^UNCLEAR[[:space:]]+[^[:space:]|:]+[[:space:]]*:")) then .kind = "a" | .last = null | .unclear_answers += [$l]
     elif ($l | test("^SCORE[[:space:]]*:"; "i")) then .kind = null
         | .score = ($l | capture(":[[:space:]]*(?<n>[0-9]+)").n | tonumber? // null)
+    # #2640: the why: and quote: lines under an answer join it, as the shared reader
+    # joins them (zb_reply_join_v); a note: is set aside, and only the first
+    # quote is read.
+    elif .kind == "a" and ($l | test("^(why|quote|note)[[:space:]]*:"; "i")) then
+        ($l | capture("^(?<k>[A-Za-z]+)[[:space:]]*:[[:space:]]*(?<v>.*)$")) as $m | ($m.k | ascii_downcase) as $k
+        | if $k == "note" or ($k == "quote" and (.unclear_answers[-1] | test(" \\| QUOTE: "))) then .last = null
+          else .unclear_answers[-1] += " | " + ($k | ascii_upcase) + ": " + $m.v | .last = $k end
     elif ($l | key) != null then
-        if .kind == null then .stray = true else ($l | kv) as $m | put($m.k | ascii_downcase | gsub("[[:space:]-]+"; "_"); $m.v) end
-    elif .kind != null and .last != null and ($l | test("[^[:space:]]"))
+        if .kind == null or .kind == "a" then .stray = true | .stray_line = (.stray_line // $l)
+        else ($l | kv) as $m | put($m.k | ascii_downcase | gsub("[[:space:]-]+"; "_"); $m.v) end
+    elif .kind == "a" and .last == "why" and ($l | test("[^[:space:]]")) then .unclear_answers[-1] += " " + $l
+    elif .kind != null and .kind != "a" and .last != null and ($l | test("[^[:space:]]"))
          and (.last | IN("message", "trigger", "accepted_if", "suspicion", "confirm_by")) then
         if .kind == "f" then .findings[-1][.last] += " " + $l else .unclear[-1][.last] += " " + $l end
     else . end)
-| {score, findings, unclear, unclear_answers, stray}'
+| {score, findings, unclear, unclear_answers, stray, stray_line}'
 
 # _rl_reply_lines_v <json_var> <reply> — the lens's line answer read into its
 # object (one jq, the reply on stdin); empty when jq cannot read it.

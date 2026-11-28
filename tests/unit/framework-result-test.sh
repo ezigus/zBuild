@@ -170,7 +170,7 @@ if cmp -s "$BASE_OUT" "$EMPTY_OUT"; then
     assert_pass "default: empty framework args are byte-identical to baseline"
 else
     assert_fail "default: empty framework args are byte-identical to baseline" \
-        "$(diff "$BASE_OUT" "$EMPTY_OUT" 2>&1 | head -c 300)"
+        "$(zb_test_clip 300 "$(diff "$BASE_OUT" "$EMPTY_OUT" 2>&1)")"
 fi
 
 print_test_results

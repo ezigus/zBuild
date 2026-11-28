@@ -2,7 +2,9 @@ What this lens looks for: where the change and what the issue asked for part way
 
 Not a finding:
 - a file the issue lists that the change did not need to touch: an issue lists files that might change;
-- a test for something the issue asks for, and a file that test needs.
+- a test for something the issue asks for, and a helper or fixture that test reads.
+
+The rule this lens judges by: @TRACE_RULE@ A file the change edits because a test needs it is not in scope for that reason: when no requirement asks for the edit, it is a finding, and so is the test that needs it.
 
 Where these problems come from: the issue's own words, set beside what the change does.
 

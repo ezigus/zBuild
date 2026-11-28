@@ -152,7 +152,7 @@ _PIPE_WF="$REPO_ROOT/.github/workflows/zbuild-pipeline.yml"
 _wf_state="$(grep -n 'zbuild/state/' "$_PIPE_WF" 2>/dev/null || true)"
 if [[ -n "$_wf_state" ]]; then
     assert_fail "[SPEC-6] the pipeline workflow still names the state branch" \
-        "hydrate and persist own it: $(printf '%s' "$_wf_state" | head -3)"
+        "hydrate and persist own it: $(printf '%s' "$_wf_state" | sed -n 1,3p)"
 else
     assert_pass "[SPEC-6] the pipeline workflow names no state branch at all"
 fi
@@ -161,7 +161,7 @@ fi
 _wf_raw="$(grep -nE 'git (push|fetch)' "$_PIPE_WF" 2>/dev/null | grep -i 'state' || true)"
 if [[ -n "$_wf_raw" ]]; then
     assert_fail "[SPEC-6] a raw git push/fetch of state survives in the workflow" \
-        "$(printf '%s' "$_wf_raw" | head -2)"
+        "$(printf '%s' "$_wf_raw" | sed -n 1,2p)"
 else
     assert_pass "[SPEC-6] no raw state push/fetch remains — only the entrypoint"
 fi
@@ -216,7 +216,7 @@ _out="$( cd "$REPO" && ZBUILD_STATE_DIR="$TEST_TEMP_DIR/s8" ZBUILD_ISSUE_NUMBER=
     bash "$_FAKE/scripts/zbuild" persist --push 2>&1 )" || _rc=$?
 if [[ "$_rc" -eq 0 ]]; then
     assert_fail "[SPEC-8] a plugin that defines no persist_run exited 0" \
-        "the backstop silently pushed nothing. output: $(printf '%s' "$_out" | tr '\n' '|' | head -c 160)"
+        "the backstop silently pushed nothing. output: $(zb_test_clip 160 "$(printf '%s' "$_out" | tr '\n' '|')")"
 else
     assert_pass "[SPEC-8] an unusable persist plugin is refused, not silently skipped"
 fi
@@ -235,7 +235,7 @@ _bad_find="$(grep -vE '^\s*#' "$REPO_ROOT/.github/workflows/zbuild-pipeline.yml"
              | grep -n 'find "\${ZBUILD_STATE_DIR:-}"' || true)"
 if [[ -n "$_bad_find" ]]; then
     assert_fail "[SPEC-9] find can be handed an empty path" \
-        "an empty state dir reads as 'no result' and forces a second push: $(printf '%s' "$_bad_find" | head -2)"
+        "an empty state dir reads as 'no result' and forces a second push: $(printf '%s' "$_bad_find" | sed -n 1,2p)"
 else
     assert_pass "[SPEC-9] the state dir is checked before find is called"
 fi

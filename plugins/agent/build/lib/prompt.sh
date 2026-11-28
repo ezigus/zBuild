@@ -22,6 +22,8 @@ _ZBUILD_BUILD_PROMPT_LOADED=1
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/unclear.sh"
 # shellcheck source=../../../../scripts/lib/outside-assumptions.sh
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/outside-assumptions.sh"
+# shellcheck source=../../../../scripts/lib/trace.sh
+source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/trace.sh"
 
 # _build_render_task_header <round>
 # Emits the stable banner that prefixes every build prompt: the loop's round.
@@ -38,6 +40,8 @@ _build_compose_instructions() {
     # text: the stage writes only its own job.
     local _framing="Your job is to edit the working tree to make the code do what the
 design's steps below decide. You have Read, Edit, Write, and Bash tools available."
+    # #2629 (ADR-075): what build was handed, in the rule every stage is given.
+    local _trace=""; zb_trace_rule_v _trace "a design step or a finding you were given" "design"
     cat <<BUILD_PROMPT
 ${_framing}
 
@@ -48,9 +52,11 @@ ${_framing}
 - When what was asked and what the code can do differ in a way you cannot
   close, say so in your answer rather than building something else.
 - When a test fails, find out why it fails before you change anything else.
-- Every change you make traces to a design step or to a failing test. A change
-  that traces to neither is not asked for: do not make it, and take out one
-  the branch already has.
+- ${_trace} A failing test is a finding. Take out a change the branch already
+  has that traces to neither.
+- A done answer to a finding names each file you changed for it: ANSWER <its id>: done — <file> | <a line you added> — <what you changed>
+  Every file you change is checked: one that no step's areas hold and no done
+  answer names sends you round again.
 - When a step is gone from the design, undo what you built for it, unless the
   current design's steps now name it: the branch's change holds only what the
   current steps and tests ask for.

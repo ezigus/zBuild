@@ -258,8 +258,9 @@ assert_eq "[DSHBT-1] body contains exactly one 'still running — ' line" \
 # DSHBT-17 (#2533 review): the heartbeat written is the heartbeat read
 # ═══════════════════════════════════════════════════════════════════════════
 print_test_section "DSHBT-17: the comment the sidecar edits is the one the claim ages"
-# shellcheck source=../../scripts/lib/claim-takeover.sh
-source "$REPO_ROOT/scripts/lib/claim-takeover.sh"
+# #2616: the age is the claim coordinator's (its takeover library).
+# shellcheck source=../../plugins/claim-coordinator/github-labels/lib/takeover.sh
+source "$REPO_ROOT/plugins/claim-coordinator/github-labels/lib/takeover.sh"
 rsc_gh() {   # the GitHub call's boundary: the comments list holds the sent body, edited at 12:30
     case "$*" in
         *"/comments"*) jq -cn --arg body "$heartbeat_body" \

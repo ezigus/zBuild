@@ -70,7 +70,13 @@ PREV="$TEST_TEMP_DIR/prev-design.md"; : > "$PREV"
 
 _md() {   # <acceptance lines...> — a design with that acceptance block
     printf '# D\n\n```scope\nscripts/run.sh\n```\n\n```acceptance\n'
-    printf '%s\n' "$@"
+    # #2629 (ADR-075 §2): every SPEC covers a requirement intake listed; these
+    # cases are about ids, so a SPEC that names none covers the one listed.
+    local _l
+    for _l in "$@"; do
+        [[ "$_l" =~ ^[A-Z][A-Z0-9]*-[0-9]+\[ && "$_l" != *" covers:"* ]] && _l+=" covers: RQRSUM-1"
+        printf '%s\n' "$_l"
+    done
     printf 'WIRING: none\nTESTFILES:\n'
     printf '%s\n' "${BIND[@]}"
     printf '```\n'

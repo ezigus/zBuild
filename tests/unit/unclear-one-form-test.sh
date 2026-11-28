@@ -131,6 +131,13 @@ assert_eq "[U6] ...backslashes and non-ASCII kept" "${Q[1]}" "${BACK[1]-}"
 BACK=(); printf '{"outcome":"pass","data":{"findings":["the word \\"unclear\\":[\\"x\\"] in a finding"]}}\n' > "$TEST_TEMP_DIR/other.json"
 _has zb_unclear_result_lines_v && zb_unclear_result_lines_v BACK "$TEST_TEMP_DIR/other.json"
 assert_eq "[U6] the word inside another string is not the key" "0" "${#BACK[@]}"
+# A question is one line, whatever its text held (audit on #2635): a newline
+# and a tab read back as spaces, and the writer writes none.
+BACK=(); jq -nc '{outcome:"pass",data:{unclear:["UNCLEAR RQX-1: two\nlines\tand a tab"]}}' > "$TEST_TEMP_DIR/ml.json"
+_has zb_unclear_result_lines_v && zb_unclear_result_lines_v BACK "$TEST_TEMP_DIR/ml.json"
+assert_eq "[U6] a newline and a tab in a question read back as spaces, on one line" "UNCLEAR RQX-1: two lines and a tab" "${BACK[0]-}"
+_w=""; _zb_unclear_json_str_v _w $'two\nlines\tand a tab'
+assert_eq "[U6] ...and the writer writes them as spaces" '"two lines and a tab"' "$_w"
 
 print_test_section "U7: units of a reply and of a design"
 _jn=""; zb_reply_join_v _jn $'Steps: ok\nUNCLEAR RQADR-2: answered | WHY: w\nUNCLEAR RQOLD-1: open'

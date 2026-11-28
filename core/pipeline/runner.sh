@@ -1092,7 +1092,7 @@ _runner_render_open_items() {
         printf 'The run %s.\n' "$(run_end_words "$reason" "$n")"
         [[ -n "$items" ]] && printf '%s\n' "$items"
         # #2508: and the questions design could not settle.
-        local q; q="$(open_items_questions "$sd")" || q=""
+        local q; q="$(open_items_questions_text "$sd")" || q=""
         [[ -n "$q" ]] && printf '\n%s\n' "$q"
     } >&2
 }
@@ -4418,6 +4418,21 @@ main() {
             return 1
         else
             _update_stage_status "$state_file" "$stage" "failed"
+            # #2616 (ADR-054 §6): the linear path reads the stage's own word as a
+            # loop's dispatch does — `unavailable` aborts, resumable, naming the
+            # stage; misconfigured or broken is named with its reason.
+            local _ln_dir _ln_manifest _ln_disp="" _ln_reason="" _ln_stop=""
+            _ln_dir="${plugin_dir:-$(resolve_stage_plugin "$stage" "$plugins_root" 2>/dev/null || true)}"
+            _ln_manifest="$_ln_dir/manifest.yaml"
+            if [[ -n "$_ln_dir" && -f "$_ln_manifest" ]]; then
+                runner_read_stage_disposition_v _ln_disp "$state_dir" "$_ln_manifest" "$stage" "$rc" "" "" 2>/dev/null || _ln_disp=""
+                runner_read_stage_reason_v _ln_reason "$state_dir" "$_ln_manifest" "$stage" "$rc" 2>/dev/null || _ln_reason=""
+                if [[ -n "$_ln_disp" ]] \
+                   && [[ "$(disposition_response "$_ln_disp" 2>/dev/null || true)" == "halt_unavailable" ]]; then
+                    _runner_note_unavailable_abort "$state_dir" "$_ln_manifest" "$stage" "$rc"
+                    _zbuild_abort "$(_runner_unavailable_abort_reason)" || true   # it records, and says 1
+                fi
+            fi
             # #1024 / #612 / #1850: a recorded abort word (an unavailable model,
             # Ctrl-C, a kill) ends the run on its own terms — the word, not
             # rc 9 / 10 / 130 / 143.
@@ -4428,7 +4443,13 @@ main() {
             fi
             _set_pipeline_status "$state_file" "interrupted"
             eb_emit_event "stage.fail" "stage=$stage" "rc=$rc"
+            if [[ "$_ln_disp" == misconfigured || "$_ln_disp" == broken ]] && [[ "$_ln_reason" != router_* ]]; then
+                _runner_stage_stop_word_v _ln_stop "$stage" "$_ln_reason"
+                _RUNNER_END_REASON="$_ln_stop"
+                _zbuild_runner_write_llm_abort "$state_file" "$_ln_stop" "" || true
+            fi
             eb_emit_event "pipeline.end" "status=failed" "stage=$stage" "rc=$rc" \
+                ${_ln_stop:+"reason=$_ln_stop"} \
                 "run_id=$_runner_run_id" "issue=$_runner_issue"
             _render_pipeline_end "failed" "$stage" "$rc"
             _runner_ended=true

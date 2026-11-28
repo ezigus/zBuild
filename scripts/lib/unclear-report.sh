@@ -6,6 +6,10 @@
 # Sourced by unclear.sh; no set -euo pipefail. Nothing here forks.
 [[ -n "${_ZBUILD_UNCLEAR_REPORT_LOADED:-}" ]] && return 0
 _ZBUILD_UNCLEAR_REPORT_LOADED=1
+# shellcheck source=./json-text.sh
+source "${BASH_SOURCE[0]%/*}/json-text.sh"
+# shellcheck source=./md-text.sh
+source "${BASH_SOURCE[0]%/*}/md-text.sh"
 
 # zb_unclear_result_json_v <var> <array_name> [note_var] — the lines of
 # <array_name> as a JSON array of strings, for a stage's result: data.unclear;
@@ -22,12 +26,9 @@ zb_unclear_result_json_v() {
     _zrj="[$_zrj_o]"
 }
 
-# _zb_unclear_json_str_v <var> <text> — <text> as a JSON string, quoted;
-# control characters become spaces.
-_zb_unclear_json_str_v() {
-    local -n _zjs="$1"; local _zjs_t="${2//[[:cntrl:]]/ }"
-    _zjs_t="${_zjs_t//\\/\\\\}"; _zjs="\"${_zjs_t//\"/\\\"}\""
-}
+# _zb_unclear_json_str_v <var> <text> — <text> as a JSON string, quoted, on
+# one line: control characters become spaces.
+_zb_unclear_json_str_v() { zb_json_str_v "$1" "${2//[[:cntrl:]]/ }"; }
 
 # zb_unclear_dropped_json_v <var> <dropped_array_name> [carried] — the
 # questions a check retired, for a stage's result: data.unclear_dropped, so no
@@ -69,13 +70,13 @@ _zb_unclear_read_v() {
 }
 
 # zb_unclear_result_lines_v <array_var> <result_json> — the lines of the
-# result's "unclear" array, with no fork: a
-# JSON string's escapes \" and \\ read back, any other escape a space. Bounded
+# result's "unclear" array, with no fork: each string read back
+# (zb_json_unescape_v) on one line. Bounded
 # (#2571 review): at most _ZB_UNCLEAR_READ_MAX lines of _ZB_UNCLEAR_LINE_MAX
 # characters, read from a window after the key, never the rest copied per line.
 zb_unclear_result_lines_v() {
     local -n _zrl="$1"; local _zrl_t="" _zrl_s _zrl_n=0 _zrl_re='"unclear"[[:space:]]*:[[:space:]]*\['
-    local _zrl_str='^[[:space:],]*"(([^"\\]|\\.)*)"'
+    local _zrl_str='^[[:space:],]*"'"$ZB_JSON_STR_RE"'"'
     _zrl=()
     _zb_unclear_read_v _zrl_t "${2:-}" || return 0
     [[ "$_zrl_t" =~ $_zrl_re ]] || return 0
@@ -89,13 +90,11 @@ zb_unclear_result_lines_v() {
     return 0
 }
 
-# _zb_unclear_unesc_v <var> <json_string_body> — read back: \" and \\ and \/,
-# any other escape a space; at most _ZB_UNCLEAR_LINE_MAX characters.
+# _zb_unclear_unesc_v <var> <json_string_body> — read back on one line: a
+# control character a space; at most _ZB_UNCLEAR_LINE_MAX characters.
 _zb_unclear_unesc_v() {
-    local -n _zue_o="$1"; local _zue_s="$2"
-    _zue_s="${_zue_s//\\\\/$'\x01'}"; _zue_s="${_zue_s//\\\"/\"}"; _zue_s="${_zue_s//\\\//\/}"
-    _zue_s="${_zue_s//\\u[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]/ }"; _zue_s="${_zue_s//\\[bfnrt]/ }"
-    _zue_s="${_zue_s//$'\x01'/\\}"
+    local -n _zue_o="$1"; local _zue_s
+    zb_json_unescape_v _zue_s "$2"; _zue_s="${_zue_s//[[:cntrl:]]/ }"
     _zue_o="${_zue_s:0:_ZB_UNCLEAR_LINE_MAX}"
 }
 
@@ -105,7 +104,7 @@ _zb_unclear_unesc_v() {
 # is; the objects' keys in any order, a field that is not a string left empty.
 zb_unclear_dropped_lines_v() {
     local -n _zdl="$1"; local _zdl_t="" _zdl_n=0 _zdl_v _zdl_re='"unclear_dropped"[[:space:]]*:[[:space:]]*\['
-    local _zdl_kv='^[[:space:],]*"([A-Za-z_]+)"[[:space:]]*:[[:space:]]*("(([^"\\]|\\.)*)"|null|true|false|-?[0-9][0-9.eE+-]*)'
+    local _zdl_kv='^[[:space:],]*"([A-Za-z_]+)"[[:space:]]*:[[:space:]]*("'"$ZB_JSON_STR_RE"'"|null|true|false|-?[0-9][0-9.eE+-]*)'
     local -A _zdl_o=()
     _zdl=()
     _zb_unclear_read_v _zdl_t "${2:-}" || return 0
@@ -151,20 +150,13 @@ zb_unclear_results_in_v() {
     return 0
 }
 
-# _zb_unclear_esc_v <var> <text> — what the model wrote, inert in GitHub
-# markdown: \ [ ] < > ` * escaped, as the PR body escapes plan text; an @ and a
-# # before a digit, and ://, broken by a zero-width space, so it mentions no
-# one, links no issue and makes no link (#2571 review).
-_ZB_UNCLEAR_ZWSP=$'\xe2\x80\x8b'
-_zb_unclear_esc_v() {
-    local -n _zue="$1"; local _zue_t="$2" _zue_d
-    _zue_t="${_zue_t//\\/\\\\}"; _zue_t="${_zue_t//\[/\\[}"; _zue_t="${_zue_t//\]/\\]}"
-    _zue_t="${_zue_t//</\\<}"; _zue_t="${_zue_t//>/\\>}"
-    _zue_t="${_zue_t//\`/\\\`}"; _zue_t="${_zue_t//\*/\\*}"
-    _zue_t="${_zue_t//@/@$_ZB_UNCLEAR_ZWSP}"; _zue_t="${_zue_t//:\/\//:$_ZB_UNCLEAR_ZWSP//}"
-    for _zue_d in 0 1 2 3 4 5 6 7 8 9; do _zue_t="${_zue_t//\#$_zue_d/#$_ZB_UNCLEAR_ZWSP$_zue_d}"; done
-    _zue="$_zue_t"
-}
+# _zb_unclear_esc_v <var> <text> — what the model wrote, as the section's
+# reader needs it. Escaped where the text enters markdown, at the boundary:
+# for GitHub (the default), shown as written — it mentions no one, links no
+# issue and makes no link (#2571 review; scripts/lib/md-text.sh); for a
+# terminal (zb_unclear_text_v), as it is.
+_zb_unclear_esc_v() { "${_ZB_UNCLEAR_ESC:-zb_md_text_v}" "$1" "$2"; }
+_zb_unclear_as_is_v() { printf -v "$1" '%s' "$2"; }
 
 # _zb_unclear_section_v <var> <stage> <array_name> — one stage's questions
 # (lines as written), or empty when none is readable.
@@ -229,7 +221,7 @@ zb_unclear_markdown_v() {
 # zb_unclear_dropped_lines_v is.
 zb_unclear_suspected_lines_v() {
     local -n _zsl="$1"; local _zsl_t="" _zsl_n=0 _zsl_v _zsl_re='"suspected"[[:space:]]*:[[:space:]]*\['
-    local _zsl_kv='^[[:space:],]*"([A-Za-z_]+)"[[:space:]]*:[[:space:]]*("(([^"\\]|\\.)*)"|null|true|false|-?[0-9][0-9.eE+-]*)'
+    local _zsl_kv='^[[:space:],]*"([A-Za-z_]+)"[[:space:]]*:[[:space:]]*("'"$ZB_JSON_STR_RE"'"|null|true|false|-?[0-9][0-9.eE+-]*)'
     local -A _zsl_o=()
     _zsl=()
     _zb_unclear_read_v _zsl_t "${2:-}" || return 0
@@ -264,6 +256,10 @@ _zb_unclear_suspected_v() {
     [[ -n "$_zsv_x" ]] || return 0
     _zsv="**Suspicions $2 could not confirm** (open: a person should check each):"$'\n'"$_zsv_x"
 }
+
+# zb_unclear_text_v <var> <design_md> [result_json...] — the same section for a
+# terminal: the model's words as they are, never escaped for markdown.
+zb_unclear_text_v() { local _ZB_UNCLEAR_ESC=_zb_unclear_as_is_v; zb_unclear_markdown_v "$@"; }
 
 # zb_unclear_markdown <design_md> [result_json...] — the same, printed.
 zb_unclear_markdown() {

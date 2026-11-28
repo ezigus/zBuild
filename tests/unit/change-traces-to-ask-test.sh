@@ -56,8 +56,9 @@ print_test_section "A1: build's prompt"
 # shellcheck source=../../plugins/agent/build/lib/prompt.sh
 source "$REPO_ROOT/plugins/agent/build/lib/prompt.sh"
 _bp="$(_build_compose_instructions | tr -s '[:space:]' ' ')"
-assert_contains "[A1] every change traces to a design step or a failing test" "$_bp" \
-    "Every change you make traces to a design step or to a failing test"
+# #2629 (ADR-075): in the shared rule's words — a failing test is a finding.
+assert_contains "[A1] every change traces to a design step or a finding" "$_bp" \
+    "Everything here must trace to a design step or a finding you were given."
 assert_contains "[A1] ...what a removed step built is undone" "$_bp" \
     "When a step is gone from the design, undo what you built for it"
 assert_contains "[A1] ...unless the current design's steps now name it" "$_bp" \
@@ -146,7 +147,7 @@ EXTRA='assert_contains "lists the design plugin" "$(cat config/shape-change-path
 _run
 assert_eq "[A3] the try is unusable, for the next try to fix" "unusable" "$OUTCOME"
 assert_contains "[A3] the finding names the file and line, and that no SPEC asks for it" "$FINDINGS" \
-    "tests/a-test.sh line 3 tests something no SPEC or design step asks for"
+    "tests/a-test.sh line 3 (it pins the shape-change list, which no SPEC mentions) traces to no SPEC or design step"
 assert_contains "[A3] ...with the check's reason" "$FINDINGS" "it pins the shape-change list, which no SPEC mentions"
 assert_contains "[A3] ...and says to take it out" "$FINDINGS" "take it out"
 

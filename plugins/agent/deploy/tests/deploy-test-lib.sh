@@ -36,8 +36,9 @@ _make_state() {
 _v2_keys_ok() {
     local lbl="$1" f="$2"
     local _rc _oc _old _rs
-    IFS=$'\t' read -r _rc _oc _old _rs < <(jq -r \
-        '[(.result_contract // "" | tostring), (.outcome // ""), (has("verdict") or has("disposition") | tostring), (.reason // "")] | @tsv' \
+    _rc="" _oc="" _old="" _rs=""
+    { IFS= read -r -d '' _rc && IFS= read -r -d '' _oc && IFS= read -r -d '' _old && IFS= read -r -d '' _rs; } < <(jq -j \
+        '"\(.result_contract // "")\u0000\(.outcome // "")\u0000\(has("verdict") or has("disposition"))\u0000\(.reason // "")\u0000"' \
         "$f" 2>/dev/null || true) || true
     assert_eq "$lbl result_contract=3" "3" "$_rc"
     if [[ -n "$_oc" ]]; then

@@ -92,7 +92,7 @@ git -C "$ZBUILD_REPO_ROOT" add -A; git -C "$ZBUILD_REPO_ROOT" commit -qm init
 print_test_section "SPEC-1: the author role is not denied the acceptance testfiles"
 : > "$DENY_LOG"
 plugin_hook_call "$TEST_TEMP_DIR/plugins/agent/author-fixture" run author-fixture "$STATE/pipeline-state.json" >/dev/null 2>&1 || true
-_a="$(grep '^author-fixture|' "$DENY_LOG" | head -1 | cut -d'|' -f2-)"
+_a="$(grep '^author-fixture|' "$DENY_LOG" | sed -n 1p | cut -d'|' -f2-)"
 if grep -q 'tests/acc-test.sh' <<< "$_a"; then
     assert_fail "[SPEC-1] the test_author plugin is not denied the acceptance testfiles" "denied: $_a"
 else
@@ -101,7 +101,7 @@ fi
 
 print_test_section "SPEC-2: every other role is denied the TESTFILES"
 plugin_hook_call "$TEST_TEMP_DIR/plugins/agent/builder-fixture" run builder-fixture "$STATE/pipeline-state.json" >/dev/null 2>&1 || true
-_b="$(grep '^builder-fixture|' "$DENY_LOG" | head -1 | cut -d'|' -f2-)"
+_b="$(grep '^builder-fixture|' "$DENY_LOG" | sed -n 1p | cut -d'|' -f2-)"
 assert_contains "[SPEC-2] a builder-role plugin is denied the design's testfile" "$_b" "tests/acc-test.sh"
 
 print_test_section "SPEC-3: other plugins' declared outputs are read-only; your own are not"
@@ -123,7 +123,7 @@ fi
 
 print_test_section "SPEC-4: only a plugin declaring writes_repository may edit the repo"
 plugin_hook_call "$TEST_TEMP_DIR/plugins/agent/reader-fixture" run reader-fixture "$STATE/pipeline-state.json" >/dev/null 2>&1 || true
-_r="$(grep '^reader-fixture|' "$DENY_LOG" | head -1 | cut -d'|' -f2-)"
+_r="$(grep '^reader-fixture|' "$DENY_LOG" | sed -n 1p | cut -d'|' -f2-)"
 _root="$(cd "$ZBUILD_REPO_ROOT" && pwd)"
 assert_contains "[SPEC-4] a non-writing plugin is denied the repo's tracked directories" "$_r" "$_root/core/**"
 assert_contains "[SPEC-4] …and its tracked top-level files" "$_r" "$_root/README.md"

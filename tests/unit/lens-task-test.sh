@@ -15,8 +15,9 @@
 #             by more than their names
 # L3 [change] a lens with no job text reviews nothing: it ends misconfigured,
 #             and no model is asked
-# L4 [change] the correctness lens runs as test-strategist and the scope lens
-#             as product-owner — personas that are roles, not lens jobs
+# L4 [change] the correctness lens runs as the developer (#2630: it judges
+#             logic), the tests lens as test-strategist and the scope lens as
+#             product-owner — personas that are roles, not lens jobs
 # L6 [change] (#2567, ADR-038) a lens is told that work the issue or the design
 #             asks this change to do, which it does not do, is the change's:
 #             introduced true, though the old code behaves the same
@@ -141,7 +142,8 @@ assert_eq "[L3] ...and ends misconfigured" "misconfigured" "$(jq -r '.outcome //
 # ── L4 ───────────────────────────────────────────────────────────────────────
 print_test_section "L4: the lenses run as roles"
 for _t in "$REPO_ROOT"/config/templates/simple.yaml "$REPO_ROOT"/config/templates/deployed.yaml; do
-    assert_eq "[L4] ${_t##*/}: correctness runs as test-strategist" "test-strategist" "$(_tpl_lens_persona "$_t" correctness)"
+    assert_eq "[L4] ${_t##*/}: correctness runs as developer" "developer" "$(_tpl_lens_persona "$_t" correctness)"
+    assert_eq "[L4] ${_t##*/}: tests runs as test-strategist" "test-strategist" "$(_tpl_lens_persona "$_t" tests)"
     assert_eq "[L4] ${_t##*/}: scope runs as product-owner" "product-owner" "$(_tpl_lens_persona "$_t" scope)"
 done
 

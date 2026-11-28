@@ -572,6 +572,8 @@ failure, and builds all result JSON via `jq -n` (injection-safe). The unused `ro
 
 **Amendment (2026-11-08, #2491) — `test-author` is no longer blocking.** On #1805 run 42439063480 test-author ran out of tries on a SPEC whose Given no test could meet, and being blocking it ended the run in round 1, before design — the only stage that can rewrite a Given — had another round. Out of tries, the round now goes on with the tests as they are, and the loop's next round starts from design, which is shown what test-author's check found (ADR-068 §3, ADR-071 §1, amended). Build still may not edit the acceptance tests, and the acceptance check still names a requirement with no tagged assertion, so a test-author that wrote nothing does not let build write its own. `tests/integration/test-author-out-of-tries-goes-on-test.sh` T1–T3 and `tests/unit/test-author-test.sh` SPEC-7 enforce it.
 
+**Amendment (2026-11-27, #2640) — a round in which test-author did not pass ends before build.** `simple.yaml` gives build `requires: [test-author]` (ADR-068 §3, amended): test-author still does not end the run, but a round in which it did not pass ends there — build and the rest do not run — and the next round starts from design. On #2534 run 45997137687 test-author wrote nothing in two rounds and build ran anyway, on no new tests. `tests/integration/test-author-out-of-tries-goes-on-test.sh` T1 (that round ends before build and test; the run goes on) and `tests/integration/cycle-member-requires-test.sh` [#2640/SPEC-1] enforce it.
+
 ## Amendment (2026-10-31, issue #2439) — a timeout ends the try
 
 The #1208 amendment's "repeated timeout" yield is now a single timeout: build and test-author make one model
