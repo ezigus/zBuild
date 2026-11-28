@@ -152,9 +152,128 @@ _ccgl_refused() {
         "$issue" "$_CCGL_LABEL" "$issue" "$_CCGL_LABEL" >&2 || true
 }
 
+# ─── Concurrent claims (ADR-005 §5, #2534) ───────────────────────────────────
+# Two runs that read the issue at once both add the label. So after adding it a
+# claim posts its holder record, a comment "concurrent claim by `<holder>`", and
+# reads every such note back once: the note GitHub timed first (then the lower
+# id) wins. Only notes by the CI bot or the repository's people count, and only
+# those from ZBUILD_CLAIM_RACE_WINDOW_S before this run's note on. (`gh api`
+# has no --repo: its path names the repository.)
+_CCGL_TRUSTED='(.user.login == "github-actions[bot]") or ((.author_association // "") | IN("OWNER","MEMBER","COLLABORATOR"))'
+_CCGL_RACE_NOTE_PREFIX='concurrent claim by `'
+
+# _ccgl_self_holder_v <var> — this run's holder string (CI: the run URL; else run_id/machine/pid)
+_ccgl_self_holder_v() {
+    local -n _ccsh="$1"
+    if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+        _ccsh="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-unknown}/actions/runs/${GITHUB_RUN_ID:-unknown}"
+    else
+        _ccsh="run_id=${ZBUILD_RUN_ID:-} machine=${ZBUILD_CLAIM_MACHINE_ID:-${HOSTNAME:-unknown}} pid=$$"
+    fi
+    _ccsh="${_ccsh//[[:cntrl:]\`]/}"
+}
+
+# ZBUILD_CLAIM_RACE_WINDOW_S in seconds; not a plain number of seconds ("2m",
+# "08", more than six digits) → 120.
+_ccgl_race_window_s_v() {
+    local -n _crw="$1"; _crw="${ZBUILD_CLAIM_RACE_WINDOW_S:-120}"
+    [[ "$_crw" =~ ^(0|[1-9][0-9]{0,5})$ ]] || _crw=120
+}
+
+# _ccgl_race_note_post_v <id-var> <at-var> <issue> <holder> — posts this run's
+# note; <id-var> gets its id, <at-var> GitHub's time for it in epoch seconds,
+# each empty when GitHub's reply has none. rc 1: the post failed.
+_ccgl_race_note_post_v() {
+    local -n _crnp_id="$1" _crnp_at="$2"
+    _crnp_id=""; _crnp_at=""
+    _ccgl_gh api "repos/${_CCGL_SLUG}/issues/${3}/comments" \
+        -f "body=${_CCGL_RACE_NOTE_PREFIX}${4}\`" 2>/dev/null || return 1
+    { IFS= read -r -d '' _crnp_id; IFS= read -r -d '' _crnp_at; } < <(jq -j \
+        '"\(.id // "")\u0000\((.created_at // "") | try fromdateiso8601 catch "")\u0000"' \
+        <<< "$_CCGL_OUT" 2>/dev/null) || true
+    [[ "$_crnp_id" =~ ^[0-9]+$ ]] || _crnp_id=""
+    [[ "$_crnp_at" =~ ^[0-9]+$ ]] || _crnp_at=""
+    return 0
+}
+
+# _ccgl_race_first_v <winner-var> <first-id-var> <mine-var> <issue> <since> <holder>
+# — one read of the issue's notes: <winner-var> and <first-id-var> get the holder
+# and id of the first trusted note GitHub timed at or after <since> (epoch s),
+# <mine-var> the id of <holder>'s. rc 1: the notes could not be read.
+_ccgl_race_first_v() {
+    local -n _crf_w="$1" _crf_f="$2" _crf_m="$3"
+    local issue="$4" since="$5" holder="$6"
+    _crf_w=""; _crf_f=""; _crf_m=""
+    _ccgl_gh api --paginate "repos/${_CCGL_SLUG}/issues/${issue}/comments?per_page=100" \
+        2>/dev/null || return 1
+    { IFS= read -r -d '' _crf_w; IFS= read -r -d '' _crf_f; IFS= read -r -d '' _crf_m; } < <(jq -sj \
+        --arg p "$_CCGL_RACE_NOTE_PREFIX" --argjson s "$since" --arg h "$holder" "
+        [.[][]? | select(${_CCGL_TRUSTED}) | select((.body // \"\") | startswith(\$p))
+         | {t: ((.created_at // \"\") | try fromdateiso8601 catch null), id: (.id // 0),
+            holder: (.body[(\$p | length):] | rtrimstr(\"\`\"))}
+         | select(.t != null and .t >= \$s)]
+        | sort_by(.t, .id)
+        | \"\(.[0].holder // \"\")\u0000\(.[0].id // \"\")\u0000\(map(select(.holder == \$h)) | .[0].id // \"\")\u0000\"" \
+        <<< "$_CCGL_OUT" 2>/dev/null) || true
+    return 0
+}
+
+# _ccgl_race_note_delete <id> — rc 1 when it could not be removed.
+_ccgl_race_note_delete() {
+    [[ "${1:-}" =~ ^[0-9]+$ ]] || return 1
+    _ccgl_gh api -X DELETE "repos/${_CCGL_SLUG}/issues/comments/${1}" 2>/dev/null
+}
+
+# _ccgl_race_note_lost <id> <issue> <winner> — the losing run's note says it did
+# not start; one that cannot be changed is removed, so no later claim counts it.
+_ccgl_race_note_lost() {
+    local id="$1" issue="$2" body window
+    body="not started — concurrent claim: \`${3//[[:cntrl:]\`]/}\` was first"
+    if [[ "$id" =~ ^[0-9]+$ ]]; then
+        _ccgl_gh api -X PATCH "repos/${_CCGL_SLUG}/issues/comments/${id}" \
+            -f "body=${body}" 2>/dev/null && return 0
+        _ccgl_race_note_delete "$id" && return 0
+    fi
+    _ccgl_race_window_s_v window
+    printf 'claim-coordinator: could not mark this run'"'"'s claim note on issue #%s as not started, nor remove it: a run that claims the issue in the next %ss may be refused, as if this run had claimed first\n' \
+        "$issue" "$window" >&2 || true
+}
+
+# _ccgl_race_notes_remove <issue> — removes this run's notes (at release).
+_ccgl_race_notes_remove() {
+    local issue="$1" holder id ok=1
+    _ccgl_self_holder_v holder
+    if _ccgl_gh api --paginate "repos/${_CCGL_SLUG}/issues/${issue}/comments?per_page=100" 2>/dev/null; then
+        while IFS= read -r -d '' id; do
+            _ccgl_race_note_delete "$id" || ok=0
+        done < <(jq -sj --arg b "${_CCGL_RACE_NOTE_PREFIX}${holder}\`" \
+            "[.[][]? | select(${_CCGL_TRUSTED}) | select(.body == \$b) | \"\(.id)\u0000\"] | add // \"\"" \
+            <<< "$_CCGL_OUT" 2>/dev/null)
+    else
+        ok=0
+    fi
+    [[ "$ok" -eq 1 ]] || _ccgl_race_note_left "$issue"
+}
+
+# _ccgl_race_note_left <issue> — says this run's claim note could not be removed.
+_ccgl_race_note_left() {
+    local window; _ccgl_race_window_s_v window
+    printf 'claim-coordinator: could not remove this run'"'"'s claim note from issue #%s: a run that claims the issue in the next %ss may be refused, as if this run had claimed first\n' \
+        "$1" "$window" >&2 || true
+}
+
+# _ccgl_unclaim <issue> — takes back the label a claim that cannot stand added.
+_ccgl_unclaim() {
+    _ccgl_remove_label "$1" "$_CCGL_LABEL" \
+        || printf 'claim-coordinator: could not remove %s from issue #%s — the label may still be on the issue and will block the next run\n' \
+            "$_CCGL_LABEL" "$1" >&2 || true
+}
+
 # ─── Hook: claim <issue_id> ───────────────────────────────────────────────────
-# stdout: {"acquired": true} | {"acquired": false, "holder": "<holder>"}
+# stdout: {"acquired": true} | {"acquired": false, "holder": "<holder>"[, "race_lost": true]}
 #         | {"acquired": false, "skipped": "<why>"} (no claim was attempted)
+#         | {"acquired": false, "cannot_tell": "<why>"} (whether another run claimed
+#           first cannot be told: the run must not start)
 # rc: 0 answered, 1 backend error, 2 usage error.
 claim_coordinator_claim() {
     local issue="$1"
@@ -186,7 +305,49 @@ claim_coordinator_claim() {
         printf '{"acquired": false, "reason": "backend_error"}\n'
         return 1
     fi
-    printf '{"acquired": true}\n'
+    # local-fs is serialised with flock: no race possible there.
+    if [[ "${ZBUILD_CLAIM_BACKEND:-gh}" != "gh" ]]; then
+        printf '{"acquired": true}\n'
+        return 0
+    fi
+    # gh: the first of two claims made at once wins (ADR-005 §5).
+    _ccgl_slug || { printf '{"acquired": true}\n'; return 0; }
+    local holder="" note_id="" note_at="" winner="" first_id="" mine="" window=0 since=0
+    _ccgl_self_holder_v holder
+    if ! _ccgl_race_note_post_v note_id note_at "$issue" "$holder"; then
+        _ccgl_unclaim "$issue"
+        printf '{"acquired": false, "reason": "backend_error"}\n'
+        return 1
+    fi
+    if [[ -z "$note_at" ]]; then
+        # Which claim was first is GitHub's time to tell, never this machine's.
+        # A note GitHub gave no id for is found by one read, to be removed.
+        printf 'claim-coordinator: GitHub did not say when this run'"'"'s claim note on issue #%s was made, so which claim was first cannot be told — the claim is taken back\n' \
+            "$issue" >&2 || true
+        [[ -n "$note_id" ]] || { _ccgl_race_first_v winner first_id mine "$issue" 0 "$holder" && note_id="$mine"; } || true
+        _ccgl_race_note_delete "$note_id" || _ccgl_race_note_left "$issue"
+        _ccgl_unclaim "$issue"
+        # Not a backend error: the run must not go on unclaimed (#2534 R4).
+        printf '{"acquired": false, "cannot_tell": "GitHub did not say when this run'"'"'s claim note was made"}\n'
+        return 0
+    fi
+    _ccgl_race_window_s_v window
+    since=$(( note_at - window ))
+    if ! _ccgl_race_first_v winner first_id mine "$issue" "$since" "$holder"; then
+        _ccgl_race_note_delete "$note_id" || _ccgl_race_note_left "$issue"
+        _ccgl_unclaim "$issue"
+        printf '{"acquired": false, "reason": "backend_error"}\n'
+        return 1
+    fi
+    [[ -n "$note_id" ]] || note_id="$mine"
+    # Decided by the note's id, not its holder text: two claims may share one.
+    if [[ -z "$first_id" || "$first_id" == "$note_id" ]]; then
+        printf '{"acquired": true}\n'
+        return 0
+    fi
+    # Another run claimed first: it holds the label, so the label stays.
+    _ccgl_race_note_lost "$note_id" "$issue" "$winner"
+    jq -nc --arg h "$winner" '{acquired: false, holder: $h, race_lost: true}'
     return 0
 }
 
@@ -194,7 +355,12 @@ claim_coordinator_claim() {
 claim_coordinator_release() {
     local issue="$1"
     [[ -z "$issue" ]] && { printf 'claim_coordinator_release: missing issue id\n' >&2 || true; return 2; }
-    _ccgl_remove_label "$issue" "$_CCGL_LABEL" && return 0
+    local rc=0
+    _ccgl_remove_label "$issue" "$_CCGL_LABEL" || rc=$?
+    # The run's claim note goes too, so a claim made soon after never counts it
+    # (ADR-005 §5). One that stays is said; the release stands.
+    [[ "${ZBUILD_CLAIM_BACKEND:-gh}" == gh ]] && _ccgl_slug && _ccgl_race_notes_remove "$issue"
+    [[ "$rc" -eq 0 ]] && return 0
     printf 'claim-coordinator: could not remove %s from issue #%s — remove the %s label by hand, or the next run of the issue is refused.\n' \
         "$_CCGL_LABEL" "$issue" "$_CCGL_LABEL" >&2 || true
     return 1

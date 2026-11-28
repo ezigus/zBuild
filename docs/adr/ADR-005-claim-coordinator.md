@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-05-24
-**Amended:** 2026-11-26 (#2616: the coordinator owns a claim's age and its takeover; GitHub's clock; the old comment marked); 2026-11-21 (#1764: the engine claims and releases; one shared label; holder in the run-status comment)
+**Amended:** 2026-11-28 (#2534: two claims at once — each writes a holder record, the first by GitHub's time wins, the loser says it did not start; its own window setting; release removes the record); 2026-11-26 (#2616: the coordinator owns a claim's age and its takeover; GitHub's clock; the old comment marked); 2026-11-21 (#1764: the engine claims and releases; one shared label; holder in the run-status comment)
 
 ## Context
 
@@ -62,6 +62,8 @@ The claim is advisory across machines; this machine's admission lock still seria
 
 - No coordinator installed, a coordinator that fails, or one that makes no claim (`skipped`, e.g.
   `NO_GITHUB=true`): the run goes on unclaimed and emits `pipeline.claim.skipped` with the reason.
+  The one exception (amended 2026-11-28, #2534): a coordinator that answers it cannot tell whether
+  another run claimed first (`cannot_tell`, §5) refuses the run.
 - An answer the engine cannot read is a refusal: a claim may be there.
 - A release that fails emits `pipeline.claim.release_failed` and never changes the run's exit status; the
   coordinator says on stderr how to clear the claim by hand.
@@ -99,6 +101,46 @@ The claim is advisory across machines; this machine's admission lock still seria
 - **§3e Lazy load.** *(Amended 2026-11-26, #2616.)* The coordinator's takeover hook loads its `lib/takeover.sh` only for a
   cross-machine claim it was refused; a library that is absent or cannot be loaded refuses, saying so.
 
+### §5 — Two claims at once: the first wins (amended 2026-11-28, #2534)
+
+GitHub's label add does not check that the label is absent, so two runs that read the issue at the same
+moment both add it. On the `gh` backend a claim therefore writes its own holder record after adding the
+label, synchronously: a comment `concurrent claim by \`<holder>\`` (the holder as in §1). Reading the
+holder records back is the claim's re-read; it does not read the issue's labels again.
+
+- **First.** One read of the issue's comments (every page) finds both the winner and the run's own
+  record. Only records by the CI bot or by a repository owner, member or collaborator count. "First" is
+  GitHub's time for each record (`created_at`), then the lower id for records in the same second; a
+  machine's clock is never used, nor the order GitHub lists the comments in. A run won when the first
+  record is its own, by id (two runs may name the same holder).
+- **The window.** Another run's record counts only when GitHub timed it no more than
+  `ZBUILD_CLAIM_RACE_WINDOW_S` seconds before this run's (default 120; a value that is not a number of
+  seconds is the default). It is its own setting, not worked out from another.
+- **The winner** (`{"acquired": true}`) keeps its record while it runs; its release removes it with the
+  label, so a claim made soon after never counts it. A record the release cannot remove is said on
+  stderr; the release stands.
+- **The loser** (`{"acquired": false, "holder": "<winner>", "race_lost": true}`) leaves the label, which
+  the winner holds, and rewrites its record to `not started — concurrent claim: \`<winner>\` was first`.
+  A record it cannot rewrite is removed instead; one it can neither rewrite nor remove is said on stderr.
+  The engine (`zbuild_claim_acquire`) refuses the run at once, naming the winner, and never tries a stale
+  takeover for it; the run is refused before it starts (`pipeline.refused.claimed`), so its end words are
+  "did not start: another run is working on this issue" (`run_end_reason`, `run_end_words`).
+- **No time: the run does not start.** If GitHub's reply to the post gives no time, which claim was first
+  cannot be told. The claim is taken back (the record, found by the one read when the reply gave no id
+  either, and the label are removed) and the coordinator answers `{"acquired": false, "cannot_tell":
+  "<why>"}`. The engine refuses the run before its first stage (`pipeline.refused.claimed` with `why`);
+  it does not go on unclaimed, and its end words are "did not start: it could not tell whether another
+  run had claimed this issue first".
+- **GitHub unreachable.** A record that cannot be posted, or records that cannot be read back, takes the
+  claim back the same way, and the coordinator answers a backend error: the run goes on unclaimed, as for
+  any coordinator failure (§1).
+- **The local-fs store** checks and adds under one lock, so a race on it has one winner already.
+- **Known limits (accepted).** If each run reads the records back before the other's is visible, both
+  proceed. A run that dies without releasing leaves its record: a claim made within the window after it
+  is refused, as if that run had claimed first. A claim taken back removes the shared label even when
+  another run that claimed at the same moment holds it. A run whose account is not trusted (not the CI
+  bot, an owner, member or collaborator) never sees its own record, so its claim always proceeds.
+
 ### §4 — Finding and calling the coordinator
 
 - The coordinator is the claim-coordinator plugin found under the plugins root
@@ -132,10 +174,9 @@ list_claims        → stdout JSON: [{"issue": N, "holder": "...", "acquired_at"
 - `release`: remove the label; on failure, say on stderr to remove it by hand.
 - Every `gh` call runs under the run-status comment's watchdog (`rsc_gh`,
   `ZBUILD_STATUS_COMMENT_GH_TIMEOUT`), so a hung `gh` cannot hold up a run's exit.
-- **Known, not mitigated:** GitHub's label add does not check that the label is absent, so two runs that
-  read "no label" at the same moment can both add it and both start. #2534 settles that race; until then
-  nothing here prevents it. (The local-fs test store checks and adds under one lock, so a race on it has
-  one winner; that says nothing about GitHub.)
+- **Two claims at once on GitHub** (§5): after adding the label, the run posts its holder record and reads
+  every record back once; the first by GitHub's time wins. `release` removes the record with the label. The
+  local-fs test store adds under `flock` and already has one winner; that says nothing about GitHub.
 
 ### Future plugin: `plugins/claim-coordinator/ttl-leases/`
 
@@ -160,7 +201,7 @@ Section L wishlist item. Routes all claim operations through an optional dashboa
 - A run is never blocked by GitHub being down: the claim degrades to "unclaimed", visibly.
 
 **Bad:**
-- Two runs claiming at the same moment can both win (#2534).
+- Two runs claiming at the same moment on GitHub: one wins (§5), except when each reads the records back before the other's is visible.
 - A run that dies without reaching an exit path leaves the label; until #2533 a person removes it.
 - A cancelled GitHub Actions job leaves the label too: the runner sends INT, then TERM, then KILL a few
   seconds later, and the KILL can land while the always-run stages and persist are still running in the exit
@@ -178,7 +219,7 @@ Section L wishlist item. Routes all claim operations through an optional dashboa
 | `tests/e2e/claim-race-test.sh` race coverage | Implemented | #320; rewritten in #1764 for the shared label (the local-fs store only) |
 | The engine claims before the first stage and releases on exit | Implemented | #1764 (`core/claim/claim.sh`, `core/pipeline/runner.sh`) |
 | Heartbeat and stale takeover | Deferred | #2533 |
-| Two runs claiming at the same moment | Deferred | #2534 |
+| Two runs claiming at the same moment | Implemented | #2534 (§5: a holder record each, the first by GitHub's time wins) |
 | TOCTOU window documented in plugin README | Implemented | `plugins/claim-coordinator/github-labels/README.md` |
 | `plugins/claim-coordinator/ttl-leases/` (no TOCTOU) | Deferred → Phase 1 | KEEPERS.md §L item 10 |
 | `plugins/claim-coordinator/dashboard/` variant | Deferred → Phase 1 | KEEPERS.md §L item 11 |
@@ -207,6 +248,16 @@ A claim hook whose reply says `"acquired": true` holds the claim, whatever the h
 - **§3d the old holder's comment is marked**, once the claim is this run's again (a run that claimed it in between keeps it, and nothing is marked or said taken over; claiming again failing on the coordinator's store is said as such, `failed: reclaim_failed`). The old holder's run-status comment has its `still running — …` line and its holder line replaced by `taken over — <when, UTC> — by <this run>` (`claim_takeover_mark_old`), so no refusal names the old run; one that cannot be marked is said, and the takeover stands. GitHub's `Date` is read in the C locale. The mark does not last if the old run wakes: its own status comment re-renders the body, and it is not told it lost the claim (#2533's, unchanged).
 
 ## Enforced by
+
+- §5 amendment 2026-11-28 (#2534: two claims at once):
+  - §5 the first claim wins; the loser keeps the label, says it did not start and who was first; same second → the lower id → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` [#2534/SPEC-1], [#2534/SPEC-3]
+  - §5 the release removes the record → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` [#2534/SPEC-2]
+  - §5 a reply with no time takes the claim back and the run does not start (§1's exception) → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` [#2534/SPEC-4]; `tests/integration/claim-refusal-test.sh` [#2534/SPEC-4] (F3, through the runner: no stage, the refusal and the end words say why)
+  - §5 the window, its setting and its default → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` [#2534/SPEC-5]
+  - §5 no labels re-read; one read of the records, every page, finds the winner and the run's own; the engine refuses a lost race at once, with no takeover (the calls GitHub gets, in order) → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` [#2534/SPEC-6], [#2534/SPEC-7]
+  - §5 GitHub's time before the id, whatever order the comments are listed in; exactly one of two runs that both read after both posted proceeds → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` [#2534/SPEC-1], [#2534/SPEC-3] ("both runs read after both posted", "the order GitHub lists the notes in does not decide")
+  - §5 only trusted records count, an owner's as the CI bot's; a record that cannot be rewritten or removed → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` ("two local runs at once, posting as the repository's owner", "a note by someone else does not count", "a note that cannot be changed or removed")
+  - §5 a refused run's end words say it did not start → `tests/integration/claim-refusal-test.sh` [#2534/SPEC-1]
 
 - §3 amendment 2026-11-26 (#2616: the coordinator owns the takeover; GitHub's clock; the old comment marked) → `tests/unit/claim-takeover-real-test.sh` TR13 (GitHub's clock), TR14 (the old comment marked), TR15 (the hook and its library are the coordinator's), TR16 (any locale, the mark's time UTC), TR17 (claimed again before the mark), TR18 (no takeover hook: refused), TR19 (a mark that fails: the takeover stands), TR20 (claiming again failing is said as such), TR1–TR12 (through the real coordinator)
 

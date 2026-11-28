@@ -50,8 +50,9 @@ set +e; reply="$(claim_coordinator_claim 7001)"; rc=$?; set -e
 assert_eq "claim → rc 0" "0" "$rc"
 assert_eq "claim → acquired true" "true" "$(jq -r .acquired <<< "$reply")"
 assert_eq "the issue now carries exactly zbuild:claimed" "zbuild:claimed" "$(cat "$GHS/labels")"
+# `gh api` has no --repo: an api call names the repository in its path (#2534).
 assert_eq "every gh call names the repository" "$(wc -l < "$GHS/log" | tr -d ' ')" \
-    "$(/usr/bin/grep -c -- '--repo testowner/testrepo' "$GHS/log" || true)"
+    "$(/usr/bin/grep -cE -- '--repo testowner/testrepo|^api .*repos/testowner/testrepo/' "$GHS/log" || true)"
 
 print_test_section "gh: an add GitHub applied but whose answer was lost is a claim"
 _gh_reset; : > "$GHS/repo-label"; : > "$GHS/add-then-fail"

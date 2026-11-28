@@ -152,6 +152,13 @@ _e4="$(run_end_reason "$_S4")"
 assert_eq "[R4] the run's end reason is read whole, on one line, past a half-written line" "broken: test said: line two of the reason" "$_e4"
 assert_contains "[R4] ...and the completion comment says it" \
     "$(run_completion_body failure "" "" "" "" "" "$(run_end_words "$_e4" 0)")" "stopped: broken: test said: line two of the reason"
+# #2534: only a refused claim is "another run is working on this issue"; a run
+# refused by the run cap is not.
+_S5="$TEST_TEMP_DIR/s5"; mkdir -p "$_S5"
+( source "$REPO_ROOT/core/event-bus/event-bus.sh"
+  export ZBUILD_EVENTS_JSONL="$_S5/events.jsonl"
+  eb_emit_event "pipeline.refused.run_cap" "running=3" "cap=3" >/dev/null 2>&1 )
+assert_eq "[#2534/SPEC-1] a run refused by the run cap is not said to be refused for a claim" "" "$(run_end_reason "$_S5")"
 # Every reason the engine writes (blocked_on_scope is no longer one: ADR-021,
 # #2508); a reason with no words is shown as written (R3).
 for _r in stage_failed:fail max_iterations_tests_failing blocking_member_failure member_terminal_failure \

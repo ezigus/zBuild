@@ -230,6 +230,11 @@ claim_takeover_run() {
             printf 'zbuild_claim_acquire: claiming issue #%s again failed once %s'"'"'s stale claim was released (rc=%s) — refused; the issue is now unclaimed\n' "$issue" "$them" "$crc" >&2
             printf '{"taken_over":false,"failed":"reclaim_failed"}\n'; return 0
         fi
+        # ADR-005 §5 (#2534 R4): the claim was taken back, as whether another run
+        # claimed first cannot be told; its reason is the refusal's.
+        if [[ "$cl" =~ \"cannot_tell\"[[:space:]]*:[[:space:]]*\"([^\"\\]*)\" ]]; then
+            printf '{"taken_over":false,"failed":"cannot_tell","cannot_tell":"%s"}\n' "${BASH_REMATCH[1]//[[:cntrl:]]/}"; return 0
+        fi
         printf 'zbuild_claim_acquire: another run claimed issue #%s once %s'"'"'s stale claim was released — refused\n' "$issue" "$them" >&2
         printf '{"taken_over":false,"failed":"claimed_by_another"}\n'; return 0
     fi

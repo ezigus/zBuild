@@ -12,6 +12,7 @@ _ZBUILD_CLAIM_SH_LOADED=1
 _ZBUILD_CLAIM_ACQUIRED=""        # the issue this run holds the claim on
 _ZBUILD_COORDINATOR_DIR=""       # the coordinator that gave it
 _ZBUILD_CLAIM_THEIR_HOLDER=""    # who holds the claim that refused this run
+_ZBUILD_CLAIM_REFUSED_WHY=""     # why, when it is not that another run holds it
 
 # ADR-005 §3 (#2533): heartbeat and staleness thresholds.
 : "${ZBUILD_CLAIM_HEARTBEAT_S:=600}"   # seconds between heartbeat flushes
@@ -57,7 +58,7 @@ _zbuild_claim_skipped() {
 # coordinator's answer cannot be read, which may hide a claim that is there.
 zbuild_claim_acquire() {
     local issue="$1" state_dir="$2"
-    _ZBUILD_CLAIM_THEIR_HOLDER=""
+    _ZBUILD_CLAIM_THEIR_HOLDER=""; _ZBUILD_CLAIM_REFUSED_WHY=""
     [[ "$issue" =~ ^[1-9][0-9]*$ ]] || return 0
 
     _zbuild_claim_coordinator_v _ZBUILD_COORDINATOR_DIR
@@ -98,6 +99,19 @@ zbuild_claim_acquire() {
     if [[ "$reply" =~ \"acquired\"[[:space:]]*:[[:space:]]*false ]]; then
         _ZBUILD_CLAIM_THEIR_HOLDER="$(jq -r '.holder // empty' <<< "$reply" 2>/dev/null || true)"
         _ZBUILD_CLAIM_THEIR_HOLDER="${_ZBUILD_CLAIM_THEIR_HOLDER//[[:cntrl:]]/}"
+        # ADR-005 §5 (#2534): a concurrent claim — another run posted its note first;
+        # skip the stale-takeover path entirely (DSRACE-5).
+        if [[ "$reply" =~ \"race_lost\"[[:space:]]*:[[:space:]]*true ]]; then
+            printf 'zbuild_claim_acquire: issue #%s: concurrent claim — %s was first\n' \
+                "$issue" "${_ZBUILD_CLAIM_THEIR_HOLDER:-unknown}" >&2
+            return 1
+        fi
+        # ADR-005 §5 (#2534 R4): whether another run claimed first cannot be
+        # told. The claim is taken back, and the run does not start.
+        if [[ "$reply" =~ \"cannot_tell\"[[:space:]]*:[[:space:]]*\"([^\"\\]*)\" ]]; then
+            _ZBUILD_CLAIM_REFUSED_WHY="${BASH_REMATCH[1]//[[:cntrl:]]/}"
+            return 1
+        fi
         # #2589 (ADR-005): a claim this machine's own run left behind (it
         # crashed, or was killed, before releasing) is cleared, once, and the
         # claim taken again. Another machine's, or CI's, is never touched.
@@ -204,6 +218,9 @@ _zbuild_claim_takeover() {
     fi
     if [[ "$reply" =~ \"failed\"[[:space:]]*:[[:space:]]*\"([a-z_]+)\" ]]; then
         eb_emit_event "pipeline.claim.takeover_failed" "issue=$issue" "holder=$them" "reason=${BASH_REMATCH[1]}" 2>/dev/null || true
+        # #2534 R4: claiming again could not tell whether another run was first.
+        [[ "$reply" =~ \"cannot_tell\"[[:space:]]*:[[:space:]]*\"([^\"\\]*)\" ]] \
+            && _ZBUILD_CLAIM_REFUSED_WHY="${BASH_REMATCH[1]//[[:cntrl:]]/}"
     elif [[ "$rc" -ne 0 || ! "$reply" =~ \"taken_over\" ]]; then
         printf 'zbuild_claim_acquire: the claim coordinator'"'"'s takeover gave no answer (rc=%s) — refusing to take over %s\n' "$rc" "$them" >&2
     fi
