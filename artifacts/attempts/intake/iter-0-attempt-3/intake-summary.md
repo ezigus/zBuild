@@ -1,0 +1,52 @@
+## intake — pass
+
+- 27 requirement(s): RQTIE-1, RQREB-1, RQTIE-2, RQCMT-1, RQLBL-1, RQTIE-3, RQADR-1, RQADR-2, RQREL-1, RQTIE-4, RQFAIL-1, RQWIN-1, RQWIN-2, RQREB-2, RQREAD-1, RQTST-1, RQTST-2, RQTST-3, RQTST-4, RQTST-5, RQTST-6, RQTST-7, RQPORT-1, RQLIM-1, RQADR-3, RQSCP-1, RQSCP-2
+
+- RQTIE-1: When two runs claim an issue at the same moment, exactly one proceeds
+- RQREB-1: After adding the label, a run re-reads the issue
+- RQTIE-2: If another run claimed it too, the run that claimed first wins
+- RQCMT-1: The later run marks its progress comment as not started
+- RQLBL-1: The later run exits without removing the label
+- RQTIE-3: Either the claim writes its holder record itself, synchronously, before it re-reads, or the tie-break uses something that exists at claim time (for example when the label was added).
+- RQADR-1: Amend ADR-005: the first claim wins a tie, and how "first" is decided
+- RQADR-2: The ADR-005 amendment names its enforcing tests inline
+- RQREL-1: A run that releases its claim removes its holder record (its concurrent claim note), so a later run never counts it.
+- RQTIE-4: "First" is read from the times GitHub gives the holder records. Records with the same time are ordered by their id.
+- RQFAIL-1: If GitHub's reply to posting the holder record has no time, the claim fails closed: the run removes its record and the label and does not proceed. The run's own clock is never used in its place.
+- RQWIN-1: Another run's record counts only inside a window before this run's record.
+- RQWIN-2: The window is its own setting, ZBUILD_CLAIM_RACE_WINDOW_S, with a plain default of 120 seconds; it is not worked out from another setting.
+- RQREB-2: After posting its holder record, a run does not re-read the issue's labels. Reading the holder records back is the re-read.
+- RQREAD-1: One read of the holder records finds both the winner and the run's own record.
+- RQTST-1: Two real claims run through a fake GitHub: a stand-in gh that keeps the comments and labels our code posts and gives them back when read. No test hand-writes a reply that holds our own holder record.
+- RQTST-2: The tests cover the winner, when the two records have the same time and differ only by id.
+- RQTST-3: The tests cover the loser keeping the label.
+- RQTST-4: The tests cover a reply with no time, failing closed.
+- RQTST-5: The tests cover claim, release, then claim again inside the window.
+- RQTST-6: The tests cover the window setting and its default.
+- RQTST-7: Never touch the real repo.
+- RQPORT-1: The coordinator's unit test runs on macOS as well as Linux: no GNU-only sed -i.
+- RQLIM-1: The PR states the accepted known limit: if each run reads the holder records back before the other run's record is visible, both proceed.
+- RQADR-3: ADR: docs/adr/ADR-005-claim-coordinator.md
+- RQSCP-1: Code: plugins/claim-coordinator/github-labels/plugin.sh, core/claim/claim.sh, core/pipeline/runner.sh.
+- RQSCP-2: Tests: tests/e2e/claim-race-test.sh, plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh, tests/unit/claim-acquire-release-test.sh.
+- the requirements changed since the last run:
+  - added: RQADR-2 The ADR-005 amendment names its enforcing tests inline
+  - added: RQREL-1 A run that releases its claim removes its holder record (its concurrent claim note), so a later run never counts it.
+  - added: RQTIE-4 "First" is read from the times GitHub gives the holder records. Records with the same time are ordered by their id.
+  - added: RQFAIL-1 If GitHub's reply to posting the holder record has no time, the claim fails closed: the run removes its record and the label and does not proceed. The run's own clock is never used in its place.
+  - added: RQWIN-1 Another run's record counts only inside a window before this run's record.
+  - added: RQWIN-2 The window is its own setting, ZBUILD_CLAIM_RACE_WINDOW_S, with a plain default of 120 seconds; it is not worked out from another setting.
+  - added: RQREB-2 After posting its holder record, a run does not re-read the issue's labels. Reading the holder records back is the re-read.
+  - added: RQREAD-1 One read of the holder records finds both the winner and the run's own record.
+  - added: RQTST-1 Two real claims run through a fake GitHub: a stand-in gh that keeps the comments and labels our code posts and gives them back when read. No test hand-writes a reply that holds our own holder record.
+  - added: RQTST-2 The tests cover the winner, when the two records have the same time and differ only by id.
+  - added: RQTST-3 The tests cover the loser keeping the label.
+  - added: RQTST-4 The tests cover a reply with no time, failing closed.
+  - added: RQTST-5 The tests cover claim, release, then claim again inside the window.
+  - added: RQTST-6 The tests cover the window setting and its default.
+  - added: RQTST-7 Never touch the real repo.
+  - added: RQPORT-1 The coordinator's unit test runs on macOS as well as Linux: no GNU-only sed -i.
+  - added: RQLIM-1 The PR states the accepted known limit: if each run reads the holder records back before the other run's record is visible, both proceed.
+  - added: RQADR-3 ADR: docs/adr/ADR-005-claim-coordinator.md
+  - added: RQSCP-1 Code: plugins/claim-coordinator/github-labels/plugin.sh, core/claim/claim.sh, core/pipeline/runner.sh.
+  - added: RQSCP-2 Tests: tests/e2e/claim-race-test.sh, plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh, tests/unit/claim-acquire-release-test.sh.
