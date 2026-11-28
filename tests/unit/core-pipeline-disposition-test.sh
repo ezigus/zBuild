@@ -290,10 +290,10 @@ assert_event_emitted "dispatch.complete is emitted" \
     "$ZBUILD_EVENTS_JSONL" "cycle.member.dispatch.complete"
 assert_eq "the event carries the disposition" "throttled" \
     "$(jq -r 'select(.type=="cycle.member.dispatch.complete") | .data.disposition // ""' \
-        "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+        "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 assert_eq "the event carries the engine's response to it" "retry_after_wait" \
     "$(jq -r 'select(.type=="cycle.member.dispatch.complete") | .data.disposition_response // ""' \
-        "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+        "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 
 # A dispatch with no disposition on the channel (none was read), and the event
 # must not invent a value.
@@ -302,7 +302,7 @@ _CYCLE_DISPATCH_DISPOSITION=""
 _cycle_emit_member_dispatch_complete 0 "build" 0 "pass" "complete"
 assert_eq "an empty disposition is reported empty, not a default" "" \
     "$(jq -r 'select(.type=="cycle.member.dispatch.complete") | .data.disposition // ""' \
-        "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+        "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 
 # An off-list word reaching the event (it should not, since the reader resolves
 # a violation to `broken` — but the emitter must not fabricate a response for
@@ -312,10 +312,10 @@ _CYCLE_DISPATCH_DISPOSITION="wedged"
 _cycle_emit_member_dispatch_complete 0 "build" 1 "error" "failed"
 assert_eq "an off-list word is reported verbatim on the event" "wedged" \
     "$(jq -r 'select(.type=="cycle.member.dispatch.complete") | .data.disposition // ""' \
-        "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+        "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 assert_eq "...with no response invented for it" "" \
     "$(jq -r 'select(.type=="cycle.member.dispatch.complete") | .data.disposition_response // ""' \
-        "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+        "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 
 # The nested-cycle leak — an outer cycle inheriting its inner cycle's last leaf
 # disposition — is covered BEHAVIOURALLY, against a real two-level cycle, in

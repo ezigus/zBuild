@@ -81,7 +81,7 @@ PLUGINS_ROOT="$REPO_ROOT/plugins"
 assert_event_by_plugin() {
     local desc="$1" events_file="$2" event_type="$3" plugin="$4" found
     found="$(jq -r --arg t "$event_type" --arg p "$plugin" \
-        'select(.type==$t and .data.plugin==$p) | .type' "$events_file" 2>/dev/null | head -1 || true)"
+        'select(.type==$t and .data.plugin==$p) | .type' "$events_file" 2>/dev/null | sed -n 1p || true)"
     if [[ "$found" == "$event_type" ]]; then
         assert_pass "$desc"
     else

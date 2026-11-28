@@ -96,7 +96,7 @@ FIXTURE
 _TPL_STAGES=(sb-producer sb-tool)
 printf '{"marker":"PRODUCED"}\n' > "$ART/sb-producer-out.json"
 printf '# the issue\n' > "$STATE/intake.md"
-_seen() { grep "^$1=" "$TEST_TEMP_DIR/sbt-seen.txt" 2>/dev/null | head -1 | cut -d= -f2-; }
+_seen() { grep "^$1=" "$TEST_TEMP_DIR/sbt-seen.txt" 2>/dev/null | sed -n 1p | cut -d= -f2-; }
 
 EVENTS="$TEST_TEMP_DIR/events.jsonl"
 rc=0

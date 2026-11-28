@@ -47,6 +47,8 @@ export ZBUILD_SCOPE_OVERRIDE=1
 #   json   — a result envelope with total_cost_usd and modelUsage
 #   nocost — an envelope with no cost field
 #   plain  — bare text (an older CLI, or a stub)
+#   stream — the step stream the CLI prints with stream-json: its init line,
+#            which names the CLI's version, then the result envelope
 cat > "$TEST_TEMP_DIR/bin/claude" <<MOCK
 #!/usr/bin/env bash
 printf '%s\n' "\$@" > "$TEST_TEMP_DIR/argv"
@@ -55,6 +57,9 @@ case "\${MOCK_MODE:-json}" in
     json)   jq -n '{type:"result",subtype:"success",result:"hello LOOP_COMPLETE",total_cost_usd:0.123,
                     modelUsage:{"claude-sonnet-9-9":{outputTokens:3}},
                     usage:{input_tokens:5,output_tokens:3,cache_read_input_tokens:900}}' ;;
+    stream) jq -nc '{type:"system",subtype:"init",claude_code_version:"2.1.999",model:"claude-sonnet-9-9"}'
+            jq -nc '{type:"result",subtype:"success",result:"hello LOOP_COMPLETE",total_cost_usd:0.123,
+                     modelUsage:{"claude-sonnet-9-9":{outputTokens:3}},usage:{input_tokens:5,output_tokens:3}}' ;;
     nocost) jq -n '{type:"result",subtype:"success",result:"hello LOOP_COMPLETE",usage:{input_tokens:5,output_tokens:3}}' ;;
     plain)  echo "hello LOOP_COMPLETE" ;;
 esac
@@ -128,6 +133,26 @@ _models '{"provider":"anthropic","family":"sonnet"}'
 MOCK_MODE=json MOCK_RC=1 route_to_model T2 "ping" --skip-precondition >/dev/null 2>&1
 assert_eq "[SPEC-10] the call fails (rc=1)" "1" "$?"
 assert_eq "[SPEC-10] …and its provider-reported cost is still in the ledger" "0.123000" "$(tail -1 "$ZBUILD_COST_LEDGER" 2>/dev/null)"
+
+print_test_section "#2639 SPEC-1: each call's model.outcome names the CLI version that ran it"
+# The CLI is installed at its latest, unpinned (#2639): what ran each call is
+# known from the run's own events — the model that answered (SPEC-5) and the
+# CLI's version, from the stream's init line.
+_models '{"provider":"anthropic","family":"sonnet"}'
+: > "$ZBUILD_EVENTS_JSONL"; rm -f "$ZBUILD_STATE_DIR/runtime/cost-unknown"
+MOCK_MODE=stream route_to_model T2 "ping" --skip-precondition >/dev/null 2>&1
+assert_eq "[#2639/SPEC-1] a call: model.outcome's cli_version is the CLI's own" "2.1.999" \
+    "$(_last_event model.outcome | jq -r '.data.cli_version // "absent"')"
+assert_eq "[#2639/SPEC-1] …beside the model that answered" "claude-sonnet-9-9" \
+    "$(_last_event model.outcome | jq -r '.data.model_used // "absent"')"
+: > "$ZBUILD_EVENTS_JSONL"
+( MOCK_MODE=stream route_to_model_loop T2 "$TEST_TEMP_DIR/loop-prompt.txt" "$TEST_TEMP_DIR/cwd" >/dev/null 2>&1 )
+assert_eq "[#2639/SPEC-1] a loop call: model.outcome's cli_version is the CLI's own" "2.1.999" \
+    "$(_last_event model.outcome | jq -r '.data.cli_version // "absent"')"
+: > "$ZBUILD_EVENTS_JSONL"
+MOCK_MODE=json route_to_model T2 "ping" --skip-precondition >/dev/null 2>&1
+assert_eq "[#2639/SPEC-1] an answer with no init line: cli_version is empty, the call still counts" "" \
+    "$(_last_event model.outcome | jq -r '.data.cli_version // "absent"')"
 
 print_test_section "SPEC-9: models.json names providers and families, no prices"
 _real="$REPO_ROOT/config/models.json"

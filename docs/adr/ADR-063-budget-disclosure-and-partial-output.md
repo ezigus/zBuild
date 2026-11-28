@@ -1,6 +1,6 @@
 # ADR-063 — Stages are told their limits, and say when they hit them
 
-**Status:** Accepted, amended 2026-10-05 by #2032
+**Status:** Accepted, amended 2026-10-05 by #2032; amended 2026-11-27 (#2640: a cut-off try's row says what it kept; a try not run again says why)
 **Issue:** #2032
 **Amends:** ADR-054 §6 (vocabulary updated to `timed_out`/`out_of_turns` per #2187)
 **Amended:** 2026-11-11 (#2519) — the budget line no longer says a call that runs out of time returns nothing.
@@ -427,3 +427,12 @@ On #2533 run 45644128060 the lens group's wait for its members was the bare stag
 - **A lens stopped by a signal writes its summary as well as its result**, with what it noted, marked partial — an earlier run's summary never stands for it.
 
 Enforced by `tests/unit/engine-combines-map-test.sh` M6 (the group's wait → timed_out), M7 (limit + grace + margin), M8 (an element's limit is its own); `plugins/agent/review-lens/tests/review-lens-partial-notes-test.sh` N8 (the summary is its own).
+
+## Amendment 2026-11-27 (#2640): a cut-off try's row says what it kept; a try not run again says why
+
+On #2534 run 45997137687 test-author's call was cut off twice with nothing written, and its row and the next round's prompt said "what it wrote is kept for the next attempt" both times. The engine did not run it again, since the try changed nothing, and no row said that either.
+
+- **Test-author's summary says what a cut-off try kept:** "kept 2 test files it wrote, for the next attempt", or "it wrote nothing" — the test files that try committed. The summary is what the row and the next try read. The result's reason stays "the author did not finish (<why>)", so a try that wrote nothing leaves the result as the last one left it (#2186).
+- **A try the engine does not run again because it changed nothing is said** (`stage.retry.refused`, with the stage, its outcome and the reason), and its row reads "not run again: the try changed nothing".
+
+Enforced by `tests/unit/test-author-test.sh` [#2640/SPEC-2] (a cut-off try that wrote nothing says so and claims nothing kept; one that wrote one or two says how many; SPEC-14 still holds); `tests/integration/cycle-member-requires-test.sh` [#2640/SPEC-2] (through the real runner: a try not run again says so on its row, one run again does not, nor is a refusal said); `tests/unit/stage-retry-test.sh` [#2640/SPEC-2] (the event, its stage and reason, in the schema); `tests/unit/run-status-retry-row-test.sh` [#2640/SPEC-2] (the row says it).

@@ -60,7 +60,7 @@ for _tpl in simple deployed; do
         assert_pass "[$_tpl.yaml] preflight contract satisfied"
     else
         assert_fail "[$_tpl.yaml] preflight contract satisfied" \
-            "validator rc=$_rc: $(printf '%s' "$_cv_out" | tr '\n' '|' | head -c 500)"
+            "validator rc=$_rc: $(zb_test_clip 500 "$(printf '%s' "$_cv_out" | tr '\n' '|')")"
     fi
 done
 

@@ -161,12 +161,12 @@ if [[ -f "$EVENTS_JSONL" ]] && grep -q '"plugin.run.start"' "$EVENTS_JSONL" 2>/d
     assert_pass "events.jsonl contains plugin.run.start plugin=design"
 else
     assert_fail "events.jsonl contains plugin.run.start plugin=design" \
-        "$(grep 'plugin.run' "$EVENTS_JSONL" 2>/dev/null | head -5 || echo '(no events file)')"
+        "$(grep 'plugin.run' "$EVENTS_JSONL" 2>/dev/null | sed -n 1,5p || echo '(no events file)')"
 fi
 
 # ─── Assertion 2: design.md exists ───────────────────────────────────────────
 # Locate design.md in the computed state dir (runner uses HOME/.zbuild/state).
-DESIGN_MD="$(find "$ACTUAL_STATE_DIR" -name "design.md" 2>/dev/null | head -1 || true)"
+DESIGN_MD="$(find "$ACTUAL_STATE_DIR" -name "design.md" 2>/dev/null | sed -n 1p || true)"
 if [[ -n "$DESIGN_MD" && -f "$DESIGN_MD" ]]; then
     assert_pass "design.md exists in state artifacts"
 else

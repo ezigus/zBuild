@@ -76,13 +76,14 @@ coverage_gate_run() {
     # Read status, pct, floor in one jq pass. Absent file / block → all empty.
     # Try v2 path (.data.coverage) first; fall back to v1 top-level (.coverage)
     # for fixtures / older result files that predate the data block.
+    # #2640: NUL-separated, so an empty field stays empty and the next one stays
+    # in its place (tab-separated, `measured<TAB><TAB>50` read the floor as the pct).
     local status="" pct="" floor=""
     if [[ -f "$results_json" ]]; then
-        local _parsed
-        _parsed="$(jq -r '(.data.coverage // .coverage) as $c |
-            [($c.status // ""), ($c.pct // ""), ($c.floor // "")] | @tsv' \
-            "$results_json" 2>/dev/null || echo)"
-        IFS=$'\t' read -r status pct floor <<< "$_parsed"
+        { IFS= read -r -d '' status && IFS= read -r -d '' pct && IFS= read -r -d '' floor; } \
+            < <(jq -j '(.data.coverage // .coverage) as $c
+                       | "\($c.status // "")\u0000\($c.pct // "")\u0000\($c.floor // "")\u0000"' \
+                   "$results_json" 2>/dev/null) || true
     fi
 
     # Floor preference: recorded floor wins; otherwise the env default.

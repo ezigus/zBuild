@@ -57,7 +57,7 @@ PROMPT="$(cat "$_out" 2>/dev/null)"
 assert_contains "fixture: the build prompt was composed" "$PROMPT" "LOOP_COMPLETE"
 
 if grep -qF 'RESOLVE' <<< "$PROMPT"; then
-    assert_fail "[M1] the build prompt never says RESOLVE" "$(grep -F RESOLVE <<< "$PROMPT" | head -2)"
+    assert_fail "[M1] the build prompt never says RESOLVE" "$(grep -F RESOLVE <<< "$PROMPT" | sed -n 1,2p)"
 else
     assert_pass "[M1] the build prompt never says RESOLVE"
 fi

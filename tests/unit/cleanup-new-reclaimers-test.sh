@@ -33,10 +33,10 @@ _backdate() {
         || date -u -d "@$ts" +%Y%m%d%H%M.%S)" "$p" 2>/dev/null || true
 }
 _decision_for() {   # <plan> <target-substring>
-    printf '%s\n' "$1" | /usr/bin/grep -F "$2" | head -1 | cut -f2
+    printf '%s\n' "$1" | /usr/bin/grep -F "$2" | sed -n 1p | cut -f2
 }
 _reason_for() {
-    printf '%s\n' "$1" | /usr/bin/grep -F "$2" | head -1 | cut -f3-
+    printf '%s\n' "$1" | /usr/bin/grep -F "$2" | sed -n 1p | cut -f3-
 }
 
 # ── SPEC-1: scratch ─────────────────────────────────────────────────────────

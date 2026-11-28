@@ -384,12 +384,12 @@ export ZBUILD_TEST_DISPATCH_LOG="$TEST_TEMP_DIR/dispatch.log"; : > "$ZBUILD_TEST
 
 print_test_section "[#2111] a rate-limited build ends the run as aborted/llm_rate_limited and dispatches nothing after it"
 _run_pipeline
-end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | head -1)"
+end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 assert_eq "[#2111] pipeline.end status=aborted (not failed, not success)" "aborted" "$end_status"
-abort_reason="$(jq -r 'select(.type=="pipeline.aborted") | .data.reason' "$EVENTS_JSONL" 2>/dev/null | head -1)"
+abort_reason="$(jq -r 'select(.type=="pipeline.aborted") | .data.reason' "$EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 assert_eq "[#2111] pipeline.aborted reason=llm_rate_limited" "llm_rate_limited" "$abort_reason"
 assert_contains "[#2111] the abort event carries the reset text" \
-    "$(jq -c 'select(.type=="pipeline.aborted")' "$EVENTS_JSONL" 2>/dev/null | head -1)" "resets 3pm"
+    "$(jq -c 'select(.type=="pipeline.aborted")' "$EVENTS_JSONL" 2>/dev/null | sed -n 1p)" "resets 3pm"
 assert_eq "[#2111] build ran exactly once — no immediate re-dispatch" "1" "$(grep -c 'build ran' "$ZBUILD_TEST_DISPATCH_LOG" || true)"
 assert_eq "[#2111] the test member was never dispatched after the rate-limited build" "0" "$(grep -c 'test ran' "$ZBUILD_TEST_DISPATCH_LOG" || true)"
 assert_eq "[#2111] no second cycle iteration" "0" "$(jq -c 'select(.type=="cycle.iteration.complete" and .data.cycle_id=="build_test_cycle" and .data.iter=="2")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"

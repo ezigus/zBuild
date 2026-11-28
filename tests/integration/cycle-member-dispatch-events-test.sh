@@ -98,25 +98,25 @@ assert_eq "cycle.member.dispatch.start emitted 2 times (one per leaf member)" "2
 complete_count=$(jq -c 'select(.type=="cycle.member.dispatch.complete" and .data.cycle_id=="the_cycle")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
 assert_eq "cycle.member.dispatch.complete emitted 2 times" "2" "$complete_count"
 
-first_member=$(jq -r 'select(.type=="cycle.member.dispatch.start") | .data.member' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+first_member=$(jq -r 'select(.type=="cycle.member.dispatch.start") | .data.member' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "first dispatched member = build" "build" "$first_member"
 
 second_member=$(jq -r 'select(.type=="cycle.member.dispatch.start") | .data.member' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n '2p')
 assert_eq "second dispatched member = review" "review" "$second_member"
 
-build_kind=$(jq -r 'select(.type=="cycle.member.dispatch.start" and .data.member=="build") | .data.kind' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+build_kind=$(jq -r 'select(.type=="cycle.member.dispatch.start" and .data.member=="build") | .data.kind' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "build member kind=leaf" "leaf" "$build_kind"
 
-review_complete_verdict=$(jq -r 'select(.type=="cycle.member.dispatch.complete" and .data.member=="review") | .data.verdict' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+review_complete_verdict=$(jq -r 'select(.type=="cycle.member.dispatch.complete" and .data.member=="review") | .data.verdict' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "review dispatch.complete verdict=approve (RAW)" "approve" "$review_complete_verdict"
 
-review_complete_rc=$(jq -r 'select(.type=="cycle.member.dispatch.complete" and .data.member=="review") | .data.rc' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+review_complete_rc=$(jq -r 'select(.type=="cycle.member.dispatch.complete" and .data.member=="review") | .data.rc' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "review dispatch.complete rc=0" "0" "$review_complete_rc"
 
-build_position=$(jq -r 'select(.type=="cycle.member.dispatch.start" and .data.member=="build") | .data.position' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+build_position=$(jq -r 'select(.type=="cycle.member.dispatch.start" and .data.member=="build") | .data.position' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "build dispatch.start position=1" "1" "$build_position"
 
-review_position=$(jq -r 'select(.type=="cycle.member.dispatch.start" and .data.member=="review") | .data.position' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+review_position=$(jq -r 'select(.type=="cycle.member.dispatch.start" and .data.member=="review") | .data.position' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "review dispatch.start position=2" "2" "$review_position"
 
 # ── Section 2: 2-level cycle — nested-cycle and leaf members ────────────────
@@ -198,10 +198,10 @@ assert_eq "outer cycle converges rc=0" "0" "$rc"
 outer_starts=$(jq -c 'select(.type=="cycle.member.dispatch.start" and .data.cycle_id=="outer_cycle")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
 assert_eq "outer cycle dispatched 2 members" "2" "$outer_starts"
 
-inner_kind=$(jq -r 'select(.type=="cycle.member.dispatch.start" and .data.member=="inner_cycle") | .data.kind' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+inner_kind=$(jq -r 'select(.type=="cycle.member.dispatch.start" and .data.member=="inner_cycle") | .data.kind' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "inner_cycle member kind=cycle" "cycle" "$inner_kind"
 
-review_kind=$(jq -r 'select(.type=="cycle.member.dispatch.start" and .data.cycle_id=="outer_cycle" and .data.member=="review") | .data.kind' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+review_kind=$(jq -r 'select(.type=="cycle.member.dispatch.start" and .data.cycle_id=="outer_cycle" and .data.member=="review") | .data.kind' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "review (outer's 2nd member) kind=leaf" "leaf" "$review_kind"
 
 # Inner cycle ran on iter 1 → 1 inner pass (build + test both pass on first iter).
@@ -209,10 +209,10 @@ inner_starts=$(jq -c 'select(.type=="cycle.member.dispatch.start" and .data.cycl
 assert_eq "inner cycle dispatched 2 members (build, test)" "2" "$inner_starts"
 
 # Critical: the nested-cycle member's dispatch.complete must record rc=0 from the inner converging.
-inner_dispatch_complete_rc=$(jq -r 'select(.type=="cycle.member.dispatch.complete" and .data.member=="inner_cycle") | .data.rc' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+inner_dispatch_complete_rc=$(jq -r 'select(.type=="cycle.member.dispatch.complete" and .data.member=="inner_cycle") | .data.rc' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "inner_cycle dispatch.complete rc=0 (converged)" "0" "$inner_dispatch_complete_rc"
 
-inner_dispatch_complete_verdict=$(jq -r 'select(.type=="cycle.member.dispatch.complete" and .data.member=="inner_cycle") | .data.verdict' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+inner_dispatch_complete_verdict=$(jq -r 'select(.type=="cycle.member.dispatch.complete" and .data.member=="inner_cycle") | .data.verdict' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "inner_cycle dispatch.complete verdict=pass" "pass" "$inner_dispatch_complete_verdict"
 
 # ── Section 3: inner exhausts with FAILING tests → outer HALTS (#1208) ──────
@@ -288,7 +288,7 @@ assert_eq "inner_cycle dispatch.complete disposition is EMPTY (no inner-member l
     "" "$inner_member_complete_disp"
 # And the inner cycle's OWN leaf members do carry theirs — proving the clear is
 # scoped to the nested-cycle member, not a blanket suppression.
-inner_leaf_disp=$(jq -r 'select(.type=="cycle.member.dispatch.complete" and .data.member=="build") | .data.disposition // ""' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+inner_leaf_disp=$(jq -r 'select(.type=="cycle.member.dispatch.complete" and .data.member=="build") | .data.disposition // ""' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "an inner LEAF member still reports its own disposition" \
     "interrupted" "$inner_leaf_disp"
 

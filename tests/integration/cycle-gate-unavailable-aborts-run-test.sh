@@ -105,9 +105,9 @@ assert_eq "[ADR-063 §4] gate-aggregator never ran — the cycle did not reach i
     "0" "$(grep -c 'gate-aggregator ran' "$ZBUILD_TEST_DISPATCH_LOG" || true)"
 assert_eq "[ADR-063 §4] the engine announced the halt on unavailable for issue-acceptance" "1" \
     "$(jq -c 'select(.type=="cycle.member.disposition.halt" and .data.member=="issue-acceptance" and .data.disposition=="unavailable")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
-end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | head -1)"
+end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 assert_eq "[ADR-063 §4] pipeline.end status=aborted (not success: the cycle did not converge)" "aborted" "$end_status"
-abort_reason="$(jq -r 'select(.type=="pipeline.aborted") | .data.reason' "$EVENTS_JSONL" 2>/dev/null | head -1)"
+abort_reason="$(jq -r 'select(.type=="pipeline.aborted") | .data.reason' "$EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 assert_eq "[ADR-063 §4] pipeline.aborted reason=llm_unavailable" "llm_unavailable" "$abort_reason"
 assert_eq "[ADR-063 §4] pipeline-state.json status=aborted (resumable, ADR-050)" "aborted" \
     "$(jq -r '.status // empty' "$STATE_DIR/pipeline-state.json" 2>/dev/null || true)"

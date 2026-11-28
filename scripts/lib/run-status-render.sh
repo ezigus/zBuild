@@ -206,17 +206,25 @@ rsc_render_row() {
     _f="$(jq -r '[.kind, .seq, .started_ts, .stage, .ended_ts, .verdict, .rc, .summaries,
                   (.resolve // "0"), ((.members // []) | map(tostring) | join(", ")), .from_iter, .reason, .iter,
                   .summary_path, (.member // false), (.key // .seq), .try, .result_path, .of,
-                  ((.rounds // []) | map((if .name != "" then .name + " " else "" end) + "round " + .round) | join(" · "))]
+                  ((.rounds // []) | map((if .name != "" then .name + " " else "" end) + "round " + .round) | join(" · ")),
+                  .no_rerun]
                  | map(. // "" | tostring) | join("\u001f")' <<< "$row")"
-    local spath member key try rpath of rounds
-    IFS=$'\x1f' read -r -d '' kind seq started stage ended verdict rc summaries resolve members from reason it spath member key try rpath of rounds <<< "$_f" || true
-    rounds="${rounds%$'\n'}"
+    local spath member key try rpath of rounds norerun
+    IFS=$'\x1f' read -r -d '' kind seq started stage ended verdict rc summaries resolve members from reason it spath member key try rpath of rounds norerun <<< "$_f" || true
+    norerun="${norerun%$'\n'}"
     # #2439: a try the engine ran again says which, of how many.
     local tries=""
     [[ -n "$try" ]] && tries=" · try ${try}${of:+ of ${of}}"
+    # #2640: a try the engine did not run again says why.
+    [[ -n "$norerun" ]] && tries+=" · not run again: ${norerun}"
     if [[ "$kind" == "reused" ]]; then
         printf '**%s** · **%s reused** · iter %s · %s from iter %s (%s)' \
             "$(_rsc_clock "$started")" "$seq" "$it" "$members" "$from" "$reason"
+        return 0
+    fi
+    # #2640: a member a requirement held back this round.
+    if [[ "$kind" == "not_run" ]]; then
+        printf '**%s** · **%s %s** · not run — %s did not pass' "$(_rsc_clock "$started")" "$seq" "$stage" "$reason"
         return 0
     fi
     # #2480: the round of every loop the row is inside, named when known

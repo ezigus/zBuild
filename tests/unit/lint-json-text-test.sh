@@ -23,7 +23,7 @@ LINT="$REPO_ROOT/scripts/lib/lint-json-text.sh"
 # _lint <file under root> <line> — the lint over a fresh tree holding one file
 # with that line; `rc=<rc>` then its output.
 _lint() {
-    local root; root="$(mktemp -d "$TEST_TEMP_DIR/root.XXXXXX")"
+    local root; root="$(mktemp -d "$TEST_TEMP_DIR/root.XXXXXX")" || { printf 'no temp folder\n' >&2; exit 1; }
     mkdir -p "$root/${1%/*}"
     printf '#!/usr/bin/env bash\n%s\n' "$2" > "$root/$1"
     local out rc=0
@@ -50,6 +50,13 @@ assert_eq "[K2] a comment" "rc=0" "$(_rc "$L" '# we used to write s="${s//\"/\\\
 assert_eq "[K2] a line marked with its reason" "rc=0" "$(_rc "$L" '    s="${s//\"/\\\"}"   # json-text-ok: a shell double-quoted word, not JSON')"
 assert_eq "[K2] a mark with no reason fails" "rc=1" "$(_rc "$L" '    s="${s//\"/\\\"}"   # json-text-ok:')"
 assert_eq "[K2] a tree with none" "rc=0" "$(_rc "$L" '    zb_json_str_v s "$t"')"
+
+print_test_section "#2640: a tab-separated read fails"
+assert_eq "[#2640/SPEC-4] a jq @tsv read fails" "rc=1" "$(_rc "$L" "    IFS=\$'\\t' read -r a b < <(jq -r '[.a, .b] | @tsv' f)")"
+assert_contains "[#2640/SPEC-4] ...saying what to use" "$(_lint "$L" "    x=\"\$(jq -r '[.a] | @tsv' f)\"")" "read it NUL-separated"
+assert_eq "[#2640/SPEC-4] ...in a plugin too" "rc=1" "$(_rc plugins/tool/g/plugin.sh "    jq -r '[.a,.b]|@tsv' f")"
+assert_eq "[#2640/SPEC-4] @tsv with no pipe before it fails too" "rc=1" "$(_rc "$L" "    x=\"\$(jq -r '@tsv' f)\"")"
+assert_eq "[#2640/SPEC-4] a comment holding a whole @tsv read passes" "rc=0" "$(_rc "$L" "# was: jq -r '[.a] | @tsv' f")"
 
 print_test_section "K3: npm run lint runs it"
 assert_contains "[K3] package.json's lint" "$(jq -r '.scripts.lint' "$REPO_ROOT/package.json")" "bash scripts/lib/lint-json-text.sh"

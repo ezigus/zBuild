@@ -196,7 +196,7 @@ assert_contains "[S6] sre: fails loudly is an event or a status line" "$(_J sre)
 assert_contains "[S6] sre: a deliberate fail-open is visible that way" "$(_J sre)" "A deliberate fail-open must be visible the same way"
 _lacks "[S6] sre: a message alone no longer excuses a step" "$(_J sre)" "a step that already fails loudly, with a message saying why"
 # #2630: what a test proves is the tests lens's now, not correctness's.
-assert_contains "[S6] tests: a test that fakes the project's own code, not an outside service" "$(_J tests)" "rather than faking an outside service at the project's own wrapper around it (the network, GitHub, a model)"
+assert_contains "[S6] tests: a test that replaces the project's own code, not an outside service" "$(_J tests)" "rather than replacing an outside service at the project's own wrapper around it (the network, GitHub, a model)"
 assert_contains "[S6] tests: an Enforced by entry naming the wrong test" "$(_J tests)" "an Enforced by entry that names a test which does not check what it says"
 
 print_test_section "S7: outside assumptions"

@@ -46,8 +46,8 @@ assert_contains "C3 plan heading present"  "$out" "# T"
 assert_contains "C3 comment marker present" "$out" "── llm comment ──"
 assert_contains "C3 prose body preserved"   "$out" "Here is the plan."
 # Ordering: plan heading must come BEFORE the comment marker.
-plan_pos="$(printf '%s\n' "$out" | grep -n "# T" | head -1 | cut -d: -f1)"
-comm_pos="$(printf '%s\n' "$out" | grep -n "── llm comment ──" | head -1 | cut -d: -f1)"
+plan_pos="$(printf '%s\n' "$out" | grep -n "# T" | sed -n 1p | cut -d: -f1)"
+comm_pos="$(printf '%s\n' "$out" | grep -n "── llm comment ──" | sed -n 1p | cut -d: -f1)"
 if [[ -n "$plan_pos" && -n "$comm_pos" && "$plan_pos" -lt "$comm_pos" ]]; then
     assert_pass "C3 plan renders BEFORE comment block"
 else

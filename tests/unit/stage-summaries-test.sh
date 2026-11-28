@@ -238,8 +238,8 @@ assert_contains "[SPEC-3] the stage is named" "$OUT_B" "ss-gate"
 assert_contains "[SPEC-3] the stage's verdict is annotated" "$OUT_B" "fail"
 
 # Completion order, not template order: ss-second completed first.
-_pos_second="$(printf '%s\n' "$OUT_B" | grep -n 'SECOND-DETAIL-BODY' | head -1 | cut -d: -f1)"
-_pos_gate="$(printf '%s\n' "$OUT_B" | grep -n 'GATE-DETAIL-BODY' | head -1 | cut -d: -f1)"
+_pos_second="$(printf '%s\n' "$OUT_B" | grep -n 'SECOND-DETAIL-BODY' | sed -n 1p | cut -d: -f1)"
+_pos_gate="$(printf '%s\n' "$OUT_B" | grep -n 'GATE-DETAIL-BODY' | sed -n 1p | cut -d: -f1)"
 if [[ -n "$_pos_second" && -n "$_pos_gate" && "$_pos_second" -lt "$_pos_gate" ]]; then
     assert_pass "[SPEC-3] entries follow completion order, not template order"
 else

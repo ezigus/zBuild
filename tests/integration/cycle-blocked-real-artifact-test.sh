@@ -163,7 +163,7 @@ assert_event_emitted "B5: cycle.complete event fired" \
     "$ZBUILD_EVENTS_JSONL" "cycle.complete"
 
 # Verify the blocked event carries the originating stage + raw verdict.
-blocked_evt="$(grep '"type":"cycle.blocked"' "$ZBUILD_EVENTS_JSONL" | head -1)"
+blocked_evt="$(grep '"type":"cycle.blocked"' "$ZBUILD_EVENTS_JSONL" | sed -n 1p)"
 assert_contains "B6: cycle.blocked stage=test" "$blocked_evt" '"stage":"test"'
 assert_contains "B7: cycle.blocked verdict=error (raw, NOT 'fail')" \
     "$blocked_evt" '"verdict":"error"'
@@ -171,7 +171,7 @@ assert_contains "B7: cycle.blocked verdict=error (raw, NOT 'fail')" \
 # Negative-coverage: cycle.complete reason MUST be "blocked", NOT "max_iterations"
 # (which is what would happen if the bug regressed and the cycle ran all 3
 # iterations).
-complete_evt="$(grep '"type":"cycle.complete"' "$ZBUILD_EVENTS_JSONL" | head -1)"
+complete_evt="$(grep '"type":"cycle.complete"' "$ZBUILD_EVENTS_JSONL" | sed -n 1p)"
 assert_contains "B8: cycle.complete reason=blocked (NOT max_iterations)" \
     "$complete_evt" '"reason":"blocked"'
 

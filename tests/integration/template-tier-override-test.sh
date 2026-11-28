@@ -99,7 +99,7 @@ EOF
 }
 
 _routed_model() {
-    grep '"model.route"' "$1" 2>/dev/null | jq -r '.data.model_id // .model_id' 2>/dev/null | head -1
+    grep '"model.route"' "$1" 2>/dev/null | jq -r '.data.model_id // .model_id' 2>/dev/null | sed -n 1p
 }
 
 # ── S1: template-only (env unset) → template tier T3 routes (beats manifest T2) ─

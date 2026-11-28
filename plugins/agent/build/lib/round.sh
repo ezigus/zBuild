@@ -37,12 +37,13 @@ _build_round_open() {
     # (ADR-065 fork budget), before asking jq for the three fields at once.
     local _sj=""; IFS= read -r -d '' _sj < "$summary_json" || true
     [[ "$_sj" == *'"round"'* ]] || return 0
-    local base passes iters
-    IFS=$'\t' read -r base passes iters < <(jq -r --arg r "${ZBUILD_RUN_ID}" \
+    local base="" passes="" iters=""
+    # #2640: NUL-separated, so an empty base never shifts the counts into it.
+    { IFS= read -r -d '' base && IFS= read -r -d '' passes && IFS= read -r -d '' iters; } < <(jq -j --arg r "${ZBUILD_RUN_ID}" \
             --arg c "${ZBUILD_CYCLE_ID:-}" --arg i "${ZBUILD_CYCLE_ITER:-0}" \
             --arg s "${ZBUILD_STAGE_IO_SEQ_LABEL:-}" \
             '.round // empty | select(.run_id == $r and .cycle_id == $c and .iter == $i and (.seq // "") == $s)
-             | [(.base // ""), (.passes // 0), (.iterations // 0)] | @tsv' \
+             | "\(.base // "")\u0000\(.passes // 0)\u0000\(.iterations // 0)\u0000"' \
             "$summary_json" 2>/dev/null || true) || true   # no match: read hits EOF (rc 1) under set -e
     [[ "$passes" =~ ^[0-9]+$ && "$iters" =~ ^[0-9]+$ ]] || return 0
     { [[ -n "$base" ]] && git -C "$repo_root" merge-base --is-ancestor "$base" HEAD 2>/dev/null; } || return 0

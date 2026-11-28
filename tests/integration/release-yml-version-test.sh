@@ -41,8 +41,8 @@ fi
 # ── SPEC-11: VERSION is staged before docs/wiki (ordering invariant) ──────────
 # version_file + changelog are added FIRST; docs/wiki + README added AFTER. Prove
 # the version_file add line precedes the docs/wiki add line in release.sh.
-_v_line="$(/usr/bin/grep -n '\$git_cmd add "\$version_file"' "$RELEASE_SH" 2>/dev/null | head -1 | cut -d: -f1 || true)"
-_d_line="$(/usr/bin/grep -n '\$git_cmd add "\$REPO_ROOT/docs/wiki"' "$RELEASE_SH" 2>/dev/null | head -1 | cut -d: -f1 || true)"
+_v_line="$(/usr/bin/grep -n '\$git_cmd add "\$version_file"' "$RELEASE_SH" 2>/dev/null | sed -n 1p | cut -d: -f1 || true)"
+_d_line="$(/usr/bin/grep -n '\$git_cmd add "\$REPO_ROOT/docs/wiki"' "$RELEASE_SH" 2>/dev/null | sed -n 1p | cut -d: -f1 || true)"
 if [[ -n "$_v_line" && -n "$_d_line" && "$_v_line" -lt "$_d_line" ]]; then
     assert_pass "[SPEC-11] VERSION is staged before docs/wiki in the release commit"
 else

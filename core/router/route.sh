@@ -310,7 +310,7 @@ route_to_model_cli() {
 }
 
 # ── Shared state set by helpers ──────────────────────────────────────────────
-_ROUTE_MODEL_ID="" _ROUTE_PROVIDER="" _ROUTE_FAMILY="" _ROUTE_MODEL_USED="" _ROUTE_CALL_COST=""
+_ROUTE_MODEL_ID="" _ROUTE_PROVIDER="" _ROUTE_FAMILY="" _ROUTE_MODEL_USED="" _ROUTE_CALL_COST="" _ROUTE_CLI_VERSION=""
 _ROUTE_CACHE_ELIGIBLE="false" _ROUTE_OVERRIDE_SOURCE="" _ROUTE_RESPONSE=""
 _ROUTE_INPUT_TOKENS=0 _ROUTE_OUTPUT_TOKENS=0
 _ROUTE_CACHE_READ=0 _ROUTE_CACHE_CREATION=0
@@ -928,6 +928,7 @@ _route_emit_outcome() {
         "model_id=$_ROUTE_MODEL_ID" \
         "provider=${_ROUTE_PROVIDER:-}" \
         "model_used=${_ROUTE_MODEL_USED:-}" \
+        "cli_version=${_ROUTE_CLI_VERSION:-}" \
         "cost_usd=${_ROUTE_CALL_COST:-unknown}" \
         "cache_eligible=${_ROUTE_CACHE_ELIGIBLE}" \
         "input_tokens=$_ROUTE_INPUT_TOKENS" \
@@ -953,16 +954,20 @@ _route_loop_report_call() {
 
 # ─── _route_record_call <raw_response> ───────────────────────────────────────
 # Asks the call's provider what it cost and which model answered (ADR-003
-# amendment). Sets _ROUTE_CALL_COST (empty = the provider could not say) and
-# _ROUTE_MODEL_USED.
+# amendment). Sets _ROUTE_CALL_COST (empty = the provider could not say),
+# _ROUTE_MODEL_USED and _ROUTE_CLI_VERSION: the CLI is installed unpinned
+# (#2639), so each call names the version that ran it, read from the envelope
+# with no process.
 _route_record_call() {
     local raw="${1:-}" p="${_ROUTE_PROVIDER:-anthropic}"
     p="${p//-/_}"
-    _ROUTE_CALL_COST="" _ROUTE_MODEL_USED=""
+    _ROUTE_CALL_COST="" _ROUTE_MODEL_USED="" _ROUTE_CLI_VERSION=""
     declare -F "provider_${p}_call_cost" >/dev/null 2>&1 \
         && _ROUTE_CALL_COST="$("provider_${p}_call_cost" "$raw")"
     declare -F "provider_${p}_model_used" >/dev/null 2>&1 \
         && _ROUTE_MODEL_USED="$("provider_${p}_model_used" "$raw")"
+    [[ "$raw" =~ \"cli_version\":\"${ZB_JSON_STR_RE}\" ]] \
+        && zb_json_unescape_v _ROUTE_CLI_VERSION "${BASH_REMATCH[1]}"
     return 0
 }
 
@@ -1181,13 +1186,18 @@ _route_parse_commit_summary_line() {
 # final envelope. One jq pass reads JSON lines and pretty-printed JSON alike:
 # the last `"type":"result"` object when the output is a step stream; the whole
 # output when it is no stream (a plain envelope or text, as stubs and older CLIs
-# print); nothing when the stream ended before a result (a killed call).
+# print); nothing when the stream ended before a result (a killed call). The
+# stream's init line names the CLI's version; it rides on the envelope as
+# `cli_version` (#2639), in the same pass.
 _route_stream_envelope_text() {
     local raw; raw="$(cat)"
     [[ -n "$raw" ]] || return 0
     local env
-    if env="$(jq -sc 'if ([.[] | objects | select(has("type"))] | length) == 0 then "__PLAIN__"
-                      else ([.[] | objects | select(.type == "result")] | last // "__NONE__") end' \
+    if env="$(jq -sc '([.[] | objects | select(.type == "system" and .subtype == "init")
+                        | .claude_code_version // empty | strings] | first) as $v
+                      | if ([.[] | objects | select(has("type"))] | length) == 0 then "__PLAIN__"
+                        else ([.[] | objects | select(.type == "result")] | last // "__NONE__")
+                             | if type == "object" and $v != null then . + {cli_version: $v} else . end end' \
                 <<< "$raw" 2>/dev/null)"; then
         case "$env" in
             '"__PLAIN__"') printf '%s' "$raw" ;;

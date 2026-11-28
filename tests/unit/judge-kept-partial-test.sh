@@ -41,7 +41,7 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export _RUNNER_ENGINE_SHA="engine-a"
 
 _N="$TEST_TEMP_DIR/n"; _P="$TEST_TEMP_DIR/p"
-_l() { grep "^$2|" "$1" | head -1 | cut -d'|' -f2-; }
+_l() { grep "^$2|" "$1" | sed -n 1p | cut -d'|' -f2-; }
 assert_lacks() { if [[ "$2" == *"$3"* ]]; then assert_fail "$1" "it has: $3"; else assert_pass "$1"; fi; }
 # _ev <type> <check> <item> — how many such events since the log was cleared.
 _ev() { jq -r --arg t "$1" --arg c "$2" --arg i "$3" 'select(.type == $t and .data.check == $c and .data.item == $i) | 1' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | grep -c .; }

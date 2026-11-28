@@ -128,7 +128,7 @@ if [[ "$captured" == *"ZBUILD_STATE_DIR="* ]]; then
     assert_pass "child plugin env contains ZBUILD_STATE_DIR"
 else
     assert_fail "child plugin env contains ZBUILD_STATE_DIR" \
-        "captured env: $(printf '%s' "$captured" | tr '\n' '|' | head -c 400)"
+        "captured env: $(zb_test_clip 400 "$(printf '%s' "$captured" | tr '\n' '|')")"
 fi
 
 # Value should match the state dir the runner computed (default $HOME/.zbuild/state).
@@ -137,7 +137,7 @@ if [[ "$captured" == *"$expected_line"* ]]; then
     assert_pass "ZBUILD_STATE_DIR value matches runner's state_dir"
 else
     assert_fail "ZBUILD_STATE_DIR value matches runner's state_dir" \
-        "expected substring: $expected_line; got: $(printf '%s' "$captured" | tr '\n' '|' | head -c 400)"
+        "expected substring: $expected_line; got: $(zb_test_clip 400 "$(printf '%s' "$captured" | tr '\n' '|')")"
 fi
 
 # Sanity: the pre-existing exports are still there (regression guard).

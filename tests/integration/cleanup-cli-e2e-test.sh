@@ -205,7 +205,7 @@ if [[ ! -e "$STATE_DIR/runs/stale-job" ]]; then
     assert_pass "[#1920] apply reclaims the whole job folder (artifacts/, scratch/, events.jsonl)"
 else
     assert_fail "[#1920] apply must remove runs/<id>/ entirely" \
-        "survivors: $(find "$STATE_DIR/runs/stale-job" 2>/dev/null | head -5 | tr '\n' ' ')"
+        "survivors: $(find "$STATE_DIR/runs/stale-job" 2>/dev/null | sed -n 1,5p | tr '\n' ' ')"
 fi
 if [[ -d "$STATE_DIR/runs/fresh-job" && -d "$STATE_DIR/runs/live-job" ]]; then
     assert_pass "[#1920] the in-window run and the live run survive the same apply"

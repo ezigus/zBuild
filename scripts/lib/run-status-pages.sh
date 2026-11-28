@@ -25,7 +25,10 @@ rsc_render_pages() {
     local model header run_id issue row
     model="$(rsc_rows_json "$events")"
     header="$(rsc_render_header "$model" "$state_dir" "$override")"
-    IFS=$'\t' read -r run_id issue < <(jq -r '[.header.run_id // "", (.header.issue // "" | tostring)] | @tsv' <<< "$model")
+    # #2640: NUL-separated: an empty run id must not take the issue's place.
+    run_id=""; issue=""
+    { IFS= read -r -d '' run_id && IFS= read -r -d '' issue; } \
+        < <(jq -j '"\(.header.run_id // "")\u0000\(.header.issue // "" | tostring)\u0000"' <<< "$model") || true
     # #2154: rows are rendered in THIS shell so the snapshot they freeze
     # survives the loop and is saved once at the end.
     _rsc_snapshot_load "$state_dir" "$run_id"

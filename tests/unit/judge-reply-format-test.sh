@@ -31,7 +31,7 @@ export _RUNNER_ENGINE_SHA="engine-a"
 # shellcheck source=../../scripts/lib/judge.sh
 source "$REPO_ROOT/scripts/lib/judge.sh"
 
-_l() { grep "^$2|" "$1" | head -1 | cut -d'|' -f2-; }
+_l() { grep "^$2|" "$1" | sed -n 1p | cut -d'|' -f2-; }
 
 print_test_section "F1-F2: one shared step"
 WANT='LOOP-1 And: missing | WHY: nothing asserts the round | QUOTE: "the outer loop is at round 2"'

@@ -89,7 +89,7 @@ if [[ -n "$_r1" ]]; then
     assert_pass "[SPEC-1] failing suite writes a non-empty reason (got: $_r1)"
 else
     assert_fail "[SPEC-1] failing suite writes a non-empty reason" \
-        "reason absent or empty; result=$(cat "$RESULT" 2>/dev/null | head -c 200)"
+        "reason absent or empty; result=$(zb_test_clip 200 "$(cat "$RESULT" 2>/dev/null)")"
 fi
 
 assert_eq "[SPEC-1] the reader classifies a red suite as fail, not error" \
@@ -114,7 +114,7 @@ if [[ -n "$_r2" ]]; then
     assert_pass "[SPEC-2] passing suite writes a non-empty reason (got: $_r2)"
 else
     assert_fail "[SPEC-2] passing suite writes a non-empty reason" \
-        "reason absent or empty; result=$(cat "$RESULT" 2>/dev/null | head -c 200)"
+        "reason absent or empty; result=$(zb_test_clip 200 "$(cat "$RESULT" 2>/dev/null)")"
 fi
 
 assert_eq "[SPEC-2] the reader classifies a green suite as pass" \
@@ -199,7 +199,7 @@ if [[ -n "$(_reason_of)" ]]; then
     assert_pass "[SPEC-5] a sanitized write carries a non-empty reason"
 else
     assert_fail "[SPEC-5] a sanitized write carries a non-empty reason" \
-        "result=$(cat "$RESULT" 2>/dev/null | head -c 200)"
+        "result=$(zb_test_clip 200 "$(cat "$RESULT" 2>/dev/null)")"
 fi
 
 # ─── [SPEC-6 guard] mandatory v2 fields are all present ──────────────────────
@@ -218,7 +218,7 @@ for _field in outcome reason; do
         assert_pass "[SPEC-6 guard] '$_field' is present and non-empty"
     else
         assert_fail "[SPEC-6 guard] '$_field' is present and non-empty" \
-            "result=$(cat "$RESULT" 2>/dev/null | head -c 300)"
+            "result=$(zb_test_clip 300 "$(cat "$RESULT" 2>/dev/null)")"
     fi
 done
 

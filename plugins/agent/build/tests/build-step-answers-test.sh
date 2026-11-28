@@ -269,6 +269,10 @@ assert_eq "[BS23] ...for that reason" "untraced_change" "$(jq -r '.reason // ""'
 assert_contains "[BS23] the finding names the file, in the rule's words" "$(_findings)" "core/claim/claim.sh traces to no design step"
 git -C "$R" checkout -q -- core/claim/claim.sh
 
+# The cases below reset, clean and write files in the test's repository: it
+# must be one of this test's own folders, never empty and never anything else.
+[[ -n "${R:-}" && -n "${TEST_TEMP_DIR:-}" && "$R" == "$TEST_TEMP_DIR"/* ]] \
+    || { printf 'build-step-answers: R is not a folder of this test (%s)\n' "${R:-<empty>}" >&2; exit 1; }
 # ── BS24 / BS25 (#2629, ADR-075 §2; review) ──────────────────────────────────
 print_test_section "BS24: an earlier pass's commit is the round's; BS25: not mine hands it to design"
 _bs24_head="$(git -C "$R" rev-parse HEAD)"
@@ -286,19 +290,19 @@ _run bs24 "$DONE1_OK"$'\n'"$DONE2"$'\n'"ANSWER $_uid: not mine — design must a
 assert_contains "[BS25] not mine to the untraced file reaches design" \
     "$(jq -r '[.data.findings[]?.text] | join("\n")' "$AD/build-design-result.json" 2>/dev/null)" "core/claim/claim.sh"
 assert_eq "[BS25] ...the try fails and the round ends, so design runs" "fail" "$(_outcome)"
-git -C "$R" reset -q --hard "$_bs24_head" >/dev/null 2>&1 || true
+git -C "${R:?}" reset -q --hard "$_bs24_head" >/dev/null 2>&1 || true
 # The finding's text is read back from build's own result as it was written
 # (audit on #2635): a name holding a tab and a backslash before n reaches
 # design named byte for byte.
 _bs25n="core/claim/odd"$'\t'"name\\n.sh"
-printf 'x\n' > "$R/$_bs25n"
+printf 'x\n' > "${R:?}/$_bs25n"
 _run bs25 "$DONE1_OK"$'\n'"$DONE2"$'\nLOOP_COMPLETE'
 _uid="$(jq -r --arg n "$_bs25n" '[.data.findings[]? | select(.text | startswith($n + " traces to no design step")) | .id][0] // ""' "$AD/build-summary.json" 2>/dev/null)"
 assert_eq "[BS25] (fixture) the odd name is an untraced file" "1" "$([[ -n "$_uid" ]] && echo 1 || echo 0)"
 _run bs25 "$DONE1_OK"$'\n'"$DONE2"$'\n'"ANSWER $_uid: not mine — design must add a step whose areas hold it"$'\nLOOP_COMPLETE' reuse
 assert_contains "[BS25] not mine to a file whose name holds a tab and a backslash before n reaches design, named byte for byte" \
     "$(jq -r '[.data.findings[]?.text] | join("\n")' "$AD/build-design-result.json" 2>/dev/null)" "$_bs25n"
-rm -f "$R/$_bs25n"; git -C "$R" reset -q --hard "$_bs24_head" >/dev/null 2>&1 || true
+rm -f "${R:?}/$_bs25n"; git -C "${R:?}" reset -q --hard "$_bs24_head" >/dev/null 2>&1 || true
 
 # ── BS8: a judge that cannot be used ─────────────────────────────────────────
 print_test_section "BS8: a judge reply that cannot be used"
@@ -378,23 +382,23 @@ _bs26() {   # <case> — run build; print "<count> <first name> +<added> -<remov
 }
 git -C "$R" mv "caf$(printf '\303\251').sh" back.sh >/dev/null 2>&1; printf 'z\n' >> "$R/back.sh"
 assert_eq "[BS26] a non-ASCII name renamed to a plain one: one file, its new name" "1 back.sh +1 -0" "$(_bs26 ren1)"
-git -C "$R" reset -q --hard >/dev/null 2>&1
-printf 'p\n' > "$R/plain.sh"; git -C "$R" add -A >/dev/null 2>&1; git -C "$R" commit -qm "a plain name" >/dev/null 2>&1
-git -C "$R" mv plain.sh "n$(printf '\303\251').sh" >/dev/null 2>&1
+git -C "${R:?}" reset -q --hard >/dev/null 2>&1
+printf 'p\n' > "${R:?}/plain.sh"; git -C "${R:?}" add -A >/dev/null 2>&1; git -C "${R:?}" commit -qm "a plain name" >/dev/null 2>&1
+git -C "${R:?}" mv plain.sh "n$(printf '\303\251').sh" >/dev/null 2>&1
 assert_eq "[BS26] a plain name renamed to a non-ASCII one: one file, its new name" "1 n$(printf '\303\251').sh +0 -0" "$(_bs26 ren2)"
-git -C "$R" reset -q --hard >/dev/null 2>&1
-printf 't\n' > "$R/tab"$'\t'"x.sh"; git -C "$R" add -A >/dev/null 2>&1; git -C "$R" commit -qm "a tab in a name" >/dev/null 2>&1
-printf 'u\nv\n' >> "$R/tab"$'\t'"x.sh"; printf 'w\n' > "$R/plain.sh"
+git -C "${R:?}" reset -q --hard >/dev/null 2>&1
+printf 't\n' > "${R:?}/tab"$'\t'"x.sh"; git -C "${R:?}" add -A >/dev/null 2>&1; git -C "${R:?}" commit -qm "a tab in a name" >/dev/null 2>&1
+printf 'u\nv\n' >> "${R:?}/tab"$'\t'"x.sh"; printf 'w\n' > "${R:?}/plain.sh"
 assert_eq "[BS26] a name holding a tab, and a second file: counted with their lines" "2 plain.sh +3 -1" "$(_bs26 tab)"
 assert_eq "[BS26] ...each named whole" "plain.sh|tab"$'\t'"x.sh" "$(jq -r '.files_changed | join("|")' "$TEST_TEMP_DIR/bs26-tab/build-summary.json" 2>/dev/null)"
-git -C "$R" reset -q --hard >/dev/null 2>&1
+git -C "${R:?}" reset -q --hard >/dev/null 2>&1
 # A tab at either end of a name is kept (bash review): the record is never split on it.
-printf 'e\n' > "$R/"$'\t'"lead.txt"; printf 'f\n' > "$R/trail.txt"$'\t'
+printf 'e\n' > "${R:?}/"$'\t'"lead.txt"; printf 'f\n' > "${R:?}/trail.txt"$'\t'
 AD="$TEST_TEMP_DIR/bs26-ends"; mkdir -p "$AD"
 _build_stage_run_inner "" "" "$AD/diff.patch" "$AD/build-summary.json" "$AD" >/dev/null 2>&1 || true
 assert_eq "[BS26] a name that starts or ends with a tab is named whole" $'\tlead.txt|trail.txt\t' \
     "$(jq -r '.files_changed | sort | join("|")' "$AD/build-summary.json" 2>/dev/null)"
-git -C "$R" reset -q --hard >/dev/null 2>&1; git -C "$R" clean -qfd >/dev/null 2>&1
+git -C "${R:?}" reset -q --hard >/dev/null 2>&1; git -C "${R:?}" clean -qfd >/dev/null 2>&1
 
 # BS21 (#2609): a block answer is read, its words in a note.
 # BS22 (#2609): every mis-copied form of a quote is read (the table).
