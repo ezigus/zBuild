@@ -218,6 +218,9 @@ _zbuild_claim_takeover() {
     fi
     if [[ "$reply" =~ \"failed\"[[:space:]]*:[[:space:]]*\"([a-z_]+)\" ]]; then
         eb_emit_event "pipeline.claim.takeover_failed" "issue=$issue" "holder=$them" "reason=${BASH_REMATCH[1]}" 2>/dev/null || true
+        # #2534 R4: claiming again could not tell whether another run was first.
+        [[ "$reply" =~ \"cannot_tell\"[[:space:]]*:[[:space:]]*\"([^\"\\]*)\" ]] \
+            && _ZBUILD_CLAIM_REFUSED_WHY="${BASH_REMATCH[1]//[[:cntrl:]]/}"
     elif [[ "$rc" -ne 0 || ! "$reply" =~ \"taken_over\" ]]; then
         printf 'zbuild_claim_acquire: the claim coordinator'"'"'s takeover gave no answer (rc=%s) — refusing to take over %s\n' "$rc" "$them" >&2
     fi

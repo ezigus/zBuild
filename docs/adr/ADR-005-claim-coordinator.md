@@ -138,7 +138,8 @@ holder records back is the claim's re-read; it does not read the issue's labels 
 - **Known limits (accepted).** If each run reads the records back before the other's is visible, both
   proceed. A run that dies without releasing leaves its record: a claim made within the window after it
   is refused, as if that run had claimed first. A claim taken back removes the shared label even when
-  another run that claimed at the same moment holds it.
+  another run that claimed at the same moment holds it. A run whose account is not trusted (not the CI
+  bot, an owner, member or collaborator) never sees its own record, so its claim always proceeds.
 
 ### §4 — Finding and calling the coordinator
 

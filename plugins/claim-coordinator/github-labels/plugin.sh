@@ -241,7 +241,7 @@ _ccgl_race_note_lost() {
 
 # _ccgl_race_notes_remove <issue> — removes this run's notes (at release).
 _ccgl_race_notes_remove() {
-    local issue="$1" holder id ok=1 window
+    local issue="$1" holder id ok=1
     _ccgl_self_holder_v holder
     if _ccgl_gh api --paginate "repos/${_CCGL_SLUG}/issues/${issue}/comments?per_page=100" 2>/dev/null; then
         while IFS= read -r -d '' id; do
@@ -252,10 +252,14 @@ _ccgl_race_notes_remove() {
     else
         ok=0
     fi
-    [[ "$ok" -eq 1 ]] && return 0
-    _ccgl_race_window_s_v window
+    [[ "$ok" -eq 1 ]] || _ccgl_race_note_left "$issue"
+}
+
+# _ccgl_race_note_left <issue> — says this run's claim note could not be removed.
+_ccgl_race_note_left() {
+    local window; _ccgl_race_window_s_v window
     printf 'claim-coordinator: could not remove this run'"'"'s claim note from issue #%s: a run that claims the issue in the next %ss may be refused, as if this run had claimed first\n' \
-        "$issue" "$window" >&2 || true
+        "$1" "$window" >&2 || true
 }
 
 # _ccgl_unclaim <issue> — takes back the label a claim that cannot stand added.
@@ -321,7 +325,7 @@ claim_coordinator_claim() {
         printf 'claim-coordinator: GitHub did not say when this run'"'"'s claim note on issue #%s was made, so which claim was first cannot be told — the claim is taken back\n' \
             "$issue" >&2 || true
         [[ -n "$note_id" ]] || { _ccgl_race_first_v winner first_id mine "$issue" 0 "$holder" && note_id="$mine"; } || true
-        _ccgl_race_note_delete "$note_id" "$issue" || true
+        _ccgl_race_note_delete "$note_id" "$issue" || _ccgl_race_note_left "$issue"
         _ccgl_unclaim "$issue"
         # Not a backend error: the run must not go on unclaimed (#2534 R4).
         printf '{"acquired": false, "cannot_tell": "GitHub did not say when this run'"'"'s claim note was made"}\n'
@@ -330,7 +334,7 @@ claim_coordinator_claim() {
     _ccgl_race_window_s_v window
     since=$(( note_at - window ))
     if ! _ccgl_race_first_v winner first_id mine "$issue" "$since" "$holder"; then
-        _ccgl_race_note_delete "$note_id" "$issue" || true
+        _ccgl_race_note_delete "$note_id" "$issue" || _ccgl_race_note_left "$issue"
         _ccgl_unclaim "$issue"
         printf '{"acquired": false, "reason": "backend_error"}\n'
         return 1

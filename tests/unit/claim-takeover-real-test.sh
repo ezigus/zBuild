@@ -73,6 +73,8 @@ source "$REPO_ROOT/core/event-bus/event-bus.sh"
 source "$REPO_ROOT/core/plugin-registry/registry.sh"
 # shellcheck source=../../core/claim/claim.sh
 source "$REPO_ROOT/core/claim/claim.sh"
+# shellcheck source=../lib/claim-gh-mock.sh
+source "$REPO_ROOT/tests/lib/claim-gh-mock.sh"
 
 STATE="$TEST_TEMP_DIR/state"; mkdir -p "$STATE"
 F="$TEST_TEMP_DIR/fake"; mkdir -p "$F/bin"
@@ -350,6 +352,29 @@ assert_eq "[TR20] refused" "1" "$_RC"
 assert_contains "[TR20] ...saying claiming again failed" "$_OUT" "claiming issue #9 again failed"
 _lacks14 "[TR20] ...not that another run claimed it" "$_OUT" "another run claimed issue"
 assert_contains "[TR20] ...with the event's reason" "$(cat "$ZBUILD_EVENTS_JSONL")" "reclaim_failed"
+
+print_test_section "TR21: claiming again cannot tell whether another run claimed first"
+# Inside the takeover, claiming again goes to GitHub, the fake that keeps what
+# our code posts, whose reply to the claim note gives no time (#2534 R4).
+_fresh; _iso_ago 4000 > "$F/hb"
+GH21="$TEST_TEMP_DIR/gh21"; ( TEST_TEMP_DIR="$GH21"; claim_gh_mock_install "$GH21/state" )
+: > "$GH21/state/repo-label"; : > "$GH21/state/no-created-at"
+_d21="$CR/claim-coordinator/github-labels/plugin.sh"; cp "$_d21" "$F/plugin21.keep"
+cat >> "$_d21" <<EOF
+eval "_tr21_claim() \$(declare -f claim_coordinator_claim | sed 1d)"
+claim_coordinator_claim() {  # determinism-ok: wraps the real claim, sending it to the fake GitHub; nothing of ours is stood in for
+    if declare -F claim_takeover_run >/dev/null; then
+        PATH="$GH21/bin:\$PATH" ZBUILD_CLAIM_BACKEND=gh GITHUB_REPOSITORY=testowner/testrepo _CCGL_SLUG="" _tr21_claim "\$@"
+    else _tr21_claim "\$@"; fi
+}
+EOF
+_acq
+cp "$F/plugin21.keep" "$_d21"
+assert_eq "[TR21] refused" "1" "$_RC"
+assert_contains "[TR21] ...the claim posted on GitHub and taken back" "$(cat "$GH21/state/log")" "concurrent claim by"
+assert_contains "[TR21] ...with the claim's own reason, for the runner to say" "${_ZBUILD_CLAIM_REFUSED_WHY:-}" "GitHub did not say when"
+_lacks14 "[TR21] ...not that another run claimed it" "$_OUT" "another run claimed issue"
+assert_contains "[TR21] ...and the event's reason" "$(cat "$ZBUILD_EVENTS_JSONL")" '"reason":"cannot_tell"'
 
 cleanup_test_env
 print_test_results
