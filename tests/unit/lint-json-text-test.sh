@@ -51,6 +51,13 @@ assert_eq "[K2] a line marked with its reason" "rc=0" "$(_rc "$L" '    s="${s//\
 assert_eq "[K2] a mark with no reason fails" "rc=1" "$(_rc "$L" '    s="${s//\"/\\\"}"   # json-text-ok:')"
 assert_eq "[K2] a tree with none" "rc=0" "$(_rc "$L" '    zb_json_str_v s "$t"')"
 
+print_test_section "#2640: a tab-separated read fails"
+assert_eq "[#2640/SPEC-4] a jq @tsv read fails" "rc=1" "$(_rc "$L" "    IFS=\$'\\t' read -r a b < <(jq -r '[.a, .b] | @tsv' f)")"
+assert_contains "[#2640/SPEC-4] ...saying what to use" "$(_lint "$L" "    x=\"\$(jq -r '[.a] | @tsv' f)\"")" "read it NUL-separated"
+assert_eq "[#2640/SPEC-4] ...in a plugin too" "rc=1" "$(_rc plugins/tool/g/plugin.sh "    jq -r '[.a,.b]|@tsv' f")"
+assert_eq "[#2640/SPEC-4] @tsv with no pipe before it fails too" "rc=1" "$(_rc "$L" "    x=\"\$(jq -r '@tsv' f)\"")"
+assert_eq "[#2640/SPEC-4] a comment holding a whole @tsv read passes" "rc=0" "$(_rc "$L" "# was: jq -r '[.a] | @tsv' f")"
+
 print_test_section "K3: npm run lint runs it"
 assert_contains "[K3] package.json's lint" "$(jq -r '.scripts.lint' "$REPO_ROOT/package.json")" "bash scripts/lib/lint-json-text.sh"
 

@@ -103,7 +103,10 @@ _role_dir() {  # <role> → the shipped plugin that provides it, or nothing
 declare -A WAS=([test-author]="900 0" [issue-acceptance]="600 0" [intake]="120 1" [design]="1200 0" [build]="900 0" [review_lenses]="900 0" [issue-check]="600 0")
 
 _n=0
-while IFS=$'\t' read -r stage role rt rmt elems; do
+# #2640: NUL-separated: a stage with no timeout_s but a max_turns must not
+# read its max_turns as its timeout.
+while IFS= read -r -d '' stage && IFS= read -r -d '' role && IFS= read -r -d '' rt \
+      && IFS= read -r -d '' rmt && IFS= read -r -d '' elems; do
     dir="$(_role_dir "$role")"
     [[ -n "$dir" ]] && grep -q '^calls:' "$dir/manifest.yaml" || continue
     msecs="$(yq -r '.config.router.timeout_s // ""' "$dir/manifest.yaml")"; mturns="$(yq -r '.config.router.max_turns // ""' "$dir/manifest.yaml")"
@@ -138,9 +141,8 @@ while IFS=$'\t' read -r stage role rt rmt elems; do
         else wsaid="It was given $want_s seconds, with no limit on turns."; fi
         assert_contains "[CL3] $name: the time-up warning says them" "$warn" "$wsaid"
     done
-done < <(yq -o=json "$TPL" | jq -r 'to_entries[] | select(.value | type == "object" and has("roles"))
-    | [.key, .value.roles[0], (.value.router.timeout_s // "" | tostring), (.value.router.max_turns // "" | tostring),
-       ([.value.elements[]?.id] | join(" "))] | @tsv')
+done < <(yq -o=json "$TPL" | jq -j 'to_entries[] | select(.value | type == "object" and has("roles"))
+    | "\(.key)\u0000\(.value.roles[0])\u0000\(.value.router.timeout_s // "")\u0000\(.value.router.max_turns // "")\u0000\([.value.elements[]?.id] | join(" "))\u0000"')
 assert_eq "[CL1] fixture: every model-calling stage and lens was dispatched (6 stages, 7 lenses; #2614 adds issue-check, #2630 the tests lens)" "13" "$_n"
 
 print_test_section "CL5: a stage's own turn limit is the record's"

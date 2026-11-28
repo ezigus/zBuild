@@ -88,6 +88,10 @@ rsc_rows_json() {
                                      try: (.try // $prev), of: ($d.of // null)})
                 | (if $seq != "" then .next_try[$seq] = {try: ($d.try // "2"), of: ($d.of // null)} else . end)
               end
+          elif $t == "stage.retry.refused" then
+            # #2640: the engine did not run the try again, and why.
+            (if $seq != "" and .rows[cur(.; $seq)] != null then cur(.; $seq) else open_for(.; ($d.stage // $e.stage // "")) end) as $k
+            | if $k == null then . else .rows[$k].no_rerun = ($d.reason // "the try changed nothing") end
           elif $t == "stage.previous_work.written" then
             open_for(.; ($d.stage // $e.stage // "")) as $k
             | if $k == null then . else .rows[$k] += {summaries: $d.stages, resolve: $d.failing} end
@@ -123,6 +127,16 @@ rsc_rows_json() {
                 | .order += [$k]
               else . end
             | .rows[$k].members += [($d.member // "")]
+          elif $t == "cycle.member.not_run" then
+            # #2640 (ADR-068 §3): a member that did not run this round, because
+            # one it requires did not pass; it ends the round.
+            ("not_run:" + ($d.cycle_id // "") + ":" + ($d.iter // "") + ":" + ($d.stage // "")) as $k
+            | if .rows[$k] == null then
+                .rows[$k] = {key:$k, kind:"not_run", seq:(.cardinal + "." + ($d.iter // "")), iter:($d.iter // ""),
+                             stage:($d.stage // ""), started_ts:$e.ts, ended_ts:$e.ts, verdict:"not_run",
+                             reason:($d.requires // "")}
+                | .order += [$k]
+              else . end
           elif $t == "pipeline.aborted" then
             .terminal += {aborted: true, reason: ($d.reason // ""), detail: ($d.detail // ""), status: ($d.status // .terminal.status // "aborted")}
           elif $t == "pipeline.end" then

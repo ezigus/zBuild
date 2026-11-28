@@ -1484,14 +1484,43 @@ _tpl_build_dispatch_units() {
         _rq_bl="_TPL_STAGE_BLOCKING_${_rq_id//-/_}"
         [[ "${!_rq_bl:-}" == false ]] || _rq_blk+="$_rq_id "
     done
-    # A stage that is not a top-level unit (a loop's member) is never asked.
-    local _rq_seen_safe="${_rq_seen//-/_}"
+    # #2640 (ADR-068 §3): a loop's member requires only members its loop runs
+    # before it, in the same round (the orchestrator asks, _cycle_requires_unmet_v);
+    # `all` is every one of them but one marked not blocking. A member of a
+    # parallel group or a map is refused: its siblings run beside it, not before.
+    local _rq_seen_safe="${_rq_seen//-/_}" _rq_cid _rq_cv _rq_m _rq_found _rq_before
+    local -a _rq_ms=()
     for _rq_v in "${!_TPL_STAGE_REQUIRES_@}"; do
         _rq_id="${_rq_v#_TPL_STAGE_REQUIRES_}"
-        if [[ "$_rq_seen_safe" != *" $_rq_id "* ]]; then
-            error "stage '$_rq_id': requires: is for a top-level stage, and '$_rq_id' runs inside a loop or group"
+        [[ "$_rq_seen_safe" == *" $_rq_id "* ]] && continue
+        _rq_found=""
+        for _rq_cid in "${_TPL_CYCLES[@]}"; do
+            _rq_cv="_TPL_CYCLE_STAGES_${_rq_cid//-/_}"; _rq_before=" "
+            IFS=',' read -r -a _rq_ms <<< "${!_rq_cv:-}"
+            for _rq_m in "${_rq_ms[@]}"; do
+                [[ "${_rq_m//-/_}" == "$_rq_id" ]] && { _rq_found="$_rq_m"; break; }
+                _rq_before+="$_rq_m "
+            done
+            [[ -n "$_rq_found" ]] && break
+        done
+        if [[ -z "$_rq_found" ]]; then
+            error "stage '$_rq_id': requires: is for a top-level stage or a loop's member, and '$_rq_id' runs inside a group"
             return 1
         fi
+        if [[ "${!_rq_v:-}" == all ]]; then
+            _rq_all=""
+            for _rq_m in $_rq_before; do
+                _rq_bl="_TPL_STAGE_BLOCKING_${_rq_m//-/_}"
+                [[ "${!_rq_bl:-}" == false ]] || _rq_all+="${_rq_all:+ }$_rq_m"
+            done
+            printf -v "$_rq_v" '%s' "$_rq_all"; export "${_rq_v?}"
+        fi
+        for _rq_n in ${!_rq_v:-}; do
+            if [[ "$_rq_before" != *" $_rq_n "* ]]; then
+                error "stage '$_rq_found' requires '$_rq_n', which is not a member its loop runs before it"
+                return 1
+            fi
+        done
     done
     return 0
 }
