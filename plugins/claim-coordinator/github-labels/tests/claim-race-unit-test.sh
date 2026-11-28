@@ -103,7 +103,8 @@ _both_read_after_both_posted() {
     wait_for_exit "$pid" 400 || assert_fail "setup: the first run finished" "$(_err first)"
 }
 # _left_note <time> — run `gone` claims at <time> and dies without releasing; the
-# label is removed for it (as the CI clean-up does), its claim note is left.
+# label is removed for it (as the CI clean-up does), its claim note is left. The
+# log starts again, so it holds only the next run's calls.
 _left_note() { _fresh; _at "$1"; _run gone; : > "$GHS/labels"; : > "$GHS/log"; }
 
 print_test_section "two runs at once, in the same second: the first claim wins"

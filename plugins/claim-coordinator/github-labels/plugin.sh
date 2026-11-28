@@ -218,7 +218,7 @@ _ccgl_race_first_v() {
     return 0
 }
 
-# _ccgl_race_note_delete <id> <issue> — rc 1 when it could not be removed.
+# _ccgl_race_note_delete <id> — rc 1 when it could not be removed.
 _ccgl_race_note_delete() {
     [[ "${1:-}" =~ ^[0-9]+$ ]] || return 1
     _ccgl_gh api -X DELETE "repos/${_CCGL_SLUG}/issues/comments/${1}" 2>/dev/null
@@ -232,7 +232,7 @@ _ccgl_race_note_lost() {
     if [[ "$id" =~ ^[0-9]+$ ]]; then
         _ccgl_gh api -X PATCH "repos/${_CCGL_SLUG}/issues/comments/${id}" \
             -f "body=${body}" 2>/dev/null && return 0
-        _ccgl_race_note_delete "$id" "$issue" && return 0
+        _ccgl_race_note_delete "$id" && return 0
     fi
     _ccgl_race_window_s_v window
     printf 'claim-coordinator: could not mark this run'"'"'s claim note on issue #%s as not started, nor remove it: a run that claims the issue in the next %ss may be refused, as if this run had claimed first\n' \
@@ -245,7 +245,7 @@ _ccgl_race_notes_remove() {
     _ccgl_self_holder_v holder
     if _ccgl_gh api --paginate "repos/${_CCGL_SLUG}/issues/${issue}/comments?per_page=100" 2>/dev/null; then
         while IFS= read -r -d '' id; do
-            _ccgl_race_note_delete "$id" "$issue" || ok=0
+            _ccgl_race_note_delete "$id" || ok=0
         done < <(jq -sj --arg b "${_CCGL_RACE_NOTE_PREFIX}${holder}\`" \
             "[.[][]? | select(${_CCGL_TRUSTED}) | select(.body == \$b) | \"\(.id)\u0000\"] | add // \"\"" \
             <<< "$_CCGL_OUT" 2>/dev/null)
@@ -325,7 +325,7 @@ claim_coordinator_claim() {
         printf 'claim-coordinator: GitHub did not say when this run'"'"'s claim note on issue #%s was made, so which claim was first cannot be told — the claim is taken back\n' \
             "$issue" >&2 || true
         [[ -n "$note_id" ]] || { _ccgl_race_first_v winner first_id mine "$issue" 0 "$holder" && note_id="$mine"; } || true
-        _ccgl_race_note_delete "$note_id" "$issue" || _ccgl_race_note_left "$issue"
+        _ccgl_race_note_delete "$note_id" || _ccgl_race_note_left "$issue"
         _ccgl_unclaim "$issue"
         # Not a backend error: the run must not go on unclaimed (#2534 R4).
         printf '{"acquired": false, "cannot_tell": "GitHub did not say when this run'"'"'s claim note was made"}\n'
@@ -334,7 +334,7 @@ claim_coordinator_claim() {
     _ccgl_race_window_s_v window
     since=$(( note_at - window ))
     if ! _ccgl_race_first_v winner first_id mine "$issue" "$since" "$holder"; then
-        _ccgl_race_note_delete "$note_id" "$issue" || _ccgl_race_note_left "$issue"
+        _ccgl_race_note_delete "$note_id" || _ccgl_race_note_left "$issue"
         _ccgl_unclaim "$issue"
         printf '{"acquired": false, "reason": "backend_error"}\n'
         return 1
