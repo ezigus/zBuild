@@ -206,17 +206,25 @@ rsc_render_row() {
     _f="$(jq -r '[.kind, .seq, .started_ts, .stage, .ended_ts, .verdict, .rc, .summaries,
                   (.resolve // "0"), ((.members // []) | map(tostring) | join(", ")), .from_iter, .reason, .iter,
                   .summary_path, (.member // false), (.key // .seq), .try, .result_path, .of,
-                  ((.rounds // []) | map((if .name != "" then .name + " " else "" end) + "round " + .round) | join(" · "))]
+                  ((.rounds // []) | map((if .name != "" then .name + " " else "" end) + "round " + .round) | join(" · ")),
+                  .no_rerun]
                  | map(. // "" | tostring) | join("\u001f")' <<< "$row")"
-    local spath member key try rpath of rounds
-    IFS=$'\x1f' read -r -d '' kind seq started stage ended verdict rc summaries resolve members from reason it spath member key try rpath of rounds <<< "$_f" || true
-    rounds="${rounds%$'\n'}"
+    local spath member key try rpath of rounds norerun
+    IFS=$'\x1f' read -r -d '' kind seq started stage ended verdict rc summaries resolve members from reason it spath member key try rpath of rounds norerun <<< "$_f" || true
+    norerun="${norerun%$'\n'}"
     # #2439: a try the engine ran again says which, of how many.
     local tries=""
     [[ -n "$try" ]] && tries=" · try ${try}${of:+ of ${of}}"
+    # #2640: a try the engine did not run again says why.
+    [[ -n "$norerun" ]] && tries+=" · not run again: ${norerun}"
     if [[ "$kind" == "reused" ]]; then
         printf '**%s** · **%s reused** · iter %s · %s from iter %s (%s)' \
             "$(_rsc_clock "$started")" "$seq" "$it" "$members" "$from" "$reason"
+        return 0
+    fi
+    # #2640: a member a requirement held back this round.
+    if [[ "$kind" == "not_run" ]]; then
+        printf '**%s** · **%s %s** · not run — %s did not pass' "$(_rsc_clock "$started")" "$seq" "$stage" "$reason"
         return 0
     fi
     # #2480: the round of every loop the row is inside, named when known
@@ -373,6 +381,17 @@ rsc_render_header() {
         [[ -n "$_bl" ]] && meta+=" — blocked by ${_bl}"
     fi
     printf '%s\n' "$meta"
+    # #2630 (ADR-067 §8): a repository with no rules of its own (no file, an
+    # empty one, or a link, which load_repo_rules does not follow) is told so —
+    # every stage was given zBuild's defaults. Read by the shell, no process.
+    local _rsc_rr="${ZBUILD_RSC_REPO_ROOT:-${ZBUILD_REPO_ROOT:-}}"
+    if [[ -n "$_rsc_rr" && -d "$_rsc_rr" ]]; then
+        if [[ ! -s "$_rsc_rr/.zbuild/rules.md" ]]; then
+            printf '%s\n' "This repository has no rules in \`.zbuild/rules.md\`: every stage was given zBuild's default rules."
+        elif [[ -L "$_rsc_rr/.zbuild" || -L "$_rsc_rr/.zbuild/rules.md" ]]; then
+            printf '%s\n' "This repository's \`.zbuild/rules.md\` is a link, which zBuild does not follow: every stage was given zBuild's default rules."
+        fi
+    fi
     case "$status" in
         running|complete|success|complete_unconverged) ;;
         *)

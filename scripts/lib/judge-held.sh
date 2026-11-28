@@ -310,7 +310,7 @@ _judge_kept_blob_v() {
         [[ "$l" == "$repo/$f" || ( -n "${_JUDGE_REPO_GIVEN:-}" && "$l" == "$_JUDGE_REPO_GIVEN/$f" ) ]] && { _jkbv="$w"; return 0; }
     done <<< "${_JUDGE_KEPT_FILES[$it]:-}"
     b="${_JUDGE_KEPT_BASE[$it]:-}"; [[ -n "$b" ]] || return 0
-    local fj rest; _judge_json_str_v fj "$f"
+    local fj rest; zb_json_str_v fj "$f"
     # judge_keep_baseline_v writes `"<path>":"<id>"`, with no space.
     rest="${b#*"$fj":\"}"
     if [[ "$rest" != "$b" ]]; then _jkbv="${rest%%\"*}"; [[ "$_jkbv" == deleted ]] && _jkbv=absent; return 0; fi

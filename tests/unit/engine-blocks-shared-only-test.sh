@@ -185,9 +185,9 @@ fi
 assert_contains "[B5] the output contract still asks for one JSON object" "$_oc" "EXACTLY ONE JSON object"
 
 print_test_section "B6: the repo's own files"
-assert_contains "[B6] rules.md holds facts about this repo" "$(cat "$REPO_ROOT/.zbuild/prompts/rules.md")" \
+assert_contains "[B6] rules.md holds facts about this repo" "$(cat "$REPO_ROOT/.zbuild/rules.md")" \
     "Facts about this repo"
-if grep -qF "Facts reviewers need" "$REPO_ROOT/.zbuild/prompts/rules.md"; then
+if grep -qF "Facts reviewers need" "$REPO_ROOT/.zbuild/rules.md"; then
     assert_fail "[B6] no 'Facts reviewers need' heading" "found"
 else
     assert_pass "[B6] no 'Facts reviewers need' heading"

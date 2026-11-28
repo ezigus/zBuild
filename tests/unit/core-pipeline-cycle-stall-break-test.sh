@@ -110,7 +110,7 @@ assert_eq "[SPEC-3b] the passing test member is dispatched exactly ONCE across 3
 assert_eq "[SPEC-3c] iterations 2–3 reuse the test member's verdict (2 reuse events)" \
     "2" "$(grep '"cycle.iteration.reused"' "$ZBUILD_EVENTS_JSONL" | grep -c '"member":"test"' || true)"
 assert_contains "[SPEC-3c] a reuse event names the iteration it reuses" \
-    "$(grep '"cycle.iteration.reused"' "$ZBUILD_EVENTS_JSONL" | head -1)" '"from_iter":"1"'
+    "$(grep '"cycle.iteration.reused"' "$ZBUILD_EVENTS_JSONL" | sed -n 1p)" '"from_iter":"1"'
 _n_ga="$(grep -c '"cycle.member.dispatch.complete".*"member":"issue-acceptance"' "$ZBUILD_EVENTS_JSONL" || true)"
 # #2170: a failing member on an unchanged tree is reused like a passing one
 # (was: re-dispatched every iteration — the 25-minute suite ran five times to

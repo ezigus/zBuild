@@ -63,7 +63,7 @@ ln -s /etc/passwd "$PROMPTS/intake-overrides.md"
 out="$(load_prompt_override intake)"; rc=$?
 assert_eq "L6: rc 0 on symlink-out" "0" "$rc"
 if grep -q 'root:' <<< "$out"; then
-    assert_fail "L6: symlink-out must NOT leak target content" "got: $(printf '%s' "$out" | head -1)"
+    assert_fail "L6: symlink-out must NOT leak target content" "got: $(printf '%s' "$out" | sed -n 1p)"
 else
     assert_pass "L6: symlink-out rejected, no leak"
 fi

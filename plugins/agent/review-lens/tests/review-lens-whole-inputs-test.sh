@@ -92,7 +92,7 @@ export ZBUILD_STAGE_SCRATCH="$TEST_TEMP_DIR/scratch"; mkdir -p "$ZBUILD_STAGE_SC
 D="$TEST_TEMP_DIR/w5"
 _setup "$D" "$(_filler 40000 'BIGWORD')"$'\e[31mRED-MARK\e[0m'" see .env.production BIG-END-MARKER" 20 20 300 "$(_filler 1500 'PAD')"
 _run "$D"
-_ctx() { local f; f="$(/usr/bin/grep -oE "$ZBUILD_STAGE_SCRATCH/lens-correctness-context-$1\.md" <<< "$P" | head -n 1)"; printf '%s' "${f:-<not named>}"; }
+_ctx() { local f; f="$(/usr/bin/grep -oE "$ZBUILD_STAGE_SCRATCH/lens-correctness-context-$1\.md" <<< "$P" | sed -n 1p)"; printf '%s' "${f:-<not named>}"; }
 F_ISSUE="$(_ctx issue)" F_REQS="$(_ctx requirements)" F_DEC="$(_ctx decisions)" F_STEPS="$(_ctx not-needed)"
 assert_eq "[W5] the prompt names a file of the issue, in the stage's scratch" "yes" "$([[ -f "$F_ISSUE" ]] && echo yes || echo "no: $F_ISSUE")"
 _lacks "[W5] ...and holds no piece of it" "$P" "BIGWORD sentence 0 "

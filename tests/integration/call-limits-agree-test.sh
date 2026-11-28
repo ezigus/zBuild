@@ -103,7 +103,10 @@ _role_dir() {  # <role> → the shipped plugin that provides it, or nothing
 declare -A WAS=([test-author]="900 0" [issue-acceptance]="600 0" [intake]="120 1" [design]="1200 0" [build]="900 0" [review_lenses]="900 0" [issue-check]="600 0")
 
 _n=0
-while IFS=$'\t' read -r stage role rt rmt elems; do
+# #2640: NUL-separated: a stage with no timeout_s but a max_turns must not
+# read its max_turns as its timeout.
+while IFS= read -r -d '' stage && IFS= read -r -d '' role && IFS= read -r -d '' rt \
+      && IFS= read -r -d '' rmt && IFS= read -r -d '' elems; do
     dir="$(_role_dir "$role")"
     [[ -n "$dir" ]] && grep -q '^calls:' "$dir/manifest.yaml" || continue
     msecs="$(yq -r '.config.router.timeout_s // ""' "$dir/manifest.yaml")"; mturns="$(yq -r '.config.router.max_turns // ""' "$dir/manifest.yaml")"
@@ -123,7 +126,7 @@ while IFS=$'\t' read -r stage role rt rmt elems; do
         cli_t="$(awk 'p { print; exit } $0 == "--max-turns" { p = 1 }' <<< "$argv")"
         cli_s="$(jq -r 'select(.type == "model.route" or .event == "model.route") | (.timeout_s // .data.timeout_s // empty)' "$st/events/events.jsonl" 2>/dev/null | tail -n 1)"
         assert_eq "[CL1] $name: the CLI's limits are the configured ones" "$want_s ${want_t}" "$cli_s ${cli_t:-0}"
-        budget="$(tr -s '[:space:]' ' ' < "$LIMITS_OUT.prompt" | grep -o 'each model call has [^.]*\.' | head -n 1)"
+        budget="$(tr -s '[:space:]' ' ' < "$LIMITS_OUT.prompt" | grep -o 'each model call has [^.]*\.' | sed -n 1p)"
         if [[ "$want_t" -gt 0 ]]; then said="each model call has $want_s seconds and $want_t turns."
         else said="each model call has $want_s seconds, with no limit on turns."; fi
         assert_eq "[CL2] $name: the prompt's budget line says them" "$said" "$budget"
@@ -138,10 +141,9 @@ while IFS=$'\t' read -r stage role rt rmt elems; do
         else wsaid="It was given $want_s seconds, with no limit on turns."; fi
         assert_contains "[CL3] $name: the time-up warning says them" "$warn" "$wsaid"
     done
-done < <(yq -o=json "$TPL" | jq -r 'to_entries[] | select(.value | type == "object" and has("roles"))
-    | [.key, .value.roles[0], (.value.router.timeout_s // "" | tostring), (.value.router.max_turns // "" | tostring),
-       ([.value.elements[]?.id] | join(" "))] | @tsv')
-assert_eq "[CL1] fixture: every model-calling stage and lens was dispatched (6 stages, 6 lenses; #2614 adds issue-check)" "12" "$_n"
+done < <(yq -o=json "$TPL" | jq -j 'to_entries[] | select(.value | type == "object" and has("roles"))
+    | "\(.key)\u0000\(.value.roles[0])\u0000\(.value.router.timeout_s // "")\u0000\(.value.router.max_turns // "")\u0000\([.value.elements[]?.id] | join(" "))\u0000"')
+assert_eq "[CL1] fixture: every model-calling stage and lens was dispatched (6 stages, 7 lenses; #2614 adds issue-check, #2630 the tests lens)" "13" "$_n"
 
 print_test_section "CL5: a stage's own turn limit is the record's"
 # shellcheck disable=SC2016  # the probe's code, expanded when it runs
@@ -176,7 +178,7 @@ _loop_run "--max-turns-per-call 7" a
 argv="$(cat "$LIMITS_OUT.argv" 2>/dev/null)"
 assert_eq "[CL5] the loop's CLI gets the stage's 7 turns" "7" "$(awk 'p { print; exit } $0 == "--max-turns" { p = 1 }' <<< "$argv")"
 assert_eq "[CL5] ...the prompt's budget line says them" "each model call has 900 seconds and 7 turns." \
-    "$(tr -s '[:space:]' ' ' < "$LIMITS_OUT.prompt" 2>/dev/null | grep -o 'each model call has [^.]*\.' | head -n 1)"
+    "$(tr -s '[:space:]' ' ' < "$LIMITS_OUT.prompt" 2>/dev/null | grep -o 'each model call has [^.]*\.' | sed -n 1p)"
 hook="$(cat "$LIMITS_OUT.hook" 2>/dev/null)"; eval "set -- $hook"; args=("$@"); n=${#args[@]}
 warn=""; if (( n >= 4 )); then args[n-2]=1; warn="$(printf '{"tool_name":"Bash","tool_input":{"command":"ls"}}' | "${args[@]}" | jq -r '.hookSpecificOutput.permissionDecisionReason // ""')"; fi
 assert_contains "[CL5] ...and so does the time-up warning" "$warn" "It was given 900 seconds and 7 turns."

@@ -334,7 +334,7 @@ _ZB_TEST_ISOLATED_VARS=(
     ZBUILD_CYCLE_FEEDBACK_DIR ZBUILD_NEGCTL_ARTIFACT_DIR
     ZBUILD_RUN_START_MARKER ZBUILD_EVENTS_DIR ZBUILD_EVENTS_JSONL
     ZBUILD_MEMORY_DB ZBUILD_CACHE_DIR ZBUILD_COST_LEDGER ZBUILD_ROUTER_TOOL_USES_FILE ZBUILD_ROUTER_OPENED_FILE ZBUILD_ROUTE_CALL ZBUILD_ROUTE_BASE_CODE
-    ZBUILD_WIKI_ROOT ZBUILD_INSTALL_DIR ZBUILD_BIN_DIR
+    ZBUILD_WIKI_ROOT ZBUILD_INSTALL_DIR ZBUILD_BIN_DIR ZBUILD_RSC_REPO_ROOT
 )
 # Code, config and the test runner's own channels: read, or deliberately shared
 # by run-tests.sh across files (the timing file).
@@ -1153,6 +1153,31 @@ zb_test_kill_tree() {
         kill -0 "$1" 2>/dev/null || (( ${#t[@]} > 1 )) || break
     done
     return 0
+}
+
+# zb_test_clip <n> <text> — the first <n> characters of <text>, for a failure
+# message. `… | head -c <n>` exits before its writer finishes, and the writer
+# takes SIGPIPE (#2639: no `| head` in any .sh file).
+zb_test_clip() { printf '%s' "${2:0:$1}"; }
+
+# wait_for_exit <pid> [max_iters=600] [interval=0.05] — waits for a process a
+# test started (and usually signalled), with a limit (#2639): its exit status
+# once it is gone; 124 once the limit passes, when it and everything under it
+# are killed. A bare `wait` on a process that ignores its signal hangs the test
+# until CI kills the job, with nothing saying why. Call it from the shell that
+# started the process: `wait` knows only its own children (127 for any other).
+wait_for_exit() {
+    local pid="$1" max_iters="${2:-600}" interval="${3:-0.05}" i rc=0
+    for (( i = 0; i < max_iters; i++ )); do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" 2>/dev/null || rc=$?
+            return "$rc"
+        fi
+        sleep "$interval"
+    done
+    zb_test_kill_tree "$pid"
+    wait "$pid" 2>/dev/null || true
+    return 124
 }
 
 # Bounded poll for a grep pattern to appear in an events/state file (#619's

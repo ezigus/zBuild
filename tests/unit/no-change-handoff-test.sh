@@ -25,9 +25,19 @@
 #             runs again
 # H7 [change] test-author declares a handoff output of topic design-findings
 #             (#2569), and design is shown what test-author hands on there
-# H8 [change] the shared answer rules say done is only for what this call
-#             changed; already right is wrong; someone else's is not mine
+# H8 [change] the shared answer rules say done is for what the stage changed
+#             in this round, in this try or an earlier one (#2627: on #1722 run
+#             45872552515 build's second try answered nine findings its first
+#             try had fixed "wrong — not reproduced"); already right is wrong;
+#             someone else's is not mine
+# H12 [change] (#2627) a try that changed nothing after an earlier try of the
+#             stage that did: its `done` stands — no finding back — and its
+#             `wrong` is still handed on
 # H9 [change] stage.findings.handed_on is announced, and is a known event
+# H13 [change] (#2627, ADR-068 §8; review) a stage run again after a try that
+#             timed out, through the engine's own retry, sees that try's
+#             outcome in its own section's header; its first try sees the
+#             verdict the engine recorded
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -106,7 +116,13 @@ answerer_run() {
     local -a w=(${OUTCOMES:-pass}); local i=$(( n - 1 ))
     (( i >= ${#w[@]} )) && i=$(( ${#w[@]} - 1 ))
     if [[ "${SAME:-0}" == "1" ]]; then printf 'same' > "$art/answerer-work.txt"
+    elif [[ "${FIRST:-0}" == "1" ]]; then (( n == 1 )) && printf 'run 1' > "$art/answerer-work.txt"
     else printf 'run %s' "$n" > "$art/answerer-work.txt"; fi
+    # H13: the Previous work this try is shown, as its own header reads it.
+    if [[ -n "${PW_OUT:-}" ]]; then
+        _TPL_STAGES=("$1"); _stage_block_previous_work "$1" "$(dirname "$2")" "$PW_ROOT" \
+            "$(_inputs_resolve_stage "$1" "$PW_ROOT" "$(dirname "$2")")" "$(dirname "$2")" > "$PW_OUT.$n" 2>/dev/null
+    fi
     source "@RESULT_LIB@"
     stage_result_write "$art/answerer-result.json" "${w[$i]}" "1 finding open" \
         "$(jq -nc --arg a "${ANSWER:-}" '{findings: [{n: 1, text: "SPEC-3: the assertion does not test its Given"}]}
@@ -168,6 +184,13 @@ assert_contains "[H5] ...and its last try, changing nothing, hands on" "$(_hande
 _same; OUTCOMES="unusable" ANSWER="$WRONG" _dispatch ans
 assert_eq "[H6] a try that changed something hands nothing on" "absent" "$([[ -e "$A/answerer-design-result.json" ]] && echo present || echo absent)"
 assert_eq "[H6] ...and its round goes on" "false" "$(_ends)"
+# ── H12 ──────────────────────────────────────────────────────────────────────
+_same; FIRST=1 OUTCOMES="unusable" ANSWER="$DONE" _dispatch ans
+assert_eq "[H12] try 1 changed its work, try 2 nothing: two tries" "2" "$(_runs ans)"
+assert_eq "[H12] its done stands: its result holds only its own finding, none sent back" "1" \
+    "$(jq -r '[.data.findings[]?.n] | map(tostring) | join(" ")' "$A/answerer-result.json" 2>/dev/null)"
+_same; FIRST=1 OUTCOMES="unusable" ANSWER="$WRONG" _dispatch ans
+assert_contains "[H12] ...and its wrong is still handed on" "$(_handed)" "design must rewrite SPEC-3"
 # ── H10 / H11 (review on #2565) ──────────────────────────────────────────────
 _same; SAME=1 OUTCOMES="misconfigured" ANSWER="$WRONG" _dispatch ans
 assert_eq "[H10] a halting outcome hands nothing on" "absent" "$([[ -e "$A/answerer-design-result.json" ]] && echo present || echo absent)"
@@ -218,9 +241,29 @@ assert_contains "[H7] design is shown what test-author handed on" "$_pw" "design
 
 # ── H8 ───────────────────────────────────────────────────────────────────────
 _forms="$(stage_answer_forms)"
-assert_contains "[H8] done is only for what this call changed" "$_forms" "Answer done only for what you changed in this call."
+assert_contains "[H8] done is for what the stage changed in this round, in any try" "$_forms" "Answer done for what this stage changed for it in this round, in this try or an earlier one"
+assert_contains "[H8] ...and an earlier try's change is said to be one" "$_forms" "when an earlier try made the change, say so"
+if grep -qF "only for what you changed in this call" <<< "$_forms"; then assert_fail "[H8] ...not only this call" "$_forms"
+else assert_pass "[H8] ...not only this call"; fi
 assert_contains "[H8] already right is wrong, and why" "$_forms" "If the finding needs no change because your output is already right, answer wrong, and say why."
 assert_contains "[H8] someone else's is not mine, and who" "$_forms" "If someone else must change something, answer not mine, and say who."
+
+# ── H13 (review on #2627, ADR-068 §8) ─────────────────────────────────────────
+print_test_section "H13: a try after one that timed out sees that try's outcome as its own"
+# shellcheck source=../../scripts/lib/stage-prompt.sh
+source "$REPO_ROOT/scripts/lib/stage-prompt.sh" 2>/dev/null || true
+# shellcheck source=../../core/pipeline/input-resolve.sh
+source "$REPO_ROOT/core/pipeline/input-resolve.sh" >/dev/null 2>&1 || true
+# shellcheck source=../../core/pipeline/state_helpers.sh
+source "$REPO_ROOT/core/pipeline/state_helpers.sh"
+_same
+# The engine's record from the stage's last finish: it passed.
+_update_stage_status "$S/pipeline-state.json" ans complete >/dev/null 2>&1
+_zbuild_state_set_stage_verdict "$S/pipeline-state.json" ans pass >/dev/null 2>&1
+PW_OUT="$TEST_TEMP_DIR/pw" PW_ROOT="$TEST_TEMP_DIR/plugins" OUTCOMES="timed_out pass" ANSWER="" _dispatch ans
+assert_eq "[H13] try 1 timed out and was run again" "2" "$(_runs ans)"
+assert_contains "[H13] try 2's own header gives try 1's outcome" "$(cat "$TEST_TEMP_DIR/pw.2" 2>/dev/null)" "(verdict: timed_out) — your own"
+assert_contains "[H13] try 1's gives the verdict the engine recorded" "$(cat "$TEST_TEMP_DIR/pw.1" 2>/dev/null)" "(verdict: pass) — your own"
 
 cleanup_test_env
 print_test_results

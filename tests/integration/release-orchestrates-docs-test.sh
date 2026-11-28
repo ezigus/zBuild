@@ -174,8 +174,8 @@ else
 fi
 
 # SPEC-3: regen log line precedes wiki log line in CMD_LOG
-_regen_line="$(grep -n 'regen' "$CMD_LOG" 2>/dev/null | head -1 | cut -d: -f1 || true)"
-_wiki_line="$(grep -n 'wiki' "$CMD_LOG" 2>/dev/null | head -1 | cut -d: -f1 || true)"
+_regen_line="$(grep -n 'regen' "$CMD_LOG" 2>/dev/null | sed -n 1p | cut -d: -f1 || true)"
+_wiki_line="$(grep -n 'wiki' "$CMD_LOG" 2>/dev/null | sed -n 1p | cut -d: -f1 || true)"
 if [[ -n "$_regen_line" && -n "$_wiki_line" && "$_regen_line" -lt "$_wiki_line" ]]; then
     assert_pass "[SPEC-3] regen log precedes wiki log (lifecycle ordering)"
 else

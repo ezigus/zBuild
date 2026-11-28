@@ -211,7 +211,7 @@ _s6_ev="$(grep -c '"cycle.timeout_exhausted"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null
 assert_eq "[#2032/SPEC-6] cycle.timeout_exhausted emitted" \
     "1" "$_s6_ev"
 _s6_reason="$(jq -r 'select(.type == "cycle.timeout_exhausted") | .data.reason' \
-    "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1 || true)"
+    "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p || true)"
 assert_eq "[#2032/SPEC-6] cycle.timeout_exhausted reason=design_timeout_exhausted" \
     "design_timeout_exhausted" "${_s6_reason:-MISSING}"
 assert_eq "[#2032/SPEC-6] terminated_reason=design_timeout_exhausted" \

@@ -89,7 +89,7 @@ state:      { persisted: [...], reconstructed: [...] }
 ### The prompt contract (ADR-067 §8)
 
 Every stage receives three blocks from the engine at dispatch, in `$ZBUILD_STAGE_BLOCKS`: **From the
-repo** (the target repository's `.zbuild/vision.md`, its `.zbuild/prompts/rules.md` or zBuild's default
+repo** (the target repository's `.zbuild/vision.md`, its `.zbuild/rules.md` or zBuild's default
 rules, and its `.zbuild/prompts/<stage>-overrides.md` if present), **Previous work** (the latest output of
 every stage that has run, yours included, with what moved since) and **Rules for this stage** (your notes
 file, your per-call budget, and how every stage works). The engine needs nothing from your

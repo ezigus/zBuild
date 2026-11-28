@@ -20,6 +20,11 @@
 #   O7 [change] readers that open results directly see the outcome: open items
 #               and a member's terminal failure
 #   O8 [retired] contract 2 is gone (contract2-retired-test V2)
+#   O11 [change] (#2627, ADR-068 §8) a stage run again sees its own latest
+#               try's outcome in its own section's header, not the verdict the
+#               engine recorded when it last finished (#1722 run 45872552515:
+#               "build (verdict: pass) — your own" over a timed-out try);
+#               on its first try the recorded verdict stands
 #   O10 [change] (#2579, ADR-064) an open finding is named by its id — the one
 #               its writer gave it from finding-ids-<code>.json — and by its
 #               file and place only when no id was given
@@ -154,6 +159,30 @@ _pw="$( _TPL_STAGES=(oc); _stage_block_previous_work later "$W" "$TEST_TEMP_DIR/
         "$(_inputs_resolve_stage later "$TEST_TEMP_DIR/plugins" "$W")" "$W" 2>/dev/null )"
 assert_contains "[O9] the stage's outcome is shown" "$_pw" "(verdict: timed_out)"
 assert_contains "[O9] a timed-out attempt shows the last good output" "$_pw" "iter-0-attempt-1/oc-result.json"
+
+print_test_section "O11: a try run again sees its own latest outcome"
+# shellcheck source=../../core/pipeline/state_helpers.sh
+source "$REPO_ROOT/core/pipeline/state_helpers.sh"
+mkdir -p "$TEST_TEMP_DIR/plugins/tool/od"
+sed 's/oc/od/g' "$M" > "$TEST_TEMP_DIR/plugins/tool/od/manifest.yaml"
+W11="$TEST_TEMP_DIR/pw11"; mkdir -p "$W11/artifacts"
+printf '{"schema_version":1}\n' > "$W11/pipeline-state.json"
+# The engine's record, as its writers make it when each stage last finished:
+# both passed.
+for _s in od oc; do
+    _update_stage_status "$W11/pipeline-state.json" "$_s" complete >/dev/null 2>&1
+    _zbuild_state_set_stage_verdict "$W11/pipeline-state.json" "$_s" pass >/dev/null 2>&1
+done
+# Since then: oc's first try of this run ran out of time; od's result says fail
+# though the engine recorded it as a pass.
+stage_result_write "$W11/artifacts/oc-result.json" timed_out "ran out of time; changed 1 file so far" >/dev/null 2>&1
+stage_result_write "$W11/artifacts/od-result.json" fail "its own words" >/dev/null 2>&1
+_pw11() { ( export ZBUILD_STAGE_TRY="$1"; _TPL_STAGES=(od oc); _stage_block_previous_work oc "$W11" "$TEST_TEMP_DIR/plugins" \
+        "$(_inputs_resolve_stage oc "$TEST_TEMP_DIR/plugins" "$W11")" "$W11" 2>/dev/null ); }
+_pw11b="$(_pw11 2)"
+assert_contains "[O11] try 2: its own header gives the latest try's outcome" "$_pw11b" "### oc (verdict: timed_out) — your own"
+assert_contains "[O11] ...another stage's header keeps the verdict the engine recorded" "$_pw11b" "### od (verdict: pass)"
+assert_contains "[O11] try 1: its own header gives the verdict the engine recorded" "$(_pw11 1)" "### oc (verdict: pass) — your own"
 
 print_test_section "O10: an open finding is named by its id"
 # shellcheck source=../../scripts/lib/stage-summary.sh

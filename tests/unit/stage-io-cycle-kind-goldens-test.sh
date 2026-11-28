@@ -119,7 +119,7 @@ for spec in "${PAIRS[@]}"; do
         if [[ "$expected" == "$actual" ]]; then
             assert_pass "byte-exact: $(basename "$golden_file")"
         else
-            local_diff="$(diff <(printf '%s' "$expected") <(printf '%s' "$actual") | head -20 || true)"
+            local_diff="$(diff <(printf '%s' "$expected") <(printf '%s' "$actual") | sed -n 1,20p || true)"
             assert_fail "byte-exact: $(basename "$golden_file")" "diff (first 20 lines):
 $local_diff"
         fi

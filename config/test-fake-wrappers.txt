@@ -1,0 +1,19 @@
+# Our innermost wrappers around outside services (ADR-012, amended by #2630).
+# A test may replace one of these with a fake: it is where the outside service
+# meets our code, below everything of ours that must run — redaction included
+# (ADR-043). Any other function our code defines is never faked in a test
+# (scripts/lib/lint-test-determinism.sh, kind own-code). Faking the model call
+# above redaction (route_to_model and its kin) is debt: those fakes are in the
+# baseline, and a new test fakes the claude binary (install_envelope_mock_claude).
+# The model, as the router calls it (core/router/route.sh).
+_route_call_claude
+# GitHub, read by a stage's tools (core/router/call-tools.sh, core/router/tool-hook.sh).
+_route_call_gh_read
+_gh_get_form
+# GitHub, as each part of zBuild reaches it. (A function that holds our own
+# logic around the call — the health check, reading the claim holder — is not
+# one: fake curl or _ccgl_gh under it.)
+run_gh
+rsc_gh
+_hydrate_fetch
+_ccgl_gh

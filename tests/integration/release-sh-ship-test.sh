@@ -224,8 +224,8 @@ else
 fi
 
 # SPEC-3: branch-push appears AFTER checkout-b in ORDER_LOG
-_co_line="$(grep -n 'checkout-b' "$ORDER_LOG" 2>/dev/null | head -1 | cut -d: -f1 || true)"
-_bp_line="$(grep -n 'branch-push' "$ORDER_LOG" 2>/dev/null | head -1 | cut -d: -f1 || true)"
+_co_line="$(grep -n 'checkout-b' "$ORDER_LOG" 2>/dev/null | sed -n 1p | cut -d: -f1 || true)"
+_bp_line="$(grep -n 'branch-push' "$ORDER_LOG" 2>/dev/null | sed -n 1p | cut -d: -f1 || true)"
 if [[ -n "$_co_line" && -n "$_bp_line" && "$_co_line" -lt "$_bp_line" ]]; then
     assert_pass "[SPEC-3] ship pushes release branch after creating it (checkout-b before branch-push)"
 else
@@ -234,7 +234,7 @@ else
 fi
 
 # SPEC-4: pr-create appears AFTER branch-push in ORDER_LOG
-_pc_line="$(grep -n 'pr-create' "$ORDER_LOG" 2>/dev/null | head -1 | cut -d: -f1 || true)"
+_pc_line="$(grep -n 'pr-create' "$ORDER_LOG" 2>/dev/null | sed -n 1p | cut -d: -f1 || true)"
 if [[ -n "$_bp_line" && -n "$_pc_line" && "$_bp_line" -lt "$_pc_line" ]]; then
     assert_pass "[SPEC-4] ship opens PR after pushing branch (branch-push before pr-create)"
 else
@@ -243,7 +243,7 @@ else
 fi
 
 # SPEC-5: pr-checks appears AFTER pr-create in ORDER_LOG
-_pch_line="$(grep -n 'pr-checks' "$ORDER_LOG" 2>/dev/null | head -1 | cut -d: -f1 || true)"
+_pch_line="$(grep -n 'pr-checks' "$ORDER_LOG" 2>/dev/null | sed -n 1p | cut -d: -f1 || true)"
 if [[ -n "$_pc_line" && -n "$_pch_line" && "$_pc_line" -lt "$_pch_line" ]]; then
     assert_pass "[SPEC-5] ship waits for checks after opening PR (pr-create before pr-checks)"
 else
@@ -252,7 +252,7 @@ else
 fi
 
 # SPEC-6: pr-merge appears AFTER pr-checks in ORDER_LOG
-_pm_line="$(grep -n 'pr-merge' "$ORDER_LOG" 2>/dev/null | head -1 | cut -d: -f1 || true)"
+_pm_line="$(grep -n 'pr-merge' "$ORDER_LOG" 2>/dev/null | sed -n 1p | cut -d: -f1 || true)"
 if [[ -n "$_pch_line" && -n "$_pm_line" && "$_pch_line" -lt "$_pm_line" ]]; then
     assert_pass "[SPEC-6] ship merges after checks pass (pr-checks before pr-merge)"
 else
@@ -261,7 +261,7 @@ else
 fi
 
 # SPEC-7: tag-a appears AFTER pr-merge in ORDER_LOG (publish runs post-merge)
-_ta_line="$(grep -n 'tag-a' "$ORDER_LOG" 2>/dev/null | head -1 | cut -d: -f1 || true)"
+_ta_line="$(grep -n 'tag-a' "$ORDER_LOG" 2>/dev/null | sed -n 1p | cut -d: -f1 || true)"
 if [[ -n "$_pm_line" && -n "$_ta_line" && "$_pm_line" -lt "$_ta_line" ]]; then
     assert_pass "[SPEC-7] ship publishes after merge (pr-merge before tag-a)"
 else
@@ -278,8 +278,8 @@ else
 fi
 
 # SPEC-9: version pinned — branch version matches tag version (no drift)
-_branch_ver="$(grep 'checkout -b' "$GIT_CMD_LOG" 2>/dev/null | head -1 | sed 's|.*release/||' || true)"
-_tag_ver="$(grep 'tag -a' "$GIT_TAG_LOG" 2>/dev/null | head -1 | awk '{print $4}' | sed 's/^v//' || true)"
+_branch_ver="$(grep 'checkout -b' "$GIT_CMD_LOG" 2>/dev/null | sed -n 1p | sed 's|.*release/||' || true)"
+_tag_ver="$(grep 'tag -a' "$GIT_TAG_LOG" 2>/dev/null | sed -n 1p | awk '{print $4}' | sed 's/^v//' || true)"
 if [[ -n "$_branch_ver" && -n "$_tag_ver" && "$_branch_ver" == "$_tag_ver" ]]; then
     assert_pass "[SPEC-9] version pinned: prepare branch version (${_branch_ver}) equals publish tag version (${_tag_ver})"
 else

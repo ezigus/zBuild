@@ -119,6 +119,10 @@ zb_unclear_list_v _q7 "$B/artifacts/design.md"
 assert_eq "[Q7] only the question with an assumption is listed" "1" "${#_q7[@]}"
 assert_eq "[Q7] ...its assumption without the word Assumed:" $'R-6\t\tis it whole?\tit is\told' "${_q7[0]:-}"
 
+# _shown <markdown> — what GitHub shows: CommonMark's backslash escapes read
+# as the character, the zero-width spaces that stop a mention or a link gone.
+_shown() { local s="${1//$'\xe2\x80\x8b'/}"; perl -pe 's/\\([!-\/:-@\[-`{-~])/$1/g' <<< "$s"; }
+
 print_test_section "Q2: the live run-status comment"
 # shellcheck source=../../scripts/lib/run-status-comment.sh
 source "$REPO_ROOT/scripts/lib/run-status-comment.sh"
@@ -126,8 +130,9 @@ EV="$S/events.jsonl"
 jq -cn '{ts:"2026-11-09T10:00:00.000Z", run_id:"r-2508", issue:2508, type:"pipeline.start", data:{run_id:"r-2508", issue:"2508"}, schema_version:1}' > "$EV"
 _b="$(ZBUILD_STATUS_NOW=2026-11-09T10:30:00Z rsc_render_body "$EV" "$S")"
 assert_contains "[Q2] a questions section while running" "$_b" "Questions design could not settle"
-assert_contains "[Q2] each question with what it assumed" "$_b" "- R-2: Does --from-stage need --resume? — assumed: it works on its own"
+assert_contains "[Q2] each question with what it assumed" "$(_shown "$_b")" "- R-2: Does --from-stage need --resume? — assumed: it works on its own"
 assert_not_contains "[Q2] text from the model is escaped" "$_b" "<b>"
+assert_contains "[Q2] ...shown as written: escaped for markdown" "$_b" "R\\-2"
 
 print_test_section "Q3: the report of a failed run"
 _e="$(bash -c "
@@ -142,9 +147,11 @@ _e="$(bash -c "
     _render_pipeline_end failed
 " 2>&1)"
 assert_contains "[Q3] the end-of-run banner shows each question" "$_e" "- R-2: Does --from-stage need --resume? — assumed: it works on its own"
+assert_contains "[Q3] ...as written, not escaped for markdown (a terminal shows no markdown)" "$_e" "- R-4: Is the flag <b>documented</b>? — assumed: no page is needed"
 _o="$(open_items_outbound "$S")"
 _c="$(run_completion_body failure blocking_member_failure "" "https://x/run/1" "" "$_o" "")"
-assert_contains "[Q3] the completion comment shows each question" "$_c" "- R-4: Is the flag"
+assert_contains "[Q3] the completion comment shows each question" "$(_shown "$_c")" "- R-4: Is the flag"
+assert_contains "[Q3] ...escaped for GitHub" "$_c" "R\\-4"
 
 print_test_section "Q4: the PR description"
 # shellcheck source=../../plugins/tool/pr-open/plugin.sh
@@ -152,12 +159,14 @@ source "$REPO_ROOT/plugins/tool/pr-open/plugin.sh" >/dev/null 2>&1
 _qmd=""
 declare -F zb_unclear_markdown >/dev/null 2>&1 && _qmd="$(zb_unclear_markdown "$S/artifacts/design.md")"
 _pb="$(_pr_open_compose_body 2508 "" pass "src/x.sh" "" false "" "$_qmd")"
-assert_contains "[Q4] the PR description shows each question" "$_pb" "- R-2: Does --from-stage need --resume? — assumed: it works on its own"
+assert_contains "[Q4] the PR description shows each question" "$(_shown "$_pb")" "- R-2: Does --from-stage need --resume? — assumed: it works on its own"
+assert_contains "[Q4] ...escaped for GitHub" "$_pb" "R\\-2"
 # The design is found among the earlier outputs by what it contains (#2364).
 jq -n --arg d "$S/artifacts/design.md" '{inputs:{design:$d}}' > "$TEST_TEMP_DIR/inputs.json"
 _pq=""
 declare -F _pr_open_questions >/dev/null 2>&1 && _pq="$(ZBUILD_STAGE_INPUTS="$TEST_TEMP_DIR/inputs.json" _pr_open_questions)"
-assert_contains "[Q4] pr-open finds the design's questions" "$_pq" "- R-4: Is the flag"
+assert_contains "[Q4] pr-open finds the design's questions" "$(_shown "$_pq")" "- R-4: Is the flag"
+assert_contains "[Q4] ...escaped for GitHub, as pr-open fills the description" "$_pq" "R\\-4"
 
 print_test_section "Q8: every stage's questions"
 # shellcheck source=../../scripts/lib/stage-result.sh
@@ -169,24 +178,24 @@ stage_result_write "$S/artifacts/intake-result.json" pass "took in the issue" "$
 Q8MD='- RQCL-3: "the label is set early" — before the first stage, or before design — assumed: before the first stage'
 _b8="$(ZBUILD_STATUS_NOW=2026-11-09T10:30:00Z rsc_render_body "$EV" "$S")"
 assert_contains "[Q8] status comment: intake's questions, under its name" "$_b8" "**Questions intake could not settle**"
-assert_contains "[Q8] ...each with its quote, readings and assumption" "$_b8" "$Q8MD"
-assert_contains "[Q8] ...design's still shown" "$_b8" "- R-2: Does --from-stage need --resume? — assumed: it works on its own"
+assert_contains "[Q8] ...each with its quote, readings and assumption" "$(_shown "$_b8")" "$Q8MD"
+assert_contains "[Q8] ...design's still shown" "$(_shown "$_b8")" "- R-2: Does --from-stage need --resume? — assumed: it works on its own"
 _o8="$(open_items_outbound "$S")"
-assert_contains "[Q8] the failed run's report" "$_o8" "$Q8MD"
+assert_contains "[Q8] the failed run's report" "$(_shown "$_o8")" "$Q8MD"
 jq -n --arg d "$S/artifacts/design.md" --arg r "$S/artifacts/intake-result.json" '{inputs:{design:$d, intake_result:$r}}' > "$TEST_TEMP_DIR/inputs8.json"
 _pq8=""
 declare -F _pr_open_questions >/dev/null 2>&1 && _pq8="$(ZBUILD_STAGE_INPUTS="$TEST_TEMP_DIR/inputs8.json" _pr_open_questions)"
-assert_contains "[Q8] the PR description" "$_pq8" "$Q8MD"
-assert_contains "[Q8] ...and design's" "$_pq8" "- R-4: Is the flag"
+assert_contains "[Q8] the PR description" "$(_shown "$_pq8")" "$Q8MD"
+assert_contains "[Q8] ...and design's" "$(_shown "$_pq8")" "- R-4: Is the flag"
 
 print_test_section "Q9: this run's, with no program run"
 mkdir -p "$S/runtime"; touch "$S/runtime/run-start"
 touch -t 202001010000 "$S/artifacts/intake-result.json"
 _q9=""; open_items_questions_v _q9 "$S"
-assert_not_contains "[Q9] a result from before this run is not shown" "$_q9" "RQCL-3"
+assert_not_contains "[Q9] a result from before this run is not shown" "$(_shown "$_q9")" "RQCL-3"
 touch "$S/artifacts/intake-result.json"
 _q9=""; PATH=/nonexistent open_items_questions_v _q9 "$S"
-assert_contains "[Q9] read with no program run" "$_q9" "$Q8MD"
+assert_contains "[Q9] read with no program run" "$(_shown "$_q9")" "$Q8MD"
 rm -f "$S/runtime/run-start" "$S/artifacts/intake-result.json"
 
 print_test_section "Q5: no question, no section"

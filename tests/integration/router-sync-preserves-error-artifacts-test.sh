@@ -108,23 +108,23 @@ diag_count="$(jq -c 'select(.type=="router.error.diagnostic")' "$ZBUILD_EVENTS_J
 assert_eq "T2: router.error.diagnostic emitted" "1" "$diag_count"
 
 # T3: diagnostic event has parsed is_error=true from the stub's JSON.
-diag_is_error="$(jq -r 'select(.type=="router.error.diagnostic") | .data.is_error' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+diag_is_error="$(jq -r 'select(.type=="router.error.diagnostic") | .data.is_error' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 assert_eq "T3: diagnostic event is_error=true (parsed from JSON envelope)" "true" "$diag_is_error"
 
 # T4: diagnostic event has parsed error_text.
-diag_err="$(jq -r 'select(.type=="router.error.diagnostic") | .data.error_text' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+diag_err="$(jq -r 'select(.type=="router.error.diagnostic") | .data.error_text' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 assert_eq "T4: diagnostic event error_text=max_turns_reached" "max_turns_reached" "$diag_err"
 
 # T5: diagnostic event has parsed num_turns.
-diag_turns="$(jq -r 'select(.type=="router.error.diagnostic") | .data.num_turns' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+diag_turns="$(jq -r 'select(.type=="router.error.diagnostic") | .data.num_turns' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 assert_eq "T5: diagnostic event num_turns=13" "13" "$diag_turns"
 
 # T6: diagnostic event records the stage name from ZBUILD_CURRENT_STAGE.
-diag_stage="$(jq -r 'select(.type=="router.error.diagnostic") | .data.stage' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+diag_stage="$(jq -r 'select(.type=="router.error.diagnostic") | .data.stage' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 assert_eq "T6: diagnostic event stage=test_assessment" "test_assessment" "$diag_stage"
 
 # T7: preserved JSON envelope artifact exists at the path the event cites.
-diag_json_path="$(jq -r 'select(.type=="router.error.diagnostic") | .data.raw_json_path' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+diag_json_path="$(jq -r 'select(.type=="router.error.diagnostic") | .data.raw_json_path' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 if [[ -n "$diag_json_path" && "$diag_json_path" != "absent" && -f "$diag_json_path" ]]; then
     assert_pass "T7: raw-claude-output.json preserved at cited path"
     _err_json="$(jq -r '.error // empty' "$diag_json_path" 2>/dev/null || true)"
@@ -138,7 +138,7 @@ else
 fi
 
 # T9: preserved stderr artifact exists at the path the event cites.
-diag_stderr_path="$(jq -r 'select(.type=="router.error.diagnostic") | .data.raw_stderr_path' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+diag_stderr_path="$(jq -r 'select(.type=="router.error.diagnostic") | .data.raw_stderr_path' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
 if [[ -n "$diag_stderr_path" && "$diag_stderr_path" != "absent" && -f "$diag_stderr_path" ]]; then
     assert_pass "T9: raw-claude-stderr.txt preserved at cited path"
     if grep -q "rate limit nearing" "$diag_stderr_path"; then
@@ -157,7 +157,7 @@ fi
 # stderr above and grep there for an honest signal.
 if grep -q "unknown event type 'router.error'" "$DRIVER_STDERR" 2>/dev/null; then
     assert_fail "T11: router.error is registered in event-schema.json (no unknown-type warning)" \
-        "warn present in driver stderr: $(grep -o "unknown event type[^[:space:]]*" "$DRIVER_STDERR" | head -3)"
+        "warn present in driver stderr: $(grep -o "unknown event type[^[:space:]]*" "$DRIVER_STDERR" | sed -n 1,3p)"
 else
     assert_pass "T11: router.error is registered in event-schema.json (no unknown-type warning)"
 fi
@@ -173,8 +173,8 @@ else
 fi
 
 # T13: human line precedes the rc=1 diagnostic line in stderr
-human_ln="$(grep -n 'claude max_turns reached' "$DRIVER_STDERR" 2>/dev/null | head -1 | cut -d: -f1)"
-rc1_ln="$(grep -n 'rc=1\|route_rc=' "$DRIVER_STDERR" 2>/dev/null | head -1 | cut -d: -f1)"
+human_ln="$(grep -n 'claude max_turns reached' "$DRIVER_STDERR" 2>/dev/null | sed -n 1p | cut -d: -f1)"
+rc1_ln="$(grep -n 'rc=1\|route_rc=' "$DRIVER_STDERR" 2>/dev/null | sed -n 1p | cut -d: -f1)"
 if [[ -n "$human_ln" && -n "$rc1_ln" && "$human_ln" -le "$rc1_ln" ]]; then
     assert_pass "T13: human-readable line precedes rc=1 logging"
 else

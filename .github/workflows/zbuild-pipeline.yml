@@ -110,8 +110,10 @@ jobs:
           git config --global user.email "zbuild-pipeline[bot]@users.noreply.github.com"
 
       - name: Install Claude CLI
-        # Pinned for reproducible CI (CI-2 #1001); the router shells out to `claude`.
-        run: npm install -g @anthropic-ai/claude-code@2.1.183
+        # The latest (#2639): the CLI decides which model a family name means, so
+        # a fixed version fixed the model too (ADR-003). Each call's model.outcome
+        # event names the CLI version and the model that answered it.
+        run: npm install -g @anthropic-ai/claude-code
 
       - name: Install zbuild engine from main (ADR-023 / #1629)
         # The engine must be STABLE for the whole run and must NOT be the tree

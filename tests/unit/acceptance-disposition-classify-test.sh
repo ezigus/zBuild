@@ -104,7 +104,7 @@ assert_eq "[#1959] an unrecognised class → recoverable, not terminal" "recover
     "$(_ag_classify_disposition "brand_new_class:SPEC-9")"
 assert_event_emitted "[#1959] …and it is evented" "$ZBUILD_EVENTS_JSONL" "acceptance.gate.unknown_failure_class"
 assert_contains "[#1959] the event names the class" \
-    "$(grep 'unknown_failure_class' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)" '"class":"brand_new_class"'
+    "$(grep 'unknown_failure_class' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)" '"class":"brand_new_class"'
 assert_eq "[#1959] malformed_acceptance_block is still terminal by name" "terminal" \
     "$(_ag_classify_disposition "malformed_acceptance_block")"
 assert_eq "[#1959] no_testfile → recoverable, like untagged_spec" "recoverable" \

@@ -150,13 +150,13 @@ assert_eq "1 output banner" "1" "$out_count"
 
 # (2) Subprocess-boundary: the input banner emits BEFORE the claude MARK, and
 # the output banner AFTER (#491).
-in_line_1="$(printf '%s\n' "$banner" | grep -n 'seq=1 input ══' | head -1 | cut -d: -f1)"
-out_line_1="$(printf '%s\n' "$banner" | grep -n 'seq=1 output ' | head -1 | cut -d: -f1)"
+in_line_1="$(printf '%s\n' "$banner" | grep -n 'seq=1 input ══' | sed -n 1p | cut -d: -f1)"
+out_line_1="$(printf '%s\n' "$banner" | grep -n 'seq=1 output ' | sed -n 1p | cut -d: -f1)"
 if [[ -n "$in_line_1" && -n "$out_line_1" && "$in_line_1" -lt "$out_line_1" ]]; then
     assert_pass "input < output ordering on fd 3"
 else
     assert_fail "input < output ordering" \
-        "in=$in_line_1 out=$out_line_1; banner head: $(printf '%s' "$banner" | head -c 400)"
+        "in=$in_line_1 out=$out_line_1; banner head: ${banner:0:400}"
 fi
 
 # (3) Mock claude was invoked once.
@@ -174,7 +174,7 @@ if [[ -f "$art" ]]; then
         assert_pass "build-1.json .input contains full static prompt (persist-input regression guard)"
     else
         assert_fail "build-1.json .input contains full static prompt (persist-input regression guard)" \
-            "in_head=$(printf '%s' "$in_field" | head -c 160)"
+            "in_head=${in_field:0:160}"
     fi
 fi
 

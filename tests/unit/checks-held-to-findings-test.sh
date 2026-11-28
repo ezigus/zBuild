@@ -228,7 +228,7 @@ print_test_section "H6: issue-acceptance is held to its finding"
   jq -n --arg i "$_in/intake-result.json" --arg d "$_in/design.md" --arg p "$_in/diff.patch" --arg t "$_in/test-results.json" \
       '{inputs: {a: $i, b: $d, c: $p, d: $t}}' > "$_S/stage-inputs.json"
   export ZBUILD_STAGE_INPUTS="$_S/stage-inputs.json" ZBUILD_ARTIFACT_DIR="$_A" ZBUILD_REPO_ROOT="$_S"
-  _IA_ANSWER=$'MET: --from-stage starts the run at that stage\nUNASKED: it drops the rule that --from-stage needs --resume | WHY: no requirement asks to drop it | ACCEPTED IF: the change keeps the rule that --from-stage needs --resume | QUOTE: runner.sh | resume_required=0'
+  _IA_ANSWER=$'MET: --from-stage starts the run at that stage\nUNASKED: it drops the rule that --from-stage needs --resume | WHY: no requirement asks to drop it | ACCEPTED IF: the change without dropping the rule that --from-stage needs --resume | QUOTE: runner.sh | resume_required=0'
   : > "$_IA_CALLS"; issue_acceptance_run issue-acceptance "$_S/pipeline-state.json" >/dev/null 2>&1
   # #2574: named by its id.
   _fid="$(jq -r '.data.findings[0].id' "$_A/issue-acceptance-code-result.json")"
@@ -240,7 +240,8 @@ print_test_section "H6: issue-acceptance is held to its finding"
 _h6="$(cat "$TEST_TEMP_DIR/ia-prompt.txt" 2>/dev/null)"
 assert_contains "[H6] build's done answer has it judge again" "$(cat "$TEST_TEMP_DIR/h6.log")" "calls=1 outcome=pass"
 assert_contains "[H6] ...shown its earlier findings" "$_h6" "$HELD"
-assert_contains "[H6] ...its finding, with its ACCEPTED IF" "$_h6" "ACCEPTED IF: the change keeps the rule that --from-stage needs --resume"
+# ADR-075 §3 (amended 2026-11-27): an UNASKED finding carries its one outcome.
+assert_contains "[H6] ...its finding, with its ACCEPTED IF" "$_h6" "ACCEPTED IF: the change without it"
 assert_contains "[H6] ...and build's answer" "$_h6" "answered: done — the rule is back"
 
 # ── H7: build's step check ───────────────────────────────────────────────────

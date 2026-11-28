@@ -187,8 +187,8 @@ else
         "git-cmd log: $(cat "$GIT_CMD_LOG" 2>/dev/null || echo '<empty>')"
 fi
 # The commit MUST come after the branch checkout (branch, THEN commit).
-_co_line="$(grep -n 'checkout -b' "$GIT_CMD_LOG" 2>/dev/null | head -1 | cut -d: -f1 || true)"
-_ci_line="$(grep -n 'commit -m'   "$GIT_CMD_LOG" 2>/dev/null | head -1 | cut -d: -f1 || true)"
+_co_line="$(grep -n 'checkout -b' "$GIT_CMD_LOG" 2>/dev/null | sed -n 1p | cut -d: -f1 || true)"
+_ci_line="$(grep -n 'commit -m'   "$GIT_CMD_LOG" 2>/dev/null | sed -n 1p | cut -d: -f1 || true)"
 if [[ -n "$_co_line" && -n "$_ci_line" && "$_co_line" -lt "$_ci_line" ]]; then
     assert_pass "[SPEC-P2] prepare checks out the branch BEFORE committing"
 else
@@ -257,8 +257,8 @@ fi
 # ORDER_LOG records cross-binary order: the git-tag mock appends 'git-tag-push'
 # on push, the gh mock appends 'gh-release-create' on create. The push line MUST
 # precede the create line — proving push-before-publish, the #1490 fix.
-_push_line="$(grep -n 'git-tag-push' "$ORDER_LOG" 2>/dev/null | head -1 | cut -d: -f1 || true)"
-_create_line="$(grep -n 'gh-release-create' "$ORDER_LOG" 2>/dev/null | head -1 | cut -d: -f1 || true)"
+_push_line="$(grep -n 'git-tag-push' "$ORDER_LOG" 2>/dev/null | sed -n 1p | cut -d: -f1 || true)"
+_create_line="$(grep -n 'gh-release-create' "$ORDER_LOG" 2>/dev/null | sed -n 1p | cut -d: -f1 || true)"
 if [[ -n "$_push_line" && -n "$_create_line" && "$_push_line" -lt "$_create_line" ]]; then
     assert_pass "[SPEC-2b] tag push precedes gh release create (push-before-publish)"
 else

@@ -221,7 +221,7 @@ _label_for() {
 _prefix_env_for() {
     local stage="$1"
     grep "^stage=${stage} " "$LABEL_LOG" \
-        | head -1 \
+        | sed -n 1p \
         | sed -n 's/.*prefix_env=\(.*\)$/\1/p'
 }
 

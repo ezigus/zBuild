@@ -66,6 +66,15 @@ _rn_classify() {
     esac
 }
 
+# ─── _rn_row <num_var> <title_var> <labels_var> ─────────────────────────────
+# One row of _rn_fetch_issues / _rn_fetch_prs, read from stdin: each field ends
+# in a NUL (#2640: tab-separated, a backslash in a title came back doubled).
+# rc 1 at the end, where gh's closing newline is all that is left.
+_rn_row() {
+    local -n _rnr_n="$1" _rnr_t="$2" _rnr_l="$3"
+    IFS= read -r -d '' _rnr_n && IFS= read -r -d '' _rnr_t && IFS= read -r -d '' _rnr_l
+}
+
 # ─── _rn_fetch_issues <milestone> <since_iso> ───────────────────────────────
 # Emit TSV rows "number<TAB>title<TAB>labels_csv" for CLOSED issues. When a
 # milestone is given, scope to it. When <since_iso> is non-empty, ALSO drop
@@ -79,7 +88,7 @@ _rn_fetch_issues() {
     # gh's `--jq` runs jq internally and has no `--arg`, but exposes the process
     # env via jq's `$ENV`. Read the since-cutoff from ZBUILD_RELNOTES_SINCE so the
     # date is injection-safe. Empty cutoff (genesis) keeps every row.
-    local jq_row='($ENV.ZBUILD_RELNOTES_SINCE // "") as $since | .[] | select($since == "" or (.closedAt != null and .closedAt >= $since)) | [(.number|tostring), .title, ([.labels[].name] | join(","))] | @tsv'
+    local jq_row='($ENV.ZBUILD_RELNOTES_SINCE // "") as $since | [.[] | select($since == "" or (.closedAt != null and .closedAt >= $since)) | "\(.number)\u0000\(.title)\u0000\([.labels[].name] | join(","))\u0000"] | join("")'
     local args=(issue list --state closed --limit 500 --json "$json_fields" --jq "$jq_row")
     [[ -n "$milestone" ]] && args+=(--milestone "$milestone")
     ZBUILD_RELNOTES_SINCE="$since" gh "${args[@]}" 2>/dev/null || true
@@ -92,7 +101,7 @@ _rn_fetch_prs() {
     local since="$1"
     command -v gh >/dev/null 2>&1 || return 0
     local json_fields="number,title,labels,mergedAt"
-    local jq_row='($ENV.ZBUILD_RELNOTES_SINCE // "") as $since | .[] | select($since == "" or (.mergedAt != null and .mergedAt >= $since)) | [(.number|tostring), .title, ([.labels[].name] | join(","))] | @tsv'
+    local jq_row='($ENV.ZBUILD_RELNOTES_SINCE // "") as $since | [.[] | select($since == "" or (.mergedAt != null and .mergedAt >= $since)) | "\(.number)\u0000\(.title)\u0000\([.labels[].name] | join(","))\u0000"] | join("")'
     ZBUILD_RELNOTES_SINCE="$since" gh pr list --state merged --limit 500 \
         --json "$json_fields" --jq "$jq_row" \
         2>/dev/null || true
@@ -103,8 +112,10 @@ _rn_fetch_prs() {
 # Prints an integer (0 when none / gh unavailable).
 release_notes_issue_count() {
     local milestone="$1" since="$2" n
-    n="$(_rn_fetch_issues "$milestone" "$since" | grep -c . || true)"
-    printf '%s' "${n:-0}"
+    local _cn _ct _cl
+    n=0
+    while _rn_row _cn _ct _cl; do [[ -n "$_cn" ]] && n=$(( n + 1 )); done < <(_rn_fetch_issues "$milestone" "$since")
+    printf '%s' "$n"
 }
 
 # ─── release_notes_generate <version> <milestone> <since_iso> [date] ────────
@@ -119,11 +130,11 @@ release_notes_generate() {
     # Buffers are mutated in-place by _rn_append_row (same-shell function call).
     local feat="" fix="" docs="" adr="" safety="" other=""
     local num title labels
-    while IFS=$'\t' read -r num title labels; do
+    while _rn_row num title labels; do
         [[ -z "$num" ]] && continue
         _rn_append_row "$num" "$title" "$labels" "$slug" "issues"
     done < <(_rn_fetch_issues "$milestone" "$since")
-    while IFS=$'\t' read -r num title labels; do
+    while _rn_row num title labels; do
         [[ -z "$num" ]] && continue
         _rn_append_row "$num" "$title" "$labels" "$slug" "pull"
     done < <(_rn_fetch_prs "$since")

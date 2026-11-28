@@ -175,7 +175,7 @@ _dispatch_consumer() {
     return $rc
 }
 
-_seen() { grep "^$1=" "$TEST_TEMP_DIR/irc-seen.txt" 2>/dev/null | head -1 | cut -d= -f2-; }
+_seen() { grep "^$1=" "$TEST_TEMP_DIR/irc-seen.txt" 2>/dev/null | sed -n 1p | cut -d= -f2-; }
 
 # ─── SPEC-1: the plugin finds a path it was never told ──────────────────────
 print_test_section "1. a plugin reads a declared input without knowing where it lives"

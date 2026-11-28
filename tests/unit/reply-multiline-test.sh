@@ -56,7 +56,7 @@ assert_contains "[J3] ...and an item's continued line joins it" "$_j" "MISSING: 
 # #2567: a fence line is a line of its own, and the lines inside it still join.
 zb_reply_join_v _j $'UNCLEAR: R-1 | q? |\nassumed it\n```acceptance\nX-1[code]: a\n  Then: b\n```\nafter' 2>/dev/null
 assert_eq "[J4] a fence line stays its own line" "2" "$(/usr/bin/grep -cx '```acceptance\|```' <<< "$_j")"
-assert_eq "[J4] ...the line before it is not glued to it" "UNCLEAR: R-1 | q? | assumed it" "$(/usr/bin/grep -x -B1 '```acceptance' <<< "$_j" | head -n 1)"
+assert_eq "[J4] ...the line before it is not glued to it" "UNCLEAR: R-1 | q? | assumed it" "$(/usr/bin/grep -x -B1 '```acceptance' <<< "$_j" | sed -n 1p)"
 assert_eq "[J4] ...and the lines inside it still join" "X-1[code]: a Then: b" "$(/usr/bin/grep -x -A1 '```acceptance' <<< "$_j" | tail -n 1)"
 assert_eq "[J4] ...and the line after the block starts afresh" "after" "$(tail -n 1 <<< "$_j")"
 # A model that fences its answer: the wrapped ANSWER is read whole (review on #2567).

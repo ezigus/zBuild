@@ -91,6 +91,9 @@ stage_retry_next() {
           && ! ( "$outcome" == unusable && "$tries" -eq 1 ) \
           && ! -f "$state_dir/runtime/write-boundary-reverted.$_wb_key" \
           && "${_ATTEMPT_LAST_PROGRESS:-}" == "false" ]]; then
+        # #2640: said, so the stage's row can say why it was not run again.
+        emit_event "stage.retry.refused" "stage=$stage" "outcome=$outcome" "try=$tries" \
+            "reason=the try changed nothing" 2>/dev/null || true
         return 1
     fi
     local wait_s; wait_s="$(disposition_wait_s "$outcome" 2>/dev/null || printf '0')"

@@ -87,7 +87,7 @@ _dispatch() {  # <plugin dir> <stage name>
     return $_rc
 }
 
-_seen() { grep "^$2=" "$TEST_TEMP_DIR/$1-seen.txt" 2>/dev/null | head -1 | cut -d= -f2-; }
+_seen() { grep "^$2=" "$TEST_TEMP_DIR/$1-seen.txt" 2>/dev/null | sed -n 1p | cut -d= -f2-; }
 
 # ─── SPEC-1: a declared budget reaches the router inside the dispatch ────────
 print_test_section "[SPEC-1] the plugin's declared budget is what the router resolves"

@@ -19,7 +19,16 @@ _rl_reply_problem() {
     _rl_reply_lines_v _rp_json "$1"
     # A field line outside any finding (review on #2598) is no answer either.
     if [[ -n "$_rp_json" && "$_rp_json" != *'"score":null'* && "$_rp_json" != *'"stray":true'* ]]; then return 0; fi
+    # #2640: the reason says what is wrong — a field line outside any finding
+    # is named, not reported as a SCORE line the reply has.
+    local _rp_stray=""
+    [[ -n "$_rp_json" && "$_rp_json" != *'"score":null'* && "$_rp_json" =~ \"stray_line\":\"${ZB_JSON_STR_RE}\" ]] \
+        && zb_json_unescape_v _rp_stray "${BASH_REMATCH[1]}"
     _rp_json=""
+    if [[ -n "$_rp_stray" ]]; then
+        _rp_why="it is not in the asked form: a field line outside any FINDING or SUSPICION, \"${_rp_stray:0:120}\" — each finding starts with a FINDING line, its fields one per line under it, as the OUTPUT CONTRACT says"
+        return 0
+    fi
     _rp_why='it is not in the asked form: a line SCORE: <0-10>, then each finding as FINDING and its fields, one per line, as the OUTPUT CONTRACT says — no JSON'
 }
 

@@ -292,7 +292,7 @@ plugin_hook_call() {
     # it dispatches runs once; a program it starts, such as the test suite, does not.
     local _ZB_LC_RETRYING=1
     local -x ZBUILD_STAGE_TRY=1
-    local _ph_budget _ph_tries=0 _ph_rc
+    local _ph_budget _ph_tries=0 _ph_rc _ph_changed=0
     stage_retry_budget_v _ph_budget "$3"
     stage_handoff_clear "$1" "$4"
     while :; do
@@ -300,9 +300,12 @@ plugin_hook_call() {
         ZBUILD_STAGE_TRY=$(( _ph_tries + 1 ))
         # A try that ends before its outputs are archived leaves no record of
         # its own: an earlier try's (or stage's) must not stand for it.
-        _ATTEMPT_LAST_PROGRESS=""
+        _ATTEMPT_LAST_PROGRESS=""; _ATTEMPT_LAST_WORK_CHANGED=""
         _ph_rc=0; _plugin_hook_call_once "$@" || _ph_rc=$?
         _ph_tries=$(( _ph_tries + 1 ))
+        # #2627 (ADR-068 §6): the work any try of this run of the stage changed
+        # counts for its done answers.
+        [[ "${_ATTEMPT_LAST_WORK_CHANGED:-}" == true ]] && _ph_changed=1
         stage_retry_next "$1" "$3" "$4" "$_ph_rc" "$_ph_tries" "$_ph_budget" || break
     done
     # #2565 (ADR-054 §6a): a last try that changed nothing, its findings the
@@ -310,7 +313,7 @@ plugin_hook_call() {
     # A try whose repository writes the engine put back did change something.
     [[ "${_ATTEMPT_LAST_PROGRESS:-}" == false \
        && ! -f "${4%/*}/runtime/write-boundary-reverted.${3//[^A-Za-z0-9._-]/_}" ]] \
-        && stage_handoff_unchanged "$1" "$3" "$4"
+        && stage_handoff_unchanged "$1" "$3" "$4" "$_ph_changed"
     return "$_ph_rc"
 }
 

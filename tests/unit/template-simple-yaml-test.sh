@@ -172,7 +172,7 @@ assert_eq "[SPEC-3] review_lenses is a map group" "map" "${_TPL_STAGE_TYPE_revie
 assert_eq "[SPEC-3] review_lenses roles"     "review_lens" "${_TPL_MAP_ROLES_review_lenses:-}"
 assert_eq "[SPEC-3] review_lenses over dim"  "lenses"      "${_TPL_MAP_OVER_review_lenses:-}"
 assert_eq "[SPEC-3] review_lenses elements csv" \
-    "security,performance,red-team,correctness,scope,sre" \
+    "security,performance,red-team,correctness,tests,scope,sre" \
     "${_TPL_MAP_ELEMENTS_review_lenses:-}"
 assert_eq "[SPEC-3] review_lenses io_dests"     "file" "${_TPL_STAGE_IO_DESTS_review_lenses:-}"
 # 900 s a call, no turn cap, as build (#1801/#1944 lenses were cut off at 300 s).

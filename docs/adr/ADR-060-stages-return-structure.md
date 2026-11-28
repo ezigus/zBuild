@@ -95,7 +95,7 @@ Two helpers are added there:
 - `_llm_envelope_classify <json> [<gate>]` → `unparseable` | `schema` | `ok`
 - `_llm_envelope_parse_error <json>` → jq's own message, flattened and clamped to 300 chars
 
-`_llm_envelope_parse_error` captures in full and trims in bash rather than piping to `head`: a bare `| head` is banned in `scripts/`, `core/`, and `plugins/` as a SIGPIPE hazard (`tests/unit/sigpipe-antipattern-guard-test.sh`, #1886), and that guard caught the first draft of this function.
+`_llm_envelope_parse_error` captures in full and trims in bash rather than piping to `head`: a bare `| head` is banned in every `.sh` file under `scripts/`, `core/`, `plugins/` and `tests/` as a SIGPIPE hazard (ADR-067, amended 2026-11-27) (`tests/unit/sigpipe-antipattern-guard-test.sh`, #1886), and that guard caught the first draft of this function.
 
 `impact` parses through its own `_impact_recover_envelope_json` rather than the shared `_llm_envelope_parse`, and **that is deliberate, not duplication awaiting collapse.**
 

@@ -102,8 +102,8 @@ else
 fi
 
 # Ordering: DESIGN DECISIONS must appear BEFORE ACCEPTANCE TESTS.
-dd_line="$(printf '%s\n' "$prompt" | grep -n "## DESIGN DECISIONS" | head -1 | cut -d: -f1)"
-at_line="$(printf '%s\n' "$prompt" | grep -n "## ACCEPTANCE TESTS" | head -1 | cut -d: -f1)"
+dd_line="$(printf '%s\n' "$prompt" | grep -n "## DESIGN DECISIONS" | sed -n 1p | cut -d: -f1)"
+at_line="$(printf '%s\n' "$prompt" | grep -n "## ACCEPTANCE TESTS" | sed -n 1p | cut -d: -f1)"
 if [[ -n "$dd_line" && -n "$at_line" && "$dd_line" -lt "$at_line" ]]; then
     assert_pass "IT4: DESIGN DECISIONS ordered before ACCEPTANCE TESTS ($dd_line < $at_line)"
 else

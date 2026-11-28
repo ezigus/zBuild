@@ -91,7 +91,7 @@ print_test_section "K1-K3: design's coverage check"
     echo "K3b|$(_cov "$_ans")"
 ) > "$TEST_TEMP_DIR/k1.out" 2>/dev/null
 git -C "$XR" checkout -q -- scripts/cfg.sh
-_l() { grep "^$1|" "$TEST_TEMP_DIR/k1.out" | head -1 | cut -d'|' -f2-; }
+_l() { grep "^$1|" "$TEST_TEMP_DIR/k1.out" | sed -n 1p | cut -d'|' -f2-; }
 assert_eq "[K1] first time: judged, one finding" "1|1|" "$(_l K1a)"
 assert_eq "[K1] the same inputs again: no call, the same finding" "0|1|" "$(_l K1b)"
 assert_eq "[K1] the answers are kept in the artifacts folder" "1" "$(_l K1f)"
@@ -136,7 +136,7 @@ print_test_section "K9: what the fingerprint depends on (review on #2465)"
     _ev=""; _dcov_ev_items_v _ev $'- CNFG-1: scripts/cfg.sh:"x" — open scripts/cfg.sh' ""
     echo "K9d|$_ev"
 ) > "$TEST_TEMP_DIR/k9.out" 2>/dev/null
-_l() { grep "^$1|" "$TEST_TEMP_DIR/k9.out" | head -1 | cut -d'|' -f2-; }
+_l() { grep "^$1|" "$TEST_TEMP_DIR/k9.out" | sed -n 1p | cut -d'|' -f2-; }
 assert_eq "[K9] a searched directory: judged, then kept" "1|0" "$(_l K9a)"
 assert_eq "[K9] ...a commit that changes a file in it: judged again" "1" "$(_l K9b)"
 assert_eq "[K9] the fingerprint leaves no file behind" "fp|0" "$(_l K9c)"
@@ -168,7 +168,7 @@ print_test_section "K4-K5: test-author's check, per SPEC"
     echo "K5a|$(_j)|$(grep -c 'KEEP-1' "$_P.1" 2>/dev/null)|$([[ "$(cat "$_P.1" 2>/dev/null)" == *"re-enters a nested loop"* ]] && echo shown)"
     echo "K5b|$(_j)"
 ) > "$TEST_TEMP_DIR/k4.out" 2>/dev/null
-_l() { grep "^$1|" "$TEST_TEMP_DIR/k4.out" | head -1 | cut -d'|' -f2-; }
+_l() { grep "^$1|" "$TEST_TEMP_DIR/k4.out" | sed -n 1p | cut -d'|' -f2-; }
 assert_eq "[K4] first time: both judged, one finding" "1|1" "$(_l K4a)"
 assert_eq "[K4] unchanged: no call, the same finding" "0|1" "$(_l K4b)"
 assert_eq "[K4] one SPEC's test changed: that SPEC alone is asked" "1|1|0|asked" "$(_l K4c)"
@@ -220,7 +220,7 @@ print_test_section "K7: issue-acceptance"
     echo "K7c|$(_ia)|$([[ "$(cat "$_P.1" 2>/dev/null)" == *"main() reads dry_run"* ]] && echo shown)"
     echo "K7d|$(_ia)"
 ) > "$TEST_TEMP_DIR/k7.out" 2>/dev/null
-_l() { grep "^$1|" "$TEST_TEMP_DIR/k7.out" | head -1 | cut -d'|' -f2-; }
+_l() { grep "^$1|" "$TEST_TEMP_DIR/k7.out" | sed -n 1p | cut -d'|' -f2-; }
 assert_eq "[K7] first time: judged" "1|fail" "$(_l K7a)"
 assert_eq "[K7] unchanged: no call, the same outcome" "0|fail" "$(_l K7b)"
 assert_eq "[K7] build disputes its finding: judged again, the answer shown" "1|pass|shown" "$(_l K7c)"
@@ -258,7 +258,7 @@ print_test_section "K8: a review lens"
     _R='{"score":9,"findings":[]}'
     echo "K8c|$(_lens)|$([[ "$(cat "$_P.1" 2>/dev/null)" == *"exit code 2 is in the README"* ]] && echo shown)"
 ) > "$TEST_TEMP_DIR/k8.out" 2>/dev/null
-_l() { grep "^$1|" "$TEST_TEMP_DIR/k8.out" | head -1 | cut -d'|' -f2-; }
+_l() { grep "^$1|" "$TEST_TEMP_DIR/k8.out" | sed -n 1p | cut -d'|' -f2-; }
 assert_eq "[K8] first time: judged" "1|fail" "$(_l K8a)"
 assert_eq "[K8] unchanged: called again (#2584: a lens keeps no verdict), the same outcome" "1|fail" "$(_l K8b)"
 assert_eq "[K8] build disputes its finding: judged again, the answer shown" "1|pass|shown" "$(_l K8c)"

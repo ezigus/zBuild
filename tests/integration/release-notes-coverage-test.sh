@@ -190,6 +190,27 @@ assert_eq "T7: --dry-run with passing gate exits 0" "0" "$dry_rc"
 dry_after="$(shasum -a 256 "$sandbox_dry" | awk '{print $1}')"
 assert_eq "T7: --dry-run mutates nothing even though the gate ran" "$dry_before" "$dry_after"
 
+# ─── #2640: a title is read as written ──────────────────────────────────────
+# Read as tab-separated, a backslash in a title came back doubled.
+export MOCK_ISSUE_LIST_JSON="$TEST_TEMP_DIR/issues-2640.json"
+cat > "$MOCK_ISSUE_LIST_JSON" <<'ISSUES'
+[
+  {"number":301,"title":"fix C:\\dir path handling","labels":[{"name":"bug"}],"closedAt":"2026-07-05T10:00:00Z"},
+  {"number":302,"title":"add a flag","labels":[],"closedAt":"2026-07-06T10:00:00Z"}
+]
+ISSUES
+_n2640="$(release_notes_generate "1.2.3.5" "$MILESTONE" "")"
+assert_contains "[#2640/SPEC-4] a title with a backslash is shown as written" "$_n2640" 'fix C:\dir path handling'
+_dbl=no; [[ "$_n2640" == *'C:\\dir'* ]] && _dbl=yes
+assert_eq "[#2640/SPEC-4] ...the backslash not doubled" "no" "$_dbl"
+assert_contains "[#2640/SPEC-4] an issue with no labels is listed too" "$_n2640" "/issues/302)"
+assert_eq "[#2640/SPEC-4] ...and both are counted" "2" "$(release_notes_issue_count "$MILESTONE" "")"
+if release_notes_coverage_check "$MILESTONE" "" "$_n2640" >/dev/null 2>&1; then
+    assert_pass "[#2640/SPEC-4] the coverage check reads the same rows"
+else
+    assert_fail "[#2640/SPEC-4] the coverage check reads the same rows" "it found an issue missing"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

@@ -168,7 +168,7 @@ fail_rc=$?
 
 if _events_have "artifact.snapshot.failed"; then
     assert_pass "[SPEC-3] artifact.snapshot.failed emitted when the snapshot cannot run"
-    _reason="$(jq -r 'select(.type=="artifact.snapshot.failed") | .data.reason' "$EVENTS_JSONL" 2>/dev/null | head -1)"
+    _reason="$(jq -r 'select(.type=="artifact.snapshot.failed") | .data.reason' "$EVENTS_JSONL" 2>/dev/null | sed -n 1p)"
     if [[ -n "$_reason" && "$_reason" != "null" && "$_reason" != "unknown" ]]; then
         assert_pass "[SPEC-3] the failure carries a reason: ${_reason:0:60}…"
     else

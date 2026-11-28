@@ -74,6 +74,8 @@ source "$_BUILD_DIR/lib/summary.sh"
 source "$_BUILD_DIR/lib/round.sh"
 # shellcheck source=lib/steps.sh
 source "$_BUILD_DIR/lib/steps.sh"
+# shellcheck source=lib/steps-trace.sh
+source "$_BUILD_DIR/lib/steps-trace.sh"
 # #2364: earlier work is found by what it contains, never by which stage made it.
 # shellcheck source=../../../scripts/lib/earlier-output.sh
 source "$_BUILD_ROOT/scripts/lib/earlier-output.sh"
@@ -90,13 +92,10 @@ source "$_BUILD_DIR/lib/secrets.sh"
 # #2476: what the try changed, by file — or that it changed none; a try cut off
 # at its time limit says so. The list is the diff's own ["path",…], read by the shell.
 _build_summary_head_v() {
-    local -n _bsh="$1"; local _v="$2" _t="$3" _a="${4:-0}" _r="${5:-0}" _j="${6:-[]}" _fl="" _f
+    local -n _bsh="$1"; local _v="$2" _t="$3" _a="${4:-0}" _r="${5:-0}" _fl="" _f
     # Each "…" string whole, so a name holding a comma, space or \" stays one name.
-    local _re='^[^"]*"(([^"\\]|\\.)*)"'
-    while [[ "$_j" =~ $_re ]]; do
-        _f="${BASH_REMATCH[1]}"; _f="${_f//\\\"/\"}"; _f="${_f//\\\\/\\}"
-        _fl+="${_fl:+, }$_f"; _j="${_j:${#BASH_REMATCH[0]}}"
-    done
+    local -a _fs=(); zb_json_strings_v _fs "${6:-[]}"
+    for _f in ${_fs[@]+"${_fs[@]}"}; do _fl+="${_fl:+, }$_f"; done
     if [[ -n "$_fl" ]]; then _bsh="changed ${_fl} (+${_a} / -${_r})"; else _bsh="changed no file"; fi
     if [[ "$_v" != pass && ( "$_t" == router_timeout || "$_t" == timeout ) ]]; then
         if [[ -n "$_fl" ]]; then _bsh="ran out of time; ${_bsh} so far"; else _bsh="ran out of time with no file changed"; fi
@@ -339,28 +338,28 @@ _build_stage_run_inner() {
     # substitution trailing-newline strip.
 
     # ─── Parse diff stats ────────────────────────────────────────────────────
-    local files_changed_json="[]" lines_added=0 lines_removed=0
+    local files_changed_json="[]" lines_added=0 lines_removed=0 _bcf_n=0
     if [[ -n "$diff_content" ]]; then
-        local changed_files_raw
-        changed_files_raw="$(printf '%s' "$diff_content" \
-            | grep '^diff --git' \
-            | sed 's|^diff --git a/[^ ]* b/||' || true)"
-        if [[ -n "$changed_files_raw" ]]; then
-            files_changed_json="$(printf '%s\n' "$changed_files_raw" \
-                | jq -R . | jq -sc . 2>/dev/null || echo '[]')"
-        fi
-        lines_added="$(printf '%s' "$diff_content" | grep -c '^+' 2>/dev/null || true)"
-        lines_removed="$(printf '%s' "$diff_content" | grep -c '^-' 2>/dev/null || true)"
-        local header_plus header_minus
-        header_plus="$(printf '%s' "$diff_content" | grep -c '^+++' 2>/dev/null || true)"
-        header_minus="$(printf '%s' "$diff_content" | grep -c '^---' 2>/dev/null || true)"
-        lines_added=$(( lines_added - header_plus ))
-        lines_removed=$(( lines_removed - header_minus ))
-        [[ $lines_added -lt 0 ]] && lines_added=0
-        [[ $lines_removed -lt 0 ]] && lines_removed=0
+        # Follow-up to #2631: one git call gives each file's lines and its name
+        # as it is (-z: never quoted, so no name is read back from a header); a
+        # rename is its new name. Four counting processes are gone with it.
+        local _bcf_a _bcf_r _bcf_p _bcf_l _bcf_j=""
+        # The record whole, then its two counts split off: a name is never
+        # split on a tab, so one at either end of it stays.
+        while IFS= read -r -d '' _bcf_p; do
+            _bcf_a="${_bcf_p%%$'\t'*}"; _bcf_p="${_bcf_p#*$'\t'}"
+            _bcf_r="${_bcf_p%%$'\t'*}"; _bcf_p="${_bcf_p#*$'\t'}"
+            # A rename's line holds no name: the old one, then the new, follow.
+            [[ -z "$_bcf_p" ]] && { IFS= read -r -d '' _bcf_p; IFS= read -r -d '' _bcf_p; }
+            [[ -n "$_bcf_p" ]] || continue
+            [[ "$_bcf_a" =~ ^[0-9]+$ ]] && lines_added=$(( lines_added + _bcf_a ))
+            [[ "$_bcf_r" =~ ^[0-9]+$ ]] && lines_removed=$(( lines_removed + _bcf_r ))
+            zb_json_str_v _bcf_l "$_bcf_p"; _bcf_j+="${_bcf_j:+,}$_bcf_l"; _bcf_n=$(( _bcf_n + 1 ))
+        done < <(git -C "$repo_root" diff HEAD --numstat -z -M 2>/dev/null)
+        (( _bcf_n > 0 )) && files_changed_json="[$_bcf_j]"
     fi
     local files_changed_count
-    files_changed_count="$(printf '%s' "$files_changed_json" | jq 'length' 2>/dev/null || echo 0)"
+    files_changed_count="${_bcf_n:-0}"
     # #2323: the result reports the round — what earlier passes committed too.
     _build_round_widen "$repo_root"
 

@@ -22,6 +22,8 @@ _ZBUILD_TA_UNASKED_LOADED=1
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/digest.sh"
 # shellcheck source=../../../../scripts/lib/design-steps.sh
 source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/design-steps.sh"
+# shellcheck source=../../../../scripts/lib/trace.sh
+source "${BASH_SOURCE[0]%/*}/../../../../scripts/lib/trace.sh"
 
 # How many lines one call judges.
 _TA_UNASKED_CHUNK=30
@@ -127,14 +129,26 @@ _ta_unasked_context_v() {
     done
 }
 
+# _ta_unasked_finding_v <var> <file line n> <why> — the finding for a line the
+# check judged unasked, in the shared rule's words (#2629, ADR-075 §3).
+_ta_unasked_finding_v() {
+    local -n _tuaf="$1"; local _m
+    zb_trace_finding_v _m "$2 ($3)" "SPEC or design step" "design"
+    _tuaf="$_m. If a SPEC does ask for it, tag the assertion with that SPEC"
+}
+
 # _ta_unasked_prompt <context> <lines_array> — the check's question.
 _ta_unasked_prompt() {
-    local -n _tup="$2"; local l
+    local -n _tup="$2"; local l _trace=""
+    zb_trace_rule_v _trace "a SPEC or a design step's change" "design"
     cat <<'EOF'
 You are checking test lines this branch added that carry no requirement's tag.
 
 ## What you own
-A test or an assertion must trace to what the design asks for: a SPEC, or a design step's change. A test for a change nothing asks for pins that change. For EACH line listed under THE LINES, decide whether it is an assertion — a check that can fail — and if so what asks for what it tests. A line changed for what a design step changes is asked for by that step. A line in a helper that a tagged assertion calls traces to that assertion's SPEC. A line that only checks that a tagged test's own setup happened — it fails when that test's scenario did not take place, such as "the stage started before the signal" — is part of that test: it is asked for by that test's SPEC. Open the test file to see what the line checks. Answer one list item for each, starting with its file and line number exactly as listed:
+EOF
+    printf '%s A test for a change nothing asks for pins that change.' "$_trace"
+    cat <<'EOF'
+ For EACH line listed under THE LINES, decide whether it is an assertion — a check that can fail — and if so what asks for what it tests. A line changed for what a design step changes is asked for by that step. A line in a helper that a tagged assertion calls traces to that assertion's SPEC. A line that only checks that a tagged test's own setup happened — it fails when that test's scenario did not take place, such as "the stage started before the signal" — is part of that test: it is asked for by that test's SPEC. Open the test file to see what the line checks. Answer one list item for each, starting with its file and line number exactly as listed:
 
 - <file> line <n>: asked | SPEC: <the identifier of the SPEC it tests>
 - <file> line <n>: asked | STEP: <the number of the step whose change it tests>
@@ -219,7 +233,8 @@ _ta_unasked() {
     for l in "${lines[@]}"; do
         v="${now[${keyof[$l]}]:-}"; v="${v%$'\t'}"
         [[ -n "$v" && "$v" != ok ]] || continue
-        _TA_UNASKED_FINDINGS+=("${l%%: *} tests something no SPEC or design step asks for ($v) — take it out: a test must trace to a SPEC or a step's change, and a test for a change nothing asks for is not yours. If a SPEC does ask for it, tag the assertion with that SPEC")
+        local _ta_f=""; _ta_unasked_finding_v _ta_f "${l%%: *}" "$v"
+        _TA_UNASKED_FINDINGS+=("$_ta_f")
     done
     if [[ "$router_rc" =~ ^[1-9][0-9]*$ ]]; then
         local _rv _rr

@@ -121,7 +121,7 @@ assert_eq "T2: cycle.iteration.complete fired (the bug skips this)" "1" "$iter_c
 cycle_complete=$(jq -c 'select(.type=="cycle.complete" and .data.cycle_id=="the_cycle")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
 assert_eq "T3: cycle.complete fired" "1" "$cycle_complete"
 
-cycle_reason=$(jq -r 'select(.type=="cycle.complete" and .data.cycle_id=="the_cycle") | .data.reason' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+cycle_reason=$(jq -r 'select(.type=="cycle.complete" and .data.cycle_id=="the_cycle") | .data.reason' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "T4: cycle.complete reason=converged (NOT aborted)" "converged" "$cycle_reason"
 
 # T5: Wave 19-C-1 predicate event for abort_when fired (proves the function
@@ -129,14 +129,14 @@ assert_eq "T4: cycle.complete reason=converged (NOT aborted)" "converged" "$cycl
 abort_pred=$(jq -c 'select(.type=="cycle.predicate.evaluated" and .data.kind=="abort_when" and .data.cycle_id=="the_cycle")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
 assert_eq "T5: cycle.predicate.evaluated kind=abort_when fired (predicate function ran)" "1" "$abort_pred"
 
-abort_match=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="abort_when") | .data.match' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+abort_match=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="abort_when") | .data.match' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "T6: abort_when match=false (verdict=approve, not block)" "false" "$abort_match"
 
 # T7: terminated_reason global reflects converged.
 assert_eq "T7: _CYCLE_LAST_TERMINATED_REASON=converged" "converged" "${_CYCLE_LAST_TERMINATED_REASON:-MISSING}"
 
 # T8: exit_when predicate also fired and matched.
-exit_pred_match=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="exit_when") | .data.match' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+exit_pred_match=$(jq -r 'select(.type=="cycle.predicate.evaluated" and .data.kind=="exit_when") | .data.match' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "T8: exit_when match=true (predicate evaluated before abort_when crash)" "true" "$exit_pred_match"
 
 print_test_section "nested-cycle production scenario (mirror dogfood 20260607140638-60666)"
@@ -231,7 +231,7 @@ nested_iter_complete=$(jq -c 'select(.type=="cycle.iteration.complete" and .data
 assert_eq "T12: nested build_review_cycle's cycle.iteration.complete fired (dogfood-missing event)" "1" "$nested_iter_complete"
 
 # T13: outer build_review_cycle's cycle.complete fired with reason=converged.
-nested_complete=$(jq -r 'select(.type=="cycle.complete" and .data.cycle_id=="build_review_cycle") | .data.reason' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+nested_complete=$(jq -r 'select(.type=="cycle.complete" and .data.cycle_id=="build_review_cycle") | .data.reason' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sed -n 1p)
 assert_eq "T13: nested build_review_cycle cycle.complete reason=converged" "converged" "$nested_complete"
 
 # T14: outer's abort_when predicate fired (proves _cycle_check_abort_when ran).

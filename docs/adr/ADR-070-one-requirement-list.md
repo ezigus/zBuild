@@ -1,6 +1,6 @@
 # ADR-070 — One fixed list of requirements per issue
 
-**Status:** Accepted (2026-10-05); amended 2026-11-26 (#2614, §1: intake still reads only the issue; the issue is judged against the system by issue-check, ADR-074); amended 2026-11-20 (#2571, §1: what intake finds unclear in the issue is a question in the one form, kept in its result, and judged by its check each try); amended 2026-11-20 (#2569, §1: a missing requirement the check names is the issue's own sentences, checked; §2: the last list is a starting point, not the whole issue); amended 2026-11-16 (#2555, §1: an issue's ## Terms section reaches every stage word for word); amended 2026-11-15 (#2550, §1: an item the issue says not to do is a limit, kept with its "Do not"; intake numbers ids from its check's own count); amended 2026-11-12 (#2527, §1: intake's check is shown each removed item with its words and why, and is never told to name a listed id; §4: design's coverage check takes a quote from the issue's words too); amended 2026-11-08 (#2495, §4: the check looks both ways through the SPECs only, and does not judge the scope); amended 2026-11-09 (#2508, §4: design writes no scope block; what build changes is held to the requirements by issue-acceptance)
+**Status:** Accepted (2026-10-05); amended 2026-11-26 (#2629, §1: NOT-A-REQUIREMENT also for an item the issue does not state; §3: design's mapping is checked both ways); amended 2026-11-26 (#2614, §1: intake still reads only the issue; the issue is judged against the system by issue-check, ADR-074); amended 2026-11-20 (#2571, §1: what intake finds unclear in the issue is a question in the one form, kept in its result, and judged by its check each try); amended 2026-11-20 (#2569, §1: a missing requirement the check names is the issue's own sentences, checked; §2: the last list is a starting point, not the whole issue); amended 2026-11-16 (#2555, §1: an issue's ## Terms section reaches every stage word for word); amended 2026-11-15 (#2550, §1: an item the issue says not to do is a limit, kept with its "Do not"; intake numbers ids from its check's own count); amended 2026-11-12 (#2527, §1: intake's check is shown each removed item with its words and why, and is never told to name a listed id; §4: design's coverage check takes a quote from the issue's words too); amended 2026-11-08 (#2495, §4: the check looks both ways through the SPECs only, and does not judge the scope); amended 2026-11-09 (#2508, §4: design writes no scope block; what build changes is held to the requirements by issue-acceptance)
 **Issue:** #2306
 **Amends:** ADR-046 (design-gate gains C7), ADR-069 §2 (a requirement line may also carry ` covers: `)
 **Related:** ADR-055 (inter-stage data contract), ADR-040 §5 (spec-coverage judges against the issue), ADR-066 (every ADR statement has a test), ADR-067 (prompts speak plainly)
@@ -228,7 +228,14 @@ On #2533 run 45387034249 intake stopped. The prompt called a limit "not a requir
 
 - **§1: intake still answers from the issue alone** (#2448). Whether each requirement still holds against the system as it is — already true, against an ADR, about something removed — is judged after intake by `issue-check` (ADR-074), which reads the code, git and GitHub.
 
+## Amendment 2026-11-26 (#2629) — §1: an item the issue does not state; §3: both ways
+
+- **§1: intake's check gives `NOT-A-REQUIREMENT: <id> — <why>` also for a listed item the issue does not state** — no sentence of the issue asks for it — as well as for a note about how or when to do the work; it leaves the list, kept as removed (ADR-075 §3). A limit is still never dropped that way: the line is refused and asked again (§1, #2550).
+- **§3: design's mapping is checked both ways.** Every requirement has a SPEC (C7), and every SPEC names in its `covers:` an id intake listed (`SPEC_COVERS_NOTHING`, `SPEC_COVERS_UNKNOWN`, ADR-075 §2).
+
 ## Enforced by
+
+- §1 §3 amendment 2026-11-26 (#2629: an item the issue does not state; both ways) → `tests/unit/trace-rule-test.sh` T5, T4
 
 - §1 amendment 2026-11-26 (#2614: issue-check judges the issue against the system) → `plugins/agent/issue-check/tests/issue-check-test.sh` IC1–IC11
 
