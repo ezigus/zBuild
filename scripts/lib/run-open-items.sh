@@ -195,6 +195,9 @@ run_end_words() {
             printf 'stopped: a stage reported that it failed (%s)%s' "${reason#stage_failed:}" "$with" ;;
         converged|complete|success)
             printf 'finished%s' "$with" ;;
+        claimed)
+            # ADR-005 §1, §5 (#2534): refused before the first stage.
+            printf 'did not start: another run is working on this issue%s' "$with" ;;
         config_invalid)
             printf 'stopped: the run'"'"'s template is not valid%s' "$with" ;;
         error)
@@ -231,12 +234,15 @@ run_end_words() {
 }
 
 # run_end_reason <state_dir> — the engine's code for why the run ended: the last
-# pipeline.end event's reason, else the state file's. Empty when neither says.
+# pipeline.end event's reason ("claimed" when the run's claim was refused, as it
+# then ends before it starts), else the state file's. Empty when neither says.
 run_end_reason() {
     local sd="$1" r=""
     # The last one, whole, on one line (#2607: `| tail -n 1` kept a reason's
     # last line); a line that is not JSON (a crash mid-write) is passed over.
-    [[ -s "$sd/events.jsonl" ]] && r="$(jq -Rrn '[inputs | fromjson? | select(type == "object" and .type == "pipeline.end") | .data.reason // empty]
+    [[ -s "$sd/events.jsonl" ]] && r="$(jq -Rrn '[inputs | fromjson? | select(type == "object")
+        | if .type == "pipeline.refused.claimed" then "claimed"
+          elif .type == "pipeline.end" then .data.reason // empty else empty end]
         | last // empty | gsub("[\r\n\t]"; " ")' "$sd/events.jsonl" 2>/dev/null)"
     [[ -z "$r" && -s "$sd/pipeline-state.json" ]] && r="$(jq -r '.reason // empty' "$sd/pipeline-state.json" 2>/dev/null)"
     printf '%s' "$r"

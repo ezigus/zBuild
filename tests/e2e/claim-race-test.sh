@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # E2E: claimants racing for one issue on the github-labels coordinator's local-fs
 # store (ADR-005 §2). The store's add is checked and made under one lock, so it
-# has a single winner; GitHub's label add has no such check, which is #2534's.
+# has a single winner. GitHub's label add has no such check: two claims at once
+# on GitHub are claim-race-unit-test.sh's (ADR-005 §5).
 #
 # R1 a 4-way race: no backend error, every reply is valid JSON
 # R2 …exactly one claimant has acquired=true; the others acquired=false

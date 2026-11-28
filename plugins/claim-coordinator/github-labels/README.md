@@ -12,8 +12,8 @@ The default cross-machine claim. The engine calls this plugin's `claim` hook bef
 
 | Hook | Signature | stdout | Exit codes |
 |---|---|---|---|
-| `claim_coordinator_claim` | `claim <issue_id>` | `{"acquired": true}`, `{"acquired": false, "holder": "…"}`, or `{"acquired": false, "skipped": "…"}` | 0 answered, 1 backend error, 2 usage error |
-| `claim_coordinator_release` | `release <issue_id>` | — | 0 removed, 1 failed (stderr says to remove the label by hand) |
+| `claim_coordinator_claim` | `claim <issue_id>` | `{"acquired": true}`, `{"acquired": false, "holder": "…"}` (with `"race_lost": true` when another run claimed first at the same moment), or `{"acquired": false, "skipped": "…"}` | 0 answered, 1 backend error, 2 usage error |
+| `claim_coordinator_release` | `release <issue_id>` | — | 0 removed, 1 failed (stderr says to remove the label by hand); the run's holder record is removed too |
 | `claim_coordinator_heartbeat` | `heartbeat <issue_id>` | — | 0 always (labels don't expire; staleness is #2533) |
 | `claim_coordinator_list_claims` | `list_claims` | `[{"issue": N, "holder": "...", "acquired_at": null}]` | 0 success, 1 backend error |
 
@@ -25,9 +25,11 @@ The default cross-machine claim. The engine calls this plugin's `claim` hook bef
 - **Clearing a claim by hand.** Removing the `zbuild:claimed` label clears it. Until #2533, that is the only way to clear the claim of a run that crashed before its exit path — or of a cancelled GitHub Actions job: the cancel sends INT, then TERM, then KILL a few seconds later, and the KILL can land while the exit path is still running the always-run stages and persist, which come before the release.
 - **The holder named on a refusal** is from the newest trusted run-status comment that names one. A finished run's comment names none, so the holder is a run still going, or one that died without finishing; a newer comment that names none (a refused run's) does not hide it. With no such comment (the holder posts none: `ZBUILD_STATUS_COMMENT=0`), the refusal says the holder is unknown.
 
-## Known limit: two runs claiming at the same moment
+## Two runs claiming at the same moment (ADR-005 §5)
 
-GitHub's label add does not check whether the label is already there. Two runs that read "no label" at the same moment can both add it and both start. Nothing here prevents that; #2534 settles it.
+GitHub's label add does not check whether the label is already there, so two runs that read "no label" at the same moment both add it. After adding it, a claim posts its holder record, a comment `concurrent claim by \`<holder>\``, and reads every record back once. The record GitHub timed first (then the lower id) wins; only records from the last `ZBUILD_CLAIM_RACE_WINDOW_S` seconds before this run's count. The loser keeps the label, which the winner holds, rewrites its record to `not started — concurrent claim: \`<winner>\` was first` and answers `race_lost: true`. The winner's release removes its record with the label.
+
+**Known limit:** if each run reads the records back before the other's is visible, both start.
 
 ## Environment variables
 
@@ -38,5 +40,6 @@ GitHub's label add does not check whether the label is already there. Two runs t
 | `ZBUILD_CLAIM_FLOCK_TIMEOUT_SEC` | `5` | flock wait for the local-fs store |
 | `ZBUILD_CLAIM_MACHINE_ID` | `${HOSTNAME}` | The machine named in a local run's holder (engine side, `core/claim/claim.sh`) |
 | `ZBUILD_STATUS_COMMENT_GH_TIMEOUT` | `30` | Seconds a `gh` call may take |
+| `ZBUILD_CLAIM_RACE_WINDOW_S` | `120` | Seconds before this run's holder record in which another run's record still counts (ADR-005 §5) |
 
 The test harness (`setup_test_env`) sets `NO_GITHUB=true` and the local-fs store, so a test never claims on GitHub.

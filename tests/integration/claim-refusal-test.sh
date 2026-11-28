@@ -5,7 +5,8 @@
 #
 # F1 zbuild:claimed on the issue: non-zero exit, no stage, pipeline.refused.claimed
 #    with the holder, the holder printed as written (no escape is interpreted),
-#    and how to clear a claim whose run is gone
+#    how to clear a claim whose run is gone, and end words that say the run did
+#    not start (#2534)
 # F2 a second run of an issue a run on this machine is working on is refused by
 #    the admission lock, and never calls the coordinator
 set -uo pipefail
@@ -23,6 +24,8 @@ source "$REPO_ROOT/tests/lib/claim-runner-fixture.sh"
 source "$REPO_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../scripts/lib/run-status-render.sh
 source "$REPO_ROOT/scripts/lib/run-status-render.sh"
+# shellcheck source=../../scripts/lib/run-open-items.sh
+source "$REPO_ROOT/scripts/lib/run-open-items.sh"
 
 print_test_header "a claimed issue refuses the run; the admission lock is asked first"
 setup_test_env "claim-refusal"
@@ -53,6 +56,11 @@ fi
 assert_contains "[F1] the message says how to clear a claim whose run is gone" \
     "$(cat "$TEST_TEMP_DIR/f1.out")" "--remove-label zbuild:claimed"
 assert_eq "[F1] the other run's claim is left in place" "zbuild:claimed" "$(cat "$ZBUILD_CLAIM_STORE/$ISSUE/labels.txt")"
+# The words the run's completion comment opens with (CI's run_completion_body),
+# from what the runner wrote (#2534: the run that loses says it did not start).
+assert_eq "[#2534/SPEC-1] the run's end words say it did not start, and why" \
+    "did not start: another run is working on this issue" \
+    "$(run_end_words "$(run_end_reason "$(dirname "$(claim_fixture_events f1)")")" 0)"
 
 print_test_section "F2 the admission lock refuses before the claim"
 unset ZBUILD_NO_ISSUE_LOCK

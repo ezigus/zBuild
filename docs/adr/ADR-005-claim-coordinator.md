@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-05-24
-**Amended:** 2026-11-27 (#2534: concurrent claim detection: arbitration note, first-by-created_at-then-id wins, loser updates note to not-started, race_lost skip); 2026-11-26 (#2616: the coordinator owns a claim's age and its takeover; GitHub's clock; the old comment marked); 2026-11-21 (#1764: the engine claims and releases; one shared label; holder in the run-status comment)
+**Amended:** 2026-11-28 (#2534: two claims at once — each writes a holder record, the first by GitHub's time wins, the loser says it did not start; its own window setting; release removes the record); 2026-11-26 (#2616: the coordinator owns a claim's age and its takeover; GitHub's clock; the old comment marked); 2026-11-21 (#1764: the engine claims and releases; one shared label; holder in the run-status comment)
 
 ## Context
 
@@ -99,29 +99,37 @@ The claim is advisory across machines; this machine's admission lock still seria
 - **§3e Lazy load.** *(Amended 2026-11-26, #2616.)* The coordinator's takeover hook loads its `lib/takeover.sh` only for a
   cross-machine claim it was refused; a library that is absent or cannot be loaded refuses, saying so.
 
-### §5 — Concurrent claim detection (amended 2026-11-27, #2534)
+### §5 — Two claims at once: the first wins (amended 2026-11-28, #2534)
 
-After successfully adding the `zbuild:claimed` label (gh backend only), the claim writes its own
-holder record — a GitHub comment: `"concurrent claim by \`<holder>\`"` — synchronously, before
-re-reading anything. This is the synchronous holder record (RQTIE-3 path 1). The run then re-reads the
-GitHub issue to get fresh state, and reads back all trusted concurrent claim notes to determine the winner.
+GitHub's label add does not check that the label is absent, so two runs that read the issue at the same
+moment both add it. On the `gh` backend a claim therefore writes its own holder record after adding the
+label, synchronously: a comment `concurrent claim by \`<holder>\`` (the holder as in §1). Reading the
+holder records back is the claim's re-read; it does not read the issue's labels again.
 
-- **Arbitration.** The run whose note has the earliest `created_at` is the winner (then `id` on a tie).
-  Notes are filtered to those posted at or after `note_created_at − 4 × ZBUILD_STATUS_COMMENT_GH_TIMEOUT`
-  to exclude notes from previous label epochs.
-- **Winner** (`{"acquired": true}`): the run whose note is first. Its note stays as the holder record.
-- **Loser** (`{"acquired": false, "holder": "<winner>", "race_lost": true}`): every other run PATCHes
-  its note body to `"not started — concurrent claim: \`<winner>\` was first"` and returns
-  `race_lost: true`.
-- **Engine.** When `zbuild_claim_acquire` receives `race_lost: true` in a refused reply, it refuses
-  immediately, printing a message that names the concurrent winner as the first claimant, and skips the
-  stale-takeover path entirely (`_ZBUILD_CLAIM_ACQUIRED` is never set; `zbuild_claim_release` does not
-  remove the label).
-- **Local-fs backend** is unaffected: its `flock`-serialised add already returns rc 2 for a duplicate
-  add, so a concurrent claim never reaches this path.
-- **Known limits.** A note post that returns no id (rc 2 in `_ccgl_race_note_post_v`) proceeds without an
-  id: the note cannot be updated if the run loses, but the arbitration result is still correct. A note post
-  that fails entirely (rc 1) removes the label and returns a backend error.
+- **First.** One read of the issue's comments (every page) finds both the winner and the run's own
+  record. Only records by the CI bot or by a repository owner, member or collaborator count. "First" is
+  GitHub's time for each record (`created_at`), then the lower id for records in the same second; a
+  machine's clock is never used.
+- **The window.** Another run's record counts only when GitHub timed it no more than
+  `ZBUILD_CLAIM_RACE_WINDOW_S` seconds before this run's (default 120; a value that is not a number of
+  seconds is the default). It is its own setting, not worked out from another.
+- **The winner** (`{"acquired": true}`) keeps its record while it runs; its release removes it with the
+  label, so a claim made soon after never counts it. A record the release cannot remove is said on
+  stderr; the release stands.
+- **The loser** (`{"acquired": false, "holder": "<winner>", "race_lost": true}`) leaves the label, which
+  the winner holds, and rewrites its record to `not started — concurrent claim: \`<winner>\` was first`.
+  A record it cannot rewrite is removed instead; one it can neither rewrite nor remove is said on stderr.
+  The engine (`zbuild_claim_acquire`) refuses the run at once, naming the winner, and never tries a stale
+  takeover for it; the run is refused before it starts (`pipeline.refused.claimed`), so its end words are
+  "did not start: another run is working on this issue" (`run_end_reason`, `run_end_words`).
+- **Fail closed.** A record that cannot be posted, records that cannot be read back, or a reply to the
+  post that gives no time takes the claim back: the record (when one was made) and the label are removed,
+  and the coordinator answers a backend error, after which the run goes on unclaimed as for any
+  coordinator failure (§1).
+- **The local-fs store** checks and adds under one lock, so a race on it has one winner already.
+- **Known limit (accepted).** If each run reads the records back before the other's is visible, both
+  proceed. A run that dies without releasing leaves its record: a claim made within the window after it
+  is refused, as if that run had claimed first.
 
 ### §4 — Finding and calling the coordinator
 
@@ -156,9 +164,9 @@ list_claims        → stdout JSON: [{"issue": N, "holder": "...", "acquired_at"
 - `release`: remove the label; on failure, say on stderr to remove it by hand.
 - Every `gh` call runs under the run-status comment's watchdog (`rsc_gh`,
   `ZBUILD_STATUS_COMMENT_GH_TIMEOUT`), so a hung `gh` cannot hold up a run's exit.
-- **Concurrent claims on GitHub** (§5): after adding the label, the run posts a concurrent claim note as
-  its holder record and reads back all such notes; the first note by `created_at` wins. The local-fs test
-  store adds under `flock` and already has one winner; that says nothing about GitHub.
+- **Two claims at once on GitHub** (§5): after adding the label, the run posts its holder record and reads
+  every record back once; the first by GitHub's time wins. `release` removes the record with the label. The
+  local-fs test store adds under `flock` and already has one winner; that says nothing about GitHub.
 
 ### Future plugin: `plugins/claim-coordinator/ttl-leases/`
 
@@ -183,7 +191,7 @@ Section L wishlist item. Routes all claim operations through an optional dashboa
 - A run is never blocked by GitHub being down: the claim degrades to "unclaimed", visibly.
 
 **Bad:**
-- Two runs claiming at the same moment on GitHub: mitigated by §5 (concurrent claim note, first-by-created_at wins).
+- Two runs claiming at the same moment on GitHub: one wins (§5), except when each reads the records back before the other's is visible.
 - A run that dies without reaching an exit path leaves the label; until #2533 a person removes it.
 - A cancelled GitHub Actions job leaves the label too: the runner sends INT, then TERM, then KILL a few
   seconds later, and the KILL can land while the always-run stages and persist are still running in the exit
@@ -201,7 +209,7 @@ Section L wishlist item. Routes all claim operations through an optional dashboa
 | `tests/e2e/claim-race-test.sh` race coverage | Implemented | #320; rewritten in #1764 for the shared label (the local-fs store only) |
 | The engine claims before the first stage and releases on exit | Implemented | #1764 (`core/claim/claim.sh`, `core/pipeline/runner.sh`) |
 | Heartbeat and stale takeover | Deferred | #2533 |
-| Two runs claiming at the same moment | Implemented | #2534 (§5: concurrent claim note, first wins) |
+| Two runs claiming at the same moment | Implemented | #2534 (§5: a holder record each, the first by GitHub's time wins) |
 | TOCTOU window documented in plugin README | Implemented | `plugins/claim-coordinator/github-labels/README.md` |
 | `plugins/claim-coordinator/ttl-leases/` (no TOCTOU) | Deferred → Phase 1 | KEEPERS.md §L item 10 |
 | `plugins/claim-coordinator/dashboard/` variant | Deferred → Phase 1 | KEEPERS.md §L item 11 |
@@ -231,11 +239,15 @@ A claim hook whose reply says `"acquired": true` holds the claim, whatever the h
 
 ## Enforced by
 
-- §5 amendment 2026-11-27 (#2534: concurrent claim detection):
-  - §5 note posted before re-read, all trusted notes read back, first by created_at then id wins → `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh` DSRACE-1, DSRACE-2
-  - §5 loser updates note to "not started" → `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh` DSRACE-3
-  - §5 re-read the issue after posting the holder record → `plugins/claim-coordinator/github-labels/tests/claim-coordinator-unit-test.sh` DSRACE-7
-  - §5 race_lost skips the stale-takeover path; _ZBUILD_CLAIM_ACQUIRED not set → `tests/unit/claim-acquire-release-test.sh` DSRACE-4, DSRACE-5
+- §5 amendment 2026-11-28 (#2534: two claims at once):
+  - §5 the first claim wins; the loser keeps the label, says it did not start and who was first; same second → the lower id → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` [#2534/SPEC-1], [#2534/SPEC-3]
+  - §5 the release removes the record → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` [#2534/SPEC-2]
+  - §5 a reply with no time fails closed → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` [#2534/SPEC-4]
+  - §5 the window, its setting and its default → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` [#2534/SPEC-5]
+  - §5 no labels re-read; one read of the records, every page, finds the winner and the run's own → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` [#2534/SPEC-6], [#2534/SPEC-7]
+  - §5 a record that cannot be rewritten or removed; only trusted records count → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` ("a note that cannot be changed or removed", "a note by someone else does not count")
+  - §5 the engine refuses a lost race at once, with no takeover → `tests/unit/claim-acquire-release-test.sh` DSRACE-4, DSRACE-5
+  - §5 a refused run's end words say it did not start → `tests/integration/claim-refusal-test.sh` [#2534/SPEC-1]
 
 - §3 amendment 2026-11-26 (#2616: the coordinator owns the takeover; GitHub's clock; the old comment marked) → `tests/unit/claim-takeover-real-test.sh` TR13 (GitHub's clock), TR14 (the old comment marked), TR15 (the hook and its library are the coordinator's), TR16 (any locale, the mark's time UTC), TR17 (claimed again before the mark), TR18 (no takeover hook: refused), TR19 (a mark that fails: the takeover stands), TR20 (claiming again failing is said as such), TR1–TR12 (through the real coordinator)
 
