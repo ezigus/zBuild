@@ -26,12 +26,15 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # shellcheck source=lib/helpers.sh
 source "$REPO_ROOT/scripts/lib/helpers.sh"
+# shellcheck source=lib/md-text.sh
+source "$REPO_ROOT/scripts/lib/md-text.sh"
 # shellcheck source=lib/gh-automation.sh
 source "$REPO_ROOT/scripts/lib/gh-automation.sh"
 
 MODE="report"
 MANIFEST="$REPO_ROOT/.github/issues/keepers-manifest.yaml"
-ORPHAN_PRS_LOG="$REPO_ROOT/.github/issues/orphan-prs.md"
+# The log --apply appends orphan PRs to; a test gives its own (MANIFEST_SYNC_ORPHAN_PRS_LOG).
+ORPHAN_PRS_LOG="${MANIFEST_SYNC_ORPHAN_PRS_LOG:-$REPO_ROOT/.github/issues/orphan-prs.md}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -122,7 +125,9 @@ DRIFT_FOUND=0
 # 1. Manifest entry says state: open, but live issue is closed
 #    → propose updating manifest to state: closed
 declare -a TO_MARK_CLOSED=()
-while IFS=$'\t' read -r m_title m_state m_id; do
+# Each title as it is, NUL-separated: @tsv wrote a backslash as \\ and a
+# newline as \n, so a title holding one matched nothing (audit on #2638).
+while IFS= read -r -d '' m_title && IFS= read -r -d '' m_state && IFS= read -r -d '' m_id; do
     [[ "$m_state" != "open" ]] && continue
     # If multiple live issues share a title (e.g., title-rename dupes), prefer
     # the OPEN one — it's the canonical live entry. Only mark manifest as closed
@@ -134,9 +139,9 @@ while IFS=$'\t' read -r m_title m_state m_id; do
     # All matching live issues are closed → safe to mark manifest closed
     live_num="$(jq -r --arg t "$m_title" '[.[] | select(.title == $t)] | sort_by(.number) | last | .number' "$TMP/live-issues.json")"
     if [[ -n "$live_num" && "$live_num" != "null" ]]; then
-        TO_MARK_CLOSED+=("$m_id|$live_num|$m_title")
+        TO_MARK_CLOSED+=("$m_id|$live_num|${m_title//$'\n'/ }")
     fi
-done < <(jq -r '.[] | [.title, .state, .id] | @tsv' "$TMP/manifest-entries.json")
+done < <(jq -j '.[] | "\(.title)\u0000\(.state)\u0000\(.id)\u0000"' "$TMP/manifest-entries.json")
 
 if [[ ${#TO_MARK_CLOSED[@]} -gt 0 ]]; then
     DRIFT_FOUND=1
@@ -149,12 +154,12 @@ fi
 
 # 2. Live issues that don't exist in the manifest
 declare -a ORPHAN_ISSUES=()
-while IFS=$'\t' read -r live_num live_title live_state; do
+while IFS= read -r -d '' live_num && IFS= read -r -d '' live_title && IFS= read -r -d '' live_state; do
     in_manifest="$(jq -r --arg t "$live_title" 'first(.[] | select(.title == $t) | .id) // empty' "$TMP/manifest-entries.json")"
     if [[ -z "$in_manifest" ]]; then
-        ORPHAN_ISSUES+=("$live_num|$live_state|$live_title")
+        ORPHAN_ISSUES+=("$live_num|$live_state|${live_title//$'\n'/ }")
     fi
-done < <(jq -r '.[] | [.number, .title, .state] | @tsv' "$TMP/live-issues.json")
+done < <(jq -j '.[] | "\(.number)\u0000\(.title)\u0000\(.state)\u0000"' "$TMP/live-issues.json")
 
 if [[ ${#ORPHAN_ISSUES[@]} -gt 0 ]]; then
     DRIFT_FOUND=1
@@ -168,7 +173,9 @@ fi
 # 3. Merged PRs without referenced issues
 #    Find PRs that don't mention "Closes #" / "Fixes #" / "Resolves #"
 declare -a ORPHAN_PRS=()
-while IFS=$'\t' read -r pr_num pr_title pr_body; do
+# Each PR as it is, NUL-separated (a body holds newlines); the 30-PR window is
+# jq's, so a record is never cut by a line count (audit on #2638).
+while IFS= read -r -d '' pr_num && IFS= read -r -d '' pr_title && IFS= read -r -d '' pr_body; do
     if [[ -z "$pr_body" || "$pr_body" == "null" ]]; then
         pr_body=""
     fi
@@ -176,9 +183,9 @@ while IFS=$'\t' read -r pr_num pr_title pr_body; do
         if gha_is_already_scanned "$pr_num" "$ORPHAN_PRS_LOG"; then
             continue
         fi
-        ORPHAN_PRS+=("$pr_num|$pr_title")
+        ORPHAN_PRS+=("$pr_num|${pr_title//$'\n'/ }")
     fi
-done < <(jq -r '.[] | select(.mergedAt != null) | [.number, .title, .body] | @tsv' "$TMP/live-prs.json" | head -30)  # sigpipe-ok: process substitution; rc never inspected
+done < <(jq -j '[.[] | select(.mergedAt != null)] | .[:30][] | "\(.number)\u0000\(.title)\u0000\(.body // "")\u0000"' "$TMP/live-prs.json")
 
 if [[ ${#ORPHAN_PRS[@]} -gt 0 ]]; then
     DRIFT_FOUND=1
@@ -215,7 +222,7 @@ fi
 PR_BODY_FILE="${RUNNER_TEMP}/manifest-sync-pr-body.md"
 
 # Escape pipe characters and strip newlines in table cell content.
-_escape_cell() { printf '%s' "$1" | tr -d '\n\r' | sed 's/|/\\|/g'; }
+_escape_cell() { local c; zb_md_cell_v c "$1"; printf '%s' "$c"; }
 
 # Build PR body with actual drift details; placeholders replaced by workflow
 {

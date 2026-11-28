@@ -99,8 +99,8 @@ _lacks "[LF2] ...over the whole change" "$PROMPT" "$ONLY"
 assert_contains "[LF2] its finding stands as given" "$MSGS" "b is set twice"
 
 print_test_section "LF3: build answers the finding"
-FID="$(jq -r '.data.findings[] | select(.text | contains("set twice")) | .id' "$ART/lens-red-team-code-result.json" 2>/dev/null | head -n 1)"
-FTXT="$(jq -r '.data.findings[] | select(.text | contains("set twice")) | .text' "$ART/lens-red-team-code-result.json" 2>/dev/null | head -n 1)"
+FID="$(jq -r '.data.findings[] | select(.text | contains("set twice")) | .id' "$ART/lens-red-team-code-result.json" 2>/dev/null | sed -n 1p)"
+FTXT="$(jq -r '.data.findings[] | select(.text | contains("set twice")) | .text' "$ART/lens-red-team-code-result.json" 2>/dev/null | sed -n 1p)"
 stage_result_write "$ART/build-summary.json" pass "built" \
     "$(jq -nc --arg a "$FID: done — b is set once now" --arg k "$FID" --arg t "$FTXT" '{answers: [$a], answer_findings: {($k): $t}}')" >/dev/null
 FINDINGS="[]"
@@ -125,7 +125,7 @@ print_test_section "LF5: a finding handed to test-author"
 source "$REPO_ROOT/scripts/lib/stage-dispatch-mark.sh"
 STATE="$TEST_TEMP_DIR"; printf '{}' > "$STATE/pipeline-state.json"
 export ZBUILD_STATE_DIR="$STATE" ZBUILD_INPUTS_FLOW="design test-author build test issue-acceptance review_lenses"
-FID="$(jq -r '.data.findings[] | select(.text | contains("read unchecked")) | .id' "$ART/lens-red-team-code-result.json" | head -n 1)"
+FID="$(jq -r '.data.findings[] | select(.text | contains("read unchecked")) | .id' "$ART/lens-red-team-code-result.json" | sed -n 1p)"
 stage_dispatch_mark "$STATE/pipeline-state.json" test-author
 touch -t 202001010000 "$(stage_dispatch_mark_path "$STATE" test-author)"
 ( # shellcheck source=../../plugins/agent/build/lib/answers.sh

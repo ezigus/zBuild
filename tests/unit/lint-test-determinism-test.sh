@@ -52,7 +52,7 @@ LINT="$REPO_ROOT/scripts/lib/lint-test-determinism.sh"
 # holding one file with that body (and that baseline); print `rc=<rc>` then the
 # lint's output.
 _lint() {
-    local root; root="$(mktemp -d "$TEST_TEMP_DIR/root.XXXXXX")"
+    local root; root="$(mktemp -d "$TEST_TEMP_DIR/root.XXXXXX")" || { printf 'no temp folder\n' >&2; exit 1; }
     mkdir -p "$root/${1%/*}" "$root/config"
     printf '#!/usr/bin/env bash\n%s\n' "$2" > "$root/$1"
     [[ -n "${3:-}" ]] && printf '%s\n' "$3" > "$root/config/test-determinism-baseline.txt"
@@ -159,7 +159,7 @@ assert_eq "[T11] a line marked determinism-ok passes" "rc=0" "$(_rc "$U" '_t0=$S
 # _lint_own <test body> [baseline] — a tree with our own code (core/, scripts/,
 # a plugin), the allowed wrappers, and one test file; `rc=<rc>` then the output.
 _lint_own() {
-    local root; root="$(mktemp -d "$TEST_TEMP_DIR/own.XXXXXX")"
+    local root; root="$(mktemp -d "$TEST_TEMP_DIR/own.XXXXXX")" || { printf 'no temp folder\n' >&2; exit 1; }
     mkdir -p "$root/core/x" "$root/scripts/lib" "$root/plugins/agent/p/lib" "$root/plugins/agent/p/tests" "$root/tests/unit" "$root/config"
     printf 'engine_step() {\n    :\n}\n' > "$root/core/x/x.sh"
     printf 'route_to_model() { :; }\nhelper_join() { :; }\n_route_call_claude() { :; }\n_check() { :; }\nmy.step() { :; }\n' > "$root/scripts/lib/y.sh"

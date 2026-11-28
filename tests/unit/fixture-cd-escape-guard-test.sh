@@ -214,7 +214,7 @@ _r_out="$( cd "$_R" && ZBUILD_TESTS_DIR="$_R/tests" bash "$_R/scripts/run-tests.
 assert_contains "[SPEC-5] a test that commits into the checkout is reported FAIL" "$_r_out" "unit: FAIL $_R/tests/unit/escaper-test.sh"
 assert_contains "[SPEC-5] the failure names the escape" "$_r_out" "mutated the checkout"
 assert_contains "[SPEC-5] the failure names what moved (branch)" "$_r_out" "work -> master"
-_trace="$(grep 'git-receive-pack' "$_R/push-trace.txt" 2>/dev/null | head -1)"
+_trace="$(grep 'git-receive-pack' "$_R/push-trace.txt" 2>/dev/null | sed -n 1p)"
 assert_contains "[SPEC-6] a push to the checkout's origin is rewritten to a dead path" "$_trace" "zbuild-tests-must-not-push"
 if grep -q 'zbuild-real-origin-stand-in' <<< "$_trace"; then
     assert_fail "[SPEC-6] the real origin URL must not be the push target" "trace=[$_trace]"
@@ -227,7 +227,7 @@ fi
 ( cd "$_R" && git checkout -q work 2>/dev/null; git -C "$_R" branch -q -D master 2>/dev/null; rm -f "$_R/seed.txt" ) || true
 ( cd "$_R" && ZBUILD_TESTS_DIR="$_R/tests" bash "$_R/scripts/run-tests.sh" --files "$_R/tests/unit/escaper-test.sh" >/dev/null 2>&1 ) || true
 assert_contains "[SPEC-6] the fence also covers the --files targeted-rerun path" \
-    "$(grep 'git-receive-pack' "$_R/push-trace.txt" 2>/dev/null | head -1)" "zbuild-tests-must-not-push"
+    "$(grep 'git-receive-pack' "$_R/push-trace.txt" 2>/dev/null | sed -n 1p)" "zbuild-tests-must-not-push"
 # GUARD: a test's own temp origin (any other URL) is left alone by the fence.
 _own="$TEST_TEMP_DIR/own-origin.git"; mkdir -p "$_own"
 cat > "$_R/tests/unit/own-origin-test.sh" <<X
@@ -253,7 +253,7 @@ rm -f "$_R/tests/unit/escaper-test.sh"
 _r_out2="$( cd "$_R" && ZBUILD_TESTS_DIR="$_R/tests" bash "$_R/scripts/run-tests.sh" --tier unit 2>&1 )"
 assert_contains "[SPEC-5] a clean run with a read-only file and an own-origin push passes" "$_r_out2" "unit: 2/2 passed"
 assert_contains "[SPEC-6] GUARD: a push to a test's own temp origin is not rewritten" \
-    "$(grep 'git-receive-pack' "$_R/own-trace.txt" 2>/dev/null | head -1)" "$_own"
+    "$(grep 'git-receive-pack' "$_R/own-trace.txt" 2>/dev/null | sed -n 1p)" "$_own"
 
 # ── SPEC-7 (#2126): the tripwire reads the checkout, it does not write it ────
 # `git diff HEAD` refreshes a stat-stale index, which takes .git/index.lock in

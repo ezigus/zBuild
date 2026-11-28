@@ -143,7 +143,7 @@ par_rc="$(_run_fixture 4 "$PAR_OUT")"
 if cmp -s "$SER_OUT" "$PAR_OUT"; then
     assert_pass "serial and parallel stdout are byte-identical"
 else
-    assert_fail "serial and parallel stdout are byte-identical" "$(diff "$SER_OUT" "$PAR_OUT" | head -20)"
+    assert_fail "serial and parallel stdout are byte-identical" "$(diff "$SER_OUT" "$PAR_OUT" | sed -n 1,20p)"
 fi
 assert_eq "serial and parallel exit codes match" "$ser_rc" "$par_rc"
 assert_contains "output carries the mutation: P/T passed line" "$(cat "$SER_OUT")" "mutation: 1/3 passed"

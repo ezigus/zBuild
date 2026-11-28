@@ -109,8 +109,22 @@ env -u ZBUILD_TEST_PARALLEL_JOBS -u ZBUILD_TIER_CONCURRENCY -u ZBUILD_TIER_BUDGE
 _sig_pid=$!
 _waited=0
 while [[ ! -e "$_ZB_SIG_MARKER" && "$_waited" -lt 200 ]]; do sleep 0.1; _waited=$((_waited + 1)); done
-kill -TERM "$_sig_pid" 2>/dev/null
-_sig_rc=0; wait "$_sig_pid" 2>/dev/null || _sig_rc=$?
+# #2639: a slow test that never started is a failure, not a reason to signal
+# anyway; and the runner is waited for with a limit, so one that ignores the
+# signal fails here, saying so, instead of hanging until CI kills the job.
+_sig_rc=0
+if [[ ! -e "$_ZB_SIG_MARKER" ]]; then
+    zb_test_kill_tree "$_sig_pid"; wait "$_sig_pid" 2>/dev/null || true
+    assert_fail "[SPEC-3] the slow tier test started before the signal" "no start marker after 20 s"
+    _sig_rc="not started"
+else
+    kill -TERM "$_sig_pid" 2>/dev/null
+    # 10 s, well short of the slow test's 30 s: a runner that ignores the signal
+    # is still running when the limit passes, rather than finishing on its own.
+    wait_for_exit "$_sig_pid" 200 0.05 || _sig_rc=$?
+    [[ "$_sig_rc" == 124 ]] && assert_fail "[SPEC-3] the runner ends on SIGTERM" \
+        "the runner ignored SIGTERM: still running 10 s later, killed"
+fi
 _SIG_ERR="$(cat "$TEST_TEMP_DIR/sig.err" 2>/dev/null)"
 
 assert_eq "[SPEC-3] SIGTERM mid-flight → rc 143 (128+SIGTERM)" "143" "$_sig_rc"

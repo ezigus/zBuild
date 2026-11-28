@@ -182,7 +182,7 @@ assert_eq "T2: group rc=0 (all pass)" "0" "$rc"
 # by emission time). last_start < first_complete ⇒ all members were in flight
 # simultaneously ⇒ concurrent.
 last_start_line="$(grep -n 'parallel.member.dispatch.start' "$ZBUILD_EVENTS_JSONL" | tail -1 | cut -d: -f1)"
-first_complete_line="$(grep -n 'parallel.member.dispatch.complete' "$ZBUILD_EVENTS_JSONL" | head -1 | cut -d: -f1)"
+first_complete_line="$(grep -n 'parallel.member.dispatch.complete' "$ZBUILD_EVENTS_JSONL" | sed -n 1p | cut -d: -f1)"
 if [[ -n "$last_start_line" && -n "$first_complete_line" && "$last_start_line" -lt "$first_complete_line" ]]; then
     assert_pass "T2: all members started before any completed (start@$last_start_line < complete@$first_complete_line) → concurrent"
 else

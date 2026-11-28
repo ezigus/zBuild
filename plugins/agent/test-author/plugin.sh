@@ -385,8 +385,16 @@ EOF
             _disp="$(router_reason_disposition "$_reason")"
         fi
         _ta_commit_testfiles "$design" "$repo" "test-author: partial assertions (${_reason}) — continued by the next attempt"
-        _ta_write_result "$art" "$_disp" \
-            "the author did not finish (${_reason}) — what it wrote is kept for the next attempt" "$n"
+        # #2640: say what this try kept — the test files it wrote, which the
+        # next attempt continues, or that it wrote nothing (_TA_CHANGED, set by
+        # the commit). On #2534 a try that wrote nothing was said to have kept it.
+        local _kept="it wrote nothing"
+        if (( ${_TA_CHANGED:-0} == 1 )); then _kept="kept 1 test file it wrote, for the next attempt"
+        elif (( ${_TA_CHANGED:-0} > 1 )); then _kept="kept ${_TA_CHANGED} test files it wrote, for the next attempt"; fi
+        # The note is the summary's, which the row and the next try read; the
+        # result's reason stays the same, so a try that wrote nothing leaves the
+        # result as the last one left it (SPEC-14, #2186).
+        _ta_write_result "$art" "$_disp" "the author did not finish (${_reason})" "$n" "[]" "" "$_kept"
         return 1
     fi
 

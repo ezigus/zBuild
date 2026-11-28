@@ -113,7 +113,7 @@ set +e
 
 echo "--- banner ---"; cat "$BANNER_LOG"
 echo "--- run_modes ---"; cat "$RUN_MODES"
-iter2_mode="$(awk -F'run_mode=' '/iter=2 /{print $2}' "$RUN_MODES" | head -1)"
+iter2_mode="$(awk -F'run_mode=' '/iter=2 /{print $2}' "$RUN_MODES" | sed -n 1p)"
 iter3_line="$(grep -c 'iter=3 ' "$RUN_MODES" || true)"
 
 assert_eq "T1 [#2144]: iter-2 test stage runs targeted, then confirms with the full suite (run_mode=targeted+full)" \

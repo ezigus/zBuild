@@ -146,7 +146,7 @@ EOF
         assert_pass "[SPEC-2] stage.cleanup.failed event emitted on non-zero cleanup"
     else
         assert_fail "[SPEC-2] stage.cleanup.failed event emitted on non-zero cleanup" \
-            "event not found in: $(cat "$_spec2_events" 2>/dev/null | head -5 || echo none)"
+            "event not found in: $(cat "$_spec2_events" 2>/dev/null | sed -n 1,5p || echo none)"
     fi
 fi
 

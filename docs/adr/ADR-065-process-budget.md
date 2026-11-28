@@ -1,6 +1,6 @@
 # ADR-065 — Process budget: the engine's fork count is a tested contract
 
-**Status:** Accepted (2026-09-19); amended 2026-11-27 (§5: one JSON string writer and reader for the shell; git names read as git gives them, -z); amended 2026-11-26 (#2615, §5: the parts digest takes the fast path past the shell limit; §1: the census names a process once); amended 2026-11-20 (#2573, §2 §6: each budget sits a small margin above its measure); amended 2026-11-15 (#2548, §6: the start-up is held in total); amended 2026-11-02 (#2456, §5: an emit from a signal trap does not wait on its own lock); amended 2026-11-05 (#2472, §6: the cost in two parts — one more dispatch, and start-up per plugin — each with a budget and a floor)
+**Status:** Accepted (2026-09-19); amended 2026-11-27 (#2640, §5: a record is read NUL-separated, never tab-separated); amended 2026-11-27 (§5: one writer of text into markdown, escaped where it enters it); amended 2026-11-27 (§5: one JSON string writer and reader for the shell; git names read as git gives them, -z); amended 2026-11-26 (#2615, §5: the parts digest takes the fast path past the shell limit; §1: the census names a process once); amended 2026-11-20 (#2573, §2 §6: each budget sits a small margin above its measure); amended 2026-11-15 (#2548, §6: the start-up is held in total); amended 2026-11-02 (#2456, §5: an emit from a signal trap does not wait on its own lock); amended 2026-11-05 (#2472, §6: the cost in two parts — one more dispatch, and start-up per plugin — each with a budget and a floor)
 **Issue:** #2151
 **Related:** ADR-001 (Discovery + lockfile), ADR-012 (test tiering), ADR-053 (test flake policy — the serial-pin cap that also needs an amendment to raise), ADR-041 (the fd-9 lock discipline the trace harness must respect)
 
@@ -411,14 +411,37 @@ The written measures move down by what the standalone runs over-counted: 2391 pr
 - **§5: `zb_parts_digest_v` sums past `_ZB_DIGEST_SHELL_MAX` with one cksum**, over the very bytes a file holding the parts has, as `zb_digest_v` and `zb_file_digest_v` do. It had no limit: a 100 KB requirements file cost about 2 s, in tests and in real runs.
 - **§1: the census's trace line sets the exported process name once, on the process's first traced line.** #2575 set it on every line; an exported variable set makes every later exec rebuild its environment, and the fork-budget test went 67 → 98 s on one machine. The counts are the same.
 
+## Amendment 2026-11-27 — §5: one writer of text into markdown, escaped where it enters it
+
+- **Text the shell writes into markdown goes through `scripts/lib/md-text.sh`, by the shell, no process.** CommonMark is the reference:
+  - **Shown as written**, for what GitHub renders. `zb_md_text_v` (and `zb_md_line_v`, on one line) puts a backslash before every ASCII punctuation character. A zero-width space stops what is not markdown: an @ mentions no one, a # before a digit links no issue, and `://` makes no link.
+  - **Kept in shape**, for text also read as it is (a terminal, a model). `zb_md_cell_v` keeps a table a table (`\` and `|`), and `zb_md_inline_v` opens no code span (backticks).
+  - **A fence the text cannot close**: `zb_md_fence_v` gives one backtick more than the text's longest run.
+  - **Terminal escapes out**: `zb_ansi_strip_v`, for a short string. A whole captured output is still `sed`'s (`_stage_io_strip_ansi`), and so is a log file.
+- **The callers:**
+  - the unclear report's model text;
+  - `artifact-render`'s inline, block and fence helpers (the fence picker gave four backticks to text that held four);
+  - `manifest-sync`'s table cells;
+  - the event bus's value stripper.
+
+  `stage-io`'s width count, which nothing called, is gone. Each had its own rules and started `sed`, `tr` or `grep`.
+- **Escaped where the text enters markdown, at the boundary.** The questions section is built once. The status comment, the completion comment and the PR description show it escaped for GitHub, and the end-of-run banner shows the model's words as they are (`zb_unclear_text_v`, `open_items_questions_text`).
+
 ## Amendment 2026-11-27 — §5: one JSON string writer and reader for the shell; git's names as it gives them
 
 - **A JSON string the shell writes or reads goes through `scripts/lib/json-text.sh`**, by the shell, no process: `zb_json_str_v` writes one exactly as jq writes it; `zb_json_unescape_v` reads a string's body back, in one pass, every JSON escape (`\"` `\\` `\/` `\b` `\f` `\n` `\r` `\t` and `\uXXXX`, a surrogate pair as one character); `zb_json_strings_v` reads each string of an array; `ZB_JSON_STR_RE` finds a string in JSON text. jq stays the reference and the tool for anything bigger than a string. The five copies of the writer (the event bus, the router's permissions and tool hook, the judge, the stage answers) and the three partial readers (build's summary and its own findings, the unclear report) call it; each copy had its own gaps — control bytes as spaces, `\t` and `\u` not read, and escapes read in an order that turned a backslash before `n` into a space. `scripts/lib/lint-json-text.sh` (in `npm run lint`) fails a hand-written one: a `\u00XX` built by printf, a quote escaped or read back by replacement, the string-body regex; a line that is not JSON is marked `# json-text-ok: <reason>`.
 - **The tool hook refuses every tool when it cannot load the library:** a guard fails closed.
 - **A name git prints is read as git gives it with `-z`, never read back from its quoted output.** Build's summary takes each changed file's name and lines from one `git diff HEAD --numstat -z -M` (a rename is its new name), in place of reading names out of the diff's headers — which missed a rename from a name git quotes to one it does not — and four counting processes.
 
+## Amendment 2026-11-27 (#2640) — §5: a record is read NUL-separated, never tab-separated
+
+A jq `@tsv` record read with `IFS=$'\t' read` goes wrong two ways: jq's escapes are never read back (a backslash comes back doubled, a tab as `\t`), and an empty field disappears, since a tab is whitespace to `read`, so the fields after it shift — `measured<TAB><TAB>60` read the mutation floor as the score. The remaining readers — the mutation and coverage gates, the status comment's pages, build's round, the release notes and their coverage check, the deploy tests' helper, the call-limits test — now print each field followed by a NUL (`jq -j "…\u0000…"`) and read each with `IFS= read -r -d ''`, as `manifest-sync` does since #2638. `scripts/lib/lint-json-text.sh` refuses a new `@tsv` read in engine code. The release-notes count reads the rows in the shell instead of piping them to `grep -c`.
+
 ## Enforced by
 
+- §5 amendment 2026-11-27 (#2640: records read NUL-separated) → `tests/unit/readout-gates-test.sh` [#2640/SPEC-4] (no score / no pct, as the test stage's writer gives them, read as none, the floor kept and named in the reason); `tests/integration/release-notes-coverage-test.sh` [#2640/SPEC-4] (a title's backslash shown once; an unlabelled issue listed and counted; the coverage check reads the same rows); `tests/unit/lint-json-text-test.sh` [#2640/SPEC-4] (an `@tsv` read refused, with or without a pipe before it, in a plugin too, saying what to use; a comment holding one passes)
+
+- §5 amendment 2026-11-27 (one writer of text into markdown) → `tests/unit/md-text-test.sh` M1–M7 (every ASCII punctuation character escaped once, the rest as written; GitHub's mentions, issue links and autolinks stopped; one line; a fence the text cannot close; terminal escapes out; a cell and an inline span kept in shape; no process); `tests/unit/artifact-render-locale-safety-test.sh` T4 (the helpers and the fence run no program); `tests/unit/unclear-questions-shown-test.sh` Q2–Q9 (what GitHub shows; the banner as written, not escaped)
 - §5 amendment 2026-11-27 (one JSON string writer and reader; git's names with -z) → `tests/unit/json-text-test.sh` J1 (written as jq writes it, jq the reference), J2 (read back from jq's or J1's, every escape, a surrogate pair), J3 (each string of an array whole), J4 (no process); `tests/unit/lint-json-text-test.sh` K1–K3; `tests/unit/call-hook-test.sh` G8 (a hook that cannot load its library refuses every tool); `plugins/agent/build/tests/build-step-answers-test.sh` BS26 (a rename either way, a tab in a name, with their lines); `tests/e2e/fork-budget-test.sh` (FORK_BUDGET 1813 and PROCESS_BUDGET 2258, each plus the margin: lowered)
 - §5 §1 amendment 2026-11-26 (#2615) → `tests/unit/digest-parts-test.sh` DG1, DG2; `tests/unit/fork-census-test.sh` SPEC-8; `tests/e2e/fork-budget-test.sh` (the counts unchanged)
 

@@ -102,7 +102,7 @@ SUMS2=$'add first feature\nfix second bug'
 # [SPEC-1] CHANGE: multi-iter → subject = plan_title (whole-build descriptor),
 # NOT the last iteration's incremental summary.
 out="$(_build_parse_commit_summary "" "Fix the whole build" "$SUMS2" 2)"
-subject="$(printf '%s' "$out" | head -1)"
+subject="$(printf '%s' "$out" | sed -n 1p)"
 assert_eq "[SPEC-1] multi-iter: subject = plan_title (cumulative descriptor)" \
     "Fix the whole build" "$subject"
 

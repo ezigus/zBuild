@@ -228,7 +228,7 @@ fi
 
 # Ordering: last iter divider line number < exit banner line number
 last_iter_line="$(grep -n 'iter [0-9]*/[0-9]*' "$T7_STDERR" | tail -n 1 | cut -d: -f1)"
-exit_banner_line="$(grep -n 'converged in' "$T7_STDERR" | head -n 1 | cut -d: -f1)"
+exit_banner_line="$(grep -n 'converged in' "$T7_STDERR" | sed -n 1p | cut -d: -f1)"
 if [[ -n "$last_iter_line" && -n "$exit_banner_line" \
       && "$exit_banner_line" -gt "$last_iter_line" ]]; then
     assert_pass "T7: exit banner ($exit_banner_line) AFTER last iter divider ($last_iter_line)"
@@ -263,7 +263,7 @@ fi
 _cic_lines="$(grep '"type":"cycle.iteration.complete"' "$ZBUILD_EVENTS_JSONL" || true)"
 if grep -q '"velocity"' <<< "$_cic_lines"; then
     assert_fail "T7 (#1254): cycle.iteration.complete event has no velocity attr" \
-        "$(grep '"type":"cycle.iteration.complete"' "$ZBUILD_EVENTS_JSONL" | head -1)"
+        "$(grep '"type":"cycle.iteration.complete"' "$ZBUILD_EVENTS_JSONL" | sed -n 1p)"
 else
     assert_pass "T7 (#1254): cycle.iteration.complete event has no velocity attr"
 fi

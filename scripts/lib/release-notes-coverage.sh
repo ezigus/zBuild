@@ -53,7 +53,7 @@ release_notes_coverage_check() {
     local num title _labels
     local missing=0 total=0
 
-    while IFS=$'\t' read -r num title _labels; do
+    while _rn_row num title _labels; do
         [[ -z "$num" ]] && continue
         total=$((total + 1))
         # A closed issue is "covered" iff its issue link appears in the notes.

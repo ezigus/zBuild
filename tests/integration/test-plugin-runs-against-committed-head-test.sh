@@ -133,14 +133,14 @@ PLUGIN_SRC="$REPO_ROOT/plugins/tool/test/plugin.sh"
 _NONCOMMENT="$(grep -hvE '^[[:space:]]*(#|$)' "$PLUGIN_SRC" "${PLUGIN_SRC%/*}"/lib/*.sh)"
 if printf '%s\n' "$_NONCOMMENT" | grep -E 'git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+)?apply\b' >/dev/null 2>&1; then
     assert_fail "plugin.sh contains no 'git apply' call (non-comment)" \
-        "found: $(printf '%s\n' "$_NONCOMMENT" | grep -nE 'git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+)?apply\b' | head -3)"
+        "found: $(printf '%s\n' "$_NONCOMMENT" | grep -nE 'git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+)?apply\b' | sed -n 1,3p)"
 else
     assert_pass "plugin.sh contains no 'git apply' call (non-comment)"
 fi
 
 if printf '%s\n' "$_NONCOMMENT" | grep -F 'diff_apply_failed' >/dev/null 2>&1; then
     assert_fail "plugin.sh has no diff_apply_failed verdict path (non-comment)" \
-        "found: $(printf '%s\n' "$_NONCOMMENT" | grep -nF 'diff_apply_failed' | head -3)"
+        "found: $(printf '%s\n' "$_NONCOMMENT" | grep -nF 'diff_apply_failed' | sed -n 1,3p)"
 else
     assert_pass "plugin.sh has no diff_apply_failed verdict path (non-comment)"
 fi

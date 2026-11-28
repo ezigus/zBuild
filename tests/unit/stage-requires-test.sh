@@ -226,8 +226,10 @@ build:
   requires: [intake]
 YAML
 rc=0; out="$(load_template "$T8b" 2>&1)" || rc=$?
-assert_eq "[RQ8] refused: requires: on a loop member" "1" "$(( rc != 0 ))"
-assert_contains "[RQ8] ...and says so" "$out" "requires: is for a top-level stage"
+# #2640 (ADR-068 §3): a loop member may require members its loop runs before
+# it; one that names a stage outside its loop is still refused.
+assert_eq "[RQ8] refused: a loop member requiring a stage outside its loop" "1" "$(( rc != 0 ))"
+assert_contains "[RQ8] ...and says so" "$out" "stage 'build' requires 'intake', which is not a member its loop runs before it"
 
 print_test_section "RQ5: the runner asks the gate before each top-level unit"
 _loop="$(awk '/for \(\( _ui = 0; _ui < \$\{#_TPL_DISPATCH_UNITS\[@\]\}/{p=1} p{print} p&&/case "\$_unit" in/{exit}' "$REPO_ROOT/core/pipeline/runner.sh")"

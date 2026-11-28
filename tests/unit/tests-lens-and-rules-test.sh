@@ -50,10 +50,10 @@ _lacks "[L1] ...not an Enforced by entry" "$_c" "Enforced by entry"
 # ── L2 ───────────────────────────────────────────────────────────────────────
 print_test_section "L2: the tests lens"
 _t="$(_flat "$(cat "$LENSES/tests.md" 2>/dev/null)")"
-assert_contains "[L2] an outside service is faked only at our wrapper around it, never our own code" "$_t" \
-    "a test that replaces the project's own code with a fake, rather than faking an outside service at the project's own wrapper around it"
+assert_contains "[L2] an outside service is replaced only at our wrapper around it, never our own code" "$_t" \
+    "a test that replaces the project's own code with a stand-in, rather than replacing an outside service at the project's own wrapper around it"
 assert_contains "[L2] ...nor reaches a real service instead of a stand-in" "$_t" "a test that reaches a real service (the network, GitHub, a model) instead of a stand-in"
-assert_contains "[L2] ...and reaching one is graded, as a fake of our own code is" "$_t" "medium: a test that fakes the project's own code, reaches a real service,"
+assert_contains "[L2] ...and reaching one is graded, as replacing our own code is" "$_t" "medium: a test that replaces the project's own code, mocks a reply that holds what the project's own code writes, reaches a real service,"
 assert_contains "[L2] ...nothing waits on a clock" "$_t" "a test that waits on a clock"
 assert_contains "[L2] ...each test proves the path it claims" "$_t" "a test that does not prove the path it claims"
 assert_contains "[L2] ...it fails on the old code for the right reason" "$_t" "a test that would not fail on the code from before the change, or would fail there for another reason"
@@ -97,7 +97,7 @@ while IFS= read -r _rl; do
     grep -qF -- "$(_flat "$_rl")" <<< "$_pz" || _miss+="$_rl"$'\n'
 done < "$REPO_ROOT/.zbuild/rules.md"
 assert_eq "[R2] every rule of zBuild's own file is in the prompt" "" "$_miss"
-rm -f "$RR/.zbuild/rules.md"
+rm -f "${RR:?}/.zbuild/rules.md"
 _p0="$(_flat "$(_sp_repo_intent_and_rules "$RR" 2>/dev/null)")"
 assert_contains "[R2] with none, it says so" "$_p0" "This repository has no .zbuild/rules.md, so these are zBuild's default rules."
 _lacks "[R2] ...and the old place is not read" "$_p0" "RULE-OLD"
@@ -107,19 +107,19 @@ print_test_section "R1b: the rules file stays in the repository"
 OUTSIDE="$TEST_TEMP_DIR/outside-secret.txt"; printf 'SECRET-OUTSIDE\n' > "$OUTSIDE"
 ln -s "$OUTSIDE" "$RR/.zbuild/rules.md"
 assert_eq "[R1b] a rules.md that links out of the repository is not read" "" "$(load_repo_rules "$RR" 2>/dev/null)"
-rm -f "$RR/.zbuild/rules.md"; ln "$OUTSIDE" "$RR/.zbuild/rules.md"
+rm -f "${RR:?}/.zbuild/rules.md"; ln "$OUTSIDE" "$RR/.zbuild/rules.md"
 assert_eq "[R1b] ...nor one hard-linked to a file elsewhere" "" "$(load_repo_rules "$RR" 2>/dev/null)"
-rm -f "$RR/.zbuild/rules.md"
+rm -f "${RR:?}/.zbuild/rules.md"
 printf 'VISION-TEXT\n' > "$RR/.zbuild/vision.md"; ln -s ../vision.md "$RR/.zbuild/prompts/design-overrides.md"
 assert_eq "[R1b] a stage's guidance links only within .zbuild/prompts/: one to vision.md is refused" "" \
     "$(load_prompt_override design "$RR" 2>/dev/null)"
-rm -f "$RR/.zbuild/prompts/design-overrides.md"
+rm -f "${RR:?}/.zbuild/prompts/design-overrides.md"
 _lacks "[R1b] zBuild's default rules name no old path" "$(cat "$REPO_ROOT/config/prompts/default-rules.md")" ".zbuild/prompts/rules.md"
 
 # ── R3 ───────────────────────────────────────────────────────────────────────
 print_test_section "R3: zBuild's own rules file"
 _zr="$(_flat "$(cat "$REPO_ROOT/.zbuild/rules.md" 2>/dev/null)")"
-for _w in "A remote service is faked at the project's own wrapper around it, never the project's own code" \
+for _w in "A remote service is replaced at the project's own wrapper around it, never the project's own code" \
           "Never wait on a clock in a test" \
           "Write the test first" \
           "If the code drifts from the spec, the spec wins" \
@@ -144,6 +144,35 @@ assert_eq "[R3] ...and repeats none of its rules: one source" "" "$_dup"
 if [[ -e "$REPO_ROOT/.zbuild/prompts/rules.md" ]]; then assert_fail "[R3] the old file is gone" "$REPO_ROOT/.zbuild/prompts/rules.md"
 else assert_pass "[R3] the old file is gone"; fi
 
+# ── #2639 SPEC-4 ─────────────────────────────────────────────────────────────
+# Mock and fake mean different things (#2639). On #2534 every race test handed
+# back the other run's claim note as a hand-written reply, which hid that a
+# finished run's note still wins a later run's claim: data our own code writes
+# to an outside service is written, in a test, by that code, into a fake.
+print_test_section "#2639 SPEC-4: mock and fake, and data our own code writes"
+for _src in "$REPO_ROOT/.zbuild/rules.md" "$LENSES/tests.md"; do
+    _x="$(_flat "$(cat "$_src" 2>/dev/null)")"
+    assert_contains "[#2639/SPEC-4] ${_src#"$REPO_ROOT"/}: a mock is replies written by hand" "$_x" \
+        "a *mock* answers with replies written by hand"
+    assert_contains "[#2639/SPEC-4] ${_src#"$REPO_ROOT"/}: a fake keeps what is written to it" "$_x" \
+        "a *fake* is a working stand-in that keeps what is written to it"
+    # "fake" is a noun now, the defined stand-in: no text uses it as the verb for
+    # any replacement ("faked", "faking", "fakes"), as the old text did.
+    _verbs="$(grep -oiwE 'fak(ed|ing|es)' <<< "$_x" | tr '\n' ' ' || true)"
+    assert_eq "[#2639/SPEC-4] ${_src#"$REPO_ROOT"/}: \"fake\" is never the verb for any stand-in" "" "$_verbs"
+done
+assert_contains "[#2639/SPEC-4] the rules: what our own code writes is written by it, into a fake" "$_zr" \
+    "When code reads back, from any outside service (GitHub, the network, a model, any external program), something our own code wrote there, the test uses a fake and lets our code write it, never a mock reply that holds what the test's author assumed our code writes."
+_a12="$(_flat "$(cat "$REPO_ROOT/docs/adr/ADR-012-test-tiering-and-ci-gating.md")")"
+assert_contains "[#2639/SPEC-4] ADR-012 defines both words" "$_a12" \
+    "a *mock*, which answers with replies written by hand, or a *fake*, a working stand-in that keeps what is written to it"
+assert_contains "[#2639/SPEC-4] ADR-012 states the rule" "$_a12" \
+    "Data our own code writes to an outside service is written, in a test, by that code, into a fake."
+assert_contains "[#2639/SPEC-4] the tests lens looks for such a mock" "$_t" \
+    "a mock of an outside service (the network, GitHub, a model, any external program) whose reply, written by hand, holds something the project's own code writes there"
+assert_contains "[#2639/SPEC-4] ...and our own wrapper's stand-in is no finding, except that mock" "$_t" \
+    "a mock or a fake of the project's own wrapper around an outside service (the model call, GitHub): that is where an outside service is replaced, unless the mock's reply holds what the project's own code writes there"
+
 # ── R4 ───────────────────────────────────────────────────────────────────────
 print_test_section "R4: the docs"
 assert_contains "[R4] the configuration page says zbuild reads .zbuild/rules.md" \
@@ -167,7 +196,7 @@ exit 1
 MOCK
 chmod +x "$TEST_TEMP_DIR/bin/gh"; export PATH="$TEST_TEMP_DIR/bin:$PATH"; unset NO_GITHUB
 _r5() {   # <repo> — the body the runner's --once posts for <repo>
-    local sd="$TEST_TEMP_DIR/r5-state"; rm -rf "$sd" "$GH_BODIES/body.txt"; mkdir -p "$sd"
+    local sd="$TEST_TEMP_DIR/r5-state"; rm -rf "${sd:?}" "${GH_BODIES:?}/body.txt"; mkdir -p "$sd"
     # The run's first event, as the engine writes it.
     ( export ZBUILD_EVENTS_DIR="$sd" ZBUILD_EVENTS_JSONL="$sd/events.jsonl" ZBUILD_RUN_ID=r-2630 ZBUILD_ISSUE=90000042 \
           ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
@@ -190,13 +219,13 @@ printf -- '- a rule\n' > "$RR/.zbuild/rules.md"
 _lacks "[R5] ...with the file, nothing is said" "$(_r5 "$RR")" "rules.md"
 # A link is not followed (load_repo_rules: the file must be .zbuild/rules.md
 # itself), so the stages got no rules: said so, never silence.
-mkdir -p "$RR/docs"; printf -- '- a shared rule\n' > "$RR/docs/rules.md"; rm -f "$RR/.zbuild/rules.md"
+mkdir -p "$RR/docs"; printf -- '- a shared rule\n' > "$RR/docs/rules.md"; rm -f "${RR:?}/.zbuild/rules.md"
 ln -s ../docs/rules.md "$RR/.zbuild/rules.md"
 # shellcheck source=../../scripts/lib/prompt-overrides.sh
 assert_eq "[R5] (fixture) the stages are given no rules from a linked rules.md" "" "$(source "$REPO_ROOT/scripts/lib/prompt-overrides.sh"; load_repo_rules "$RR")"
 assert_contains "[R5] a linked rules.md: the posted comment says it was not read" "$(_r5 "$RR")" \
     "This repository's \`.zbuild/rules.md\` is a link, which zBuild does not follow: every stage was given zBuild's default rules."
-rm -f "$RR/.zbuild/rules.md"; printf -- '- a rule\n' > "$RR/.zbuild/rules.md"
+rm -f "${RR:?}/.zbuild/rules.md"; printf -- '- a rule\n' > "$RR/.zbuild/rules.md"
 # The same for a .zbuild that is a link: with a rules.md there, it is not read
 # (the file must be .zbuild/rules.md itself); with none, it has no rules.
 RR2="$TEST_TEMP_DIR/r5-linked"; mkdir -p "$RR2" "$TEST_TEMP_DIR/shared-zb"; git -C "$RR2" init -q
@@ -204,7 +233,7 @@ printf -- '- a shared rule\n' > "$TEST_TEMP_DIR/shared-zb/rules.md"; ln -s "$TES
 assert_eq "[R5] (fixture) the stages are given no rules from a linked .zbuild" "" "$(source "$REPO_ROOT/scripts/lib/prompt-overrides.sh"; load_repo_rules "$RR2")"
 assert_contains "[R5] a linked .zbuild with a rules.md: the comment says it was not read" "$(_r5 "$RR2")" \
     "This repository's \`.zbuild/rules.md\` is a link, which zBuild does not follow: every stage was given zBuild's default rules."
-rm -f "$TEST_TEMP_DIR/shared-zb/rules.md"
+rm -f "${TEST_TEMP_DIR:?}/shared-zb/rules.md"
 assert_contains "[R5] a linked .zbuild with none: the comment says it has no rules" "$(_r5 "$RR2")" \
     "This repository has no rules in \`.zbuild/rules.md\`: every stage was given zBuild's default rules."
 _lacks "[R5] ...never that it is a link" "$(_r5 "$RR2")" "is a link"

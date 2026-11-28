@@ -208,7 +208,7 @@ if [[ ! -e "$RUNS/old-complete" ]]; then
     assert_pass "[SPEC-7] apply removes the job folder entirely"
 else
     assert_fail "[SPEC-7] apply removes the job folder entirely" \
-        "survivors: $(find "$RUNS/old-complete" 2>/dev/null | head -5 | tr '\n' ' ')"
+        "survivors: $(find "$RUNS/old-complete" 2>/dev/null | sed -n 1,5p | tr '\n' ' ')"
 fi
 if [[ ! -e "$RUNS/old-failed/scratch/test/staging.txt" && ! -e "$RUNS/old-failed/events.jsonl" ]]; then
     assert_pass "[SPEC-7] nested scratch + evidence go with the folder"

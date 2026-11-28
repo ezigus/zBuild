@@ -42,7 +42,7 @@ setup_test_env "coverage-trace-fd-collision"
 # rather than the one actually exported — and a mutation of the export alone
 # would not redden it. Caught by mutation-checking this file.
 _TRACE_FD="$(grep -oE '^[[:space:]]*export[[:space:]]+BASH_XTRACEFD=[0-9]+' \
-    "$REPO_ROOT/scripts/run-tests.sh" | head -1 | grep -oE '[0-9]+$' || true)"
+    "$REPO_ROOT/scripts/run-tests.sh" | sed -n 1p | grep -oE '[0-9]+$' || true)"
 assert_gt "[SPEC-1] run-tests.sh names a trace fd" "${_TRACE_FD:-0}" "0"
 
 # ─── SPEC-1: behavioural — a locked section does not capture the trace ──────

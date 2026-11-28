@@ -119,7 +119,7 @@ rc_s4=$?
 set -e
 assert_eq "S4 end-without-begin returns rc=2" "2" "$rc_s4"
 assert_event_emitted "S4 stage.io.error emitted" "$ZBUILD_EVENTS_JSONL" "stage.io.error"
-s4_evt="$(jq -c --arg t "stage.io.error" 'select(.type==$t)' "$ZBUILD_EVENTS_JSONL" | head -1)"
+s4_evt="$(jq -c --arg t "stage.io.error" 'select(.type==$t)' "$ZBUILD_EVENTS_JSONL" | sed -n 1p)"
 assert_contains "S4 event reason=end_without_begin" "$s4_evt" "end_without_begin"
 
 # ─── S5: per-stage seq counter (plan→1, plan→2, build→1) ────────────────────
@@ -199,9 +199,9 @@ stage_io_end --stage plan --kind llm --seq "$_STAGE_IO_LAST_SEQ" --output "RESP"
 exec 3>&-
 s9_content="$(cat "$s9_fd3")"
 # #499: I/O banner header dividers switched from ── to ══.
-s9_input_line="$(printf '%s\n' "$s9_content" | grep -n "input ══"  | head -1 | cut -d: -f1)"
-s9_mark_line="$(printf '%s\n' "$s9_content"  | grep -n "__BETWEEN" | head -1 | cut -d: -f1)"
-s9_output_line="$(printf '%s\n' "$s9_content" | grep -n "output OK" | head -1 | cut -d: -f1)"
+s9_input_line="$(printf '%s\n' "$s9_content" | grep -n "input ══"  | sed -n 1p | cut -d: -f1)"
+s9_mark_line="$(printf '%s\n' "$s9_content"  | grep -n "__BETWEEN" | sed -n 1p | cut -d: -f1)"
+s9_output_line="$(printf '%s\n' "$s9_content" | grep -n "output OK" | sed -n 1p | cut -d: -f1)"
 if [[ -n "$s9_input_line" && -n "$s9_mark_line" && -n "$s9_output_line" \
       && "$s9_input_line" -lt "$s9_mark_line" \
       && "$s9_mark_line"  -lt "$s9_output_line" ]]; then
@@ -232,7 +232,7 @@ unset ZBUILD_STAGE_IO_FD
     # Subshell exits here without calling stage_io_end → EXIT trap fires.
 ) || true
 assert_event_emitted "S10 EXIT trap emits stage.io.error" "$ZBUILD_EVENTS_JSONL" "stage.io.error"
-s10_evt="$(jq -c --arg t "stage.io.error" 'select(.type==$t) | select(.data.reason=="output_never_emitted")' "$ZBUILD_EVENTS_JSONL" | head -1)"
+s10_evt="$(jq -c --arg t "stage.io.error" 'select(.type==$t) | select(.data.reason=="output_never_emitted")' "$ZBUILD_EVENTS_JSONL" | sed -n 1p)"
 assert_contains "S10 event reason=output_never_emitted" "$s10_evt" "output_never_emitted"
 assert_file_exists "S10 partial record written" "$ZBUILD_STATE_DIR/artifacts/stage-io/orphan_stage-1.partial.json"
 

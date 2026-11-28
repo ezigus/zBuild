@@ -8,6 +8,8 @@
 _ZBUILD_UNCLEAR_REPORT_LOADED=1
 # shellcheck source=./json-text.sh
 source "${BASH_SOURCE[0]%/*}/json-text.sh"
+# shellcheck source=./md-text.sh
+source "${BASH_SOURCE[0]%/*}/md-text.sh"
 
 # zb_unclear_result_json_v <var> <array_name> [note_var] — the lines of
 # <array_name> as a JSON array of strings, for a stage's result: data.unclear;
@@ -148,20 +150,13 @@ zb_unclear_results_in_v() {
     return 0
 }
 
-# _zb_unclear_esc_v <var> <text> — what the model wrote, inert in GitHub
-# markdown: \ [ ] < > ` * escaped, as the PR body escapes plan text; an @ and a
-# # before a digit, and ://, broken by a zero-width space, so it mentions no
-# one, links no issue and makes no link (#2571 review).
-_ZB_UNCLEAR_ZWSP=$'\xe2\x80\x8b'
-_zb_unclear_esc_v() {
-    local -n _zue="$1"; local _zue_t="$2" _zue_d
-    _zue_t="${_zue_t//\\/\\\\}"; _zue_t="${_zue_t//\[/\\[}"; _zue_t="${_zue_t//\]/\\]}"
-    _zue_t="${_zue_t//</\\<}"; _zue_t="${_zue_t//>/\\>}"
-    _zue_t="${_zue_t//\`/\\\`}"; _zue_t="${_zue_t//\*/\\*}"
-    _zue_t="${_zue_t//@/@$_ZB_UNCLEAR_ZWSP}"; _zue_t="${_zue_t//:\/\//:$_ZB_UNCLEAR_ZWSP//}"
-    for _zue_d in 0 1 2 3 4 5 6 7 8 9; do _zue_t="${_zue_t//\#$_zue_d/#$_ZB_UNCLEAR_ZWSP$_zue_d}"; done
-    _zue="$_zue_t"
-}
+# _zb_unclear_esc_v <var> <text> — what the model wrote, as the section's
+# reader needs it. Escaped where the text enters markdown, at the boundary:
+# for GitHub (the default), shown as written — it mentions no one, links no
+# issue and makes no link (#2571 review; scripts/lib/md-text.sh); for a
+# terminal (zb_unclear_text_v), as it is.
+_zb_unclear_esc_v() { "${_ZB_UNCLEAR_ESC:-zb_md_text_v}" "$1" "$2"; }
+_zb_unclear_as_is_v() { printf -v "$1" '%s' "$2"; }
 
 # _zb_unclear_section_v <var> <stage> <array_name> — one stage's questions
 # (lines as written), or empty when none is readable.
@@ -261,6 +256,10 @@ _zb_unclear_suspected_v() {
     [[ -n "$_zsv_x" ]] || return 0
     _zsv="**Suspicions $2 could not confirm** (open: a person should check each):"$'\n'"$_zsv_x"
 }
+
+# zb_unclear_text_v <var> <design_md> [result_json...] — the same section for a
+# terminal: the model's words as they are, never escaped for markdown.
+zb_unclear_text_v() { local _ZB_UNCLEAR_ESC=_zb_unclear_as_is_v; zb_unclear_markdown_v "$@"; }
 
 # zb_unclear_markdown <design_md> [result_json...] — the same, printed.
 zb_unclear_markdown() {

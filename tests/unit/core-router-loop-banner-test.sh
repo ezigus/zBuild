@@ -162,7 +162,7 @@ if [[ "$p" == *"ZB505_STATIC_BODY_SENTINEL"* ]]; then
     assert_pass "call 1: claude prompt contains full static body sentinel"
 else
     assert_fail "call 1: claude prompt contains full static body sentinel" \
-        "head=$(printf '%s' "$p" | head -c 120)"
+        "head=${p:0:120}"
 fi
 
 # (2) The artifact file `.input` contains the full static prompt sentinel —
@@ -175,7 +175,7 @@ if [[ -f "$art" ]]; then
         assert_pass "build-1.json .input contains full static prompt (persist-input)"
     else
         assert_fail "build-1.json .input contains full static prompt (persist-input)" \
-            "in_head=$(printf '%s' "$in_field" | head -c 120)"
+            "in_head=${in_field:0:120}"
     fi
 fi
 

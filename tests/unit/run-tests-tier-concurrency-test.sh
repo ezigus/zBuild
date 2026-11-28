@@ -123,7 +123,7 @@ _conc_out="$_OUT"
 if [[ "$_ser_out" == "$_conc_out" ]]; then
   assert_pass "[SPEC-2] serial and concurrent stdout byte-identical"
 else
-  assert_fail "[SPEC-2] stdout must be byte-identical" "$(diff <(printf '%s' "$_ser_out") <(printf '%s' "$_conc_out") | head)"
+  assert_fail "[SPEC-2] stdout must be byte-identical" "$(diff <(printf '%s' "$_ser_out") <(printf '%s' "$_conc_out") | sed -n 1,10p)"
 fi
 # Canonical order + total line: summaries unit→integration→e2e→golden→mutation→
 # lint (#1129 Change C added lint as the last tier), blank line, then

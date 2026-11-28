@@ -52,7 +52,7 @@ case "${1:-} ${2:-}" in
         cat "${MOCK_ISSUE_LIST_JSON:-/dev/null}"
         ;;
     "pr list")
-        echo "[]"
+        cat "${MOCK_PR_LIST_JSON:-/dev/null}" 2>/dev/null || echo "[]"
         ;;
     *) echo "[mock-gh] unhandled: $*" >&2; exit 1 ;;
 esac
@@ -60,6 +60,9 @@ esac
 
 # Mock RUNNER_TEMP/manifest-sync-pr-body.md location
 export PR_BODY_PATH="$TEST_TEMP_DIR/manifest-sync-pr-body.md"
+# The orphan-PR log --apply appends to: this test's own, never the checkout's
+# .github/issues/orphan-prs.md (audit on #2638: MS8 wrote a row into it).
+export MANIFEST_SYNC_ORPHAN_PRS_LOG="$TEST_TEMP_DIR/orphan-prs.md"
 
 # ─── MS1 REGRESSION LOCK: bracket-prefix variant detected ───────────────────
 # Live issue with brackets vs manifest with colon — must show possible-match
@@ -106,7 +109,7 @@ cat > "$MOCK_ISSUE_LIST_JSON" <<'EOF'
   {"number":300, "title":"Phase 0.5 cleanup orchestrator backend refactor work foo bar baz", "state":"OPEN", "closedAt":null, "labels":[]}
 ]
 EOF
-rm -f "$PR_BODY_PATH"
+rm -f "${PR_BODY_PATH:?}"
 rc=0
 bash "$REPO_ROOT/scripts/manifest-sync.sh" --apply --manifest "$TEST_MANIFEST" >/dev/null 2>&1 || rc=$?
 if [[ -f "$PR_BODY_PATH" ]]; then
@@ -137,5 +140,56 @@ else
         "manifest content changed after --report (report mode must be read-only)"
 fi
 rm -f "$_ms5_ref"
+
+# ─── MS6 (audit on #2638): a title in a table cell keeps the table a table ──
+# Its | escaped, its backslash once, a newline as a space (zb_md_cell_v): the
+# titles are read from jq NUL-separated, as they are, never through @tsv.
+export MOCK_ISSUE_LIST_JSON="$TEST_TEMP_DIR/ms6-issues.json"
+jq -n '[{number:300, title:"a|b c", state:"OPEN", closedAt:null, labels:[]},
+        {number:301, title:"C:\\dir", state:"OPEN", closedAt:null, labels:[]},
+        {number:302, title:"two\nlines", state:"OPEN", closedAt:null, labels:[]}]' > "$MOCK_ISSUE_LIST_JSON"
+rm -f "${PR_BODY_PATH:?}"
+bash "$REPO_ROOT/scripts/manifest-sync.sh" --apply --manifest "$TEST_MANIFEST" >/dev/null 2>&1 || true
+_ms6="$(cat "$PR_BODY_PATH" 2>/dev/null)"
+assert_contains "MS6: a title holding | stays one cell" "$_ms6" '| #300 | OPEN | a\|b c |'
+assert_contains "MS6: a backslash is escaped once, so GitHub shows one" "$_ms6" '| #301 | OPEN | C:\\dir |'
+assert_contains "MS6: a newline is a space" "$_ms6" '| #302 | OPEN | two lines |'
+
+# ─── MS7 (audit on #2638): a title is matched as it is ────────────────────
+# A manifest entry and the live issue with the same title holding a backslash
+# are one issue, not an orphan.
+MS7_MANIFEST="$TEST_TEMP_DIR/ms7-manifest.yaml"
+cat > "$MS7_MANIFEST" <<'EOF'
+labels: []
+milestones: []
+issues:
+  - id: windows-path
+    title: 'C:\dir is read'
+    milestone: ""
+    labels: []
+    state: open
+    body: ""
+EOF
+jq -n '[{number:310, title:"C:\\dir is read", state:"OPEN", closedAt:null, labels:[]}]' > "$MOCK_ISSUE_LIST_JSON"
+_ms7_rc=0; _ms7="$(bash "$REPO_ROOT/scripts/manifest-sync.sh" --report --manifest "$MS7_MANIFEST" 2>&1)" || _ms7_rc=$?
+assert_eq "MS7: (fixture) the report runs" "0" "$_ms7_rc"
+if [[ "$_ms7" == *"#310"* ]]; then assert_fail "MS7: a title holding a backslash matches its manifest entry, so it is no orphan" "$_ms7"
+else assert_pass "MS7: a title holding a backslash matches its manifest entry, so it is no orphan"; fi
+
+# ─── MS8 (audit on #2638): a merged PR's title is read as it is too ────────
+# Its backslash escaped once in its cell; a "Closes #" on a later line of its
+# body links it.
+export MOCK_ISSUE_LIST_JSON="$TEST_TEMP_DIR/ms8-issues.json"; echo '[]' > "$MOCK_ISSUE_LIST_JSON"
+export MOCK_PR_LIST_JSON="$TEST_TEMP_DIR/ms8-prs.json"
+jq -n '[{number:99901, title:"C:\\dir pr", body:"", mergedAt:"2026-11-27T00:00:00Z"},
+        {number:99902, title:"linked", body:"first line\nCloses #5", mergedAt:"2026-11-27T00:00:00Z"}]' > "$MOCK_PR_LIST_JSON"
+rm -f "${PR_BODY_PATH:?}"
+bash "$REPO_ROOT/scripts/manifest-sync.sh" --apply --manifest "$TEST_MANIFEST" >/dev/null 2>&1 || true
+_ms8="$(cat "$PR_BODY_PATH" 2>/dev/null || true)"
+assert_contains "MS8: a merged PR's backslash is escaped once" "$_ms8" '| #99901 | C:\\dir pr |'
+if [[ "$_ms8" == *"#99902"* ]]; then assert_fail "MS8: a PR closing an issue on a later line of its body is linked" "$_ms8"
+else assert_pass "MS8: a PR closing an issue on a later line of its body is linked"; fi
+assert_contains "MS8: the orphan PR is logged in the log it was given, not the checkout's" "$(cat "$MANIFEST_SYNC_ORPHAN_PRS_LOG" 2>/dev/null || true)" "| #99901 |"
+unset MOCK_PR_LIST_JSON
 
 print_test_results

@@ -114,7 +114,7 @@ assert_eq "[LP1] a later try's call sends the stage prompt exactly" \
 all="$(cat "$PROMPT_DIR"/*.txt 2>/dev/null)"
 if [[ "$all" == *"## Iteration"* || "$all" == *"BRANCH STATE"* || "$all" == *"Cumulative diff"* ]]; then
     assert_fail "[LP2] no call carries an Iteration header, a diff or a BRANCH STATE block" \
-        "found one in: $(printf '%s' "$all" | head -c 300)"
+        "found one in: ${all:0:300}"
 else
     assert_pass "[LP2] no call carries an Iteration header, a diff or a BRANCH STATE block"
 fi

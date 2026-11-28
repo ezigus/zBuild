@@ -238,6 +238,11 @@ design:
 build:
   gate: auto
   roles: [builder]
+  # #2640 (ADR-068 §3): build runs only once test-author passed this round, so
+  # there are tests to build against. One that did not ends the round, and the
+  # next starts from design; a loop that never gets there ends saying so. On
+  # #2534 test-author wrote nothing in two rounds and build ran anyway.
+  requires: [test-author]
   # The whole stage, every call and check inside it (one 15-minute model call per
   # try, and build's own scans for secrets); the engine stops it here. The
   # default for a stage is 900 (15 minutes).
