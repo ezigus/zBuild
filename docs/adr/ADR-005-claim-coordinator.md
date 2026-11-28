@@ -109,7 +109,8 @@ holder records back is the claim's re-read; it does not read the issue's labels 
 - **First.** One read of the issue's comments (every page) finds both the winner and the run's own
   record. Only records by the CI bot or by a repository owner, member or collaborator count. "First" is
   GitHub's time for each record (`created_at`), then the lower id for records in the same second; a
-  machine's clock is never used.
+  machine's clock is never used, nor the order GitHub lists the comments in. A run won when the first
+  record is its own, by id (two runs may name the same holder).
 - **The window.** Another run's record counts only when GitHub timed it no more than
   `ZBUILD_CLAIM_RACE_WINDOW_S` seconds before this run's (default 120; a value that is not a number of
   seconds is the default). It is its own setting, not worked out from another.
@@ -127,9 +128,10 @@ holder records back is the claim's re-read; it does not read the issue's labels 
   and the coordinator answers a backend error, after which the run goes on unclaimed as for any
   coordinator failure (§1).
 - **The local-fs store** checks and adds under one lock, so a race on it has one winner already.
-- **Known limit (accepted).** If each run reads the records back before the other's is visible, both
+- **Known limits (accepted).** If each run reads the records back before the other's is visible, both
   proceed. A run that dies without releasing leaves its record: a claim made within the window after it
-  is refused, as if that run had claimed first.
+  is refused, as if that run had claimed first. A claim taken back removes the shared label even when
+  another run that claimed at the same moment holds it.
 
 ### §4 — Finding and calling the coordinator
 
@@ -244,9 +246,9 @@ A claim hook whose reply says `"acquired": true` holds the claim, whatever the h
   - §5 the release removes the record → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` [#2534/SPEC-2]
   - §5 a reply with no time fails closed → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` [#2534/SPEC-4]
   - §5 the window, its setting and its default → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` [#2534/SPEC-5]
-  - §5 no labels re-read; one read of the records, every page, finds the winner and the run's own → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` [#2534/SPEC-6], [#2534/SPEC-7]
-  - §5 a record that cannot be rewritten or removed; only trusted records count → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` ("a note that cannot be changed or removed", "a note by someone else does not count")
-  - §5 the engine refuses a lost race at once, with no takeover → `tests/unit/claim-acquire-release-test.sh` DSRACE-4, DSRACE-5
+  - §5 no labels re-read; one read of the records, every page, finds the winner and the run's own; the engine refuses a lost race at once, with no takeover (the calls GitHub gets, in order) → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` [#2534/SPEC-6], [#2534/SPEC-7]
+  - §5 GitHub's time before the id, whatever order the comments are listed in; exactly one of two runs that both read after both posted proceeds → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` [#2534/SPEC-1], [#2534/SPEC-3] ("both runs read after both posted", "the order GitHub lists the notes in does not decide")
+  - §5 only trusted records count, an owner's as the CI bot's; a record that cannot be rewritten or removed → `plugins/claim-coordinator/github-labels/tests/claim-race-unit-test.sh` ("two local runs at once, posting as the repository's owner", "a note by someone else does not count", "a note that cannot be changed or removed")
   - §5 a refused run's end words say it did not start → `tests/integration/claim-refusal-test.sh` [#2534/SPEC-1]
 
 - §3 amendment 2026-11-26 (#2616: the coordinator owns the takeover; GitHub's clock; the old comment marked) → `tests/unit/claim-takeover-real-test.sh` TR13 (GitHub's clock), TR14 (the old comment marked), TR15 (the hook and its library are the coordinator's), TR16 (any locale, the mark's time UTC), TR17 (claimed again before the mark), TR18 (no takeover hook: refused), TR19 (a mark that fails: the takeover stands), TR20 (claiming again failing is said as such), TR1–TR12 (through the real coordinator)

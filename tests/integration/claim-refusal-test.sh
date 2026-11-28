@@ -58,9 +58,12 @@ assert_contains "[F1] the message says how to clear a claim whose run is gone" \
 assert_eq "[F1] the other run's claim is left in place" "zbuild:claimed" "$(cat "$ZBUILD_CLAIM_STORE/$ISSUE/labels.txt")"
 # The words the run's completion comment opens with (CI's run_completion_body),
 # from what the runner wrote (#2534: the run that loses says it did not start).
+_f1_words="$(run_end_words "$(run_end_reason "$(dirname "$(claim_fixture_events f1)")")" 0)"
 assert_eq "[#2534/SPEC-1] the run's end words say it did not start, and why" \
-    "did not start: another run is working on this issue" \
-    "$(run_end_words "$(run_end_reason "$(dirname "$(claim_fixture_events f1)")")" 0)"
+    "did not start: another run is working on this issue" "$_f1_words"
+assert_contains "[#2534/SPEC-1] ...and its completion comment opens with them" \
+    "$(run_completion_body failure "" "" "https://github.com/o/r/actions/runs/1" "" "" "$_f1_words")" \
+    "**zbuild pipeline did not start: another run is working on this issue.**"
 
 print_test_section "F2 the admission lock refuses before the claim"
 unset ZBUILD_NO_ISSUE_LOCK

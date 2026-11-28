@@ -6,7 +6,8 @@
 # read, so no reply here holds a claim note the test wrote by hand.
 #
 # "At once": the fake answers each run's read of the labels as if made before
-# the other run's label was visible (labels-unseen).
+# the other run's label was visible (labels-unseen). Where both runs must read
+# after both posted, the fake's list of comments waits for both notes.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -35,7 +36,7 @@ STATE="$TEST_TEMP_DIR/state"; mkdir -p "$STATE"
 PLUGINS="$TEST_TEMP_DIR/plugins"; mkdir -p "$PLUGINS/claim-coordinator"
 cp -R "$REPO_ROOT/plugins/claim-coordinator/github-labels" "$PLUGINS/claim-coordinator/"
 rm -rf "$PLUGINS/claim-coordinator/github-labels/tests"
-export ZBUILD_PLUGINS_ROOT="$PLUGINS" ZBUILD_CLAIM_BACKEND=gh
+export ZBUILD_PLUGINS_ROOT="$PLUGINS" ZBUILD_CLAIM_BACKEND=gh ZBUILD_CLAIM_MACHINE_ID=box-1
 export GITHUB_ACTIONS=true GITHUB_SERVER_URL=https://github.com GITHUB_REPOSITORY=testowner/testrepo
 # The old window was four of these (20 s); the window is its own setting now.
 export ZBUILD_STATUS_COMMENT_GH_TIMEOUT=5
@@ -67,10 +68,40 @@ _body_count() { jq --arg b "$1" '[.[] | select(.body == $b)] | length' "$GHS/com
 _note() { printf 'concurrent claim by `%s`' "$(_holder "$1")"; }
 # shellcheck disable=SC2016
 _not_started() { printf 'not started — concurrent claim: `%s` was first' "$(_holder "$1")"; }
-_calls() { /usr/bin/grep -c -- "$1" "$GHS/log" || true; }
+# _kinds — every call GitHub got, in order: view, add, remove, post, list,
+# patch, delete; anything else as written.
+_kinds() {
+    local line out=""
+    while IFS= read -r line; do
+        case "$line" in
+            "issue view "*) out+="view " ;;
+            "issue edit "*"--add-label"*) out+="add " ;;
+            "issue edit "*"--remove-label"*) out+="remove " ;;
+            "api -X PATCH "*) out+="patch " ;;
+            "api -X DELETE "*) out+="delete " ;;
+            "api "*" -f body="*) out+="post " ;;
+            "api "*"issues/$ISSUE/comments"*) out+="list " ;;
+            *) out+="[$line] " ;;
+        esac
+    done < "$GHS/log"
+    printf '%s' "${out% }"
+}
+_holders() { local n=0 r; for r in "$@"; do [[ "$(_held "$r")" == "$ISSUE" ]] && n=$(( n + 1 )); done; printf '%s' "$n"; }
+# _both_read_after_both_posted <first-time> <second-time> — `first` posts at
+# <first-time>, then `second` at <second-time>; each reads the notes only once
+# both are there.
+_both_read_after_both_posted() {
+    local pid
+    _fresh; : > "$GHS/labels-unseen"; printf '2' > "$GHS/list-waits-for"
+    _at "$1"; _run first & pid=$!
+    wait_for_event "$GHS/comments.json" 'runs/first' 200 0.05 \
+        || assert_fail "setup: the first run posted its note" "$(cat "$GHS/log")"
+    _at "$2"; _run second
+    wait_for_exit "$pid" 400 || assert_fail "setup: the first run finished" "$(_err first)"
+}
 # _left_note <time> — run `gone` claims at <time> and dies without releasing; the
 # label is removed for it (as the CI clean-up does), its claim note is left.
-_left_note() { _fresh; _at "$1"; _run gone; : > "$GHS/labels"; }
+_left_note() { _fresh; _at "$1"; _run gone; : > "$GHS/labels"; : > "$GHS/log"; }
 
 print_test_section "two runs at once, in the same second: the first claim wins"
 _fresh; : > "$GHS/labels-unseen"; _at 00:00:00Z
@@ -84,11 +115,24 @@ assert_eq "[#2534/SPEC-1] the label stays on the issue: the second run does not 
 assert_eq "[#2534/SPEC-1] the second run's note says it did not start, and who was first" \
     "1" "$(_body_count "$(_not_started first)")"
 assert_eq "[#2534/SPEC-1] the first run's note stands as its holder record" "1" "$(_body_count "$(_note first)")"
-assert_eq "[#2534/SPEC-3] the two notes have the same time (GitHub's, to the second)" "1" \
-    "$(jq '[.[].created_at] | unique | length' "$GHS/comments.json")"
-assert_eq "[#2534/SPEC-6] each run reads the issue's labels once, and not again after posting its note" \
-    "2" "$(_calls '^issue view ')"
-assert_eq "[#2534/SPEC-7] each run reads the claim notes once" "2" "$(_calls "^api --paginate .*issues/$ISSUE/comments")"
+assert_eq "[#2534/SPEC-6] [#2534/SPEC-7] each run reads the labels once and the notes once; the loser rewrites its note and takes nothing over" \
+    "view add post list view add post list patch" "$(_kinds)"
+
+print_test_section "both runs read after both posted: exactly one proceeds"
+_both_read_after_both_posted 00:00:00Z 00:00:00Z
+assert_eq "[#2534/SPEC-1] exactly one run holds the claim" "1" "$(_holders first second)"
+assert_eq "[#2534/SPEC-3] ...the first: same second, the lower id" "$ISSUE" "$(_held first)"
+assert_eq "[#2534/SPEC-1] ...and the other is refused" "1" "$(_rc second)"
+_both_read_after_both_posted 00:00:05Z 00:00:00Z
+assert_eq "[#2534/SPEC-3] GitHub's time comes before the id: the earlier note wins, though its id is higher" \
+    "$ISSUE" "$(_held second)"
+assert_eq "[#2534/SPEC-1] ...and only it" "1" "$(_holders first second)"
+
+print_test_section "the order GitHub lists the notes in does not decide"
+_fresh; : > "$GHS/labels-unseen"; : > "$GHS/newest-first"; _at 00:00:00Z
+_run first; _run second
+assert_eq "[#2534/SPEC-3] listed newest first, the same-second note with the lower id still wins" "1" "$(_rc second)"
+assert_eq "[#2534/SPEC-3] ...and the first holds the claim" "$ISSUE" "$(_held first)"
 
 print_test_section "the earlier note is on a later page"
 _fresh; : > "$GHS/labels-unseen"; _at 00:00:00Z; printf '1' > "$GHS/per-page"
@@ -97,6 +141,13 @@ jq -n '[{id: 7, body: "a person'"'"'s comment", created_at: "2025-12-31T23:00:00
 _run first; _run second
 assert_eq "[#2534/SPEC-7] every page is read: the second run is refused" "1" "$(_rc second)"
 assert_eq "[#2534/SPEC-7] ...and the first holds the claim" "$ISSUE" "$(_held first)"
+
+print_test_section "two local runs at once, posting as the repository's owner"
+_fresh; : > "$GHS/labels-unseen"; _at 00:00:00Z
+printf 'maintainer' > "$GHS/login"; printf 'OWNER' > "$GHS/association"
+( unset GITHUB_ACTIONS; ZBUILD_RUN_ID=local-1 _run local-1; ZBUILD_RUN_ID=local-2 _run local-2 )
+assert_eq "a local run's note, by an owner, counts: the first local run holds the claim" "$ISSUE" "$(_held local-1)"
+assert_eq "...and the second is refused" "1" "$(_rc local-2)"
 
 print_test_section "GitHub's reply gives no time: the claim fails closed"
 _fresh; : > "$GHS/no-created-at"; _at 00:00:00Z
@@ -115,18 +166,24 @@ assert_eq "[#2534/SPEC-2] release removes the label" "" "$(_labels)"
 assert_eq "[#2534/SPEC-2] ...and the run's note" "0" "$(_body_count "$(_note first)")"
 _at 00:00:10Z; _run next
 assert_eq "[#2534/SPEC-2] a run that claims 10 s later, inside the window, holds the claim" "$ISSUE" "$(_held next)"
+_left_note 00:00:00Z; _at 00:03:00Z; _run first release
+assert_eq "[#2534/SPEC-2] a release removes only its own run's note" "1" "$(_body_count "$(_note gone)")"
 
 print_test_section "a note left behind counts only inside the window"
-_left_note 00:00:00Z; _at 00:01:00Z; _run later
-assert_eq "[#2534/SPEC-5] a note 60 s old is inside the default 120 s window: refused" "1" "$(_rc later)"
+_left_note 00:00:00Z; _at 00:02:00Z; _run later
+assert_eq "[#2534/SPEC-5] a note 120 s old is inside the default 120 s window: refused" "1" "$(_rc later)"
 _left_note 00:00:00Z; _at 00:02:01Z; _run later
 assert_eq "[#2534/SPEC-5] a note 121 s old is outside it: claimed" "$ISSUE" "$(_held later)"
-_left_note 00:00:00Z; _at 00:00:25Z; ZBUILD_CLAIM_RACE_WINDOW_S=30 _run later
-assert_eq "[#2534/SPEC-5] ZBUILD_CLAIM_RACE_WINDOW_S=30: a note 25 s old is inside it" "1" "$(_rc later)"
+_left_note 00:00:00Z; _at 00:00:30Z; ZBUILD_CLAIM_RACE_WINDOW_S=30 _run later
+assert_eq "[#2534/SPEC-5] ZBUILD_CLAIM_RACE_WINDOW_S=30: a note 30 s old is inside it" "1" "$(_rc later)"
 _left_note 00:00:00Z; _at 00:00:31Z; ZBUILD_CLAIM_RACE_WINDOW_S=30 _run later
 assert_eq "[#2534/SPEC-5] ...and one 31 s old is outside it" "$ISSUE" "$(_held later)"
-_left_note 00:00:00Z; _at 00:01:00Z; ZBUILD_CLAIM_RACE_WINDOW_S=2m _run later
-assert_eq "[#2534/SPEC-5] a window that is not a number of seconds is the default" "1" "$(_rc later)"
+_left_note 00:00:00Z; _at 00:02:00Z; ZBUILD_CLAIM_RACE_WINDOW_S=abc _run later
+assert_eq "[#2534/SPEC-5] a window that is not a number of seconds is the default: 120 s old, refused" "1" "$(_rc later)"
+_left_note 00:00:00Z; _at 00:02:01Z; ZBUILD_CLAIM_RACE_WINDOW_S=abc _run later
+assert_eq "[#2534/SPEC-5] ...121 s old, claimed" "$ISSUE" "$(_held later)"
+_left_note 00:00:00Z; _at 00:02:01Z; ZBUILD_CLAIM_RACE_WINDOW_S=08 _run later
+assert_eq "[#2534/SPEC-5] a window with a leading zero does not break the claim" "$ISSUE" "$(_held later)"
 
 print_test_section "GitHub's reply to the note gives no id"
 _fresh; : > "$GHS/labels-unseen"; _at 00:00:00Z
@@ -134,6 +191,7 @@ _run first; : > "$GHS/no-id"; _run second
 assert_eq "[#2534/SPEC-7] the second run is refused" "1" "$(_rc second)"
 assert_eq "[#2534/SPEC-7] ...and finds its own note in the one read, to say it did not start" \
     "1" "$(_body_count "$(_not_started first)")"
+assert_eq "[#2534/SPEC-7] ...with no second read" "view add post list view add post list patch" "$(_kinds)"
 
 print_test_section "a note by someone else does not count"
 _fresh; _at 00:00:00Z

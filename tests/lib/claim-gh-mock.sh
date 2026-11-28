@@ -19,6 +19,13 @@
 #                               call's per_page, else 30)
 #     <state_dir>/labels-unseen present: `issue view` answers with no labels, as a
 #                               read made before another run's add is visible
+#     <state_dir>/login, association  who our posts are by (default
+#                               github-actions[bot], NONE); a local run posts as a person
+#     <state_dir>/newest-first  present: our comments are listed newest first (an
+#                               order the code must not rely on)
+#     <state_dir>/list-waits-for <n>: a list of the comments waits (bounded) until
+#                               <n> of ours are kept — two runs that both read after
+#                               both posted
 #     <state_dir>/no-created-at present: a posted comment's reply has no created_at
 #     <state_dir>/no-id         present: a posted comment's reply has no id
 #     <state_dir>/fail-<m>      present: a comment call of method <m> (post, patch,
@@ -51,8 +58,10 @@ _list() {
         [[ "$all" == 1 ]] || return 0
     done
     [[ -s "$s/comments.json" ]] || { [[ "$printed" == 1 ]] || echo '[]'; return 0; }
-    jq -c --arg since "$since" --argjson per "$per" --argjson all "$all" '
+    jq -c --arg since "$since" --argjson per "$per" --argjson all "$all" \
+        --argjson desc "$([[ -e "$s/newest-first" ]] && echo true || echo false)" '
         [.[] | select($since == "" or ((.updated_at // .created_at) >= $since))]
+        | if $desc then reverse else . end
         | if length == 0 then [[]] else [range(0; length; $per) as $i | .[$i:$i + $per]] end
         | if $all == 1 then .[] else .[0] end' "$s/comments.json"
 }
@@ -67,8 +76,11 @@ if [[ "$1" == api ]]; then
             -f|-F|--field|--raw-field)
                 [[ "${args[i+1]}" == body=* ]] && body="${args[i+1]#body=}"
                 [[ -n "$method" ]] || method=POST; i=$(( i + 1 )) ;;
-            --repo|-R|-H|--header|--jq|-q) i=$(( i + 1 )) ;;
-            repos/*|/repos/*) path="${args[i]#/}" ;;
+            -H|--header|--jq|-q|--hostname|-t|--template|-p|--preview|--cache) i=$(( i + 1 )) ;;
+            --slurp|--silent|-i|--include|--verbose) ;;
+            # `gh api` has no --repo: the path names the repository.
+            -*) echo "unknown flag: ${args[i]}" >&2; exit 1 ;;
+            *) [[ -n "$path" ]] || path="${args[i]#/}" ;;
         esac
     done
     method="${method:-GET}" query=""
@@ -80,9 +92,10 @@ if [[ "$1" == api ]]; then
             id=1000; [[ -s "$s/next-id" ]] && id="$(cat "$s/next-id")"
             echo "$(( id + 1 ))" > "$s/next-id"
             login="github-actions[bot]"; [[ -s "$s/login" ]] && login="$(cat "$s/login")"
-            jq -c --argjson id "$id" --arg b "$body" --arg t "$(_now)" --arg l "$login" \
+            assoc="NONE"; [[ -s "$s/association" ]] && assoc="$(cat "$s/association")"
+            jq -c --argjson id "$id" --arg b "$body" --arg t "$(_now)" --arg l "$login" --arg a "$assoc" \
                 '. + [{id: $id, body: $b, created_at: $t, updated_at: $t,
-                       user: {login: $l}, author_association: "NONE"}]' \
+                       user: {login: $l}, author_association: $a}]' \
                 "$s/comments.json" > "$s/comments.new" && mv "$s/comments.new" "$s/comments.json"
             jq -c --argjson id "$id" --argjson nc "$([[ -e "$s/no-created-at" ]] && echo true || echo false)" \
                 --argjson ni "$([[ -e "$s/no-id" ]] && echo true || echo false)" \
@@ -99,6 +112,12 @@ if [[ "$1" == api ]]; then
             echo "HTTP 422: Validation Failed (since is not an ISO 8601 time)" >&2; exit 1
         fi
         [[ -s "$s/per-page" ]] && per="$(cat "$s/per-page")"
+        if [[ -s "$s/list-waits-for" ]]; then
+            want="$(cat "$s/list-waits-for")"
+            for _ in $(seq 1 200); do
+                (( $(jq 'length' "$s/comments.json") >= want )) && break; sleep 0.05
+            done
+        fi
         _list "$since" "$per" "$paginate"; exit 0
     fi
     if [[ "$path" =~ ^repos/[^/]+/[^/]+/issues/comments/([0-9]+)$ ]]; then

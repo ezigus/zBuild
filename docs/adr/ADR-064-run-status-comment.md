@@ -1,7 +1,7 @@
 # ADR-064 — One live run-status comment per run
 
 **Status:** Proposed (2026-09-18)
-**Amended:** 2026-11-27 (#2640) — a member a requirement held back has its own row; a try the engine did not run again says why (§4; see the amendment below). 2026-11-26 (#2627) — a row shows every finding its try wrote, from each of the stage's results (§4). 2026-11-24 (#2607) — a reason the stop line has no words for is shown as written; the end-of-run steps take no stage's row (§4). 2026-11-22 (#2586) — the header of a run that ended says why and names each blocker; the open items are read from every stage's result (§4; see the amendment below).
+**Amended:** 2026-11-28 (#2534) — a run refused for a claim ends "did not start" (§4; see the amendment below). 2026-11-27 (#2640) — a member a requirement held back has its own row; a try the engine did not run again says why (§4; see the amendment below). 2026-11-26 (#2627) — a row shows every finding its try wrote, from each of the stage's results (§4). 2026-11-24 (#2607) — a reason the stop line has no words for is shown as written; the end-of-run steps take no stage's row (§4). 2026-11-22 (#2586) — the header of a run that ended says why and names each blocker; the open items are read from every stage's result (§4; see the amendment below).
 **Amended:** 2026-11-06 (#2480) — a row shows what a stage said as text, names the round of every loop it is in, and says each finding once (§4; see the amendment below).
 **Amended:** 2026-10-14 (#2378) — the open items list only results this run wrote. Hydrate restores an earlier run's results with their saved times; one older than this run's start belongs to a stage that did not run this time, and is left out.
 **Amended:** 2026-10-31 (#2439) — each try of a stage the engine runs again has its own row (see the amendment below).
@@ -373,7 +373,13 @@ On #2533 run 45403848593 the engine stopped the run because the test stage chang
 - **A loop member a requirement held back** (`requires:`, ADR-068 §3, amended): `cycle.member.not_run` gives it a row of its own, `**<when>** · **<seq> <member>** · not run — <what it requires> did not pass`.
 - **A try the engine did not run again because it changed nothing** (`stage.retry.refused`, ADR-063, amended): the try's row ends `· not run again: the try changed nothing`.
 
+## Amendment 2026-11-28 (#2534) — §4: a run refused for a claim says it did not start
+
+A run whose claim is refused (`pipeline.refused.claimed`: another run holds the issue, or claimed it first at the same moment, ADR-005 §5) ends before `pipeline.start`, so it has no status comment and no `pipeline.end`. Its end reason is `claimed` (`run_end_reason`), and its words are "did not start: another run is working on this issue" (`run_end_words`), which the completion comment opens with. Only that refusal is `claimed`; a run refused by the run cap is not.
+
 ## Enforced by
+
+- §4 amendment 2026-11-28 (#2534: a refused claim's end words) → `tests/integration/claim-refusal-test.sh` [#2534/SPEC-1] (from the real runner's events, into `run_completion_body`); `tests/unit/run-open-items-test.sh` [#2534/SPEC-1] (the run cap's refusal is not one)
 
 - §4 amendment 2026-11-27 (#2640: a member held back, a try not run again) → `tests/integration/cycle-member-requires-test.sh` [#2640/SPEC-1] (the not-run row, from the engine's own events); `tests/unit/run-status-retry-row-test.sh` [#2640/SPEC-2] (the try's row)
 
