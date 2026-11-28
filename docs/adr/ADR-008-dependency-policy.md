@@ -2,6 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-05-24
+**Amended:** 2026-11-28 — Dependabot leaves `legacy-DoNotUse/` alone (see the amendment below).
 
 ## Context
 
@@ -55,6 +56,12 @@ Without an explicit policy, deprecations sneak up. The 2026-06-02 forced-upgrade
 - **v4→v6 transition complete (2026-05-25):** `actions/checkout`, `actions/setup-node` and friends are pinned to `@v6` across all workflows. The Node 20 deprecation that prompted this ADR is no longer a forward risk.
 - **Policy stance, not version manifest:** this ADR is the *rules* (latest stable major, Dependabot weekly, manual review). The current pins live in `.github/workflows/*.yml`; do not try to keep version numbers in the ADR in sync — the workflow files are the truth.
 - **Quarterly audit cadence:** next audit due 2026-08-25. Track audit completion in a closed-issue comment, not in this ADR.
+
+## Amendment 2026-11-28 — Dependabot excludes `legacy-DoNotUse/`
+
+`legacy-DoNotUse/` is a frozen reference copy that nothing runs (ADR-002, ADR-059 §2). Its package files drew Dependabot's security updates, which scan every manifest in the repository, not only the directories `dependabot.yml` names (PRs #2623, #2625, #2636, #2637, #2645). Every update entry in `.github/dependabot.yml` lists `legacy-DoNotUse/**` under `exclude-paths`, which keeps the directory out of version and security updates alike.
+
+Enforced by: `tests/unit/dependabot-excludes-legacy-test.sh` (every update entry excludes `legacy-DoNotUse/**`).
 
 ## References
 

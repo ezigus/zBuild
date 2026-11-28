@@ -1,12 +1,16 @@
 # Dependabot — auto-PR for outdated dependencies.
 # Policy: GitHub Actions versions are bumped weekly; npm deps are monitored
 # but reviewed manually (no auto-merge). See docs/adr/ADR-008-dependency-policy.md.
+# legacy-DoNotUse/ is a frozen copy nothing runs: every entry excludes it, which
+# also keeps out the security updates that scan every manifest (ADR-008).
 
 version: 2
 updates:
   # GitHub Actions — keep runtime current (Node deprecations etc.)
   - package-ecosystem: github-actions
     directory: "/"
+    exclude-paths:
+      - "legacy-DoNotUse/**"
     schedule:
       interval: weekly
       day: monday
@@ -20,6 +24,8 @@ updates:
   # npm (package.json)
   - package-ecosystem: npm
     directory: "/"
+    exclude-paths:
+      - "legacy-DoNotUse/**"
     schedule:
       interval: weekly
       day: monday
